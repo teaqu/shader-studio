@@ -21,7 +21,18 @@ function fakeList<T>(items: T[], failAt?: number): SlangList<T> & { delete: Retu
   };
 }
 
-function createFixture() {
+function createFakeFs() {
+  const files = new Set<string>();
+  return {
+    files,
+    mkdirTree: vi.fn(),
+    writeFile: vi.fn((path: string) => files.add(path)),
+    unlink: vi.fn((path: string) => files.delete(path)),
+    analyzePath: vi.fn((path: string) => ({ exists: files.has(path) })),
+  };
+}
+
+function createFixture(fs = createFakeFs()) {
   const calls: string[] = [];
   const edits = fakeList<never>([]);
   const pushEdit = vi.fn();
@@ -38,12 +49,6 @@ function createFixture() {
     documentSymbol: vi.fn(),
     getDiagnostics: vi.fn(),
     delete: vi.fn(),
-  };
-  const fs = {
-    mkdirTree: vi.fn(),
-    writeFile: vi.fn(),
-    unlink: vi.fn(),
-    analyzePath: vi.fn(() => ({ exists: true })),
   };
   const api: SlangApi = {
     FS: fs,
@@ -130,6 +135,32 @@ describe("SlangWorkspace document lifecycle", () => {
     expect(server.delete).toHaveBeenCalledOnce();
     expect(() => workspace.hover("file:///project/root.slang", { line: 0, character: 0 })).toThrow("disposed");
     expect(() => workspace.openDocument("file:///project/root.slang", "source", 1)).toThrow("disposed");
+  });
+
+  it("remounts its snapshot before a query after another workspace takes the shared filesystem", () => {
+    const fs = createFakeFs();
+    const first = createFixture(fs);
+    const second = createFixture(fs);
+    fs.writeFile.mockClear();
+
+    first.workspace.hover("file:///project/root.slang", { line: 0, character: 0 });
+
+    expect(fs.writeFile).toHaveBeenCalledWith("/workspace/root.slang", "old\nsource");
+    expect(fs.writeFile).toHaveBeenCalledWith("/workspace/lib/palette.slang", "module palette;");
+    second.workspace.dispose();
+    first.workspace.dispose();
+  });
+
+  it("removes MEMFS paths on dispose only while it owns the shared filesystem", () => {
+    const fs = createFakeFs();
+    const first = createFixture(fs);
+    const second = createFixture(fs);
+
+    first.workspace.dispose();
+    expect(fs.files).toEqual(new Set(["/workspace/root.slang", "/workspace/lib/palette.slang"]));
+
+    second.workspace.dispose();
+    expect(fs.files).toEqual(new Set());
   });
 });
 

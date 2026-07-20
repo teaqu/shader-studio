@@ -11,7 +11,7 @@ import type {
   SlangSignatureInformation,
 } from "./slangApi";
 import type { SlangDocumentSnapshot, SlangPosition, SlangRange, SlangWorkspaceSnapshot } from "./types";
-import { syncWorkspaceToFileSystem } from "./virtualFileSystem";
+import { releaseWorkspaceFileSystem, syncWorkspaceToFileSystem } from "./virtualFileSystem";
 
 export interface HoverDto {
   contents: SlangMarkupContent;
@@ -202,6 +202,7 @@ export class SlangWorkspace {
 
   openDocument(uri: string, source: string, version: number): boolean {
     this.ensureActive();
+    this.ensureMounted();
     const current = this.openDocuments.get(uri);
     if (current && version <= current.version) {
       return false;
@@ -218,6 +219,7 @@ export class SlangWorkspace {
 
   changeDocument(uri: string, source: string, version: number): boolean {
     this.ensureActive();
+    this.ensureMounted();
     const current = this.openDocuments.get(uri);
     if (!current || version <= current.version) {
       return false;
@@ -240,6 +242,7 @@ export class SlangWorkspace {
 
   closeDocument(uri: string, version: number): boolean {
     this.ensureActive();
+    this.ensureMounted();
     const current = this.openDocuments.get(uri);
     if (!current || version !== current.version) {
       return false;
@@ -254,6 +257,7 @@ export class SlangWorkspace {
 
   hover(uri: string, position: SlangPosition): HoverDto | undefined {
     this.ensureActive();
+    this.ensureMounted();
     const result = this.server.hover(toLanguageServerUri(this.pathMap.toInternalPath(uri)), position);
     if (!result) {
       return undefined;
@@ -263,6 +267,7 @@ export class SlangWorkspace {
 
   definition(uri: string, position: SlangPosition): LocationDto[] | undefined {
     this.ensureActive();
+    this.ensureMounted();
     return copyOptionalList(
       this.server.gotoDefinition(toLanguageServerUri(this.pathMap.toInternalPath(uri)), position),
       (location) => ({
@@ -278,6 +283,7 @@ export class SlangWorkspace {
     context: SlangCompletionContext = { triggerKind: 1, triggerCharacter: "" },
   ): CompletionItemDto[] | undefined {
     this.ensureActive();
+    this.ensureMounted();
     return copyOptionalList(
       this.server.completion(toLanguageServerUri(this.pathMap.toInternalPath(uri)), position, context),
       copyCompletionItem,
@@ -286,6 +292,7 @@ export class SlangWorkspace {
 
   completionResolve(item: CompletionItemDto): CompletionItemDto | undefined {
     this.ensureActive();
+    this.ensureMounted();
     const commitCharacters = item.commitCharacters ? this.api.StringList() : undefined;
     try {
       for (const character of item.commitCharacters ?? []) {
@@ -309,6 +316,7 @@ export class SlangWorkspace {
 
   signatureHelp(uri: string, position: SlangPosition): SignatureHelpDto | undefined {
     this.ensureActive();
+    this.ensureMounted();
     const result = this.server.signatureHelp(toLanguageServerUri(this.pathMap.toInternalPath(uri)), position);
     if (!result) {
       return undefined;
@@ -322,6 +330,7 @@ export class SlangWorkspace {
 
   documentSymbols(uri: string): DocumentSymbolDto[] | undefined {
     this.ensureActive();
+    this.ensureMounted();
     return copyOptionalList(
       this.server.documentSymbol(toLanguageServerUri(this.pathMap.toInternalPath(uri))),
       copySymbol,
@@ -330,6 +339,7 @@ export class SlangWorkspace {
 
   diagnostics(uri: string): DiagnosticDto[] | undefined {
     this.ensureActive();
+    this.ensureMounted();
     return copyOptionalList(
       this.server.getDiagnostics(toLanguageServerUri(this.pathMap.toInternalPath(uri))),
       copyDiagnostic,
@@ -341,7 +351,11 @@ export class SlangWorkspace {
       return;
     }
     this.disposed = true;
-    this.server.delete();
+    try {
+      this.server.delete();
+    } finally {
+      releaseWorkspaceFileSystem(this.api.FS, this.ownedPaths);
+    }
   }
 
   private registerSnapshot(snapshot: SlangWorkspaceSnapshot): void {
@@ -369,5 +383,26 @@ export class SlangWorkspace {
     if (this.disposed) {
       throw new Error("Slang workspace is disposed");
     }
+  }
+
+  private ensureMounted(): void {
+    const snapshotUris = new Set(this.currentSnapshot.files.map((file) => file.uri));
+    const files = [...this.currentSnapshot.files];
+    for (const [uri, document] of this.openDocuments) {
+      if (!snapshotUris.has(uri)) {
+        files.push({
+          uri,
+          path: this.pathMap.toInternalPath(uri),
+          source: document.source,
+          version: document.version,
+        });
+      }
+    }
+    syncWorkspaceToFileSystem(
+      this.api.FS,
+      { rootUri: this.currentSnapshot.rootUri, files },
+      this.openDocuments,
+      this.ownedPaths,
+    );
   }
 }

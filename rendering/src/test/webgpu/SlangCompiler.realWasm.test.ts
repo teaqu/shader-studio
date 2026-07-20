@@ -5,10 +5,59 @@ import { describe, expect, it } from "vitest";
 
 import createSlangModule from "../../../../ui/src/slang/slang-wasm.js";
 import { SlangCompiler } from "../../webgpu/SlangCompiler";
+import { createSlangApi, SlangWorkspace } from "@shader-studio/slang-language-service";
 import { ShaderDebugger, VariableCaptureBuilder } from "@shader-studio/glsl-debug";
 import type { SlangModuleApi } from "../../webgpu/slangTypes";
 
 describe("SlangCompiler with bundled WASM", () => {
+  it("hands one real WASM MEMFS between a language workspace and renderer compiler", async () => {
+    const wasmPath = resolve(process.cwd(), "../ui/src/slang/slang-wasm.wasm");
+    const wasmBinary = await readFile(wasmPath);
+    const slang = await createSlangModule({ wasmBinary });
+    const api = createSlangApi(slang as unknown as Parameters<typeof createSlangApi>[0]);
+    const rootSource = [
+      "#language slang 2026",
+      "module root;",
+      "import palette;",
+      "float value() { return paletteValue(); }",
+    ].join("\n");
+    const workspace = new SlangWorkspace(api, {
+      rootUri: "file:///language",
+      files: [
+        { uri: "file:///language/root.slang", path: "root.slang", source: rootSource },
+        {
+          uri: "file:///language/palette.slang",
+          path: "palette.slang",
+          source: "#language slang 2026\nmodule palette;\npublic float paletteValue() { return 1.0; }",
+        },
+      ],
+    });
+    const compiler = new SlangCompiler(slang as unknown as SlangModuleApi);
+    const renderSource = "float4 mainImage(float2 c) { return float4(1); }";
+
+    try {
+      expect(workspace.openDocument("file:///language/root.slang", rootSource, 1)).toBe(true);
+      expect(compiler.compile({
+        source: renderSource,
+        sourceUri: "file:///render/image.slang",
+        sourcePath: "/workspace/image.slang",
+        workspace: {
+          rootUri: "file:///render",
+          files: [{
+            uri: "file:///render/image.slang",
+            path: "/workspace/image.slang",
+            source: renderSource,
+          }],
+        },
+        options: {},
+      }).success).toBe(true);
+      expect(workspace.diagnostics("file:///language/root.slang")).toEqual([]);
+    } finally {
+      compiler.dispose();
+      workspace.dispose();
+    }
+  }, 30_000);
+
   it("compiles normal and line-debug roots with the same imported workspace identity", async () => {
     const wasmPath = resolve(process.cwd(), "../ui/src/slang/slang-wasm.wasm");
     const wasmBinary = await readFile(wasmPath);

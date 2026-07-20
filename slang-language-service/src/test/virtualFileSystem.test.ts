@@ -53,6 +53,24 @@ describe("syncWorkspaceToFileSystem", () => {
     expect(state.size).toBe(0);
   });
 
+  it("hands a shared filesystem to the latest owner and removes the previous owner's stale files", () => {
+    const fs = fakeFs();
+    const firstOwner = new Set<string>();
+    const secondOwner = new Set<string>();
+
+    syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/a.slang", path: "/workspace/a.slang", source: "a" },
+      { uri: "file:///workspace/stale.slang", path: "/workspace/stale.slang", source: "stale" },
+    ]), new Map(), firstOwner);
+    syncWorkspaceToFileSystem(fs, snapshot([
+      { uri: "file:///workspace/b.slang", path: "/workspace/b.slang", source: "b" },
+    ]), new Map(), secondOwner);
+
+    expect(fs.files).toEqual(new Set(["/workspace/b.slang"]));
+    expect(firstOwner).toEqual(new Set());
+    expect(secondOwner).toEqual(new Set(["/workspace/b.slang"]));
+  });
+
   it("does not unlink paths absent from MEMFS", () => {
     const fs = fakeFs();
     const state = new Set(["/workspace/already-gone.slang"]);

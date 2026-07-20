@@ -259,6 +259,50 @@ describe("SlangCompiler", () => {
     expect(deleted.filter((handle) => handle === "global")).toEqual(["global"]);
   });
 
+  it("coordinates MEMFS handoff and disposal across compilers sharing one Slang module", () => {
+    const unlinks: string[] = [];
+    const slang = makeFakeSlang({ onUnlink: (path) => unlinks.push(path) });
+    const first = new SlangCompiler(slang);
+    const second = new SlangCompiler(slang);
+
+    first.compile(compileRequest({
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+          { uri: "file:///project/stale.slang", path: "/workspace/stale.slang", source: "stale" },
+        ],
+      },
+    }));
+    second.compile(compileRequest({
+      sourcePath: "/workspace/passes/image.slang",
+      sourceUri: "file:///project/passes/image.slang",
+      workspace: {
+        rootUri: "file:///project",
+        files: [
+          { uri: "file:///project/palette.slang", path: "/workspace/palette.slang", source: "palette" },
+          { uri: "file:///project/passes/image.slang", path: "/workspace/passes/image.slang", source: "root" },
+        ],
+      },
+    }));
+
+    expect(unlinks).toEqual(expect.arrayContaining([
+      "/workspace/image.slang",
+      "/workspace/stale.slang",
+    ]));
+    unlinks.length = 0;
+
+    first.dispose();
+    expect(unlinks).toEqual([]);
+
+    second.dispose();
+    expect(unlinks).toEqual(expect.arrayContaining([
+      "/workspace/palette.slang",
+      "/workspace/passes/image.slang",
+      "/workspace/passes/palette.slang",
+    ]));
+  });
+
   it("deletes an uncacheable global session when WGSL is unavailable", () => {
     const deleted: string[] = [];
     const compiler = new SlangCompiler(makeFakeSlang({

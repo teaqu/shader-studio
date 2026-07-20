@@ -1,5 +1,6 @@
 import {
   normalizeInternalPath,
+  releaseWorkspaceFileSystem,
   syncWorkspaceToFileSystem,
   type SlangDiagnostic,
   type SlangWorkspaceSnapshot,
@@ -132,7 +133,11 @@ export class SlangCompiler {
     const globalSession = this.globalSession;
     this.globalSession = null;
     this.wgslTargetValue = null;
-    globalSession?.delete();
+    try {
+      globalSession?.delete();
+    } finally {
+      releaseWorkspaceFileSystem(this.slang.FS, this.mountedPaths);
+    }
   }
 
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
