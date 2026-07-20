@@ -159,14 +159,20 @@ suite('Bundled Slang syntax assets', () => {
 
     assert.deepStrictEqual(
       typePatterns?.map((pattern) => pattern.name),
-      ['support.type.scalar-vector.slang', 'support.type.resource.slang'],
+      [
+        'support.type.matrix.slang',
+        'support.type.scalar-vector.slang',
+        'support.type.resource.slang',
+      ],
     );
     assert.deepStrictEqual(
       numericPatterns?.map((pattern) => pattern.name),
       [
-        'constant.numeric.hex.slang',
-        'constant.numeric.binary.slang',
+        'constant.numeric.hex-float.slang',
         'constant.numeric.decimal.float.slang',
+        'constant.numeric.hex-integer.slang',
+        'constant.numeric.binary-integer.slang',
+        'constant.numeric.octal-integer.slang',
         'constant.numeric.decimal.integer.slang',
       ],
     );
@@ -231,6 +237,57 @@ float4 shade(Texture2D texture) { return 1.; }
     }
   });
 
+  test('keeps custom-delimited raw strings scoped through their terminator', () => {
+    const lines = tokenizeLines(`R"tag(raw " quote
+module fake;)tag";
+float4 value;
+R"(empty " quote)";`);
+
+    assert.ok(
+      lines[0].every((token) => hasScope(token, 'string.quoted.raw')),
+      'the raw string opener and quoted content must have a raw-string scope',
+    );
+    assert.strictEqual(
+      lines[1]
+        .filter((token) => hasScope(token, 'string.quoted.raw'))
+        .map((token) => token.text)
+        .join(''),
+      'module fake;)tag"',
+    );
+    assert.ok(
+      lines[1].every((token) => !hasScope(token, 'keyword')),
+      'raw string content must not leak into keyword scopes',
+    );
+
+    const float4 = lines[2].find((token) => token.text === 'float4');
+    assert.ok(float4);
+    assert.ok(hasScope(float4, 'support.type'));
+
+    assert.strictEqual(
+      lines[3]
+        .filter((token) => hasScope(token, 'string.quoted.raw'))
+        .map((token) => token.text)
+        .join(''),
+      'R"(empty " quote)"',
+      'an empty raw-string delimiter must terminate correctly',
+    );
+
+    const mismatchedTerminator = tokenizeLines(`R"tag(content)wrong"
+interface fake;)tag";
+float4 endValue;`);
+    assert.ok(
+      [...mismatchedTerminator[0], ...mismatchedTerminator[1]].every(
+        (token) => !hasScope(token, 'keyword'),
+      ),
+      'a mismatched delimiter must not terminate the raw string',
+    );
+    const trailingType = mismatchedTerminator[2].find(
+      (token) => token.text === 'float4',
+    );
+    assert.ok(trailingType);
+    assert.ok(hasScope(trailingType, 'support.type'));
+  });
+
   test('does not treat ordinary array indexing as an attribute', () => {
     const [tokens] = tokenizeLines('float value = samples[index];');
     const bracketTokens = tokens.filter((token) => /[\[\]]/.test(token.text));
@@ -248,11 +305,36 @@ float4 shade(Texture2D texture) { return 1.; }
       '1.',
       '.5',
       '1.0f',
-      '1f',
-      '2h',
+      '1e3',
+      '123.0LF',
+      '1#INFhf',
+      '0xC.8p0',
+      '0x1p+2F',
       '42u',
+      '42Z',
+      '42uLL',
+      '42LLu',
+      '42Uz',
+      '42Zu',
       '0xFFu',
       '0b1010',
+      '077',
+      ...[
+        'h',
+        'H',
+        'hf',
+        'HF',
+        'fh',
+        'FH',
+        'f',
+        'F',
+        'l',
+        'L',
+        'lf',
+        'LF',
+        'fl',
+        'FL',
+      ].map((suffix) => `1.0${suffix}`),
     ];
     const [validTokens] = tokenizeLines(validNumbers.join(' '));
 
@@ -262,14 +344,20 @@ float4 shade(Texture2D texture) { return 1.; }
       assert.ok(hasScope(token, 'constant.numeric'), `${number} must be numeric`);
     }
 
-    for (const invalidNumber of ['1ff', '2ulh', '3.0fu']) {
+    for (const invalidNumber of [
+      '1f',
+      '2h',
+      '1ff',
+      '2ulh',
+      '3.0fu',
+      '0xC.8',
+    ]) {
       const [invalidTokens] = tokenizeLines(invalidNumber);
       assert.ok(
-        !invalidTokens.some(
-          (token) =>
-            token.text === invalidNumber && hasScope(token, 'constant.numeric'),
+        invalidTokens.every(
+          (token) => !hasScope(token, 'constant.numeric'),
         ),
-        `${invalidNumber} must not be accepted as one numeric token`,
+        `${invalidNumber} must not contain a numeric token`,
       );
     }
 
@@ -277,6 +365,31 @@ float4 shade(Texture2D texture) { return 1.; }
     assert.ok(
       identifierTokens.every((token) => !hasScope(token, 'constant.numeric')),
       'digits inside identifiers must not be numeric tokens',
+    );
+  });
+
+  test('tokenizes HLSL-derived matrix and documented scalar aliases', () => {
+    const validTypes = [
+      'float4x4',
+      'float3x4',
+      'half2x3',
+      'int3x2',
+      'float16_t',
+      'float32_t',
+      'float64_t',
+    ];
+    const [validTokens] = tokenizeLines(validTypes.join(' '));
+
+    for (const type of validTypes) {
+      const token = validTokens.find((candidate) => candidate.text === type);
+      assert.ok(token, `${type} must be emitted as one token`);
+      assert.ok(hasScope(token, 'support.type'), `${type} must be a type`);
+    }
+
+    const [invalidTokens] = tokenizeLines('float5x5 float4x5 afloat4x4');
+    assert.ok(
+      invalidTokens.every((token) => !hasScope(token, 'support.type')),
+      'invalid dimensions and embedded type names must remain unscoped',
     );
   });
 
@@ -320,13 +433,25 @@ float4 shade(Texture2D texture) { return 1.; }
     for (const literal of [
       '.5',
       '1.0f',
-      '1f',
       '0xFFu',
       '0b1010',
       '1e3f',
+      '077',
+      '42Z',
+      '123.0LF',
+      '1#INFhf',
+      '0xC.8p0',
       '-1.25',
     ]) {
       assert.match(literal, wholeWord, `${literal} must remain one word`);
+    }
+
+    for (const invalidLiteral of ['1f', '2h', '0xC.8']) {
+      assert.doesNotMatch(
+        invalidLiteral,
+        wholeWord,
+        `${invalidLiteral} must not be treated as one numeric word`,
+      );
     }
 
     const words = Array.from(

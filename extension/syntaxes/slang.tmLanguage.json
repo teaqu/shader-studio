@@ -20,8 +20,33 @@
     },
     "strings": {
       "patterns": [
-        { "name": "string.quoted.double.slang", "begin": "\"", "end": "\"", "patterns": [{ "name": "constant.character.escape.slang", "match": "\\\\." }] },
-        { "name": "string.quoted.single.slang", "begin": "'", "end": "'", "patterns": [{ "name": "constant.character.escape.slang", "match": "\\\\." }] }
+        {
+          "name": "string.quoted.raw.slang",
+          "begin": "\\bR\"([^\"()\\s]*)\\(",
+          "end": "\\)\\1\""
+        },
+        {
+          "name": "string.quoted.double.slang",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.slang",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.slang",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.slang",
+              "match": "\\\\."
+            }
+          ]
+        }
       ]
     },
     "preprocessor": {
@@ -55,8 +80,12 @@
     "types": {
       "patterns": [
         {
+          "name": "support.type.matrix.slang",
+          "match": "\\b(?:bool|half|float|double|int|uint)[2-4]x[2-4]\\b"
+        },
+        {
           "name": "support.type.scalar-vector.slang",
-          "match": "\\b(?:void|bool|bool2|bool3|bool4|half|half2|half3|half4|float|float2|float3|float4|double|double2|double3|double4|int|int2|int3|int4|uint|uint2|uint3|uint4|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix)\\b"
+          "match": "\\b(?:void|bool|bool2|bool3|bool4|half|half2|half3|half4|float|float2|float3|float4|double|double2|double3|double4|float16_t|float32_t|float64_t|int|int2|int3|int4|uint|uint2|uint3|uint4|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix)\\b"
         },
         {
           "name": "support.type.resource.slang",
@@ -67,20 +96,28 @@
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.hex.slang",
-          "match": "(?<![\\w.])0[xX][0-9a-fA-F](?:'?[0-9a-fA-F])*(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?(?![\\w.])"
-        },
-        {
-          "name": "constant.numeric.binary.slang",
-          "match": "(?<![\\w.])0[bB][01](?:'?[01])*(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?(?![\\w.])"
+          "name": "constant.numeric.hex-float.slang",
+          "match": "(?<![\\w.])0[xX](?:(?:[0-9a-fA-F](?:'?[0-9a-fA-F])*\\.(?:[0-9a-fA-F](?:'?[0-9a-fA-F])*)?|\\.[0-9a-fA-F](?:'?[0-9a-fA-F])*|[0-9a-fA-F](?:'?[0-9a-fA-F])*)(?:[pP][+-]?\\d(?:'?\\d)*|#INF))(?:[hH](?:[fF])?|[fF][hH]?|[lL](?:[fF])?|[fF][lL])?(?![\\w.#])"
         },
         {
           "name": "constant.numeric.decimal.float.slang",
-          "match": "(?<![\\w.])(?:(?:\\d(?:'?\\d)*\\.(?:\\d(?:'?\\d)*)?|\\.\\d(?:'?\\d)*)(?:[eE][+-]?\\d(?:'?\\d)*)?[fFhH]?|\\d(?:'?\\d)*[eE][+-]?\\d(?:'?\\d)*[fFhH]?|\\d(?:'?\\d)*[fFhH])(?![\\w.])"
+          "match": "(?<![\\w.])(?:(?:(?:\\d(?:'?\\d)*\\.(?:\\d(?:'?\\d)*)?|\\.\\d(?:'?\\d)*)(?:[eE][+-]?\\d(?:'?\\d)*|#INF)?|\\d(?:'?\\d)*(?:[eE][+-]?\\d(?:'?\\d)*|#INF))(?:[hH](?:[fF])?|[fF][hH]?|[lL](?:[fF])?|[fF][lL])?)(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.hex-integer.slang",
+          "match": "(?<![\\w.])0[xX][0-9a-fA-F](?:'?[0-9a-fA-F])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.])"
+        },
+        {
+          "name": "constant.numeric.binary-integer.slang",
+          "match": "(?<![\\w.])0[bB][01](?:'?[01])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.])"
+        },
+        {
+          "name": "constant.numeric.octal-integer.slang",
+          "match": "(?<![\\w.])0[0-7](?:'?[0-7])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.])"
         },
         {
           "name": "constant.numeric.decimal.integer.slang",
-          "match": "(?<![\\w.])\\d(?:'?\\d)*(?:[uU](?:ll?|LL?)?|(?:ll?|LL?)[uU]?)?(?![\\w.])"
+          "match": "(?<![\\w.])\\d(?:'?\\d)*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.])"
         }
       ]
     }
