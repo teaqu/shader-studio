@@ -145,6 +145,9 @@ class SlangFeatureSession implements vscode.Disposable {
   private readonly initialized: Promise<void>;
   private disposed = false;
   private initializationError: Error | undefined;
+  private snapshotRevision = 0;
+  private rebuildPending = false;
+  private rebuildRunning = false;
 
   constructor(
     private readonly client: SlangLanguageClientContract,
@@ -161,6 +164,17 @@ class SlangFeatureSession implements vscode.Disposable {
       vscode.workspace.onDidCloseTextDocument((document) => void this.close(document)),
     );
     context.subscriptions.push(...this.disposables.slice(-3));
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(this.workspaceFolder, "**/*.slang"),
+    );
+    const watcherRegistrations = [
+      watcher.onDidCreate((uri) => this.scheduleSnapshotRebuild(uri)),
+      watcher.onDidChange((uri) => this.scheduleSnapshotRebuild(uri)),
+      watcher.onDidDelete((uri) => this.scheduleSnapshotRebuild(uri)),
+      watcher,
+    ];
+    this.disposables.push(...watcherRegistrations);
+    context.subscriptions.push(...watcherRegistrations);
     this.initialized = this.initializeSafely();
   }
 
@@ -169,6 +183,8 @@ class SlangFeatureSession implements vscode.Disposable {
       return;
     }
     this.disposed = true;
+    this.snapshotRevision += 1;
+    this.rebuildPending = false;
     this.diagnostics.clear();
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
@@ -282,11 +298,75 @@ class SlangFeatureSession implements vscode.Disposable {
     return this.relativeDocumentPath(document) !== undefined;
   }
 
+  private isUriManaged(uri: vscode.Uri): boolean {
+    if (uri.scheme !== "file") {
+      return false;
+    }
+    const relativePath = path.relative(this.workspaceFolder.uri.fsPath, uri.fsPath);
+    return relativePath !== "" && relativePath !== ".." &&
+      !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+  }
+
+  private scheduleSnapshotRebuild(uri: vscode.Uri): void {
+    if (this.disposed || !this.isUriManaged(uri)) {
+      return;
+    }
+    this.snapshotRevision += 1;
+    this.rebuildPending = true;
+    if (this.rebuildRunning) {
+      return;
+    }
+    this.rebuildRunning = true;
+    void this.drainSnapshotRebuilds().catch(ignoredStale).finally(() => {
+      this.rebuildRunning = false;
+      if (this.rebuildPending && !this.disposed) {
+        this.scheduleSnapshotRebuild(uri);
+      }
+    });
+  }
+
+  private async drainSnapshotRebuilds(): Promise<void> {
+    await this.initialized;
+    while (this.rebuildPending && !this.disposed && !this.initializationError) {
+      this.rebuildPending = false;
+      const revision = this.snapshotRevision;
+      const snapshot = await this.buildSnapshot();
+      if (this.disposed) {
+        return;
+      }
+      if (revision !== this.snapshotRevision) {
+        continue;
+      }
+      await this.client.replaceFiles(languageServiceSnapshot(snapshot));
+      if (this.disposed || revision !== this.snapshotRevision) {
+        continue;
+      }
+      this.snapshot = snapshot;
+      await this.refreshOpenDocumentDiagnostics();
+    }
+  }
+
+  private async refreshOpenDocumentDiagnostics(): Promise<void> {
+    for (const document of vscode.workspace.textDocuments) {
+      if (this.disposed) {
+        return;
+      }
+      if (document.languageId === "slang" && this.isDocumentManaged(document)) {
+        try {
+          await this.publishDiagnostics(document);
+        } catch (error) {
+          ignoredStale(error);
+        }
+      }
+    }
+  }
+
   private snapshotDocument(document: vscode.TextDocument): SlangDocumentSnapshot {
     const fromSnapshot = this.snapshot?.files.find((file) => file.uri === document.uri.toString());
     return {
       ...documentSnapshot(document),
-      path: fromSnapshot?.path.replace(/^\/workspace\/?/, "") ?? documentSnapshot(document).path,
+      path: fromSnapshot?.path.replace(/^\/workspace\/?/, "") ??
+        this.relativeDocumentPath(document) ?? documentSnapshot(document).path,
     };
   }
 
