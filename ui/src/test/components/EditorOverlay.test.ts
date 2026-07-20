@@ -1565,7 +1565,7 @@ describe('EditorOverlay', () => {
       expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).not.toHaveProperty('language');
     });
 
-    it('uses Slang setup and an isolated compile marker owner for Slang messages', async () => {
+    it('uses compile marker ownership for Slang compiler diagnostics without language markers', async () => {
       const monaco = await import('monaco-editor');
       const language = await import('@shader-studio/monaco');
 
@@ -1574,17 +1574,18 @@ describe('EditorOverlay', () => {
           ...defaultProps,
           shaderPath: '/project/main.slang',
           shaderLanguage: 'slang',
-          errors: ['ERROR: 0:1: bad'],
+          errors: ['ERROR: 0:1: bad compile'],
         },
       });
 
       expect(language.setupMonacoSlang).toHaveBeenCalled();
       expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'slang', expect.any(Object));
-      const adapter = vi.mocked(language.setupMonacoSlang).mock.results.at(-1)?.value;
-      expect(adapter.setWorkspace).toHaveBeenCalledWith(expect.objectContaining({
-        files: [expect.objectContaining({ path: 'main.slang' })],
-      }));
-      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(expect.any(Object), 'slang-compile', expect.any(Array));
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
+        expect.any(Object),
+        'slang-compile',
+        [expect.objectContaining({ message: 'bad compile' })],
+      );
+      expect(vi.mocked(monaco.editor.setModelMarkers).mock.calls.every(([, owner]) => owner !== 'slang-language')).toBe(true);
       expect(monaco.editor.setModelMarkers).not.toHaveBeenCalledWith(expect.anything(), 'glsl', expect.anything());
     });
 

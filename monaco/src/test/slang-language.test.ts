@@ -104,7 +104,7 @@ describe('Slang Monarch language', () => {
 describe('setupMonacoSlang', () => {
   beforeEach(() => vi.resetModules());
 
-  it('registers Slang and all providers exactly once without registering GLSL', async () => {
+  it('registers only the Slang tokenizer exactly once without registering GLSL providers', async () => {
     const registrations = {
       completion: vi.fn(() => ({ dispose: vi.fn() })),
       hover: vi.fn(() => ({ dispose: vi.fn() })),
@@ -127,17 +127,17 @@ describe('setupMonacoSlang', () => {
       editor: { getModel: vi.fn(), createModel: vi.fn(), setModelMarkers: vi.fn() },
       Uri: { parse: vi.fn((value: string) => ({ toString: () => value })) },
     };
-    const client = { dispose: vi.fn() };
     const { setupMonacoSlang } = await import('../setup');
 
-    const first = setupMonacoSlang(monaco as never, client as never);
-    const second = setupMonacoSlang(monaco as never, client as never);
+    setupMonacoSlang(monaco as never);
+    setupMonacoSlang(monaco as never);
 
-    expect(second).toBe(first);
     expect(monaco.languages.register).toHaveBeenCalledTimes(1);
     expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', slangLanguageDefinition);
-    expect(Object.values(registrations).every((register) => register.mock.calls.length === 1)).toBe(true);
+    for (const register of Object.values(registrations)) {
+      expect(register).not.toHaveBeenCalled();
+    }
     expect(monaco.languages.register).not.toHaveBeenCalledWith({ id: 'glsl' });
   });
 });

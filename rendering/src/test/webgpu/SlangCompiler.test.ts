@@ -185,6 +185,21 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("compiles a self-contained source without a workspace snapshot", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad, wgsl: "SELF_CONTAINED_WGSL" }));
+
+    const result = compiler.compile({
+      source: "float4 mainImage(float2 c) { return float4(1); }",
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      options: {},
+    });
+
+    expect(result).toEqual({ success: true, wgsl: "SELF_CONTAINED_WGSL", diagnostics: [] });
+    expect(onLoad).toHaveBeenCalledWith(expect.any(String), "image", "/workspace/image.slang");
+  });
+
   it("deletes transient Embind handles in reverse ownership order after success", () => {
     const deleted: string[] = [];
     const compiler = new SlangCompiler(makeFakeSlang({ onDelete: (handle) => deleted.push(handle) }));
