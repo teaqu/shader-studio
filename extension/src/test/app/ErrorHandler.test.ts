@@ -9,6 +9,28 @@ suite('ErrorHandler Test Suite', () => {
   let errorHandler: ErrorHandler;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
 
+  const compileScope = (rootUri: string, generationId: number, ownerId = 'panel:a') => ({
+    rootUris: [rootUri],
+    generationId,
+    ownerId,
+  });
+
+  const compileError = (rootUri: string, generationId: number, diagnosticUri: string, ownerId = 'panel:a'): ErrorMessage => ({
+    type: 'error',
+    payload: ['formatted legacy compiler error'],
+    compileScope: compileScope(rootUri, generationId, ownerId),
+    diagnostics: [{
+      severity: 'error',
+      message: `compiler error in ${diagnosticUri}`,
+      source: 'slang-compile',
+      uri: diagnosticUri,
+      range: {
+        start: { line: 2, character: 3 },
+        end: { line: 2, character: 3 },
+      },
+    }],
+  });
+
   setup(() => {
     // Mock output channel
     mockOutputChannel = {
@@ -29,13 +51,20 @@ suite('ErrorHandler Test Suite', () => {
     } as any;
 
     // Mock diagnostic collection
+    const diagnosticsByUri = new Map<string, readonly vscode.Diagnostic[]>();
     mockDiagnosticCollection = {
       name: 'Test Diagnostics',
-      set: () => { },
-      clear: () => { },
-      delete: () => { },
+      set: ((uri: vscode.Uri, diagnostics: readonly vscode.Diagnostic[]) => {
+        diagnosticsByUri.set(uri.toString(), diagnostics);
+      }) as typeof mockDiagnosticCollection.set,
+      clear: () => {
+        diagnosticsByUri.clear();
+      },
+      delete: (uri: vscode.Uri) => {
+        diagnosticsByUri.delete(uri.toString());
+      },
       has: () => false,
-      get: () => [],
+      get: (uri: vscode.Uri) => diagnosticsByUri.get(uri.toString()),
       forEach: () => { },
       dispose: () => { },
     } as any;
@@ -357,5 +386,101 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.ok(diagnosticUri, 'Should set a diagnostic URI');
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
+  });
+
+  test('maps structured compiler diagnostics to the dependency URI', () => {
+    const dependencyUri = 'file:///project/lib/palette.slang';
+    errorHandler.handleError(compileError('file:///project/image.slang', 1, dependencyUri));
+
+    const diagnostics = mockDiagnosticCollection.get(vscode.Uri.parse(dependencyUri));
+    assert.strictEqual(diagnostics?.length, 1);
+    assert.strictEqual(diagnostics?.[0].message, `compiler error in ${dependencyUri}`);
+    assert.strictEqual(diagnostics?.[0].range.start.line, 2);
+  });
+
+  test('recompiling one root does not clear another root dependency error', () => {
+    const aRoot = 'file:///project/a.slang';
+    const bRoot = 'file:///project/b.slang';
+    const aDependency = 'file:///project/lib/a.slang';
+    const bDependency = 'file:///project/lib/b.slang';
+    errorHandler.handleError(compileError(aRoot, 1, aDependency));
+    errorHandler.handleError(compileError(bRoot, 1, bDependency));
+
+    errorHandler.handleCompileSuccess(compileScope(aRoot, 2));
+
+    assert.deepStrictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency)), []);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(bDependency))?.length, 1);
+  });
+
+  test('keeps same-root diagnostics isolated by owner', () => {
+    const root = 'file:///project/image.slang';
+    const firstDependency = 'file:///project/lib/first.slang';
+    const secondDependency = 'file:///project/lib/second.slang';
+    errorHandler.handleError(compileError(root, 1, firstDependency, 'panel:first'));
+    errorHandler.handleError(compileError(root, 1, secondDependency, 'panel:second'));
+
+    errorHandler.handleCompileSuccess(compileScope(root, 2, 'panel:first'));
+
+    assert.deepStrictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(firstDependency)), []);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(secondDependency))?.length, 1);
+  });
+
+  test('rejects a stale generation without replacing the current diagnostics', () => {
+    const root = 'file:///project/image.slang';
+    const newerDependency = 'file:///project/lib/newer.slang';
+    const staleDependency = 'file:///project/lib/stale.slang';
+    errorHandler.handleError(compileError(root, 2, newerDependency));
+    errorHandler.handleError(compileError(root, 1, staleDependency));
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(newerDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(staleDependency)), undefined);
+  });
+
+  test('treats a multi-root generation as one deterministic diagnostic set', () => {
+    const roots = ['file:///project/a.slang', 'file:///project/b.slang'];
+    const currentDependency = 'file:///project/lib/current.slang';
+    const staleDependency = 'file:///project/lib/stale.slang';
+    errorHandler.handleError({
+      ...compileError(roots[0], 2, currentDependency),
+      compileScope: { rootUris: roots, ownerId: 'panel:a', generationId: 2 },
+    });
+    errorHandler.handleError({
+      ...compileError(roots[0], 1, staleDependency),
+      compileScope: { rootUris: [...roots].reverse(), ownerId: 'panel:a', generationId: 1 },
+    });
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(currentDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(staleDependency)), undefined);
+  });
+
+  test('keeps persistent diagnostics when a scoped compile succeeds', () => {
+    const root = 'file:///project/image.slang';
+    const dependency = 'file:///project/lib/palette.slang';
+    errorHandler.handlePersistentError({ type: 'warning', payload: ['persistent resource warning'] });
+    errorHandler.handleError(compileError(root, 1, dependency));
+
+    errorHandler.handleCompileSuccess(compileScope(root, 2));
+
+    assert.deepStrictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(dependency)), []);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl'))?.length, 1);
+  });
+
+  test('falls back to the legacy payload when a structured compile scope is malformed', () => {
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['legacy fallback error'],
+      compileScope: { rootUris: [], generationId: 1 },
+      diagnostics: [{
+        severity: 'error',
+        message: 'must not use malformed structured diagnostic',
+        source: 'slang-compile',
+        uri: 'file:///project/lib/palette.slang',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      }],
+    });
+
+    const diagnostics = mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl'));
+    assert.strictEqual(diagnostics?.[0].message, 'legacy fallback error');
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse('file:///project/lib/palette.slang')), undefined);
   });
 });

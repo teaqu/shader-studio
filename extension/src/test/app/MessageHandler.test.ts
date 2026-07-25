@@ -10,6 +10,7 @@ suite('MessageHandler Test Suite', () => {
   let mockOutputChannel: vscode.LogOutputChannel;
   let mockDiagnosticCollection: vscode.DiagnosticCollection;
   let sandbox: sinon.SinonSandbox;
+  let errorHandler: ErrorHandler;
 
   setup(() => {
     sandbox = sinon.createSandbox();
@@ -40,7 +41,7 @@ suite('MessageHandler Test Suite', () => {
       forEach: sandbox.stub(),
     } as any;
 
-    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
+    errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
     messageHandler = new MessageHandler(mockOutputChannel, errorHandler);
   });
 
@@ -181,6 +182,33 @@ suite('MessageHandler Test Suite', () => {
 
     // Verify errors were cleared
     sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+  });
+
+  test('clears only the successful structured compiler scope', () => {
+    const rootUri = 'file:///project/image.slang';
+    const dependencyUri = vscode.Uri.parse('file:///project/lib/palette.slang');
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['formatted compiler error'],
+      compileScope: { rootUris: [rootUri], ownerId: 'panel:one', generationId: 1 },
+      diagnostics: [{
+        severity: 'error',
+        message: 'unknown identifier',
+        source: 'slang-compile',
+        uri: dependencyUri.toString(),
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      }],
+    });
+    (mockDiagnosticCollection.set as any).resetHistory();
+
+    messageHandler.handleMessage({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: [rootUri], ownerId: 'panel:one', generationId: 2 },
+    });
+
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
+    sinon.assert.calledWith(mockDiagnosticCollection.set as any, dependencyUri, []);
   });
 
   test('should show non-line-number errors at line 1', () => {
