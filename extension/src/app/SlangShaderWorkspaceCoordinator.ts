@@ -95,18 +95,16 @@ export class SlangShaderWorkspaceCoordinator {
   }
 
   commitOwnerRequest(request: SlangOwnerRequest, prepared: PreparedSlangRoot): boolean {
-    if (!this.isOwnerRequestCurrent(request) || request.rootUri !== prepared.rootUri) {
+    const pending = this.pending.get(request.ownerId);
+    if (!pending || pending.token !== request.token || pending.rootUris.size !== 1 || !pending.rootUris.has(request.rootUri) || request.rootUri !== prepared.rootUri) {
       return false;
     }
-    this.commitOwnerRequests([{ request, prepared }]);
-    return true;
+    return this.commitOwnerRequests([{ request, prepared }]);
   }
 
   /** Commits a complete generation together, never leaving a prefix installed. */
   commitOwnerRequests(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
-    if (entries.length === 0 || !entries.every(({ request, prepared }) => (
-      this.isOwnerRequestCurrent(request) && request.rootUri === prepared.rootUri
-    ))) {
+    if (!this.isCompletePendingGeneration(entries)) {
       return false;
     }
     const ownerId = entries[0].request.ownerId;
@@ -126,9 +124,7 @@ export class SlangShaderWorkspaceCoordinator {
 
   /** Updates prepared snapshots/graphs without changing which owner owns roots. */
   commitRefreshRequests(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
-    if (entries.length === 0 || !entries.every(({ request, prepared }) => (
-      this.isOwnerRequestCurrent(request) && request.rootUri === prepared.rootUri
-    ))) {
+    if (!this.isCompletePendingGeneration(entries)) {
       return false;
     }
     for (const { prepared } of entries) {
@@ -243,5 +239,24 @@ export class SlangShaderWorkspaceCoordinator {
     if (![...this.owners.values()].some((owner) => owner.rootUris.has(rootUri))) {
       this.roots.delete(rootUri);
     }
+  }
+
+  private isCompletePendingGeneration(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
+    if (entries.length === 0) {
+      return false;
+    }
+    const { ownerId, token } = entries[0].request;
+    const pending = this.pending.get(ownerId);
+    if (!pending || pending.token !== token || entries.length !== pending.rootUris.size) {
+      return false;
+    }
+    const roots = new Set<string>();
+    for (const { request, prepared } of entries) {
+      if (request.ownerId !== ownerId || request.token !== token || request.rootUri !== prepared.rootUri || !pending.rootUris.has(request.rootUri) || roots.has(request.rootUri)) {
+        return false;
+      }
+      roots.add(request.rootUri);
+    }
+    return roots.size === pending.rootUris.size;
   }
 }

@@ -72,11 +72,24 @@ suite('SlangShaderWorkspaceCoordinator', () => {
     const prepared = await coordinator.prepareRoots([
       { rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] },
     ]);
-    assert.strictEqual(coordinator.commitOwnerRequest(first, prepared[0]), true);
-    assert.strictEqual(coordinator.commitOwnerRequest(second, prepared[1]), true);
+    assert.strictEqual(coordinator.commitOwnerRequests([{ request: first, prepared: prepared[0] }, { request: second, prepared: prepared[1] }]), true);
     const replacement = coordinator.beginOwnerRequest('panel:1', '/work/a.slang');
     assert.strictEqual(coordinator.commitOwnerRelease(first), false);
     assert.strictEqual(coordinator.isOwnerRequestCurrent(replacement), true);
+  });
+
+  test('rejects malformed multi-root owner commits without changing existing ownership', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({ 'file:///work/a.slang': 'float a;', 'file:///work/b.slang': 'float b;', 'file:///work/old.slang': 'float old;' }));
+    const oldRequest = coordinator.beginOwnerRequest('owner', '/work/old.slang');
+    const [old] = await coordinator.prepareRoots([{ rootPath: '/work/old.slang', configuredFilePaths: [] }]);
+    coordinator.commitOwnerRequest(oldRequest, old);
+    const prepared = await coordinator.prepareRoots([{ rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+    const [a, b] = coordinator.beginOwnerRequests('owner', ['/work/a.slang', '/work/b.slang']);
+    const other = coordinator.beginOwnerRequest('other', '/work/a.slang');
+    assert.strictEqual(coordinator.commitOwnerRequests([{ request: a, prepared: prepared[0] }]), false);
+    assert.strictEqual(coordinator.commitOwnerRequests([{ request: a, prepared: prepared[0] }, { request: other, prepared: prepared[0] }]), false);
+    assert.strictEqual(coordinator.commitOwnerRequests([{ request: a, prepared: prepared[0] }, { request: a, prepared: prepared[0] }]), false);
+    assert.deepStrictEqual(coordinator.owningRoots('/work/old.slang'), ['/work/old.slang']);
   });
 
   test('keeps dependency cycles routable and ignores a stale release after replacement', async () => {
