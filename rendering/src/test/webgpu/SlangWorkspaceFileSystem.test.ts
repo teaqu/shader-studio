@@ -41,16 +41,30 @@ describe("SlangWorkspaceFileSystem", () => {
     expect(fs.files).toEqual(new Map([["/workspace/user.slang", "keep"], ["/workspace/main.slang", "new"]]));
     expect(owned).toEqual(new Set(["/workspace/main.slang"])); expect(fs.directories).toContain("/workspace");
   });
+  it("updates existing files and creates nested parent directories", () => {
+    const fs = new MemoryFileSystem(); const owned = new Set<string>();
+    fs.files.set("/workspace/nested/main.slang", "old");
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/nested/main.slang", source: "new" }]), owned);
+    expect(fs.files.get("/workspace/nested/main.slang")).toBe("new");
+    expect(fs.directories).toContain("/workspace/nested");
+  });
   it("prevalidates all paths before mutating and rejects conflicting duplicates", () => {
     const fs = new MemoryFileSystem(); const owned = new Set<string>();
     expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/a", source: "a" }, { path: "/outside", source: "b" }]), owned)).toThrow();
     expect(fs.files.size).toBe(0);
     expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/a", source: "a" }, { path: "/workspace/./a", source: "b" }]), owned)).toThrow(/duplicate/i);
   });
+  it("accepts identical normalized duplicates deterministically", () => {
+    const fs = new MemoryFileSystem(); const owned = new Set<string>();
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/a", source: "same" }, { path: "/workspace/./a", source: "same" }]), owned);
+    expect(fs.files).toEqual(new Map([["/workspace/a", "same"]]));
+  });
   it.each(["mkdir", "write", "unlink"] as const)("retains retryable ownership after failed %s", (failure) => {
     const fs = new MemoryFileSystem(); const owned = new Set<string>(["/workspace/old"]); fs.files.set("/workspace/old", "old"); fs.fail = failure;
+    fs.files.set("/workspace/user", "keep");
     expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/new", source: "new" }]), owned)).toThrow(failure);
     expect(owned).toEqual(new Set(["/workspace/old", "/workspace/new"]));
+    expect(fs.files.get("/workspace/user")).toBe("keep");
   });
   it("hands off active ownership and releases only the active owner once", () => {
     const fs = new MemoryFileSystem(); const first = new Set<string>(); const second = new Set<string>();

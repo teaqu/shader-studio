@@ -62,7 +62,7 @@ export interface ShaderSourceMessage extends BaseMessage {
   language?: "glsl" | "slang";
   workspace?: SlangWorkspaceSnapshot;
   diagnostics?: SlangDiagnostic[];
-  requestId?: string;
+  requestId?: number;
   compileGeneration?: ShaderCompileGeneration;
   compileScope?: CompileDiagnosticScope;
   reload?: boolean;
