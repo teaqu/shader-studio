@@ -209,6 +209,16 @@ export class SlangShaderWorkspaceCoordinator {
   removeRoot(rootPath: string): void {
     const rootUri = normalizeSlangUri(this.host.toUri(rootPath));
     this.roots.delete(rootUri);
+    for (const [ownerId, pending] of this.pending) {
+      if (pending.rootUris.has(rootUri)) {
+        this.pending.delete(ownerId);
+      }
+    }
+    for (const [ownerId, pending] of this.queuedPending) {
+      if (pending.rootUris.has(rootUri)) {
+        this.queuedPending.delete(ownerId);
+      }
+    }
     for (const [ownerId, owner] of this.owners) {
       if (owner.rootUris.has(rootUri)) {
         const retained = new Set(owner.rootUris);

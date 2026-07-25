@@ -526,10 +526,10 @@ export class ShaderProvider {
     if (slangRequest && (!this.slangWorkspaces?.isOwnerRequestCurrent(slangRequest) || !prepared)) {
       return;
     }
-    this.messenger.send(message);
-    if (slangRequest && prepared) {
-      this.slangWorkspaces?.commitOwnerRequest(slangRequest, prepared);
+    if (slangRequest && prepared && !this.slangWorkspaces?.commitOwnerRequest(slangRequest, prepared)) {
+      return;
     }
+    this.messenger.send(message);
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
 

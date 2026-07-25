@@ -155,6 +155,21 @@ suite('SlangShaderWorkspaceCoordinator', () => {
     assert.strictEqual(coordinator.isOwnerRequestCurrent(newest!), true);
   });
 
+  test('invalidates pending and barrier-queued requests containing a deleted root', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({ 'file:///work/a.slang': 'float a;', 'file:///work/b.slang': 'float b;' }));
+    const pending = coordinator.beginOwnerRequest('owner', '/work/a.slang');
+    coordinator.removeRoot('/work/a.slang');
+    assert.strictEqual(coordinator.isOwnerRequestCurrent(pending), false);
+    const [prepared] = await coordinator.prepareRoots([{ rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+    const current = coordinator.beginOwnerRequest('owner', '/work/b.slang');
+    let queued: ReturnType<SlangShaderWorkspaceCoordinator['beginOwnerRequest']>;
+    coordinator.runCommittedGeneration([{ request: current, prepared }], () => {
+      queued = coordinator.beginOwnerRequest('owner', '/work/a.slang');
+      coordinator.removeRoot('/work/a.slang');
+    });
+    assert.strictEqual(coordinator.isOwnerRequestCurrent(queued!), false);
+  });
+
   test('releasing one shared owner preserves the other and isolates source overlays by workspace snapshot', async () => {
     const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
       'file:///one/image.slang': '#include "lib.slang"', 'file:///one/lib.slang': 'float one;',
