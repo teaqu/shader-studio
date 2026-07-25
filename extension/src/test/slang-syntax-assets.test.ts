@@ -158,6 +158,11 @@ suite('Bundled Slang syntax assets', () => {
         '#function-definition',
         '#function-call',
         '#numbers',
+        '#builtins',
+        '#constants',
+        '#operators',
+        '#swizzle',
+        '#punctuation',
       ],
     );
   });
@@ -212,12 +217,12 @@ suite('Bundled Slang syntax assets', () => {
       numericPatterns?.map((pattern) => pattern.name),
       [
         'invalid.illegal.numeric.leading-zero.slang',
-        'constant.numeric.hex-float.slang',
-        'constant.numeric.decimal.float.slang',
-        'constant.numeric.hex-integer.slang',
-        'constant.numeric.binary-integer.slang',
-        'constant.numeric.octal-integer.slang',
-        'constant.numeric.decimal.integer.slang',
+        'constant.numeric.float.slang',
+        'constant.numeric.float.slang',
+        'constant.numeric.hex.slang',
+        'constant.numeric.binary.slang',
+        'constant.numeric.octal.slang',
+        'constant.numeric.integer.slang',
       ],
     );
     assert.ok(typePatterns?.every((pattern) => pattern.match));
@@ -246,6 +251,74 @@ suite('Bundled Slang syntax assets', () => {
       assert.ok(hasScope(glslToken, scope), `${glslType} must have ${scope}`);
       assert.ok(hasScope(slangToken, scope), `${slangType} must have ${scope}`);
     }
+  });
+
+  test('uses GLSL theme scopes for every comparable token category', () => {
+    const parityCases = [
+      ['//comment', '//comment', 'comment', 'comment'],
+      ['"text"', '"text"', 'text', 'string.quoted.double'],
+      ['#if 1', '#if 1', 'if', 'keyword.control.directive'],
+      ['return', 'return', 'return', 'keyword.control.flow'],
+      ['const', 'const', 'const', 'storage.modifier'],
+      ['vec4', 'float4', 'vec4', 'storage.type.vector'],
+      ['sin(value)', 'sin(value)', 'sin', 'support.function.trigonometric'],
+      ['shade()', 'shade()', 'shade', 'entity.name.function.call'],
+      ['1.5', '1.5', '1.5', 'constant.numeric.float'],
+      ['42', '42', '42', 'constant.numeric.integer'],
+      ['0xFF', '0xFF', '0xFF', 'constant.numeric.hex'],
+      ['077', '077', '077', 'constant.numeric.octal'],
+      ['true', 'true', 'true', 'constant.language.boolean'],
+      ['iTime', 'iTime', 'iTime', 'variable.other.builtin.shadertoy'],
+      ['=', '=', '=', 'keyword.operator.assignment'],
+      ['==', '==', '==', 'keyword.operator.comparison'],
+      ['+', '+', '+', 'keyword.operator.arithmetic'],
+      ['&&', '&&', '&&', 'keyword.operator.logical'],
+      ['&', '&', '&', 'keyword.operator.bitwise'],
+      ['++', '++', '++', 'keyword.operator.increment-decrement'],
+      ['?', '?', '?', 'keyword.operator.ternary'],
+      ['value.xyz', 'value.xyz', 'xyz', 'variable.other.property.swizzle'],
+      [';', ';', ';', 'punctuation.terminator.statement'],
+      [',', ',', ',', 'punctuation.separator.comma'],
+      ['{', '{', '{', 'punctuation.section.block.begin'],
+      ['}', '}', '}', 'punctuation.section.block.end'],
+      ['(', '(', '(', 'punctuation.section.parens.begin'],
+      [')', ')', ')', 'punctuation.section.parens.end'],
+      ['[', '[', '[', 'punctuation.section.brackets.begin'],
+      [']', ']', ']', 'punctuation.section.brackets.end'],
+    ] as const;
+
+    for (const [glslSource, slangSource, glslText, scope] of parityCases) {
+      const [glslTokens] = tokenizeLines(glslSource, glslGrammar);
+      const [slangTokens] = tokenizeLines(slangSource);
+      const slangText =
+        glslText === 'vec4' && slangSource === 'float4' ? 'float4' : glslText;
+      const glslToken = glslTokens.find(
+        (token) => token.text === glslText && hasScope(token, scope),
+      );
+      const slangToken = slangTokens.find(
+        (token) => token.text === slangText && hasScope(token, scope),
+      );
+
+      assert.ok(glslToken, `GLSL ${JSON.stringify(glslText)} must have ${scope}`);
+      assert.ok(
+        slangToken,
+        `Slang ${JSON.stringify(slangText)} must have ${scope}`,
+      );
+    }
+  });
+
+  test('uses standard scopes for Slang-only tokens', () => {
+    const [tokens] = tokenizeLines('0b101 null none');
+    const binary = tokens.find((token) => token.text === '0b101');
+    const nullValue = tokens.find((token) => token.text === 'null');
+    const noneValue = tokens.find((token) => token.text === 'none');
+
+    assert.ok(binary);
+    assert.ok(hasScope(binary, 'constant.numeric.binary'));
+    assert.ok(nullValue);
+    assert.ok(hasScope(nullValue, 'constant.language.null'));
+    assert.ok(noneValue);
+    assert.ok(hasScope(noneValue, 'constant.language.null'));
   });
 
   test('uses the same theme-facing function scopes as GLSL', () => {
@@ -321,8 +394,6 @@ float4 shade(Texture2D texture, RWTexture2D output, StructuredBuffer data) { ret
 [[cuda::launch_bounds(256)]]`);
 
     const expectedScopes = [
-      [0, '// module float4', 'comment'],
-      [4, '#language "slang"', 'meta.preprocessor'],
       [5, 'module', 'keyword.declaration'],
       [6, 'import', 'keyword.declaration'],
       [7, 'interface', 'keyword.declaration'],
@@ -357,6 +428,14 @@ float4 shade(Texture2D texture, RWTexture2D output, StructuredBuffer data) { ret
     assert.ok(
       [...lines[1], ...lines[2]].every((token) => hasScope(token, 'comment')),
       'multiline block comment contents must retain a comment scope',
+    );
+    assert.ok(
+      lines[0].every((token) => hasScope(token, 'comment')),
+      'line comment contents must retain a comment scope',
+    );
+    assert.ok(
+      lines[4].every((token) => hasScope(token, 'meta.preprocessor')),
+      'preprocessor contents must retain a preprocessor scope',
     );
 
     for (const token of [...lines[0], ...lines[1], ...lines[2], ...lines[3]]) {
