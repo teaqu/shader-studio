@@ -6,6 +6,7 @@ import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { PathResolver } from '../../app/PathResolver';
 import { Logger } from '../../app/services/Logger';
 import { ConfigChangeClassifier } from '../../app/services/ConfigChangeClassifier';
+import { SlangShaderWorkspaceCoordinator, type SlangShaderWorkspaceCoordinatorHost } from '../../app/SlangShaderWorkspaceCoordinator';
 
 suite('ShaderProvider Test Suite', () => {
   let provider: ShaderProvider;
@@ -676,6 +677,90 @@ suite('ShaderProvider Test Suite', () => {
       } as any;
 
       await provider.sendShaderFromDocument(document);
+
+      sinon.assert.notCalled(sendSpy);
+    });
+  });
+
+  suite('Slang workspace generations', () => {
+    function workspaceHost(files: Record<string, string>, overlay?: { uri: string; source: string }): SlangShaderWorkspaceCoordinatorHost {
+      return {
+        toUri: (filePath) => `file://${filePath}`,
+        toPath: (uri) => new URL(uri).pathname,
+        async findSlangFiles() {
+          return Object.keys(files);
+        },
+        async readFile(uri) {
+          return files[uri];
+        },
+        get openDocuments() {
+          return overlay ? [{ ...overlay, version: 1 }] : [];
+        },
+      };
+    }
+
+    test('routes a helper edit as one deterministic Slang generation without a missing-entry error', async () => {
+      const files = {
+        'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/b.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/lib.slang': 'float disk;',
+      };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files, {
+        uri: 'file:///work/lib.slang', source: 'float unsaved;',
+      }));
+      const [a, b] = await coordinator.prepareRoots([
+        { rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] },
+      ]);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('shader-provider', '/work/a.slang'), a);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('other-panel', '/work/b.slang'), b);
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => files[`file://${String(filePath)}` as keyof typeof files] ?? '');
+      loadAndProcessConfigStub.returns(null);
+
+      await provider.sendShaderFromDocument({
+        fileName: '/work/lib.slang', languageId: 'slang', uri: { fsPath: '/work/lib.slang' }, getText: () => 'float unsaved;',
+      } as any);
+
+      assert.strictEqual(sendSpy.callCount, 2);
+      const messages = sendSpy.getCalls().map((call) => call.args[0]);
+      assert.deepStrictEqual(messages.map((message) => message.path), ['/work/a.slang', '/work/b.slang']);
+      assert.strictEqual(messages[0].requestId, messages[1].requestId);
+      assert.deepStrictEqual(messages.map((message) => [message.compileGeneration.rootIndex, message.compileGeneration.rootCount]), [[0, 2], [1, 2]]);
+      assert.deepStrictEqual(messages[0].compileScope.rootUris, messages[1].compileScope.rootUris);
+      assert.strictEqual(messages[0].workspace.files.find((file: { path: string }) => file.path === '/workspace/lib.slang').source, 'float unsaved;');
+    });
+
+    test('does not send or commit an obsolete prepared helper generation', async () => {
+      const files = {
+        'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/b.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/lib.slang': 'float disk;',
+      };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      const [a, b] = await coordinator.prepareRoots([
+        { rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] },
+      ]);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('shader-provider', '/work/a.slang'), a);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('other-panel', '/work/b.slang'), b);
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => files[`file://${String(filePath)}` as keyof typeof files] ?? '');
+      loadAndProcessConfigStub.returns(null);
+      let releaseBundle: (() => void) | undefined;
+      sandbox.stub(provider as any, 'bundleScript').callsFake(async () => new Promise<void>((resolve) => {
+        releaseBundle = resolve;
+      }));
+
+      const pending = provider.sendShaderFromDocument({
+        fileName: '/work/lib.slang', languageId: 'slang', uri: { fsPath: '/work/lib.slang' }, getText: () => 'float changed;',
+      } as any);
+      await new Promise((resolve) => setImmediate(resolve));
+      coordinator.beginOwnerRequest('shader-provider', '/work/a.slang');
+      releaseBundle!();
+      await pending;
 
       sinon.assert.notCalled(sendSpy);
     });

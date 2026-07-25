@@ -384,7 +384,7 @@ export class ShaderProvider {
         return true;
       }
       if (roots.length > 0) {
-        await Promise.all(roots.map((root) => this.sendShaderFromPath(root, { dependencyChange: true })));
+        await this.sendSlangDependencyGeneration(roots);
         return true;
       }
     }
@@ -482,6 +482,81 @@ export class ShaderProvider {
 
     if (trackActiveShader) {
       this.activeShaders.add(shaderPath);
+    }
+  }
+
+  /** Sends all affected Slang roots as one ordered, all-or-nothing generation. */
+  private async sendSlangDependencyGeneration(rootPaths: readonly string[]): Promise<void> {
+    if (!this.slangWorkspaces) {
+      return;
+    }
+    const orderedPaths = [...new Set(rootPaths)].sort((left, right) => left.localeCompare(right));
+    const inputs: { path: string; code: string; config: ShaderConfig | null; buffers: Record<string, string>; configuredFilePaths: string[] }[] = [];
+    for (const rootPath of orderedPaths) {
+      try {
+        if (!fs.existsSync(rootPath)) {
+          return;
+        }
+        const code = fs.readFileSync(rootPath, 'utf-8');
+        const buffers: Record<string, string> = {};
+        const config = this.configProcessor.loadAndProcessConfig(rootPath, buffers);
+        const configuredFilePaths = Object.values(this.buildBufferPathMap(config, rootPath))
+          .filter((candidate) => candidate.endsWith('.slang'));
+        inputs.push({ path: rootPath, code, config, buffers, configuredFilePaths });
+      } catch {
+        return;
+      }
+    }
+    const requests = this.slangWorkspaces.beginOwnerRequests(this.slangOwnerId, orderedPaths);
+    let prepared: readonly Awaited<ReturnType<SlangShaderWorkspaceCoordinator['prepareRoots']>>[number][];
+    try {
+      prepared = await this.slangWorkspaces.prepareRoots(inputs.map((input) => ({
+        rootPath: input.path,
+        configuredFilePaths: input.configuredFilePaths,
+      })));
+    } catch {
+      return;
+    }
+    const requestsByUri = new Map(requests.map((request) => [request.rootUri, request]));
+    const inputByPath = new Map(inputs.map((input) => [input.path, input]));
+    if (prepared.length !== requests.length || !requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
+      return;
+    }
+    const messages: { request: typeof requests[number]; prepared: typeof prepared[number]; message: ShaderSourceMessage; config: ShaderConfig | null }[] = [];
+    for (const root of prepared) {
+      const request = requestsByUri.get(root.rootUri);
+      const input = inputByPath.get(root.rootPath);
+      if (!request || !input) {
+        return;
+      }
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource', code: input.code, config: input.config, path: input.path, buffers: input.buffers,
+        language: 'slang', pathMap: this.buildPathMap(input.config, input.path),
+        bufferPathMap: this.buildBufferPathMap(input.config, input.path), workspace: root.snapshot,
+        requestId: request.token,
+        compileGeneration: { id: request.token, rootIndex: root.rootIndex, rootCount: root.rootCount, rootPath: input.path },
+        compileScope: { generationId: request.token, rootUris: prepared.map((entry) => entry.snapshot.rootUri), ownerId: this.slangOwnerId },
+      };
+      messages.push({ request, prepared: root, message, config: input.config });
+    }
+    for (const entry of messages) {
+      await this.bundleScript(entry.config, entry.message.path, entry.message);
+      if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
+        return;
+      }
+    }
+    if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
+      return;
+    }
+    for (const entry of messages) {
+      this.messenger.send(entry.message);
+    }
+    if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
+      return;
+    }
+    for (const entry of messages) {
+      this.slangWorkspaces.commitOwnerRequest(entry.request, entry.prepared);
+      this.startScriptPolling(entry.config);
     }
   }
 
