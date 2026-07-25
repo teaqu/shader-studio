@@ -1285,6 +1285,18 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "buffer" }, undefined, undefined, workspace());
       expect(compiler.compile).toHaveBeenCalledTimes(4);
     });
+
+    it("does not cache a failed Slang compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      compiler.compile.mockReturnValueOnce({ success: false, errors: ["bad Slang"], diagnostics: [] });
+      const first = await engine.compileShaderPipeline(source, null, "/workspace/failure-cache.slang", {}, undefined, undefined, workspace());
+      expect(first?.success).toBe(false);
+      compiler.compile.mockReturnValue({ success: true, wgsl: "// recovered", diagnostics: [] });
+      const second = await engine.compileShaderPipeline(source, null, "/workspace/failure-cache.slang", {}, undefined, undefined, workspace());
+      expect(second?.success).toBe(true);
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
