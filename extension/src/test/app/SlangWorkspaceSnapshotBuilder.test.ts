@@ -141,4 +141,67 @@ suite('SlangWorkspaceSnapshotBuilder', () => {
     });
     assert.deepStrictEqual(snapshot.files, []);
   });
+
+  test('ignores malformed, foreign-scheme, and query/fragment candidate entries while retaining valid files', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder({
+      async findSlangFiles() {
+        return ['file:///workspace/discovered.slang', 'not a uri', 'untitled:bad.slang', 'file:///workspace/query.slang?x=1'];
+      },
+      async readFile(uri) {
+        return {
+          'file:///workspace/discovered.slang': 'float discovered;',
+          'file:///workspace/root.slang': 'float root;',
+          'file:///workspace/pass.slang': 'float pass;',
+        }[uri];
+      },
+      openDocuments: [
+        { uri: 'file:///workspace/discovered.slang?overlay=1', source: 'bad overlay', version: 1 },
+        { uri: 'vscode-remote://host/workspace/remote.slang', source: 'bad', version: 1 },
+        { uri: 'file:///workspace/fragment.slang#x', source: 'bad', version: 1 },
+      ],
+    });
+    const snapshot = await builder.build({
+      rootUri: 'file:///workspace',
+      rootFiles: ['file:///workspace/root.slang', 'file:///workspace/root-fragment.slang#x', 'untitled:root.slang'],
+      configuredPassFiles: ['file:///workspace/pass.slang', 'file:///workspace/pass-query.slang?x=1', 'not a uri'],
+    });
+    assert.deepStrictEqual(snapshot.files.map((file) => [file.path, file.source]), [
+      ['/workspace/discovered.slang', 'float discovered;'],
+      ['/workspace/pass.slang', 'float pass;'],
+      ['/workspace/root.slang', 'float root;'],
+    ]);
+  });
+
+  test('continues from explicit files when discovery rejects', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder({
+      async findSlangFiles() {
+        throw new Error('workspace unavailable');
+      },
+      async readFile(uri) {
+        return uri === 'file:///workspace/root.slang' ? 'float root;' : undefined;
+      },
+      openDocuments: [],
+    });
+    const snapshot = await builder.build({ rootUri: 'file:///workspace', rootFiles: ['file:///workspace/root.slang'], configuredPassFiles: [] });
+    assert.deepStrictEqual(snapshot.files.map((file) => file.path), ['/workspace/root.slang']);
+  });
+
+  test('continues after a read race leaves a dependency unavailable', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder({
+      async findSlangFiles() {
+        return [];
+      },
+      async readFile(uri) {
+        if (uri === 'file:///workspace/missing.slang') {
+          throw new Error('deleted');
+        }
+        return uri === 'file:///workspace/pass.slang' ? 'float pass;' : '#include "missing.slang"';
+      },
+      openDocuments: [],
+    });
+    const snapshot = await builder.build({
+      rootUri: 'file:///workspace', rootFiles: ['file:///workspace/root.slang'], configuredPassFiles: ['file:///workspace/pass.slang'],
+    });
+    assert.deepStrictEqual(snapshot.files.map((file) => file.path), ['/workspace/pass.slang', '/workspace/root.slang']);
+  });
 });

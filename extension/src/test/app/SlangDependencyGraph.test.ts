@@ -115,6 +115,12 @@ suite('SlangDependencyGraph', () => {
     assert.deepStrictEqual([...graph.directDependencies('file://foreign/workspace%20root/image.slang')], []);
   });
 
+  test('rejects query and fragment aliases for strict workspace roots', () => {
+    assert.throws(() => new SlangDependencyGraph('file:///workspace?query=1'));
+    assert.throws(() => new SlangDependencyGraph('file:///workspace#fragment'));
+    assert.throws(() => new SlangDependencyGraph('untitled:workspace'));
+  });
+
   test('encodes literal filesystem path operands instead of interpreting them as URL text', () => {
     const graph = new SlangDependencyGraph(root);
     graph.update('file:///workspace/image.slang', 'import "a b#c%d.slang"; #include "λ.slang"');

@@ -12,6 +12,9 @@ function canonicalFileUri(uri: string): CanonicalUri {
   if (parsed.protocol !== 'file:') {
     throw new Error(`Expected file URI, received ${uri}`);
   }
+  if (parsed.search || parsed.hash) {
+    throw new Error(`File URI must not include a query or fragment: ${uri}`);
+  }
   const pathname = parsed.pathname
     .replaceAll('\\', '/')
     .replace(/^\/([A-Z]):/, (_, drive: string) => `/${drive.toLowerCase()}:`)
