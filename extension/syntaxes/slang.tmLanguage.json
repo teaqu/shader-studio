@@ -9,6 +9,9 @@
     { "include": "#attributes" },
     { "include": "#keywords" },
     { "include": "#types" },
+    { "include": "#builtin-functions" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
     { "include": "#numbers" }
   ],
   "repository": {
@@ -77,6 +80,49 @@
         { "name": "constant.language.slang", "match": "\\b(true|false|null|none)\\b" }
       ]
     },
+    "builtin-functions": {
+      "patterns": [
+        {
+          "name": "support.function.trigonometric.slang",
+          "match": "\\b(?:radians|degrees|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh|sincos)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.exponential.slang",
+          "match": "\\b(?:pow|exp|log|exp2|log2|sqrt|rsqrt|inversesqrt)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.common.slang",
+          "match": "\\b(?:abs|sign|floor|trunc|round|roundEven|ceil|fract|frac|mod|fmod|modf|min|max|clamp|saturate|mix|lerp|step|smoothstep|isnan|isinf|fma|frexp|ldexp|mad|rcp)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.geometric.slang",
+          "match": "\\b(?:length|distance|dot|cross|normalize|faceforward|reflect|refract)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.matrix.slang",
+          "match": "\\b(?:mul|transpose|determinant|inverse)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.texture.slang",
+          "match": "\\b(?:Sample|SampleBias|SampleCmp|SampleCmpLevelZero|SampleGrad|SampleLevel|Load|Gather|GatherRed|GatherGreen|GatherBlue|GatherAlpha|GetDimensions|CalculateLevelOfDetail|CalculateLevelOfDetailUnclamped|textureSize|textureQueryLod|textureQueryLevels|textureSamples|texture|textureProj|textureLod|textureOffset|texelFetch|texelFetchOffset|textureProjOffset|textureLodOffset|textureGrad|textureGradOffset|textureGather|textureGatherOffset|textureGatherOffsets)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.fragment.slang",
+          "match": "\\b(?:ddx|ddx_coarse|ddx_fine|ddy|ddy_coarse|ddy_fine|fwidth)(?=\\s*\\()"
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_]\\w*)\\s+([A-Za-z_]\\w*)\\s*(?=\\([^)]*\\)\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*\\{)",
+          "captures": {
+            "1": { "name": "storage.type.slang" },
+            "2": { "name": "entity.name.function.slang" }
+          }
+        }
+      ]
+    },
     "types": {
       "patterns": [
         {
@@ -102,6 +148,14 @@
         {
           "name": "storage.type.resource.slang",
           "match": "\\b(?:Buffer|RWBuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer|ParameterBlock|ConstantBuffer|RaytracingAccelerationStructure)\\b"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "entity.name.function.call.slang",
+          "match": "\\b[A-Za-z_]\\w*(?=\\s*\\()"
         }
       ]
     },

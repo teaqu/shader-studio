@@ -153,9 +153,9 @@ suite('Bundled Slang syntax assets', () => {
         '#preprocessor',
         '#attributes',
         '#keywords',
+        '#types',
         '#builtin-functions',
         '#function-definition',
-        '#types',
         '#function-call',
         '#numbers',
       ],
@@ -196,7 +196,6 @@ suite('Bundled Slang syntax assets', () => {
         'support.function.matrix.slang',
         'support.function.texture.slang',
         'support.function.fragment.slang',
-        'support.function.constructor.slang',
       ],
     );
     assert.deepStrictEqual(
@@ -262,7 +261,7 @@ void main() { shade(float2(0.)); }`,
 
     const pairs = [
       [glslLines[0], slangLines[0], 'cos', 'support.function.trigonometric'],
-      [glslLines[0], slangLines[0], 'vec4', 'support.function.constructor'],
+      [glslLines[0], slangLines[0], 'vec4', 'storage.type.vector'],
       [glslLines[0], slangLines[0], 'shade', 'entity.name.function'],
       [glslLines[1], slangLines[1], 'shade', 'entity.name.function.call'],
     ] as const;
