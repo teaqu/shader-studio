@@ -94,7 +94,7 @@ describe("WorkerSlangCompiler", () => {
 
     const compilePromise = compiler.compile("src", {});
     worker.emit({ id: worker.posted[1].id, ok: false, error: "worker exploded" });
-    await expect(compilePromise).resolves.toEqual({ success: false, errors: ["worker exploded"] });
+    await expect(compilePromise).resolves.toEqual({ success: false, errors: ["worker exploded"], diagnostics: [] });
   });
 
   it("dispose() terminates the worker and fails pending compiles", async () => {
@@ -106,7 +106,7 @@ describe("WorkerSlangCompiler", () => {
     const pending = compiler.compile("src", {});
     compiler.dispose();
     expect(worker.terminate).toHaveBeenCalled();
-    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker unavailable"] });
+    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
   });
 
   it("fails pending compiles when the worker itself errors", async () => {
@@ -117,7 +117,7 @@ describe("WorkerSlangCompiler", () => {
 
     const pending = compiler.compile("src", {});
     worker.onerror?.(new Event("error"));
-    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker crashed"] });
+    await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker crashed"], diagnostics: [] });
   });
 
   it("marks the compiler unavailable after a crash so future compiles fail fast instead of hanging", async () => {
@@ -134,7 +134,7 @@ describe("WorkerSlangCompiler", () => {
     // (which would otherwise wedge callers like ShaderProcessor.isProcessing).
     const result = await compiler.compile("src", {});
 
-    expect(result).toEqual({ success: false, errors: ["Slang worker unavailable"] });
+    expect(result).toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
     expect(worker.postMessage).toHaveBeenCalledTimes(postedBeforeNewCompile);
   });
 });

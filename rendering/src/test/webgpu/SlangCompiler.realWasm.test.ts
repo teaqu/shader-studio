@@ -42,21 +42,33 @@ describe("SlangCompiler real WASM", () => {
     } finally { compiler.dispose(); }
   });
 
-  it("compiles a 2026 root using a mounted module import and textual include", () => {
+  it("keeps directive-free imports legacy while textual includes inherit 2026", () => {
     const source = [
       "#language slang 2026",
       "module image;",
-      "import palette;",
-      "#include \"../lib/math.slang\"",
-      "float4 mainImage(float2 c) { return float4(paletteColor() + includedValue(), 1.0); }",
+      "import legacy_dep;",
+      "#include \"tuple-helper.slang\"",
+      "float4 mainImage(float2 c) { return float4(legacyImportedValue() + tupleIncludedValue(), 0, 0, 1); }",
     ].join("\n");
     const compiler = new SlangCompiler(slang);
     try {
-      const result = compiler.compile({ ...request(source, [
-        { path: "/workspace/passes/image.slang", uri: "file:///passes/image.slang", source },
-        { path: "/workspace/passes/palette.slang", uri: "file:///passes/palette.slang", source: "#language slang 2026\nmodule palette;\npublic float3 paletteColor() { return float3(1, 0, 0); }" },
-        { path: "/workspace/lib/math.slang", uri: "file:///lib/math.slang", source: "float3 includedValue() { return float3(0, 1, 0); }" },
-      ]), sourceUri: "file:///passes/image.slang", sourcePath: "/workspace/passes/image.slang" });
+      const result = compiler.compile(request(source, [
+        { path: "/workspace/image.slang", uri: "file:///image.slang", source },
+        { path: "/workspace/legacy_dep.slang", uri: "file:///legacy_dep.slang", source: "module legacy_dep; public float legacyImportedValue() { return (1.0, 2.0); }" },
+        { path: "/workspace/tuple-helper.slang", uri: "file:///tuple-helper.slang", source: "float tupleIncludedValue() { let pair = (3.0, 4.0); return pair._0 + pair._1; }" },
+      ]));
+      expect(result).toMatchObject({ success: true, diagnostics: [] });
+    } finally { compiler.dispose(); }
+  });
+
+  it.each(["2025", "2026", "latest"] as const)("imports an explicit %s dependency", (version) => {
+    const source = "#language slang 2026\nmodule image;\nimport dep;\nfloat4 mainImage(float2 c) { return float4(depValue(), 0, 0, 1); }";
+    const compiler = new SlangCompiler(slang);
+    try {
+      const result = compiler.compile(request(source, [
+        { path: "/workspace/image.slang", uri: "file:///image.slang", source },
+        { path: "/workspace/dep.slang", uri: "file:///dep.slang", source: `#language slang ${version}\nmodule dep;\npublic float depValue() { return 1.0; }` },
+      ]));
       expect(result).toMatchObject({ success: true, diagnostics: [] });
     } finally { compiler.dispose(); }
   });

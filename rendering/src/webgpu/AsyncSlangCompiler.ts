@@ -72,11 +72,11 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
         return;
       }
       if (!msg.ok) {
-        entry.resolve({ success: false, errors: [msg.error] });
+        entry.resolve({ success: false, errors: [msg.error], diagnostics: [] });
       } else if (msg.result) {
         entry.resolve(msg.result);
       } else {
-        entry.resolve({ success: false, errors: ["Slang worker returned no result"] });
+        entry.resolve({ success: false, errors: ["Slang worker returned no result"], diagnostics: [] });
       }
     };
     this.worker.onerror = () => {
@@ -126,7 +126,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   compile(source: string, options: SlangCompileOptions): Promise<SlangCompileResult> {
     if (this.disposed) {
       // Accurate whether disposed via dispose() or a prior worker crash.
-      return Promise.resolve({ success: false, errors: ["Slang worker unavailable"] });
+      return Promise.resolve({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
     }
     const id = this.nextId++;
     return new Promise<SlangCompileResult>((resolve) => {
@@ -146,7 +146,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
       if (entry.isInit) {
         entry.initReject?.(new Error(message));
       } else {
-        entry.resolve({ success: false, errors: [message] });
+        entry.resolve({ success: false, errors: [message], diagnostics: [] });
       }
     }
     this.pending.clear();

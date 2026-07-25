@@ -27,9 +27,7 @@ export interface SlangCompileRequest {
 }
 export type SlangCompileResult =
   | { success: true; wgsl: string; diagnostics: SlangDiagnostic[] }
-  // Optional at the type boundary while Task 4 still produces legacy failures;
-  // SlangCompiler itself always supplies it.
-  | { success: false; errors: string[]; diagnostics?: SlangDiagnostic[] };
+  | { success: false; errors: string[]; diagnostics: SlangDiagnostic[] };
 
 /** Synchronous workspace compiler. Per-request Embind values are always released. */
 export class SlangCompiler {
@@ -68,9 +66,11 @@ export class SlangCompiler {
       if (!module) return this.lastFailure("Slang: failed to compile module", request, diagnostics);
       sessionHandles.push(module);
       const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
+      if (!vs) return this.lastFailure("Slang: entry points not found (is `mainImage` defined?)", request, diagnostics);
+      sessionHandles.push(vs);
       const fragment = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
-      if (!vs || !fragment) return this.lastFailure("Slang: entry points not found (is `mainImage` defined?)", request, diagnostics);
-      sessionHandles.push(vs, fragment);
+      if (!fragment) return this.lastFailure("Slang: entry points not found (is `mainImage` defined?)", request, diagnostics);
+      sessionHandles.push(fragment);
       const composite = session.createCompositeComponentType([module, vs, fragment]);
       if (!composite) return this.lastFailure("Slang: failed to compose program", request, diagnostics);
       sessionHandles.push(composite);
@@ -99,15 +99,16 @@ export class SlangCompiler {
   }
 
   public dispose(): void {
-    if (this.disposed) return;
     this.disposed = true;
     if (this.slang.FS) {
       try { releaseWorkspaceFileSystem(this.slang.FS, this.ownedPaths); } catch { /* retained for retry-free disposal */ }
     }
-    const global = this.globalSession;
-    this.globalSession = null;
-    this.wgslTargetValue = null;
-    deleteHandles(global ? [global] : []);
+    if (this.globalSession) {
+      const global = this.globalSession;
+      this.globalSession = null;
+      this.wgslTargetValue = null;
+      deleteHandles([global]);
+    }
   }
 
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
@@ -138,11 +139,17 @@ export class SlangCompiler {
 function deleteHandles(handles: SlangEmbindHandle[]): void {
   const unique: SlangEmbindHandle[] = [];
   for (const handle of handles) {
-    if (!unique.some((previous) => handle === previous || handle.isAliasOf?.(previous) || previous.isAliasOf?.(handle))) unique.push(handle);
+    if (!unique.some((previous) => aliases(handle, previous))) unique.push(handle);
   }
   for (const handle of unique.reverse()) {
     try { handle.delete?.(); } catch { /* cleanup must not replace a compiler result */ }
   }
+}
+
+function aliases(left: SlangEmbindHandle, right: SlangEmbindHandle): boolean {
+  if (left === right) return true;
+  try { if (left.isAliasOf?.(right)) return true; } catch { /* fall through */ }
+  try { return right.isAliasOf?.(left) === true; } catch { return false; }
 }
 
 function failure(message: string, uri: string, diagnostics: SlangDiagnostic[] = []): SlangCompileResult {
@@ -154,10 +161,15 @@ function diagnosticFor(message: string, uri: string, line = 0, character = 0, co
 }
 
 function parseDiagnostics(message: string, workspace: SlangWorkspaceSnapshot, fallbackUri: string): SlangDiagnostic[] {
-  const match = message.match(/(?:error|warning)(?:\[([A-Z]\d+)\])?:\s*([^\n]+)\n\s*-->\s*(\/workspace\/[^:\n]+):(\d+):(\d+)/i);
-  if (!match) return [diagnosticFor(message, fallbackUri)];
-  const file = workspace.files.find(({ path }) => path === match[3]);
-  return [diagnosticFor(match[2], file?.uri ?? fallbackUri, Number(match[4]) - 1, Number(match[5]) - 1, match[1])];
+  const matcher = /^(error|warning|note|info)(?:\[([^\]]+)\])?:\s*([^\n]+)\n\s*-->\s*(\/workspace\/[^:\n]+):(\d+):(\d+)\s*$/gim;
+  const diagnostics: SlangDiagnostic[] = [];
+  for (const match of message.matchAll(matcher)) {
+    const file = workspace.files.find(({ path }) => path === match[4]);
+    if (!file) return [diagnosticFor(message, fallbackUri)];
+    const severity = match[1].toLowerCase() === "warning" ? "warning" : match[1].toLowerCase() === "error" ? "error" : "information";
+    diagnostics.push({ ...diagnosticFor(match[3], file.uri, Math.max(0, Number(match[5]) - 1), Math.max(0, Number(match[6]) - 1), match[2]), severity });
+  }
+  return diagnostics.length ? diagnostics : [diagnosticFor(message, fallbackUri)];
 }
 
 function basename(path: string): string {
