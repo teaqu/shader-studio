@@ -35,6 +35,8 @@ interface OwnerState { token: number; rootUris: ReadonlySet<string>; }
 export class SlangShaderWorkspaceCoordinator {
   private readonly owners = new Map<string, OwnerState>();
   private readonly pending = new Map<string, OwnerState>();
+  private readonly queuedPending = new Map<string, OwnerState>();
+  private generationBarrierDepth = 0;
   private readonly roots = new Map<string, PreparedSlangRoot>();
   private nextToken = 0;
 
@@ -49,7 +51,12 @@ export class SlangShaderWorkspaceCoordinator {
     const rootUris = [...new Set(rootPaths.map((rootPath) => normalizeSlangUri(this.host.toUri(rootPath))))]
       .sort((left, right) => left.localeCompare(right));
     const token = ++this.nextToken;
-    this.pending.set(ownerId, { token, rootUris: new Set(rootUris) });
+    const state = { token, rootUris: new Set(rootUris) };
+    if (this.generationBarrierDepth > 0) {
+      this.queuedPending.set(ownerId, state);
+    } else {
+      this.pending.set(ownerId, state);
+    }
     return rootUris.map((rootUri) => ({ ownerId, rootUri, token }));
   }
 
@@ -130,6 +137,26 @@ export class SlangShaderWorkspaceCoordinator {
     return true;
   }
 
+  /** Emits a committed generation without allowing re-entrant requests to split it. */
+  runCommittedGeneration(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[], emit: () => void): boolean {
+    if (!this.commitRefreshRequests(entries)) {
+      return false;
+    }
+    this.generationBarrierDepth += 1;
+    try {
+      emit();
+      return true;
+    } finally {
+      this.generationBarrierDepth -= 1;
+      if (this.generationBarrierDepth === 0) {
+        for (const [ownerId, state] of this.queuedPending) {
+          this.pending.set(ownerId, state);
+        }
+        this.queuedPending.clear();
+      }
+    }
+  }
+
   commitOwnerRelease(request: SlangOwnerRequest): boolean {
     if (!this.isOwnerRequestCurrent(request)) {
       return false;
@@ -137,6 +164,7 @@ export class SlangShaderWorkspaceCoordinator {
     const owner = this.owners.get(request.ownerId);
     this.owners.delete(request.ownerId);
     this.pending.delete(request.ownerId);
+    this.queuedPending.delete(request.ownerId);
     for (const rootUri of owner?.rootUris ?? []) {
       this.removeUnusedRoot(rootUri);
     }
@@ -172,6 +200,7 @@ export class SlangShaderWorkspaceCoordinator {
     const owner = this.owners.get(ownerId);
     this.owners.delete(ownerId);
     this.pending.delete(ownerId);
+    this.queuedPending.delete(ownerId);
     for (const rootUri of owner?.rootUris ?? []) {
       this.removeUnusedRoot(rootUri);
     }

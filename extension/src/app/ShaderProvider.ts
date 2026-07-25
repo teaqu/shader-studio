@@ -608,11 +608,16 @@ export class ShaderProvider {
     if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
       return;
     }
-    if (!this.slangWorkspaces.commitRefreshRequests(messages.map(({ request, prepared: root }) => ({ request, prepared: root })))) {
+    const emitted = this.slangWorkspaces.runCommittedGeneration(
+      messages.map(({ request, prepared: root }) => ({ request, prepared: root })),
+      () => {
+        for (const entry of messages) {
+          this.messenger.send(entry.message);
+        }
+      },
+    );
+    if (!emitted) {
       return;
-    }
-    for (const entry of messages) {
-      this.messenger.send(entry.message);
     }
     this.lastSlangDependencyGenerationFingerprint = fingerprint;
     for (const entry of messages) {

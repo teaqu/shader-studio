@@ -795,6 +795,33 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.notCalled(sendSpy);
     });
 
+    test('emits a complete old batch before a synchronous re-entrant request becomes current', async () => {
+      const files = {
+        'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/b.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/lib.slang': 'float lib;',
+      };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      const prepared = await coordinator.prepareRoots([{ rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('panel:1', '/work/a.slang'), prepared[0]);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('panel:2', '/work/b.slang'), prepared[1]);
+      let newer: ReturnType<SlangShaderWorkspaceCoordinator['beginOwnerRequest']> | undefined;
+      const reentrantSend = sandbox.stub().callsFake(() => {
+        if (!newer) {
+          newer = coordinator.beginOwnerRequest('shader-provider', '/work/a.slang');
+        }
+      });
+      mockMessenger.send = reentrantSend;
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage() {}');
+      loadAndProcessConfigStub.returns(null);
+      await provider.recompileOwningSlangRoots('/work/lib.slang', 'float changed;');
+      assert.strictEqual(reentrantSend.callCount, 2);
+      assert.strictEqual(coordinator.isOwnerRequestCurrent(newer!), true);
+    });
+
     test('does not send an owner batch or missing-entry error for a manual helper request', async () => {
       const files: Record<string, string> = {
         'file:///work/image.slang': '#include "lib.slang"\nvoid mainImage() {}',
