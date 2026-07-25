@@ -126,14 +126,14 @@ export class CompileController {
   }
 
   public handleFilesCreated(uris: readonly vscode.Uri[]): void {
-    if (this.compileMode === 'manual' || !this.messenger.hasActiveClients()) {
+    if (this.compileMode !== 'hot' || !this.messenger.hasActiveClients()) {
       return;
     }
     void this.shaderProvider.handleSlangFilesCreated(uris.map((uri) => uri.fsPath));
   }
 
   public handleFilesDeleted(uris: readonly vscode.Uri[]): void {
-    if (this.compileMode === 'manual' || !this.messenger.hasActiveClients()) {
+    if (this.compileMode !== 'hot' || !this.messenger.hasActiveClients()) {
       return;
     }
     void this.shaderProvider.handleSlangFilesDeleted(uris.map((uri) => uri.fsPath));

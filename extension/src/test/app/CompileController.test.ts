@@ -87,7 +87,7 @@ suite('CompileController Test Suite', () => {
     assert.ok((mockContext.globalState.update as sinon.SinonStub).calledWith('shader-studio.compileMode', 'manual'));
   });
 
-  test('routes Slang create/delete in hot and save modes but never manual, and only closes in hot', () => {
+  test('routes Slang create/delete/close only in hot mode', () => {
     const uri = vscode.Uri.file('/mock/lib.slang');
     const document = { fileName: '/mock/lib.slang', uri } as any;
     mockMessenger.hasActiveClients.returns(true);
@@ -101,15 +101,15 @@ suite('CompileController Test Suite', () => {
     controller.handleFilesCreated([uri]);
     controller.handleFilesDeleted([uri]);
     controller.handleTextDocumentClose(document);
-    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 2);
-    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 2);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 1);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 1);
     assert.strictEqual(mockShaderProvider.handleSlangDocumentClosed.callCount, 1);
     controller.setMode('manual');
     controller.handleFilesCreated([uri]);
     controller.handleFilesDeleted([uri]);
     controller.handleTextDocumentClose(document);
-    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 2);
-    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 2);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 1);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 1);
   });
 
   test('applies hot, save, and manual policy to Slang helper documents without changing manual root commands', async () => {
