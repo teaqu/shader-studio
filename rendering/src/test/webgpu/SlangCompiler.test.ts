@@ -216,6 +216,16 @@ describe("SlangCompiler", () => {
     }
   });
 
+  it("preserves severity and raw envelopes for unknown workspace paths", () => {
+    const raw = "warning[W]: warn\n --> /workspace/missing-a:1:1\nnote[N]: note\n --> /workspace/missing-b:2:2\ninfo[I]: info\n --> /workspace/missing-c:3:3";
+    const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request());
+    if (!result.success) expect(result.diagnostics).toEqual([
+      expect.objectContaining({ severity: "warning", uri: "file:///image.slang", message: "warning[W]: warn\n --> /workspace/missing-a:1:1" }),
+      expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "note[N]: note\n --> /workspace/missing-b:2:2" }),
+      expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "info[I]: info\n --> /workspace/missing-c:3:3" }),
+    ]);
+  });
+
   it("rejects unsupported root language unchanged before module loading", () => {
     const onLoad = vi.fn();
     const source = "#language slang 2030\nfloat4 mainImage(float2 c) { return float4(1); }";

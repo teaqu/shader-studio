@@ -171,11 +171,15 @@ function parseDiagnostics(message: string, workspace: SlangWorkspaceSnapshot, fa
   const diagnostics: SlangDiagnostic[] = [];
   for (const match of normalized.matchAll(matcher)) {
     const file = workspace.files.find(({ path }) => path === match[4]);
-    if (!file) { diagnostics.push(diagnosticFor(match[0], fallbackUri)); continue; }
-    const severity = match[1].toLowerCase() === "warning" ? "warning" : match[1].toLowerCase() === "error" ? "error" : "information";
+    const severity = diagnosticSeverity(match[1]);
+    if (!file) { diagnostics.push({ ...diagnosticFor(match[0], fallbackUri), severity }); continue; }
     diagnostics.push({ ...diagnosticFor(match[3], file.uri, Math.max(0, Number(match[5]) - 1), Math.max(0, Number(match[6]) - 1), match[2]), severity });
   }
   return diagnostics.length ? diagnostics : [diagnosticFor(message, fallbackUri)];
+}
+
+function diagnosticSeverity(value: string): SlangDiagnostic["severity"] {
+  return value.toLowerCase() === "warning" ? "warning" : value.toLowerCase() === "error" ? "error" : "information";
 }
 
 function basename(path: string): string {
