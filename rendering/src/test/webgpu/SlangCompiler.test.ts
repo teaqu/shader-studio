@@ -37,6 +37,7 @@ function makeFakeSlang(opts: {
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
   events?: string[];
+  onGlobalDelete?: () => void;
 } = {}): SlangModuleApi {
   const wgsl = opts.wgsl ?? "// wgsl output";
   const linked = {
@@ -62,6 +63,7 @@ function makeFakeSlang(opts: {
   };
   const globalSession = {
     createSession: () => (opts.sessionNull ? null : session),
+    delete: () => opts.onGlobalDelete?.(),
   };
 
   return {
@@ -102,6 +104,27 @@ describe("SlangCompiler", () => {
       workspaceFile("/workspace/lib/palette.slang", dependency, "file:///palette.slang"),
     ]));
     expect(events.indexOf(`write:/workspace/lib/palette.slang:${dependency}`)).toBeLessThan(events.indexOf("load:/workspace/image.slang"));
+  });
+
+  it("loads the request source at the exact nested source path without changing mounted snapshot files", () => {
+    const events: string[] = [];
+    const onLoad = vi.fn((_source: string, _name: string, path: string) => events.push(`load:${path}`));
+    const compiler = new SlangCompiler(makeFakeSlang({ events, onLoad }));
+    const result = compiler.compile({
+      ...request("float4 mainImage(float2 c) { return float4(9); }", [
+        workspaceFile("/workspace/passes/image.slang", "SNAPSHOT_ROOT", "file:///image.slang"),
+        workspaceFile("/workspace/lib/one.slang", "#language slang 2026\nmodule one;", "file:///one.slang"),
+        workspaceFile("/workspace/lib/two.slang", "line1\nline2", "file:///two.slang"),
+      ]),
+      sourcePath: "/workspace/passes/image.slang",
+    });
+    expect(result.success).toBe(true);
+    expect(events).toContain("write:/workspace/passes/image.slang:SNAPSHOT_ROOT");
+    expect(events).toContain("write:/workspace/lib/one.slang:#language slang 2026\nmodule one;");
+    expect(events).toContain("write:/workspace/lib/two.slang:line1\nline2");
+    expect(events.find((event) => event.startsWith("load:"))).toBe("load:/workspace/passes/image.slang");
+    expect(onLoad.mock.calls[0][0]).toContain("return float4(9)");
+    expect(onLoad.mock.calls[0][0]).not.toContain("SNAPSHOT_ROOT");
   });
 
   it("keeps version headers first and leaves newline placeholders before the user body", () => {
@@ -167,6 +190,17 @@ describe("SlangCompiler", () => {
     if (!result.success) {
       expect(result.errors[0]).toMatch(/no WGSL compile target/i);
     }
+  });
+
+  it("releases a newly-created global session when target lookup throws", () => {
+    const onGlobalDelete = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onGlobalDelete, targets: {
+      size: () => { throw new Error("target vector failed"); },
+      get: () => ({ name: "WGSL", value: 3 }),
+    } }));
+    const result = compiler.compile(request());
+    expect(result).toMatchObject({ success: false });
+    expect(onGlobalDelete).toHaveBeenCalledTimes(1);
   });
 
   it("reads compile targets from an embind vector-like", () => {

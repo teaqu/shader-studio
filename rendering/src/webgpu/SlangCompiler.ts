@@ -115,14 +115,19 @@ export class SlangCompiler {
     if (this.globalSession && this.wgslTargetValue !== null) return { globalSession: this.globalSession, target: this.wgslTargetValue };
     const globalSession = this.slang.createGlobalSession();
     if (!globalSession) throw new Error("Slang: createGlobalSession returned null");
-    const wgsl = slangVectorToArray(this.slang.getCompileTargets()).find((target) => /wgsl/i.test(target.name));
-    if (!wgsl) {
+    try {
+      const targets = slangVectorToArray(this.slang.getCompileTargets());
+      const wgsl = targets.find((target) => /wgsl/i.test(target.name));
+      if (!wgsl) {
+        throw new Error(`Slang: no WGSL compile target (available: ${targets.map((target) => target.name).join(", ") || "none"})`);
+      }
+      this.globalSession = globalSession;
+      this.wgslTargetValue = wgsl.value;
+      return { globalSession, target: wgsl.value };
+    } catch (error) {
       deleteHandles([globalSession]);
-      throw new Error(`Slang: no WGSL compile target (available: ${slangVectorToArray(this.slang.getCompileTargets()).map((target) => target.name).join(", ") || "none"})`);
+      throw error;
     }
-    this.globalSession = globalSession;
-    this.wgslTargetValue = wgsl.value;
-    return { globalSession, target: wgsl.value };
   }
 
   private lastFailure(fallback: string, request: SlangCompileRequest, diagnostics: SlangDiagnostic[]): SlangCompileResult {
