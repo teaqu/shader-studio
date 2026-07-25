@@ -27,6 +27,8 @@ describe('ShaderProcessor', () => {
       toggleEnabled: vi.fn(),
       setStateCallback: vi.fn(),
       setImageShaderCode: vi.fn(),
+      reportSlangCrossFileDebugUnsupported: vi.fn(),
+      clearSlangCrossFileDebugUnsupported: vi.fn(),
       getDebugTarget: vi.fn().mockImplementation((code: string, config: unknown) => ({
         passName: 'Image',
         code,
@@ -98,6 +100,7 @@ describe('ShaderProcessor', () => {
 
     expect(mockShaderDebugManager.modifyShaderForDebugging).not.toHaveBeenCalled();
     expect(mockShaderDebugManager.applyFullShaderPostProcessing).not.toHaveBeenCalled();
+    expect(mockShaderDebugManager.reportSlangCrossFileDebugUnsupported).toHaveBeenCalledTimes(1);
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(root, null, '/workspace/image.slang', {}, undefined, undefined);
   });
 

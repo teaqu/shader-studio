@@ -823,8 +823,10 @@
     const effectiveCanvasHeight = engineCanvas?.height ?? canvasHeight;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     if (isUnsupportedDebugTarget(debugTarget)) {
+      shaderDebugManager.reportSlangCrossFileDebugUnsupported(debugTarget);
       return;
     }
+    shaderDebugManager.clearSlangCrossFileDebugUnsupported();
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
       inputConfig: debugTarget.inputConfig,

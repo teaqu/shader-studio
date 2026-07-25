@@ -118,8 +118,10 @@ export class ShaderProcessor {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
     if (isUnsupportedDebugTarget(debugTarget)) {
+      this.shaderDebugManager.reportSlangCrossFileDebugUnsupported(debugTarget);
       return { code: imageShaderCode, config };
     }
+    this.shaderDebugManager.clearSlangCrossFileDebugUnsupported();
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
 

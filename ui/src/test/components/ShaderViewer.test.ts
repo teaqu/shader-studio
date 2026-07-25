@@ -694,11 +694,13 @@ describe('ShaderViewer', () => {
     await enableDebugAndVariableInspector();
 
     expect(mockVCMFactory._notifyCalls).toHaveLength(0);
+    expect(screen.getByText('Debugging imported Slang modules and common code is not supported yet.')).toBeInTheDocument();
 
     await sendMessage({ type: 'cursorPosition', payload: { line: 3, lineContent: 'float4 mainImage(float2 p) { return float4(paletteValue(), 0, 0, 1); }', filePath: 'file:///project/image.slang' } });
 
     await vi.waitFor(() => expect(mockVCMFactory._notifyCalls.length).toBeGreaterThan(0));
     expect(mockVCMFactory._notifyCalls.at(-1)?.code).toBe(root);
+    expect(screen.queryByText('Debugging imported Slang modules and common code is not supported yet.')).not.toBeInTheDocument();
   });
 
   function getCtrlButton(container: HTMLElement, text: string): HTMLElement | undefined {

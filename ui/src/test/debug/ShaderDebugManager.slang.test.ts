@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
 
 const slangShader = `float4 mainImage(float2 fragCoord)
@@ -209,5 +209,40 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
       status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: 'file:///project/common.slang',
     });
+  });
+
+  it('publishes a cross-file notice once and clears only that notice when the root resumes', () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext({ version: '1', passes: { Image: {} } }, '/workspace/image.slang', {}, {
+      rootUri: 'file:///project/image.slang',
+      files: [
+        { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+        { uri: 'file:///project/palette.slang', path: '/workspace/palette.slang', source: 'module palette;' },
+      ],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float value = 1;', 'file:///project/palette.slang');
+    const unsupported = manager.getDebugTarget(root, { version: '1', passes: { Image: {} } });
+    expect(unsupported).toMatchObject({ status: 'unsupported' });
+    if (!('status' in unsupported)) {
+      throw new Error('expected unsupported target');
+    }
+    const callback = vi.fn();
+    manager.setStateCallback(callback);
+
+    manager.reportSlangCrossFileDebugUnsupported(unsupported);
+    manager.reportSlangCrossFileDebugUnsupported(unsupported);
+
+    expect(manager.getState().debugNotice).toBe(unsupported.message);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    manager.clearSlangCrossFileDebugUnsupported();
+    expect(manager.getState().debugNotice).toBeNull();
+
+    manager.reportSlangCrossFileDebugUnsupported(unsupported);
+    manager.modifyShaderForDebugging('not a shader', 0);
+    expect(manager.getState().debugNotice).toBe('No debuggable variable on this line');
+    manager.clearSlangCrossFileDebugUnsupported();
+    expect(manager.getState().debugNotice).toBe('No debuggable variable on this line');
   });
 });

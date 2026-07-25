@@ -71,6 +71,7 @@ export class ShaderDebugManager {
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
   private workspace: SlangWorkspaceSnapshot | null = null;
+  private crossFileDebugNotice: string | null = null;
 
   public setLanguage(language: ShaderDialect): void {
     this.language = language;
@@ -131,6 +132,29 @@ export class ShaderDebugManager {
       },
       inputConfig,
     };
+  }
+
+  public reportSlangCrossFileDebugUnsupported(result: SlangCrossFileDebugUnsupported): void {
+    if (this.crossFileDebugNotice === result.message && this.state.debugNotice === result.message) {
+      return;
+    }
+    this.crossFileDebugNotice = result.message;
+    this.state.debugError = null;
+    this.state.debugNotice = result.message;
+    this.notifyStateChange();
+  }
+
+  public clearSlangCrossFileDebugUnsupported(): void {
+    if (!this.crossFileDebugNotice) {
+      return;
+    }
+    const notice = this.crossFileDebugNotice;
+    this.crossFileDebugNotice = null;
+    if (this.state.debugNotice !== notice) {
+      return;
+    }
+    this.state.debugNotice = null;
+    this.notifyStateChange();
   }
 
   private getSlangCrossFileSelection(passName: string): SlangCrossFileDebugUnsupported | null {
