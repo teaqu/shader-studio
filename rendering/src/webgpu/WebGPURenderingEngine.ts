@@ -64,10 +64,12 @@ function cloneWorkspace(workspace: SlangWorkspaceSnapshot): SlangWorkspaceSnapsh
 
 function workspaceCandidates(workspace: SlangWorkspaceSnapshot, selector: string | undefined, topLevelPath: string) {
   if (!selector) return [];
-  const rootPath = workspace.files.find((file) => file.uri === workspace.rootUri)?.path;
+  const rootFile = workspace.files.find((file) => file.uri === workspace.rootUri);
+  const rootPath = rootFile?.path;
   const relative = !selector.startsWith("/") && !selector.includes("://");
-  const internal = relative && rootPath ? `${rootPath.slice(0, rootPath.lastIndexOf("/") + 1)}${selector}` : selector;
-  const uri = selector.includes("://") ? selector : selector.startsWith("/") ? `file://${encodeURI(selector)}` : undefined;
+  const internal = relative ? `/workspace/${selector.replace(/\\/g, "/").replace(/^\.\//, "")}` : selector;
+  const rootBase = rootFile ? workspace.rootUri.slice(0, workspace.rootUri.lastIndexOf("/") + 1) : `${workspace.rootUri.replace(/\/$/, "")}/`;
+  const uri = selector.includes("://") ? selector : relative ? new URL(selector.replace(/\\/g, "/"), rootBase).href : selector.startsWith("/") ? `file://${encodeURIComponent(selector).replace(/%2F/g, "/")}` : undefined;
   const topLevel = selector === topLevelPath ? [topLevelPath, `file://${encodeURI(topLevelPath)}`] : [];
   const values = new Set([selector, internal, uri, ...topLevel].filter(Boolean));
   return workspace.files.filter((file) => values.has(file.path) || values.has(file.uri));
@@ -1052,8 +1054,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     supplied?: SlangWorkspaceSnapshot,
   ): SlangCompileRequest | null {
     const passPath = pass.name === "Image" ? path : pass.path ?? path;
-    const fallbackPath = passPath.startsWith("/") ? passPath : `/workspace/${passPath}`;
-    const fallbackUri = `file://${fallbackPath}`;
+    const fallbackName = passPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "image.slang";
+    const fallbackPath = passPath.startsWith("/workspace/") ? passPath : `/workspace/${fallbackName}`;
+    const fallbackUri = passPath.includes("://") ? passPath : `file://${encodeURIComponent(passPath.replace(/\\/g, "/")).replace(/%2F/g, "/")}`;
     const workspace = supplied ? cloneWorkspace(supplied) : {
       rootUri: fallbackUri,
       files: [{ path: fallbackPath, uri: fallbackUri, source: pass.source }],
