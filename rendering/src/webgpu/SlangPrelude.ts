@@ -310,3 +310,19 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // user's real line numbers.
   return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
 }
+
+/** Assemble a root workspace module while preserving compiler declarations and line positions. */
+export function wrapSlangWorkspaceRoot(
+  header: string,
+  body: string,
+  options: SlangWrapOptions = {},
+): string {
+  const prelude = buildPrelude(options.customUniforms);
+  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const channelPrelude = buildChannelPrelude(options.channels);
+  const generated = options.captureMode
+    ? `${buildCapturePrelude(1 + (options.channels?.length ?? 0) * 2)}\n${commonCode}`
+    : commonCode;
+  const entryPoints = options.captureMode ? CAPTURE_ENTRY_POINTS : ENTRY_POINTS;
+  return `${header}${prelude}\n${channelPrelude}\n${generated}#line 1\n${body}\n${entryPoints}`;
+}

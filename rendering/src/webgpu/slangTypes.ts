@@ -10,9 +10,16 @@ export interface SlangCompileTarget {
 export interface SlangEntryPoint {
   // Opaque handle passed back into createCompositeComponentType.
   readonly _entryPoint?: never;
+  delete?(): void;
+  isAliasOf?(other: SlangEmbindHandle): boolean;
 }
 
-export interface SlangComponentType {
+export interface SlangEmbindHandle {
+  delete?(): void;
+  isAliasOf?(other: SlangEmbindHandle): boolean;
+}
+
+export interface SlangComponentType extends SlangEmbindHandle {
   link(): SlangComponentType | null;
   getTargetCode(targetIndex: number): string;
 }
@@ -21,12 +28,12 @@ export interface SlangModule extends SlangComponentType {
   findEntryPointByName(name: string): SlangEntryPoint | null;
 }
 
-export interface SlangSession {
+export interface SlangSession extends SlangEmbindHandle {
   loadModuleFromSource(source: string, name: string, path: string): SlangModule | null;
   createCompositeComponentType(components: unknown[]): SlangComponentType | null;
 }
 
-export interface SlangGlobalSession {
+export interface SlangGlobalSession extends SlangEmbindHandle {
   createSession(targetValue: number): SlangSession | null;
 }
 
@@ -44,6 +51,12 @@ export interface SlangModuleApi {
   getCompileTargets(): SlangVectorLike<SlangCompileTarget>;
   getLastError(): SlangError;
   getVersionString?(): string;
+  FS?: {
+    mkdirTree(path: string): void;
+    writeFile(path: string, source: string): void;
+    unlink(path: string): void;
+    analyzePath(path: string): { exists: boolean };
+  };
 }
 
 export function slangVectorToArray<T>(v: SlangVectorLike<T>): T[] {
