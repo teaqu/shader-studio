@@ -108,13 +108,13 @@ export class CompileController {
 
     if (targetEditor && this.glslFileTracker.isGlslEditor(targetEditor)) {
       this.glslFileTracker.setLastViewedGlslFile(targetEditor.document.uri.fsPath);
-      await this.shaderProvider.sendShaderFromEditor(targetEditor);
+      await this.shaderProvider.sendShaderFromEditor(targetEditor, { manual: true });
       return;
     }
 
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
     if (lastViewedFile) {
-      await this.shaderProvider.sendShaderFromPath(lastViewedFile);
+      await this.shaderProvider.sendShaderFromPath(lastViewedFile, { manual: true });
       return;
     }
 

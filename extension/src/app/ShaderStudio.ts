@@ -16,6 +16,7 @@ import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
 import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
 import { ConfigChangeClassifier, type ConfigChangeVerdict } from "./services/ConfigChangeClassifier";
+import { SlangShaderWorkspaceCoordinator, type SlangShaderWorkspaceCoordinatorHost } from './SlangShaderWorkspaceCoordinator';
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -41,6 +42,7 @@ export class ShaderStudio {
   // ConfigUpdateHandler (classifies the disk-write fallback) so all three
   // agree on what was last sent for a given config path.
   private configChangeClassifier = new ConfigChangeClassifier();
+  private slangWorkspaces: SlangShaderWorkspaceCoordinator;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -63,10 +65,12 @@ export class ShaderStudio {
       errorHandler,
       (enabled) => this.setDebugModeEnabled(enabled)
     );
+    this.slangWorkspaces = new SlangShaderWorkspaceCoordinator(this.createSlangWorkspaceHost());
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
+      this.slangWorkspaces,
     );
     this.compileController = new CompileController(
       context,
@@ -96,6 +100,28 @@ export class ShaderStudio {
 
     this.registerCommands();
     this.registerEventHandlers();
+  }
+
+  private createSlangWorkspaceHost(): SlangShaderWorkspaceCoordinatorHost {
+    return {
+      toUri: (filePath) => vscode.Uri.file(filePath).toString(),
+      toPath: (uri) => vscode.Uri.parse(uri).fsPath,
+      findSlangFiles: async (rootUri) => (await vscode.workspace.findFiles(
+        new vscode.RelativePattern(vscode.Uri.parse(rootUri), '**/*.slang'),
+      )).map((uri) => uri.toString()),
+      readFile: async (uri) => {
+        try {
+          return new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(uri)));
+        } catch {
+          return undefined;
+        }
+      },
+      get openDocuments() {
+        return vscode.workspace.textDocuments
+          .filter((document) => document.uri.scheme === 'file' && document.fileName.endsWith('.slang'))
+          .map((document) => ({ uri: document.uri.toString(), source: document.getText(), version: document.version }));
+      },
+    };
   }
 
   public isDevelopmentMode(): boolean {
