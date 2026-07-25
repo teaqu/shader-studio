@@ -1270,6 +1270,21 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, versionOnly);
       expect(compiler.compile).toHaveBeenCalledTimes(1);
     });
+
+    it("does not cache an earlier pass when a later pipeline rebuild fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } }, BufferA: { path: "passes/buffera.slang", inputs: {} } } };
+      const rebuild = vi.spyOn(SlangPassPipeline.prototype, "rebuild")
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(["later pipeline error"]);
+      const first = await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "buffer" }, undefined, undefined, workspace());
+      expect(first?.success).toBe(false);
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
+      rebuild.mockRestore();
+      await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "buffer" }, undefined, undefined, workspace());
+      expect(compiler.compile).toHaveBeenCalledTimes(4);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
