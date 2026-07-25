@@ -69,10 +69,11 @@ function workspaceCandidates(workspace: SlangWorkspaceSnapshot, selector: string
   const relative = !selector.startsWith("/") && !selector.includes("://");
   const internal = relative ? `/workspace/${selector.replace(/\\/g, "/").replace(/^\.\//, "")}` : selector;
   const rootBase = rootFile ? workspace.rootUri.slice(0, workspace.rootUri.lastIndexOf("/") + 1) : `${workspace.rootUri.replace(/\/$/, "")}/`;
-  const uri = selector.includes("://") ? selector : relative ? new URL(selector.replace(/\\/g, "/"), rootBase).href : selector.startsWith("/") ? `file://${encodeURIComponent(selector).replace(/%2F/g, "/")}` : undefined;
+  const windowsPath = /^[a-z]:[\\/]/i.test(selector);
+  const uri = selector.includes("://") ? selector : windowsPath ? `file:///${selector.replace(/\\/g, "/").replace(/^([a-z]):/i, (_, drive) => `${drive.toLowerCase()}:`)}` : relative ? new URL(selector.replace(/\\/g, "/"), rootBase).href : selector.startsWith("/") ? `file://${encodeURIComponent(selector).replace(/%2F/g, "/")}` : undefined;
   const topLevel = selector === topLevelPath ? [topLevelPath, `file://${encodeURI(topLevelPath)}`] : [];
-  const values = new Set([selector, internal, uri, ...topLevel].filter(Boolean));
-  return workspace.files.filter((file) => values.has(file.path) || values.has(file.uri));
+  const values = new Set([selector, internal, uri, ...topLevel].filter(Boolean).map((value) => String(value).replace(/^file:\/\/\/([A-Z]):/i, (_, drive) => `file:///${drive.toLowerCase()}:`)));
+  return workspace.files.filter((file) => values.has(file.path) || values.has(file.uri.replace(/^file:\/\/\/([A-Z]):/i, (_, drive) => `file:///${drive.toLowerCase()}:`)));
 }
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {

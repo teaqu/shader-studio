@@ -1308,6 +1308,18 @@ describe("WebGPURenderingEngine", () => {
       }
     });
 
+    it("maps Windows drive spelling to the canonical workspace file", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = { rootUri: "file:///C:/Project", files: [
+        { path: "/workspace/image.slang", uri: "file:///c:/Project/image.slang", source },
+        { path: "/workspace/passes/a.slang", uri: "file:///c:/Project/passes/a.slang", source: "a" },
+      ] };
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {} }, BufferA: { path: "C:\\Project\\passes\\a.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "C:\\Project\\image.slang", { BufferA: "updated" }, undefined, undefined, snapshot);
+      expect(compiler.compile.mock.calls.find(([value]: any[]) => value.options.passName === "BufferA")?.[0].sourceUri).toBe("file:///c:/Project/passes/a.slang");
+    });
+
     it("rejects unmatched buffers before invoking the compiler", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
