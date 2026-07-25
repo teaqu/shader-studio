@@ -139,7 +139,15 @@ describe("SlangCompiler", () => {
       workspaceFile("/workspace/image.slang", imageSource, "file:///image.slang"),
       workspaceFile("/workspace/lib/palette.slang", dependency, "file:///palette.slang"),
     ]));
-    expect(events.indexOf(`write:/workspace/lib/palette.slang:${dependency}`)).toBeLessThan(events.indexOf("load:/workspace/image.slang"));
+    const loadIndex = events.indexOf("load:/workspace/image.slang");
+    expect(loadIndex).toBeGreaterThanOrEqual(0);
+    for (const write of [
+      `write:/workspace/image.slang:${imageSource}`,
+      `write:/workspace/lib/palette.slang:${dependency}`,
+    ]) {
+      expect(events.indexOf(write)).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf(write)).toBeLessThan(loadIndex);
+    }
   });
 
   it("loads the request source at the exact nested source path without changing mounted snapshot files", () => {
@@ -197,6 +205,18 @@ describe("SlangCompiler", () => {
     const result = new SlangCompiler(makeFakeSlang({ onLoad })).compile(request(source));
     expect(result).toMatchObject({ success: false, diagnostics: [expect.objectContaining({ uri: "file:///image.slang" })] });
     expect(onLoad).not.toHaveBeenCalled();
+  });
+
+  it("assembles capture-mode roots after version declarations and before capture entries", () => {
+    const onLoad = vi.fn();
+    const source = "#language slang 2026\nmodule image;\nfloat4 mainImage(float2 c) { return float4(c, 0, 1); }";
+    new SlangCompiler(makeFakeSlang({ onLoad })).compile({ ...request(source), options: { captureMode: true } });
+    const assembled = onLoad.mock.calls[0][0] as string;
+    expect(assembled.startsWith("#language slang 2026\nmodule image;\n")).toBe(true);
+    expect(assembled.indexOf("struct DbgCaptureUniforms")).toBeGreaterThan(assembled.indexOf("module image;"));
+    expect(assembled).toContain("#line 1\n\n\nfloat4 mainImage");
+    expect(assembled.indexOf("float4 mainImage")).toBeLessThan(assembled.lastIndexOf("_dbgCapU.isPixelMode"));
+    expect(assembled).toContain("_dbgCapU.coordGrid.xy");
   });
 
   it("maps stable dependency diagnostics to the matching workspace URI", () => {
@@ -258,13 +278,17 @@ describe("SlangCompiler", () => {
   });
 
   it.each([
-    "session-null", "session", "load-null", "load", "vertex-null", "vertex", "fragment-null", "fragment", "composite-null", "composite", "link-null", "link", "code-null", "code",
-  ] as const)("cleans every acquired handle when %s fails", (stage) => {
+    ["session-null", []], ["session", []], ["load-null", ["delete:session"]], ["load", ["delete:session"]],
+    ["vertex-null", ["delete:module", "delete:session"]], ["vertex", ["delete:module", "delete:session"]],
+    ["fragment-null", ["delete:vertex", "delete:module", "delete:session"]], ["fragment", ["delete:vertex", "delete:module", "delete:session"]],
+    ["composite-null", ["delete:fragment", "delete:vertex", "delete:module", "delete:session"]], ["composite", ["delete:fragment", "delete:vertex", "delete:module", "delete:session"]],
+    ["link-null", ["delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]], ["link", ["delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]],
+    ["code-null", ["delete:linked", "delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]], ["code", ["delete:linked", "delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]],
+  ] as const)("cleans every acquired handle when %s fails", (stage, expected) => {
     const events: string[] = [];
     const result = new SlangCompiler(makeInstrumentedSlang(stage, events)).compile(request());
     expect(result.success).toBe(false);
-    if (stage !== "session" && stage !== "session-null") expect(events).toEqual(expect.arrayContaining(["delete:session"]));
-    expect(new Set(events).size).toBe(events.length);
+    expect(events).toEqual(expected);
   });
 
   it("deduplicates aliases and continues cleanup after delete or alias checks throw", () => {
