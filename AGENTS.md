@@ -77,6 +77,14 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 ## Conventions
 
+- Treat `.gitignore` as authoritative. Never force-add an ignored file with
+  `git add -f` (including generated artifacts and workflow planning/spec files)
+  unless the user explicitly asks for that exact ignored file to be tracked.
+  Skill or workflow instructions to commit a file do not override the
+  repository's ignore rules.
+- `docs/superpowers/` and `.superpowers/` are local-only locations. Files may
+  exist there locally, but they must remain ignored and must never be staged or
+  committed. Keep workflow plans and design notes out of Git history.
 - Optional method calls: `obj?.method?.()` not `typeof obj.method === 'function' && obj.method()`
 - No `any` without comment explaining why
 - Prefer pure functions over methods with side effects where possible
