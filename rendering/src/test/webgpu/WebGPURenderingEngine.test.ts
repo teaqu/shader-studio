@@ -1315,6 +1315,24 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline("old source", null, "/workspace/old.slang");
       expect(compiler.compile.mock.calls.filter(([request]: any[]) => request.source === "old source")).toHaveLength(2);
     });
+
+    it("retains committed state when a different workspace path fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const oldWorkspace = workspace();
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, oldWorkspace);
+      const oldPipeline = (engine as any).passPipelines.get("Image");
+      const dispose = vi.spyOn(oldPipeline, "dispose");
+      const oldGraph = engine.getPasses();
+      compiler.compile.mockReturnValueOnce({ success: false, errors: ["broken"], diagnostics: [] });
+      const failed = await engine.compileShaderPipeline("new", null, "/workspace/other.slang", {}, undefined, undefined, { rootUri: "file:///workspace/other.slang", files: [{ path: "/workspace/other.slang", uri: "file:///workspace/other.slang", source: "new" }] });
+      expect(failed?.success).toBe(false);
+      expect((engine as any).shaderPath).toBe("/workspace/shaders/image.slang");
+      expect(engine.getPasses()).toBe(oldGraph);
+      expect((engine as any).passPipelines.get("Image")).toBe(oldPipeline);
+      expect(dispose).not.toHaveBeenCalled();
+      expect((engine as any).lastCompile).toEqual(expect.objectContaining({ path: "/workspace/shaders/image.slang", workspace: oldWorkspace }));
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
