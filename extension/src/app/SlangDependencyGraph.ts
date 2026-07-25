@@ -1,4 +1,5 @@
 const SLANG_EXTENSION = '.slang';
+const MAX_RAW_DELIMITER_LENGTH = 16;
 
 interface CanonicalUri {
   readonly authority: string;
@@ -38,7 +39,25 @@ export function slangWorkspacePath(rootUri: string, uri: string): string | undef
   }
   const root = canonicalFileUri(rootUri).pathname.replace(/\/$/, '');
   const candidate = canonicalFileUri(uri).pathname;
-  return `/workspace${candidate.slice(root.length)}`;
+  const segments = candidate.slice(root.length).split('/').map(decodeWorkspaceSegment);
+  if (segments.some((segment) => segment === undefined)) {
+    return undefined;
+  }
+  return `/workspace${segments.join('/')}`;
+}
+
+function decodeWorkspaceSegment(segment: string): string | undefined {
+  if (/%(?:2f|5c|00)/i.test(segment)) {
+    return undefined;
+  }
+  try {
+    const decoded = decodeURIComponent(segment);
+    return decoded === '.' || decoded === '..' || decoded.includes('/') || decoded.includes('\\') || decoded.includes('\0')
+      ? undefined
+      : decoded;
+  } catch {
+    return undefined;
+  }
 }
 
 function asSlangPath(value: string): string {
@@ -49,6 +68,10 @@ function resolveUri(baseUri: string, operand: string): string {
   return normalizeSlangUri(new URL(operand, baseUri).toString());
 }
 
+function encodeLiteralPath(operand: string): string {
+  return operand.replaceAll('\\', '/').split('/').map(encodeURIComponent).join('/');
+}
+
 /** Replaces comments, ordinary strings, and C++-style raw strings with spaces. */
 function maskNonCode(source: string): string {
   let result = '';
@@ -56,16 +79,23 @@ function maskNonCode(source: string): string {
     const character = source[index];
     const next = source[index + 1];
     if (character === 'R' && next === '"') {
-      const delimiterEnd = source.indexOf('(', index + 2);
-      const delimiter = delimiterEnd === -1 ? undefined : source.slice(index + 2, delimiterEnd);
+      const opener = source.slice(index + 2, index + 2 + MAX_RAW_DELIMITER_LENGTH + 1);
+      const delimiterEnd = opener.indexOf('(');
+      const delimiter = delimiterEnd === -1 ? undefined : opener.slice(0, delimiterEnd);
+      const validDelimiter = delimiter !== undefined && !/[\s()\\"]/u.test(delimiter);
+      if (!validDelimiter) {
+        result += character;
+        index += 1;
+        continue;
+      }
       const terminator = delimiter === undefined ? undefined : `)${delimiter}"`;
       const end = terminator === undefined ? -1 : source.indexOf(terminator, delimiterEnd + 1);
       const stop = end === -1 ? source.length : end + terminator!.length;
       result += source.slice(index, stop).replace(/[^\n]/g, ' ');
       index = stop;
     } else if (character === '/' && next === '/') {
-      const end = source.indexOf('\n', index);
-      const stop = end === -1 ? source.length : end;
+      const ends = [source.indexOf('\n', index), source.indexOf('\r', index)].filter((end) => end !== -1);
+      const stop = ends.length === 0 ? source.length : Math.min(...ends);
       result += source.slice(index, stop).replace(/[^\n]/g, ' ');
       index = stop;
     } else if (character === '/' && next === '*') {
@@ -127,7 +157,7 @@ export class SlangDependencyGraph {
       const candidates = operand.dotted ? [operand.value, operand.value.replaceAll('.', '/')] : [operand.value];
       const baseUri = operand.module ? this.rootUri : canonicalUri;
       for (const candidate of candidates) {
-        const dependency = resolveUri(baseUri, asSlangPath(candidate));
+        const dependency = resolveUri(baseUri, encodeLiteralPath(asSlangPath(candidate)));
         if (isSlangUriWithin(this.rootUri, dependency)) {
           dependencies.add(dependency);
         }

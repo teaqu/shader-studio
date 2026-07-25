@@ -96,4 +96,29 @@ suite('SlangWorkspaceSnapshotBuilder', () => {
     assert.deepStrictEqual(first.files, second.files);
     assert.deepStrictEqual(first.files.map((file) => file.path), ['/workspace/a.slang', '/workspace/b.slang']);
   });
+
+  test('maps encoded URI segments to decoded internal paths and follows encoded literal dependencies', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder(host({
+      'file:///workspace/image.slang': '#include "a b#c%d.slang"',
+      'file:///workspace/a%20b%23c%25d.slang': 'float encoded;',
+    }));
+    const snapshot = await builder.build({ rootUri: 'file:///workspace', rootFiles: ['file:///workspace/image.slang'], configuredPassFiles: [] });
+    assert.deepStrictEqual(snapshot.files.map((file) => file.path), ['/workspace/a b#c%d.slang', '/workspace/image.slang']);
+  });
+
+  test('excludes the exact workspace root even when every source list supplies it', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder({
+      async findSlangFiles() {
+        return ['file:///workspace'];
+      },
+      async readFile() {
+        return 'not a file';
+      },
+      openDocuments: [],
+    });
+    const snapshot = await builder.build({
+      rootUri: 'file:///workspace', rootFiles: ['file:///workspace'], configuredPassFiles: ['file:///workspace'],
+    });
+    assert.deepStrictEqual(snapshot.files, []);
+  });
 });

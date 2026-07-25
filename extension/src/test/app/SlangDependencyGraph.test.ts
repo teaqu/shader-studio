@@ -50,6 +50,20 @@ suite('SlangDependencyGraph', () => {
     assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], []);
   });
 
+  for (const newline of ['\n', '\r', '\r\n']) {
+    test(`ends line comments at ${JSON.stringify(newline)}`, () => {
+      const graph = new SlangDependencyGraph(root);
+      graph.update('file:///workspace/image.slang', `// #include "fake.slang"${newline}#include "real.slang"`);
+      assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], ['file:///workspace/real.slang']);
+    });
+  }
+
+  test('preserves mixed newline shapes while masking block comments', () => {
+    const graph = new SlangDependencyGraph(root);
+    graph.update('file:///workspace/image.slang', '/*\r\n#include "fake.slang"\r*/\n#include "real.slang"');
+    assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], ['file:///workspace/real.slang']);
+  });
+
   for (const [label, literal, expected] of [
     ['multiline raw string', 'R"(import ignored;\n#include "ignored.slang")"', ['file:///workspace/real.slang']],
     ['custom-delimiter raw string', 'R"tag(import ignored; #include "ignored.slang")tag"', ['file:///workspace/real.slang']],
@@ -61,6 +75,12 @@ suite('SlangDependencyGraph', () => {
       assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], expected);
     });
   }
+
+  test('does not treat invalid raw-like prefixes as raw strings', () => {
+    const graph = new SlangDependencyGraph(root);
+    graph.update('file:///workspace/image.slang', 'R"invalid delimiter" (later)\n#include "real.slang"');
+    assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], ['file:///workspace/real.slang']);
+  });
 
   test('resolves relative paths, clears stale edges, and handles cycles', () => {
     const graph = new SlangDependencyGraph(root);
@@ -87,6 +107,15 @@ suite('SlangDependencyGraph', () => {
     const graph = new SlangDependencyGraph('file:///workspace%20root');
     graph.update('file://foreign/workspace%20root/image.slang', '#include "inside.slang"');
     assert.deepStrictEqual([...graph.directDependencies('file://foreign/workspace%20root/image.slang')], []);
+  });
+
+  test('encodes literal filesystem path operands instead of interpreting them as URL text', () => {
+    const graph = new SlangDependencyGraph(root);
+    graph.update('file:///workspace/image.slang', 'import "a b#c%d.slang"; #include "λ.slang"');
+    assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')].sort(), [
+      'file:///workspace/%CE%BB.slang',
+      'file:///workspace/a%20b%23c%25d.slang',
+    ]);
   });
 
   test('finds all roots which own a shared transitive dependency', () => {
