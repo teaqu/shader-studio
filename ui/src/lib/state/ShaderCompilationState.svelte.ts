@@ -43,6 +43,18 @@ export class ShaderCompilationState {
     return true;
   }
 
+  isRequestCurrent(
+    message: Pick<ShaderSourceMessage, 'requestId' | 'compileGeneration'>,
+    scope: string = GLOBAL_SHADER_REQUEST_SCOPE,
+  ): boolean {
+    const requestId = message.requestId ?? message.compileGeneration?.id;
+    if (requestId === undefined) {
+      return true;
+    }
+    return requestId === this.latestRequestId
+      && requestId === (this.latestRequestByScope.get(scope) ?? requestId);
+  }
+
   clear(): void {
     this.latestResult = null;
   }

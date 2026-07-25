@@ -40,4 +40,12 @@ describe('ShaderCompilationState', () => {
     state.clear();
     expect(state.acceptRequest({ requestId: 6 }, locked)).toBe(false);
   });
+
+  it('reports an accepted request stale after a newer request in another scope', () => {
+    const state = new ShaderCompilationState();
+    const older = { requestId: 10 };
+    expect(state.acceptRequest(older, 'file:///project/a.slang')).toBe(true);
+    expect(state.acceptRequest({ requestId: 11 }, 'file:///project/b.slang')).toBe(true);
+    expect(state.isRequestCurrent(older, 'file:///project/a.slang')).toBe(false);
+  });
 });

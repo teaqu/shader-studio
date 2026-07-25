@@ -225,6 +225,17 @@ describe('BufferUpdater', () => {
     });
   });
 
+  it('keeps compile scope on an asynchronous buffer exception', async () => {
+    (mockRenderEngine.updateBufferAndRecompile as any).mockRejectedValue(new Error('Test error'));
+    const compileScope = { rootUris: ['file:///project/image.slang'], generationId: 9 };
+
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, '', 'BufferA', undefined, compileScope);
+
+    await vi.waitFor(() => expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'error', payload: ['Buffer update error: Error: Test error'], compileScope,
+    }));
+  });
+
   it('should handle transport errors during error reporting', async () => {
     const error = new Error('Test error');
     (mockRenderEngine.updateBufferAndRecompile as any).mockRejectedValue(error);

@@ -104,6 +104,7 @@ export class BufferUpdater {
             const errorMessage: ErrorMessage = {
               type: "error",
               payload: [`Buffer update error: ${err}`],
+              ...(compileScope ? { compileScope } : {}),
             };
             this.transport.postMessage(errorMessage);
           } catch (transportErr) {

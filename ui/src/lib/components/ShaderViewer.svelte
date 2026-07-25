@@ -946,6 +946,9 @@
       if (!messageTarget) {
         return;
       }
+      if (!pipeline.acceptShaderMessage(event)) {
+        return;
+      }
 
       // Only a main shader can select the renderer backend. Configured pass
       // updates often omit language and must stay on the locked main backend.
@@ -989,12 +992,12 @@
           success: result?.success ?? null,
           totalMs: Math.round((performance.now() - shaderMessageStartedAt) * 100) / 100,
         });
-        if (result?.success === false) {
-          resolutionController.handleShaderLoadFailed();
-        } else {
-          resolutionController.handleShaderLoadSucceeded();
-        }
         if (result) {
+          if (result.success) {
+            resolutionController.handleShaderLoadSucceeded();
+          } else {
+            resolutionController.handleShaderLoadFailed();
+          }
           if (result.success && event.data.workspace) {
             committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
           }

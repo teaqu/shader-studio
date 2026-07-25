@@ -316,6 +316,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
       getLockedShaderPath(): string | undefined;
     };
     private _lastEvent: any = null;
+    private _preaccepted = new WeakSet<object>();
     private _compilationState: {
       setResult(result: { success: boolean; errors?: string[] }): void;
       acceptRequest?(message: { requestId?: number }, scope?: string): boolean;
@@ -368,6 +369,16 @@ vi.mock('../../lib/ShaderPipeline', () => {
       return this.getShaderMessageTarget(message) !== null;
     }
 
+    acceptShaderMessage(event: any): boolean {
+      const scope = this._locker.getLockedShaderPath() ?? event?.data?.path ?? 'global';
+      const accepted = !this._compilationState?.acceptRequest
+        || this._compilationState.acceptRequest(event.data, scope);
+      if (accepted) {
+        this._preaccepted.add(event);
+      }
+      return accepted;
+    }
+
     handleCursorPositionMessage(msg: any) {
       const { line, lineContent, filePath } = msg.payload ?? {};
       if (line !== undefined && this._shaderDebugManager) {
@@ -377,8 +388,9 @@ vi.mock('../../lib/ShaderPipeline', () => {
 
     async handleShaderMessage(event: any): Promise<{ success: boolean; errors?: string[] }> {
       mockPipelineHandleShaderMessage(event);
+      const preaccepted = this._preaccepted.delete(event);
       const scope = this._locker.getLockedShaderPath() ?? event?.data?.path ?? 'global';
-      if (this._compilationState?.acceptRequest && !this._compilationState.acceptRequest(event.data, scope)) {
+      if (!preaccepted && this._compilationState?.acceptRequest && !this._compilationState.acceptRequest(event.data, scope)) {
         return { success: false, errors: ['Superseded by a newer compile'] };
       }
       if (event?.data?.type === 'shaderSource' && this._shaderDebugManager) {
@@ -3994,7 +4006,7 @@ describe('ShaderViewer', () => {
 
       const accepted = mockPipelineHandleShaderMessage.mock.calls[0][0].data.workspace;
       expect(accepted.files[0].source).toBe('latest');
-      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(2);
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1);
     });
   });
 

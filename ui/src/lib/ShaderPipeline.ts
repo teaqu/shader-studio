@@ -24,7 +24,7 @@ export type ShaderMessageTarget =
   | { kind: 'buffer'; passName: string };
 
 type CompilationStateSink = Pick<ShaderCompilationState, 'setResult'>
-  & Partial<Pick<ShaderCompilationState, 'acceptRequest'>>;
+  & Partial<Pick<ShaderCompilationState, 'acceptRequest' | 'isRequestCurrent'>>;
 
 export class ShaderPipeline {
   private renderEngine: RenderingEngine;
@@ -42,6 +42,7 @@ export class ShaderPipeline {
   private compilationState: CompilationStateSink | null = null;
   private debugCompileInFlight = false;
   private debugCompilePending = false;
+  private preacceptedEvents = new WeakSet<MessageEvent>();
 
   constructor(
     transport: Transport,
@@ -64,10 +65,22 @@ export class ShaderPipeline {
     this.compilationState = compilationState;
   }
 
+  public acceptShaderMessage(event: MessageEvent): boolean {
+    const message = event.data as ShaderSourceMessage;
+    const scope = getShaderRequestScope(message.path, this.shaderLocker.getLockedShaderPath());
+    const accepted = !this.compilationState?.acceptRequest
+      || this.compilationState.acceptRequest(message, scope);
+    if (accepted) {
+      this.preacceptedEvents.add(event);
+    }
+    return accepted;
+  }
+
   public async handleShaderMessage(
     event: MessageEvent,
   ): Promise<CompilationResult | undefined> {
     try {
+      const wasPreaccepted = this.preacceptedEvents.delete(event);
       const incomingMessage = event.data as ShaderSourceMessage;
       const message: ShaderSourceMessage = incomingMessage.workspace
         ? { ...incomingMessage, workspace: cloneSlangWorkspace(incomingMessage.workspace) }
@@ -84,14 +97,14 @@ export class ShaderPipeline {
       }
 
       const scope = getShaderRequestScope(message.path, this.shaderLocker.getLockedShaderPath());
-      if (this.compilationState?.acceptRequest && !this.compilationState.acceptRequest(message, scope)) {
+      if (!wasPreaccepted && this.compilationState?.acceptRequest && !this.compilationState.acceptRequest(message, scope)) {
         return { success: false, errors: ['Superseded by a newer compile'], superseded: true };
       }
 
       if (this.shaderProcessor.isCurrentlyProcessing()) {
         this.pendingShaderEvent?.resolve(undefined);
         return await new Promise<CompilationResult | undefined>((resolve) => {
-          this.pendingShaderEvent = { event, resolve };
+          this.pendingShaderEvent = { event: { ...event, data: message } as MessageEvent, resolve };
         });
       }
 
@@ -130,7 +143,7 @@ export class ShaderPipeline {
         return undefined;
       }
 
-      return await this.processMainShaderCompilation(message, { ...event, data: message } as MessageEvent);
+      return await this.processMainShaderCompilation(message, { ...event, data: message } as MessageEvent, scope);
 
     } catch (err) {
       this.handleFatalError(err, event);
@@ -198,7 +211,8 @@ export class ShaderPipeline {
 
   private async processMainShaderCompilation(
     message: ShaderSourceMessage,
-    event: MessageEvent
+    event: MessageEvent,
+    scope: string,
   ): Promise<CompilationResult | undefined> {
     this.lastEvent = event;
 
@@ -212,31 +226,36 @@ export class ShaderPipeline {
       message,
       message.reload || false,
     );
-    this.handleCompilationResult(result);
-
     if (this.pendingShaderEvent) {
       const pending = this.pendingShaderEvent;
       this.pendingShaderEvent = null;
       void this.handleShaderMessage(pending.event).then(pending.resolve);
     }
 
-    if (result.superseded) {
+    if (result.superseded || !this.isRequestCurrent(message, scope)) {
       return undefined;
     }
+
+    this.handleCompilationResult(result, message.compileScope);
 
     return result;
   }
 
-  private handleCompilationResult(result: CompilationResult): void {
+  private isRequestCurrent(message: ShaderSourceMessage, scope: string): boolean {
+    return !this.compilationState?.isRequestCurrent
+      || this.compilationState.isRequestCurrent(message, scope);
+  }
+
+  private handleCompilationResult(result: CompilationResult, compileScope?: ShaderSourceMessage['compileScope']): void {
     if (result.superseded) {
       return;
     }
 
     this.compilationState?.setResult(result);
-    this.reportCompilationResult(result);
+    this.reportCompilationResult(result, compileScope);
   }
 
-  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[]; diagnostics?: ErrorMessage['diagnostics'] }): void {
+  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[]; diagnostics?: ErrorMessage['diagnostics'] }, compileScope?: ShaderSourceMessage['compileScope']): void {
     if (result.success) {
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
@@ -244,11 +263,11 @@ export class ShaderPipeline {
         }
       }
 
-      this.sendSuccessMessage();
+      this.sendSuccessMessage(compileScope);
       return;
     }
 
-    this.sendErrorMessage(result.errors || ["Unknown compilation error"], result.diagnostics);
+    this.sendErrorMessage(result.errors || ["Unknown compilation error"], result.diagnostics, compileScope);
   }
 
   private syncStoredShaderContextForBufferUpdate(
@@ -280,12 +299,12 @@ export class ShaderPipeline {
     );
   }
 
-  private sendErrorMessage(errors: string[], diagnostics?: ErrorMessage['diagnostics']): void {
+  private sendErrorMessage(errors: string[], diagnostics?: ErrorMessage['diagnostics'], compileScope?: ShaderSourceMessage['compileScope']): void {
     const errorMessage: ErrorMessage = {
       type: "error",
       payload: errors,
-      diagnostics,
-      compileScope: (this.lastEvent?.data as ShaderSourceMessage | undefined)?.compileScope,
+      ...(diagnostics ? { diagnostics } : {}),
+      ...(compileScope ? { compileScope } : {}),
     };
     this.transport.postMessage(errorMessage);
   }
@@ -298,11 +317,11 @@ export class ShaderPipeline {
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessage(): void {
+  private sendSuccessMessage(compileScope?: ShaderSourceMessage['compileScope']): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
-      compileScope: (this.lastEvent?.data as ShaderSourceMessage | undefined)?.compileScope,
+      ...(compileScope ? { compileScope } : {}),
     };
     this.transport.postMessage(logMessage);
   }
@@ -320,6 +339,9 @@ export class ShaderPipeline {
       const errorMessage: ErrorMessage = {
         type: "error",
         payload: [`Fatal shader processing error: ${err}`],
+        ...((event.data as ShaderSourceMessage | undefined)?.compileScope
+          ? { compileScope: (event.data as ShaderSourceMessage).compileScope }
+          : {}),
       };
       this.transport.postMessage(errorMessage);
     } catch (transportErr) {
@@ -455,8 +477,12 @@ export class ShaderPipeline {
     this.debugCompileInFlight = true;
     try {
       const message = this.lastEvent.data as ShaderSourceMessage;
+      const scope = getShaderRequestScope(message.path, this.shaderLocker.getLockedShaderPath());
       const result = await this.shaderProcessor.debugCompile(message);
-      this.handleCompilationResult(result);
+      if (!this.isRequestCurrent(message, scope)) {
+        return undefined;
+      }
+      this.handleCompilationResult(result, message.compileScope);
       return result;
     } finally {
       this.debugCompileInFlight = false;

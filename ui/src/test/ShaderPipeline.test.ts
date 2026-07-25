@@ -5,6 +5,7 @@ import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { CursorPositionMessage, ShaderSourceMessage } from '@shader-studio/types';
+import { ShaderCompilationState } from '../lib/state/ShaderCompilationState.svelte';
 
 vi.mock('../lib/state/editorOverlayState.svelte', () => ({
   getEditorOverlayVisible: vi.fn(() => false),
@@ -775,5 +776,43 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     expect(result).toBeUndefined();
     expect(compilationState.latest).toBeNull();
     expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('drops an in-flight result after a newer queued request is accepted', async () => {
+    const state = new ShaderCompilationState();
+    pipeline = new ShaderPipeline(mocks.transport, mocks.renderEngine, mocks.shaderLocker, mocks.shaderDebugManager, state);
+    const resolves: Array<(result: { success: boolean; errors?: string[] }) => void> = [];
+    mocks.compileShaderPipeline.mockImplementation(() => new Promise((resolve) => resolves.push(resolve as never)) as never);
+    const older = { ...makeShaderEvent('older'), data: { ...makeShaderEvent('older').data, requestId: 1 } } as MessageEvent;
+    const newer = { ...makeShaderEvent('newer'), data: { ...makeShaderEvent('newer').data, requestId: 2 } } as MessageEvent;
+
+    const olderResult = pipeline.handleShaderMessage(older);
+    const newerResult = pipeline.handleShaderMessage(newer);
+    resolves[0]({ success: false, errors: ['stale error'] });
+
+    expect(await olderResult).toBeUndefined();
+    expect(state.getResult()).toBeNull();
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(resolves).toHaveLength(2));
+    resolves[1]({ success: true });
+    expect(await newerResult).toEqual({ success: true, warnings: undefined, diagnostics: undefined });
+    expect(state.getResult()?.success).toBe(true);
+  });
+
+  it('keeps the producing compile scope on a fatal pipeline error', async () => {
+    const compileScope = { rootUris: ['file:///project/image.slang'], generationId: 12 };
+    vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockImplementationOnce(() => {
+      throw new Error('scope failure');
+    });
+
+    await pipeline.handleShaderMessage({
+      data: { ...makeShaderEvent('code').data, compileScope },
+    } as MessageEvent);
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['Fatal shader processing error: Error: scope failure'],
+      compileScope,
+    });
   });
 });

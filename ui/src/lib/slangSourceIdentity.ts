@@ -23,7 +23,12 @@ export function resolveSlangWorkspaceFile(
   const normalizedSelector = selector.replace(/\\/g, '/').replace(/^\.\//, '');
   const suffixMatches = workspace.files.filter((file) => {
     const path = file.path.replace(/\\/g, '/');
-    const uriPath = decodeURIComponent(new URL(file.uri).pathname);
+    let uriPath = '';
+    try {
+      uriPath = decodeURIComponent(new URL(file.uri).pathname);
+    } catch {
+      // Malformed workspace data is never a valid relative source match.
+    }
     return path.endsWith(`/${normalizedSelector}`) || uriPath.endsWith(`/${normalizedSelector}`);
   });
 

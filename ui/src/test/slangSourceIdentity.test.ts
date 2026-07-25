@@ -59,4 +59,17 @@ describe('slangSourceIdentity', () => {
   it('reports an unmatched selector', () => {
     expect(resolveSlangWorkspaceFile(workspace(), 'missing.slang')).toEqual({ status: 'unmatched' });
   });
+
+  it.each([
+    'not a uri',
+    'file:///project/%ZZ.slang',
+    'file:///project/%E0%A4%A.slang',
+  ])('does not throw for a malformed workspace URI: %s', (uri) => {
+    const malformed = workspace([{ uri, path: '/workspace/image.slang', source: 'source' }]);
+    expect(resolveSlangWorkspaceFile(malformed, 'missing.slang')).toEqual({ status: 'unmatched' });
+  });
+
+  it('does not throw for a malformed selector', () => {
+    expect(resolveSlangWorkspaceFile(workspace(), '%ZZ.slang')).toEqual({ status: 'unmatched' });
+  });
 });
