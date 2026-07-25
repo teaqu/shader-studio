@@ -1243,6 +1243,20 @@ describe("WebGPURenderingEngine", () => {
       expect(result).toEqual(expect.objectContaining({ success: false, errors: [expect.stringMatching(/Workspace/)] }));
       expect(compiler.compile).not.toHaveBeenCalled();
     });
+
+    it("reuses identical workspace snapshots but recompiles a dependency-only edit", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, snapshot);
+      compiler.compile.mockClear();
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, structuredClone(snapshot));
+      expect(compiler.compile).not.toHaveBeenCalled();
+      const edited = structuredClone(snapshot);
+      edited.files[2].source = "module edited;";
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, edited);
+      expect(compiler.compile).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
