@@ -691,13 +691,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const pendingWgslCacheEntries: Array<{ key: string; wgsl: string }> = [];
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    const passRequests = new Map<RenderPassNode, SlangCompileRequest>();
+    for (const pass of graph.passes) {
+      const request = this.createCompileRequest(pass, graph.commonCode, nextCustomUniformManager.getUniformInfo(), path, compileWorkspace);
+      if (!request) errors.push(`${pass.name}: Workspace does not uniquely identify ${pass.path ?? path}`);
+      else passRequests.set(pass, request);
+    }
+    if (errors.length) return this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings });
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
-      const request = this.createCompileRequest(pass, graph.commonCode, nextCustomUniformManager.getUniformInfo(), path, compileWorkspace);
-      if (!request) {
-        errors.push(`${pass.name}: Workspace does not uniquely identify ${path}`);
-        continue;
-      }
+      const request = passRequests.get(pass)!;
       const key = `${path}\u0000${createSlangWgslCacheKey(request)}`;
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {

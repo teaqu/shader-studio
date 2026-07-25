@@ -337,7 +337,7 @@ describe("WebGPURenderingEngine", () => {
         errors: ["Superseded by a newer compile"],
         superseded: true,
       });
-      expect(compiler.compile).not.toHaveBeenCalled();
+      expect(compiler.compile).not.toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ passName: "BufferA" }) }));
     });
   });
 
@@ -1212,6 +1212,38 @@ describe("WebGPURenderingEngine", () => {
     };
     return { device, compiler, canvas };
   }
+
+  describe("workspace compile requests", () => {
+    const source = "float4 mainImage(float2 c) { return float4(1); }";
+    const workspace = () => ({ rootUri: "file:///workspace/shaders/image.slang", files: [
+      { path: "/workspace/shaders/image.slang", uri: "file:///workspace/shaders/image.slang", source },
+      { path: "/workspace/shaders/passes/buffera.slang", uri: "file:///workspace/shaders/passes/buffera.slang", source: "buffer" },
+      { path: "/workspace/shaders/lib/root.slang", uri: "file:///workspace/shaders/lib/root.slang", source: "module root;" },
+    ] });
+
+    it("uses exact root and nested buffer files without mutating the supplied workspace", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      const before = structuredClone(snapshot);
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {} }, BufferA: { path: "passes/buffera.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "buffer v2" }, undefined, undefined, snapshot);
+      const buffer = compiler.compile.mock.calls.find(([request]: any[]) => request.options.passName === "BufferA")[0];
+      const image = compiler.compile.mock.calls.find(([request]: any[]) => request.options.passName === "Image")[0];
+      expect(buffer).toEqual(expect.objectContaining({ sourcePath: "/workspace/shaders/passes/buffera.slang", sourceUri: "file:///workspace/shaders/passes/buffera.slang" }));
+      expect(image).toEqual(expect.objectContaining({ sourcePath: "/workspace/shaders/image.slang", sourceUri: "file:///workspace/shaders/image.slang" }));
+      expect(buffer.workspace.files).toHaveLength(3);
+      expect(snapshot).toEqual(before);
+    });
+
+    it("rejects unmatched buffers before invoking the compiler", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const result = await engine.compileShaderPipeline(source, { version: "1", passes: { BufferA: { path: "missing.slang", inputs: {} }, Image: { inputs: {} } } }, "/workspace/shaders/image.slang", { BufferA: "buffer" }, undefined, undefined, workspace());
+      expect(result).toEqual(expect.objectContaining({ success: false, errors: [expect.stringMatching(/Workspace/)] }));
+      expect(compiler.compile).not.toHaveBeenCalled();
+    });
+  });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
     it("compiles, exposes, preserves, and partially updates script uniforms", async () => {
