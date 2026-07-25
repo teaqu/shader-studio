@@ -1236,6 +1236,40 @@ describe("WebGPURenderingEngine", () => {
       expect(snapshot).toEqual(before);
     });
 
+    it("rejects conflicting exact workspace identities before compilation", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const conflicting = { rootUri: "file:///workspace/root.slang", files: [
+        { path: "/workspace/root.slang", uri: "file:///workspace/other.slang", source },
+        { path: "/workspace/other.slang", uri: "file:///workspace/root.slang", source },
+      ] };
+      const result = await engine.compileShaderPipeline(source, null, "/workspace/root.slang", {}, undefined, undefined, conflicting);
+      expect(result).toEqual(expect.objectContaining({ success: false }));
+      expect(compiler.compile).not.toHaveBeenCalled();
+    });
+
+    it("rejects ambiguous source-only root fallback", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const ambiguous = { rootUri: "file:///workspace/missing.slang", files: [
+        { path: "/workspace/a.slang", uri: "file:///workspace/a.slang", source },
+        { path: "/workspace/b.slang", uri: "file:///workspace/b.slang", source },
+      ] };
+      const result = await engine.compileShaderPipeline(source, null, "/workspace/missing.slang", {}, undefined, undefined, ambiguous);
+      expect(result).toEqual(expect.objectContaining({ success: false }));
+      expect(compiler.compile).not.toHaveBeenCalled();
+    });
+
+    it("uses a single canonical fallback workspace when omitted", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(source, null, "/workspace/fallback.slang");
+      expect(compiler.compile.mock.calls[0][0]).toEqual(expect.objectContaining({
+        source, sourcePath: "/workspace/fallback.slang", sourceUri: "file:///workspace/fallback.slang",
+        workspace: { rootUri: "file:///workspace/fallback.slang", files: [{ path: "/workspace/fallback.slang", uri: "file:///workspace/fallback.slang", source }] },
+      }));
+    });
+
     it("rejects unmatched buffers before invoking the compiler", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
