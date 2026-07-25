@@ -12,12 +12,13 @@ class MemoryFileSystem implements SlangFileSystem {
     }
     this.directories.add(path);
   }
-  writeFile(path: string, source: string) {
+  writeFile(path: string, source: string | Uint8Array) {
     if (this.fail === "write") {
       throw new Error("write");
     }
-    this.files.set(path, source);
+    this.files.set(path, typeof source === "string" ? source : new TextDecoder().decode(source));
   }
+  readFile(path: string) { const source = this.files.get(path); if (source === undefined) throw new Error("read"); return source; }
   unlink(path: string) {
     if (this.fail === "unlink" || this.failPath === path) {
       throw new Error("unlink");
@@ -87,7 +88,7 @@ describe("SlangWorkspaceFileSystem", () => {
     fs.fail = failure;
     fs.files.set("/workspace/user", "keep");
     expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/new", source: "new" }]), owned)).toThrow(failure);
-    expect(owned).toEqual(failure === "unlink" ? new Set(["/workspace/old", "/workspace/new"]) : new Set(["/workspace/old"]));
+    expect(owned).toEqual(new Set(["/workspace/old", "/workspace/new"]));
     expect(fs.files.get("/workspace/user")).toBe("keep");
 
     fs.fail = undefined;
@@ -119,6 +120,16 @@ describe("SlangWorkspaceFileSystem", () => {
     fs.failPath = undefined;
     releaseWorkspaceFileSystem(fs, b);
     releaseWorkspaceFileSystem(fs, a);
+    expect(fs.files.size).toBe(0);
+  });
+  it("restores overwritten common and previously deleted stale files after cross-owner failure", () => {
+    const fs = new MemoryFileSystem(); const a = new Set<string>(); const b = new Set<string>();
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/common", source: "A" }, { path: "/workspace/stale", source: "old" }]), a);
+    fs.failPath = "/workspace/stale";
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/common", source: "B" }, { path: "/workspace/b", source: "only-b" }]), b)).toThrow();
+    expect(fs.files).toEqual(new Map([["/workspace/common", "A"], ["/workspace/stale", "old"]]));
+    expect(a).toEqual(new Set(["/workspace/common", "/workspace/stale"]));
+    fs.failPath = undefined; releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
     expect(fs.files.size).toBe(0);
   });
   it("keeps active ownership after a release unlink failure so cleanup can be retried", () => {

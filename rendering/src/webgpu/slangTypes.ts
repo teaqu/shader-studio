@@ -53,7 +53,8 @@ export interface SlangModuleApi {
   getVersionString?(): string;
   FS?: {
     mkdirTree(path: string): void;
-    writeFile(path: string, source: string): void;
+    writeFile(path: string, source: string | Uint8Array): void;
+    readFile(path: string): string | Uint8Array;
     unlink(path: string): void;
     analyzePath(path: string): { exists: boolean };
   };

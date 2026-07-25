@@ -78,6 +78,7 @@ function makeFakeSlang(opts: {
     FS: {
       mkdirTree: (path: string) => opts.events?.push(`mkdir:${path}`),
       writeFile: (path: string, source: string) => opts.events?.push(`write:${path}:${source}`),
+      readFile: () => "",
       unlink: (path: string) => opts.events?.push(`unlink:${path}`),
       analyzePath: () => ({ exists: false }),
     },
@@ -116,7 +117,7 @@ function makeInstrumentedSlang(stage?: FailureStage | `${FailureStage}-null`, ev
     createGlobalSession: () => global,
     getCompileTargets: () => [{ name: "WGSL", value: 3 }],
     getLastError: () => ({ type: "error", result: -1, message: `raw ${stage ?? ""}` }),
-    FS: { mkdirTree() {}, writeFile() {}, unlink() {}, analyzePath: () => ({ exists: false }) },
+    FS: { mkdirTree() {}, writeFile() {}, readFile: () => "", unlink() {}, analyzePath: () => ({ exists: false }) },
   } as unknown as SlangModuleApi;
 }
 

@@ -2,7 +2,8 @@ import type { SlangWorkspaceSnapshot } from "@shader-studio/types";
 
 export interface SlangFileSystem {
   mkdirTree(path: string): void;
-  writeFile(path: string, source: string): void;
+  writeFile(path: string, source: string | Uint8Array): void;
+  readFile(path: string): string | Uint8Array;
   unlink(path: string): void;
   analyzePath(path: string): { exists: boolean };
 }
@@ -78,10 +79,13 @@ export function syncWorkspaceToFileSystem(
   for (const path of desired.keys()) {
     stale.delete(path);
   }
-  const introduced = new Set<string>();
+  const journal = new Map<string, { exists: boolean; source?: string | Uint8Array }>();
+  for (const path of new Set([...desired.keys(), ...stale])) {
+    const exists = fs.analyzePath(path).exists;
+    journal.set(path, exists ? { exists, source: fs.readFile(path) } : { exists });
+  }
   try {
     for (const [path, source] of desired) {
-      if (!fs.analyzePath(path).exists) introduced.add(path);
       fs.mkdirTree(parent(path));
       fs.writeFile(path, source);
     }
@@ -90,12 +94,15 @@ export function syncWorkspaceToFileSystem(
     }
   } catch (error) {
     let rollbackFailed = false;
-    for (const path of introduced) {
-      try { removeIfPresent(fs, path); } catch { rollbackFailed = true; }
+    for (const [path, before] of journal) {
+      try {
+        if (!before.exists) removeIfPresent(fs, path);
+        else { fs.mkdirTree(parent(path)); fs.writeFile(path, before.source!); }
+      } catch { rollbackFailed = true; }
     }
     if (rollbackFailed) {
       ownedPaths.clear();
-      for (const path of [...stale, ...introduced]) ownedPaths.add(path);
+      for (const path of journal.keys()) ownedPaths.add(path);
       if (previous && previous !== ownedPaths) previous.clear();
       activeOwners.set(fs, ownedPaths);
     }
