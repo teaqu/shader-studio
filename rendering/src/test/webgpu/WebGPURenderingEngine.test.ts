@@ -1270,6 +1270,25 @@ describe("WebGPURenderingEngine", () => {
       }));
     });
 
+    it("resolves a folder-root relative encoded nested buffer without mutation", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const nested = "/workspace/passes/a #%é.slang";
+      const uri = "file:///project/passes/a%20%23%25%C3%A9.slang";
+      const snapshot = { rootUri: "file:///project", files: [
+        { path: "/workspace/image.slang", uri: "file:///project/image.slang", source },
+        { path: nested, uri, source: "buffer" },
+        { path: "/workspace/lib/a.slang", uri: "file:///project/lib/a.slang", source: "module a;" },
+      ] };
+      const before = structuredClone(snapshot);
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {} }, BufferA: { path: "passes/a #%é.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "/project/image.slang", { BufferA: "updated" }, undefined, undefined, snapshot);
+      const request = compiler.compile.mock.calls.find(([value]: any[]) => value.options.passName === "BufferA")[0];
+      expect(request).toEqual(expect.objectContaining({ sourcePath: nested, sourceUri: uri }));
+      expect(request.workspace.files).toHaveLength(3);
+      expect(snapshot).toEqual(before);
+    });
+
     it("rejects unmatched buffers before invoking the compiler", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
