@@ -1333,6 +1333,26 @@ describe("WebGPURenderingEngine", () => {
       expect(dispose).not.toHaveBeenCalled();
       expect((engine as any).lastCompile).toEqual(expect.objectContaining({ path: "/workspace/shaders/image.slang", workspace: oldWorkspace }));
     });
+
+    it("swaps a different workspace only after its compile commits", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const a = workspace();
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, a);
+      const oldPipeline = (engine as any).passPipelines.get("Image");
+      const dispose = vi.spyOn(oldPipeline, "dispose");
+      const pending = deferred<any>();
+      compiler.compile.mockImplementationOnce(() => pending.promise);
+      const b = { rootUri: "file:///workspace/b.slang", files: [{ path: "/workspace/b.slang", uri: "file:///workspace/b.slang", source: "b" }] };
+      const compiling = engine.compileShaderPipeline("b", null, "/workspace/b.slang", {}, undefined, undefined, b);
+      expect((engine as any).passPipelines.get("Image")).toBe(oldPipeline);
+      expect(dispose).not.toHaveBeenCalled();
+      pending.resolve({ success: true, wgsl: "// b", diagnostics: [] });
+      await expect(compiling).resolves.toEqual(expect.objectContaining({ success: true }));
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect((engine as any).passPipelines.get("Image")).not.toBe(oldPipeline);
+      expect((engine as any).lastCompile).toEqual(expect.objectContaining({ path: "/workspace/b.slang", workspace: b }));
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
