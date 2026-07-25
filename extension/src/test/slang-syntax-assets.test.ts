@@ -274,7 +274,6 @@ suite('Bundled Slang syntax assets', () => {
       ['+', '+', '+', 'keyword.operator.arithmetic'],
       ['&&', '&&', '&&', 'keyword.operator.logical'],
       ['&', '&', '&', 'keyword.operator.bitwise'],
-      ['++', '++', '++', 'keyword.operator.increment-decrement'],
       ['?', '?', '?', 'keyword.operator.ternary'],
       ['value.xyz', 'value.xyz', 'xyz', 'variable.other.property.swizzle'],
       [';', ';', ';', 'punctuation.terminator.statement'],
