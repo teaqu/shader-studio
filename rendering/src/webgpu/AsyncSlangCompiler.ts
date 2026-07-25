@@ -101,7 +101,10 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     const id = instance.nextId++;
     try {
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("Slang worker init timed out")), initTimeoutMs);
+        const timer = setTimeout(() => {
+          instance.pending.delete(id);
+          reject(new Error("Slang worker init timed out"));
+        }, initTimeoutMs);
         instance.pending.set(id, {
           isInit: true,
           resolve: () => {},
@@ -114,7 +117,13 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
             reject(error);
           },
         });
-        worker.postMessage({ id, type: "init", scriptUrl, wasmUrl });
+        try {
+          worker.postMessage({ id, type: "init", scriptUrl, wasmUrl });
+        } catch (error) {
+          clearTimeout(timer);
+          instance.pending.delete(id);
+          reject(error);
+        }
       });
     } catch (error) {
       worker.terminate();

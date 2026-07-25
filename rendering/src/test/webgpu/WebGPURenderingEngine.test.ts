@@ -672,12 +672,12 @@ describe("WebGPURenderingEngine", () => {
     expect(camera.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("remembers the config from the last compile", async () => {
+  it("does not commit config from an unsuccessful compile", async () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());
     const config = { passes: {} } as never;
     await engine.compileShaderPipeline("x", config, "/a.slang", {});
-    expect(engine.getCurrentConfig()).toBe(config);
+    expect(engine.getCurrentConfig()).toBeNull();
   });
 
   it("compiles configured Slang buffer and image passes", async () => {

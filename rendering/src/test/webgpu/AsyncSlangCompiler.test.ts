@@ -124,6 +124,13 @@ describe("WorkerSlangCompiler", () => {
     ).rejects.toThrow("no Worker");
   });
 
+  it("cleans pending init and terminates when init postMessage throws", async () => {
+    const worker = fakeWorker();
+    worker.postMessage.mockImplementationOnce(() => { throw new Error("init clone failed"); });
+    await expect(WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm")).rejects.toThrow("init clone failed");
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
   it("converts a compile-message error into a failed result", async () => {
     const worker = fakeWorker();
     const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");

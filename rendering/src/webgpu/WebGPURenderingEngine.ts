@@ -487,7 +487,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const generation = ++this.compileGeneration;
     // WebGL parity: the config is remembered even when invalid, but an
     // invalid one fails the compile before any Slang work starts.
-    this.currentConfig = config;
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
@@ -859,6 +858,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.timeManager.cleanup();
     }
     this.customUniformManager = nextCustomUniformManager;
+    this.currentConfig = config;
     for (const entry of pendingWgslCacheEntries) {
       sharedSlangWgslCache.set(entry.key, entry.wgsl);
     }
