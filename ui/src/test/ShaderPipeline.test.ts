@@ -247,6 +247,110 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       },
     );
 
+    it('updates the exact configured pass when buffer basenames collide', async () => {
+      const lockedPath = '/project/main.slang';
+      const commonPath = '/project/shared/shared.slang';
+      const bufferPath = '/project/passes/shared.slang';
+      const config = {
+        passes: {
+          Image: {},
+          common: { path: commonPath, inputs: {} },
+          BufferA: { path: bufferPath, inputs: {} },
+        },
+      };
+      (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'main code',
+          path: lockedPath,
+          config,
+          buffers: {
+            common: 'common code',
+            BufferA: 'old buffer code',
+          },
+          bufferPathMap: {
+            Image: lockedPath,
+            common: commonPath,
+            BufferA: bufferPath,
+          },
+        },
+      } as unknown as MessageEvent<ShaderSourceMessage>;
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+      vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(config as never);
+      vi.mocked(mocks.renderEngine.updateBufferAndRecompile).mockResolvedValue({
+        success: true,
+      } as never);
+
+      await pipeline.handleShaderMessage({
+        data: {
+          type: 'shaderSource',
+          code: 'updated buffer code',
+          path: bufferPath,
+          buffers: {},
+        },
+      } as MessageEvent<ShaderSourceMessage>);
+
+      await vi.waitFor(() => {
+        expect(mocks.renderEngine.updateBufferAndRecompile).toHaveBeenCalledWith(
+          'BufferA',
+          'updated buffer code',
+        );
+      });
+      expect(mocks.transport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+        type: 'refresh',
+      }));
+    });
+
+    it('refreshes the exact common pass when buffer basenames collide', async () => {
+      const lockedPath = '/project/main.slang';
+      const bufferPath = '/project/passes/shared.slang';
+      const commonPath = '/project/shared/shared.slang';
+      const config = {
+        passes: {
+          Image: {},
+          BufferA: { path: bufferPath, inputs: {} },
+          common: { path: commonPath, inputs: {} },
+        },
+      };
+      (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'main code',
+          path: lockedPath,
+          config,
+          buffers: {
+            BufferA: 'buffer code',
+            common: 'old common code',
+          },
+          bufferPathMap: {
+            Image: lockedPath,
+            BufferA: bufferPath,
+            common: commonPath,
+          },
+        },
+      } as unknown as MessageEvent<ShaderSourceMessage>;
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+      vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(config as never);
+
+      const result = await pipeline.handleShaderMessage({
+        data: {
+          type: 'shaderSource',
+          code: 'updated common code',
+          path: commonPath,
+          buffers: {},
+        },
+      } as MessageEvent<ShaderSourceMessage>);
+
+      expect(result).toEqual({ success: true });
+      expect(mocks.renderEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
+      expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+        type: 'refresh',
+        payload: { path: lockedPath },
+      });
+    });
+
     it.each([
       ['GLSL', '/project/locked.glsl', '/project/unrelated.glsl'],
       ['Slang', '/project/locked.slang', '/project/unrelated.slang'],

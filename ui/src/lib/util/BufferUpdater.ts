@@ -24,9 +24,10 @@ export class BufferUpdater {
   }
 
   public updateBuffer(
-    path: string, 
-    buffers: Record<string, string>, 
-    code: string
+    path: string,
+    buffers: Record<string, string>,
+    code: string,
+    resolvedBufferName?: string,
   ): void {
     // Extract buffer name from path
     const bufferName = this.extractBufferNameFromPath(path);
@@ -34,13 +35,15 @@ export class BufferUpdater {
       return;
     }
 
-    // Check if this buffer exists in current shader
-    if (!this.resolver.bufferFileExistsInCurrentShader(path)) {
+    // Callers that already resolved an exact configured path can supply its
+    // pass name. Otherwise retain the resolver for legacy call sites.
+    if (!resolvedBufferName && !this.resolver.bufferFileExistsInCurrentShader(path)) {
       return;
     }
 
     // Find the actual buffer name that corresponds to this file path
-    const actualBufferName = this.resolver.getBufferNameForFilePath(path);
+    const actualBufferName =
+      resolvedBufferName ?? this.resolver.getBufferNameForFilePath(path);
     if (!actualBufferName) {
       return;
     }
@@ -49,7 +52,7 @@ export class BufferUpdater {
       this.renderEngine.stopRenderLoop();
       
       // Get the buffer content - either from buffers object or from code if it's a single buffer file
-      const bufferContent = buffers[bufferName] || code || '';
+      const bufferContent = buffers[actualBufferName] || buffers[bufferName] || code || '';
       
       this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent)
         .then(result => {

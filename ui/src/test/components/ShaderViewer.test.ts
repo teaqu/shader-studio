@@ -330,26 +330,36 @@ vi.mock('../../lib/ShaderPipeline', () => {
       this._compilationState = compilationState ?? null;
     }
 
-    canHandleShaderMessage(message: { path?: string }): boolean {
+    getShaderMessageTarget(
+      message: { path?: string },
+    ): { kind: 'main' } | { kind: 'buffer'; passName: string } | null {
       if (!this._locker.isLocked()) {
-        return true;
+        return { kind: 'main' };
       }
 
       const normalizePath = (path: string) => path.replace(/\\/g, '/');
       const lockedPath = this._locker.getLockedShaderPath();
       if (!lockedPath || !message.path) {
-        return false;
+        return null;
       }
 
       if (normalizePath(lockedPath) === normalizePath(message.path)) {
-        return true;
+        return { kind: 'main' };
       }
 
-      return Object.entries(this._lastEvent?.data?.bufferPathMap ?? {}).some(
+      const matchingBuffer = Object.entries(this._lastEvent?.data?.bufferPathMap ?? {}).find(
         ([passName, passPath]) => passName !== 'Image'
           && typeof passPath === 'string'
           && normalizePath(passPath) === normalizePath(message.path as string),
       );
+
+      return matchingBuffer
+        ? { kind: 'buffer', passName: matchingBuffer[0] }
+        : null;
+    }
+
+    canHandleShaderMessage(message: { path?: string }): boolean {
+      return this.getShaderMessageTarget(message) !== null;
     }
 
     handleCursorPositionMessage(msg: any) {
@@ -913,7 +923,6 @@ describe('ShaderViewer', () => {
 
       await sendMessage({
         type: 'shaderSource',
-        language,
         path: bufferPath,
         code: 'updated buffer source',
         buffers: {},
@@ -934,6 +943,57 @@ describe('ShaderViewer', () => {
       });
     },
   );
+
+  it('keeps the locked Slang main canvas for a language-less common update', async () => {
+    const monaco = await import('monaco-editor');
+    const mainPath = '/test/locked.slang';
+    const commonPath = '/test/common.slang';
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: mainPath,
+      code: 'mainImage',
+      config: {
+        passes: {
+          Image: {},
+          common: { path: commonPath, inputs: {} },
+        },
+      },
+      buffers: { common: 'common source' },
+      bufferPathMap: { Image: mainPath, common: commonPath },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+    });
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    const lockedCanvas = container.querySelector('canvas');
+    mockStopRenderLoop.mockClear();
+    mockPipelineHandleShaderMessage.mockClear();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: commonPath,
+      code: 'updated common source',
+      buffers: {},
+    });
+
+    expect(container.querySelector('canvas')).toBe(lockedCanvas);
+    expect(mockStopRenderLoop).not.toHaveBeenCalled();
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path: commonPath }),
+    }));
+
+    toggleEditorOverlay();
+    await tick();
+    await waitForEditorOverlay(container);
+    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
+      value: 'mainImage',
+    });
+  });
 
   it.each([
     ['GLSL to Slang', 'glsl', '/test/locked.glsl', 'slang', '/test/next.slang'],

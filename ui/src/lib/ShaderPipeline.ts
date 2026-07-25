@@ -17,6 +17,10 @@ import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
 import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
+export type ShaderMessageTarget =
+  | { kind: 'main' }
+  | { kind: 'buffer'; passName: string };
+
 export class ShaderPipeline {
   private renderEngine: RenderingEngine;
   private shaderLocker: ShaderLocker;
@@ -66,7 +70,8 @@ export class ShaderPipeline {
         return undefined;
       }
 
-      if (!this.canHandleShaderMessage(message)) {
+      const messageTarget = this.getShaderMessageTarget(message);
+      if (!messageTarget) {
         return undefined;
       }
 
@@ -89,33 +94,20 @@ export class ShaderPipeline {
         }
       }
 
-      if (this.shaderLocker.isLocked()) {
-        const currentBufferName =
-          path && this.bufferPathResolver.getBufferNameForFilePath(path);
-        const lockedPath = this.shaderLocker.getLockedShaderPath();
-
-        if (!lockedPath || !path || !this.pathsEqual(lockedPath, path)) {
-          if (!this.hasBufferContent(buffers, code)) {
-            // Skip processing entirely - shader is locked to a different path or path is undefined
-            return undefined;
-          }
-
-          // Check if this is a common buffer file update
-          if (currentBufferName === 'common') {
-            this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
-            // For common buffer files, we need special handling since they don't have mainImage
-            return await this.handleCommonBufferUpdate(path, buffers, code);
-          }
-
-          if (!currentBufferName) {
-            return undefined;
-          }
-
-          this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
-          this.bufferUpdater.updateBuffer(path, buffers, code);
-          // BufferUpdater returns void (fire-and-forget), so we're done here
+      if (messageTarget.kind === 'buffer') {
+        if (!path || !this.hasBufferContent(buffers, code)) {
           return undefined;
         }
+
+        const bufferName = messageTarget.passName;
+        if (bufferName === 'common') {
+          this.syncStoredShaderContextForBufferUpdate(bufferName, code);
+          return await this.handleCommonBufferUpdate(path, buffers, code);
+        }
+
+        this.syncStoredShaderContextForBufferUpdate(bufferName, code);
+        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName);
+        return undefined;
       }
 
       return await this.processMainShaderCompilation(message, event);
@@ -133,26 +125,36 @@ export class ShaderPipeline {
     return type === "shaderSource";
   }
 
-  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path">): boolean {
+  public getShaderMessageTarget(
+    message: Pick<ShaderSourceMessage, "path">,
+  ): ShaderMessageTarget | null {
     if (!this.shaderLocker.isLocked()) {
-      return true;
+      return { kind: 'main' };
     }
 
     const lockedPath = this.shaderLocker.getLockedShaderPath();
     const messagePath = message.path;
     if (!lockedPath || !messagePath) {
-      return false;
+      return null;
     }
 
     if (this.pathsEqual(messagePath, lockedPath)) {
-      return true;
+      return { kind: 'main' };
     }
 
     const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
-    return Object.entries(currentMessage?.bufferPathMap ?? {}).some(
-      ([passName, passPath]) => passName !== "Image"
+    const matchingBuffer = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
+      ([passName, passPath]) => passName !== 'Image'
         && this.pathsEqual(passPath, messagePath),
     );
+
+    return matchingBuffer
+      ? { kind: 'buffer', passName: matchingBuffer[0] }
+      : null;
+  }
+
+  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path">): boolean {
+    return this.getShaderMessageTarget(message) !== null;
   }
 
   private pathsEqual(firstPath: string, secondPath: string): boolean {

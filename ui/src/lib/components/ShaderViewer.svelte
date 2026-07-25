@@ -936,12 +936,13 @@
     }
 
     if (type === 'shaderSource') {
-      if (!pipeline.canHandleShaderMessage(event.data)) {
+      const messageTarget = pipeline.getShaderMessageTarget(event.data);
+      if (!messageTarget) {
         return;
       }
 
-      // If the shader's language doesn't match the active engine, remount the
-      // canvas with the right backend (WebGL vs WebGPU) and replay this message.
+      // Only a main shader can select the renderer backend. Configured pass
+      // updates often omit language and must stay on the locked main backend.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
       const shaderMessageStartedAt = performance.now();
       console.info('[ShaderSwitchTiming] shaderSource received', {
@@ -949,9 +950,16 @@
         language: msgLanguage,
         engineLanguage,
         appInitialized,
-        requiresBackendSwap: appInitialized && msgLanguage !== engineLanguage,
+        requiresBackendSwap:
+          messageTarget.kind === 'main'
+            && appInitialized
+            && msgLanguage !== engineLanguage,
       });
-      if (appInitialized && msgLanguage !== engineLanguage) {
+      if (
+        messageTarget.kind === 'main'
+        && appInitialized
+        && msgLanguage !== engineLanguage
+      ) {
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
@@ -964,7 +972,9 @@
         return;
       }
 
-      handleShaderSource(event);
+      if (messageTarget.kind === 'main') {
+        handleShaderSource(event);
+      }
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
         console.info('[ShaderSwitchTiming] shaderSource pipeline complete', {
