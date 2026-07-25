@@ -1401,6 +1401,23 @@ describe("WebGPURenderingEngine", () => {
       await engine.updateBufferAndRecompile("BufferA", "newer");
       expect((engine as any).lastCompile.workspace.files[0].source).not.toBe("mutated observed request");
     });
+
+    it("cannot let a superseded buffer replay overwrite the newer committed state", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } }, BufferA: { path: "passes/buffera.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "initial" }, undefined, undefined, snapshot);
+      const old = deferred<any>();
+      compiler.compile.mockImplementation((request: any) => request.source === "OLD" ? old.promise : { success: true, wgsl: "// new", diagnostics: [] });
+      const pendingOld = engine.updateBufferAndRecompile("BufferA", "OLD");
+      const newer = await engine.updateBufferAndRecompile("BufferA", "NEW");
+      expect(newer?.success).toBe(true);
+      old.resolve({ success: true, wgsl: "// old", diagnostics: [] });
+      await expect(pendingOld).resolves.toEqual(expect.objectContaining({ success: false, superseded: true }));
+      expect((engine as any).lastCompile.buffers.BufferA).toBe("NEW");
+      expect((engine as any).lastCompile.workspace.rootUri).toBe(snapshot.rootUri);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
