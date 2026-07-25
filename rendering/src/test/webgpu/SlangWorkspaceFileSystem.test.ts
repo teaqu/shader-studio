@@ -6,6 +6,7 @@ class MemoryFileSystem implements SlangFileSystem {
   directories = new Set<string>();
   fail?: "mkdir" | "write" | "unlink";
   failPath?: string;
+  readFailPath?: string;
   mkdirTree(path: string) {
     if (this.fail === "mkdir") {
       throw new Error("mkdir");
@@ -18,7 +19,7 @@ class MemoryFileSystem implements SlangFileSystem {
     }
     this.files.set(path, typeof source === "string" ? source : new TextDecoder().decode(source));
   }
-  readFile(path: string) { const source = this.files.get(path); if (source === undefined) throw new Error("read"); return source; }
+  readFile(path: string) { if (this.readFailPath === path) throw new Error("read"); const source = this.files.get(path); if (source === undefined) throw new Error("read"); return source; }
   unlink(path: string) {
     if (this.fail === "unlink" || this.failPath === path) {
       throw new Error("unlink");
@@ -130,6 +131,25 @@ describe("SlangWorkspaceFileSystem", () => {
     expect(fs.files).toEqual(new Map([["/workspace/common", "A"], ["/workspace/stale", "old"]]));
     expect(a).toEqual(new Set(["/workspace/common", "/workspace/stale"]));
     fs.failPath = undefined; releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
+    expect(fs.files.size).toBe(0);
+  });
+  it("restores partially deleted stale files in insertion order after a later unlink fails", () => {
+    const fs = new MemoryFileSystem(); const a = new Set<string>(); const b = new Set<string>();
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/stale1", source: "one" }, { path: "/workspace/stale2", source: "two" }]), a);
+    fs.failPath = "/workspace/stale2";
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/b", source: "b" }]), b)).toThrow();
+    expect(fs.files).toEqual(new Map([["/workspace/stale1", "one"], ["/workspace/stale2", "two"]]));
+    expect(a).toEqual(new Set(["/workspace/stale1", "/workspace/stale2"]));
+    fs.failPath = undefined; releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
+    expect(fs.files.size).toBe(0);
+  });
+  it("aborts on journal read failure before any mutation or ownership handoff", () => {
+    const fs = new MemoryFileSystem(); const a = new Set<string>(); const b = new Set<string>();
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/a", source: "a" }]), a);
+    fs.readFailPath = "/workspace/a";
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/b", source: "b" }]), b)).toThrow("read");
+    expect(fs.files).toEqual(new Map([["/workspace/a", "a"]])); expect(a).toEqual(new Set(["/workspace/a"])); expect(b.size).toBe(0);
+    fs.readFailPath = undefined; releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
     expect(fs.files.size).toBe(0);
   });
   it("keeps active ownership after a release unlink failure so cleanup can be retried", () => {
