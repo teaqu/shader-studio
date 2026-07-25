@@ -153,17 +153,26 @@ suite('Bundled Slang syntax assets', () => {
         '#preprocessor',
         '#attributes',
         '#keywords',
+        '#builtin-functions',
+        '#function-definition',
         '#types',
+        '#function-call',
         '#numbers',
       ],
     );
   });
 
-  test('groups type and numeric patterns by responsibility', () => {
+  test('groups type, function, and numeric patterns by responsibility', () => {
     const rawGrammar = readJson<SlangGrammar>(
       'syntaxes/slang.tmLanguage.json',
     );
     const typePatterns = rawGrammar.repository.types.patterns;
+    const builtinFunctionPatterns =
+      rawGrammar.repository['builtin-functions']?.patterns;
+    const functionDefinitionPatterns =
+      rawGrammar.repository['function-definition']?.patterns;
+    const functionCallPatterns =
+      rawGrammar.repository['function-call']?.patterns;
     const numericPatterns = rawGrammar.repository.numbers.patterns;
 
     assert.deepStrictEqual(
@@ -178,6 +187,29 @@ suite('Bundled Slang syntax assets', () => {
       ],
     );
     assert.deepStrictEqual(
+      builtinFunctionPatterns?.map((pattern) => pattern.name),
+      [
+        'support.function.trigonometric.slang',
+        'support.function.exponential.slang',
+        'support.function.common.slang',
+        'support.function.geometric.slang',
+        'support.function.matrix.slang',
+        'support.function.texture.slang',
+        'support.function.fragment.slang',
+        'support.function.constructor.slang',
+      ],
+    );
+    assert.deepStrictEqual(
+      functionDefinitionPatterns?.map((pattern) => pattern.match),
+      [
+        '\\b([A-Za-z_]\\w*)\\s+([A-Za-z_]\\w*)\\s*(?=\\([^)]*\\)\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*\\{)',
+      ],
+    );
+    assert.deepStrictEqual(
+      functionCallPatterns?.map((pattern) => pattern.name),
+      ['entity.name.function.call.slang'],
+    );
+    assert.deepStrictEqual(
       numericPatterns?.map((pattern) => pattern.name),
       [
         'invalid.illegal.numeric.leading-zero.slang',
@@ -190,6 +222,8 @@ suite('Bundled Slang syntax assets', () => {
       ],
     );
     assert.ok(typePatterns?.every((pattern) => pattern.match));
+    assert.ok(builtinFunctionPatterns?.every((pattern) => pattern.match));
+    assert.ok(functionCallPatterns?.every((pattern) => pattern.match));
     assert.ok(numericPatterns?.every((pattern) => pattern.match));
   });
 
@@ -213,6 +247,64 @@ suite('Bundled Slang syntax assets', () => {
       assert.ok(hasScope(glslToken, scope), `${glslType} must have ${scope}`);
       assert.ok(hasScope(slangToken, scope), `${slangType} must have ${scope}`);
     }
+  });
+
+  test('uses the same theme-facing function scopes as GLSL', () => {
+    const glslLines = tokenizeLines(
+      `vec4 shade(vec2 uv) { return vec4(cos(uv.x)); }
+void main() { shade(vec2(0.)); }`,
+      glslGrammar,
+    );
+    const slangLines = tokenizeLines(
+      `float4 shade(float2 uv) { return float4(cos(uv.x)); }
+void main() { shade(float2(0.)); }`,
+    );
+
+    const pairs = [
+      [glslLines[0], slangLines[0], 'cos', 'support.function.trigonometric'],
+      [glslLines[0], slangLines[0], 'vec4', 'support.function.constructor'],
+      [glslLines[0], slangLines[0], 'shade', 'entity.name.function'],
+      [glslLines[1], slangLines[1], 'shade', 'entity.name.function.call'],
+    ] as const;
+
+    for (const [glslTokens, slangTokens, text, scope] of pairs) {
+      const glslToken = glslTokens.find(
+        (token) => token.text === text && hasScope(token, scope),
+      );
+      const slangText = text === 'vec4' ? 'float4' : text;
+      const slangToken = slangTokens.find(
+        (token) => token.text === slangText && hasScope(token, scope),
+      );
+
+      assert.ok(glslToken, `GLSL ${text} must have ${scope}`);
+      assert.ok(slangToken, `Slang ${slangText} must have ${scope}`);
+    }
+  });
+
+  test('scopes Slang-native built-ins without leaking into comments or strings', () => {
+    const lines = tokenizeLines(`lerp(frac(value), saturate(value), 0.5);
+texture.Sample(samplerState, uv);
+// lerp Sample
+"frac saturate"`);
+
+    for (const text of ['lerp', 'frac', 'saturate']) {
+      const token = lines[0].find((candidate) => candidate.text === text);
+      assert.ok(token, `${text} must be emitted as one token`);
+      assert.ok(hasScope(token, 'support.function.common'));
+    }
+
+    const sample = lines[1].find((token) => token.text === 'Sample');
+    assert.ok(sample);
+    assert.ok(hasScope(sample, 'support.function.texture'));
+    assert.ok(lines[2].every((token) => hasScope(token, 'comment')));
+    assert.ok(lines[3].every((token) => hasScope(token, 'string')));
+    assert.ok(
+      [...lines[2], ...lines[3]].every(
+        (token) =>
+          !hasScope(token, 'support.function') &&
+          !hasScope(token, 'entity.name.function'),
+      ),
+    );
   });
 
   test('tokenizes representative Slang with native TextMate scopes', () => {
