@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -59,7 +59,9 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockStopRenderLoop = vi.fn();
   const mockRecordingContext = vi.fn();
   const mockDeferredCompileResolvers: Array<(result: { success: boolean; errors?: string[] }) => void> = [];
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers };
+  const mockFailNextWebGPUInitialize = { value: false };
+  const mockWebGPUInitialize = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -185,7 +187,13 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
 vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
   const MockWebGPURenderingEngine = class {
     private _canvas = { width: 800, height: 600 };
-    initialize() {}
+    initialize() {
+      mockWebGPUInitialize();
+      if (mockFailNextWebGPUInitialize.value) {
+        mockFailNextWebGPUInitialize.value = false;
+        throw new Error('mock WebGPU initialization failure');
+      }
+    }
     handleCanvasResize(width: number, height: number) {
       this._canvas = { width: Math.round(width), height: Math.round(height) };
     }
@@ -631,6 +639,7 @@ describe('ShaderViewer', () => {
     audioStore.setMuted(true);
     audioStore.setVolume(1);
     mockTimeManager.isPaused = vi.fn(() => false);
+    mockFailNextWebGPUInitialize.value = false;
     localStorage.removeItem('shader-studio-sync-with-config');
   });
 
@@ -698,6 +707,84 @@ describe('ShaderViewer', () => {
     await fireEvent.pointerDown(variableInspectorButton);
     await tick();
   }
+
+  describe('backend swap bursts', () => {
+    async function renderCommittedGlsl() {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await loadShader();
+      return (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    }
+
+    function shaderMessage(language: 'glsl' | 'slang', code: string, requestId: number) {
+      return {
+        type: 'shaderSource', language, code, requestId,
+        path: language === 'slang' ? `/workspace/${code}.slang` : `/workspace/${code}.glsl`,
+        config: { passes: { Image: {} } }, buffers: {},
+      };
+    }
+
+    it('coalesces a Slang burst until the fresh WebGPU backend compiles only its newest message', async () => {
+      const handler = await renderCommittedGlsl();
+      const committed = mockRecordingContext();
+      expect(committed.language).toBe('glsl');
+      vi.clearAllMocks();
+
+      const firstDelivery = handler({ data: shaderMessage('slang', 'slang-A', 1) });
+      const secondDelivery = handler({ data: shaderMessage('slang', 'slang-B', 2) });
+
+      expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+      expect(mockRecordingContext()).toMatchObject({
+        language: 'glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      });
+
+      await Promise.all([firstDelivery, secondDelivery]);
+
+      await vi.waitFor(() => expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1));
+      expect(mockPipelineHandleShaderMessage.mock.calls[0][0].data.code).toBe('slang-B');
+      expect(mockRecordingContext()).toMatchObject({ language: 'slang', code: 'slang-B' });
+    });
+
+    it('remounts back to GLSL when a swap burst reverses before its first canvas is ready', async () => {
+      const handler = await renderCommittedGlsl();
+      vi.clearAllMocks();
+
+      const firstDelivery = handler({ data: shaderMessage('slang', 'slang-A', 1) });
+      const secondDelivery = handler({ data: shaderMessage('glsl', 'glsl-B', 2) });
+
+      expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+      expect(mockRecordingContext()).toMatchObject({
+        language: 'glsl',
+        code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      });
+
+      await Promise.all([firstDelivery, secondDelivery]);
+
+      await vi.waitFor(() => expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1));
+      expect(mockPipelineHandleShaderMessage.mock.calls[0][0].data.code).toBe('glsl-B');
+      expect(mockRecordingContext()).toMatchObject({ language: 'glsl', code: 'glsl-B' });
+    });
+
+    it('retries the retained swap message after renderer setup fails', async () => {
+      const handler = await renderCommittedGlsl();
+      vi.clearAllMocks();
+      mockFailNextWebGPUInitialize.value = true;
+
+      await handler({ data: shaderMessage('slang', 'slang-A', 1) });
+      await tick();
+      await tick();
+      expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+
+      await handler({ data: shaderMessage('slang', 'slang-B', 2) });
+      await vi.waitFor(() => expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1));
+
+      expect(mockWebGPUInitialize).toHaveBeenCalledTimes(2);
+      expect(mockPipelineHandleShaderMessage.mock.calls[0][0].data.code).toBe('slang-B');
+      expect(mockRecordingContext()).toMatchObject({ language: 'slang', code: 'slang-B' });
+    });
+  });
 
   it('does not notify variable capture for an imported Slang selection, then resumes for the root', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });

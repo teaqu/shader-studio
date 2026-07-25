@@ -155,6 +155,9 @@
   let engineRemountGeneration = $state(0);
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
+  // If a remount fails, retain the latest message and make the next update
+  // force a new canvas even when it targets the already-selected language.
+  let pendingSwapNeedsRetry = false;
   let committedRecordingShaderInfo = $state.raw<ShaderInfo | null>(null);
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
@@ -441,6 +444,7 @@
         totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
       });
       if (ok && pendingSwapMessage) {
+        pendingSwapNeedsRetry = false;
         const msg = pendingSwapMessage;
         pendingSwapMessage = null;
         const replayStartedAt = performance.now();
@@ -457,6 +461,8 @@
           totalSinceSwapMs: pendingSwapStartedAt === null ? null : Math.round((performance.now() - pendingSwapStartedAt) * 100) / 100,
         });
         pendingSwapStartedAt = null;
+      } else if (!ok && pendingSwapMessage) {
+        pendingSwapNeedsRetry = true;
       }
     }
   }
@@ -1008,7 +1014,9 @@
           to: msgLanguage,
           path: event.data.path ?? null,
         });
-        if (engineLanguage !== msgLanguage) {
+        const needsRetry = pendingSwapNeedsRetry;
+        if (engineLanguage !== msgLanguage || needsRetry) {
+          pendingSwapNeedsRetry = false;
           engineLanguage = msgLanguage;
           engineRemountGeneration += 1;
         }
