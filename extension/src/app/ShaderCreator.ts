@@ -6,33 +6,36 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 
 const SLANG_RESERVED_MODULE_NAMES = new Set([
-  // Keywords and declaration modifiers.
-  "__builtin", "__target_intrinsic", "asm", "break", "case", "catch", "cbuffer",
-  "class", "const", "continue", "default", "defer", "discard", "do", "each", "else",
-  "enum", "export", "extern", "false", "for", "foreach", "from", "get", "if", "import",
-  "in", "inout", "interface", "let", "module", "namespace", "new", "nullptr", "out",
-  "override", "private", "protected", "public", "ref", "return", "set", "shared", "sizeof",
-  "static", "struct", "switch", "this", "throw", "true", "try", "typedef", "typealias",
-  "union", "using", "var", "void", "while",
-  // Scalar, vector, matrix, and resource types that are concrete built-ins.
-  "bool", "double", "float", "half", "int", "int16_t", "int32_t", "int64_t", "int8_t",
-  "uint", "uint16_t", "uint32_t", "uint64_t", "uint8_t",
-  "bool2", "bool3", "bool4", "double2", "double3", "double4", "float2", "float3", "float4",
-  "half2", "half3", "half4", "int2", "int3", "int4", "uint2", "uint3", "uint4",
-  "float1x1", "float1x2", "float1x3", "float1x4", "float2x1", "float2x2", "float2x3",
-  "float2x4", "float3x1", "float3x2", "float3x3", "float3x4", "float4x1", "float4x2",
-  "float4x3", "float4x4", "SamplerComparisonState", "SamplerState", "Texture1D", "Texture1DArray",
-  "Texture2D", "Texture2DArray", "Texture2DMS", "Texture2DMSArray", "Texture3D", "TextureCube",
-  "TextureCubeArray", "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray",
-  "RWTexture3D",
+  // Declaration, control-flow, and storage words in syntaxes/slang.tmLanguage.json.
+  "associatedtype", "break", "case", "centroid", "class", "const", "continue", "default", "differentiable",
+  "discard", "do", "each", "else", "enum", "expand", "extension", "extern", "false", "for", "func", "generic", "globallycoherent",
+  "groupshared", "if", "implementing", "import", "in", "inline", "inout", "interface", "internal",
+  "let", "linear", "module", "mutating", "namespace", "no_diff", "nointerpolation", "nonmutating",
+  "operator", "out", "precise", "private", "property", "public", "ref", "return", "sample", "static",
+  "struct", "switch", "This", "this", "true", "typealias", "typedef", "uniform", "using", "var", "volatile",
+  "where", "while", "none", "null",
+  // Concrete built-in types in syntaxes/slang.tmLanguage.json.
+  "bool", "bool2", "bool3", "bool4", "ByteAddressBuffer", "Buffer", "ConstantBuffer", "double",
+  "double2", "double3", "double4", "float", "float16_t", "float32_t", "float64_t", "float2", "float3",
+  "float4", "half", "half2", "half3", "half4", "int", "int8_t", "int16_t", "int32_t", "int64_t",
+  "int2", "int3", "int4", "matrix", "ParameterBlock", "RaytracingAccelerationStructure", "RWBuffer",
+  "RWByteAddressBuffer", "RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray", "RWTexture2D",
+  "RWTexture2DArray", "RWTexture3D", "SamplerComparisonState", "SamplerState", "StructuredBuffer",
+  "Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray", "Texture3D", "Texture3DArray",
+  "TextureCube", "TextureCubeArray", "uint", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uint2",
+  "uint3", "uint4", "vector", "void",
 ]);
 
 function sanitizeSlangModuleName(name: string): string {
   const sanitized = name.replace(/[^A-Za-z0-9_]/g, "_") || "shader";
-  return /^[0-9]/.test(sanitized) || SLANG_RESERVED_MODULE_NAMES.has(sanitized)
+  const isMatrixType = /^(?:bool|half|float|double|float(?:16|32|64)_t|int|uint|(?:u?int)(?:8|16|32|64)_t)[2-4]x[2-4]$/.test(sanitized);
+  return /^[0-9]/.test(sanitized) || isMatrixType || SLANG_RESERVED_MODULE_NAMES.has(sanitized)
     ? `_${sanitized}`
     : sanitized;
 }
+
+/** Test seam for the pure identifier normalization contract. */
+export const __testOnly = { sanitizeSlangModuleName };
 
 export class ShaderCreator {
   private logger: Logger;

@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { ShaderCreator } from '../../app/ShaderCreator';
+import { __testOnly, ShaderCreator } from '../../app/ShaderCreator';
 
 const EXISTING_GLSL_TEMPLATE = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
@@ -17,6 +17,26 @@ const EXISTING_GLSL_TEMPLATE = `void mainImage( out vec4 fragColor, in vec2 frag
     // Output to screen
     fragColor = vec4(col,1.0);
 }`;
+
+const SLANG_GRAMMAR_KEYWORDS_AND_MODIFIERS = [
+  'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'discard',
+  'module', 'import', 'implementing', 'interface', 'extension', 'struct', 'class', 'enum', 'typedef', 'typealias',
+  'associatedtype', 'property', 'namespace', 'using', 'generic', 'where', 'each', 'expand', 'let', 'var', 'func',
+  'this', 'This', 'operator', 'public', 'private', 'internal', 'static', 'const', 'uniform', 'in', 'out', 'inout',
+  'ref', 'groupshared', 'precise', 'nointerpolation', 'linear', 'centroid', 'sample', 'globallycoherent', 'volatile',
+  'extern', 'inline', 'mutating', 'nonmutating', 'differentiable', 'no_diff',
+];
+
+const SLANG_CONCRETE_BUILTIN_TYPES = [
+  'void', 'bool', 'half', 'float', 'double', 'float16_t', 'float32_t', 'float64_t', 'int', 'uint', 'int8_t',
+  'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t', 'vector', 'matrix',
+  'bool2', 'bool3', 'bool4', 'half2', 'half3', 'half4', 'float2', 'float3', 'float4', 'double2', 'double3',
+  'double4', 'int2', 'int3', 'int4', 'uint2', 'uint3', 'uint4', 'Texture1D', 'Texture1DArray', 'Texture2D',
+  'Texture2DArray', 'Texture3D', 'Texture3DArray', 'TextureCube', 'TextureCubeArray', 'SamplerState',
+  'SamplerComparisonState', 'RWTexture1D', 'RWTexture1DArray', 'RWTexture2D', 'RWTexture2DArray', 'RWTexture3D',
+  'Buffer', 'RWBuffer', 'StructuredBuffer', 'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer',
+  'ParameterBlock', 'ConstantBuffer', 'RaytracingAccelerationStructure',
+];
 
 suite('ShaderCreator Test Suite', () => {
   let testDir: string;
@@ -245,6 +265,36 @@ float4 mainImage(float2 fragCoord)
 }`,
     );
     fs.unlinkSync(filePath);
+  });
+
+  test('uses shader when sanitizing an empty Slang module name', () => {
+    assert.strictEqual(__testOnly.sanitizeSlangModuleName(''), 'shader');
+  });
+
+  test('prefixes every Slang grammar keyword and modifier', () => {
+    for (const name of SLANG_GRAMMAR_KEYWORDS_AND_MODIFIERS) {
+      assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
+    }
+  });
+
+  test('prefixes Slang language constants', () => {
+    for (const name of ['true', 'false', 'null', 'none']) {
+      assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
+    }
+  });
+
+  test('prefixes every concrete Slang built-in type and matrix spelling', () => {
+    for (const name of SLANG_CONCRETE_BUILTIN_TYPES) {
+      assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
+    }
+    for (const scalar of ['bool', 'half', 'float', 'double', 'float16_t', 'float32_t', 'float64_t', 'int', 'uint', 'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t']) {
+      for (const rows of [2, 3, 4]) {
+        for (const columns of [2, 3, 4]) {
+          const name = `${scalar}${rows}x${columns}`;
+          assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
+        }
+      }
+    }
   });
 
   for (const [filename, moduleName] of [
