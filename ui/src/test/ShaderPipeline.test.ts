@@ -66,6 +66,8 @@ function makeMocks() {
     setRecompileCallback: vi.fn(),
     setCaptureStateCallback: vi.fn(),
     setOriginalCode: vi.fn(),
+    reportSlangCrossFileDebugUnsupported: vi.fn(),
+    clearSlangCrossFileDebugUnsupported: vi.fn(),
   } as unknown as ShaderDebugManager;
 
   return { transport, renderEngine, shaderLocker, shaderDebugManager, debugState };
@@ -244,6 +246,7 @@ describe('ShaderPipeline — overlay cursor gate', () => {
           mainEvent.data.config,
           lockedPath,
           { BufferA: 'updated buffer code' },
+          undefined,
         );
       },
     );
@@ -620,6 +623,8 @@ function makeConcurrentMocks() {
     setCaptureStateCallback: vi.fn(),
     setImageShaderCode: vi.fn(),
     setDebugError: vi.fn(),
+    reportSlangCrossFileDebugUnsupported: vi.fn(),
+    clearSlangCrossFileDebugUnsupported: vi.fn(),
   } as unknown as ShaderDebugManager;
 
   return {

@@ -89,6 +89,8 @@ describe('ShaderProcessor — buffer debugging', () => {
       applyFullShaderPostProcessing: vi.fn().mockReturnValue(null),
       setDebugError: vi.fn(),
       setImageShaderCode: vi.fn(),
+      reportSlangCrossFileDebugUnsupported: vi.fn(),
+      clearSlangCrossFileDebugUnsupported: vi.fn(),
     } as any;
 
     mockRenderEngine = {
