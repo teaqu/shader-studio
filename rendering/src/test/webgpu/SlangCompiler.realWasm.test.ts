@@ -84,6 +84,38 @@ describe("SlangCompiler real WASM", () => {
     }
   });
 
+  it("resolves a relative quoted module imported by a nested pass", () => {
+    const source = [
+      "#language slang 2026",
+      "module history;",
+      "import \"../lib/palette.slang\";",
+      "float4 mainImage(float2 c) { return float4(paletteValue(), 0, 0, 1); }",
+    ].join("\n");
+    const compiler = new SlangCompiler(slang);
+    try {
+      const result = compiler.compile({
+        source,
+        sourceUri: "file:///project/passes/history.slang",
+        sourcePath: "/workspace/passes/history.slang",
+        workspace: {
+          rootUri: "file:///project",
+          files: [
+            { path: "/workspace/passes/history.slang", uri: "file:///project/passes/history.slang", source },
+            {
+              path: "/workspace/lib/palette.slang",
+              uri: "file:///project/lib/palette.slang",
+              source: "#language slang 2026\nmodule palette;\npublic float paletteValue() { return 1; }",
+            },
+          ],
+        },
+        options: { passName: "History" },
+      });
+      expect(result).toMatchObject({ success: true, diagnostics: [] });
+    } finally {
+      compiler.dispose();
+    }
+  });
+
   it("compiles normal, line-debug, and capture roots against one unchanged 2026 workspace", () => {
     const source = [
       "#language slang 2026",
