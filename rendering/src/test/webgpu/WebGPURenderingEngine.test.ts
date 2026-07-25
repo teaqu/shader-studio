@@ -1320,6 +1320,16 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile.mock.calls.find(([value]: any[]) => value.options.passName === "BufferA")?.[0].sourceUri).toBe("file:///c:/Project/passes/a.slang");
     });
 
+    it.each(["/project/a #% .slang", "C:\\Project\\a.slang", "file:///project/a%20%23%25.slang", "nested/a.slang", "../../escape.slang"])("creates one safe fallback workspace for %s", async (input) => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(source, null, input);
+      const request = compiler.compile.mock.calls[0][0];
+      expect(request.sourcePath).toMatch(/^\/workspace\//);
+      expect(request.workspace).toEqual({ rootUri: request.sourceUri, files: [{ path: request.sourcePath, uri: request.sourceUri, source }] });
+      expect(request.source).toBe(source);
+    });
+
     it("rejects unmatched buffers before invoking the compiler", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
