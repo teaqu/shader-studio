@@ -151,6 +151,8 @@
   // The active rendering backend, chosen by shader language. Changing it remounts
   // the canvas (a canvas's context mode is fixed once acquired) and rebuilds the engine.
   let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
+  let installedEngineLanguage = getInitialShaderLanguage();
+  let engineRemountGeneration = $state(0);
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
   let committedRecordingShaderInfo = $state.raw<ShaderInfo | null>(null);
@@ -494,6 +496,7 @@
     }
 
     timeManager = renderingEngine.getTimeManager();
+    installedEngineLanguage = engineLanguage;
     // setupRenderingEngine only runs after shaderDebugManager is created.
     shaderDebugManager!.setLanguage(engineLanguage);
     pipeline = new ShaderPipeline(transport, renderingEngine, shaderLocker, shaderDebugManager!, compilationState);
@@ -994,11 +997,9 @@
             && appInitialized
             && msgLanguage !== engineLanguage,
       });
-      if (
-        messageTarget.kind === 'main'
-        && appInitialized
-        && msgLanguage !== engineLanguage
-      ) {
+      if (messageTarget.kind === 'main' && appInitialized && (
+        pendingSwapMessage !== null || msgLanguage !== installedEngineLanguage
+      )) {
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
@@ -1007,7 +1008,10 @@
           to: msgLanguage,
           path: event.data.path ?? null,
         });
-        engineLanguage = msgLanguage;
+        if (engineLanguage !== msgLanguage) {
+          engineLanguage = msgLanguage;
+          engineRemountGeneration += 1;
+        }
         return;
       }
 
@@ -1358,7 +1362,7 @@
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
   <div class="dockview-panel-source" bind:this={previewEl}>
-    {#key engineLanguage}
+    {#key `${engineLanguage}:${engineRemountGeneration}`}
       <ShaderCanvas
         {zoomLevel}
         isInspectorActive={inspectorState.isActive}
