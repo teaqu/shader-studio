@@ -122,6 +122,40 @@ describe('BufferUpdater', () => {
     expect(passed.files[0].source).toBe('original');
   });
 
+  it('posts structured buffer diagnostics and compile scope with the legacy error payload', async () => {
+    const diagnostics = [{
+      severity: 'error', source: 'slang-compile', message: 'broken dependency',
+      uri: 'file:///project/lib/common.slang',
+      range: { start: { line: 1, character: 2 }, end: { line: 1, character: 3 } },
+    }];
+    const compileScope = { rootUris: ['file:///project/image.slang'], generationId: 7 };
+    (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
+      success: false, errors: ['broken dependency'], diagnostics,
+    });
+
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, 'broken', 'BufferA', undefined, compileScope);
+
+    await vi.waitFor(() => expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'error', payload: ['broken dependency'], diagnostics, compileScope,
+    }));
+  });
+
+  it('posts compile scope on success without changing an unscoped GLSL message', async () => {
+    (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({ success: true });
+    const compileScope = { rootUris: ['file:///project/image.slang'], generationId: 8 };
+
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, 'ok', 'BufferA', undefined, compileScope);
+    await vi.waitFor(() => expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'log', payload: ["Buffer 'BufferA' updated and pipeline recompiled"], compileScope,
+    }));
+
+    vi.mocked(mockTransport.postMessage).mockClear();
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, 'glsl', 'BufferA');
+    await vi.waitFor(() => expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'log', payload: ["Buffer 'BufferA' updated and pipeline recompiled"],
+    }));
+  });
+
   it('should handle compilation errors', async () => {
     (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
       success: false,

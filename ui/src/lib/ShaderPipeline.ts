@@ -119,7 +119,14 @@ export class ShaderPipeline {
         }
 
         this.syncStoredShaderContextForBufferUpdate(bufferName, code);
-        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName, message.workspace);
+        this.bufferUpdater.updateBuffer(
+          path,
+          buffers,
+          code,
+          bufferName,
+          message.workspace,
+          message.compileScope,
+        );
         return undefined;
       }
 

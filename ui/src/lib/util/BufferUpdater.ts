@@ -4,6 +4,7 @@ import type {
   ErrorMessage,
   LogMessage,
   SlangWorkspaceSnapshot,
+  CompileDiagnosticScope,
 } from "@shader-studio/types";
 import { BufferPathResolver } from "./BufferPathResolver";
 import { cloneSlangWorkspace } from '../slangSourceIdentity';
@@ -31,6 +32,7 @@ export class BufferUpdater {
     code: string,
     resolvedBufferName?: string,
     workspace?: SlangWorkspaceSnapshot,
+    compileScope?: CompileDiagnosticScope,
   ): void {
     // Extract buffer name from path
     const bufferName = this.extractBufferNameFromPath(path);
@@ -77,6 +79,8 @@ export class BufferUpdater {
             const errorMessage: ErrorMessage = {
               type: "error",
               payload: result?.errors || ["Unknown compilation error"],
+              ...(result?.diagnostics ? { diagnostics: result.diagnostics } : {}),
+              ...(compileScope ? { compileScope } : {}),
             };
             this.transport.postMessage(errorMessage);
             return;
@@ -88,6 +92,7 @@ export class BufferUpdater {
           const logMessage: LogMessage = {
             type: "log",
             payload: [`Buffer '${bufferName}' updated and pipeline recompiled`],
+            ...(compileScope ? { compileScope } : {}),
           };
           this.transport.postMessage(logMessage);
         })
