@@ -236,11 +236,21 @@ describe('EditorOverlay', () => {
     it('should create a Slang model for a Slang shader', async () => {
       const monaco = await import('monaco-editor');
       render(EditorOverlay, {
-        props: { ...defaultProps, shaderPath: '/shader.slang' },
+        props: { ...defaultProps, shaderPath: '/shader.SLANG' },
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
       expect(createCall?.[1]).toMatchObject({ language: 'slang' });
+    });
+
+    it('should use GLSL as the model language for other shader extensions', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/shader.hlsl' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ language: 'glsl' });
     });
 
     it('should update the model language when switching shader languages', async () => {
@@ -257,6 +267,22 @@ describe('EditorOverlay', () => {
       });
 
       expect(monaco.editor.setModelLanguage).toHaveBeenCalledWith(model, 'slang');
+    });
+
+    it('should switch the model language back to GLSL', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/shader.slang' },
+      });
+      await rerender({
+        ...defaultProps,
+        shaderPath: '/shader.glsl',
+      });
+
+      expect(monaco.editor.setModelLanguage).toHaveBeenCalledWith(model, 'glsl');
     });
 
     it('should load Monaco hover and marker navigation contributions for diagnostics', () => {

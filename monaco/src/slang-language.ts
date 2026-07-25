@@ -180,7 +180,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [slangMonarchPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
       [/R"([^"()\s]*)\([^\r\n]*\)\1"/, 'string'],
-      [/R"[^"()\s]*\(/, 'string', '@rawString'],
+      [/R"([^"()\s]*)\(/, { token: 'string', next: '@rawString.$1' }],
       [slangMatrixTypePattern, 'type'],
       [invalidLeadingZeroPattern, 'invalid'],
       [invalidIdentifierNumberChainPattern, 'invalid'],
@@ -219,8 +219,14 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [/\/\/.*$/, 'comment'],
     ],
     rawString: [
-      [/\)[^"\r\n]*"/, 'string', '@pop'],
-      [/[^\r\n]+/, 'string'],
+      [/\)([^"()\s]*)"/, {
+        cases: {
+          '$S0==rawString.$1': { token: 'string', next: '@pop' },
+          '@default': 'string',
+        },
+      }],
+      [/[^)\r\n]+/, 'string'],
+      [/\)/, 'string'],
     ],
     comment: [
       [/[^\/*]+/, 'comment'],

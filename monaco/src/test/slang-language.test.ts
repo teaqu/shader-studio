@@ -258,6 +258,9 @@ describe('Slang Monarch language', () => {
       ['1.5', '1.5', '1.5'],
       ['//comment', '//comment', 'comment'],
       ['"text"', '"text"', 'text'],
+      ['"\\n"', '"\\n"', '\\n'],
+      ['#define', '#define', '#define'],
+      ['/*comment*/', '/*comment*/', 'comment'],
       ['+', '+', '+'],
       [';', ';', ';'],
       ['shade()', 'shade()', 'shade'],
@@ -343,6 +346,46 @@ describe('Slang Monarch language', () => {
     const tokens = monaco.editor.tokenize('R"tag(raw text)tag"', 'slang')[0];
     expect(tokens.map(({ offset, type, language }) => ({ offset, type, language })))
       .toEqual([{ offset: 0, type: 'string.slang', language: 'slang' }]);
+  });
+
+  it('emits runtime categories for attributes and malformed literals', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const types = monaco.editor.tokenize(
+      '[numthreads(8, 8, 1)] 08 "unfinished',
+      'slang',
+    )[0].map((token) => token.type);
+
+    expect(types).toContain('keyword.attribute.slang');
+    expect(types).toContain('invalid.slang');
+    expect(types).toContain('string.invalid.slang');
+  });
+
+  it('keeps multiline raw strings active until their matching delimiter', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const lines = monaco.editor.tokenize(
+      'R"a.b(first line\n)other"\nthird line\n)a.b"\nfloat4 value;',
+      'slang',
+    );
+
+    expect(lines.slice(0, 4).flat().map((token) => token.type))
+      .toEqual(['string.slang', 'string.slang', 'string.slang', 'string.slang']);
+    expect(lines[4].map((token) => token.type)).toContain('type.slang');
   });
 
   it('matches the extension numeric forms and rejects invalid boundaries', () => {
