@@ -186,6 +186,38 @@ describe("SlangCompiler", () => {
     if (!result.success) expect(result.diagnostics?.[0]).toMatchObject({ uri: "file:///palette.slang", code: "E30001", range: { start: { line: 2, character: 6 } } });
   });
 
+  it("parses ordered stable diagnostic envelopes with exact paths, severities, codes, and zero-based ranges", () => {
+    const raw = [
+      "error[E1]: first", " --> /workspace/lib/a.slang:3:7",
+      "warning[W2]: second", " --> /workspace/lib/a.slang.more:4:8",
+      "note[N3]: third", " --> /workspace/lib/a.slang:5:9",
+      "info[I4]: fourth", " --> /workspace/lib/a.slang.more:6:10",
+    ].join("\r\n");
+    const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request(imageSource, [
+      workspaceFile("/workspace/image.slang", imageSource, "file:///image.slang"),
+      workspaceFile("/workspace/lib/a.slang", "a", "file:///a.slang"),
+      workspaceFile("/workspace/lib/a.slang.more", "b", "file:///more.slang"),
+    ]));
+    expect(result).toMatchObject({ success: false, errors: [raw] });
+    if (!result.success) expect(result.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "E1", uri: "file:///a.slang", range: { start: { line: 2, character: 6 }, end: { line: 2, character: 6 } } }),
+      expect.objectContaining({ severity: "warning", code: "W2", uri: "file:///more.slang", range: { start: { line: 3, character: 7 }, end: { line: 3, character: 7 } } }),
+      expect.objectContaining({ severity: "information", code: "N3", uri: "file:///a.slang" }),
+      expect.objectContaining({ severity: "information", code: "I4", uri: "file:///more.slang" }),
+    ]);
+  });
+
+  it.each([
+    ["error[E9]: unknown\r  --> /workspace/nope.slang:1:1", "unknown stable"],
+    ["totally raw compiler failure", "unparseable"],
+  ])("keeps %s diagnostics as one full root raw message", (raw) => {
+    const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request());
+    if (!result.success) {
+      expect(result.errors).toEqual([raw]);
+      expect(result.diagnostics).toEqual([expect.objectContaining({ uri: "file:///image.slang", message: raw, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } })]);
+    }
+  });
+
   it("keeps the legacy adapter as a single-root workspace request", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));

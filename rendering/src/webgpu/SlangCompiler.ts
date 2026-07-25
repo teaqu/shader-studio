@@ -166,9 +166,10 @@ function diagnosticFor(message: string, uri: string, line = 0, character = 0, co
 }
 
 function parseDiagnostics(message: string, workspace: SlangWorkspaceSnapshot, fallbackUri: string): SlangDiagnostic[] {
+  const normalized = message.replace(/\r\n?|\n/g, "\n");
   const matcher = /^(error|warning|note|info)(?:\[([^\]]+)\])?:\s*([^\n]+)\n\s*-->\s*(\/workspace\/[^:\n]+):(\d+):(\d+)\s*$/gim;
   const diagnostics: SlangDiagnostic[] = [];
-  for (const match of message.matchAll(matcher)) {
+  for (const match of normalized.matchAll(matcher)) {
     const file = workspace.files.find(({ path }) => path === match[4]);
     if (!file) return [diagnosticFor(message, fallbackUri)];
     const severity = match[1].toLowerCase() === "warning" ? "warning" : match[1].toLowerCase() === "error" ? "error" : "information";
