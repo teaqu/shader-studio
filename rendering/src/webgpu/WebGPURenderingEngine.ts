@@ -122,6 +122,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private compiler: AsyncSlangCompiler | null = null;
   private compilerAbortController: AbortController | null = null;
   private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
+  /** Managers owned by in-flight replacement compiles, never exposed to rendering. */
+  private candidateResourceManagers = new Set<ResourceManager<WebGPUTextureHandle>>();
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -189,6 +191,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   constructor(private slangAssets: SlangAssetUrls) {}
 
+  private createResourceManager(): ResourceManager<WebGPUTextureHandle> {
+    if (!this.device) throw new Error("Cannot create resources before WebGPU initialization");
+    return new ResourceManager(new WebGPUTextureBackend(this.device));
+  }
+
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
     if (this.disposed) {
       return;
@@ -250,7 +257,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device = device;
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
-      this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
+      this.resourceManager = this.createResourceManager();
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
       // COPY_SRC lets the pixel inspector read back from the canvas texture.
@@ -540,11 +547,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
     }
 
-    if (this.reloadOnNextApply) {
-      this.resourceManager?.cleanup();
-      this.reloadOnNextApply = false;
-    }
-
     this.clampCanvasToTextureLimit();
     const graphStartedAt = this.now();
     const graph = buildSlangPassGraph({
@@ -582,18 +584,40 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
     // loaded (and awaited) as part of the compile; render then only does cache
     // lookups.
-    const resourceManager = this.resourceManager;
+    // A replacement must never mutate the manager that backs the currently
+    // installed shader.  Loading media is asynchronous and can fail or be
+    // superseded, so give path switches and explicit reloads their own owner
+    // until the pipeline generation has committed atomically.
+    const replacesResources = this.shaderPath !== "" && (
+      this.shaderPath !== path || this.reloadOnNextApply
+    );
+    const previousResourceManager = this.resourceManager;
+    const resourceManager = replacesResources
+      ? this.createResourceManager()
+      : previousResourceManager;
+    const candidateResourceManager = replacesResources ? resourceManager : null;
+    if (candidateResourceManager) this.candidateResourceManagers.add(candidateResourceManager);
+    let candidateCleaned = false;
+    const cleanupCandidate = () => {
+      if (!candidateResourceManager || candidateCleaned) return;
+      // dispose() clears this set after it has cleaned every in-flight owner.
+      // A late async loader must not clean that manager a second time.
+      if (!this.candidateResourceManagers.has(candidateResourceManager)) {
+        candidateCleaned = true;
+        return;
+      }
+      candidateCleaned = true;
+      this.candidateResourceManagers.delete(candidateResourceManager);
+      candidateResourceManager.cleanup();
+    };
+    const abandonCandidate = <T>(result: T): T => {
+      cleanupCandidate();
+      return result;
+    };
     if (resourceManager) {
       const interruptedResourceCompile = (): CompilationResult | null => {
-        if (this.disposed || this.resourceManager !== resourceManager) {
-          try {
-            resourceManager.cleanup();
-          } catch {
-            // Disposal already owns error reporting; keep the compile superseded.
-          }
-          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
-        }
-        if (generation !== this.compileGeneration) {
+        if (this.disposed || generation !== this.compileGeneration) {
+          try { cleanupCandidate(); } catch { /* Disposal owns cleanup errors. */ }
           return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
         }
         return null;
@@ -613,6 +637,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               if (interrupted) {
                 return interrupted;
               }
+              cleanupCandidate();
               throw error;
             }
             const interrupted = interruptedResourceCompile();
@@ -633,6 +658,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               if (interrupted) {
                 return interrupted;
               }
+              cleanupCandidate();
               throw error;
             }
             const interrupted = interruptedResourceCompile();
@@ -654,6 +680,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               if (interrupted) {
                 return interrupted;
               }
+              cleanupCandidate();
               throw error;
             }
             const interrupted = interruptedResourceCompile();
@@ -699,7 +726,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!request) errors.push(`${pass.name}: Workspace does not uniquely identify ${pass.path ?? path}`);
       else passRequests.set(pass, request);
     }
-    if (errors.length) return this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings });
+    if (errors.length) return abandonCandidate(this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings }));
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
       const request = passRequests.get(pass)!;
@@ -805,11 +832,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors,
       });
-      return this.failedCompilation(path, generation, {
+      return abandonCandidate(this.failedCompilation(path, generation, {
         success: false,
         errors,
         warnings: graph.warnings,
-      });
+      }));
     }
 
     if (generation !== this.compileGeneration || this.disposed) {
@@ -834,7 +861,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors: ["Superseded by a newer compile"],
       });
-      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      return abandonCandidate({ success: false, errors: ["Superseded by a newer compile"], superseded: true });
     }
 
     // Success: resize carried-over pipelines to the new graph dimensions
@@ -856,8 +883,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
     }
     const switchedShader = this.shaderPath !== "" && this.shaderPath !== path;
+    if (candidateResourceManager) {
+      this.resourceManager = candidateResourceManager;
+      this.candidateResourceManagers.delete(candidateResourceManager);
+      if (previousResourceManager && previousResourceManager !== candidateResourceManager) {
+        previousResourceManager.cleanup();
+      }
+      this.reloadOnNextApply = false;
+    }
     if (switchedShader) {
-      this.resourceManager?.cleanup();
       this.timeManager.cleanup();
     }
     this.customUniformManager = nextCustomUniformManager;
@@ -1607,6 +1641,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const resourceManager = this.resourceManager;
     this.resourceManager = null;
     attempt(() => resourceManager?.cleanup());
+
+    const candidateResourceManagers = [...this.candidateResourceManagers];
+    this.candidateResourceManagers.clear();
+    for (const candidateResourceManager of candidateResourceManagers) {
+      if (candidateResourceManager !== resourceManager) {
+        attempt(() => candidateResourceManager.cleanup());
+      }
+    }
 
     const device = this.device;
     this.device = null;

@@ -2844,6 +2844,87 @@ describe("WebGPURenderingEngine", () => {
       return { engine, device, compiler, resourceManager };
     }
 
+    it("loads a different shader's image and video into an isolated manager before atomically replacing the live manager", async () => {
+      const { engine } = lifecycleEngine();
+      const oldResources = (engine as any).resourceManager;
+      (engine as any).shaderPath = "/first.slang";
+      const candidate = {
+        cleanup: vi.fn(),
+        loadImageTexture: vi.fn(async () => ({})),
+        loadVideoTexture: vi.fn(async () => ({ texture: {}, warning: undefined })),
+        syncAllVideosToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      const factory = vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager")
+        .mockReturnValue(candidate);
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {
+        iChannel0: { type: "texture", path: "next.png" },
+        iChannel1: { type: "video", path: "next.mp4" },
+      } } } };
+
+      const compiling = engine.compileShaderPipeline(imageSource, config, "/second.slang", {});
+      await vi.waitFor(() => expect(candidate.loadImageTexture).toHaveBeenCalledOnce());
+      expect(oldResources.cleanup).not.toHaveBeenCalled();
+      await expect(compiling).resolves.toMatchObject({ success: true });
+
+      expect(candidate.loadVideoTexture).toHaveBeenCalledOnce();
+      expect(oldResources.cleanup).toHaveBeenCalledOnce();
+      expect(candidate.cleanup).not.toHaveBeenCalled();
+      expect((engine as any).resourceManager).toBe(candidate);
+      factory.mockRestore();
+    });
+
+    it("cleans a failed replacement candidate without touching the installed resources", async () => {
+      const { engine, compiler } = lifecycleEngine();
+      const oldResources = (engine as any).resourceManager;
+      (engine as any).shaderPath = "/first.slang";
+      const candidate = { cleanup: vi.fn(), loadImageTexture: vi.fn(async () => ({})) };
+      vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager")
+        .mockReturnValue(candidate);
+      compiler.compile.mockReturnValueOnce({ success: false, errors: ["broken"] });
+
+      await expect(engine.compileShaderPipeline(imageSource, {
+        version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "broken.png" } } } },
+      }, "/broken.slang", {})).resolves.toMatchObject({ success: false });
+
+      expect(candidate.cleanup).toHaveBeenCalledOnce();
+      expect(oldResources.cleanup).not.toHaveBeenCalled();
+      expect((engine as any).resourceManager).toBe(oldResources);
+    });
+
+    it("keeps ordinary same-path recompiles on the live resource manager", async () => {
+      const { engine } = lifecycleEngine();
+      const live = (engine as any).resourceManager;
+      (engine as any).shaderPath = "/same.slang";
+      const factory = vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager");
+
+      await expect(engine.compileShaderPipeline(imageSource, null, "/same.slang", {})).resolves.toMatchObject({ success: true });
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(live.cleanup).not.toHaveBeenCalled();
+    });
+
+    it("cleans an in-flight replacement candidate exactly once when disposed", async () => {
+      const { engine } = lifecycleEngine();
+      const oldResources = (engine as any).resourceManager;
+      (engine as any).shaderPath = "/first.slang";
+      const imageLoad = deferred<unknown>();
+      const candidate = { cleanup: vi.fn(), loadImageTexture: vi.fn(() => imageLoad.promise) };
+      vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager")
+        .mockReturnValue(candidate);
+      const compiling = engine.compileShaderPipeline(imageSource, {
+        version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "late.png" } } } },
+      }, "/second.slang", {});
+      await vi.waitFor(() => expect(candidate.loadImageTexture).toHaveBeenCalledOnce());
+
+      engine.dispose();
+      imageLoad.resolve({});
+      await expect(compiling).resolves.toMatchObject({ success: false, superseded: true });
+      expect(oldResources.cleanup).toHaveBeenCalledOnce();
+      expect(candidate.cleanup).toHaveBeenCalledOnce();
+    });
+
     it("resets time and cleans resources when a different shader file compiles", async () => {
       const { engine, resourceManager } = lifecycleEngine();
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
@@ -3710,7 +3791,7 @@ describe("WebGPURenderingEngine", () => {
       pending.resolve(value);
 
       await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
-      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect(resources.cleanup).toHaveBeenCalledTimes(1);
       expect((engine as any).passPipelines.size).toBe(0);
     });
 
@@ -3736,7 +3817,7 @@ describe("WebGPURenderingEngine", () => {
       pending.reject(new Error("late failure"));
 
       await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
-      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect(resources.cleanup).toHaveBeenCalledTimes(1);
       expect(resources.updateAudioLoopRegion).not.toHaveBeenCalled();
     });
 
@@ -3971,15 +4052,20 @@ describe("WebGPURenderingEngine", () => {
     it("cleans cached texture resources on the next compile after flagReloadOnNextApply", async () => {
       const { engine } = compiledEngine();
       const rm = engine.getResourceManager()!;
-      const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
+      vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
+      await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
       const cleanupSpy = vi.spyOn(rm, "cleanup");
+      const candidate = new ResourceManager(new WebGPUTextureBackend((engine as any).device));
+      const candidateLoad = vi.spyOn(candidate, "loadImageTexture").mockResolvedValue({} as never);
+      vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager").mockReturnValue(candidate);
 
       engine.flagReloadOnNextApply();
       const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
 
       expect(result?.success).toBe(true);
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
-      expect(cleanupSpy.mock.invocationCallOrder[0]).toBeLessThan(loadSpy.mock.invocationCallOrder[0]);
+      expect(candidateLoad).toHaveBeenCalledOnce();
+      expect(engine.getResourceManager()).toBe(candidate);
     });
 
     it("renders using the cached texture handle's view and sampler", async () => {
