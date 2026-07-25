@@ -796,7 +796,7 @@ suite('ShaderProvider Test Suite', () => {
     });
 
     test('does not send an owner batch or missing-entry error for a manual helper request', async () => {
-      const files = {
+      const files: Record<string, string> = {
         'file:///work/image.slang': '#include "lib.slang"\nvoid mainImage() {}',
         'file:///work/lib.slang': 'float lib;',
       };
@@ -830,10 +830,15 @@ suite('ShaderProvider Test Suite', () => {
       source = 'float two;';
       await provider.recompileOwningSlangRoots('/work/lib.slang', source);
       assert.strictEqual(sendSpy.callCount, 2);
+      const [b] = await coordinator.prepareRoots([{ rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+      coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('other-panel', '/work/b.slang'), b);
+      sendSpy.resetHistory();
+      await provider.recompileOwningSlangRoots('/work/lib.slang', source);
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), ['/work/a.slang', '/work/b.slang']);
     });
 
-    test('captures helper owners before removal and never reads a deleted active root', async () => {
-      const files = {
+    test('captures helper owners before real removal, rebuilds surviving roots, and never reads a deleted active root', async () => {
+      const files: Record<string, string> = {
         'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
         'file:///work/b.slang': '#include "lib.slang"\nvoid mainImage() {}',
         'file:///work/lib.slang': 'float lib;',
@@ -843,21 +848,25 @@ suite('ShaderProvider Test Suite', () => {
       coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('shader-provider', '/work/a.slang'), prepared[0]);
       coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('other', '/work/b.slang'), prepared[1]);
       provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
-      const order: string[] = [];
       sandbox.spy(coordinator, 'owningRoots');
-      sandbox.stub(coordinator, 'removeRoot').callsFake(() => {
-        order.push('root');
-      });
-      sandbox.stub(coordinator, 'removeFile').callsFake(() => {
-        order.push('file');
-      });
+      const removeRoot = sandbox.spy(coordinator, 'removeRoot');
+      const removeFile = sandbox.spy(coordinator, 'removeFile');
       const fs = require('fs');
-      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => filePath !== '/work/a.slang');
-      sandbox.stub(fs, 'readFileSync').returns('void mainImage() {}');
+      let deletedRoot = false;
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => !(deletedRoot && filePath === '/work/a.slang'));
+      const read = sandbox.stub(fs, 'readFileSync').returns('void mainImage() {}');
       loadAndProcessConfigStub.returns(null);
-      await provider.handleSlangFilesDeleted(['/work/lib.slang', '/work/a.slang']);
-      assert.ok((coordinator.owningRoots as any).calledBefore((coordinator.removeRoot as any)));
-      assert.deepStrictEqual(order, ['root', 'file', 'root', 'file']);
+      delete files['file:///work/lib.slang'];
+      await provider.handleSlangFilesDeleted(['/work/lib.slang']);
+      assert.ok((coordinator.owningRoots as any).calledBefore(removeRoot));
+      assert.ok(removeRoot.calledBefore(removeFile));
+      assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), ['/work/a.slang', '/work/b.slang']);
+      assert.ok(sendSpy.getCalls().every((call) => !call.args[0].workspace.files.some((file: { path: string }) => file.path === '/workspace/lib.slang')));
+      sendSpy.resetHistory();
+      deletedRoot = true;
+      await provider.handleSlangFilesDeleted(['/work/a.slang']);
+      assert.deepStrictEqual(coordinator.owningRoots('/work/a.slang'), []);
+      assert.ok(read.getCalls().every((call) => call.args[0] !== '/work/a.slang'));
       assert.ok(sendSpy.getCalls().every((call) => call.args[0].path !== '/work/a.slang'));
     });
   });
