@@ -52,7 +52,7 @@
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { cloneSlangWorkspace } from '../slangSourceIdentity';
-  import type { SlangWorkspaceSnapshot } from '@shader-studio/types';
+  import type { ShaderInfo } from '../recording/types';
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -153,7 +153,7 @@
   let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
-  let committedSlangWorkspace = $state.raw<SlangWorkspaceSnapshot | null>(null);
+  let committedRecordingShaderInfo = $state.raw<ShaderInfo | null>(null);
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
@@ -856,6 +856,31 @@
     return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
   }
 
+  function cloneRecordingShaderInfo(shaderInfo: ShaderInfo): ShaderInfo {
+    return {
+      code: shaderInfo.code,
+      config: shaderInfo.config ? structuredClone(shaderInfo.config) : null,
+      path: shaderInfo.path,
+      buffers: { ...shaderInfo.buffers },
+      language: shaderInfo.language,
+      workspace: shaderInfo.workspace ? cloneSlangWorkspace(shaderInfo.workspace) : undefined,
+    };
+  }
+
+  function createCommittedRecordingShaderInfo(
+    event: MessageEvent,
+    language: 'glsl' | 'slang',
+  ): ShaderInfo {
+    return cloneRecordingShaderInfo({
+      code: event.data.code || '',
+      config: event.data.config || null,
+      path: event.data.path || '',
+      buffers: event.data.buffers || {},
+      language,
+      workspace: event.data.workspace,
+    });
+  }
+
   function handleShaderSource(event: MessageEvent) {
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
@@ -974,9 +999,6 @@
         && appInitialized
         && msgLanguage !== engineLanguage
       ) {
-        if (msgLanguage === 'glsl') {
-          committedSlangWorkspace = null;
-        }
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
@@ -1006,12 +1028,8 @@
           } else {
             resolutionController.handleShaderLoadFailed();
           }
-          if (messageTarget.kind === 'main') {
-            if (result.success && msgLanguage === 'slang' && event.data.workspace) {
-              committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
-            } else if (result.success) {
-              committedSlangWorkspace = null;
-            }
+          if (messageTarget.kind === 'main' && result.success) {
+            committedRecordingShaderInfo = createCommittedRecordingShaderInfo(event, msgLanguage);
           }
           applyCompilationResult(result);
           if (result.success && scriptInfo) {
@@ -1090,6 +1108,9 @@
 
       recordingManager = new RecordingManager(
         () => {
+          if (committedRecordingShaderInfo) {
+            return cloneRecordingShaderInfo(committedRecordingShaderInfo);
+          }
           const lastEvent = pipeline.getLastEvent();
           return {
             code: currentShaderCode,
@@ -1097,9 +1118,7 @@
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
             language: engineLanguage,
-            workspace: committedSlangWorkspace
-              ? cloneSlangWorkspace(committedSlangWorkspace)
-              : undefined,
+            workspace: undefined,
           };
         },
         (blob, defaultName, filters) => {

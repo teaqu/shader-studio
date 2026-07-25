@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -58,7 +58,8 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockPipelineHandleShaderMessage = vi.fn();
   const mockStopRenderLoop = vi.fn();
   const mockRecordingContext = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext };
+  const mockDeferredCompileResolvers: Array<(result: { success: boolean; errors?: string[] }) => void> = [];
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -321,6 +322,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
     private _compilationState: {
       setResult(result: { success: boolean; errors?: string[] }): void;
       acceptRequest?(message: { requestId?: number }, scope?: string): boolean;
+      isRequestCurrent?(message: { requestId?: number }, scope?: string): boolean;
     } | null = null;
 
     constructor(
@@ -331,6 +333,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
       compilationState?: {
         setResult(result: { success: boolean; errors?: string[] }): void;
         acceptRequest?(message: { requestId?: number }, scope?: string): boolean;
+        isRequestCurrent?(message: { requestId?: number }, scope?: string): boolean;
       },
     ) {
       this._locker = locker;
@@ -387,7 +390,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
       }
     }
 
-    async handleShaderMessage(event: any): Promise<{ success: boolean; errors?: string[] }> {
+    async handleShaderMessage(event: any): Promise<{ success: boolean; errors?: string[] } | undefined> {
       mockPipelineHandleShaderMessage(event);
       const preaccepted = this._preaccepted.delete(event);
       const scope = this._locker.getLockedShaderPath() ?? event?.data?.path ?? 'global';
@@ -411,6 +414,15 @@ vi.mock('../../lib/ShaderPipeline', () => {
           this._shaderDebugManager.updateDebugLine(line, lineContent, filePath, false);
         }
         this._lastEvent = event;
+      }
+      if (event?.data?.code?.includes('DEFER_COMPILE')) {
+        const result = await new Promise<{ success: boolean; errors?: string[] }>((resolve) => {
+          mockDeferredCompileResolvers.push(resolve);
+        });
+        if (!this._compilationState?.isRequestCurrent?.(event.data, scope)) {
+          return undefined;
+        }
+        return result;
       }
       const success = !event?.data?.code?.includes('SYNTAX_ERROR');
       const result = success ? { success: true } : { success: false, errors: ['syntax error'] };
@@ -4061,39 +4073,122 @@ describe('ShaderViewer', () => {
         rootUri: 'file:///project',
         files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'committed' }],
       };
+      const configA = { passes: { Image: {} }, label: 'A' };
+      const buffersA = { BufferA: 'A buffer' };
 
       await handler({ data: {
         type: 'shaderSource', language: 'slang', code: 'float4 mainImage(float2 p) { return 1; }',
-        config: null, path: '/workspace/image.slang', buffers: {}, requestId: 9, workspace,
+        config: configA, path: '/workspace/image-a.slang', buffers: buffersA, requestId: 9, workspace,
       } });
       await tick();
 
       const recordingInfo = mockRecordingContext();
       expect(recordingInfo.workspace).toEqual(workspace);
       expect(recordingInfo.workspace).not.toBe(workspace);
+      expect(recordingInfo).toMatchObject({
+        code: 'float4 mainImage(float2 p) { return 1; }',
+        config: { passes: { Image: {} }, label: 'A' },
+        path: '/workspace/image-a.slang',
+        buffers: { BufferA: 'A buffer' },
+        language: 'slang',
+      });
       workspace.files[0].source = 'mutated after compile';
+      configA.label = 'mutated after compile';
+      buffersA.BufferA = 'mutated after compile';
       expect(recordingInfo.workspace.files[0].source).toBe('committed');
+      expect(recordingInfo.config).toMatchObject({ label: 'A' });
+      expect(recordingInfo.buffers).toEqual({ BufferA: 'A buffer' });
 
       await handler({ data: {
         type: 'shaderSource', language: 'slang', code: 'SYNTAX_ERROR',
-        config: null, path: '/workspace/image.slang', buffers: {}, requestId: 10, workspace,
+        config: { passes: { Image: {} }, label: 'B' }, path: '/workspace/image-b.slang',
+        buffers: { BufferB: 'B buffer' }, requestId: 10, workspace,
       } });
       await tick();
 
       const retainedInfo = mockRecordingContext();
-      expect(retainedInfo.workspace).toEqual({
-        rootUri: 'file:///project',
-        files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'committed' }],
+      expect(retainedInfo).toMatchObject({
+        code: 'float4 mainImage(float2 p) { return 1; }',
+        config: { passes: { Image: {} }, label: 'A' },
+        path: '/workspace/image-a.slang',
+        buffers: { BufferA: 'A buffer' },
+        language: 'slang',
+        workspace: {
+          rootUri: 'file:///project',
+          files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'committed' }],
+        },
       });
       expect(retainedInfo.workspace).not.toBe(recordingInfo.workspace);
+      retainedInfo.config.label = 'mutated returned clone';
+      retainedInfo.buffers.BufferA = 'mutated returned clone';
+      retainedInfo.workspace.files[0].source = 'mutated returned clone';
+      expect(mockRecordingContext()).toMatchObject({
+        config: { label: 'A' },
+        buffers: { BufferA: 'A buffer' },
+        workspace: { files: [{ source: 'committed' }] },
+      });
+
+      await handler({ data: {
+        type: 'shaderSource', language: 'glsl', code: 'SYNTAX_ERROR',
+        config: { passes: { Image: {} }, label: 'failed glsl' }, path: '/workspace/failed.glsl',
+        buffers: { BufferB: 'failed glsl' }, requestId: 11,
+      } });
+      await tick();
+      await tick();
+
+      expect(mockRecordingContext()).toMatchObject({
+        code: 'float4 mainImage(float2 p) { return 1; }',
+        config: { label: 'A' }, path: '/workspace/image-a.slang', buffers: { BufferA: 'A buffer' },
+        language: 'slang', workspace: { files: [{ source: 'committed' }] },
+      });
 
       await handler({ data: {
         type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(1); }',
-        config: null, path: '/workspace/image.glsl', buffers: {}, requestId: 11,
+        config: { passes: { Image: {} }, label: 'GLSL' }, path: '/workspace/image.glsl',
+        buffers: { BufferC: 'glsl buffer' }, requestId: 12,
       } });
       await tick();
 
-      expect(mockRecordingContext().workspace).toBeUndefined();
+      expect(mockRecordingContext()).toMatchObject({
+        code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(1); }',
+        config: { label: 'GLSL' }, path: '/workspace/image.glsl', buffers: { BufferC: 'glsl buffer' },
+        language: 'glsl', workspace: undefined,
+      });
+
+      const staleCompile = handler({ data: {
+        type: 'shaderSource', language: 'glsl', code: 'DEFER_COMPILE',
+        config: { passes: { Image: {} }, label: 'stale' }, path: '/workspace/stale.glsl',
+        buffers: { BufferStale: 'stale' }, requestId: 13,
+      } });
+      await tick();
+      await handler({ data: {
+        type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(2); }',
+        config: { passes: { Image: {} }, label: 'newest' }, path: '/workspace/newest.glsl',
+        buffers: { BufferNewest: 'newest' }, bufferPathMap: { Image: '/workspace/newest.glsl', BufferA: '/workspace/buffer-a.glsl' }, requestId: 14,
+      } });
+      mockDeferredCompileResolvers.shift()?.({ success: true });
+      await staleCompile;
+
+      expect(mockRecordingContext()).toMatchObject({
+        code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(2); }',
+        config: { label: 'newest' }, path: '/workspace/newest.glsl', buffers: { BufferNewest: 'newest' },
+      });
+
+      const lockButton = screen.getByLabelText('Toggle lock');
+      await fireEvent.click(lockButton);
+      const pipelineCallCount = mockPipelineHandleShaderMessage.mock.calls.length;
+      await handler({ data: {
+        type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(3); }',
+        config: { passes: { Image: {} }, label: 'buffer result' }, path: '/workspace/buffer-a.glsl',
+        buffers: { BufferA: 'buffer result' }, bufferPathMap: { Image: '/workspace/newest.glsl', BufferA: '/workspace/buffer-a.glsl' },
+        requestId: 15,
+      } });
+
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(pipelineCallCount + 1);
+      expect(mockRecordingContext()).toMatchObject({
+        code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(2); }',
+        config: { label: 'newest' }, path: '/workspace/newest.glsl', buffers: { BufferNewest: 'newest' },
+      });
     });
   });
 
