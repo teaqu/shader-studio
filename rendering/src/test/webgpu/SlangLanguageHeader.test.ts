@@ -16,6 +16,13 @@ describe("SlangLanguageHeader", () => {
     const source = `// comment\n#language slang ${language}\nmodule test.name;\nfloat x;`;
     expect(splitSlangRootHeader(source)).toMatchObject({ header: `#language slang ${language}\nmodule test.name;\n`, body: `// comment\n\n\nfloat x;`, language });
   });
+  it.each(["\n", "\r", "\r\n"])("preserves %j placeholders for explicit directive and module extraction", (newline) => {
+    const source = `#language slang 2026${newline}module test.name;${newline}float x;`;
+    const result = splitSlangRootHeader(source);
+    expect(result.header).toBe(`#language slang 2026${newline}module test.name;${newline}`);
+    expect(result.body).toBe(`${newline}${newline}float x;`);
+    expect(result.body.split(/\r\n|\n|\r/)).toHaveLength(source.split(/\r\n|\n|\r/).length);
+  });
   it("recognizes directives after whitespace and comments without extracting them", () => {
     const result = splitSlangRootHeader(" \t// one\n/* two */\n#language slang 2026\nfloat x;");
     expect(result).toMatchObject({ header: "#language slang 2026\n", body: " \t// one\n/* two */\n\nfloat x;", language: "2026" });

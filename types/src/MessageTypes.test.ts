@@ -1,5 +1,4 @@
-import { describe, expect, it } from "vitest";
-import { expectTypeOf } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import type { ErrorMessage, LogMessage, ShaderSourceMessage } from "./MessageTypes";
 import { NEW_SLANG_FILE_LANGUAGE_VERSION, type SlangDiagnostic } from "./SlangWorkspace";
 
@@ -27,11 +26,12 @@ describe("runtime Slang message contracts", () => {
   });
 
   it("limits diagnostic sources to compile and WebGPU origins", () => {
-    expectTypeOf<SlangDiagnostic["source"]>().not.toMatchTypeOf<"language-service">();
+    expectTypeOf<SlangDiagnostic["source"]>().toEqualTypeOf<"slang-compile" | "webgpu">();
+    expectTypeOf<Extract<SlangDiagnostic["source"], "language-service">>().toEqualTypeOf<never>();
     const diagnostic: SlangDiagnostic = { severity: "error", message: "bad", source: "slang-compile", uri: "file:///shader.slang", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } };
     const error: ErrorMessage = { type: "error", payload: ["bad"], diagnostics: [diagnostic] };
     const log: LogMessage = { type: "log", payload: [], diagnostics: [diagnostic], compileScope: { rootUris: [] } };
     expect(error.diagnostics?.[0].source).toBe("slang-compile");
-    expect(log.diagnostics?.[0].source).not.toBe("language-service");
+    expect(log.diagnostics?.[0].source).toBe("slang-compile");
   });
 });
