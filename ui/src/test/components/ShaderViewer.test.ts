@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -56,7 +56,8 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // Tracks when the mocked ShaderPipeline's handleShaderMessage (the replay
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage };
+  const mockStopRenderLoop = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -67,7 +68,9 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
       this._canvas = { width: Math.round(width), height: Math.round(height) };
     }
     togglePause() {}
-    stopRenderLoop() {}
+    stopRenderLoop() {
+      mockStopRenderLoop();
+    }
     startRenderLoop() {}
     getCurrentFPS() {
       return 60.0; 
@@ -185,7 +188,9 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
       this._canvas = { width: Math.round(width), height: Math.round(height) };
     }
     togglePause() {}
-    stopRenderLoop() {}
+    stopRenderLoop() {
+      mockStopRenderLoop();
+    }
     startRenderLoop() {}
     getCurrentFPS() {
       return 60.0;
@@ -306,18 +311,45 @@ vi.mock('../../lib/slangAssets', () => ({
 vi.mock('../../lib/ShaderPipeline', () => {
   const MockShaderPipeline = class {
     private _shaderDebugManager: any;
+    private _locker: {
+      isLocked(): boolean;
+      getLockedShaderPath(): string | undefined;
+    };
     private _lastEvent: any = null;
     private _compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null = null;
 
     constructor(
       _transport: any,
       _engine: any,
-      _locker: any,
+      locker: any,
       shaderDebugManager: any,
       compilationState?: { setResult(result: { success: boolean; errors?: string[] }): void },
     ) {
+      this._locker = locker;
       this._shaderDebugManager = shaderDebugManager;
       this._compilationState = compilationState ?? null;
+    }
+
+    canHandleShaderMessage(message: { path?: string }): boolean {
+      if (!this._locker.isLocked()) {
+        return true;
+      }
+
+      const normalizePath = (path: string) => path.replace(/\\/g, '/');
+      const lockedPath = this._locker.getLockedShaderPath();
+      if (!lockedPath || !message.path) {
+        return false;
+      }
+
+      if (normalizePath(lockedPath) === normalizePath(message.path)) {
+        return true;
+      }
+
+      return Object.entries(this._lastEvent?.data?.bufferPathMap ?? {}).some(
+        ([passName, passPath]) => passName !== 'Image'
+          && typeof passPath === 'string'
+          && normalizePath(passPath) === normalizePath(message.path as string),
+      );
     }
 
     handleCursorPositionMessage(msg: any) {
@@ -723,6 +755,228 @@ describe('ShaderViewer', () => {
     expect(mockVCMFactory._instances[0].disposed).toBe(true);
     expect(mockVCMFactory._instances[1].disposed).toBe(false);
   });
+
+  it.each([
+    ['GLSL to GLSL', 'glsl', '/test/locked.glsl', 'glsl', '/test/unrelated.glsl'],
+    ['Slang to Slang', 'slang', '/test/locked.slang', 'slang', '/test/unrelated.slang'],
+    ['GLSL to Slang', 'glsl', '/test/locked.glsl', 'slang', '/test/unrelated.slang'],
+    ['Slang to GLSL', 'slang', '/test/locked.slang', 'glsl', '/test/unrelated.glsl'],
+  ] as const)(
+    'keeps the locked renderer for %s navigation',
+    async (_label, lockedLanguage, lockedPath, nextLanguage, nextPath) => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language: lockedLanguage,
+        path: lockedPath,
+        code: lockedLanguage === 'slang'
+          ? 'float4 mainImage(float2 fragCoord) { return float4(1.0); }'
+          : 'void mainImage(out vec4 color, vec2 fragCoord) { color = vec4(1.0); }',
+        config: { passes: { Image: {} } },
+        bufferPathMap: { Image: lockedPath },
+      });
+      await vi.waitFor(() => {
+        expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+          data: expect.objectContaining({ path: lockedPath }),
+        }));
+      });
+
+      const lockedCanvas = container.querySelector('canvas');
+      expect(lockedCanvas).toBeTruthy();
+
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+      mockStopRenderLoop.mockClear();
+      mockPipelineHandleShaderMessage.mockClear();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language: nextLanguage,
+        path: nextPath,
+        code: nextLanguage === 'slang'
+          ? 'float4 mainImage(float2 fragCoord) { return float4(0.5); }'
+          : 'void mainImage(out vec4 color, vec2 fragCoord) { color = vec4(0.5); }',
+        config: { passes: { Image: {} } },
+      });
+
+      expect(container.querySelector('canvas')).toBe(lockedCanvas);
+      expect(mockStopRenderLoop).not.toHaveBeenCalled();
+      expect(mockPipelineHandleShaderMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['GLSL', 'glsl', '/test/locked.glsl'],
+    ['Slang', 'slang', '/test/locked.slang'],
+  ] as const)('accepts a same-path update while locked to %s', async (_label, language, path) => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    const shaderSource = {
+      type: 'shaderSource',
+      language,
+      path,
+      code: language === 'slang'
+        ? 'float4 mainImage(float2 fragCoord) { return float4(1.0); }'
+        : 'void mainImage(out vec4 color, vec2 fragCoord) { color = vec4(1.0); }',
+      config: { passes: { Image: {} } },
+      bufferPathMap: { Image: path },
+    };
+    await sendMessage(shaderSource);
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+    });
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    mockPipelineHandleShaderMessage.mockClear();
+    await sendMessage({ ...shaderSource, code: `${shaderSource.code}\n// updated` });
+
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path }),
+    }));
+  });
+
+  it.each(['glsl', 'slang'])(
+    'updates locked .%s viewer state when only path separators differ',
+    async (extension) => {
+      const monaco = await import('monaco-editor');
+      const windowsPath = `C:\\project\\locked.${extension}`;
+      const posixPath = `C:/project/locked.${extension}`;
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language: extension,
+        path: windowsPath,
+        code: 'original main source',
+        config: { passes: { Image: {} } },
+        bufferPathMap: { Image: windowsPath },
+      });
+      await vi.waitFor(() => {
+        expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+      });
+
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+      await sendMessage({
+        type: 'shaderSource',
+        language: extension,
+        path: posixPath,
+        code: 'updated main source',
+        config: { passes: { Image: {} } },
+        bufferPathMap: { Image: posixPath },
+      });
+
+      toggleEditorOverlay();
+      await tick();
+      await waitForEditorOverlay(container);
+
+      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
+        value: 'updated main source',
+      });
+    },
+  );
+
+  it.each([
+    ['GLSL', 'glsl', '/test/locked.glsl', '/test/buffer-a.glsl'],
+    ['Slang', 'slang', '/test/locked.slang', '/test/buffer-a.slang'],
+  ] as const)(
+    'keeps the locked %s main canvas while viewing its configured buffer',
+    async (_label, language, mainPath, bufferPath) => {
+      const monaco = await import('monaco-editor');
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language,
+        path: mainPath,
+        code: 'mainImage',
+        config: {
+          passes: {
+            Image: {},
+            BufferA: { path: bufferPath, inputs: {} },
+          },
+        },
+        buffers: { BufferA: 'buffer source' },
+        bufferPathMap: { Image: mainPath, BufferA: bufferPath },
+      });
+      await vi.waitFor(() => {
+        expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+      });
+
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+      const lockedCanvas = container.querySelector('canvas');
+      mockStopRenderLoop.mockClear();
+      mockPipelineHandleShaderMessage.mockClear();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language,
+        path: bufferPath,
+        code: 'updated buffer source',
+        buffers: {},
+      });
+
+      expect(container.querySelector('canvas')).toBe(lockedCanvas);
+      expect(mockStopRenderLoop).not.toHaveBeenCalled();
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ path: bufferPath }),
+      }));
+
+      toggleEditorOverlay();
+      await tick();
+      await waitForEditorOverlay(container);
+
+      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
+        value: 'mainImage',
+      });
+    },
+  );
+
+  it.each([
+    ['GLSL to Slang', 'glsl', '/test/locked.glsl', 'slang', '/test/next.slang'],
+    ['Slang to GLSL', 'slang', '/test/locked.slang', 'glsl', '/test/next.glsl'],
+  ] as const)(
+    'allows %s backend switching after unlock',
+    async (_label, lockedLanguage, lockedPath, nextLanguage, nextPath) => {
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language: lockedLanguage,
+        path: lockedPath,
+        code: 'mainImage',
+        config: { passes: { Image: {} } },
+        bufferPathMap: { Image: lockedPath },
+      });
+      await vi.waitFor(() => {
+        expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+      });
+
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+      await fireEvent.click(screen.getByLabelText('Toggle lock'));
+      const previousCanvas = container.querySelector('canvas');
+      mockPipelineHandleShaderMessage.mockClear();
+
+      await sendMessage({
+        type: 'shaderSource',
+        language: nextLanguage,
+        path: nextPath,
+        code: 'mainImage',
+        config: { passes: { Image: {} } },
+      });
+
+      await vi.waitFor(() => {
+        expect(container.querySelector('canvas')).not.toBe(previousCanvas);
+        expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+          data: expect.objectContaining({ path: nextPath }),
+        }));
+      });
+    },
+  );
 
   it('should replace the canvas for failed GLSL-to-Slang and Slang-to-GLSL switches', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });

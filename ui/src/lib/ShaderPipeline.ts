@@ -66,6 +66,10 @@ export class ShaderPipeline {
         return undefined;
       }
 
+      if (!this.canHandleShaderMessage(message)) {
+        return undefined;
+      }
+
       if (this.shaderProcessor.isCurrentlyProcessing()) {
         this.pendingShaderEvent?.resolve(undefined);
         return await new Promise<CompilationResult | undefined>((resolve) => {
@@ -90,7 +94,7 @@ export class ShaderPipeline {
           path && this.bufferPathResolver.getBufferNameForFilePath(path);
         const lockedPath = this.shaderLocker.getLockedShaderPath();
 
-        if (lockedPath === undefined || lockedPath !== path) {
+        if (!lockedPath || !path || !this.pathsEqual(lockedPath, path)) {
           if (!this.hasBufferContent(buffers, code)) {
             // Skip processing entirely - shader is locked to a different path or path is undefined
             return undefined;
@@ -127,6 +131,36 @@ export class ShaderPipeline {
 
   private isValidShaderMessage(type: string): boolean {
     return type === "shaderSource";
+  }
+
+  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path">): boolean {
+    if (!this.shaderLocker.isLocked()) {
+      return true;
+    }
+
+    const lockedPath = this.shaderLocker.getLockedShaderPath();
+    const messagePath = message.path;
+    if (!lockedPath || !messagePath) {
+      return false;
+    }
+
+    if (this.pathsEqual(messagePath, lockedPath)) {
+      return true;
+    }
+
+    const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
+    return Object.entries(currentMessage?.bufferPathMap ?? {}).some(
+      ([passName, passPath]) => passName !== "Image"
+        && this.pathsEqual(passPath, messagePath),
+    );
+  }
+
+  private pathsEqual(firstPath: string, secondPath: string): boolean {
+    return this.normalizePath(firstPath) === this.normalizePath(secondPath);
+  }
+
+  private normalizePath(filePath: string): string {
+    return filePath.replace(/\\/g, "/");
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {

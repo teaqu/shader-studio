@@ -4,7 +4,7 @@ import type { ShaderLocker } from '../lib/ShaderLocker';
 import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
-import type { CursorPositionMessage } from '@shader-studio/types';
+import type { CursorPositionMessage, ShaderSourceMessage } from '@shader-studio/types';
 
 vi.mock('../lib/state/editorOverlayState.svelte', () => ({
   getEditorOverlayVisible: vi.fn(() => false),
@@ -24,6 +24,9 @@ function makeMocks() {
   const renderEngine = {
     getCurrentConfig: vi.fn(() => null),
     getPasses: vi.fn(() => []),
+    stopRenderLoop: vi.fn(),
+    startRenderLoop: vi.fn(),
+    updateBufferAndRecompile: vi.fn(),
     cleanup: vi.fn(),
   } as unknown as RenderingEngine;
 
@@ -85,6 +88,188 @@ describe('ShaderPipeline — overlay cursor gate', () => {
   const cursorMsg = (filePath = '/shader.glsl'): CursorPositionMessage => ({
     type: 'cursorPosition',
     payload: { line: 5, character: 0, lineContent: 'float x = 1.0;', filePath },
+  });
+
+  describe('locked shader-source admission', () => {
+    it.each([
+      ['GLSL', '/project/locked.glsl', '/project/other.glsl'],
+      ['Slang', '/project/locked.slang', '/project/other.slang'],
+    ])('admits only the locked %s main shader', (_name, lockedPath, otherPath) => {
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+
+      expect(pipeline.canHandleShaderMessage({ path: lockedPath })).toBe(true);
+      expect(pipeline.canHandleShaderMessage({ path: otherPath })).toBe(false);
+    });
+
+    it.each(['glsl', 'slang'])(
+      'admits an exact configured .%s buffer without promoting it to main',
+      (extension) => {
+        const lockedPath = `/project/main.${extension}`;
+        const bufferPath = `/project/passes/buffer-a.${extension}`;
+        vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+        vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+        (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+          data: {
+            type: 'shaderSource',
+            code: 'main',
+            path: lockedPath,
+            bufferPathMap: { Image: lockedPath, BufferA: bufferPath },
+          },
+        } as unknown as MessageEvent<ShaderSourceMessage>;
+
+        expect(pipeline.canHandleShaderMessage({ path: bufferPath })).toBe(true);
+        expect(pipeline.canHandleShaderMessage({
+          path: `/unrelated/buffer-a.${extension}`,
+        })).toBe(false);
+      },
+    );
+
+    it('rejects messages when the lock has no shader path', () => {
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(undefined);
+
+      expect(pipeline.canHandleShaderMessage({ path: '/project/shader.slang' })).toBe(false);
+    });
+
+    it('normalizes path separators without accepting a same-basename file', () => {
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('C:\\project\\main.slang');
+      (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'main',
+          path: 'C:\\project\\main.slang',
+          bufferPathMap: {
+            Image: 'C:\\project\\main.slang',
+            BufferA: 'C:\\project\\passes\\buffer-a.slang',
+          },
+        },
+      } as unknown as MessageEvent<ShaderSourceMessage>;
+
+      expect(pipeline.canHandleShaderMessage({
+        path: 'C:/project/passes/buffer-a.slang',
+      })).toBe(true);
+      expect(pipeline.canHandleShaderMessage({
+        path: 'C:/unrelated/buffer-a.slang',
+      })).toBe(false);
+    });
+
+    it.each(['glsl', 'slang'])(
+      'processes the locked .%s main shader when only its path separators differ',
+      async (extension) => {
+        const processMainShaderCompilation = vi.fn().mockResolvedValue({
+          success: true,
+          errors: [],
+          warnings: [],
+        });
+        (pipeline as unknown as {
+          shaderProcessor: {
+            isCurrentlyProcessing(): boolean;
+            processMainShaderCompilation: typeof processMainShaderCompilation;
+          };
+        }).shaderProcessor = {
+          isCurrentlyProcessing: () => false,
+          processMainShaderCompilation,
+        };
+        vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+        vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(
+          `C:\\project\\main.${extension}`,
+        );
+
+        await pipeline.handleShaderMessage({
+          data: {
+            type: 'shaderSource',
+            code: 'main source',
+            path: `C:/project/main.${extension}`,
+            config: null,
+            buffers: {},
+          },
+        } as MessageEvent<ShaderSourceMessage>);
+
+        expect(processMainShaderCompilation).toHaveBeenCalledOnce();
+      },
+    );
+
+    it.each(['glsl', 'slang'])(
+      'updates an exact configured .%s buffer while preserving the locked main shader',
+      async (extension) => {
+        const lockedPath = `/project/main.${extension}`;
+        const bufferPath = `/project/passes/buffer-a.${extension}`;
+        const mainEvent = {
+          data: {
+            type: 'shaderSource',
+            code: 'main code',
+            path: lockedPath,
+            config: {
+              passes: {
+                Image: {},
+                BufferA: { path: bufferPath, inputs: {} },
+              },
+            },
+            buffers: { BufferA: 'old buffer code' },
+            bufferPathMap: { Image: lockedPath, BufferA: bufferPath },
+          },
+        } as unknown as MessageEvent<ShaderSourceMessage>;
+        (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = mainEvent;
+        vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+        vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+        vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(mainEvent.data.config as never);
+        vi.mocked(mocks.renderEngine.updateBufferAndRecompile).mockResolvedValue({
+          success: true,
+        } as never);
+
+        await pipeline.handleShaderMessage({
+          data: {
+            type: 'shaderSource',
+            code: 'updated buffer code',
+            path: bufferPath,
+            buffers: {},
+          },
+        } as MessageEvent<ShaderSourceMessage>);
+
+        await vi.waitFor(() => {
+          expect(mocks.renderEngine.updateBufferAndRecompile).toHaveBeenCalledWith(
+            'BufferA',
+            'updated buffer code',
+          );
+        });
+        expect(pipeline.getLastEvent()?.data).toEqual(expect.objectContaining({
+          path: lockedPath,
+          code: 'main code',
+          buffers: { BufferA: 'updated buffer code' },
+        }));
+        expect(mocks.shaderDebugManager.setShaderContext).toHaveBeenCalledWith(
+          mainEvent.data.config,
+          lockedPath,
+          { BufferA: 'updated buffer code' },
+        );
+      },
+    );
+
+    it.each([
+      ['GLSL', '/project/locked.glsl', '/project/unrelated.glsl'],
+      ['Slang', '/project/locked.slang', '/project/unrelated.slang'],
+    ])(
+      'rejects unrelated %s without renderer or shader-context side effects',
+      async (_label, lockedPath, unrelatedPath) => {
+        vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+        vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+
+        await pipeline.handleShaderMessage({
+          data: {
+            type: 'shaderSource',
+            code: 'unrelated code',
+            path: unrelatedPath,
+            buffers: {},
+          },
+        } as MessageEvent<ShaderSourceMessage>);
+
+        expect(mocks.renderEngine.stopRenderLoop).not.toHaveBeenCalled();
+        expect(mocks.renderEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
+        expect(mocks.shaderDebugManager.setShaderContext).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('handleCursorPositionMessage', () => {

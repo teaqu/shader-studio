@@ -844,17 +844,26 @@
     return renderingEngine.getUniforms();
   }
 
+  function shaderPathsEqual(firstPath: string, secondPath: string) {
+    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
+  }
+
   function handleShaderSource(event: MessageEvent) {
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
-    if (!locked || lockedPath === event.data.path) {
+    if (!locked || (
+      lockedPath
+      && event.data.path
+      && shaderPathsEqual(lockedPath, event.data.path)
+    )) {
       const isFirstShader = !hasShader && event.data.path;
       if (isFirstShader) {
         restoreEditorOverlayFromStorage();
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
-      const isSameShader = nextShaderPath !== "" && nextShaderPath === prevShaderPath;
+      const isSameShader = nextShaderPath !== ""
+        && shaderPathsEqual(nextShaderPath, prevShaderPath);
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
@@ -927,6 +936,10 @@
     }
 
     if (type === 'shaderSource') {
+      if (!pipeline.canHandleShaderMessage(event.data)) {
+        return;
+      }
+
       // If the shader's language doesn't match the active engine, remount the
       // canvas with the right backend (WebGL vs WebGPU) and replay this message.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
