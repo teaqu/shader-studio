@@ -233,6 +233,32 @@ describe('EditorOverlay', () => {
       });
     });
 
+    it('should create a Slang model for a Slang shader', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/shader.slang' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ language: 'slang' });
+    });
+
+    it('should update the model language when switching shader languages', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/shader.glsl' },
+      });
+      await rerender({
+        ...defaultProps,
+        shaderPath: '/shader.slang',
+      });
+
+      expect(monaco.editor.setModelLanguage).toHaveBeenCalledWith(model, 'slang');
+    });
+
     it('should load Monaco hover and marker navigation contributions for diagnostics', () => {
       render(EditorOverlay, { props: defaultProps });
       const contributionLoadState = (globalThis as any).__monacoContributionLoadState;

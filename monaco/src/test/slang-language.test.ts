@@ -19,10 +19,12 @@ import {
   slangPreprocessorPattern,
   slangTypes,
 } from '../slang-language';
+import { shaderStudioTheme } from '../glsl-theme';
 
 interface GrammarPattern {
   name: string;
-  match: string;
+  match?: string;
+  begin?: string;
 }
 
 const grammarRelativePath = '../../../extension/syntaxes/slang.tmLanguage.json';
@@ -33,7 +35,7 @@ const grammar = JSON.parse(readFileSync(grammarPath, 'utf8')) as {
 
 function findPattern(repositoryKey: string, scope: string): string {
   const pattern = grammar.repository[repositoryKey].patterns?.find((entry) => entry.name === scope);
-  if (!pattern) throw new Error(`Missing ${scope} pattern`);
+  if (!pattern?.match) throw new Error(`Missing ${scope} pattern`);
   return pattern.match;
 }
 
@@ -145,20 +147,33 @@ function dottedNumberCorpus(): string[] {
 
 describe('Slang Monarch language', () => {
   it('defines the same concrete vocabulary families as the extension grammar', () => {
-    expect(sorted(slangControlKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.control.slang')));
+    expect(sorted(slangControlKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.control.flow.slang')));
     expect(sorted(slangDeclarationKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.declaration.slang')));
     expect(sorted(slangModifiers)).toEqual(vocabulary(findPattern('keywords', 'storage.modifier.slang')));
-    expect(sorted(slangConstants)).toEqual(vocabulary(findPattern('keywords', 'constant.language.slang')));
+    expect(sorted(slangConstants)).toEqual(grammar.repository.constants.patterns!
+      .flatMap((entry) => vocabulary(entry.match!))
+      .sort());
     expect(sorted(slangInternalAttributes)).toEqual(vocabulary(
-      grammar.repository.attributes.patterns!.find((entry) => entry.match.includes('__include'))!.match,
+      grammar.repository.attributes.patterns!.find((entry) => entry.match?.includes('__include'))!.match!,
     ));
     expect(sorted(slangAttributeKeywords)).toEqual(vocabulary(
-      grammar.repository.attributes.patterns!.find((entry) => entry.match.includes('shader'))!.match,
+      grammar.repository.attributes.patterns!.find((entry) => entry.match?.includes('shader'))!.match!,
     ));
-    expect(sorted(slangPreprocessorDirectives)).toEqual(vocabulary(grammar.repository.preprocessor.match!));
-    expect(sorted(slangTypes)).toEqual(grammar.repository.types.patterns!
-      .flatMap((entry) => vocabulary(entry.match))
-      .sort());
+    const textMatePreprocessor = new RegExp(
+      grammar.repository.preprocessor.patterns![0].begin!,
+    );
+    for (const directive of slangPreprocessorDirectives) {
+      expect(textMatePreprocessor.test(`#${directive}`), directive).toBe(true);
+    }
+    const textMateTypes = grammar.repository.types.patterns!.map(
+      (entry) => new RegExp(entry.match!),
+    );
+    for (const type of slangTypes) {
+      expect(
+        textMateTypes.some((pattern) => matchesWhole(pattern, type)),
+        `${type} must exist in the extension grammar`,
+      ).toBe(true);
+    }
   });
 
   it('represents comments, strings, types, keywords, and both quote styles', () => {
@@ -175,8 +190,12 @@ describe('Slang Monarch language', () => {
   });
 
   it('matches representative preprocessors and attributes accepted by the extension grammar', () => {
-    const textMatePreprocessor = new RegExp(grammar.repository.preprocessor.match!);
-    const textMateAttributes = grammar.repository.attributes.patterns!.map((entry) => new RegExp(entry.match));
+    const textMatePreprocessor = new RegExp(
+      grammar.repository.preprocessor.patterns![0].begin!,
+    );
+    const textMateAttributes = grammar.repository.attributes.patterns!.map(
+      (entry) => new RegExp(entry.match!),
+    );
     const preprocessors = ['#language slang 2026', '  # define VALUE 4', '#\tifdef FEATURE'];
     const attributes = [
       '[numthreads(8, 8, 1)]',
@@ -187,12 +206,82 @@ describe('Slang Monarch language', () => {
     ];
 
     for (const value of preprocessors) {
-      expect(matchesWhole(slangPreprocessorPattern, value), value).toBe(matchesWhole(textMatePreprocessor, value));
+      expect(slangPreprocessorPattern.test(value), value).toBe(
+        textMatePreprocessor.test(value),
+      );
     }
     for (const value of attributes) {
       const acceptedByTextMate = textMateAttributes.some((pattern) => matchesWhole(pattern, value));
       expect(matchesWhole(slangAttributePattern, value), value).toBe(acceptedByTextMate);
     }
+  });
+
+  it('maps representative Slang and GLSL tokens to the same overlay colours', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
+    setupMonacoGlsl(monaco);
+    setupMonacoSlang(monaco);
+
+    const colorFor = (tokenType: string): string | undefined => shaderStudioTheme.rules
+      .filter((rule) => tokenType === rule.token || tokenType.startsWith(`${rule.token}.`))
+      .sort((left, right) => right.token.length - left.token.length)[0]?.foreground;
+    const tokenTypeFor = (source: string, language: 'glsl' | 'slang', text: string): string => {
+      const tokens = monaco.editor.tokenize(source, language)[0];
+      const offset = source.indexOf(text);
+      const token = [...tokens].reverse().find((candidate) => candidate.offset <= offset);
+      if (!token) throw new Error(`Missing ${language} token for ${JSON.stringify(text)}`);
+      return token.type;
+    };
+    const parityCases = [
+      ['return', 'return', 'return'],
+      ['const', 'const', 'const'],
+      ['true', 'true', 'true'],
+      ['vec4', 'float4', 'float4'],
+      ['sin(value)', 'sin(value)', 'sin'],
+      ['iTime', 'iTime', 'iTime'],
+      ['1.5', '1.5', '1.5'],
+      ['//comment', '//comment', 'comment'],
+      ['"text"', '"text"', 'text'],
+      ['+', '+', '+'],
+      [';', ';', ';'],
+      ['shade()', 'shade()', 'shade'],
+    ] as const;
+
+    for (const [glslSource, slangSource, slangText] of parityCases) {
+      const glslText = slangText === 'float4' ? 'vec4' : slangText;
+      const glslType = tokenTypeFor(glslSource, 'glsl', glslText);
+      const slangType = tokenTypeFor(slangSource, 'slang', slangText);
+      expect(
+        colorFor(slangType),
+        `${slangText}: ${slangType} must match ${glslType}`,
+      ).toBe(colorFor(glslType));
+    }
+  });
+
+  it('colours Slang-native functions, uniforms, and constants by GLSL category', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const tokens = monaco.editor.tokenize(
+      'lerp(frac(iTime), saturate(value), 0.5); texture.Sample(sampler, uv); null none',
+      'slang',
+    )[0];
+    const types = tokens.map((token) => token.type);
+
+    expect(types.filter((type) => type === 'support.function.slang')).toHaveLength(4);
+    expect(types).toContain('variable.predefined.slang');
+    expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
   });
 
   it('matches the extension numeric forms and rejects invalid boundaries', () => {

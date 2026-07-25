@@ -188,6 +188,7 @@ const monacoMock = {
     })),
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
+    setModelLanguage: vi.fn(),
     setModelMarkers: vi.fn(),
   },
   languages: {
@@ -213,6 +214,7 @@ vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', (
 // Mock @shader-studio/monaco — delegates to mocked monaco-editor above
 vi.mock('@shader-studio/monaco', () => ({
   setupMonacoGlsl: vi.fn(),
+  setupMonacoSlang: vi.fn(),
   glslLanguageDefinition: {},
   shaderStudioTheme: {},
   shaderStudioTransparentTheme: {},
