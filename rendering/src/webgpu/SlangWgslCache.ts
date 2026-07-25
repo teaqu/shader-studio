@@ -13,22 +13,38 @@ export function createSlangWgslCacheKey(request: SlangCompileRequest): string {
     }
   };
   const value = (item: unknown): void => {
-    if (item === undefined) { add("u"); return; }
-    if (item === null) { add("n"); return; }
-    if (typeof item === "string") { add(`s${item}`); return; }
-    if (typeof item === "number") { add(`d${item}`); return; }
-    if (typeof item === "boolean") { add(item ? "b1" : "b0"); return; }
-    if (Array.isArray(item)) { add(`a${item.length}`); item.forEach(value); return; }
+    if (item === undefined) {
+      add("u"); return;
+    }
+    if (item === null) {
+      add("n"); return;
+    }
+    if (typeof item === "string") {
+      add(`s${item}`); return;
+    }
+    if (typeof item === "number") {
+      add(`d${item}`); return;
+    }
+    if (typeof item === "boolean") {
+      add(item ? "b1" : "b0"); return;
+    }
+    if (Array.isArray(item)) {
+      add(`a${item.length}`); item.forEach(value); return;
+    }
     const object = item as Record<string, unknown>;
     const keys = Object.keys(object).sort();
     add(`o${keys.length}`);
-    keys.forEach((key) => { add(`k${key}`); value(object[key]); });
+    keys.forEach((key) => {
+      add(`k${key}`); value(object[key]);
+    });
   };
   add("slang-wgsl-v2");
   value(request.sourceUri); value(request.sourcePath); value(request.workspace.rootUri); value(request.source); value(request.options);
   const files = [...request.workspace.files].sort((left, right) => left.path.localeCompare(right.path) || left.uri.localeCompare(right.uri));
   value(files.length);
-  for (const file of files) { value(file.path); value(file.uri); value(file.source); value(file.version); }
+  for (const file of files) {
+    value(file.path); value(file.uri); value(file.source); value(file.version);
+  }
   return hash.toString(16).padStart(16, "0");
 }
 

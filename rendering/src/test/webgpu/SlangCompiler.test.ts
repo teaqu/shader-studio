@@ -89,30 +89,64 @@ type FailureStage = "session" | "load" | "vertex" | "fragment" | "composite" | "
 
 function makeInstrumentedSlang(stage?: FailureStage | `${FailureStage}-null`, events: string[] = [], aliases = false, deleteThrows?: string, aliasThrows = false): SlangModuleApi {
   const handle = (name: string) => ({
-    delete() { events.push(`delete:${name}`); if (deleteThrows === name) throw new Error(`delete ${name}`); },
-    isAliasOf(other: { name?: string }) { if (aliasThrows) throw new Error("alias"); return aliases && name === "linked" && other.name === "composite"; },
+    delete() {
+      events.push(`delete:${name}`); if (deleteThrows === name) {
+        throw new Error(`delete ${name}`);
+      }
+    },
+    isAliasOf(other: { name?: string }) {
+      if (aliasThrows) {
+        throw new Error("alias");
+      } return aliases && name === "linked" && other.name === "composite";
+    },
     name,
   });
-  const linked = { ...handle("linked"), getTargetCode() { if (stage === "code") throw new Error("code"); return stage === "code-null" ? "" : "WGSL"; }, link() { return linked; } };
-  const composite = { ...handle("composite"), link() { if (stage === "link") throw new Error("link"); return stage === "link-null" ? null : linked; }, getTargetCode: () => "" };
+  const linked = { ...handle("linked"), getTargetCode() {
+    if (stage === "code") {
+      throw new Error("code");
+    } return stage === "code-null" ? "" : "WGSL";
+  }, link() {
+    return linked;
+  } };
+  const composite = { ...handle("composite"), link() {
+    if (stage === "link") {
+      throw new Error("link");
+    } return stage === "link-null" ? null : linked;
+  }, getTargetCode: () => "" };
   const vertex = handle("vertex");
   const fragment = handle("fragment");
   const module = {
     ...handle("module"),
     findEntryPointByName(name: string) {
       const failure = name === SLANG_ENTRY_VERTEX ? "vertex" : "fragment";
-      if (stage === failure) throw new Error(failure);
-      if (stage === `${failure}-null`) return null;
+      if (stage === failure) {
+        throw new Error(failure);
+      }
+      if (stage === `${failure}-null`) {
+        return null;
+      }
       return name === SLANG_ENTRY_VERTEX ? vertex : fragment;
     },
     link: () => null, getTargetCode: () => "",
   };
   const session = {
     ...handle("session"),
-    loadModuleFromSource() { if (stage === "load") throw new Error("load"); return stage === "load-null" ? null : module; },
-    createCompositeComponentType() { if (stage === "composite") throw new Error("composite"); return stage === "composite-null" ? null : composite; },
+    loadModuleFromSource() {
+      if (stage === "load") {
+        throw new Error("load");
+      } return stage === "load-null" ? null : module;
+    },
+    createCompositeComponentType() {
+      if (stage === "composite") {
+        throw new Error("composite");
+      } return stage === "composite-null" ? null : composite;
+    },
   };
-  const global = { ...handle("global"), createSession() { if (stage === "session") throw new Error("session"); return stage === "session-null" ? null : session; } };
+  const global = { ...handle("global"), createSession() {
+    if (stage === "session") {
+      throw new Error("session");
+    } return stage === "session-null" ? null : session;
+  } };
   return {
     createGlobalSession: () => global,
     getCompileTargets: () => [{ name: "WGSL", value: 3 }],
@@ -219,11 +253,13 @@ describe("SlangCompiler", () => {
   it("preserves severity and raw envelopes for unknown workspace paths", () => {
     const raw = "warning[W]: warn\n --> /workspace/missing-a:1:1\nnote[N]: note\n --> /workspace/missing-b:2:2\ninfo[I]: info\n --> /workspace/missing-c:3:3";
     const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request());
-    if (!result.success) expect(result.diagnostics).toEqual([
-      expect.objectContaining({ severity: "warning", uri: "file:///image.slang", message: "warning[W]: warn\n --> /workspace/missing-a:1:1" }),
-      expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "note[N]: note\n --> /workspace/missing-b:2:2" }),
-      expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "info[I]: info\n --> /workspace/missing-c:3:3" }),
-    ]);
+    if (!result.success) {
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ severity: "warning", uri: "file:///image.slang", message: "warning[W]: warn\n --> /workspace/missing-a:1:1" }),
+        expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "note[N]: note\n --> /workspace/missing-b:2:2" }),
+        expect.objectContaining({ severity: "information", uri: "file:///image.slang", message: "info[I]: info\n --> /workspace/missing-c:3:3" }),
+      ]);
+    }
   });
 
   it("rejects unsupported root language unchanged before module loading", () => {
@@ -256,7 +292,9 @@ describe("SlangCompiler", () => {
       workspaceFile("/workspace/lib/palette.slang", "bad", "file:///palette.slang"),
     ]));
     expect(result).toMatchObject({ success: false });
-    if (!result.success) expect(result.diagnostics?.[0]).toMatchObject({ uri: "file:///palette.slang", code: "E30001", range: { start: { line: 2, character: 6 } } });
+    if (!result.success) {
+      expect(result.diagnostics?.[0]).toMatchObject({ uri: "file:///palette.slang", code: "E30001", range: { start: { line: 2, character: 6 } } });
+    }
   });
 
   it("parses ordered stable diagnostic envelopes with exact paths, severities, codes, and zero-based ranges", () => {
@@ -272,12 +310,14 @@ describe("SlangCompiler", () => {
       workspaceFile("/workspace/lib/a.slang.more", "b", "file:///more.slang"),
     ]));
     expect(result).toMatchObject({ success: false, errors: [raw] });
-    if (!result.success) expect(result.diagnostics).toEqual([
-      expect.objectContaining({ severity: "error", code: "E1", uri: "file:///a.slang", range: { start: { line: 2, character: 6 }, end: { line: 2, character: 6 } } }),
-      expect.objectContaining({ severity: "warning", code: "W2", uri: "file:///more.slang", range: { start: { line: 3, character: 7 }, end: { line: 3, character: 7 } } }),
-      expect.objectContaining({ severity: "information", code: "N3", uri: "file:///a.slang" }),
-      expect.objectContaining({ severity: "information", code: "I4", uri: "file:///more.slang" }),
-    ]);
+    if (!result.success) {
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ severity: "error", code: "E1", uri: "file:///a.slang", range: { start: { line: 2, character: 6 }, end: { line: 2, character: 6 } } }),
+        expect.objectContaining({ severity: "warning", code: "W2", uri: "file:///more.slang", range: { start: { line: 3, character: 7 }, end: { line: 3, character: 7 } } }),
+        expect.objectContaining({ severity: "information", code: "N3", uri: "file:///a.slang" }),
+        expect.objectContaining({ severity: "information", code: "I4", uri: "file:///more.slang" }),
+      ]);
+    }
   });
 
   it.each([
@@ -337,9 +377,15 @@ describe("SlangCompiler", () => {
     const slang = makeInstrumentedSlang(undefined, events);
     const files = new Set<string>();
     slang.FS = {
-      mkdirTree() {}, writeFile(path) { files.add(path); },
-      unlink(path) { events.push(`unlink:${path}`); files.delete(path); },
-      analyzePath(path) { return { exists: files.has(path) }; },
+      mkdirTree() {}, writeFile(path) {
+        files.add(path);
+      },
+      unlink(path) {
+        events.push(`unlink:${path}`); files.delete(path);
+      },
+      analyzePath(path) {
+        return { exists: files.has(path) };
+      },
     };
     const compiler = new SlangCompiler(slang);
     compiler.compile(request());
@@ -355,9 +401,17 @@ describe("SlangCompiler", () => {
     const files = new Set<string>();
     let fail = true;
     slang.FS = {
-      mkdirTree() {}, writeFile(path) { files.add(path); },
-      unlink(path) { events.push(`unlink:${path}`); if (fail) throw new Error("unlink"); files.delete(path); },
-      analyzePath(path) { return { exists: files.has(path) }; },
+      mkdirTree() {}, writeFile(path) {
+        files.add(path);
+      },
+      unlink(path) {
+        events.push(`unlink:${path}`); if (fail) {
+          throw new Error("unlink");
+        } files.delete(path);
+      },
+      analyzePath(path) {
+        return { exists: files.has(path) };
+      },
     };
     const compiler = new SlangCompiler(slang);
     compiler.compile(request());
@@ -408,7 +462,9 @@ describe("SlangCompiler", () => {
   it("releases a newly-created global session when target lookup throws", () => {
     const onGlobalDelete = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onGlobalDelete, targets: {
-      size: () => { throw new Error("target vector failed"); },
+      size: () => {
+        throw new Error("target vector failed");
+      },
       get: () => ({ name: "WGSL", value: 3 }),
     } }));
     const result = compiler.compile(request());

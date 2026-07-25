@@ -87,22 +87,54 @@ describe("SlangWgslCache", () => {
     const key = createSlangWgslCacheKey(baseline);
     expect(key).toMatch(/^[0-9a-f]{16}$/);
     const mutations: Array<(value: any) => void> = [
-      (v) => { v.sourceUri = "file:///other.slang"; },
-      (v) => { v.sourcePath = "/workspace/other.slang"; },
-      (v) => { v.workspace.rootUri = "file:///workspace/root.slang"; },
-      (v) => { v.source = "changed"; },
-      (v) => { v.workspace.files[0].path = "/workspace/lib/b.slang"; },
-      (v) => { v.workspace.files[0].uri = "file:///workspace/lib/b.slang"; },
-      (v) => { v.workspace.files[0].source = "changed"; },
-      (v) => { delete v.workspace.files[1].version; },
-      (v) => { v.workspace.files[1].version = 0; },
-      (v) => { v.workspace.files[1].version = 9; },
-      (v) => { v.options.passName = "BufferA"; },
-      (v) => { v.options.commonCode = "float f();"; },
-      (v) => { v.options.channels = [{ slot: 0, key: "iChannel0", kind: "texture" }]; },
-      (v) => { v.options.customUniforms = [{ name: "gain", type: "float" }]; },
-      (v) => { v.options.captureMode = true; },
-      (v) => { v.options.languageVersion = "latest"; },
+      (v) => {
+        v.sourceUri = "file:///other.slang";
+      },
+      (v) => {
+        v.sourcePath = "/workspace/other.slang";
+      },
+      (v) => {
+        v.workspace.rootUri = "file:///workspace/root.slang";
+      },
+      (v) => {
+        v.source = "changed";
+      },
+      (v) => {
+        v.workspace.files[0].path = "/workspace/lib/b.slang";
+      },
+      (v) => {
+        v.workspace.files[0].uri = "file:///workspace/lib/b.slang";
+      },
+      (v) => {
+        v.workspace.files[0].source = "changed";
+      },
+      (v) => {
+        delete v.workspace.files[1].version;
+      },
+      (v) => {
+        v.workspace.files[1].version = 0;
+      },
+      (v) => {
+        v.workspace.files[1].version = 9;
+      },
+      (v) => {
+        v.options.passName = "BufferA";
+      },
+      (v) => {
+        v.options.commonCode = "float f();";
+      },
+      (v) => {
+        v.options.channels = [{ slot: 0, key: "iChannel0", kind: "texture" }];
+      },
+      (v) => {
+        v.options.customUniforms = [{ name: "gain", type: "float" }];
+      },
+      (v) => {
+        v.options.captureMode = true;
+      },
+      (v) => {
+        v.options.languageVersion = "latest";
+      },
     ];
     for (const mutate of mutations) {
       const changed = structuredClone(baseline);

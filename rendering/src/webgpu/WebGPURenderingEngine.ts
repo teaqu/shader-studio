@@ -63,7 +63,9 @@ function cloneWorkspace(workspace: SlangWorkspaceSnapshot): SlangWorkspaceSnapsh
 }
 
 function workspaceCandidates(workspace: SlangWorkspaceSnapshot, selector: string | undefined, topLevelPath: string) {
-  if (!selector) return [];
+  if (!selector) {
+    return [];
+  }
   const rootFile = workspace.files.find((file) => file.uri === workspace.rootUri);
   const rootPath = rootFile?.path;
   const relative = !selector.startsWith("/") && !selector.includes("://");
@@ -192,7 +194,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   constructor(private slangAssets: SlangAssetUrls) {}
 
   private createResourceManager(): ResourceManager<WebGPUTextureHandle> {
-    if (!this.device) throw new Error("Cannot create resources before WebGPU initialization");
+    if (!this.device) {
+      throw new Error("Cannot create resources before WebGPU initialization");
+    }
     return new ResourceManager(new WebGPUTextureBackend(this.device));
   }
 
@@ -596,10 +600,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ? this.createResourceManager()
       : previousResourceManager;
     const candidateResourceManager = replacesResources ? resourceManager : null;
-    if (candidateResourceManager) this.candidateResourceManagers.add(candidateResourceManager);
+    if (candidateResourceManager) {
+      this.candidateResourceManagers.add(candidateResourceManager);
+    }
     let candidateCleaned = false;
     const cleanupCandidate = () => {
-      if (!candidateResourceManager || candidateCleaned) return;
+      if (!candidateResourceManager || candidateCleaned) {
+        return;
+      }
       // dispose() clears this set after it has cleaned every in-flight owner.
       // A late async loader must not clean that manager a second time.
       if (!this.candidateResourceManagers.has(candidateResourceManager)) {
@@ -617,7 +625,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (resourceManager) {
       const interruptedResourceCompile = (): CompilationResult | null => {
         if (this.disposed || generation !== this.compileGeneration) {
-          try { cleanupCandidate(); } catch { /* Disposal owns cleanup errors. */ }
+          try {
+            cleanupCandidate();
+          } catch { /* Disposal owns cleanup errors. */ }
           return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
         }
         return null;
@@ -723,10 +733,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const passRequests = new Map<RenderPassNode, SlangCompileRequest>();
     for (const pass of graph.passes) {
       const request = this.createCompileRequest(pass, graph.commonCode, nextCustomUniformManager.getUniformInfo(), path, compileWorkspace);
-      if (!request) errors.push(`${pass.name}: Workspace does not uniquely identify ${pass.path ?? path}`);
-      else passRequests.set(pass, request);
+      if (!request) {
+        errors.push(`${pass.name}: Workspace does not uniquely identify ${pass.path ?? path}`);
+      } else {
+        passRequests.set(pass, request);
+      }
     }
-    if (errors.length) return abandonCandidate(this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings }));
+    if (errors.length) {
+      return abandonCandidate(this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings }));
+    }
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
       const request = passRequests.get(pass)!;
@@ -1107,12 +1122,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const selector = pass.name === "Image" ? path : pass.path;
     const candidates = supplied ? workspaceCandidates(workspace, selector, path) : workspace.files;
     let root = candidates.length === 1 ? candidates[0] : undefined;
-    if (candidates.length > 1) return null;
+    if (candidates.length > 1) {
+      return null;
+    }
     if (!root && pass.name === "Image") {
       const sourceMatches = workspace.files.filter((file) => file.source === pass.source);
-      if (sourceMatches.length === 1) root = sourceMatches[0];
+      if (sourceMatches.length === 1) {
+        root = sourceMatches[0];
+      }
     }
-    if (!root) return null;
+    if (!root) {
+      return null;
+    }
     root.source = pass.source;
     return {
       source: pass.source, sourceUri: root.uri, sourcePath: root.path, workspace,

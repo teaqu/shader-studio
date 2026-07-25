@@ -96,14 +96,23 @@ export function syncWorkspaceToFileSystem(
     let rollbackFailed = false;
     for (const [path, before] of journal) {
       try {
-        if (!before.exists) removeIfPresent(fs, path);
-        else { fs.mkdirTree(parent(path)); fs.writeFile(path, before.source!); }
-      } catch { rollbackFailed = true; }
+        if (!before.exists) {
+          removeIfPresent(fs, path);
+        } else {
+          fs.mkdirTree(parent(path)); fs.writeFile(path, before.source!);
+        }
+      } catch {
+        rollbackFailed = true;
+      }
     }
     if (rollbackFailed) {
       ownedPaths.clear();
-      for (const path of journal.keys()) ownedPaths.add(path);
-      if (previous && previous !== ownedPaths) previous.clear();
+      for (const path of journal.keys()) {
+        ownedPaths.add(path);
+      }
+      if (previous && previous !== ownedPaths) {
+        previous.clear();
+      }
       activeOwners.set(fs, ownedPaths);
     }
     throw error;

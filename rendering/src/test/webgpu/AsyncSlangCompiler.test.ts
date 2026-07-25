@@ -126,7 +126,9 @@ describe("WorkerSlangCompiler", () => {
 
   it("cleans pending init and terminates when init postMessage throws", async () => {
     const worker = fakeWorker();
-    worker.postMessage.mockImplementationOnce(() => { throw new Error("init clone failed"); });
+    worker.postMessage.mockImplementationOnce(() => {
+      throw new Error("init clone failed");
+    });
     await expect(WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm")).rejects.toThrow("init clone failed");
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
@@ -198,7 +200,9 @@ describe("WorkerSlangCompiler", () => {
     const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
-    worker.postMessage.mockImplementationOnce(() => { throw new Error("clone failed"); });
+    worker.postMessage.mockImplementationOnce(() => {
+      throw new Error("clone failed");
+    });
     await expect(compiler.compile(request("2026"))).resolves.toEqual({ success: false, errors: ["clone failed"], diagnostics: [] });
     const next = compiler.compile(request("latest"));
     worker.emit({ id: worker.posted.at(-1).id, ok: true, result: { success: true, wgsl: "ok", diagnostics: [] } });

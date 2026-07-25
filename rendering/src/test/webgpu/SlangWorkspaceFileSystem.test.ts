@@ -20,7 +20,13 @@ class MemoryFileSystem implements SlangFileSystem {
     }
     this.files.set(path, typeof source === "string" ? source : new TextDecoder().decode(source));
   }
-  readFile(path: string) { if (this.readFailPath === path) throw new Error("read"); const source = this.files.get(path); if (source === undefined) throw new Error("read"); return source; }
+  readFile(path: string) {
+    if (this.readFailPath === path) {
+      throw new Error("read");
+    } const source = this.files.get(path); if (source === undefined) {
+      throw new Error("read");
+    } return source;
+  }
   unlink(path: string) {
     if (this.fail === "unlink" || this.failPath === path || this.failPaths?.has(path)) {
       throw new Error("unlink");
@@ -162,8 +168,11 @@ describe("SlangWorkspaceFileSystem", () => {
     expect(a.size).toBe(0);
     expect(b).toEqual(new Set(["/workspace/common", "/workspace/b", "/workspace/stale"]));
     fs.failPaths = undefined;
-    if (order === "a-first") { releaseWorkspaceFileSystem(fs, a); releaseWorkspaceFileSystem(fs, b); }
-    else { releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a); }
+    if (order === "a-first") {
+      releaseWorkspaceFileSystem(fs, a); releaseWorkspaceFileSystem(fs, b);
+    } else {
+      releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
+    }
     releaseWorkspaceFileSystem(fs, a); releaseWorkspaceFileSystem(fs, b);
     expect(fs.files).toEqual(new Map([["/workspace/user", "keep"]]));
     expect(a.size).toBe(0); expect(b.size).toBe(0);

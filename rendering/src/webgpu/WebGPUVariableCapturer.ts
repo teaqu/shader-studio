@@ -479,7 +479,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   private workspaceIdentity(workspace: SlangWorkspaceSnapshot | undefined): string {
-    if (!workspace) return '';
+    if (!workspace) {
+      return '';
+    }
     return JSON.stringify({
       rootUri: workspace.rootUri,
       files: workspace.files.map(({ path, uri, source, version }) => ({ path, uri, source, version })),

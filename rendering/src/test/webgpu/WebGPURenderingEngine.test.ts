@@ -2896,7 +2896,9 @@ describe("WebGPURenderingEngine", () => {
     it("commits a replacement when retiring its old resources throws", async () => {
       const { engine } = lifecycleEngine();
       const old = (engine as any).resourceManager;
-      old.cleanup.mockImplementation(() => { throw new Error("retire"); });
+      old.cleanup.mockImplementation(() => {
+        throw new Error("retire");
+      });
       (engine as any).shaderPath = "/first.slang";
       const candidate = { cleanup: vi.fn(), syncAllVideosToTime: vi.fn(), resumeAllVideos: vi.fn() };
       vi.spyOn(engine as unknown as { createResourceManager(): unknown }, "createResourceManager").mockReturnValue(candidate);
@@ -2907,7 +2909,9 @@ describe("WebGPURenderingEngine", () => {
         expect((engine as any).shaderPath).toBe("/second.slang");
         expect(engine.getPasses()).toHaveLength(1);
         expect(candidate.cleanup).not.toHaveBeenCalled();
-      } finally { warn.mockRestore(); }
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it("keeps ordinary same-path recompiles on the live resource manager", async () => {

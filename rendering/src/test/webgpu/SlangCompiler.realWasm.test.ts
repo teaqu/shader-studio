@@ -31,7 +31,9 @@ describe("SlangCompiler real WASM", () => {
     try {
       const result = compiler.compile(request(`${header}float4 mainImage(float2 c) { return float4(1); }`));
       expect(result).toMatchObject({ success: true, diagnostics: [] });
-    } finally { compiler.dispose(); }
+    } finally {
+      compiler.dispose();
+    }
   });
 
   it("fails an unsupported root version at the real root URI", () => {
@@ -39,8 +41,12 @@ describe("SlangCompiler real WASM", () => {
     try {
       const result = compiler.compile(request("#language slang 2030\nfloat4 mainImage(float2 c) { return float4(1); }"));
       expect(result.success).toBe(false);
-      if (!result.success) expect(result.diagnostics?.[0]?.uri).toBe("file:///image.slang");
-    } finally { compiler.dispose(); }
+      if (!result.success) {
+        expect(result.diagnostics?.[0]?.uri).toBe("file:///image.slang");
+      }
+    } finally {
+      compiler.dispose();
+    }
   });
 
   it("keeps directive-free imports legacy while textual includes inherit 2026", () => {
@@ -59,7 +65,9 @@ describe("SlangCompiler real WASM", () => {
         { path: "/workspace/tuple-helper.slang", uri: "file:///tuple-helper.slang", source: "float tupleIncludedValue() { let pair = (3.0, 4.0); return pair._0 + pair._1; }" },
       ]));
       expect(result).toMatchObject({ success: true, diagnostics: [] });
-    } finally { compiler.dispose(); }
+    } finally {
+      compiler.dispose();
+    }
   });
 
   it.each(["2025", "2026", "latest"] as const)("imports an explicit %s dependency", (version) => {
@@ -71,7 +79,9 @@ describe("SlangCompiler real WASM", () => {
         { path: "/workspace/dep.slang", uri: "file:///dep.slang", source: `#language slang ${version}\nmodule dep;\npublic float depValue() { return 1.0; }` },
       ]));
       expect(result).toMatchObject({ success: true, diagnostics: [] });
-    } finally { compiler.dispose(); }
+    } finally {
+      compiler.dispose();
+    }
   });
 
   it("compiles normal, line-debug, and capture roots against one unchanged 2026 workspace", () => {
@@ -116,7 +126,9 @@ describe("SlangCompiler real WASM", () => {
         expect(result).toMatchObject({ success: true, diagnostics: [] });
       }
       expect(workspace).toEqual(snapshot);
-    } finally { compiler.dispose(); }
+    } finally {
+      compiler.dispose();
+    }
   });
 
   it("maps a capture dependency diagnostic to its workspace file", () => {
@@ -133,6 +145,8 @@ describe("SlangCompiler real WASM", () => {
           expect.objectContaining({ uri: "file:///dep.slang" }),
         ]));
       }
-    } finally { compiler.dispose(); }
+    } finally {
+      compiler.dispose();
+    }
   });
 });

@@ -19,7 +19,9 @@ export class MainThreadSlangCompiler implements AsyncSlangCompiler {
     return this.inner.compile(request);
   }
 
-  dispose(): void { this.inner.dispose(); }
+  dispose(): void {
+    this.inner.dispose();
+  }
 }
 
 type WorkerResponse =
@@ -158,7 +160,9 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   }
 
   private terminate(): void {
-    if (this.terminated) return;
+    if (this.terminated) {
+      return;
+    }
     this.terminated = true;
     this.worker.terminate();
   }

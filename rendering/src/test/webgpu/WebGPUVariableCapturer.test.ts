@@ -284,9 +284,9 @@ describe("WebGPUVariableCapturer", () => {
     } as CaptureUniforms, 8, 4);
 
     expect(gpu.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "shader-a", options: expect.objectContaining({ customUniforms: [
-        { name: "tint", type: "vec3" },
-        { name: "enabled", type: "bool" },
-      ] }) }));
+      { name: "tint", type: "vec3" },
+      { name: "enabled", type: "bool" },
+    ] }) }));
     const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
     expect(packed.byteLength).toBeGreaterThan(UNIFORM_OFFSETS.iChannelResolution + 64);
     const values = new DataView(packed);
