@@ -1418,6 +1418,24 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).lastCompile.buffers.BufferA).toBe("NEW");
       expect((engine as any).lastCompile.workspace.rootUri).toBe(snapshot.rootUri);
     });
+
+    it.each([
+      "float4 mainImage(float2 c) { return 1; }",
+      "#language slang legacy\nfloat4 mainImage(float2 c) { return 1; }",
+      "#language slang 2025\nfloat4 mainImage(float2 c) { return 1; }",
+      "#language slang 2026\nfloat4 mainImage(float2 c) { return 1; }",
+      "#language slang latest\nfloat4 mainImage(float2 c) { return 1; }",
+    ])("preserves the Slang version root request exactly", async (versionSource) => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = { rootUri: "file:///workspace/versions/root.slang", files: [{ path: "/workspace/versions/root.slang", uri: "file:///workspace/versions/root.slang", source: versionSource }] };
+      const before = structuredClone(snapshot);
+      await engine.compileShaderPipeline(versionSource, null, "/workspace/versions/root.slang", {}, undefined, undefined, snapshot);
+      const request = compiler.compile.mock.calls[0][0];
+      expect(request).toEqual(expect.objectContaining({ source: versionSource, sourcePath: "/workspace/versions/root.slang", sourceUri: "file:///workspace/versions/root.slang", options: expect.objectContaining({ passName: "Image" }) }));
+      expect(request.workspace).toEqual(snapshot);
+      expect(snapshot).toEqual(before);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
