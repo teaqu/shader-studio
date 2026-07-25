@@ -84,6 +84,42 @@ function makeFakeSlang(opts: {
   } as unknown as SlangModuleApi;
 }
 
+type FailureStage = "session" | "load" | "vertex" | "fragment" | "composite" | "link" | "code";
+
+function makeInstrumentedSlang(stage?: FailureStage | `${FailureStage}-null`, events: string[] = [], aliases = false, deleteThrows?: string): SlangModuleApi {
+  const handle = (name: string) => ({
+    delete() { events.push(`delete:${name}`); if (deleteThrows === name) throw new Error(`delete ${name}`); },
+    isAliasOf(other: { name?: string }) { return aliases && name === "linked" && other.name === "composite"; },
+    name,
+  });
+  const linked = { ...handle("linked"), getTargetCode() { if (stage === "code") throw new Error("code"); return stage === "code-null" ? "" : "WGSL"; }, link() { return linked; } };
+  const composite = { ...handle("composite"), link() { if (stage === "link") throw new Error("link"); return stage === "link-null" ? null : linked; }, getTargetCode: () => "" };
+  const vertex = handle("vertex");
+  const fragment = handle("fragment");
+  const module = {
+    ...handle("module"),
+    findEntryPointByName(name: string) {
+      const failure = name === SLANG_ENTRY_VERTEX ? "vertex" : "fragment";
+      if (stage === failure) throw new Error(failure);
+      if (stage === `${failure}-null`) return null;
+      return name === SLANG_ENTRY_VERTEX ? vertex : fragment;
+    },
+    link: () => null, getTargetCode: () => "",
+  };
+  const session = {
+    ...handle("session"),
+    loadModuleFromSource() { if (stage === "load") throw new Error("load"); return stage === "load-null" ? null : module; },
+    createCompositeComponentType() { if (stage === "composite") throw new Error("composite"); return stage === "composite-null" ? null : composite; },
+  };
+  const global = { ...handle("global"), createSession() { if (stage === "session") throw new Error("session"); return stage === "session-null" ? null : session; } };
+  return {
+    createGlobalSession: () => global,
+    getCompileTargets: () => [{ name: "WGSL", value: 3 }],
+    getLastError: () => ({ type: "error", result: -1, message: `raw ${stage ?? ""}` }),
+    FS: { mkdirTree() {}, writeFile() {}, unlink() {}, analyzePath: () => ({ exists: false }) },
+  } as unknown as SlangModuleApi;
+}
+
 describe("SlangCompiler", () => {
   it("compiles a workspace request and always returns structured diagnostics", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
@@ -155,6 +191,46 @@ describe("SlangCompiler", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
     compiler.compileImagePass(imageSource, { passName: "Buffer A" });
     expect(onLoad).toHaveBeenLastCalledWith(expect.any(String), "buffer_a", "/workspace/buffer_a.slang");
+  });
+
+  it("deletes acquired per-compile handles in reverse acquisition order", () => {
+    const events: string[] = [];
+    expect(new SlangCompiler(makeInstrumentedSlang(undefined, events)).compile(request()).success).toBe(true);
+    expect(events).toEqual(["delete:linked", "delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]);
+  });
+
+  it.each([
+    "session-null", "session", "load-null", "load", "vertex-null", "vertex", "fragment-null", "fragment", "composite-null", "composite", "link-null", "link", "code-null", "code",
+  ] as const)("cleans every acquired handle when %s fails", (stage) => {
+    const events: string[] = [];
+    const result = new SlangCompiler(makeInstrumentedSlang(stage, events)).compile(request());
+    expect(result.success).toBe(false);
+    if (stage !== "session" && stage !== "session-null") expect(events).toEqual(expect.arrayContaining(["delete:session"]));
+    expect(new Set(events).size).toBe(events.length);
+  });
+
+  it("deduplicates aliases and continues cleanup after delete or alias checks throw", () => {
+    const aliased: string[] = [];
+    new SlangCompiler(makeInstrumentedSlang(undefined, aliased, true, "fragment")).compile(request());
+    expect(aliased.filter((event) => event === "delete:composite").length + aliased.filter((event) => event === "delete:linked").length).toBe(1);
+    expect(aliased).toContain("delete:module");
+  });
+
+  it("disposes mounted paths and its cached global once, then rejects later compiles", () => {
+    const events: string[] = [];
+    const slang = makeInstrumentedSlang(undefined, events);
+    const files = new Set<string>();
+    slang.FS = {
+      mkdirTree() {}, writeFile(path) { files.add(path); },
+      unlink(path) { events.push(`unlink:${path}`); files.delete(path); },
+      analyzePath(path) { return { exists: files.has(path) }; },
+    };
+    const compiler = new SlangCompiler(slang);
+    compiler.compile(request());
+    compiler.dispose(); compiler.dispose();
+    expect(events.filter((event) => event === "delete:global")).toHaveLength(1);
+    expect(events).toContain("unlink:/workspace/image.slang");
+    expect(compiler.compile(request())).toMatchObject({ success: false, diagnostics: expect.any(Array) });
   });
 
   it("compiles user source to WGSL", () => {
