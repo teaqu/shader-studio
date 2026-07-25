@@ -94,6 +94,19 @@ export class SlangShaderWorkspaceCoordinator {
     return true;
   }
 
+  /** Commits a complete generation together, never leaving a prefix installed. */
+  commitOwnerRequests(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
+    if (entries.length === 0 || !entries.every(({ request, prepared }) => (
+      this.isOwnerRequestCurrent(request) && request.rootUri === prepared.rootUri
+    ))) {
+      return false;
+    }
+    for (const { prepared } of entries) {
+      this.roots.set(prepared.rootUri, prepared);
+    }
+    return true;
+  }
+
   commitOwnerRelease(request: SlangOwnerRequest): boolean {
     if (!this.isOwnerRequestCurrent(request)) {
       return false;

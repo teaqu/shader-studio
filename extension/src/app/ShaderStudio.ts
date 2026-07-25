@@ -88,6 +88,7 @@ export class ShaderStudio {
       this.shaderProvider,
       this.glslFileTracker,
       this.configChangeClassifier,
+      this.slangWorkspaces,
     );
     this.webServer = new WebServer(context, this.isDevelopmentMode());
     this.webServer.setMessenger(this.messenger);
@@ -134,6 +135,8 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.panelManager.dispose();
+    this.shaderProvider.releaseSlangOwner();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();

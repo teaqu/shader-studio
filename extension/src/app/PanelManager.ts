@@ -9,6 +9,7 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
+import { SlangShaderWorkspaceCoordinator } from './SlangShaderWorkspaceCoordinator';
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -16,6 +17,8 @@ export class PanelManager {
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private clientHandler: ClientMessageHandler;
+  private readonly panelProviders = new Map<vscode.WebviewPanel, ShaderProvider>();
+  private readonly panelHandlers = new Map<vscode.WebviewPanel, ClientMessageHandler>();
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -23,6 +26,7 @@ export class PanelManager {
     private shaderProvider: ShaderProvider,
     private glslFileTracker: GlslFileTracker,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
+    private readonly slangWorkspaces?: SlangShaderWorkspaceCoordinator,
   ) {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
@@ -119,6 +123,11 @@ export class PanelManager {
 
     this.panels.add(panel);
     this.panelSlots.set(panel, layoutSlot);
+    const ownerId = `panel:${layoutSlot}`;
+    const panelProvider = this.slangWorkspaces ? this.shaderProvider.forSlangOwner(ownerId) : this.shaderProvider;
+    const panelHandler = this.createClientHandler(panelProvider);
+    this.panelProviders.set(panel, panelProvider);
+    this.panelHandlers.set(panel, panelHandler);
 
     // Add panel to the shared webview transport
     this.webviewTransport.addPanel(panel);
@@ -129,7 +138,7 @@ export class PanelManager {
     this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
 
     if (editor) {
-      void this.shaderProvider.sendShaderFromEditor(editor);
+      void panelProvider.sendShaderFromEditor(editor);
     }
 
     // Handle messages from webview
@@ -145,6 +154,11 @@ export class PanelManager {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
+      this.panelHandlers.delete(panel);
+      this.panelProviders.delete(panel);
+      if (panelProvider !== this.shaderProvider) {
+        panelProvider.releaseSlangOwner();
+      }
     });
 
     this.logger.info("Webview panel created");
@@ -191,10 +205,30 @@ export class PanelManager {
       return;
     }
 
-    await this.clientHandler.handle(
+    await (this.panelHandlers.get(panel) ?? this.clientHandler).handle(
       message,
       (msg) => panel.webview.postMessage(msg),
       (absPath) => ConfigPathConverter.convertUriForClient(absPath, panel.webview),
+    );
+  }
+
+  private createClientHandler(shaderProvider: ShaderProvider): ClientMessageHandler {
+    return new ClientMessageHandler(
+      this.context,
+      shaderProvider,
+      this.glslFileTracker,
+      this.messenger,
+      this.context.extensionPath,
+      () => {
+        const cols = new Set<vscode.ViewColumn>();
+        for (const panel of this.panels) {
+          if (panel.viewColumn !== undefined) {
+            cols.add(panel.viewColumn);
+          }
+        }
+        return cols;
+      },
+      this.configChangeClassifier,
     );
   }
 

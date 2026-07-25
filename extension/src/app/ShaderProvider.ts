@@ -33,6 +33,20 @@ export class ShaderProvider {
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
   }
 
+  public forSlangOwner(ownerId: string): ShaderProvider {
+    return new ShaderProvider(
+      this.messenger,
+      this.getDebugModeEnabled,
+      this.configChangeClassifier,
+      this.slangWorkspaces,
+      ownerId,
+    );
+  }
+
+  public releaseSlangOwner(): void {
+    this.slangWorkspaces?.releaseOwner(this.slangOwnerId);
+  }
+
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
     options?: { reload?: boolean; dependencyChange?: boolean; manual?: boolean },
@@ -548,14 +562,13 @@ export class ShaderProvider {
     if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
       return;
     }
-    for (const entry of messages) {
-      this.messenger.send(entry.message);
-    }
-    if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
+    if (!this.slangWorkspaces.commitOwnerRequests(messages.map(({ request, prepared: root }) => ({ request, prepared: root })))) {
       return;
     }
     for (const entry of messages) {
-      this.slangWorkspaces.commitOwnerRequest(entry.request, entry.prepared);
+      this.messenger.send(entry.message);
+    }
+    for (const entry of messages) {
       this.startScriptPolling(entry.config);
     }
   }

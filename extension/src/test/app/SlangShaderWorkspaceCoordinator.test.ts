@@ -94,6 +94,19 @@ suite('SlangShaderWorkspaceCoordinator', () => {
     assert.strictEqual(coordinator.commitOwnerRequest(current, prepared), true);
   });
 
+  test('commits a multi-root generation atomically only while every request is current', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/a.slang': 'float a;', 'file:///work/b.slang': 'float b;',
+    }));
+    const [a, b] = await coordinator.prepareRoots([
+      { rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] },
+    ]);
+    const [aRequest, bRequest] = coordinator.beginOwnerRequests('panel:1', ['/work/a.slang', '/work/b.slang']);
+    coordinator.beginOwnerRequest('panel:1', '/work/a.slang');
+    assert.strictEqual(coordinator.commitOwnerRequests([{ request: aRequest, prepared: a }, { request: bRequest, prepared: b }]), false);
+    assert.deepStrictEqual(coordinator.owningRoots('/work/a.slang'), []);
+  });
+
   test('releasing one shared owner preserves the other and isolates source overlays by workspace snapshot', async () => {
     const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
       'file:///one/image.slang': '#include "lib.slang"', 'file:///one/lib.slang': 'float one;',
