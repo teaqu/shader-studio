@@ -62,6 +62,17 @@ function cloneWorkspace(workspace: SlangWorkspaceSnapshot): SlangWorkspaceSnapsh
   return { rootUri: workspace.rootUri, files: workspace.files.map((file) => ({ ...file })) };
 }
 
+function workspaceCandidates(workspace: SlangWorkspaceSnapshot, selector: string | undefined, topLevelPath: string) {
+  if (!selector) return [];
+  const rootPath = workspace.files.find((file) => file.uri === workspace.rootUri)?.path;
+  const relative = !selector.startsWith("/") && !selector.includes("://");
+  const internal = relative && rootPath ? `${rootPath.slice(0, rootPath.lastIndexOf("/") + 1)}${selector}` : selector;
+  const uri = selector.includes("://") ? selector : selector.startsWith("/") ? `file://${encodeURI(selector)}` : undefined;
+  const topLevel = selector === topLevelPath ? [topLevelPath, `file://${encodeURI(topLevelPath)}`] : [];
+  const values = new Set([selector, internal, uri, ...topLevel].filter(Boolean));
+  return workspace.files.filter((file) => values.has(file.path) || values.has(file.uri));
+}
+
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
     private readonly inner: AsyncSlangCompiler,
@@ -474,9 +485,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
-    if (this.shaderPath !== "" && this.shaderPath !== path) {
-      this.beginShaderSession(path);
-    }
     // WebGL parity: the config is remembered even when invalid, but an
     // invalid one fails the compile before any Slang work starts.
     this.currentConfig = config;
@@ -690,7 +698,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors.push(`${pass.name}: Workspace does not uniquely identify ${path}`);
         continue;
       }
-      const key = createSlangWgslCacheKey(request);
+      const key = `${path}\u0000${createSlangWgslCacheKey(request)}`;
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
         // Unchanged pass: carry the live pipeline into the next generation.
@@ -842,6 +850,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (this.pendingCustomUniformValues) {
       nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
     }
+    const switchedShader = this.shaderPath !== "" && this.shaderPath !== path;
+    if (switchedShader) {
+      this.resourceManager?.cleanup();
+      this.timeManager.cleanup();
+    }
     this.customUniformManager = nextCustomUniformManager;
     for (const entry of pendingWgslCacheEntries) {
       sharedSlangWgslCache.set(entry.key, entry.wgsl);
@@ -895,14 +908,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
-    // Editing the currently installed shader is atomic: a failed edit keeps
-    // its last good pipelines. A different path represents a shader switch,
-    // so retaining those pipelines would show output from the wrong file.
-    if (this.shaderPath === path) {
-      return result;
-    }
-
-    this.beginShaderSession(path);
     return result;
   }
 
@@ -1043,15 +1048,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
     path: string,
     supplied?: SlangWorkspaceSnapshot,
   ): SlangCompileRequest | null {
-    const fallbackPath = path.startsWith("/") ? path : `/workspace/${path}`;
+    const passPath = pass.name === "Image" ? path : pass.path ?? path;
+    const fallbackPath = passPath.startsWith("/") ? passPath : `/workspace/${passPath}`;
     const fallbackUri = `file://${fallbackPath}`;
     const workspace = supplied ? cloneWorkspace(supplied) : {
       rootUri: fallbackUri,
       files: [{ path: fallbackPath, uri: fallbackUri, source: pass.source }],
     };
-    const exact = workspace.files.filter((file) => file.path === fallbackPath || file.uri === fallbackUri);
-    if (exact.length > 1) return null;
-    const root = exact[0] ?? workspace.files.find((file) => file.uri === workspace.rootUri);
+    const selector = pass.name === "Image" ? path : pass.path;
+    const candidates = supplied ? workspaceCandidates(workspace, selector, path) : workspace.files;
+    let root = candidates.length === 1 ? candidates[0] : undefined;
+    if (candidates.length > 1) return null;
+    if (!root && pass.name === "Image") {
+      const sourceMatches = workspace.files.filter((file) => file.source === pass.source);
+      if (sourceMatches.length === 1) root = sourceMatches[0];
+    }
     if (!root) return null;
     root.source = pass.source;
     return {
@@ -1611,12 +1622,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.lastCompile) {
       return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
     }
-    this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
+    const buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
     return this.compileShaderPipeline(
       this.lastCompile.code,
       this.currentConfig,
       this.lastCompile.path,
-      this.lastCompile.buffers,
+      buffers,
       this.lastCompile.customUniformDeclarations,
       this.lastCompile.customUniformInfo,
       this.lastCompile.workspace ? cloneWorkspace(this.lastCompile.workspace) : undefined,

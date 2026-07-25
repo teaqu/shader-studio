@@ -131,7 +131,12 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     const id = this.nextId++;
     return new Promise<SlangCompileResult>((resolve) => {
       this.pending.set(id, { resolve, isInit: false });
-      this.worker.postMessage({ id, type: "compile", request });
+      try {
+        this.worker.postMessage({ id, type: "compile", request });
+      } catch (error) {
+        this.pending.delete(id);
+        resolve({ success: false, errors: [error instanceof Error ? error.message : String(error)], diagnostics: [] });
+      }
     });
   }
 

@@ -2458,25 +2458,13 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
-      expect(engine.getPasses()).toEqual([]);
-      expect((engine as any).passPipelines).toEqual(new Map());
-      expect((engine as any).passKeys).toEqual(new Map());
+      expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect((engine as any).passPipelines.size).toBeGreaterThan(0);
       for (const dispose of disposeSpies) {
-        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(dispose).not.toHaveBeenCalled();
       }
-      expect(cleanupResources).toHaveBeenCalledTimes(1);
-      expect(cleanupTime).toHaveBeenCalledTimes(1);
-      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
-      const encoder = device.createCommandEncoder.mock.results[0].value;
-      expect(encoder.beginRenderPass).toHaveBeenCalledWith({
-        colorAttachments: [{
-          view: { label: "canvas" },
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: "clear",
-          storeOp: "store",
-        }],
-      });
-      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(cleanupResources).not.toHaveBeenCalled();
+      expect(cleanupTime).not.toHaveBeenCalled();
     });
 
     it("uses the updated content on subsequent updates too", async () => {
@@ -2615,7 +2603,7 @@ describe("WebGPURenderingEngine", () => {
 
       const failed = await engine.compileShaderPipeline("broken image", null, "/broken.slang");
       expect(failed?.success).toBe(false);
-      expect(engine.getPasses()).toEqual([]);
+      expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
 
       compiler.compile.mockReturnValue({ success: true, wgsl: "// corrected" });
       const recovered = await engine.compileShaderPipeline(

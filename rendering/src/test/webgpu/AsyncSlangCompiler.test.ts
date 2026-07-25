@@ -145,4 +145,16 @@ describe("WorkerSlangCompiler", () => {
     expect(result).toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
     expect(worker.postMessage).toHaveBeenCalledTimes(postedBeforeNewCompile);
   });
+
+  it("turns a synchronous postMessage failure into a result without leaking pending work", async () => {
+    const worker = fakeWorker();
+    const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
+    worker.emit({ id: worker.posted[0].id, ok: true });
+    const compiler = await createPromise;
+    worker.postMessage.mockImplementationOnce(() => { throw new Error("clone failed"); });
+    await expect(compiler.compile(request("2026"))).resolves.toEqual({ success: false, errors: ["clone failed"], diagnostics: [] });
+    const next = compiler.compile(request("latest"));
+    worker.emit({ id: worker.posted.at(-1).id, ok: true, result: { success: true, wgsl: "ok", diagnostics: [] } });
+    await expect(next).resolves.toEqual({ success: true, wgsl: "ok", diagnostics: [] });
+  });
 });
