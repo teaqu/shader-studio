@@ -80,16 +80,28 @@
     "types": {
       "patterns": [
         {
-          "name": "support.type.matrix.slang",
+          "name": "storage.type.matrix.slang",
           "match": "\\b(?:bool|half|float|double|float(?:16|32|64)_t|int|uint|(?:u?int)(?:8|16|32|64)_t)[2-4]x[2-4]\\b"
         },
         {
-          "name": "support.type.scalar-vector.slang",
-          "match": "\\b(?:void|bool|bool2|bool3|bool4|half|half2|half3|half4|float|float2|float3|float4|double|double2|double3|double4|float16_t|float32_t|float64_t|int|int2|int3|int4|uint|uint2|uint3|uint4|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix)\\b"
+          "name": "storage.type.vector.slang",
+          "match": "\\b(?:bool|half|float|double|int|uint)[2-4]\\b"
         },
         {
-          "name": "support.type.resource.slang",
-          "match": "\\b(?:Texture(?:1D|2D|3D|Cube)(?:Array)?|RWTexture(?:1D|2D|3D)(?:Array)?|SamplerState|SamplerComparisonState|Buffer|RWBuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer|ParameterBlock|ConstantBuffer|RaytracingAccelerationStructure)\\b"
+          "name": "storage.type.slang",
+          "match": "\\b(?:void|bool|half|float|double|float16_t|float32_t|float64_t|int|uint|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix)\\b"
+        },
+        {
+          "name": "storage.type.sampler.slang",
+          "match": "\\b(?:Texture(?:1D|2D|3D|Cube)(?:Array)?|SamplerState|SamplerComparisonState)\\b"
+        },
+        {
+          "name": "storage.type.image.slang",
+          "match": "\\bRWTexture(?:1D|2D|3D)(?:Array)?\\b"
+        },
+        {
+          "name": "storage.type.resource.slang",
+          "match": "\\b(?:Buffer|RWBuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer|ParameterBlock|ConstantBuffer|RaytracingAccelerationStructure)\\b"
         }
       ]
     },
