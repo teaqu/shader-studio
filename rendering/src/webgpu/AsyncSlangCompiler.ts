@@ -1,4 +1,4 @@
-import type { SlangCompiler, SlangCompileOptions, SlangCompileResult } from "./SlangCompiler";
+import type { SlangCompiler, SlangCompileRequest, SlangCompileResult } from "./SlangCompiler";
 
 /**
  * Async facade over Slang→WGSL compilation. The engine awaits compile() and
@@ -7,7 +7,7 @@ import type { SlangCompiler, SlangCompileOptions, SlangCompileResult } from "./S
  * KHR_parallel_shader_compile, with a worker instead of the driver.
  */
 export interface AsyncSlangCompiler {
-  compile(source: string, options: SlangCompileOptions): Promise<SlangCompileResult>;
+  compile(request: SlangCompileRequest): Promise<SlangCompileResult>;
   dispose(): void;
 }
 
@@ -15,8 +15,8 @@ export interface AsyncSlangCompiler {
 export class MainThreadSlangCompiler implements AsyncSlangCompiler {
   constructor(private readonly inner: SlangCompiler) {}
 
-  async compile(source: string, options: SlangCompileOptions): Promise<SlangCompileResult> {
-    return this.inner.compileImagePass(source, options);
+  async compile(request: SlangCompileRequest): Promise<SlangCompileResult> {
+    return this.inner.compile(request);
   }
 
   dispose(): void {}
@@ -123,7 +123,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     return instance;
   }
 
-  compile(source: string, options: SlangCompileOptions): Promise<SlangCompileResult> {
+  compile(request: SlangCompileRequest): Promise<SlangCompileResult> {
     if (this.disposed) {
       // Accurate whether disposed via dispose() or a prior worker crash.
       return Promise.resolve({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
@@ -131,7 +131,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     const id = this.nextId++;
     return new Promise<SlangCompileResult>((resolve) => {
       this.pending.set(id, { resolve, isInit: false });
-      this.worker.postMessage({ id, type: "compile", source, options });
+      this.worker.postMessage({ id, type: "compile", request });
     });
   }
 

@@ -117,12 +117,10 @@ describe("WebGPUVariableCapturer", () => {
       cameraDir: [0.25, 0.5, -0.75],
     } as CaptureUniforms, 8, 4);
 
-    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
-      customUniforms: [
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "shader-a", options: expect.objectContaining({ customUniforms: [
         { name: "tint", type: "vec3" },
         { name: "enabled", type: "bool" },
-      ],
-    }));
+      ] }) }));
     const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
     expect(packed.byteLength).toBeGreaterThan(UNIFORM_OFFSETS.iChannelResolution + 64);
     const values = new DataView(packed);
@@ -161,10 +159,10 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(issued).toBe(2);
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
-    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "shader-a", options: expect.objectContaining({
       captureMode: true,
       passName: "capture",
-    }));
+    }) }));
     expect(gpu.beginRenderPass).toHaveBeenCalledTimes(2);
     expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(2);
   });
@@ -181,9 +179,9 @@ describe("WebGPUVariableCapturer", () => {
 
     await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
 
-    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "shader-a", options: expect.objectContaining({
       channels,
-    }));
+    }) }));
   });
 
   it("declares cubemap capture channels with a cube texture view dimension", async () => {

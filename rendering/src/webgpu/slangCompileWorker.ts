@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
 // Dedicated worker: owns its own slang-wasm instance and answers
 // init/compile messages from WorkerSlangCompiler. Never imports WebGPU.
-import { SlangCompiler, type SlangCompileOptions } from "./SlangCompiler";
+import { SlangCompiler, type SlangCompileRequest } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 
 type InitMessage = { id: number; type: "init"; scriptUrl: string; wasmUrl: string };
-type CompileMessage = { id: number; type: "compile"; source: string; options: SlangCompileOptions };
+type CompileMessage = { id: number; type: "compile"; request: SlangCompileRequest };
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let compiler: SlangCompiler | null = null;
@@ -32,7 +32,7 @@ scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
     if (!compiler) {
       throw new Error("compile requested before worker init");
     }
-    const result = compiler.compileImagePass(message.source, message.options);
+    const result = compiler.compile(message.request);
     scope.postMessage({ id: message.id, ok: true, result });
   } catch (error) {
     scope.postMessage({
@@ -43,3 +43,5 @@ scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
     postStatus("error", message.id, error instanceof Error ? error.message : String(error));
   }
 };
+
+scope.addEventListener("close", () => compiler?.dispose());

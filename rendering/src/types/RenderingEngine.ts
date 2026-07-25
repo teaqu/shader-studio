@@ -1,4 +1,4 @@
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
@@ -13,6 +13,7 @@ export interface RenderingEngine {
     buffers?: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   setInputEnabled(enabled: boolean): void;

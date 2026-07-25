@@ -721,16 +721,8 @@ describe("WebGPURenderingEngine", () => {
     expect(result?.success).toBe(true);
     expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
     expect(compiler.compile).toHaveBeenCalledTimes(2);
-    expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.stringContaining("float4(1)"), {
-      passName: "BufferA",
-      commonCode: "",
-      channels: [],
-    });
-    expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
-      passName: "Image",
-      commonCode: "",
-      channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
-    });
+    expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.objectContaining({ source: expect.stringContaining("float4(1)"), options: expect.objectContaining({ passName: "BufferA", commonCode: "", channels: [] }) }));
+    expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.objectContaining({ source: expect.stringContaining("float4(0)"), options: expect.objectContaining({ passName: "Image", commonCode: "", channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }] }) }));
   });
 
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
@@ -1241,9 +1233,7 @@ describe("WebGPURenderingEngine", () => {
       );
 
       expect(result?.success).toBe(true);
-      expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-        customUniforms: info,
-      }));
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ customUniforms: info }) }));
       expect(engine.getCustomUniformDeclarations()).toBe(declarations);
       expect(engine.getCustomUniformInfo()).toEqual(info);
       expect(engine.getCurrentCustomUniforms()).toEqual([
@@ -1490,12 +1480,7 @@ describe("WebGPURenderingEngine", () => {
         wrap: "repeat",
         vflip: false,
       });
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel0", kind: "video" }],
-        }),
-      );
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ channels: [{ slot: 0, key: "iChannel0", kind: "video" }] }) }));
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
         kind: "video",
         slot: 0,
@@ -1739,12 +1724,7 @@ describe("WebGPURenderingEngine", () => {
         "/audio/test.wav", 0.5, 2.5,
       );
       expect(resourceManager.controlAudio).not.toHaveBeenCalled();
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          channels: [{ slot: 1, key: "iChannel1", kind: "audio" }],
-        }),
-      );
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ channels: [{ slot: 1, key: "iChannel1", kind: "audio" }] }) }));
     });
 
     it("keeps shader compilation successful when audio loading fails", async () => {
@@ -1979,12 +1959,7 @@ describe("WebGPURenderingEngine", () => {
         wrap: "clamp",
         vflip: true,
       });
-      expect(compiler.compile).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
-        }),
-      );
+      expect(compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }] }) }));
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
         kind: "cubemap",
         slot: 0,
@@ -2445,8 +2420,7 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledTimes(1);
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("float4(9)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ source: expect.stringContaining("float4(9)"), options: expect.objectContaining({ passName: "BufferA" }) }),
       );
       expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
     });
@@ -2514,8 +2488,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("float4(8)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ source: expect.stringContaining("float4(8)"), options: expect.objectContaining({ passName: "BufferA" }) }),
       );
     });
 
@@ -2964,8 +2937,8 @@ describe("WebGPURenderingEngine", () => {
     it("does not reuse a failed Slang compile across fresh engine instances", async () => {
       const first = cachedSetup();
       const second = cachedSetup();
-      first.compiler.compile.mockImplementation((source: string) =>
-        source === "buf cache failure"
+      first.compiler.compile.mockImplementation((request: any) =>
+        request.source === "buf cache failure"
           ? { success: false, errors: ["bad buffer"] }
           : { success: true, wgsl: "// wgsl" });
 
@@ -2984,9 +2957,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(failed?.success).toBe(false);
       expect(recovered?.success).toBe(true);
-      expect(second.compiler.compile).toHaveBeenCalledWith("buf cache failure", expect.objectContaining({
-        passName: "BufferA",
-      }));
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "buf cache failure", options: expect.objectContaining({ passName: "BufferA" }) }));
     });
 
     it("does not reuse compiled WGSL across fresh engine instances when common code changed", async () => {
@@ -3024,10 +2995,7 @@ describe("WebGPURenderingEngine", () => {
       });
 
       expect(second.compiler.compile).toHaveBeenCalledTimes(1);
-      expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
-        passName: "Image",
-        channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }],
-      }));
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "img channel cache", options: expect.objectContaining({ passName: "Image", channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }] }) }));
     });
 
     it("recompiles when a channel keeps the same slot/key but changes resource kind", async () => {
@@ -3051,10 +3019,7 @@ describe("WebGPURenderingEngine", () => {
       await first.engine.compileShaderPipeline("img channel kind cache", textureConfig, "/channel-kind-cache.slang", {});
       await second.engine.compileShaderPipeline("img channel kind cache", cubemapConfig, "/channel-kind-cache.slang", {});
 
-      expect(second.compiler.compile).toHaveBeenCalledWith("img channel kind cache", expect.objectContaining({
-        passName: "Image",
-        channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
-      }));
+      expect(second.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({ source: "img channel kind cache", options: expect.objectContaining({ passName: "Image", channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }] }) }));
     });
 
     it("skips recompiling when nothing changed and reuses the same pipelines", async () => {
@@ -3084,7 +3049,7 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf v2" });
 
       expect(compiler.compile).toHaveBeenCalledTimes(1);
-      expect(compiler.compile.mock.calls[0][0]).toBe("buf v2");
+      expect(compiler.compile.mock.calls[0][0].source).toBe("buf v2");
       expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
       expect(imageDispose).not.toHaveBeenCalled();
       expect(bufferDispose).toHaveBeenCalledTimes(1);
@@ -3111,8 +3076,8 @@ describe("WebGPURenderingEngine", () => {
       const firstBufferA = (engine as any).passPipelines.get("BufferA");
       const imageDispose = vi.spyOn(firstImage, "dispose");
 
-      compiler.compile.mockImplementation((src: string) =>
-        src === "buf broken" ? { success: false, errors: ["bad"] } : { success: true, wgsl: "wgsl" });
+      compiler.compile.mockImplementation((request: any) =>
+        request.source === "buf broken" ? { success: false, errors: ["bad"], diagnostics: [] } : { success: true, wgsl: "wgsl", diagnostics: [] });
       const result = await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf broken" });
 
       expect(result?.success).toBe(false);

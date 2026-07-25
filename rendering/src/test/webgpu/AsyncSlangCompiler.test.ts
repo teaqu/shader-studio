@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { MainThreadSlangCompiler, WorkerSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
 
+const request = (languageVersion?: "legacy" | "2025" | "2026" | "latest") => ({
+  source: "src", sourceUri: "file:///workspace/image.slang", sourcePath: "/workspace/image.slang",
+  workspace: { rootUri: "file:///workspace/image.slang", files: [{ path: "/workspace/image.slang", uri: "file:///workspace/image.slang", source: "src" }] },
+  options: { ...(languageVersion ? { languageVersion } : {}) },
+});
+
 /** Fake Worker capturing posted messages; test drives responses via emit(). */
 function fakeWorker() {
   const posted: any[] = [];
@@ -19,11 +25,12 @@ function fakeWorker() {
 
 describe("MainThreadSlangCompiler", () => {
   it("delegates to the wrapped SlangCompiler", async () => {
-    const inner = { compileImagePass: vi.fn(() => ({ success: true as const, wgsl: "w" })) };
+    const inner = { compile: vi.fn(() => ({ success: true as const, wgsl: "w", diagnostics: [] })) };
     const compiler = new MainThreadSlangCompiler(inner as any);
-    const result = await compiler.compile("src", { passName: "Image" });
-    expect(result).toEqual({ success: true, wgsl: "w" });
-    expect(inner.compileImagePass).toHaveBeenCalledWith("src", { passName: "Image" });
+    const input = request("2026");
+    const result = await compiler.compile(input);
+    expect(result).toEqual({ success: true, wgsl: "w", diagnostics: [] });
+    expect(inner.compile).toHaveBeenCalledWith(input);
   });
 });
 
@@ -35,10 +42,11 @@ describe("WorkerSlangCompiler", () => {
     worker.emit({ id: worker.posted[0].id, ok: true });
     const compiler = await createPromise;
 
-    const compilePromise = compiler.compile("src", { passName: "BufferA" });
-    expect(worker.posted[1]).toMatchObject({ type: "compile", source: "src", options: { passName: "BufferA" } });
-    worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w" } });
-    await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w" });
+    const input = request("2025");
+    const compilePromise = compiler.compile(input);
+    expect(worker.posted[1]).toEqual({ id: worker.posted[1].id, type: "compile", request: input });
+    worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w", diagnostics: [] } });
+    await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w", diagnostics: [] });
   });
 
   it("matches concurrent compiles to their own responses by id", async () => {

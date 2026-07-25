@@ -374,12 +374,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     captureCounters.pipelineCompiles++;
-    const compileResult = await this.compiler.compile(captureShader, {
-      passName: "capture",
-      commonCode: this.compileContext.commonCode,
-      channels,
-      captureMode: true,
-      customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+    const path = "/workspace/capture.slang";
+    const compileResult = await this.compiler.compile({
+      source: captureShader, sourcePath: path, sourceUri: `file://${path}`,
+      workspace: { rootUri: `file://${path}`, files: [{ path, uri: `file://${path}`, source: captureShader }] },
+      options: {
+        passName: "capture", commonCode: this.compileContext.commonCode, channels, captureMode: true,
+        customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+      },
     });
     if (this.disposed) {
       return null;
