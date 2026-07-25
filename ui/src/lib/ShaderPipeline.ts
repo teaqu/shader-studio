@@ -119,7 +119,7 @@ export class ShaderPipeline {
         }
 
         this.syncStoredShaderContextForBufferUpdate(bufferName, code);
-        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName);
+        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName, message.workspace);
         return undefined;
       }
 
@@ -295,6 +295,7 @@ export class ShaderPipeline {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
+      compileScope: (this.lastEvent?.data as ShaderSourceMessage | undefined)?.compileScope,
     };
     this.transport.postMessage(logMessage);
   }

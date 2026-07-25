@@ -540,6 +540,24 @@ vi.mock('../../lib/state/profileStore.svelte', () => ({
 }));
 
 describe('ShaderViewer', () => {
+  it('clones incoming Slang workspaces before the pipeline retains them', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    const workspace = {
+      rootUri: 'file:///project',
+      files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'original' }],
+    };
+    const handler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+    await handler({ data: {
+      type: 'shaderSource', language: 'slang', code: 'float4 mainImage(float2 p) { return 0; }',
+      config: null, path: '/project/image.slang', buffers: {}, workspace, requestId: 4,
+    } });
+    workspace.files[0].source = 'mutated after delivery';
+
+    const delivered = mockPipelineHandleShaderMessage.mock.calls.at(-1)?.[0].data.workspace;
+    expect(delivered).not.toBe(workspace);
+    expect(delivered.files[0].source).toBe('original');
+  });
   function getEditorOverlayVisible(): boolean {
     return getEditorOverlayVisibleState();
   }

@@ -14,6 +14,7 @@ describe('ShaderCompilationState', () => {
     state.setResult({ success: false, errors: ['compile failed'] });
 
     expect(state.latest).toEqual({ success: false, errors: ['compile failed'] });
+    expect(state.getResult()).toEqual({ success: false, errors: ['compile failed'] });
 
     state.clear();
 

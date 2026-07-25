@@ -1675,6 +1675,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   async updateBufferAndRecompile(
     bufferName: string,
     bufferContent: string,
+    workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult | undefined> {
     if (!this.lastCompile) {
       return { success: false, errors: ["Cannot update a buffer before a shader has been compiled"] };
@@ -1687,7 +1688,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers,
       this.lastCompile.customUniformDeclarations,
       this.lastCompile.customUniformInfo,
-      this.lastCompile.workspace ? cloneWorkspace(this.lastCompile.workspace) : undefined,
+      workspace ? cloneWorkspace(workspace) : this.lastCompile.workspace ? cloneWorkspace(this.lastCompile.workspace) : undefined,
     );
   }
 

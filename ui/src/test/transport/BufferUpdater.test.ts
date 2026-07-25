@@ -102,6 +102,26 @@ describe('BufferUpdater', () => {
     });
   });
 
+  it('passes a cloned Slang workspace to an incremental buffer recompile', async () => {
+    (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({ success: true });
+    const workspace = {
+      rootUri: 'file:///project',
+      files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'original' }],
+    };
+
+    bufferUpdater.updateBuffer('/buffers/BufferA.glsl', {}, 'direct code', undefined, workspace);
+    workspace.files[0].source = 'changed';
+
+    await vi.waitFor(() => {
+      expect(mockRenderEngine.updateBufferAndRecompile).toHaveBeenCalledWith(
+        'BufferA', 'direct code', expect.objectContaining({ rootUri: 'file:///project' }),
+      );
+    });
+    const passed = (mockRenderEngine.updateBufferAndRecompile as any).mock.calls[0][2];
+    expect(passed).not.toBe(workspace);
+    expect(passed.files[0].source).toBe('original');
+  });
+
   it('should handle compilation errors', async () => {
     (mockRenderEngine.updateBufferAndRecompile as any).mockResolvedValue({
       success: false,

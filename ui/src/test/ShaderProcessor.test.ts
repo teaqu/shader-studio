@@ -85,6 +85,17 @@ describe('ShaderProcessor', () => {
     expect(fallbackWorkspace).not.toBe(firstWorkspace);
   });
 
+  it('preserves structured compiler diagnostics on a failed compile', async () => {
+    const diagnostics = [{ severity: 'error', source: 'slang-compile', message: 'broken', uri: 'file:///project/image.slang', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } }] as const;
+    (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({ success: false, errors: ['broken'], diagnostics });
+
+    const result = await shaderProcessor.processMainShaderCompilation({
+      type: 'shaderSource', code: 'broken', config: null, path: '/project/image.slang', buffers: {}, language: 'slang',
+    });
+
+    expect(result).toEqual(expect.objectContaining({ success: false, errors: ['broken'], diagnostics }));
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);

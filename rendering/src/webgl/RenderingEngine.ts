@@ -297,7 +297,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.cameraManager.setEnabled(enabled);
   }
 
-  public async updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined> {
+  public async updateBufferAndRecompile(bufferName: string, bufferContent: string, _workspace?: import('@shader-studio/types').SlangWorkspaceSnapshot): Promise<CompilationResult | undefined> {
     // Get current passes to find the buffer
     const passes = this.shaderPipeline.getPasses();
     const bufferPass = passes.find(pass => pass.name === bufferName && pass.name !== "Image");

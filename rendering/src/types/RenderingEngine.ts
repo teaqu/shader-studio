@@ -17,7 +17,7 @@ export interface RenderingEngine {
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   setInputEnabled(enabled: boolean): void;
-  updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
+  updateBufferAndRecompile(bufferName: string, bufferContent: string, workspace?: SlangWorkspaceSnapshot): Promise<CompilationResult | undefined>;
   getPasses(): any[];
   togglePause(): void;
   getTimeManager(): TimeManager;

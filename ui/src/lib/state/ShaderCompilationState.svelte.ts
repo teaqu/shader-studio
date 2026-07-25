@@ -16,6 +16,10 @@ export class ShaderCompilationState {
     return this.latestResult;
   }
 
+  getResult(): CompilationResult | null {
+    return this.latestResult;
+  }
+
   setResult(result: CompilationResult): void {
     this.latestResult = result;
   }

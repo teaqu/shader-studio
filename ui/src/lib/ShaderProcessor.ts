@@ -84,7 +84,8 @@ export class ShaderProcessor {
 
         return {
           success: false,
-          errors: result?.errors || ["Unknown compilation error"]
+          errors: result?.errors || ["Unknown compilation error"],
+          diagnostics: result?.diagnostics,
         };
       }
 
@@ -166,7 +167,8 @@ export class ShaderProcessor {
     if (!result?.success) {
       return {
         success: false,
-        errors: result?.errors || ["Unknown compilation error"]
+        errors: result?.errors || ["Unknown compilation error"],
+        diagnostics: result?.diagnostics,
       };
     }
 

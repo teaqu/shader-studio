@@ -3,8 +3,10 @@ import type { Transport } from "../transport/MessageTransport";
 import type {
   ErrorMessage,
   LogMessage,
+  SlangWorkspaceSnapshot,
 } from "@shader-studio/types";
 import { BufferPathResolver } from "./BufferPathResolver";
+import { cloneSlangWorkspace } from '../slangSourceIdentity';
 
 /**
  * Handles updating a buffer and recompiling the shader pipeline.
@@ -28,6 +30,7 @@ export class BufferUpdater {
     buffers: Record<string, string>,
     code: string,
     resolvedBufferName?: string,
+    workspace?: SlangWorkspaceSnapshot,
   ): void {
     // Extract buffer name from path
     const bufferName = this.extractBufferNameFromPath(path);
@@ -54,7 +57,14 @@ export class BufferUpdater {
       // Get the buffer content - either from buffers object or from code if it's a single buffer file
       const bufferContent = buffers[actualBufferName] || buffers[bufferName] || code || '';
       
-      this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent)
+      const update = workspace
+        ? this.renderEngine.updateBufferAndRecompile(
+          actualBufferName,
+          bufferContent,
+          cloneSlangWorkspace(workspace),
+        )
+        : this.renderEngine.updateBufferAndRecompile(actualBufferName, bufferContent);
+      update
         .then(result => {
           if (result?.superseded) {
             // A newer update raced past this one; its own completion path
