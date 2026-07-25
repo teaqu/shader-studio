@@ -140,20 +140,27 @@ export class ShaderDebugManager {
 
     const selected = resolveSlangWorkspaceFile(this.workspace, this.state.filePath);
     if (selected.status !== 'matched') {
-      return null;
+      return this.unsupportedSlangCrossFile(this.state.filePath);
     }
 
     const activePath = passName === 'Image' ? this.imagePassPath : this.bufferPathMap[passName];
     const root = activePath ? resolveSlangWorkspaceFile(this.workspace, activePath) : { status: 'unmatched' as const };
-    const rootUri = root.status === 'matched' ? root.file.uri : this.workspace.rootUri;
+    if (root.status !== 'matched') {
+      return this.unsupportedSlangCrossFile(selected.file.uri);
+    }
+    const rootUri = root.file.uri;
     if (selected.file.uri === rootUri) {
       return null;
     }
 
+    return this.unsupportedSlangCrossFile(selected.file.uri);
+  }
+
+  private unsupportedSlangCrossFile(sourceUri: string): SlangCrossFileDebugUnsupported {
     return {
       status: 'unsupported',
       code: 'slang-cross-file-debug-unsupported',
-      sourceUri: selected.file.uri,
+      sourceUri,
       message: 'Debugging imported Slang modules and common code is not supported yet.',
     };
   }

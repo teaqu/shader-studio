@@ -398,6 +398,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
           event.data.config ?? null,
           event.data.path ?? null,
           event.data.buffers ?? {},
+          event.data.workspace,
         );
         if (typeof event.data.code === 'string') {
           this._shaderDebugManager.setImageShaderCode(event.data.code);
@@ -672,6 +673,33 @@ describe('ShaderViewer', () => {
     await fireEvent.pointerDown(variableInspectorButton);
     await tick();
   }
+
+  it('does not notify variable capture for an imported Slang selection, then resumes for the root', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    const root = '#language slang 2026\nmodule image;\nimport palette;\nfloat4 mainImage(float2 p) { return float4(paletteValue(), 0, 0, 1); }';
+    await sendMessage({
+      type: 'shaderSource', language: 'slang', path: '/workspace/image.slang', code: root,
+      config: { passes: { Image: {} } }, buffers: {},
+      workspace: {
+        rootUri: 'file:///project/image.slang',
+        files: [
+          { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+          { uri: 'file:///project/palette.slang', path: '/workspace/palette.slang', source: 'module palette;' },
+        ],
+      },
+    });
+    await sendMessage({ type: 'cursorPosition', payload: { line: 0, lineContent: 'float value = 1;', filePath: 'file:///project/palette.slang' } });
+    await enableDebugAndVariableInspector();
+
+    expect(mockVCMFactory._notifyCalls).toHaveLength(0);
+
+    await sendMessage({ type: 'cursorPosition', payload: { line: 3, lineContent: 'float4 mainImage(float2 p) { return float4(paletteValue(), 0, 0, 1); }', filePath: 'file:///project/image.slang' } });
+
+    await vi.waitFor(() => expect(mockVCMFactory._notifyCalls.length).toBeGreaterThan(0));
+    expect(mockVCMFactory._notifyCalls.at(-1)?.code).toBe(root);
+  });
 
   function getCtrlButton(container: HTMLElement, text: string): HTMLElement | undefined {
     return Array.from(container.querySelectorAll('.ctrl-btn')).find(

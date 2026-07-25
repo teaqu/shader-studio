@@ -142,4 +142,72 @@ describe('ShaderDebugManager - Slang language mode', () => {
       sourceUri: 'file:///project/common.slang',
     });
   });
+
+  it.each([
+    ['unmatched', 'file:///project/lib/missing.slang'],
+    ['ambiguous', 'palette.slang'],
+  ])('rejects an %s Slang selection instead of assuming the workspace root', (_kind, selector) => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext({ version: '1', passes: { Image: {} } }, '/workspace/image.slang', {}, {
+      rootUri: 'file:///project/image.slang',
+      files: [
+        { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+        { uri: 'file:///project/a/palette.slang', path: '/workspace/a/palette.slang', source: '' },
+        { uri: 'file:///project/b/palette.slang', path: '/workspace/b/palette.slang', source: '' },
+      ],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float value = 1;', selector);
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: selector,
+    });
+  });
+
+  it('rejects an unmatched active Slang root selector even when the selected file is the workspace root', () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext({ version: '1', passes: { Image: {} } }, '/workspace/missing.slang', {}, {
+      rootUri: 'file:///project/image.slang',
+      files: [
+        { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+      ],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float value = 1;', 'file:///project/image.slang');
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: 'file:///project/image.slang',
+    });
+  });
+
+  it('rejects an ambiguous active Slang root selector', () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext({ version: '1', passes: { Image: {} } }, 'image.slang', {}, {
+      rootUri: 'file:///project/image.slang',
+      files: [
+        { uri: 'file:///project/a/image.slang', path: '/workspace/a/image.slang', source: root },
+        { uri: 'file:///project/b/image.slang', path: '/workspace/b/image.slang', source: root },
+      ],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float value = 1;', 'file:///project/a/image.slang');
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: 'file:///project/a/image.slang',
+    });
+  });
+
+  it('rejects configured common code even when it is absent from the workspace snapshot', () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext({ version: '1', passes: { Image: {} } }, '/workspace/image.slang', { common: 'float commonValue() { return 1; }' }, {
+      rootUri: 'file:///project/image.slang',
+      files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root }],
+    });
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float commonValue() { return 1; }', 'file:///project/common.slang');
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: 'file:///project/common.slang',
+    });
+  });
 });

@@ -85,6 +85,22 @@ describe('ShaderProcessor', () => {
     expect(fallbackWorkspace).not.toBe(firstWorkspace);
   });
 
+  it('compiles the original root without transforming when debugging an unsupported Slang dependency', async () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return 0; }';
+    (mockShaderDebugManager.getState as any).mockReturnValue({ isEnabled: true, isActive: true, currentLine: 3, activeBufferName: 'Image' });
+    (mockShaderDebugManager.getDebugTarget as any).mockReturnValue({
+      status: 'unsupported', code: 'slang-cross-file-debug-unsupported', sourceUri: 'file:///project/lib/palette.slang', message: 'unsupported',
+    });
+
+    await shaderProcessor.processMainShaderCompilation({
+      type: 'shaderSource', language: 'slang', code: root, config: null, path: '/workspace/image.slang', buffers: {},
+    });
+
+    expect(mockShaderDebugManager.modifyShaderForDebugging).not.toHaveBeenCalled();
+    expect(mockShaderDebugManager.applyFullShaderPostProcessing).not.toHaveBeenCalled();
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(root, null, '/workspace/image.slang', {}, undefined, undefined);
+  });
+
   it('preserves structured compiler diagnostics on a failed compile', async () => {
     const diagnostics = [{ severity: 'error', source: 'slang-compile', message: 'broken', uri: 'file:///project/image.slang', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } }] as const;
     (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({ success: false, errors: ['broken'], diagnostics });

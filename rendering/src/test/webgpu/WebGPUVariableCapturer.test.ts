@@ -132,7 +132,7 @@ describe("WebGPUVariableCapturer", () => {
     expect(workspace.files[0].source).toBe("root-original");
   });
 
-  it("keys capture pipelines by workspace identity and retains the last good workspace pipeline", async () => {
+  it("uses the last good ABI-compatible pipeline when a changed workspace fails to compile", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
     const source = "float4 _dbgCapture() { return 0; }";
@@ -154,10 +154,63 @@ describe("WebGPUVariableCapturer", () => {
     expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
     gpu.compiler.compile.mockResolvedValueOnce({ success: false, errors: ["dependency error"] });
     capturer.setCompileContext(context(changed));
-    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(0);
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
+    expect(capturer.getLastError()).toBe("dependency error");
     capturer.setCompileContext(context(first));
     expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not use a last-good pipeline when the capture binding layout changes", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {}, () => []);
+    const source = "float4 _dbgCapture() { return 0; }";
+    await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1);
+    gpu.compiler.compile.mockResolvedValueOnce({ success: false, errors: ["new channel dependency error"] });
+    capturer.setCompileContext({ slangChannels: [{ slot: 0, key: "iChannel0", kind: "texture" }] });
+
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(0);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds last-good ABI pipelines with the exact capture cache", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    for (let index = 0; index <= 20; index++) {
+      await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: `shader-${index}` }], uniforms, 1, 1);
+    }
+
+    const cacheInspector = capturer as unknown as {
+      pipelineCache: Map<string, unknown>;
+      lastGoodPipelines: Map<string, unknown>;
+    };
+    expect(cacheInspector.pipelineCache.size).toBe(20);
+    expect(cacheInspector.lastGoodPipelines.size).toBeLessThanOrEqual(20);
+  });
+
+  it("clears last-good ABI pipelines when the custom-uniform layout changes", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: "shader" }], uniforms, 1, 1);
+    capturer.setCustomUniforms("uniform float gain;", [{ name: "gain", type: "float", value: 1 }]);
+
+    const cacheInspector = capturer as unknown as { pipelineCache: Map<string, unknown>; lastGoodPipelines: Map<string, unknown> };
+    expect(cacheInspector.pipelineCache.size).toBe(0);
+    expect(cacheInspector.lastGoodPipelines.size).toBe(0);
+  });
+
+  it("uses a last-good ABI-compatible pipeline after GPU pipeline creation fails", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const source = "float4 _dbgCapture() { return 0; }";
+    await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1);
+    (gpu.device.createShaderModule as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error("GPU pipeline failed");
+    });
+    capturer.setCompileContext({ commonCode: "changed" });
+
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
+    expect(capturer.getLastError()).toBe("GPU pipeline failed");
   });
 
   it("preserves a dependency diagnostic URI and range in the capture error", async () => {

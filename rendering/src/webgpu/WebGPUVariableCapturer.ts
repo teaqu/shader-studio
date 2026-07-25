@@ -23,6 +23,7 @@ interface CachedPipeline {
   pipeline: GPURenderPipeline;
   bindGroupLayout: GPUBindGroupLayout;
   lastUsed: number;
+  abiKey: string;
 }
 
 interface PendingCapture {
@@ -47,6 +48,8 @@ interface PendingCapture {
  */
 export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCache = new Map<string, CachedPipeline>();
+  /** Last successful pipeline per ABI, used while a newer workspace snapshot fails. */
+  private lastGoodPipelines = new Map<string, CachedPipeline>();
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
   private compileContext: CaptureCompileContext = {};
@@ -85,6 +88,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     if (previousShape !== nextShape) {
       this.pipelineCache.clear();
       this.pipelineCacheOrder = [];
+      this.lastGoodPipelines.clear();
       this.uniformBuffer?.destroy?.();
       this.uniformBuffer = null;
     }
@@ -191,6 +195,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
+    this.lastGoodPipelines.clear();
     this.pipelineCacheOrder = [];
   }
 
@@ -396,6 +401,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
     if (!compileResult.success) {
       this.lastError = this.formatCompileError(compileResult.errors, compileResult.diagnostics ?? []);
+      const lastGood = this.lastGoodPipelines.get(this.abiIdentity(captureShader, channels));
+      if (lastGood) {
+        lastGood.lastUsed = performance.now();
+        return lastGood;
+      }
       return null;
     }
 
@@ -421,15 +431,33 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         : this.device.createRenderPipeline(descriptor);
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
+      const lastGood = this.lastGoodPipelines.get(this.abiIdentity(captureShader, channels));
+      if (lastGood) {
+        lastGood.lastUsed = performance.now();
+        return lastGood;
+      }
       return null;
     }
 
     if (this.pipelineCacheOrder.length >= SHADER_CACHE_MAX) {
       const oldest = this.pipelineCacheOrder.shift()!;
+      const evicted = this.pipelineCache.get(oldest);
       this.pipelineCache.delete(oldest);
+      if (evicted && this.lastGoodPipelines.get(evicted.abiKey) === evicted) {
+        const replacement = [...this.pipelineCache.values()]
+          .filter((candidate) => candidate.abiKey === evicted.abiKey)
+          .sort((left, right) => right.lastUsed - left.lastUsed)[0];
+        if (replacement) {
+          this.lastGoodPipelines.set(evicted.abiKey, replacement);
+        } else {
+          this.lastGoodPipelines.delete(evicted.abiKey);
+        }
+      }
     }
-    const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
+    const abiKey = this.abiIdentity(captureShader, channels);
+    const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now(), abiKey };
     this.pipelineCache.set(cacheKey, cached);
+    this.lastGoodPipelines.set(abiKey, cached);
     this.pipelineCacheOrder.push(cacheKey);
     return cached;
   }
@@ -465,6 +493,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       sourcePath: this.compileContext.sourcePath,
       commonCode: this.compileContext.commonCode,
       channels: this.compileContext.slangChannels ?? [],
+    });
+  }
+
+  private abiIdentity(captureShader: string, channels: SlangChannelBinding[]): string {
+    return JSON.stringify({
+      captureShader,
+      channels: [...channels]
+        .sort((left, right) => left.slot - right.slot)
+        .map(({ slot, key, kind }) => ({ slot, key, kind })),
+      customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
     });
   }
 
