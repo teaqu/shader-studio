@@ -316,14 +316,20 @@ vi.mock('../../lib/ShaderPipeline', () => {
       getLockedShaderPath(): string | undefined;
     };
     private _lastEvent: any = null;
-    private _compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null = null;
+    private _compilationState: {
+      setResult(result: { success: boolean; errors?: string[] }): void;
+      acceptRequest?(message: { requestId?: number }, scope?: string): boolean;
+    } | null = null;
 
     constructor(
       _transport: any,
       _engine: any,
       locker: any,
       shaderDebugManager: any,
-      compilationState?: { setResult(result: { success: boolean; errors?: string[] }): void },
+      compilationState?: {
+        setResult(result: { success: boolean; errors?: string[] }): void;
+        acceptRequest?(message: { requestId?: number }, scope?: string): boolean;
+      },
     ) {
       this._locker = locker;
       this._shaderDebugManager = shaderDebugManager;
@@ -371,6 +377,10 @@ vi.mock('../../lib/ShaderPipeline', () => {
 
     async handleShaderMessage(event: any): Promise<{ success: boolean; errors?: string[] }> {
       mockPipelineHandleShaderMessage(event);
+      const scope = this._locker.getLockedShaderPath() ?? event?.data?.path ?? 'global';
+      if (this._compilationState?.acceptRequest && !this._compilationState.acceptRequest(event.data, scope)) {
+        return { success: false, errors: ['Superseded by a newer compile'] };
+      }
       if (event?.data?.type === 'shaderSource' && this._shaderDebugManager) {
         this._shaderDebugManager.setShaderContext(
           event.data.config ?? null,
@@ -3954,6 +3964,37 @@ describe('ShaderViewer', () => {
 
       // After clicking, lock state should toggle
       expect(lockButton).toBeTruthy();
+    });
+
+    it('keeps the latest scoped Slang workspace after unlock/relock rejects an older request', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      const handler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const latestWorkspace = {
+        rootUri: 'file:///project',
+        files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'latest' }],
+      };
+
+      await handler({ data: {
+        type: 'shaderSource', language: 'slang', code: 'float4 mainImage(float2 p) { return 1; }',
+        config: null, path: '/project/image.slang', buffers: {}, requestId: 9, workspace: latestWorkspace,
+      } });
+      latestWorkspace.files[0].source = 'mutated';
+      const lockButton = screen.getByLabelText('Toggle lock');
+      await fireEvent.click(lockButton);
+      await fireEvent.click(lockButton);
+      await fireEvent.click(lockButton);
+
+      await handler({ data: {
+        type: 'shaderSource', language: 'slang', code: 'float4 mainImage(float2 p) { return 0; }',
+        config: null, path: '/project/image.slang', buffers: {}, requestId: 8,
+        workspace: { ...latestWorkspace, files: [{ ...latestWorkspace.files[0], source: 'older' }] },
+      } });
+
+      const accepted = mockPipelineHandleShaderMessage.mock.calls[0][0].data.workspace;
+      expect(accepted.files[0].source).toBe('latest');
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(2);
     });
   });
 
