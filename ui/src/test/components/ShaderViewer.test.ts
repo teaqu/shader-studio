@@ -4146,6 +4146,7 @@ describe('ShaderViewer', () => {
         type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(1); }',
         config: { passes: { Image: {} }, label: 'GLSL' }, path: '/workspace/image.glsl',
         buffers: { BufferC: 'glsl buffer' }, requestId: 12,
+        workspace: { rootUri: 'file:///project', files: [{ uri: 'file:///project/stray.slang', path: '/workspace/stray.slang', source: 'stray' }] },
       } });
       await tick();
 

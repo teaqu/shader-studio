@@ -877,7 +877,7 @@
       path: event.data.path || '',
       buffers: event.data.buffers || {},
       language,
-      workspace: event.data.workspace,
+      workspace: language === 'slang' ? event.data.workspace : undefined,
     });
   }
 
