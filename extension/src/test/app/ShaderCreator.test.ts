@@ -6,6 +6,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ShaderCreator } from '../../app/ShaderCreator';
 
+const EXISTING_GLSL_TEMPLATE = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // Normalized pixel coordinates (from 0 to 1)
+    vec2 uv = fragCoord/iResolution.xy;
+
+    // Time varying pixel color
+    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+
+    // Output to screen
+    fragColor = vec4(col,1.0);
+}`;
+
 suite('ShaderCreator Test Suite', () => {
   let testDir: string;
   let mockLogger: any;
@@ -148,7 +160,10 @@ suite('ShaderCreator Test Suite', () => {
     await shaderCreator.create();
 
     const callArgs = showSaveDialogStub.firstCall.args[0]!;
-    assert.deepStrictEqual(callArgs.filters, { 'GLSL Shader': ['glsl'] });
+    assert.deepStrictEqual(callArgs.filters, {
+      'GLSL Shader': ['glsl'],
+      'Slang Shader': ['slang'],
+    });
     assert.strictEqual(callArgs.title, 'New Shader');
   });
 
@@ -200,11 +215,77 @@ suite('ShaderCreator Test Suite', () => {
     const content = fs.readFileSync(filePath, 'utf-8');
     assert.ok(content.includes('void mainImage'));
     assert.ok(content.includes('fragColor'));
+    assert.strictEqual(content, EXISTING_GLSL_TEMPLATE);
 
     // Clean up
     try {
       fs.unlinkSync(filePath); 
     } catch { }
+  });
+
+  test('writes a Slang 2026 template with a sanitized module name', async () => {
+    const filePath = path.join(testDir, '2 cool-shader.slang');
+    const fileUri = vscode.Uri.file(filePath);
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.strictEqual(
+      fs.readFileSync(filePath, 'utf8'),
+      `#language slang 2026
+module _2_cool_shader;
+
+float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    return float4(uv, 0.0, 1.0);
+}`,
+    );
+    fs.unlinkSync(filePath);
+  });
+
+  for (const [filename, moduleName] of [
+    ['module.slang', '_module'],
+    ['each.slang', '_each'],
+    ['float.slang', '_float'],
+    ['Texture2D.slang', '_Texture2D'],
+    ['float4.slang', '_float4'],
+    ['in-out.slang', 'in_out'],
+    ['a.b.slang', 'a_b'],
+    ['my shader!.SLANG', 'my_shader_'],
+    ['Module.slang', 'Module'],
+    ['texture2d.slang', 'texture2d'],
+  ]) {
+    test(`uses a valid Slang module identifier for ${filename}`, async () => {
+      const filePath = path.join(testDir, filename);
+      const fileUri = vscode.Uri.file(filePath);
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+      sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+      sandbox.stub(vscode.window, 'showInformationMessage');
+
+      await shaderCreator.create();
+
+      assert.ok(fs.readFileSync(filePath, 'utf8').includes(`module ${moduleName};`));
+      fs.unlinkSync(filePath);
+    });
+  }
+
+  test('keeps the existing GLSL template byte-for-byte unchanged for non-Slang extensions', async () => {
+    const filePath = path.join(testDir, 'legacy.GLSL');
+    const fileUri = vscode.Uri.file(filePath);
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    assert.strictEqual(fs.readFileSync(filePath, 'utf8'), EXISTING_GLSL_TEMPLATE);
+    fs.unlinkSync(filePath);
   });
 
 });
