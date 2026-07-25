@@ -1387,6 +1387,20 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).lastCompile.workspace).toEqual(expect.objectContaining({ rootUri: snapshot.rootUri }));
       expect((engine as any).lastCompile.workspace).not.toBe(snapshot);
     });
+
+    it("commits a successful buffer replay and keeps its workspace defensive", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } }, BufferA: { path: "passes/buffera.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "old" }, undefined, undefined, snapshot);
+      await engine.updateBufferAndRecompile("BufferA", "new");
+      expect((engine as any).lastCompile.buffers.BufferA).toBe("new");
+      const observed = compiler.compile.mock.calls.at(-1)[0].workspace;
+      observed.files[0].source = "mutated observed request";
+      await engine.updateBufferAndRecompile("BufferA", "newer");
+      expect((engine as any).lastCompile.workspace.files[0].source).not.toBe("mutated observed request");
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
