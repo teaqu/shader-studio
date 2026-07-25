@@ -348,6 +348,26 @@ describe('Slang Monarch language', () => {
       .toEqual([{ offset: 0, type: 'string.slang', language: 'slang' }]);
   });
 
+  it('keeps adjacent same-line raw strings separate', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const types = monaco.editor.tokenize(
+      'R"a(first)a" float4 value; R"a(second)a"',
+      'slang',
+    )[0].map((token) => token.type);
+
+    expect(types.filter((type) => type === 'string.slang')).toHaveLength(2);
+    expect(types).toContain('type.slang');
+    expect(types).toContain('identifier.slang');
+  });
+
   it('emits runtime categories for attributes and malformed literals', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,

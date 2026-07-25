@@ -179,7 +179,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
     root: [
       [slangMonarchPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
-      [/R"([^"()\s]*)\([^\r\n]*\)\1"/, 'string'],
+      [/R"([^"()\s]*)\([^\r\n]*?\)\1"/, 'string'],
       [/R"([^"()\s]*)\(/, { token: 'string', next: '@rawString.$1' }],
       [slangMatrixTypePattern, 'type'],
       [invalidLeadingZeroPattern, 'invalid'],
