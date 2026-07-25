@@ -27,6 +27,12 @@ const SLANG_GRAMMAR_KEYWORDS_AND_MODIFIERS = [
   'extern', 'inline', 'mutating', 'nonmutating', 'differentiable', 'no_diff',
 ];
 
+const SLANG_COMPILER_RESERVED_WORDS = [
+  '__builtin', '__generic', '__include', '__intrinsic_op', '__target_intrinsic', 'asm', 'catch', 'cbuffer',
+  'defer', 'export', 'foreach', 'from', 'get', 'new', 'nullptr', 'override', 'protected', 'set', 'shared',
+  'sizeof', 'throw', 'try', 'union',
+];
+
 const SLANG_CONCRETE_BUILTIN_TYPES = [
   'void', 'bool', 'half', 'float', 'double', 'float16_t', 'float32_t', 'float64_t', 'int', 'uint', 'int8_t',
   'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t', 'vector', 'matrix',
@@ -273,6 +279,12 @@ float4 mainImage(float2 fragCoord)
 
   test('prefixes every Slang grammar keyword and modifier', () => {
     for (const name of SLANG_GRAMMAR_KEYWORDS_AND_MODIFIERS) {
+      assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
+    }
+  });
+
+  test('prefixes compiler-reserved Slang words', () => {
+    for (const name of SLANG_COMPILER_RESERVED_WORDS) {
       assert.strictEqual(__testOnly.sanitizeSlangModuleName(name), `_${name}`, name);
     }
   });

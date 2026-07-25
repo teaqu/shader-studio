@@ -6,6 +6,10 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 
 const SLANG_RESERVED_MODULE_NAMES = new Set([
+  // Compiler-reserved words which are not all represented by the syntax grammar.
+  "__builtin", "__generic", "__include", "__intrinsic_op", "__target_intrinsic", "asm", "catch", "cbuffer",
+  "defer", "export", "foreach", "from", "get", "new", "nullptr", "override", "protected", "set", "shared",
+  "sizeof", "throw", "try", "union",
   // Declaration, control-flow, and storage words in syntaxes/slang.tmLanguage.json.
   "associatedtype", "break", "case", "centroid", "class", "const", "continue", "default", "differentiable",
   "discard", "do", "each", "else", "enum", "expand", "extension", "extern", "false", "for", "func", "generic", "globallycoherent",
