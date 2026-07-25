@@ -396,21 +396,31 @@ export class ShaderStudio {
   }
 
   private registerEventHandlers(): void {
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
+    this.context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
       this.compileController.handleActiveEditorChange(editor);
-    });
+    }));
 
-    vscode.workspace.onDidChangeTextDocument((event) => {
+    this.context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event) => {
       this.compileController.handleTextDocumentChange(event);
       this.handleConfigDocumentChange(event.document);
-    });
+    }));
 
-    vscode.workspace.onDidSaveTextDocument((document) => {
+    this.context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => {
       this.compileController.handleTextDocumentSave(
         document,
         vscode.window.visibleTextEditors,
       );
-    });
+    }));
+
+    this.context.subscriptions.push(vscode.workspace.onDidCreateFiles((event) => {
+      this.compileController.handleFilesCreated(event.files);
+    }));
+    this.context.subscriptions.push(vscode.workspace.onDidDeleteFiles((event) => {
+      this.compileController.handleFilesDeleted(event.files);
+    }));
+    this.context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((document) => {
+      this.compileController.handleTextDocumentClose(document);
+    }));
 
     // Track cursor position in GLSL editors for debug mode
     this.context.subscriptions.push(

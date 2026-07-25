@@ -54,6 +54,9 @@ suite('CompileController Test Suite', () => {
       sendShaderWithScriptContent: sandbox.stub().resolves(),
       getActiveConfig: sandbox.stub().returns(null),
       getScriptPath: sandbox.stub().returns(null),
+      handleSlangFilesCreated: sandbox.stub().resolves(),
+      handleSlangFilesDeleted: sandbox.stub().resolves(),
+      handleSlangDocumentClosed: sandbox.stub().resolves(),
     };
 
     mockMessenger = {
@@ -82,6 +85,31 @@ suite('CompileController Test Suite', () => {
 
     assert.strictEqual(controller.getMode(), 'manual');
     assert.ok((mockContext.globalState.update as sinon.SinonStub).calledWith('shader-studio.compileMode', 'manual'));
+  });
+
+  test('routes Slang create/delete in hot and save modes but never manual, and only closes in hot', () => {
+    const uri = vscode.Uri.file('/mock/lib.slang');
+    const document = { fileName: '/mock/lib.slang', uri } as any;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.handleFilesCreated([uri]);
+    controller.handleFilesDeleted([uri]);
+    controller.handleTextDocumentClose(document);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.handleSlangFilesCreated, ['/mock/lib.slang']);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.handleSlangFilesDeleted, ['/mock/lib.slang']);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.handleSlangDocumentClosed, '/mock/lib.slang');
+    controller.setMode('save');
+    controller.handleFilesCreated([uri]);
+    controller.handleFilesDeleted([uri]);
+    controller.handleTextDocumentClose(document);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 2);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 2);
+    assert.strictEqual(mockShaderProvider.handleSlangDocumentClosed.callCount, 1);
+    controller.setMode('manual');
+    controller.handleFilesCreated([uri]);
+    controller.handleFilesDeleted([uri]);
+    controller.handleTextDocumentClose(document);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesCreated.callCount, 2);
+    assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 2);
   });
 
   test('handleActiveEditorChange compiles on first GLSL selection in manual mode when clients exist', () => {

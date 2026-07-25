@@ -125,6 +125,27 @@ export class CompileController {
     this.messenger.send(errorMsg);
   }
 
+  public handleFilesCreated(uris: readonly vscode.Uri[]): void {
+    if (this.compileMode === 'manual' || !this.messenger.hasActiveClients()) {
+      return;
+    }
+    void this.shaderProvider.handleSlangFilesCreated(uris.map((uri) => uri.fsPath));
+  }
+
+  public handleFilesDeleted(uris: readonly vscode.Uri[]): void {
+    if (this.compileMode === 'manual' || !this.messenger.hasActiveClients()) {
+      return;
+    }
+    void this.shaderProvider.handleSlangFilesDeleted(uris.map((uri) => uri.fsPath));
+  }
+
+  public handleTextDocumentClose(document: vscode.TextDocument): void {
+    if (this.compileMode !== 'hot' || !this.messenger.hasActiveClients() || !document.fileName.endsWith('.slang')) {
+      return;
+    }
+    void this.shaderProvider.handleSlangDocumentClosed(document.uri.fsPath);
+  }
+
   private getStoredCompileMode(): CompileMode {
     const stored = this.context.globalState.get<string>("shader-studio.compileMode");
     return stored === "save" || stored === "manual" ? stored : "hot";

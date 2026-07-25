@@ -61,6 +61,36 @@ export class ShaderProvider {
     return true;
   }
 
+  public async handleSlangFilesCreated(filePaths: readonly string[]): Promise<void> {
+    for (const filePath of filePaths.filter((filePath) => filePath.endsWith('.slang'))) {
+      await this.recompileOwningSlangRoots(filePath);
+    }
+  }
+
+  public async handleSlangFilesDeleted(filePaths: readonly string[]): Promise<void> {
+    if (!this.slangWorkspaces) {
+      return;
+    }
+    const affected = new Set<string>();
+    for (const filePath of filePaths.filter((filePath) => filePath.endsWith('.slang'))) {
+      for (const root of this.slangWorkspaces.owningRoots(filePath)) {
+        affected.add(root);
+      }
+      this.slangWorkspaces.removeRoot(filePath);
+      this.slangWorkspaces.removeFile(filePath);
+    }
+    const surviving = [...affected].filter((root) => !filePaths.includes(root) && fs.existsSync(root));
+    if (surviving.length > 0) {
+      await this.sendSlangDependencyGeneration(surviving);
+    }
+  }
+
+  public async handleSlangDocumentClosed(filePath: string): Promise<void> {
+    if (filePath.endsWith('.slang')) {
+      await this.recompileOwningSlangRoots(filePath);
+    }
+  }
+
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
     options?: { reload?: boolean; dependencyChange?: boolean; manual?: boolean },

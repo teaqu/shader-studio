@@ -171,6 +171,13 @@ export class SlangShaderWorkspaceCoordinator {
     }
   }
 
+  removeFile(filePath: string): void {
+    const uri = normalizeSlangUri(this.host.toUri(filePath));
+    for (const prepared of this.roots.values()) {
+      prepared.graph.remove(uri);
+    }
+  }
+
   private removeUnusedRoot(rootUri: string): void {
     if (![...this.owners.values()].some((owner) => owner.rootUris.has(rootUri))) {
       this.roots.delete(rootUri);
