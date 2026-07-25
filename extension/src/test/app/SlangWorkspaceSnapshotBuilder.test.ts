@@ -106,6 +106,26 @@ suite('SlangWorkspaceSnapshotBuilder', () => {
     assert.deepStrictEqual(snapshot.files.map((file) => file.path), ['/workspace/a b#c%d.slang', '/workspace/image.slang']);
   });
 
+  test('recursively loads an omitted but readable encoded dependency', async () => {
+    const builder = new SlangWorkspaceSnapshotBuilder({
+      async findSlangFiles() {
+        return ['file:///workspace/image.slang'];
+      },
+      async readFile(uri) {
+        return {
+          'file:///workspace/image.slang': '#include "a b#c%d.slang"',
+          'file:///workspace/a%20b%23c%25d.slang': 'float recursive;',
+        }[uri];
+      },
+      openDocuments: [],
+    });
+    const snapshot = await builder.build({ rootUri: 'file:///workspace', rootFiles: ['file:///workspace/image.slang'], configuredPassFiles: [] });
+    assert.deepStrictEqual(snapshot.files.map((file) => [file.path, file.source]), [
+      ['/workspace/a b#c%d.slang', 'float recursive;'],
+      ['/workspace/image.slang', '#include "a b#c%d.slang"'],
+    ]);
+  });
+
   test('excludes the exact workspace root even when every source list supplies it', async () => {
     const builder = new SlangWorkspaceSnapshotBuilder({
       async findSlangFiles() {

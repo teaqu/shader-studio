@@ -89,8 +89,9 @@ function maskNonCode(source: string): string {
         continue;
       }
       const terminator = delimiter === undefined ? undefined : `)${delimiter}"`;
-      const end = terminator === undefined ? -1 : source.indexOf(terminator, delimiterEnd + 1);
-      const stop = end === -1 ? source.length : end + terminator!.length;
+      const contentStart = index + 2 + delimiterEnd + 1;
+      const end = terminator === undefined ? -1 : source.indexOf(terminator, contentStart);
+      const stop = end === -1 ? source.length : Math.max(index + 1, end + terminator!.length);
       result += source.slice(index, stop).replace(/[^\n]/g, ' ');
       index = stop;
     } else if (character === '/' && next === '/') {

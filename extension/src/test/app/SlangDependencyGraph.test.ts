@@ -76,6 +76,12 @@ suite('SlangDependencyGraph', () => {
     });
   }
 
+  test('masks a nonzero-offset custom raw literal without matching an earlier terminator', () => {
+    const graph = new SlangDependencyGraph(root);
+    graph.update('file:///workspace/image.slang', '/* )tag" */ prefix R"tag(#include "fake.slang")tag"\n#include "real.slang"');
+    assert.deepStrictEqual([...graph.directDependencies('file:///workspace/image.slang')], ['file:///workspace/real.slang']);
+  });
+
   test('does not treat invalid raw-like prefixes as raw strings', () => {
     const graph = new SlangDependencyGraph(root);
     graph.update('file:///workspace/image.slang', 'R"invalid delimiter" (later)\n#include "real.slang"');
