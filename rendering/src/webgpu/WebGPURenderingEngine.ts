@@ -1812,11 +1812,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
     const commonCode = this.lastCompile?.buffers?.common ?? "";
+    const workspace = this.lastCompile?.workspace ? cloneWorkspace(this.lastCompile.workspace) : undefined;
+    const selector = targetPass?.name === "Image" ? this.lastCompile?.path : targetPass?.path;
+    const roots = workspace && this.lastCompile
+      ? workspaceCandidates(workspace, selector, this.lastCompile.path)
+      : [];
+    const root = roots.length === 1 ? roots[0] : undefined;
     this.capturePassName = targetPass?.name ?? null;
     return {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      ...(root && workspace ? { sourceUri: root.uri, sourcePath: root.path, workspace } : {}),
+      ...(workspace && !root ? { workspace, workspaceRootError: roots.length > 1 ? "Capture workspace has an ambiguous root source" : "Capture workspace has no matching root source" } : {}),
     };
   }
 

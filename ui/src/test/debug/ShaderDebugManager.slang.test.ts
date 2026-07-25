@@ -94,4 +94,52 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(result).toContain('return float4(col, 1.0);');
     expect(result).not.toContain('vec4(');
   });
+
+  it('rejects debugging an imported Slang module without changing the root target', () => {
+    const root = '#language slang 2026\nmodule image;\nimport palette;\nfloat4 mainImage(float2 p) { return float4(paletteValue(), 0, 0, 1); }';
+    manager.setShaderContext(
+      { version: '1', passes: { Image: {} } },
+      '/workspace/image.slang',
+      {},
+      {
+        rootUri: 'file:///project/image.slang',
+        files: [
+          { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+          { uri: 'file:///project/lib/palette.slang', path: '/workspace/lib/palette.slang', source: 'module palette;' },
+        ],
+      },
+    );
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float value = 1;', 'file:///project/lib/palette.slang');
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported',
+      code: 'slang-cross-file-debug-unsupported',
+      sourceUri: 'file:///project/lib/palette.slang',
+    });
+  });
+
+  it('rejects debugging configured Slang common code', () => {
+    const root = '#language slang 2026\nmodule image;\nfloat4 mainImage(float2 p) { return float4(p, 0, 1); }';
+    manager.setShaderContext(
+      { version: '1', passes: { Image: {} } },
+      '/workspace/image.slang',
+      { common: 'float commonValue() { return 1; }' },
+      {
+        rootUri: 'file:///project/image.slang',
+        files: [
+          { uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: root },
+          { uri: 'file:///project/common.slang', path: '/workspace/common.slang', source: 'float commonValue() { return 1; }' },
+        ],
+      },
+    );
+    manager.toggleEnabled();
+    manager.updateDebugLine(0, 'float commonValue() { return 1; }', 'file:///project/common.slang');
+
+    expect(manager.getDebugTarget(root, { version: '1', passes: { Image: {} } })).toMatchObject({
+      status: 'unsupported',
+      code: 'slang-cross-file-debug-unsupported',
+      sourceUri: 'file:///project/common.slang',
+    });
+  });
 });

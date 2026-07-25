@@ -1,13 +1,20 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
-import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
+import { ShaderDebugger, type ShaderDialect, type SlangCrossFileDebugUnsupported } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
-import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
+import type { ShaderConfig, ConfigInput, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import { resolveSlangWorkspaceFile } from './slangSourceIdentity';
 
 export interface DebugTarget {
   passName: string;
   code: string;
   config: ShaderConfig | null;
   inputConfig?: Record<string, ConfigInput>;
+}
+
+export type DebugTargetResult = DebugTarget | SlangCrossFileDebugUnsupported;
+
+export function isUnsupportedDebugTarget(target: DebugTargetResult): target is SlangCrossFileDebugUnsupported {
+  return 'status' in target && target.status === 'unsupported';
 }
 
 interface VariablePreviewState {
@@ -63,6 +70,7 @@ export class ShaderDebugManager {
   private bufferCodes: Record<string, string> = {};
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
+  private workspace: SlangWorkspaceSnapshot | null = null;
 
   public setLanguage(language: ShaderDialect): void {
     this.language = language;
@@ -76,6 +84,7 @@ export class ShaderDebugManager {
     config: ShaderConfig | null,
     imagePath: string | null,
     buffers: Record<string, string>,
+    workspace?: SlangWorkspaceSnapshot,
   ): void {
     this.bufferCodes = buffers;
     this.bufferPathMap = {};
@@ -86,15 +95,21 @@ export class ShaderDebugManager {
       }
     }
     this.imagePassPath = imagePath && this.isBufferPath(imagePath) ? null : imagePath;
+    this.workspace = workspace ?? null;
   }
 
-  public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
+  public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTargetResult {
     const passName = this.variablePreview?.activeBufferName ?? this.state.activeBufferName;
     const code = passName === 'Image'
       ? imageCode
       : this.bufferCodes[passName] ?? imageCode;
     const passConfig = config?.passes[passName];
     const inputConfig = passConfig && 'inputs' in passConfig ? passConfig.inputs : undefined;
+
+    const crossFileSelection = this.getSlangCrossFileSelection(passName);
+    if (crossFileSelection) {
+      return crossFileSelection;
+    }
 
     if (!config || passName === 'Image' || passName === 'common') {
       return { passName, code, config, inputConfig };
@@ -115,6 +130,31 @@ export class ShaderDebugManager {
         },
       },
       inputConfig,
+    };
+  }
+
+  private getSlangCrossFileSelection(passName: string): SlangCrossFileDebugUnsupported | null {
+    if (this.language !== 'slang' || !this.workspace || !this.state.filePath) {
+      return null;
+    }
+
+    const selected = resolveSlangWorkspaceFile(this.workspace, this.state.filePath);
+    if (selected.status !== 'matched') {
+      return null;
+    }
+
+    const activePath = passName === 'Image' ? this.imagePassPath : this.bufferPathMap[passName];
+    const root = activePath ? resolveSlangWorkspaceFile(this.workspace, activePath) : { status: 'unmatched' as const };
+    const rootUri = root.status === 'matched' ? root.file.uri : this.workspace.rootUri;
+    if (selected.file.uri === rootUri) {
+      return null;
+    }
+
+    return {
+      status: 'unsupported',
+      code: 'slang-cross-file-debug-unsupported',
+      sourceUri: selected.file.uri,
+      message: 'Debugging imported Slang modules and common code is not supported yet.',
     };
   }
 

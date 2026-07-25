@@ -2,6 +2,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { SlangModuleApi } from "../../webgpu/slangTypes";
 import { SlangCompiler, PINNED_SLANG_COMPILER_VERSION } from "../../webgpu/SlangCompiler";
+import { ShaderDebugger, VariableCaptureBuilder } from "@shader-studio/glsl-debug";
 
 let slang: SlangModuleApi;
 
@@ -70,6 +71,68 @@ describe("SlangCompiler real WASM", () => {
         { path: "/workspace/dep.slang", uri: "file:///dep.slang", source: `#language slang ${version}\nmodule dep;\npublic float depValue() { return 1.0; }` },
       ]));
       expect(result).toMatchObject({ success: true, diagnostics: [] });
+    } finally { compiler.dispose(); }
+  });
+
+  it("compiles normal, line-debug, and capture roots against one unchanged 2026 workspace", () => {
+    const source = [
+      "#language slang 2026",
+      "module image;",
+      "import dep;",
+      "#include \"helper.slang\"",
+      "float4 mainImage(float2 c) {",
+      "  float value = depValue() + helperValue() + commonValue();",
+      "  return float4(value, 0, 0, 1);",
+      "}",
+    ].join("\n");
+    const workspace = {
+      rootUri: "file:///project/image.slang",
+      files: [
+        { path: "/workspace/image.slang", uri: "file:///project/image.slang", source },
+        { path: "/workspace/dep.slang", uri: "file:///project/dep.slang", source: "#language slang 2026\nmodule dep;\npublic float depValue() { return 1; }" },
+        { path: "/workspace/helper.slang", uri: "file:///project/helper.slang", source: "float helperValue() { return 2; }" },
+      ],
+    };
+    const debug = ShaderDebugger.modifyShaderForLineDebug(source, 5, "  float value = depValue() + helperValue() + commonValue();", new Map(), new Map(), "off", null, "slang");
+    const capture = VariableCaptureBuilder.generateMultiCaptureShader(
+      source, 5, [{ varName: "value", varType: "float", declarationLine: 5 }], new Map(), new Map(), false, 8, 8, "slang",
+    );
+    expect(debug).not.toBeNull();
+    expect(capture).not.toBeNull();
+    const snapshot = structuredClone(workspace);
+    const compiler = new SlangCompiler(slang);
+    try {
+      for (const transformed of [source, debug!, capture!]) {
+        const result = compiler.compile({
+          source: transformed,
+          sourceUri: "file:///project/image.slang",
+          sourcePath: "/workspace/image.slang",
+          workspace: {
+            rootUri: workspace.rootUri,
+            files: workspace.files.map((file) => file.path === "/workspace/image.slang" ? { ...file, source: transformed } : { ...file }),
+          },
+          options: { passName: "Image", commonCode: "float commonValue() { return 3; }", ...(transformed === capture ? { captureMode: true } : {}) },
+        });
+        expect(result).toMatchObject({ success: true, diagnostics: [] });
+      }
+      expect(workspace).toEqual(snapshot);
+    } finally { compiler.dispose(); }
+  });
+
+  it("maps a capture dependency diagnostic to its workspace file", () => {
+    const source = "#language slang 2026\nmodule image;\nimport dep;\nfloat4 mainImage(float2 c) { return float4(depValue(), 0, 0, 1); }";
+    const compiler = new SlangCompiler(slang);
+    try {
+      const result = compiler.compile(request(source, [
+        { path: "/workspace/image.slang", uri: "file:///image.slang", source },
+        { path: "/workspace/dep.slang", uri: "file:///dep.slang", source: "#language slang 2026\nmodule dep;\npublic float depValue() { return missingValue; }" },
+      ]));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.diagnostics).toEqual(expect.arrayContaining([
+          expect.objectContaining({ uri: "file:///dep.slang" }),
+        ]));
+      }
     } finally { compiler.dispose(); }
   });
 });

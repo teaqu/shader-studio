@@ -17,7 +17,7 @@
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
-  import { ShaderDebugManager } from "../ShaderDebugManager";
+  import { ShaderDebugManager, isUnsupportedDebugTarget } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
   import { AudioVideoController } from "../AudioVideoController";
@@ -822,6 +822,9 @@
     const effectiveCanvasWidth = engineCanvas?.width ?? canvasWidth;
     const effectiveCanvasHeight = engineCanvas?.height ?? canvasHeight;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
+    if (isUnsupportedDebugTarget(debugTarget)) {
+      return;
+    }
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
       inputConfig: debugTarget.inputConfig,

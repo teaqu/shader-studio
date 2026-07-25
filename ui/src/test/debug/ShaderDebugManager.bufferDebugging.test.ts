@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
+import { ShaderDebugManager, isUnsupportedDebugTarget, type DebugTarget, type DebugTargetResult } from '../../lib/ShaderDebugManager';
 import type { ShaderConfig } from '@shader-studio/types';
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,13 @@ const HELPER_BUFFER_CODE = `float circle(vec2 p, float r) {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   fragColor = vec4(circle(fragCoord / iResolution.xy, 0.3));
 }`;
+
+function supportedTarget(target: DebugTargetResult): DebugTarget {
+  if (isUnsupportedDebugTarget(target)) {
+    throw new Error(`Unexpected unsupported debug target: ${target.sourceUri}`);
+  }
+  return target;
+}
 
 function makeConfig(): ShaderConfig {
   return {
@@ -191,14 +198,14 @@ describe('ShaderDebugManager — buffer debugging', () => {
 
     it('returns imageCode when activeBufferName is Image', () => {
       manager.updateDebugLine(1, 'float t = iTime;', '/shaders/image.glsl');
-      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      const target = supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig()));
       expect(target.passName).toBe('Image');
       expect(target.code).toBe(IMAGE_CODE);
     });
 
     it('returns BufferA code when activeBufferName is BufferA', () => {
       manager.updateDebugLine(1, 'float d = length(fragCoord / iResolution.xy - 0.5);', '/shaders/bufferA.glsl');
-      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      const target = supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig()));
       expect(target.passName).toBe('BufferA');
       expect(target.code).toBe(BUFFER_A_CODE);
       expect(target.config?.passes.Image.inputs).toEqual(makeConfig().passes.BufferA?.inputs);
@@ -206,7 +213,7 @@ describe('ShaderDebugManager — buffer debugging', () => {
 
     it('returns BufferB code when activeBufferName is BufferB', () => {
       manager.updateDebugLine(1, 'vec4 prev = texture(iChannel0, fragCoord / iResolution.xy);', '/shaders/bufferB.glsl');
-      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      const target = supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig()));
       expect(target.passName).toBe('BufferB');
       expect(target.code).toBe(BUFFER_B_CODE);
       expect(target.config?.passes.Image.inputs).toEqual(makeConfig().passes.BufferB?.inputs);
@@ -214,7 +221,7 @@ describe('ShaderDebugManager — buffer debugging', () => {
 
     it('returns common code when activeBufferName is common', () => {
       manager.updateDebugLine(1, 'float d = length(p) - r;', '/shaders/common.glsl');
-      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      const target = supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig()));
       expect(target.passName).toBe('common');
       expect(target.code).toBe(COMMON_CODE);
       expect(target.config?.passes.Image.inputs).toEqual(makeConfig().passes.Image.inputs);
@@ -224,16 +231,16 @@ describe('ShaderDebugManager — buffer debugging', () => {
       // setShaderContext called with empty buffers
       manager.setShaderContext(makeConfig(), '/shaders/image.glsl', {});
       manager.updateDebugLine(1, 'line', '/shaders/bufferA.glsl');
-      expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).code).toBe(IMAGE_CODE);
+      expect(supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig())).code).toBe(IMAGE_CODE);
     });
 
     it('returns updated code after setShaderContext is called again', () => {
       manager.updateDebugLine(1, 'line', '/shaders/bufferA.glsl');
-      expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).code).toBe(BUFFER_A_CODE);
+      expect(supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig())).code).toBe(BUFFER_A_CODE);
 
       const newBufferACode = '// new version';
       manager.setShaderContext(makeConfig(), '/shaders/image.glsl', { BufferA: newBufferACode });
-      expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).code).toBe(newBufferACode);
+      expect(supportedTarget(manager.getDebugTarget(IMAGE_CODE, makeConfig())).code).toBe(newBufferACode);
     });
   });
 

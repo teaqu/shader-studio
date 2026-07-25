@@ -1,5 +1,5 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
-import type { ShaderDebugManager } from "./ShaderDebugManager";
+import { isUnsupportedDebugTarget, type ShaderDebugManager } from "./ShaderDebugManager";
 import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
 import type { SlangDiagnostic, SlangWorkspaceSnapshot } from '@shader-studio/types';
 import { cloneSlangWorkspace } from './slangSourceIdentity';
@@ -117,6 +117,9 @@ export class ShaderProcessor {
   ): { code: string; config: ShaderConfig | null } {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
+    if (isUnsupportedDebugTarget(debugTarget)) {
+      return { code: imageShaderCode, config };
+    }
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
 

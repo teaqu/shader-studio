@@ -17,6 +17,24 @@ const slangShader = `float4 mainImage(float2 fragCoord)
 }`;
 
 describe('ShaderDebugger - Slang line debug in mainImage', () => {
+  it('keeps the language header, module, and import prefix before generated debug source', () => {
+    const source = [
+      '#language slang 2026',
+      'module image;',
+      'import dep;',
+      'float4 mainImage(float2 p) {',
+      '  float value = depValue();',
+      '  return float4(value, 0, 0, 1);',
+      '}',
+    ].join('\n');
+
+    const result = ShaderDebugger.modifyShaderForLineDebug(
+      source, 4, '  float value = depValue();', new Map(), new Map(), 'off', null, 'slang',
+    );
+
+    expect(result?.split('\n').slice(0, 3)).toEqual(source.split('\n').slice(0, 3));
+  });
+
   it('visualizes a float3 declaration with a return statement', () => {
     const result = ShaderDebugger.modifyShaderForLineDebug(
       slangShader,

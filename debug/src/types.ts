@@ -7,6 +7,14 @@ export type ParameterMode = 'expression';
  */
 export type ShaderDialect = 'glsl' | 'slang';
 
+/** A debug selection that belongs to a workspace dependency, not the active pass root. */
+export interface SlangCrossFileDebugUnsupported {
+  status: 'unsupported';
+  code: 'slang-cross-file-debug-unsupported';
+  sourceUri: string;
+  message: string;
+}
+
 export interface CaptureVarInfo {
   varName: string;
   varType: string;

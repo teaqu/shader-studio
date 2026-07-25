@@ -7,7 +7,7 @@ import type {
   CaptureResult,
   CaptureUniforms,
 } from "../capture/VariableCapturer";
-import type { ConfigInput } from "@shader-studio/types";
+import type { ConfigInput, SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
 import { DBG_CAPTURE_UNIFORM_SIZE } from "./SlangPrelude";
@@ -69,14 +69,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   setCompileContext(context: CaptureCompileContext): void {
-    const nextCommon = context.commonCode ?? "";
-    const nextChannels = JSON.stringify(context.slangChannels ?? []);
-    const currentCommon = this.compileContext.commonCode ?? "";
-    const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    if (nextCommon !== currentCommon || nextChannels !== currentChannels) {
-      this.pipelineCache.clear();
-      this.pipelineCacheOrder = [];
-    }
+    // Cache entries are namespaced by the whole compile context. Keeping old
+    // entries lets a failed workspace update retain the last-good pipeline
+    // when its prior snapshot becomes active again.
     this.compileContext = context;
   }
 
@@ -367,17 +362,30 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     captureShader: string,
     channels: SlangChannelBinding[],
   ): Promise<CachedPipeline | null> {
-    const existing = this.pipelineCache.get(captureShader);
+    if (this.compileContext.workspaceRootError) {
+      this.lastError = this.compileContext.workspaceRootError;
+      return null;
+    }
+    const cacheKey = `${captureShader}\u0000${this.compileIdentity()}`;
+    const existing = this.pipelineCache.get(cacheKey);
     if (existing) {
       existing.lastUsed = performance.now();
       return existing;
     }
 
     captureCounters.pipelineCompiles++;
-    const path = "/workspace/capture.slang";
+    const fallbackPath = "/workspace/capture.slang";
+    const sourcePath = this.compileContext.sourcePath ?? fallbackPath;
+    const sourceUri = this.compileContext.sourceUri ?? `file://${sourcePath}`;
+    const workspace = this.workspaceWithCaptureRoot(captureShader, sourcePath, sourceUri);
+    if (workspace === "ambiguous" || workspace === "unmatched") {
+      this.lastError = workspace === "ambiguous"
+        ? "Capture workspace has an ambiguous root source"
+        : "Capture workspace has no matching root source";
+      return null;
+    }
     const compileResult = await this.compiler.compile({
-      source: captureShader, sourcePath: path, sourceUri: `file://${path}`,
-      workspace: { rootUri: `file://${path}`, files: [{ path, uri: `file://${path}`, source: captureShader }] },
+      source: captureShader, sourcePath, sourceUri, workspace,
       options: {
         passName: "capture", commonCode: this.compileContext.commonCode, channels, captureMode: true,
         customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
@@ -387,7 +395,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       return null;
     }
     if (!compileResult.success) {
-      this.lastError = compileResult.errors.join("\n");
+      this.lastError = this.formatCompileError(compileResult.errors, compileResult.diagnostics ?? []);
       return null;
     }
 
@@ -421,9 +429,53 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       this.pipelineCache.delete(oldest);
     }
     const cached: CachedPipeline = { pipeline, bindGroupLayout, lastUsed: performance.now() };
-    this.pipelineCache.set(captureShader, cached);
-    this.pipelineCacheOrder.push(captureShader);
+    this.pipelineCache.set(cacheKey, cached);
+    this.pipelineCacheOrder.push(cacheKey);
     return cached;
+  }
+
+  private workspaceWithCaptureRoot(source: string, sourcePath: string, sourceUri: string): SlangWorkspaceSnapshot | "ambiguous" | "unmatched" {
+    const workspace = this.compileContext.workspace;
+    if (!workspace) {
+      return { rootUri: sourceUri, files: [{ path: sourcePath, uri: sourceUri, source }] };
+    }
+    const matchingIndexes = workspace.files.flatMap((file, index) => file.path === sourcePath || file.uri === sourceUri ? [index] : []);
+    if (matchingIndexes.length > 1) {
+      return "ambiguous";
+    }
+    if (matchingIndexes.length === 0) {
+      return "unmatched";
+    }
+    const files = workspace.files.map((file, index) => matchingIndexes[0] === index ? { ...file, source } : { ...file });
+    return { rootUri: workspace.rootUri, files };
+  }
+
+  private workspaceIdentity(workspace: SlangWorkspaceSnapshot | undefined): string {
+    if (!workspace) return '';
+    return JSON.stringify({
+      rootUri: workspace.rootUri,
+      files: workspace.files.map(({ path, uri, source, version }) => ({ path, uri, source, version })),
+    });
+  }
+
+  private compileIdentity(): string {
+    return JSON.stringify({
+      workspace: this.workspaceIdentity(this.compileContext.workspace),
+      sourceUri: this.compileContext.sourceUri,
+      sourcePath: this.compileContext.sourcePath,
+      commonCode: this.compileContext.commonCode,
+      channels: this.compileContext.slangChannels ?? [],
+    });
+  }
+
+  private formatCompileError(errors: string[], diagnostics: SlangDiagnostic[]): string {
+    if (diagnostics.length === 0) {
+      return errors.join("\n");
+    }
+    return diagnostics.map((diagnostic) => {
+      const { line, character } = diagnostic.range.start;
+      return `${diagnostic.uri}:${line + 1}:${character + 1}: ${diagnostic.message}`;
+    }).join("\n");
   }
 
   /**

@@ -101,6 +101,119 @@ const captures = [
 ];
 
 describe("WebGPUVariableCapturer", () => {
+  it("compiles the capture root against a cloned workspace without rewriting dependencies", async () => {
+    const gpu = mockGpu();
+    const workspace = {
+      rootUri: "file:///project/image.slang",
+      files: [
+        { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root-original" },
+        { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "dependency-original" },
+      ],
+    };
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    capturer.setCompileContext({
+      slangPassName: "Image",
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace,
+    });
+
+    await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: "float4 _dbgCapture() { return 0; }" }], uniforms, 8, 8);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(expect.objectContaining({
+      sourcePath: "/workspace/image.slang",
+      workspace: expect.objectContaining({
+        files: expect.arrayContaining([
+          expect.objectContaining({ path: "/workspace/lib/palette.slang", source: "dependency-original" }),
+          expect.objectContaining({ path: "/workspace/image.slang", source: "float4 _dbgCapture() { return 0; }" }),
+        ]),
+      }),
+    }));
+    expect(workspace.files[0].source).toBe("root-original");
+  });
+
+  it("keys capture pipelines by workspace identity and retains the last good workspace pipeline", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const source = "float4 _dbgCapture() { return 0; }";
+    const first = {
+      rootUri: "file:///project/image.slang",
+      files: [{ uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" }],
+    };
+    const changed = {
+      ...first,
+      files: [{ ...first.files[0], source: "root-with-new-dependency" }],
+    };
+    const context = (workspace: typeof first) => ({
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace,
+    });
+
+    capturer.setCompileContext(context(first));
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
+    gpu.compiler.compile.mockResolvedValueOnce({ success: false, errors: ["dependency error"] });
+    capturer.setCompileContext(context(changed));
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(0);
+    capturer.setCompileContext(context(first));
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: source }], uniforms, 1, 1)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves a dependency diagnostic URI and range in the capture error", async () => {
+    const gpu = mockGpu();
+    gpu.compiler.compile.mockResolvedValueOnce({
+      success: false,
+      errors: ["unknown name"],
+      diagnostics: [{
+        severity: "error", source: "slang-compile", message: "unknown name", uri: "file:///project/lib/palette.slang",
+        range: { start: { line: 2, character: 4 }, end: { line: 2, character: 5 } },
+      }],
+    });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+
+    await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: "broken" }], uniforms, 1, 1);
+
+    expect(capturer.getLastError()).toContain("file:///project/lib/palette.slang:3:5: unknown name");
+  });
+
+  it("rejects an ambiguous capture root instead of rewriting multiple workspace files", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    capturer.setCompileContext({
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace: {
+        rootUri: "file:///project/image.slang",
+        files: [
+          { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root-a" },
+          { uri: "file:///project/duplicate.slang", path: "/workspace/image.slang", source: "root-b" },
+        ],
+      },
+    });
+
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: "capture" }], uniforms, 1, 1)).toBe(0);
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+    expect(capturer.getLastError()).toMatch(/ambiguous/i);
+  });
+
+  it("rejects an unmatched workspace capture root instead of appending a synthetic source", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    capturer.setCompileContext({
+      sourceUri: "file:///project/image.slang",
+      sourcePath: "/workspace/image.slang",
+      workspace: {
+        rootUri: "file:///project/image.slang",
+        files: [{ uri: "file:///project/other.slang", path: "/workspace/other.slang", source: "other" }],
+      },
+    });
+
+    expect(await capturer.issueCaptureGrid([{ varName: "value", varType: "float", captureShader: "capture" }], uniforms, 1, 1)).toBe(0);
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+    expect(capturer.getLastError()).toMatch(/no matching root/i);
+  });
+
   it("packs date, channel resolutions, and custom values for capture shaders", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
@@ -383,6 +496,26 @@ describe("WebGPURenderingEngine capture wiring", () => {
 
     expect(context.commonCode).toBe("float x;");
     expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
+  });
+
+  it("returns a cloned exact workspace root for capture compilation", async () => {
+    const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
+    const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
+    const workspace = {
+      rootUri: "file:///project/image.slang",
+      files: [
+        { uri: "file:///project/image.slang", path: "/workspace/image.slang", source: "root" },
+        { uri: "file:///project/lib/palette.slang", path: "/workspace/lib/palette.slang", source: "dependency" },
+      ],
+    };
+    (engine as any).lastCompile = { code: "root", path: "/workspace/image.slang", buffers: {}, workspace };
+    (engine as any).passGraph = [{ name: "Image", source: "root", output: "canvas", width: 1, height: 1, channels: [] }];
+
+    const context = engine.getVariableCaptureCompileContext("root", "Image");
+
+    expect(context).toMatchObject({ sourceUri: "file:///project/image.slang", sourcePath: "/workspace/image.slang", workspace });
+    expect(context.workspace).not.toBe(workspace);
+    expect(context.workspace?.files).not.toBe(workspace.files);
   });
 
   it("derives Image pass capture channels from compile inputs before the live pass graph is installed", async () => {
