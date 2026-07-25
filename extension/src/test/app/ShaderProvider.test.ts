@@ -730,6 +730,11 @@ suite('ShaderProvider Test Suite', () => {
       assert.deepStrictEqual(messages.map((message) => [message.compileGeneration.rootIndex, message.compileGeneration.rootCount]), [[0, 2], [1, 2]]);
       assert.deepStrictEqual(messages[0].compileScope.rootUris, messages[1].compileScope.rootUris);
       assert.strictEqual(messages[0].workspace.files.find((file: { path: string }) => file.path === '/workspace/lib.slang').source, 'float unsaved;');
+
+      await provider.sendShaderFromDocument({
+        fileName: '/work/lib.slang', languageId: 'slang', uri: { fsPath: '/work/lib.slang' }, getText: () => 'float unsaved;',
+      } as any);
+      assert.strictEqual(sendSpy.callCount, 2, 'an identical hot/save dependency snapshot is not re-sent');
     });
 
     test('does not send or commit an obsolete prepared helper generation', async () => {

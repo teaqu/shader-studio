@@ -21,6 +21,7 @@ export class ShaderProvider {
   private getDebugModeEnabled: () => boolean;
   private scriptBundler = new ScriptBundler();
   private scriptEvaluator = new ScriptEvaluator();
+  private lastSlangDependencyGenerationFingerprint: string | undefined;
 
   constructor(
     private messenger: Messenger,
@@ -45,6 +46,19 @@ export class ShaderProvider {
 
   public releaseSlangOwner(): void {
     this.slangWorkspaces?.releaseOwner(this.slangOwnerId);
+  }
+
+  /** Rebuilds every active Slang root that imports a changed helper. */
+  public async recompileOwningSlangRoots(filePath: string, source?: string, manual: boolean = false): Promise<boolean> {
+    if (!this.slangWorkspaces) {
+      return false;
+    }
+    const roots = this.slangWorkspaces.owningRoots(filePath, source);
+    if (roots.length === 0 || manual) {
+      return roots.length > 0;
+    }
+    await this.sendSlangDependencyGeneration(roots);
+    return true;
   }
 
   public async sendShaderFromEditor(
@@ -393,12 +407,7 @@ export class ShaderProvider {
     }
 
     if (getShaderLanguage(shaderPath) === 'slang' && this.slangWorkspaces) {
-      const roots = this.slangWorkspaces.owningRoots(shaderPath, code);
-      if (roots.length > 0 && options?.manual) {
-        return true;
-      }
-      if (roots.length > 0) {
-        await this.sendSlangDependencyGeneration(roots);
+      if (await this.recompileOwningSlangRoots(shaderPath, code, options?.manual)) {
         return true;
       }
     }
@@ -553,6 +562,13 @@ export class ShaderProvider {
       };
       messages.push({ request, prepared: root, message, config: input.config });
     }
+    const fingerprint = messages.map(({ message }) => JSON.stringify({
+      path: message.path,
+      files: message.workspace?.files.map((file) => [file.uri, file.path, file.source]),
+    })).join('\u0000');
+    if (fingerprint === this.lastSlangDependencyGenerationFingerprint) {
+      return;
+    }
     for (const entry of messages) {
       await this.bundleScript(entry.config, entry.message.path, entry.message);
       if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
@@ -568,6 +584,7 @@ export class ShaderProvider {
     for (const entry of messages) {
       this.messenger.send(entry.message);
     }
+    this.lastSlangDependencyGenerationFingerprint = fingerprint;
     for (const entry of messages) {
       this.startScriptPolling(entry.config);
     }
