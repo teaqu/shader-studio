@@ -1,23 +1,10 @@
 import type { SlangWorkspaceSnapshot } from '@shader-studio/types';
-import { SlangDependencyGraph, normalizeSlangUri } from './SlangDependencyGraph';
+import { SlangDependencyGraph, normalizeSlangUri, slangWorkspacePath } from './SlangDependencyGraph';
 
 export interface SlangWorkspaceSnapshotHost {
   findSlangFiles(rootUri: string): Promise<readonly string[]>;
   readFile(uri: string): Promise<string | undefined>;
   readonly openDocuments: readonly { uri: string; source: string; version: number }[];
-}
-
-function pathname(uri: string): string {
-  return uri.startsWith('file:') ? decodeURIComponent(new URL(uri).pathname) : uri;
-}
-
-function internalPath(rootUri: string, uri: string): string | undefined {
-  const root = pathname(normalizeSlangUri(rootUri)).replace(/\/$/, '');
-  const candidate = pathname(normalizeSlangUri(uri));
-  if (candidate !== root && !candidate.startsWith(`${root}/`)) {
-    return undefined;
-  }
-  return `/workspace${candidate.slice(root.length)}`;
 }
 
 export class SlangWorkspaceSnapshotBuilder {
@@ -28,7 +15,7 @@ export class SlangWorkspaceSnapshotBuilder {
     const open = new Map(this.host.openDocuments.map((document) => [normalizeSlangUri(document.uri), document]));
     const initial = [...await this.host.findSlangFiles(rootUri), ...input.rootFiles, ...input.configuredPassFiles]
       .map(normalizeSlangUri)
-      .filter((uri) => internalPath(rootUri, uri) !== undefined);
+      .filter((uri) => slangWorkspacePath(rootUri, uri) !== undefined);
     const files = new Map<string, { uri: string; source: string; version?: number }>();
     const graph = new SlangDependencyGraph(rootUri);
     const pending = [...new Set(initial)];
@@ -45,13 +32,14 @@ export class SlangWorkspaceSnapshotBuilder {
       files.set(uri, { uri, source, version: document?.version });
       graph.update(uri, source);
       for (const dependency of graph.directDependencies(uri)) {
-        if (internalPath(rootUri, dependency) !== undefined && !files.has(dependency)) {
+        if (slangWorkspacePath(rootUri, dependency) !== undefined && !files.has(dependency)) {
           pending.push(dependency);
         }
       }
     }
+    // Canonical URIs make equal internal paths aliases of one workspace file, so the URI tie-breaker is defensive only.
     const snapshotFiles = [...files.values()]
-      .map((file) => ({ ...file, path: internalPath(rootUri, file.uri)! }))
+      .map((file) => ({ ...file, path: slangWorkspacePath(rootUri, file.uri)! }))
       .sort((left, right) => left.path.localeCompare(right.path) || left.uri.localeCompare(right.uri));
     return { rootUri, files: snapshotFiles };
   }

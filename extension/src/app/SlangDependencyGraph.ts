@@ -1,19 +1,44 @@
-import * as path from 'path';
-
 const SLANG_EXTENSION = '.slang';
 
-function normalizedPath(uri: string): string {
-  if (uri.startsWith('file:')) {
-    const parsed = new URL(uri);
-    const pathname = decodeURIComponent(parsed.pathname).replaceAll('\\', '/');
-    return path.posix.normalize(pathname.replace(/^\/([A-Z]):/, (_, drive: string) => `/${drive.toLowerCase()}:`));
-  }
-  return path.posix.normalize(uri.replaceAll('\\', '/'));
+interface CanonicalUri {
+  readonly authority: string;
+  readonly pathname: string;
+  readonly uri: string;
 }
 
+function canonicalFileUri(uri: string): CanonicalUri {
+  const parsed = new URL(uri);
+  if (parsed.protocol !== 'file:') {
+    throw new Error(`Expected file URI, received ${uri}`);
+  }
+  const pathname = parsed.pathname
+    .replaceAll('\\', '/')
+    .replace(/^\/([A-Z]):/, (_, drive: string) => `/${drive.toLowerCase()}:`)
+    .replace(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
+  const canonical = new URL(`file://${parsed.host.toLowerCase()}${pathname}`);
+  return { authority: canonical.host, pathname: canonical.pathname, uri: canonical.toString() };
+}
+
+/** Returns a valid encoded file URI without discarding authority or encoded path data. */
 export function normalizeSlangUri(uri: string): string {
-  const pathname = normalizedPath(uri);
-  return uri.startsWith('file:') ? `file://${pathname}` : pathname;
+  return canonicalFileUri(uri).uri;
+}
+
+export function isSlangUriWithin(rootUri: string, uri: string): boolean {
+  const root = canonicalFileUri(rootUri);
+  const candidate = canonicalFileUri(uri);
+  const rootPath = root.pathname.replace(/\/$/, '');
+  return root.authority === candidate.authority
+    && (candidate.pathname === rootPath || candidate.pathname.startsWith(`${rootPath}/`));
+}
+
+export function slangWorkspacePath(rootUri: string, uri: string): string | undefined {
+  if (!isSlangUriWithin(rootUri, uri)) {
+    return undefined;
+  }
+  const root = canonicalFileUri(rootUri).pathname.replace(/\/$/, '');
+  const candidate = canonicalFileUri(uri).pathname;
+  return `/workspace${candidate.slice(root.length)}`;
 }
 
 function asSlangPath(value: string): string {
@@ -21,18 +46,24 @@ function asSlangPath(value: string): string {
 }
 
 function resolveUri(baseUri: string, operand: string): string {
-  const base = normalizedPath(baseUri);
-  const resolved = operand.startsWith('/') ? operand : path.posix.resolve(path.posix.dirname(base), operand);
-  return baseUri.startsWith('file:') ? `file://${resolved}` : resolved;
+  return normalizeSlangUri(new URL(operand, baseUri).toString());
 }
 
-/** Replaces comments and ordinary strings with spaces, preserving directive path literals. */
+/** Replaces comments, ordinary strings, and C++-style raw strings with spaces. */
 function maskNonCode(source: string): string {
   let result = '';
   for (let index = 0; index < source.length;) {
     const character = source[index];
     const next = source[index + 1];
-    if (character === '/' && next === '/') {
+    if (character === 'R' && next === '"') {
+      const delimiterEnd = source.indexOf('(', index + 2);
+      const delimiter = delimiterEnd === -1 ? undefined : source.slice(index + 2, delimiterEnd);
+      const terminator = delimiter === undefined ? undefined : `)${delimiter}"`;
+      const end = terminator === undefined ? -1 : source.indexOf(terminator, delimiterEnd + 1);
+      const stop = end === -1 ? source.length : end + terminator!.length;
+      result += source.slice(index, stop).replace(/[^\n]/g, ' ');
+      index = stop;
+    } else if (character === '/' && next === '/') {
       const end = source.indexOf('\n', index);
       const stop = end === -1 ? source.length : end;
       result += source.slice(index, stop).replace(/[^\n]/g, ' ');
@@ -62,9 +93,9 @@ function maskNonCode(source: string): string {
   return result;
 }
 
-function directiveOperands(source: string): { value: string; dotted: boolean }[] {
+function directiveOperands(source: string): { value: string; module: boolean; dotted: boolean }[] {
   const masked = maskNonCode(source);
-  const operands: { value: string; dotted: boolean }[] = [];
+  const operands: { value: string; module: boolean; dotted: boolean }[] = [];
   const starts = /\bimport\s+|#include\s*|__include\s*\(\s*/g;
   const directive = /^(?:import\s+(?:([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"([^"\n]+)")|#include\s*"([^"\n]+)"|__include\s*\(\s*"([^"\n]+)"\s*\))/;
   for (const start of masked.matchAll(starts)) {
@@ -74,33 +105,31 @@ function directiveOperands(source: string): { value: string; dotted: boolean }[]
     }
     const value = match[1] ?? match[2] ?? match[3] ?? match[4];
     if (value) {
-      operands.push({ value, dotted: Boolean(match[1]?.includes('.')) });
+      operands.push({ value, module: Boolean(match[1]), dotted: Boolean(match[1]?.includes('.')) });
     }
   }
   return operands;
 }
 
 export class SlangDependencyGraph {
-  private readonly rootPath: string;
-  private readonly sources = new Map<string, string>();
   private readonly dependencies = new Map<string, Set<string>>();
+  private readonly rootUri: string;
 
   constructor(rootUri: string) {
-    this.rootPath = normalizedPath(rootUri);
+    const canonical = normalizeSlangUri(rootUri);
+    this.rootUri = canonical.endsWith('/') ? canonical : `${canonical}/`;
   }
 
   update(uri: string, source: string): void {
     const canonicalUri = normalizeSlangUri(uri);
-    this.sources.set(canonicalUri, source);
     const dependencies = new Set<string>();
     for (const operand of directiveOperands(source)) {
-      const candidates = operand.dotted
-        ? [operand.value, operand.value.replaceAll('.', '/')]
-        : [operand.value];
+      const candidates = operand.dotted ? [operand.value, operand.value.replaceAll('.', '/')] : [operand.value];
+      const baseUri = operand.module ? this.rootUri : canonicalUri;
       for (const candidate of candidates) {
-        const dependency = resolveUri(canonicalUri, asSlangPath(candidate));
-        if (normalizedPath(dependency) === this.rootPath || normalizedPath(dependency).startsWith(`${this.rootPath}/`)) {
-          dependencies.add(normalizeSlangUri(dependency));
+        const dependency = resolveUri(baseUri, asSlangPath(candidate));
+        if (isSlangUriWithin(this.rootUri, dependency)) {
+          dependencies.add(dependency);
         }
       }
     }
@@ -108,9 +137,7 @@ export class SlangDependencyGraph {
   }
 
   remove(uri: string): void {
-    const canonicalUri = normalizeSlangUri(uri);
-    this.sources.delete(canonicalUri);
-    this.dependencies.delete(canonicalUri);
+    this.dependencies.delete(normalizeSlangUri(uri));
   }
 
   directDependencies(uri: string): ReadonlySet<string> {
