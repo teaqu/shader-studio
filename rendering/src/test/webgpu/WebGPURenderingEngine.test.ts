@@ -1297,6 +1297,24 @@ describe("WebGPURenderingEngine", () => {
       expect(second?.success).toBe(true);
       expect(compiler.compile).toHaveBeenCalledTimes(2);
     });
+
+    it("does not cache WGSL from a superseded generation", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const old = deferred<any>();
+      compiler.compile.mockImplementation((request: any) => request.source === "old source"
+        ? old.promise
+        : { success: true, wgsl: "// new", diagnostics: [] });
+      const pendingOld = engine.compileShaderPipeline("old source", null, "/workspace/old.slang");
+      const newer = await engine.compileShaderPipeline("new source", null, "/workspace/new.slang");
+      expect(newer?.success).toBe(true);
+      const installed = (engine as any).passPipelines.get("Image");
+      old.resolve({ success: true, wgsl: "// old", diagnostics: [] });
+      await expect(pendingOld).resolves.toEqual(expect.objectContaining({ success: false, superseded: true }));
+      expect((engine as any).passPipelines.get("Image")).toBe(installed);
+      await engine.compileShaderPipeline("old source", null, "/workspace/old.slang");
+      expect(compiler.compile.mock.calls.filter(([request]: any[]) => request.source === "old source")).toHaveLength(2);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
