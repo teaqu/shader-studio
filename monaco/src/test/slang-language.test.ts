@@ -284,6 +284,53 @@ describe('Slang Monarch language', () => {
     expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
   });
 
+  it('colours every Slang numeric family and preprocessor value as a number', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const literals = [
+      '0x1.fp3',
+      '0x1p#INF',
+      '1.0#INF',
+      '0xCAFEu',
+      '0b1010',
+      '0755',
+      '42uz',
+      '1.25hf',
+    ];
+    for (const literal of literals) {
+      const tokens = monaco.editor.tokenize(literal, 'slang')[0];
+      expect(
+        tokens.map(({ offset, type, language }) => ({ offset, type, language })),
+        literal,
+      ).toEqual([{ offset: 0, type: 'number.slang', language: 'slang' }]);
+    }
+
+    const preprocessorTokens = monaco.editor.tokenize('#define COUNT 42', 'slang')[0];
+    expect(preprocessorTokens.map((token) => token.type)).toContain('number.slang');
+  });
+
+  it('colours Slang raw strings as strings from prefix through terminator', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoSlang } = await import('../setup');
+    setupMonacoSlang(monaco);
+
+    const tokens = monaco.editor.tokenize('R"tag(raw text)tag"', 'slang')[0];
+    expect(tokens.map(({ offset, type, language }) => ({ offset, type, language })))
+      .toEqual([{ offset: 0, type: 'string.slang', language: 'slang' }]);
+  });
+
   it('matches the extension numeric forms and rejects invalid boundaries', () => {
     const textMateNumbers = grammar.repository.numbers.patterns!.map((entry) => new RegExp(entry.match));
     const valid = [
