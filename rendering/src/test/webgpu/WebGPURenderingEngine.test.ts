@@ -1257,6 +1257,19 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, edited);
       expect(compiler.compile).toHaveBeenCalledTimes(1);
     });
+
+    it("recompiles when only a dependency version changes", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      snapshot.files[2].version = 1;
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, snapshot);
+      compiler.compile.mockClear();
+      const versionOnly = structuredClone(snapshot);
+      versionOnly.files[2].version = 2;
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang", {}, undefined, undefined, versionOnly);
+      expect(compiler.compile).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
