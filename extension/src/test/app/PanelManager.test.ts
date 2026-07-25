@@ -208,7 +208,8 @@ suite('PanelManager Test Suite', () => {
     const ownerA = { sendShaderFromEditor: sandbox.stub(), releaseSlangOwner: releaseA } as any;
     const ownerB = { sendShaderFromEditor: sandbox.stub(), releaseSlangOwner: releaseB } as any;
     const owned = [ownerA, ownerB];
-    const ownerFactory = sandbox.stub(mockShaderProvider as any, 'forSlangOwner').callsFake(() => owned.shift());
+    const ownerFactory = (mockShaderProvider as any).forSlangOwner as sinon.SinonStub;
+    ownerFactory.callsFake(() => owned.shift());
     const disposeCallbacks: (() => void)[] = [];
     const makePanel = () => ({
       reveal: sandbox.stub(), dispose: sandbox.stub(), viewColumn: vscode.ViewColumn.One,
