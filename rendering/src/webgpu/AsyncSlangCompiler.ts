@@ -19,7 +19,7 @@ export class MainThreadSlangCompiler implements AsyncSlangCompiler {
     return this.inner.compile(request);
   }
 
-  dispose(): void {}
+  dispose(): void { this.inner.dispose(); }
 }
 
 type WorkerResponse =

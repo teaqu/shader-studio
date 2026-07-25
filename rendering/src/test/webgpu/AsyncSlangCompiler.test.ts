@@ -33,6 +33,12 @@ describe("MainThreadSlangCompiler", () => {
     expect(inner.compile).toHaveBeenCalledWith(input);
   });
 
+  it("disposes the wrapped main-thread compiler", () => {
+    const inner = { compile: vi.fn(), dispose: vi.fn() };
+    new MainThreadSlangCompiler(inner as any).dispose();
+    expect(inner.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it.each([undefined, "legacy", "2025", "2026", "latest"] as const)("preserves %s requests without mutation", async (version) => {
     const input = request(version);
     const before = structuredClone(input);
