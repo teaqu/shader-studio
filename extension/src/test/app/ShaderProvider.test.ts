@@ -44,7 +44,8 @@ suite('ShaderProvider Test Suite', () => {
       getErrorHandler: sandbox.stub().returns({
         handleError: sandbox.stub(),
         handlePersistentError: sandbox.stub(),
-        clearPersistentErrors: sandbox.stub()
+        clearPersistentErrors: sandbox.stub(),
+        clearCompileOwner: sandbox.stub()
       })
     };
 
@@ -723,6 +724,28 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(glsl.requestId, undefined);
       assert.strictEqual(glsl.compileGeneration, undefined);
       assert.strictEqual(glsl.compileScope, undefined);
+    });
+
+    test('clears owner-scoped diagnostics after a direct root generation commits and on owner release', async () => {
+      const files = {
+        'file:///work/first.slang': 'void mainImage() {}',
+        'file:///work/second.slang': 'void mainImage() {}',
+      };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator, 'panel:1');
+      loadAndProcessConfigStub.returns(null);
+      const clearCompileOwner = mockMessenger.getErrorHandler().clearCompileOwner as sinon.SinonStub;
+
+      await provider.sendShaderFromDocument({
+        fileName: '/work/first.slang', languageId: 'slang', uri: { fsPath: '/work/first.slang' }, getText: () => 'void mainImage() {}', lineCount: 1,
+      } as any);
+      await provider.sendShaderFromDocument({
+        fileName: '/work/second.slang', languageId: 'slang', uri: { fsPath: '/work/second.slang' }, getText: () => 'void mainImage() {}', lineCount: 1,
+      } as any);
+      provider.releaseSlangOwner();
+
+      assert.strictEqual(clearCompileOwner.callCount, 3);
+      sinon.assert.alwaysCalledWithExactly(clearCompileOwner, 'panel:1');
     });
 
     test('drops a delayed direct-root preparation after the root is deleted', async () => {

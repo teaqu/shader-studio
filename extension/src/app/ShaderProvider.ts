@@ -45,6 +45,7 @@ export class ShaderProvider {
   }
 
   public releaseSlangOwner(): void {
+    this.messenger.getErrorHandler().clearCompileOwner(this.slangOwnerId);
     this.slangWorkspaces?.releaseOwner(this.slangOwnerId);
   }
 
@@ -528,6 +529,9 @@ export class ShaderProvider {
     }
     if (slangRequest && prepared && !this.slangWorkspaces?.commitOwnerRequest(slangRequest, prepared)) {
       return;
+    }
+    if (slangRequest) {
+      this.messenger.getErrorHandler().clearCompileOwner(this.slangOwnerId);
     }
     this.messenger.send(message);
     this.startScriptPolling(config);

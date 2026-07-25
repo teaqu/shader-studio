@@ -41,6 +41,26 @@ export class ErrorHandler {
     this.currentShaderConfig = config;
   }
 
+  /** Removes compiler state owned by a disposed or repurposed preview panel. */
+  public clearCompileOwner(ownerId: string): void {
+    const affectedUris = new Map<string, vscode.Uri>();
+    for (const [key, set] of this.scopedDiagnostics) {
+      if (set.scope.ownerId === ownerId) {
+        this.collectSetUris(set, affectedUris);
+        this.scopedDiagnostics.delete(key);
+      }
+    }
+    const ownerSuffix = `\u0000${ownerId}`;
+    for (const key of this.latestCompileGenerations.keys()) {
+      if (key.endsWith(ownerSuffix)) {
+        this.latestCompileGenerations.delete(key);
+      }
+    }
+    for (const uri of affectedUris.values()) {
+      this.publishDiagnosticsForUri(uri);
+    }
+  }
+
   private setupEditorChangeListener(): void {
     // Clear diagnostics when a GLSL file is edited, since recompilation will
     // produce fresh errors. Don't clear on editor switch — errors on other

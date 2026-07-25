@@ -425,6 +425,22 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(secondDependency))?.length, 1);
   });
 
+  test('clears one released owner diagnostics and watermarks without disturbing another owner', () => {
+    const root = 'file:///project/image.slang';
+    const releasedDependency = 'file:///project/lib/released.slang';
+    const retainedDependency = 'file:///project/lib/retained.slang';
+    const replacementDependency = 'file:///project/lib/replacement.slang';
+    errorHandler.handleError(compileError(root, 4, releasedDependency, 'panel:released'));
+    errorHandler.handleError(compileError(root, 4, retainedDependency, 'panel:retained'));
+
+    errorHandler.clearCompileOwner('panel:released');
+    errorHandler.handleError(compileError(root, 1, replacementDependency, 'panel:released'));
+
+    assert.deepStrictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(releasedDependency)), []);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(retainedDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(replacementDependency))?.length, 1);
+  });
+
   test('rejects a stale generation without replacing the current diagnostics', () => {
     const root = 'file:///project/image.slang';
     const newerDependency = 'file:///project/lib/newer.slang';
