@@ -3,6 +3,7 @@ import { GifEncoderWrapper } from "./GifEncoder";
 import { VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";
 import { createEngineForLanguage } from "../engineFactory";
+import { cloneSlangWorkspace } from "../slangSourceIdentity";
 import type { ScreenshotConfig, RecordingConfig, ShaderInfo } from "./types";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
@@ -48,6 +49,9 @@ export class ShaderRecorder {
         shaderInfo.config,
         shaderInfo.path,
         shaderInfo.buffers,
+        undefined,
+        undefined,
+        shaderInfo.workspace ? cloneSlangWorkspace(shaderInfo.workspace) : undefined,
       );
       if (result && !result.success) {
         throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
@@ -102,6 +106,9 @@ export class ShaderRecorder {
         shaderInfo.config,
         shaderInfo.path,
         shaderInfo.buffers,
+        undefined,
+        undefined,
+        shaderInfo.workspace ? cloneSlangWorkspace(shaderInfo.workspace) : undefined,
       );
       if (result && !result.success) {
         throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);

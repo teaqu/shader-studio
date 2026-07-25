@@ -107,6 +107,7 @@ vi.mock('../../lib/slangAssets', () => ({
 import { ShaderRecorder, type RecordingConfig, type ShaderInfo, type ScreenshotConfig } from '../../lib/recording/ShaderRecorder';
 import { VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
 import { GifEncoderWrapper } from '../../lib/recording/GifEncoder';
+import type { SlangWorkspaceSnapshot } from '@shader-studio/types';
 
 const shaderInfo: ShaderInfo = {
   code: 'void mainImage(out vec4 o, in vec2 uv) { o = vec4(1.0); }',
@@ -121,6 +122,10 @@ const slangShaderInfo: ShaderInfo = {
   path: '/test/shader.slang',
   buffers: {},
   language: 'slang',
+  workspace: {
+    rootUri: 'file:///project',
+    files: [{ uri: 'file:///project/image.slang', path: '/test/shader.slang', source: 'original' }],
+  },
 };
 
 describe('ShaderRecorder', () => {
@@ -170,6 +175,9 @@ describe('ShaderRecorder', () => {
         shaderInfo.config,
         shaderInfo.path,
         shaderInfo.buffers,
+        undefined,
+        undefined,
+        undefined,
       );
     });
 
@@ -187,8 +195,27 @@ describe('ShaderRecorder', () => {
         slangShaderInfo.config,
         slangShaderInfo.path,
         slangShaderInfo.buffers,
+        undefined,
+        undefined,
+        expect.objectContaining({ rootUri: 'file:///project' }),
       );
       expect(mockWebGPURenderForCapture).toHaveBeenCalled();
+    });
+
+    it('forwards a cloned Slang workspace to the offscreen screenshot compile', async () => {
+      const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
+
+      await recorder.captureScreenshot(config, slangShaderInfo);
+
+      const workspace = (mockWebGPUCompileShaderPipeline.mock.calls.at(-1) as unknown[] | undefined)?.[6] as SlangWorkspaceSnapshot | undefined;
+      if (!workspace) {
+        throw new Error('Expected screenshot compile to receive a workspace');
+      }
+      expect(workspace).toEqual(slangShaderInfo.workspace);
+      expect(workspace).not.toBe(slangShaderInfo.workspace);
+      expect(workspace.files).not.toBe(slangShaderInfo.workspace?.files);
+      workspace.files[0].source = 'offscreen mutation';
+      expect(slangShaderInfo.workspace?.files[0].source).toBe('original');
     });
 
     it('should render at specified time', async () => {
@@ -320,9 +347,28 @@ describe('ShaderRecorder', () => {
         slangShaderInfo.config,
         slangShaderInfo.path,
         slangShaderInfo.buffers,
+        undefined,
+        undefined,
+        expect.objectContaining({ rootUri: 'file:///project' }),
       );
       expect(mockWebGPURenderForCapture).toHaveBeenCalled();
       expect(mockWebGPUDispose).toHaveBeenCalled();
+    });
+
+    it('forwards a cloned Slang workspace to the offscreen recording compile', async () => {
+      const p = recorder.record(baseConfig, slangShaderInfo);
+      await vi.runAllTimersAsync();
+      await p;
+
+      const workspace = (mockWebGPUCompileShaderPipeline.mock.calls.at(-1) as unknown[] | undefined)?.[6] as SlangWorkspaceSnapshot | undefined;
+      if (!workspace) {
+        throw new Error('Expected recording compile to receive a workspace');
+      }
+      expect(workspace).toEqual(slangShaderInfo.workspace);
+      expect(workspace).not.toBe(slangShaderInfo.workspace);
+      expect(workspace.files).not.toBe(slangShaderInfo.workspace?.files);
+      workspace.files[0].source = 'offscreen mutation';
+      expect(slangShaderInfo.workspace?.files[0].source).toBe('original');
     });
 
     it('should render correct number of frames', async () => {

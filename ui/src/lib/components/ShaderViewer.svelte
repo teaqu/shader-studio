@@ -974,6 +974,9 @@
         && appInitialized
         && msgLanguage !== engineLanguage
       ) {
+        if (msgLanguage === 'glsl') {
+          committedSlangWorkspace = null;
+        }
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
@@ -1003,8 +1006,10 @@
           } else {
             resolutionController.handleShaderLoadFailed();
           }
-          if (result.success && event.data.workspace) {
+          if (result.success && msgLanguage === 'slang' && event.data.workspace) {
             committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
+          } else {
+            committedSlangWorkspace = null;
           }
           applyCompilationResult(result);
           if (result.success && scriptInfo) {
@@ -1090,6 +1095,9 @@
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
             language: engineLanguage,
+            workspace: committedSlangWorkspace
+              ? cloneSlangWorkspace(committedSlangWorkspace)
+              : undefined,
           };
         },
         (blob, defaultName, filters) => {

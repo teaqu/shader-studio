@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -57,7 +57,8 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
   const mockStopRenderLoop = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
+  const mockRecordingContext = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -449,6 +450,18 @@ vi.mock('../../lib/ShaderPipeline', () => {
 vi.mock('../../lib/transport/TransportFactory', () => ({
   createTransport: mockCreateTransport,
   isVSCodeEnvironment: () => false
+}));
+
+vi.mock('../../lib/RecordingManager', () => ({
+  RecordingManager: class {
+    constructor(getShaderContext: () => unknown) {
+      mockRecordingContext.mockImplementation(getShaderContext);
+    }
+    screenshot() {}
+    record() {}
+    cancel() {}
+    dispose() {}
+  },
 }));
 
 const { mockVCMFactory } = vi.hoisted(() => {
@@ -4037,6 +4050,37 @@ describe('ShaderViewer', () => {
       const accepted = mockPipelineHandleShaderMessage.mock.calls[0][0].data.workspace;
       expect(accepted.files[0].source).toBe('latest');
       expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('supplies a cloned committed Slang workspace to recording and clears it after GLSL succeeds', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      const handler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const workspace = {
+        rootUri: 'file:///project',
+        files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'committed' }],
+      };
+
+      await handler({ data: {
+        type: 'shaderSource', language: 'slang', code: 'float4 mainImage(float2 p) { return 1; }',
+        config: null, path: '/workspace/image.slang', buffers: {}, requestId: 9, workspace,
+      } });
+      await tick();
+
+      const recordingInfo = mockRecordingContext();
+      expect(recordingInfo.workspace).toEqual(workspace);
+      expect(recordingInfo.workspace).not.toBe(workspace);
+      workspace.files[0].source = 'mutated after compile';
+      expect(recordingInfo.workspace.files[0].source).toBe('committed');
+
+      await handler({ data: {
+        type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(1); }',
+        config: null, path: '/workspace/image.glsl', buffers: {}, requestId: 10,
+      } });
+      await tick();
+
+      expect(mockRecordingContext().workspace).toBeUndefined();
     });
   });
 
