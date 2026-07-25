@@ -724,6 +724,42 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(glsl.compileScope, undefined);
     });
 
+    test('drops a delayed direct-root preparation after the root is deleted', async () => {
+      const files = { 'file:///work/image.slang': 'void mainImage() {}' };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      const prepared = await coordinator.prepareRoots([{ rootPath: '/work/image.slang', configuredFilePaths: [] }]);
+      let release: (() => void) | undefined;
+      sandbox.stub(coordinator, 'prepareRoots').callsFake(async () => new Promise((resolve) => {
+        release = () => resolve(prepared);
+      }));
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator);
+      loadAndProcessConfigStub.returns(null);
+      const pending = provider.sendShaderFromDocument({ fileName: '/work/image.slang', languageId: 'slang', uri: { fsPath: '/work/image.slang' }, getText: () => 'void mainImage() {}', lineCount: 1 } as any);
+      await new Promise((resolve) => setImmediate(resolve));
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      await provider.handleSlangFilesDeleted(['/work/image.slang']);
+      release!();
+      await pending;
+      sinon.assert.notCalled(sendSpy);
+      assert.deepStrictEqual(coordinator.owningRoots('/work/image.slang'), []);
+    });
+
+    test('commits a direct root before a synchronous re-entrant send begins a newer request', async () => {
+      const files = { 'file:///work/image.slang': 'void mainImage() {}', 'file:///work/new.slang': 'void mainImage() {}' };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      let newer: ReturnType<SlangShaderWorkspaceCoordinator['beginOwnerRequest']> | undefined;
+      mockMessenger.send = sandbox.stub().callsFake(() => {
+        assert.deepStrictEqual(coordinator.owningRoots('/work/image.slang'), ['/work/image.slang']);
+        newer = coordinator.beginOwnerRequest('owner', '/work/new.slang');
+      });
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator, 'owner');
+      loadAndProcessConfigStub.returns(null);
+      await provider.sendShaderFromDocument({ fileName: '/work/image.slang', languageId: 'slang', uri: { fsPath: '/work/image.slang' }, getText: () => 'void mainImage() {}', lineCount: 1 } as any);
+      assert.strictEqual((mockMessenger.send as sinon.SinonStub).callCount, 1);
+      assert.strictEqual(coordinator.isOwnerRequestCurrent(newer!), true);
+    });
+
     test('routes a helper edit as one deterministic Slang generation without a missing-entry error', async () => {
       const files = {
         'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
