@@ -883,11 +883,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
     }
     const switchedShader = this.shaderPath !== "" && this.shaderPath !== path;
+    let retiredResourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
     if (candidateResourceManager) {
       this.resourceManager = candidateResourceManager;
       this.candidateResourceManagers.delete(candidateResourceManager);
       if (previousResourceManager && previousResourceManager !== candidateResourceManager) {
-        previousResourceManager.cleanup();
+        retiredResourceManager = previousResourceManager;
       }
       this.reloadOnNextApply = false;
     }
@@ -908,6 +909,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
       workspace: compileWorkspace ? cloneWorkspace(compileWorkspace) : undefined,
     };
+    // Retiring an old media owner is best-effort: its teardown must not undo
+    // an already committed replacement generation.
+    try {
+      retiredResourceManager?.cleanup();
+    } catch (error) {
+      console.warn("[Slang] failed to clean replaced resources", error);
+    }
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();

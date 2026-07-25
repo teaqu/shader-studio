@@ -154,6 +154,16 @@ describe("WorkerSlangCompiler", () => {
     await expect(pending).resolves.toEqual({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
   });
 
+  it("terminates a worker only once when dispose is repeated", async () => {
+    const worker = fakeWorker();
+    const creating = WorkerSlangCompiler.create(() => worker as unknown as Worker, "slang.js", "slang.wasm");
+    worker.onmessage!({ data: { id: 0, ok: true } } as MessageEvent);
+    const compiler = await creating;
+    compiler.dispose();
+    compiler.dispose();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
   it("fails pending compiles when the worker itself errors", async () => {
     const worker = fakeWorker();
     const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");

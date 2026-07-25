@@ -47,6 +47,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   private nextId = 0;
   private pending = new Map<number, Pending>();
   private disposed = false;
+  private terminated = false;
 
   private constructor(
     private readonly worker: Worker,
@@ -86,6 +87,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
       // ShaderProcessor.isProcessing) forever.
       this.disposed = true;
       this.failAllPending("Slang worker crashed");
+      this.terminate();
     };
   }
 
@@ -126,7 +128,7 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
         }
       });
     } catch (error) {
-      worker.terminate();
+      instance.terminate();
       throw error;
     }
     return instance;
@@ -152,6 +154,12 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   dispose(): void {
     this.disposed = true;
     this.failAllPending("Slang worker unavailable");
+    this.terminate();
+  }
+
+  private terminate(): void {
+    if (this.terminated) return;
+    this.terminated = true;
     this.worker.terminate();
   }
 
