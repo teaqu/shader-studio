@@ -874,6 +874,7 @@ suite('ShaderProvider Test Suite', () => {
     test('rebuilds when a dependency source or owning root set changes after suppressing an identical fingerprint', async () => {
       const files: Record<string, string> = {
         'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',
+        'file:///work/b.slang': '#include "lib.slang"\nvoid mainImage() {}',
         'file:///work/lib.slang': 'float disk;',
       };
       let source = 'float one;';
@@ -926,6 +927,7 @@ suite('ShaderProvider Test Suite', () => {
       assert.deepStrictEqual(sendSpy.getCalls().map((call) => call.args[0].path), ['/work/a.slang', '/work/b.slang']);
       assert.ok(sendSpy.getCalls().every((call) => !call.args[0].workspace.files.some((file: { path: string }) => file.path === '/workspace/lib.slang')));
       sendSpy.resetHistory();
+      read.resetHistory();
       deletedRoot = true;
       await provider.handleSlangFilesDeleted(['/work/a.slang']);
       assert.deepStrictEqual(coordinator.owningRoots('/work/a.slang'), []);

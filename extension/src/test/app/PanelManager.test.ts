@@ -49,6 +49,8 @@ suite('PanelManager Test Suite', () => {
 
     mockShaderProvider = {
       sendShaderFromEditor: sandbox.stub(),
+      forSlangOwner: sandbox.stub(),
+      releaseSlangOwner: sandbox.stub(),
     } as any;
 
     const mockGlslFileTracker = {
