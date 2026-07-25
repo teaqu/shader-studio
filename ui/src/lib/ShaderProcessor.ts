@@ -1,11 +1,14 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
 import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
+import type { SlangDiagnostic, SlangWorkspaceSnapshot } from '@shader-studio/types';
+import { cloneSlangWorkspace } from './slangSourceIdentity';
 
 export interface CompilationResult {
   success: boolean;
   errors?: string[];
   warnings?: string[];
+  diagnostics?: SlangDiagnostic[];
   superseded?: true;
 }
 
@@ -36,6 +39,7 @@ export class ShaderProcessor {
     reload: boolean = false,
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
+    const workspace = message.workspace ? cloneSlangWorkspace(message.workspace) : undefined;
     const scriptBundleError = message.scriptBundleError;
 
     this.isProcessing = true;
@@ -50,13 +54,14 @@ export class ShaderProcessor {
       const debugState = this.shaderDebugManager.getState();
       const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(code, config ?? null);
       const buffersToCompile = this.getCompileBuffers(buffers, debugState.activeBufferName, codeToCompile, code);
-      const result = await this.renderEngine.compileShaderPipeline(
+      const result = await this.compilePipeline(
         codeToCompile,
         configToCompile,
         path,
         buffersToCompile,
         message.customUniformDeclarations,
         message.customUniformInfo,
+        workspace,
       );
 
       // Handle compilation failure
@@ -70,7 +75,7 @@ export class ShaderProcessor {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
-          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo);
+          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo, workspace);
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
@@ -92,6 +97,7 @@ export class ShaderProcessor {
       return {
         success: true,
         warnings: warnings.length > 0 ? warnings : undefined,
+        diagnostics: result.diagnostics,
       };
     } catch (err) {
       console.error("ShaderProcessor: Error in processMainShaderCompilation:", err);
@@ -141,14 +147,16 @@ export class ShaderProcessor {
     buffers: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult> {
-    const result = await this.renderEngine.compileShaderPipeline(
+    const result = await this.compilePipeline(
       code,
       config,
       path,
       buffers,
       customUniformDeclarations,
       customUniformInfo,
+      workspace,
     );
 
     if (result?.superseded) {
@@ -164,8 +172,19 @@ export class ShaderProcessor {
 
     return {
       success: true,
-      warnings: result.warnings
+      warnings: result.warnings,
+      diagnostics: result.diagnostics,
     };
+  }
+
+  private compilePipeline(
+    code: string, config: ShaderConfig | null, path: string, buffers: Record<string, string>,
+    customUniformDeclarations?: string, customUniformInfo?: { name: string; type: string }[],
+    workspace?: SlangWorkspaceSnapshot,
+  ) {
+    return workspace
+      ? this.renderEngine.compileShaderPipeline(code, config, path, buffers, customUniformDeclarations, customUniformInfo, cloneSlangWorkspace(workspace))
+      : this.renderEngine.compileShaderPipeline(code, config, path, buffers, customUniformDeclarations, customUniformInfo);
   }
 
   private getCompileBuffers(
@@ -214,6 +233,7 @@ export class ShaderProcessor {
     }
 
     const { config, path, buffers } = message;
+    const workspace = message.workspace ? cloneSlangWorkspace(message.workspace) : undefined;
 
     // Pass custom uniform declarations through debug recompilations
     const cuDecl = message.customUniformDeclarations;
@@ -232,14 +252,14 @@ export class ShaderProcessor {
     );
 
     // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
+    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo, workspace);
 
     // If failed and modified code was used, try original
     if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
-      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo);
+      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo, workspace);
     }
 
     // Start render loop if compilation succeeded

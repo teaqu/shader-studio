@@ -51,6 +51,8 @@
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
+  import { cloneSlangWorkspace } from '../slangSourceIdentity';
+  import type { SlangWorkspaceSnapshot } from '@shader-studio/types';
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -151,6 +153,7 @@
   let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
+  let committedSlangWorkspace = $state.raw<SlangWorkspaceSnapshot | null>(null);
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
   let layoutSlot = transport.getType() === 'vscode'
@@ -900,6 +903,9 @@
   }
 
   async function handleMessage(event: MessageEvent): Promise<void> {
+    if (event.data?.type === 'shaderSource' && event.data.workspace) {
+      event = { ...event, data: { ...event.data, workspace: cloneSlangWorkspace(event.data.workspace) } } as MessageEvent;
+    }
     const { type } = event.data;
 
     if (type === 'error') {
@@ -989,6 +995,9 @@
           resolutionController.handleShaderLoadSucceeded();
         }
         if (result) {
+          if (result.success && event.data.workspace) {
+            committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
+          }
           applyCompilationResult(result);
           if (result.success && scriptInfo) {
             scriptInfo = { ...scriptInfo, uniforms: renderingEngine.getCustomUniformInfo() };

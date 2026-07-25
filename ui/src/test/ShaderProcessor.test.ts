@@ -63,6 +63,28 @@ describe('ShaderProcessor', () => {
     });
   });
 
+  it('passes defensive workspace copies into main and debug-fallback compiles', async () => {
+    const source = 'float4 mainImage(float2 p) { return 0; }';
+    const message: ShaderSourceMessage = {
+      type: 'shaderSource', code: source, config: null, path: '/project/image.slang', buffers: {}, language: 'slang',
+      workspace: { rootUri: 'file:///project', files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source }] },
+    };
+    (mockShaderDebugManager.getState as any).mockReturnValue({ isEnabled: true, isActive: true, currentLine: 1, activeBufferName: 'Image' });
+    (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue('debug source');
+    (mockRenderEngine.compileShaderPipeline as any)
+      .mockResolvedValueOnce({ success: false, errors: ['debug failed'] })
+      .mockResolvedValueOnce({ success: true });
+
+    await shaderProcessor.processMainShaderCompilation(message);
+
+    const firstWorkspace = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0][6];
+    const fallbackWorkspace = (mockRenderEngine.compileShaderPipeline as any).mock.calls[1][6];
+    expect(firstWorkspace).toEqual(message.workspace);
+    expect(fallbackWorkspace).toEqual(message.workspace);
+    expect(firstWorkspace).not.toBe(message.workspace);
+    expect(fallbackWorkspace).not.toBe(firstWorkspace);
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);
