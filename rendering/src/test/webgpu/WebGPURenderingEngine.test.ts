@@ -1370,6 +1370,23 @@ describe("WebGPURenderingEngine", () => {
       await fresh.compileShaderPipeline("dispose source", null, "/workspace/dispose.slang");
       expect(next.compiler.compile).toHaveBeenCalledTimes(1);
     });
+
+    it("does not commit a failed buffer update into the replay workspace", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      const config: ShaderConfig = { version: "1", passes: { Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } }, BufferA: { path: "passes/buffera.slang", inputs: {} } } };
+      await engine.compileShaderPipeline(source, config, "/workspace/shaders/image.slang", { BufferA: "old buffer" }, undefined, undefined, snapshot);
+      compiler.compile.mockReturnValueOnce({ success: false, errors: ["bad update"], diagnostics: [] });
+      await engine.updateBufferAndRecompile("BufferA", "failed buffer");
+      expect((engine as any).lastCompile.buffers.BufferA).toBe("old buffer");
+      compiler.compile.mockClear();
+      await engine.updateBufferAndRecompile("BufferA", "next buffer");
+      const bufferRequest = compiler.compile.mock.calls.find(([request]: any[]) => request.options.passName === "BufferA")?.[0];
+      expect(bufferRequest.source).toBe("next buffer");
+      expect((engine as any).lastCompile.workspace).toEqual(expect.objectContaining({ rootUri: snapshot.rootUri }));
+      expect((engine as any).lastCompile.workspace).not.toBe(snapshot);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
