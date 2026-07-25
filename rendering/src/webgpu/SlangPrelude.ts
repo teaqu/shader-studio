@@ -317,6 +317,7 @@ export function wrapSlangWorkspaceRoot(
   body: string,
   options: SlangWrapOptions = {},
 ): string {
+  const lineEnding = body.match(/\r\n|\n|\r/)?.[0] ?? header.match(/\r\n|\n|\r/)?.[0] ?? "\n";
   const prelude = buildPrelude(options.customUniforms);
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
@@ -324,5 +325,5 @@ export function wrapSlangWorkspaceRoot(
     ? `${buildCapturePrelude(1 + (options.channels?.length ?? 0) * 2)}\n${commonCode}`
     : commonCode;
   const entryPoints = options.captureMode ? CAPTURE_ENTRY_POINTS : ENTRY_POINTS;
-  return `${header}${prelude}\n${channelPrelude}\n${generated}#line 1\n${body}\n${entryPoints}`;
+  return `${header}${prelude}\n${channelPrelude}\n${generated}#line 1${lineEnding}${body}\n${entryPoints}`;
 }

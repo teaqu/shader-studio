@@ -173,6 +173,32 @@ describe("SlangCompiler", () => {
     expect(assembled).toContain("#line 1\n\n\nfloat4 mainImage");
   });
 
+  it.each([
+    ["directive-free legacy LF", "\uFEFF// leading\nfloat4 mainImage(float2 c) { return float4(1); }", "\uFEFF#language slang legacy\n", "\n"],
+    ["explicit legacy CR", "\uFEFF#language slang legacy\r// trivia\rfloat4 mainImage(float2 c) { return float4(1); }", "\uFEFF#language slang legacy\r", "\r"],
+    ["2025 CRLF", "#language slang 2025\r\nmodule image;\r\nfloat4 mainImage(float2 c) { return float4(1); }", "#language slang 2025\r\nmodule image;\r\n", "\r\n"],
+    ["2026 LF", "#language slang 2026\nmodule image;\nfloat4 mainImage(float2 c) { return float4(1); }", "#language slang 2026\nmodule image;\n", "\n"],
+    ["latest LF", "#language slang latest\nmodule image;\nfloat4 mainImage(float2 c) { return float4(1); }", "#language slang latest\nmodule image;\n", "\n"],
+  ])("assembles %s roots with stable declaration and body ordering", (_label, source, expectedHeader, newline) => {
+    const onLoad = vi.fn();
+    new SlangCompiler(makeFakeSlang({ onLoad })).compile(request(source));
+    const assembled = onLoad.mock.calls[0][0] as string;
+    expect(assembled.startsWith(expectedHeader)).toBe(true);
+    expect(assembled.indexOf("struct ShaderToyUniforms")).toBeGreaterThanOrEqual(expectedHeader.length);
+    expect(assembled).toContain(`#line 1${newline}`);
+    expect(assembled.indexOf("mainImage(float2 c)")).toBeLessThan(assembled.indexOf(SLANG_ENTRY_VERTEX));
+    expect(assembled.lastIndexOf(SLANG_ENTRY_FRAGMENT)).toBeGreaterThan(assembled.indexOf("mainImage(float2 c)"));
+    expect(assembled.match(/\uFEFF/g)?.length ?? 0).toBe(source.startsWith("\uFEFF") ? 1 : 0);
+  });
+
+  it("rejects unsupported root language unchanged before module loading", () => {
+    const onLoad = vi.fn();
+    const source = "#language slang 2030\nfloat4 mainImage(float2 c) { return float4(1); }";
+    const result = new SlangCompiler(makeFakeSlang({ onLoad })).compile(request(source));
+    expect(result).toMatchObject({ success: false, diagnostics: [expect.objectContaining({ uri: "file:///image.slang" })] });
+    expect(onLoad).not.toHaveBeenCalled();
+  });
+
   it("maps stable dependency diagnostics to the matching workspace URI", () => {
     const compiler = new SlangCompiler(makeFakeSlang({
       moduleNull: true,
