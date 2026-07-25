@@ -8,7 +8,7 @@ Slang shaders can be split into modules and shared source files. A workspace is 
 
 ```slang
 // buffer-a.slang
-import "lib/palette.slang";
+import lib.palette;
 #include "include/tone-map.slang"
 ```
 

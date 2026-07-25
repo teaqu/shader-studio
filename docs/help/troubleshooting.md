@@ -2,10 +2,10 @@
 
 ## Preview Is Blank
 
-- Confirm your shader has the correct signature: `void mainImage(out vec4 fragColor, in vec2 fragCoord)`
+- For GLSL shaders, confirm the signature is `void mainImage(out vec4 fragColor, in vec2 fragCoord)`
 - Check the error tooltip near the play/pause button — a red indicator means compilation failed
 - Try **Refresh** from the options menu
-- Make sure the file extension is `.glsl`
+- Make sure the file extension is `.glsl` or `.slang`
 
 ## An Imported Slang File Cannot Be Found
 
