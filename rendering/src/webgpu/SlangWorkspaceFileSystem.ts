@@ -78,9 +78,10 @@ export function syncWorkspaceToFileSystem(
   for (const path of desired.keys()) {
     stale.delete(path);
   }
+  const introduced = new Set<string>();
   try {
     for (const [path, source] of desired) {
-      ownedPaths.add(path);
+      if (!fs.analyzePath(path).exists) introduced.add(path);
       fs.mkdirTree(parent(path));
       fs.writeFile(path, source);
     }
@@ -88,8 +89,15 @@ export function syncWorkspaceToFileSystem(
       removeIfPresent(fs, path);
     }
   } catch (error) {
-    for (const path of stale) {
-      ownedPaths.add(path);
+    let rollbackFailed = false;
+    for (const path of introduced) {
+      try { removeIfPresent(fs, path); } catch { rollbackFailed = true; }
+    }
+    if (rollbackFailed) {
+      ownedPaths.clear();
+      for (const path of [...stale, ...introduced]) ownedPaths.add(path);
+      if (previous && previous !== ownedPaths) previous.clear();
+      activeOwners.set(fs, ownedPaths);
     }
     throw error;
   }

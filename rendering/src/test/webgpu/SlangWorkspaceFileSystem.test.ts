@@ -5,6 +5,7 @@ class MemoryFileSystem implements SlangFileSystem {
   files = new Map<string, string>();
   directories = new Set<string>();
   fail?: "mkdir" | "write" | "unlink";
+  failPath?: string;
   mkdirTree(path: string) {
     if (this.fail === "mkdir") {
       throw new Error("mkdir");
@@ -18,7 +19,7 @@ class MemoryFileSystem implements SlangFileSystem {
     this.files.set(path, source);
   }
   unlink(path: string) {
-    if (this.fail === "unlink") {
+    if (this.fail === "unlink" || this.failPath === path) {
       throw new Error("unlink");
     }
     this.files.delete(path);
@@ -86,7 +87,7 @@ describe("SlangWorkspaceFileSystem", () => {
     fs.fail = failure;
     fs.files.set("/workspace/user", "keep");
     expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/new", source: "new" }]), owned)).toThrow(failure);
-    expect(owned).toEqual(new Set(["/workspace/old", "/workspace/new"]));
+    expect(owned).toEqual(failure === "unlink" ? new Set(["/workspace/old", "/workspace/new"]) : new Set(["/workspace/old"]));
     expect(fs.files.get("/workspace/user")).toBe("keep");
 
     fs.fail = undefined;
@@ -106,6 +107,18 @@ describe("SlangWorkspaceFileSystem", () => {
     expect(fs.files.has("/workspace/new")).toBe(true);
     releaseWorkspaceFileSystem(fs, second);
     releaseWorkspaceFileSystem(fs, second);
+    expect(fs.files.size).toBe(0);
+  });
+  it("rolls back B-only writes when a cross-owner stale unlink fails", () => {
+    const fs = new MemoryFileSystem();
+    const a = new Set<string>(); const b = new Set<string>();
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/a", source: "a" }]), a);
+    fs.failPath = "/workspace/a";
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/b", source: "b" }]), b)).toThrow("unlink");
+    expect(fs.files).toEqual(new Map([["/workspace/a", "a"]]));
+    fs.failPath = undefined;
+    releaseWorkspaceFileSystem(fs, b);
+    releaseWorkspaceFileSystem(fs, a);
     expect(fs.files.size).toBe(0);
   });
   it("keeps active ownership after a release unlink failure so cleanup can be retried", () => {

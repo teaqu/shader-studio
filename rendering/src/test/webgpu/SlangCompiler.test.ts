@@ -199,6 +199,22 @@ describe("SlangCompiler", () => {
     expect(assembled.match(/\uFEFF/g)?.length ?? 0).toBe(source.startsWith("\uFEFF") ? 1 : 0);
   });
 
+  it("keeps known diagnostics around unknown paths in a mixed compiler batch", () => {
+    const raw = "error[E1]: first\n --> /workspace/lib/a.slang:2:3\nwarning[W2]: unknown\n --> /workspace/missing.slang:1:1\ninfo[I3]: last\n --> /workspace/lib/a.slang:4:5";
+    const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request(imageSource, [
+      workspaceFile("/workspace/image.slang", imageSource, "file:///image.slang"),
+      workspaceFile("/workspace/lib/a.slang", "a", "file:///a.slang"),
+    ]));
+    if (!result.success) {
+      expect(result.errors).toEqual([raw]);
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ uri: "file:///a.slang", code: "E1" }),
+        expect.objectContaining({ uri: "file:///image.slang", message: "warning[W2]: unknown\n --> /workspace/missing.slang:1:1" }),
+        expect.objectContaining({ uri: "file:///a.slang", code: "I3" }),
+      ]);
+    }
+  });
+
   it("rejects unsupported root language unchanged before module loading", () => {
     const onLoad = vi.fn();
     const source = "#language slang 2030\nfloat4 mainImage(float2 c) { return float4(1); }";
@@ -260,7 +276,7 @@ describe("SlangCompiler", () => {
     const result = new SlangCompiler(makeFakeSlang({ moduleNull: true, lastError: raw })).compile(request());
     if (!result.success) {
       expect(result.errors).toEqual([raw]);
-      expect(result.diagnostics).toEqual([expect.objectContaining({ uri: "file:///image.slang", message: raw, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } })]);
+      expect(result.diagnostics).toEqual([expect.objectContaining({ uri: "file:///image.slang", message: raw.replace(/\r\n?|\n/g, "\n"), range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } })]);
     }
   });
 

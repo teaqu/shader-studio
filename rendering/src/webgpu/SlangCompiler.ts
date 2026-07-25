@@ -171,7 +171,7 @@ function parseDiagnostics(message: string, workspace: SlangWorkspaceSnapshot, fa
   const diagnostics: SlangDiagnostic[] = [];
   for (const match of normalized.matchAll(matcher)) {
     const file = workspace.files.find(({ path }) => path === match[4]);
-    if (!file) return [diagnosticFor(message, fallbackUri)];
+    if (!file) { diagnostics.push(diagnosticFor(match[0], fallbackUri)); continue; }
     const severity = match[1].toLowerCase() === "warning" ? "warning" : match[1].toLowerCase() === "error" ? "error" : "information";
     diagnostics.push({ ...diagnosticFor(match[3], file.uri, Math.max(0, Number(match[5]) - 1), Math.max(0, Number(match[6]) - 1), match[2]), severity });
   }
