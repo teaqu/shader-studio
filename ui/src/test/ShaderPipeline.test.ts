@@ -820,4 +820,48 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       compileScope,
     });
   });
+
+  it('posts dependency diagnostics from a failed main compile with their producing scope', async () => {
+    const compileScope = {
+      rootUris: ['file:///project/image.slang'],
+      ownerId: 'panel:1',
+      generationId: 13,
+    };
+    const diagnostics = [{
+      severity: 'error' as const,
+      source: 'slang-compile',
+      message: 'broken dependency',
+      uri: 'file:///project/lib/palette.slang',
+      range: { start: { line: 2, character: 3 }, end: { line: 2, character: 4 } },
+    }];
+    const processMainShaderCompilation = vi.fn().mockResolvedValue({
+      success: false,
+      errors: ['Image: broken dependency'],
+      diagnostics,
+    });
+    (pipeline as unknown as {
+      shaderProcessor: {
+        isCurrentlyProcessing(): boolean;
+        processMainShaderCompilation: typeof processMainShaderCompilation;
+      };
+    }).shaderProcessor = {
+      isCurrentlyProcessing: () => false,
+      processMainShaderCompilation,
+    };
+
+    await pipeline.handleShaderMessage({
+      data: {
+        ...makeShaderEvent('broken', '/project/image.slang').data,
+        language: 'slang',
+        compileScope,
+      },
+    } as MessageEvent);
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      payload: ['Image: broken dependency'],
+      diagnostics,
+      compileScope,
+    });
+  });
 });

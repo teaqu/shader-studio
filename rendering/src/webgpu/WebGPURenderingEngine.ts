@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import type { ShaderConfig, SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -730,6 +730,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const pendingWgslCacheEntries: Array<{ key: string; wgsl: string }> = [];
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    const diagnostics: SlangDiagnostic[] = [];
     const passRequests = new Map<RenderPassNode, SlangCompileRequest>();
     for (const pass of graph.passes) {
       const request = this.createCompileRequest(pass, graph.commonCode, nextCustomUniformManager.getUniformInfo(), path, compileWorkspace);
@@ -769,6 +770,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           const slangStartedAt = this.now();
           const compiled = await this.compiler.compile(request);
           slangMs = this.now() - slangStartedAt;
+          diagnostics.push(...(compiled.diagnostics ?? []));
           if (!compiled.success) {
             errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
             passTimings.push({
@@ -851,6 +853,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         success: false,
         errors,
         warnings: graph.warnings,
+        diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
       }));
     }
 
@@ -959,7 +962,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       graph,
       errors,
     });
-    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    return {
+      success: true,
+      warnings: graph.warnings.length > 0 ? graph.warnings : undefined,
+      diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
+    };
   }
 
   private failedCompilation(

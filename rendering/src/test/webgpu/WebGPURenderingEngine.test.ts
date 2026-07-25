@@ -696,7 +696,17 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(async (request) => ({
+        success: true,
+        wgsl: "// wgsl",
+        diagnostics: [{
+          severity: "warning",
+          source: "slang-compile",
+          message: request.options.passName,
+          uri: `file:///${request.options.passName}.slang`,
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        }],
+      })),
       dispose: vi.fn(),
     };
 
@@ -723,6 +733,7 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.compile).toHaveBeenCalledTimes(2);
     expect(compiler.compile).toHaveBeenNthCalledWith(1, expect.objectContaining({ source: expect.stringContaining("float4(1)"), options: expect.objectContaining({ passName: "BufferA", commonCode: "", channels: [] }) }));
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.objectContaining({ source: expect.stringContaining("float4(0)"), options: expect.objectContaining({ passName: "Image", commonCode: "", channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }] }) }));
+    expect(result?.diagnostics?.map(({ message }) => message)).toEqual(["BufferA", "Image"]);
   });
 
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
@@ -889,8 +900,22 @@ describe("WebGPURenderingEngine", () => {
     const compiler = {
       compile: vi
         .fn()
-        .mockReturnValueOnce({ success: true, wgsl: "// wgsl" }) // BufferA builds fine
-        .mockReturnValueOnce({ success: false, errors: ["bad shader"] }), // Image fails
+        .mockReturnValueOnce({
+          success: true,
+          wgsl: "// wgsl",
+          diagnostics: [{
+            severity: "warning", source: "slang-compile", message: "buffer warning",
+            uri: "file:///buffer-a.slang", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+          }],
+        }) // BufferA builds fine
+        .mockReturnValueOnce({
+          success: false,
+          errors: ["bad shader"],
+          diagnostics: [{
+            severity: "error", source: "slang-compile", message: "dependency error",
+            uri: "file:///lib/palette.slang", range: { start: { line: 2, character: 3 }, end: { line: 2, character: 4 } },
+          }],
+        }), // Image fails
       dispose: vi.fn(),
     };
 
@@ -916,6 +941,10 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(false);
       expect(result?.errors).toEqual(["Image: bad shader"]);
+      expect(result?.diagnostics?.map(({ message, uri }) => [message, uri])).toEqual([
+        ["buffer warning", "file:///buffer-a.slang"],
+        ["dependency error", "file:///lib/palette.slang"],
+      ]);
       // The BufferA pipeline was fully built before Image failed; it must be disposed.
       expect(disposeSpy).toHaveBeenCalledTimes(1);
       expect(engine.getPasses()).toEqual([]);
@@ -940,7 +969,14 @@ describe("WebGPURenderingEngine", () => {
       })),
     };
     const compiler = {
-      compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compile: vi.fn(() => ({
+        success: true,
+        wgsl: "// wgsl",
+        diagnostics: [{
+          severity: "warning", source: "slang-compile", message: "compiler warning",
+          uri: "file:///image.slang", range: { start: { line: 1, character: 2 }, end: { line: 1, character: 3 } },
+        }],
+      })),
       dispose: vi.fn(),
     };
 
@@ -963,6 +999,7 @@ describe("WebGPURenderingEngine", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.warnings?.[0]).toMatch(/non-iChannel/i);
+    expect(result?.diagnostics?.[0]).toMatchObject({ message: "compiler warning", uri: "file:///image.slang" });
   });
 
   it("renders buffer passes before Image and swaps buffer textures once per frame", () => {
