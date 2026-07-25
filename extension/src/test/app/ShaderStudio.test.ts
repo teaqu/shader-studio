@@ -163,6 +163,10 @@ suite('Shader Studio Test Suite', () => {
     } as any;
   }
 
+  test('does not create a WebSocket transport in extension test mode', () => {
+    assert.strictEqual(shaderStudio['webSocketTransport'], null);
+  });
+
   function createMockGLSLNoLanguageEditor(): vscode.TextEditor {
     const mockDocument = {
       fileName: '/mock/path/shader.glsl',

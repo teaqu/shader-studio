@@ -146,11 +146,7 @@ export class ShaderStudio {
 
   private startWebSocketTransport(): void {
     if (this.context.extensionMode === vscode.ExtensionMode.Test) {
-      const testPort = 51473;
-      this.logger.debug(
-        `Using test port ${testPort} for WebSocket during tests`,
-      );
-      this.createWebSocketTransport(testPort);
+      this.logger.debug('Skipping WebSocket transport during extension tests');
       return;
     }
 
