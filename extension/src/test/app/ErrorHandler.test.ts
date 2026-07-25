@@ -483,4 +483,56 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(diagnostics?.[0].message, 'legacy fallback error');
     assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse('file:///project/lib/palette.slang')), undefined);
   });
+
+  for (const { name, mutate } of [
+    {
+      name: 'URI',
+      mutate: (diagnostic: Record<string, unknown>) => {
+        diagnostic.uri = 'not-a-uri';
+      },
+    },
+    {
+      name: 'range',
+      mutate: (diagnostic: Record<string, unknown>) => {
+        diagnostic.range = { start: { line: Number.NaN, character: 0 }, end: { line: 0, character: 0 } };
+      },
+    },
+    {
+      name: 'severity',
+      mutate: (diagnostic: Record<string, unknown>) => {
+        diagnostic.severity = 'fatal';
+      },
+    },
+    {
+      name: 'message',
+      mutate: (diagnostic: Record<string, unknown>) => {
+        diagnostic.message = 42;
+      },
+    },
+    {
+      name: 'source',
+      mutate: (diagnostic: Record<string, unknown>) => {
+        diagnostic.source = 'language-service';
+      },
+    },
+  ]) {
+    test(`falls back for a malformed structured diagnostic ${name} without replacing prior scoped errors`, () => {
+      const root = 'file:///project/image.slang';
+      const previousDependency = 'file:///project/lib/previous.slang';
+      const malformed = structuredClone(compileError(root, 2, 'file:///project/lib/malformed.slang')) as unknown as {
+        diagnostics: Record<string, unknown>[];
+      };
+      mutate(malformed.diagnostics[0]);
+      errorHandler.handleError(compileError(root, 1, previousDependency));
+
+      errorHandler.handleError({
+        ...(malformed as unknown as ErrorMessage),
+        payload: [`legacy ${name} fallback`],
+        compileScope: compileScope(root, 2),
+      });
+
+      assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(previousDependency))?.length, 1);
+      assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl'))?.[0].message, `legacy ${name} fallback`);
+    });
+  }
 });

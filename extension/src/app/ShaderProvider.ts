@@ -509,7 +509,7 @@ export class ShaderProvider {
         rootCount: prepared.rootCount,
         rootPath: shaderPath,
       };
-      message.compileScope = { generationId: slangRequest.token, rootUris: [prepared.snapshot.rootUri], ownerId: this.slangOwnerId };
+      message.compileScope = { generationId: slangRequest.token, rootUris: [prepared.rootUri], ownerId: this.slangOwnerId };
     }
 
     // Snapshot the RAW config file text (not the processed `config` above, which
@@ -588,7 +588,7 @@ export class ShaderProvider {
         bufferPathMap: this.buildBufferPathMap(input.config, input.path), workspace: root.snapshot,
         requestId: request.token,
         compileGeneration: { id: request.token, rootIndex: root.rootIndex, rootCount: root.rootCount, rootPath: input.path },
-        compileScope: { generationId: request.token, rootUris: prepared.map((entry) => entry.snapshot.rootUri), ownerId: this.slangOwnerId },
+        compileScope: { generationId: request.token, rootUris: [root.rootUri], ownerId: this.slangOwnerId },
       };
       messages.push({ request, prepared: root, message, config: input.config });
     }

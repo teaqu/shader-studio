@@ -711,7 +711,8 @@ suite('ShaderProvider Test Suite', () => {
       assert.ok(slang.workspace);
       assert.strictEqual(slang.requestId, slang.compileGeneration.id);
       assert.deepStrictEqual([slang.compileGeneration.rootIndex, slang.compileGeneration.rootCount], [0, 1]);
-      assert.deepStrictEqual(slang.compileScope.rootUris, [slang.workspace.rootUri]);
+      assert.deepStrictEqual(slang.compileScope.rootUris, ['file:///work/image.slang']);
+      assert.notStrictEqual(slang.compileScope.rootUris[0], slang.workspace.rootUri);
       assert.strictEqual(slang.compileScope.ownerId, 'panel:1');
       sendSpy.resetHistory();
       await provider.sendShaderFromDocument({
@@ -789,7 +790,11 @@ suite('ShaderProvider Test Suite', () => {
       assert.deepStrictEqual(messages.map((message) => message.path), ['/work/a.slang', '/work/b.slang']);
       assert.strictEqual(messages[0].requestId, messages[1].requestId);
       assert.deepStrictEqual(messages.map((message) => [message.compileGeneration.rootIndex, message.compileGeneration.rootCount]), [[0, 2], [1, 2]]);
-      assert.deepStrictEqual(messages[0].compileScope.rootUris, messages[1].compileScope.rootUris);
+      assert.deepStrictEqual(messages.map((message) => message.compileScope.rootUris), [
+        ['file:///work/a.slang'],
+        ['file:///work/b.slang'],
+      ]);
+      assert.ok(messages.every((message) => message.compileScope.rootUris[0] !== message.workspace.rootUri));
       assert.strictEqual(messages[0].workspace.files.find((file: { path: string }) => file.path === '/workspace/lib.slang').source, 'float unsaved;');
 
       await provider.sendShaderFromDocument({

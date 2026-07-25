@@ -68,8 +68,9 @@ export class ErrorHandler {
     }
 
     const scope = this.getValidCompileScope(message.compileScope);
-    if (scope && Array.isArray(message.diagnostics) && message.diagnostics.length > 0) {
-      this.handleScopedCompilerDiagnostics(scope, message.diagnostics);
+    const diagnostics = this.getValidCompilerDiagnostics(message.diagnostics);
+    if (scope && diagnostics) {
+      this.handleScopedCompilerDiagnostics(scope, diagnostics);
       return;
     }
 
@@ -265,12 +266,14 @@ export class ErrorHandler {
     }
   }
 
-  private handleScopedCompilerDiagnostics(scope: CompileDiagnosticScope, diagnostics: SlangDiagnostic[]): void {
+  private handleScopedCompilerDiagnostics(
+    scope: CompileDiagnosticScope,
+    diagnostics: Array<{ uri: vscode.Uri; diagnostic: vscode.Diagnostic }>,
+  ): void {
     if (!this.acceptCompileScope(scope)) {
       return;
     }
 
-    const mapped = diagnostics.flatMap((diagnostic) => this.toVscodeDiagnostic(diagnostic));
     const affectedUris = new Map<string, vscode.Uri>();
     for (const rootUri of scope.rootUris) {
       const key = this.scopeKey(rootUri, scope.ownerId);
@@ -278,7 +281,7 @@ export class ErrorHandler {
       if (previous) {
         this.collectSetUris(previous, affectedUris);
       }
-      const next: ScopedDiagnosticSet = { scope, diagnostics: mapped };
+      const next: ScopedDiagnosticSet = { scope, diagnostics };
       this.scopedDiagnostics.set(key, next);
       this.collectSetUris(next, affectedUris);
     }
@@ -321,14 +324,45 @@ export class ErrorHandler {
     return `${rootUri}\u0000${ownerId ?? ''}`;
   }
 
-  private toVscodeDiagnostic(diagnostic: SlangDiagnostic): Array<{ uri: vscode.Uri; diagnostic: vscode.Diagnostic }> {
+  private getValidCompilerDiagnostics(
+    diagnostics: SlangDiagnostic[] | undefined,
+  ): Array<{ uri: vscode.Uri; diagnostic: vscode.Diagnostic }> | null {
+    if (!Array.isArray(diagnostics) || diagnostics.length === 0) {
+      return null;
+    }
+    const mapped: Array<{ uri: vscode.Uri; diagnostic: vscode.Diagnostic }> = [];
+    for (const diagnostic of diagnostics) {
+      const result = this.toVscodeDiagnostic(diagnostic);
+      if (!result) {
+        return null;
+      }
+      mapped.push(result);
+    }
+    return mapped;
+  }
+
+  private toVscodeDiagnostic(diagnostic: SlangDiagnostic): { uri: vscode.Uri; diagnostic: vscode.Diagnostic } | null {
     try {
-      const uri = vscode.Uri.parse(diagnostic.uri);
+      if (!diagnostic || typeof diagnostic !== 'object'
+        || typeof diagnostic.uri !== 'string'
+        || typeof diagnostic.message !== 'string'
+        || diagnostic.message.length === 0
+        || !['error', 'warning', 'information', 'hint'].includes(diagnostic.severity)
+        || !['slang-compile', 'webgpu'].includes(diagnostic.source)
+        || (diagnostic.code !== undefined && typeof diagnostic.code !== 'string')
+        || (diagnostic.passName !== undefined && typeof diagnostic.passName !== 'string')
+        || !this.isValidDiagnosticRange(diagnostic.range)) {
+        return null;
+      }
+      const uri = vscode.Uri.parse(diagnostic.uri, true);
+      if (!uri.scheme) {
+        return null;
+      }
       const range = new vscode.Range(
-        Math.max(0, diagnostic.range.start.line),
-        Math.max(0, diagnostic.range.start.character),
-        Math.max(0, diagnostic.range.end.line),
-        Math.max(0, diagnostic.range.end.character),
+        diagnostic.range.start.line,
+        diagnostic.range.start.character,
+        diagnostic.range.end.line,
+        diagnostic.range.end.character,
       );
       const severity = {
         error: vscode.DiagnosticSeverity.Error,
@@ -339,11 +373,22 @@ export class ErrorHandler {
       const result = new vscode.Diagnostic(range, diagnostic.message, severity);
       result.source = diagnostic.source;
       result.code = diagnostic.code;
-      return [{ uri, diagnostic: result }];
-    } catch (error) {
-      this.outputChannel.error(`Failed to map compiler diagnostic: ${error}`);
-      return [];
+      return { uri, diagnostic: result };
+    } catch {
+      return null;
     }
+  }
+
+  private isValidDiagnosticRange(range: SlangDiagnostic['range']): boolean {
+    if (!range || typeof range !== 'object' || !range.start || !range.end) {
+      return false;
+    }
+    const values = [range.start.line, range.start.character, range.end.line, range.end.character];
+    if (!values.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      return false;
+    }
+    return range.end.line > range.start.line
+      || (range.end.line === range.start.line && range.end.character >= range.start.character);
   }
 
   private collectSetUris(set: ScopedDiagnosticSet, target: Map<string, vscode.Uri>): void {
