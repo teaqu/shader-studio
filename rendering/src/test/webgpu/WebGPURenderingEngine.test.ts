@@ -1353,6 +1353,23 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).passPipelines.get("Image")).not.toBe(oldPipeline);
       expect((engine as any).lastCompile).toEqual(expect.objectContaining({ path: "/workspace/b.slang", workspace: b }));
     });
+
+    it("drops deferred compilation when disposed without caching or committing it", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const pending = deferred<any>();
+      compiler.compile.mockReturnValueOnce(pending.promise);
+      const compiling = engine.compileShaderPipeline("dispose source", null, "/workspace/dispose.slang");
+      engine.dispose();
+      pending.resolve({ success: true, wgsl: "// dispose", diagnostics: [] });
+      await expect(compiling).resolves.toEqual(expect.objectContaining({ success: false, superseded: true }));
+      expect((engine as any).passPipelines.size).toBe(0);
+      expect((engine as any).lastCompile).toBeNull();
+      const fresh = new WebGPURenderingEngine(assets);
+      const next = stubEngineInternals(fresh);
+      await fresh.compileShaderPipeline("dispose source", null, "/workspace/dispose.slang");
+      expect(next.compiler.compile).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("custom and remaining ShaderToy uniform parity", () => {
