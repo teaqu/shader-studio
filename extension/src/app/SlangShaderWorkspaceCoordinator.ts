@@ -170,9 +170,9 @@ export class SlangShaderWorkspaceCoordinator {
   owningRoots(filePath: string, source?: string): readonly string[] {
     let uri: string;
     try {
-      uri = normalizeSlangUri(this.host.toUri(filePath)); 
+      uri = normalizeSlangUri(this.host.toUri(filePath));
     } catch {
-      return []; 
+      return [];
     }
     if (source !== undefined) {
       for (const prepared of this.roots.values()) {

@@ -7,13 +7,13 @@ suite('SlangShaderWorkspaceCoordinator', () => {
       toUri: (filePath) => `file://${filePath}`,
       toPath: (uri) => new URL(uri).pathname,
       async findSlangFiles() {
-        return Object.keys(files); 
+        return Object.keys(files);
       },
       async readFile(uri) {
-        return files[uri]; 
+        return files[uri];
       },
       get openDocuments() {
-        return []; 
+        return [];
       },
     };
   }
