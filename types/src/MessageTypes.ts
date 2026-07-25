@@ -1,6 +1,7 @@
 // Message types for communication between extension and UI
 
 import type { ProfileIndex, ProfileData } from './ProfileTypes';
+import type { CompileDiagnosticScope, ShaderCompileGeneration, SlangDiagnostic, SlangWorkspaceSnapshot } from './SlangWorkspace';
 
 export interface BaseMessage {
   type: string;
@@ -9,6 +10,8 @@ export interface BaseMessage {
 export interface LogMessage extends BaseMessage {
   type: "log";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface DebugMessage extends BaseMessage {
@@ -19,6 +22,8 @@ export interface DebugMessage extends BaseMessage {
 export interface ErrorMessage extends BaseMessage {
   type: "error";
   payload: string[];
+  diagnostics?: SlangDiagnostic[];
+  compileScope?: CompileDiagnosticScope;
 }
 
 export interface WarningMessage extends BaseMessage {
@@ -55,6 +60,11 @@ export interface ShaderSourceMessage extends BaseMessage {
   buffers: Record<string, string>;
   /** Shader source language. Defaults to "glsl" when absent. */
   language?: "glsl" | "slang";
+  workspace?: SlangWorkspaceSnapshot;
+  diagnostics?: SlangDiagnostic[];
+  requestId?: string;
+  compileGeneration?: ShaderCompileGeneration;
+  compileScope?: CompileDiagnosticScope;
   reload?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
