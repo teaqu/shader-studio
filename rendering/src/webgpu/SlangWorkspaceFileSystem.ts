@@ -39,16 +39,29 @@ export function normalizeInternalPath(path: string): string {
 function parent(path: string): string {
   return path.slice(0, path.lastIndexOf("/")) || "/";
 }
+
+function normalizeWorkspaceFilePath(path: string): string {
+  const normalized = normalizeInternalPath(path);
+  if (!normalized.startsWith("/workspace/")) {
+    throw new Error(`Path must be a syncable file path within /workspace: ${path}`);
+  }
+  return normalized;
+}
+
 function removeIfPresent(fs: SlangFileSystem, path: string): void {
   if (fs.analyzePath(path).exists) {
     fs.unlink(path);
   }
 }
 
-export function syncWorkspaceToFileSystem(fs: SlangFileSystem, snapshot: SlangWorkspaceSnapshot, ownedPaths: Set<string>): void {
+export function syncWorkspaceToFileSystem(
+  fs: SlangFileSystem,
+  snapshot: SlangWorkspaceSnapshot,
+  ownedPaths: Set<string>,
+): void {
   const desired = new Map<string, string>();
   for (const file of snapshot.files) {
-    const path = normalizeInternalPath(file.path);
+    const path = normalizeWorkspaceFilePath(file.path);
     const existing = desired.get(path);
     if (existing !== undefined && existing !== file.source) {
       throw new Error(`Conflicting duplicate workspace path: ${path}`);
@@ -57,7 +70,7 @@ export function syncWorkspaceToFileSystem(fs: SlangFileSystem, snapshot: SlangWo
   }
   const previous = activeOwners.get(fs);
   for (const path of [...ownedPaths, ...(previous ?? [])]) {
-    if (normalizeInternalPath(path) !== path) {
+    if (normalizeWorkspaceFilePath(path) !== path) {
       throw new Error(`Owned path must be normalized: ${path}`);
     }
   }
