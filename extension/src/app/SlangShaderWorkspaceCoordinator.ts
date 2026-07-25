@@ -19,6 +19,9 @@ export interface PreparedSlangRoot {
   rootUri: string;
   snapshot: SlangWorkspaceSnapshot;
   graph: SlangDependencyGraph;
+  /** Stable ordering within one coalesced prepare transaction. */
+  rootIndex: number;
+  rootCount: number;
 }
 
 /** The small VS Code boundary of the coordinator; keeping it injected makes graph tests deterministic. */
@@ -27,7 +30,7 @@ export interface SlangShaderWorkspaceCoordinatorHost extends SlangWorkspaceSnaps
   toPath(uri: string): string;
 }
 
-interface OwnerState { token: number; rootUri: string; }
+interface OwnerState { token: number; rootUris: ReadonlySet<string>; }
 
 export class SlangShaderWorkspaceCoordinator {
   private readonly owners = new Map<string, OwnerState>();
@@ -37,15 +40,21 @@ export class SlangShaderWorkspaceCoordinator {
   constructor(private readonly host: SlangShaderWorkspaceCoordinatorHost) {}
 
   beginOwnerRequest(ownerId: string, rootPath: string): SlangOwnerRequest {
-    const rootUri = normalizeSlangUri(this.host.toUri(rootPath));
-    const request = { ownerId, rootUri, token: ++this.nextToken };
-    this.owners.set(ownerId, { rootUri, token: request.token });
-    return request;
+    return this.beginOwnerRequests(ownerId, [rootPath])[0];
+  }
+
+  /** Starts one atomic generation for every root a provider will send. */
+  beginOwnerRequests(ownerId: string, rootPaths: readonly string[]): readonly SlangOwnerRequest[] {
+    const rootUris = [...new Set(rootPaths.map((rootPath) => normalizeSlangUri(this.host.toUri(rootPath))))]
+      .sort((left, right) => left.localeCompare(right));
+    const token = ++this.nextToken;
+    this.owners.set(ownerId, { token, rootUris: new Set(rootUris) });
+    return rootUris.map((rootUri) => ({ ownerId, rootUri, token }));
   }
 
   isOwnerRequestCurrent(request: SlangOwnerRequest): boolean {
     const state = this.owners.get(request.ownerId);
-    return state?.token === request.token && state.rootUri === request.rootUri;
+    return state?.token === request.token && state.rootUris.has(request.rootUri);
   }
 
   async prepareRoots(specs: readonly SlangRootSpec[]): Promise<readonly PreparedSlangRoot[]> {
@@ -59,19 +68,21 @@ export class SlangShaderWorkspaceCoordinator {
         unique.set(rootUri, { rootPath: this.host.toPath(rootUri), configuredFilePaths: [...spec.configuredFilePaths] });
       }
     }
-    return Promise.all([...unique.entries()].sort(([a], [b]) => a.localeCompare(b)).map(async ([rootUri, spec]) => {
+    const ordered = [...unique.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return Promise.all(ordered.map(async ([rootUri, spec], rootIndex) => {
       const workspaceUri = normalizeSlangUri(this.host.toUri(path.dirname(spec.rootPath)));
       const builder = new SlangWorkspaceSnapshotBuilder(this.host);
       const snapshot = await builder.build({
         rootUri: workspaceUri,
         rootFiles: [rootUri],
-        configuredPassFiles: spec.configuredFilePaths.map((filePath) => this.host.toUri(filePath)),
+        configuredPassFiles: [...new Set(spec.configuredFilePaths.map((filePath) => normalizeSlangUri(this.host.toUri(filePath))))]
+          .sort((left, right) => left.localeCompare(right)),
       });
       const graph = new SlangDependencyGraph(workspaceUri);
       for (const file of snapshot.files) {
         graph.update(file.uri, file.source);
       }
-      return { rootPath: spec.rootPath, rootUri, snapshot, graph };
+      return { rootPath: spec.rootPath, rootUri, snapshot, graph, rootIndex, rootCount: ordered.length };
     }));
   }
 
@@ -87,8 +98,11 @@ export class SlangShaderWorkspaceCoordinator {
     if (!this.isOwnerRequestCurrent(request)) {
       return false;
     }
+    const owner = this.owners.get(request.ownerId)!;
     this.owners.delete(request.ownerId);
-    this.removeUnusedRoot(request.rootUri);
+    for (const rootUri of owner.rootUris) {
+      this.removeUnusedRoot(rootUri);
+    }
     return true;
   }
 
@@ -101,10 +115,12 @@ export class SlangShaderWorkspaceCoordinator {
     }
     if (source !== undefined) {
       for (const prepared of this.roots.values()) {
-        prepared.graph.update(uri, source);
+        if (prepared.snapshot.files.some((file) => file.uri === uri)) {
+          prepared.graph.update(uri, source);
+        }
       }
     }
-    const active = new Set([...this.owners.values()].map((owner) => owner.rootUri));
+    const active = new Set([...this.owners.values()].flatMap((owner) => [...owner.rootUris]));
     const roots = new Set<string>();
     for (const prepared of this.roots.values()) {
       for (const root of prepared.graph.affectedRoots(uri, active)) {
@@ -121,21 +137,29 @@ export class SlangShaderWorkspaceCoordinator {
       return;
     }
     this.owners.delete(ownerId);
-    this.removeUnusedRoot(owner.rootUri);
+    for (const rootUri of owner.rootUris) {
+      this.removeUnusedRoot(rootUri);
+    }
   }
 
   removeRoot(rootPath: string): void {
     const rootUri = normalizeSlangUri(this.host.toUri(rootPath));
     this.roots.delete(rootUri);
     for (const [ownerId, owner] of this.owners) {
-      if (owner.rootUri === rootUri) {
-        this.owners.delete(ownerId);
+      if (owner.rootUris.has(rootUri)) {
+        const retained = new Set(owner.rootUris);
+        retained.delete(rootUri);
+        if (retained.size === 0) {
+          this.owners.delete(ownerId);
+        } else {
+          this.owners.set(ownerId, { token: owner.token, rootUris: retained });
+        }
       }
     }
   }
 
   private removeUnusedRoot(rootUri: string): void {
-    if (![...this.owners.values()].some((owner) => owner.rootUri === rootUri)) {
+    if (![...this.owners.values()].some((owner) => owner.rootUris.has(rootUri))) {
       this.roots.delete(rootUri);
     }
   }

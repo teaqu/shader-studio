@@ -450,7 +450,12 @@ export class ShaderProvider {
     if (slangRequest && prepared) {
       message.workspace = prepared.snapshot;
       message.requestId = slangRequest.token;
-      message.compileGeneration = { id: slangRequest.token, rootIndex: 0, rootCount: 1, rootPath: shaderPath };
+      message.compileGeneration = {
+        id: slangRequest.token,
+        rootIndex: prepared.rootIndex,
+        rootCount: prepared.rootCount,
+        rootPath: shaderPath,
+      };
       message.compileScope = { generationId: slangRequest.token, rootUris: [prepared.snapshot.rootUri], ownerId: this.slangOwnerId };
     }
 

@@ -46,4 +46,69 @@ suite('SlangShaderWorkspaceCoordinator', () => {
     coordinator.commitOwnerRequest(coordinator.beginOwnerRequest('b', '/work/b.slang'), b);
     assert.deepStrictEqual(coordinator.owningRoots('/work/lib.slang', 'float changed;'), ['/work/a.slang', '/work/b.slang']);
   });
+
+  test('prepares duplicate root specifications as one sorted transaction with normalized configured files', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/a.slang': 'float a;',
+      'file:///work/b.slang': 'float b;',
+      'file:///work/pass.slang': 'float pass;',
+    }));
+    const prepared = await coordinator.prepareRoots([
+      { rootPath: '/work/b.slang', configuredFilePaths: ['/work/pass.slang', '/work/pass.slang'] },
+      { rootPath: '/work/a.slang', configuredFilePaths: [] },
+      { rootPath: '/work/b.slang', configuredFilePaths: ['/work/pass.slang'] },
+    ]);
+    assert.deepStrictEqual(prepared.map((root) => [root.rootPath, root.rootIndex, root.rootCount]), [
+      ['/work/a.slang', 0, 2], ['/work/b.slang', 1, 2],
+    ]);
+    assert.deepStrictEqual(prepared[1].snapshot.files.filter((file) => file.path === '/workspace/pass.slang').length, 1);
+  });
+
+  test('keeps all roots in one owner generation current and rejects its stale release', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/a.slang': 'float a;', 'file:///work/b.slang': 'float b;',
+    }));
+    const [first, second] = coordinator.beginOwnerRequests('panel:1', ['/work/b.slang', '/work/a.slang']);
+    const prepared = await coordinator.prepareRoots([
+      { rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] },
+    ]);
+    assert.strictEqual(coordinator.commitOwnerRequest(first, prepared[0]), true);
+    assert.strictEqual(coordinator.commitOwnerRequest(second, prepared[1]), true);
+    const replacement = coordinator.beginOwnerRequest('panel:1', '/work/a.slang');
+    assert.strictEqual(coordinator.commitOwnerRelease(first), false);
+    assert.strictEqual(coordinator.isOwnerRequestCurrent(replacement), true);
+  });
+
+  test('keeps dependency cycles routable and ignores a stale release after replacement', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/image.slang': '#include "a.slang"',
+      'file:///work/a.slang': '#include "b.slang"',
+      'file:///work/b.slang': '#include "a.slang"',
+    }));
+    const stale = coordinator.beginOwnerRequest('panel:1', '/work/image.slang');
+    const [prepared] = await coordinator.prepareRoots([{ rootPath: '/work/image.slang', configuredFilePaths: [] }]);
+    assert.strictEqual(coordinator.commitOwnerRequest(stale, prepared), true);
+    assert.deepStrictEqual(coordinator.owningRoots('/work/b.slang'), ['/work/image.slang']);
+    const current = coordinator.beginOwnerRequest('panel:1', '/work/image.slang');
+    assert.strictEqual(coordinator.commitOwnerRelease(stale), false);
+    assert.strictEqual(coordinator.commitOwnerRequest(current, prepared), true);
+  });
+
+  test('releasing one shared owner preserves the other and isolates source overlays by workspace snapshot', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///one/image.slang': '#include "lib.slang"', 'file:///one/lib.slang': 'float one;',
+      'file:///two/image.slang': '#include "lib.slang"', 'file:///two/lib.slang': 'float two;',
+    }));
+    const [one] = await coordinator.prepareRoots([{ rootPath: '/one/image.slang', configuredFilePaths: [] }]);
+    const [two] = await coordinator.prepareRoots([{ rootPath: '/two/image.slang', configuredFilePaths: [] }]);
+    const oneRequest = coordinator.beginOwnerRequest('one', '/one/image.slang');
+    const twoRequest = coordinator.beginOwnerRequest('two', '/two/image.slang');
+    coordinator.commitOwnerRequest(oneRequest, one);
+    coordinator.commitOwnerRequest(twoRequest, two);
+    assert.deepStrictEqual(coordinator.owningRoots('/one/lib.slang', 'float oneChanged;'), ['/one/image.slang']);
+    coordinator.releaseOwner('one');
+    assert.deepStrictEqual(coordinator.owningRoots('/two/lib.slang'), ['/two/image.slang']);
+    coordinator.removeRoot('/two/image.slang');
+    assert.deepStrictEqual(coordinator.owningRoots('/two/lib.slang'), []);
+  });
 });
