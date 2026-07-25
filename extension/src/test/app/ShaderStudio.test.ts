@@ -12,6 +12,9 @@ suite('Shader Studio Test Suite', () => {
   let sendShaderSpy: sinon.SinonSpy;
   let activeEditorChangeListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
+  let createdFilesListener: ((event: vscode.FileCreateEvent) => void) | undefined;
+  let deletedFilesListener: ((event: vscode.FileDeleteEvent) => void) | undefined;
+  let closeDocumentListener: ((document: vscode.TextDocument) => void) | undefined;
 
   setup(() => {
     sandbox = sinon.createSandbox();
@@ -93,6 +96,18 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').callsFake((listener: any) => {
       textDocumentChangeListener = listener;
       return { dispose: sandbox.stub(), _listener: listener, _event: 'onDidChangeTextDocument' } as any;
+    });
+    sandbox.stub(vscode.workspace, 'onDidCreateFiles').callsFake((listener: any) => {
+      createdFilesListener = listener;
+      return { dispose: sandbox.stub() } as any;
+    });
+    sandbox.stub(vscode.workspace, 'onDidDeleteFiles').callsFake((listener: any) => {
+      deletedFilesListener = listener;
+      return { dispose: sandbox.stub() } as any;
+    });
+    sandbox.stub(vscode.workspace, 'onDidCloseTextDocument').callsFake((listener: any) => {
+      closeDocumentListener = listener;
+      return { dispose: sandbox.stub() } as any;
     });
     sandbox.stub(vscode.window, 'onDidChangeTextEditorSelection').callsFake((listener: any) => {
       return { dispose: sandbox.stub() } as any;
@@ -1253,5 +1268,20 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(disposePanels);
     sinon.assert.calledOnce(releaseGlobalOwner);
+  });
+
+  test('forwards Slang lifecycle listeners to CompileController and retains their disposables', () => {
+    const created = sandbox.spy(shaderStudio['compileController'], 'handleFilesCreated');
+    const deleted = sandbox.spy(shaderStudio['compileController'], 'handleFilesDeleted');
+    const closed = sandbox.spy(shaderStudio['compileController'], 'handleTextDocumentClose');
+    const uri = vscode.Uri.file('/mock/lib.slang');
+    createdFilesListener!({ files: [uri] } as any);
+    deletedFilesListener!({ files: [uri] } as any);
+    const document = { fileName: '/mock/lib.slang', uri } as any;
+    closeDocumentListener!(document);
+    sinon.assert.calledOnceWithExactly(created, [uri]);
+    sinon.assert.calledOnceWithExactly(deleted, [uri]);
+    sinon.assert.calledOnceWithExactly(closed, document);
+    assert.ok(mockContext.subscriptions.length >= 6);
   });
 });

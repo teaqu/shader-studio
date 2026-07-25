@@ -699,6 +699,31 @@ suite('ShaderProvider Test Suite', () => {
       };
     }
 
+    test('attaches a single-root Slang workspace transaction while leaving GLSL transaction fields absent', async () => {
+      const files = { 'file:///work/image.slang': 'void mainImage() {}' };
+      const coordinator = new SlangShaderWorkspaceCoordinator(workspaceHost(files));
+      provider = new ShaderProvider(mockMessenger, undefined, new ConfigChangeClassifier(), coordinator, 'panel:1');
+      loadAndProcessConfigStub.returns(null);
+      await provider.sendShaderFromDocument({
+        fileName: '/work/image.slang', languageId: 'slang', uri: { fsPath: '/work/image.slang' }, getText: () => 'void mainImage() {}', lineCount: 1,
+      } as any);
+      const slang = sendSpy.firstCall.args[0];
+      assert.ok(slang.workspace);
+      assert.strictEqual(slang.requestId, slang.compileGeneration.id);
+      assert.deepStrictEqual([slang.compileGeneration.rootIndex, slang.compileGeneration.rootCount], [0, 1]);
+      assert.deepStrictEqual(slang.compileScope.rootUris, [slang.workspace.rootUri]);
+      assert.strictEqual(slang.compileScope.ownerId, 'panel:1');
+      sendSpy.resetHistory();
+      await provider.sendShaderFromDocument({
+        fileName: '/work/image.glsl', languageId: 'glsl', uri: { fsPath: '/work/image.glsl' }, getText: () => 'void mainImage() {}', lineCount: 1,
+      } as any);
+      const glsl = sendSpy.firstCall.args[0];
+      assert.strictEqual(glsl.workspace, undefined);
+      assert.strictEqual(glsl.requestId, undefined);
+      assert.strictEqual(glsl.compileGeneration, undefined);
+      assert.strictEqual(glsl.compileScope, undefined);
+    });
+
     test('routes a helper edit as one deterministic Slang generation without a missing-entry error', async () => {
       const files = {
         'file:///work/a.slang': '#include "lib.slang"\nvoid mainImage() {}',

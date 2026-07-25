@@ -112,6 +112,26 @@ suite('CompileController Test Suite', () => {
     assert.strictEqual(mockShaderProvider.handleSlangFilesDeleted.callCount, 2);
   });
 
+  test('applies hot, save, and manual policy to Slang helper documents without changing manual root commands', async () => {
+    const helper = { fileName: '/mock/lib.slang', languageId: 'slang', uri: vscode.Uri.file('/mock/lib.slang'), getText: () => 'float helper;' } as any;
+    const root = createMockGLSLEditor('/mock/image.slang');
+    mockGlslFileTracker.isGlslEditor.withArgs(root).returns(true);
+    mockMessenger.hasActiveClients.returns(true);
+    controller.handleTextDocumentChange({ document: helper } as any);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.sendShaderFromDocument, helper);
+    controller.setMode('save');
+    controller.handleTextDocumentChange({ document: helper } as any);
+    assert.strictEqual(mockShaderProvider.sendShaderFromDocument.callCount, 1);
+    controller.handleTextDocumentSave(helper, []);
+    sinon.assert.calledOnceWithExactly(mockShaderProvider.sendShaderFromPath, '/mock/lib.slang');
+    controller.setMode('manual');
+    controller.handleTextDocumentChange({ document: helper } as any);
+    controller.handleTextDocumentSave(helper, []);
+    assert.strictEqual(mockShaderProvider.sendShaderFromDocument.callCount, 1);
+    await controller.manualCompileCurrentShader(root);
+    sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor, root, { manual: true });
+  });
+
   test('handleActiveEditorChange compiles on first GLSL selection in manual mode when clients exist', () => {
     const editor = createMockGLSLEditor();
     mockGlslFileTracker.isGlslEditor.returns(true);
