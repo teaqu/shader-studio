@@ -3353,6 +3353,14 @@ describe("WebGPURenderingEngine", () => {
     it("reuses compiled WGSL across fresh engine instances", async () => {
       const first = cachedSetup();
       const second = cachedSetup();
+      first.compiler.compile.mockImplementation((request: any) => ({
+        success: true,
+        wgsl: "// wgsl",
+        diagnostics: [{
+          severity: "warning", source: "slang-compile", message: `${request.options.passName} cached warning`,
+          uri: request.sourceUri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        }],
+      }));
       const config: ShaderConfig = {
         version: "1",
         passes: {
@@ -3361,13 +3369,13 @@ describe("WebGPURenderingEngine", () => {
         },
       };
 
-      await first.engine.compileShaderPipeline(
+      const firstResult = await first.engine.compileShaderPipeline(
         "img cache cross instance",
         config,
         "/cache-cross-instance.slang",
         { BufferA: "buf cache cross instance" },
       );
-      await second.engine.compileShaderPipeline(
+      const secondResult = await second.engine.compileShaderPipeline(
         "img cache cross instance",
         config,
         "/cache-cross-instance.slang",
@@ -3376,6 +3384,11 @@ describe("WebGPURenderingEngine", () => {
 
       expect(first.compiler.compile).toHaveBeenCalledTimes(2);
       expect(second.compiler.compile).not.toHaveBeenCalled();
+      expect(secondResult?.diagnostics).toEqual(firstResult?.diagnostics);
+      expect(secondResult?.diagnostics?.map(({ message }) => message)).toEqual([
+        "BufferA cached warning",
+        "Image cached warning",
+      ]);
       expect((second.engine as any).passPipelines.get("Image")).toBeTruthy();
       expect((second.engine as any).passPipelines.get("BufferA")).toBeTruthy();
     });

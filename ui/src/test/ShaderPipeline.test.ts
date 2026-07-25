@@ -864,4 +864,47 @@ describe('ShaderPipeline — concurrent shader messages', () => {
       compileScope,
     });
   });
+
+  it('posts compiler warnings from a successful main compile with their producing scope', async () => {
+    const compileScope = {
+      rootUris: ['file:///project/image.slang'],
+      ownerId: 'panel:1',
+      generationId: 14,
+    };
+    const diagnostics = [{
+      severity: 'warning' as const,
+      source: 'slang-compile',
+      message: 'deprecated declaration',
+      uri: 'file:///project/lib/palette.slang',
+      range: { start: { line: 4, character: 1 }, end: { line: 4, character: 2 } },
+    }];
+    const processMainShaderCompilation = vi.fn().mockResolvedValue({
+      success: true,
+      diagnostics,
+    });
+    (pipeline as unknown as {
+      shaderProcessor: {
+        isCurrentlyProcessing(): boolean;
+        processMainShaderCompilation: typeof processMainShaderCompilation;
+      };
+    }).shaderProcessor = {
+      isCurrentlyProcessing: () => false,
+      processMainShaderCompilation,
+    };
+
+    await pipeline.handleShaderMessage({
+      data: {
+        ...makeShaderEvent('warning', '/project/image.slang').data,
+        language: 'slang',
+        compileScope,
+      },
+    } as MessageEvent);
+
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      diagnostics,
+      compileScope,
+    });
+  });
 });

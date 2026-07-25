@@ -79,7 +79,7 @@ export class MessageHandler {
       logText.includes("updated and pipeline recompiled")
     ) {
       if (message.compileScope) {
-        this.errorHandler.handleCompileSuccess(message.compileScope);
+        this.errorHandler.handleCompileSuccess(message.compileScope, message.diagnostics);
       } else {
         this.errorHandler.clearErrors();
       }

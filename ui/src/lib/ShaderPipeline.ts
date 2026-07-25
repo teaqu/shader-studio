@@ -264,7 +264,7 @@ export class ShaderPipeline {
         }
       }
 
-      this.sendSuccessMessage(compileScope);
+      this.sendSuccessMessage(compileScope, result.diagnostics);
       return;
     }
 
@@ -319,10 +319,14 @@ export class ShaderPipeline {
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessage(compileScope?: ShaderSourceMessage['compileScope']): void {
+  private sendSuccessMessage(
+    compileScope?: ShaderSourceMessage['compileScope'],
+    diagnostics?: LogMessage['diagnostics'],
+  ): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
+      ...(diagnostics ? { diagnostics } : {}),
       ...(compileScope ? { compileScope } : {}),
     };
     this.transport.postMessage(logMessage);

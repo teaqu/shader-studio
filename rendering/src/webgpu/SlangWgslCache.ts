@@ -1,3 +1,4 @@
+import type { SlangDiagnostic } from "@shader-studio/types";
 import type { SlangCompileRequest } from "./SlangCompiler";
 
 const DEFAULT_MAX_ENTRIES = 64;
@@ -51,15 +52,19 @@ export function createSlangWgslCacheKey(request: SlangCompileRequest): string {
 /**
  * Small in-memory LRU for Slang-to-WGSL output. This keeps switching back to
  * an unchanged Slang shader fast after a WebGPU engine was recreated, while
- * intentionally storing only source text output, never GPU/device resources,
- * so fresh engines can rebuild their own pipelines safely.
+ * intentionally storing only compiler output and its diagnostics, never
+ * GPU/device resources, so fresh engines can rebuild their own pipelines safely.
  */
 export class SlangWgslCache {
-  private entries = new Map<string, string>();
+  private entries = new Map<string, { wgsl: string; diagnostics: SlangDiagnostic[] }>();
 
   constructor(private readonly maxEntries = DEFAULT_MAX_ENTRIES) {}
 
   get(key: string): string | null {
+    return this.getEntry(key)?.wgsl ?? null;
+  }
+
+  getEntry(key: string): { wgsl: string; diagnostics: SlangDiagnostic[] } | null {
     const value = this.entries.get(key);
     if (value === undefined) {
       return null;
@@ -70,13 +75,13 @@ export class SlangWgslCache {
     return value;
   }
 
-  set(key: string, wgsl: string): void {
+  set(key: string, wgsl: string, diagnostics: SlangDiagnostic[] = []): void {
     if (this.maxEntries <= 0) {
       return;
     }
 
     this.entries.delete(key);
-    this.entries.set(key, wgsl);
+    this.entries.set(key, { wgsl, diagnostics });
 
     while (this.entries.size > this.maxEntries) {
       const oldest = this.entries.keys().next().value;

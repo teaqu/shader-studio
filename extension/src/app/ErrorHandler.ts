@@ -260,10 +260,18 @@ export class ErrorHandler {
    * legacy success intentionally continues through clearErrors(), preserving
    * the behaviour of existing GLSL and non-structured render messages.
    */
-  public handleCompileSuccess(scope: CompileDiagnosticScope | undefined): void {
+  public handleCompileSuccess(
+    scope: CompileDiagnosticScope | undefined,
+    diagnostics?: SlangDiagnostic[],
+  ): void {
     const validScope = this.getValidCompileScope(scope);
     if (!validScope) {
       this.clearErrors();
+      return;
+    }
+    const mappedDiagnostics = this.getValidCompilerDiagnostics(diagnostics);
+    if (mappedDiagnostics) {
+      this.handleScopedCompilerDiagnostics(validScope, mappedDiagnostics);
       return;
     }
     if (!this.acceptCompileScope(validScope)) {

@@ -727,7 +727,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     const nextPipelines = new Map<string, SlangPassPipeline>();
     const nextKeys = new Map<string, string>();
-    const pendingWgslCacheEntries: Array<{ key: string; wgsl: string }> = [];
+    const pendingWgslCacheEntries: Array<{ key: string; wgsl: string; diagnostics: SlangDiagnostic[] }> = [];
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
     const diagnostics: SlangDiagnostic[] = [];
@@ -763,9 +763,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       let pipeline: SlangPassPipeline | undefined;
       try {
-        let wgsl = sharedSlangWgslCache.get(key);
-        const wgslCacheHit = wgsl !== null;
+        const cached = sharedSlangWgslCache.getEntry(key);
+        let wgsl = cached?.wgsl ?? null;
+        const wgslCacheHit = cached !== null;
         let slangMs = 0;
+        if (cached) {
+          diagnostics.push(...cached.diagnostics);
+        }
         if (!wgsl) {
           const slangStartedAt = this.now();
           const compiled = await this.compiler.compile(request);
@@ -784,7 +788,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
             continue;
           }
           wgsl = compiled.wgsl;
-          pendingWgslCacheEntries.push({ key, wgsl });
+          pendingWgslCacheEntries.push({ key, wgsl, diagnostics: compiled.diagnostics ?? [] });
         }
         pipeline = new SlangPassPipeline(this.device, this.format, {
           name: pass.name,
@@ -916,7 +920,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.customUniformManager = nextCustomUniformManager;
     this.currentConfig = config;
     for (const entry of pendingWgslCacheEntries) {
-      sharedSlangWgslCache.set(entry.key, entry.wgsl);
+      sharedSlangWgslCache.set(entry.key, entry.wgsl, entry.diagnostics);
     }
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;

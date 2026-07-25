@@ -15,10 +15,18 @@ const request = (languageVersion?: "legacy" | "2025" | "2026" | "latest") => ({
 describe("SlangWgslCache", () => {
   it("stores and retrieves compiled WGSL by key", () => {
     const cache = new SlangWgslCache(2);
+    const diagnostics = [{
+      severity: "warning" as const,
+      source: "slang-compile",
+      message: "cached warning",
+      uri: "file:///image.slang",
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    }];
 
-    cache.set("pass-a", "wgsl-a");
+    cache.set("pass-a", "wgsl-a", diagnostics);
 
     expect(cache.get("pass-a")).toBe("wgsl-a");
+    expect(cache.getEntry("pass-a")).toEqual({ wgsl: "wgsl-a", diagnostics });
     expect(cache.get("pass-b")).toBeNull();
   });
 

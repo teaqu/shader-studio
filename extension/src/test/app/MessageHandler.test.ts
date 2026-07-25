@@ -211,6 +211,29 @@ suite('MessageHandler Test Suite', () => {
     sinon.assert.calledWith(mockDiagnosticCollection.set as any, dependencyUri, []);
   });
 
+  test('publishes structured compiler warnings from a successful scope', () => {
+    const rootUri = 'file:///project/image.slang';
+    const dependencyUri = vscode.Uri.parse('file:///project/lib/palette.slang');
+
+    messageHandler.handleMessage({
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      compileScope: { rootUris: [rootUri], ownerId: 'panel:one', generationId: 3 },
+      diagnostics: [{
+        severity: 'warning',
+        message: 'deprecated declaration',
+        source: 'slang-compile',
+        uri: dependencyUri.toString(),
+        range: { start: { line: 4, character: 1 }, end: { line: 4, character: 2 } },
+      }],
+    });
+
+    const published = (mockDiagnosticCollection.set as sinon.SinonStub).lastCall;
+    assert.strictEqual(published.args[0].toString(), dependencyUri.toString());
+    assert.strictEqual(published.args[1][0].message, 'deprecated declaration');
+    assert.strictEqual(published.args[1][0].severity, vscode.DiagnosticSeverity.Warning);
+  });
+
   test('should show non-line-number errors at line 1', () => {
     // Mock active editor and document
     const mockDocument = {
