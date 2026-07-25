@@ -674,6 +674,67 @@ describe("AudioTextureManager", () => {
   });
 
   describe("resumeAudioContext", () => {
+    it("starts loaded audio after a browser interaction resumes a suspended context", async () => {
+      const mockResume = vi.fn().mockResolvedValue(undefined);
+      (globalThis as any).AudioContext = class MockAudioContext {
+        sampleRate = 44100;
+        currentTime = 0;
+        destination = {};
+        state = 'suspended';
+        createAnalyser = mockAudioContext.createAnalyser;
+        createGain = mockAudioContext.createGain;
+        createBufferSource = mockAudioContext.createBufferSource;
+        decodeAudioData = mockAudioContext.decodeAudioData;
+        close = mockAudioContext.close;
+        resume = mockResume;
+      };
+
+      manager.cleanup();
+      manager = new AudioTextureManager(backend);
+      await manager.loadAudioSource("test.mp3");
+
+      document.dispatchEvent(new MouseEvent('click'));
+
+      await vi.waitFor(() => {
+        expect(mockResume).toHaveBeenCalledTimes(1);
+        expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
+      });
+      expect(manager.isAudioPaused("test.mp3")).toBe(false);
+    });
+
+    it("starts audio that finishes loading after the browser interaction", async () => {
+      let resolveDecode!: (buffer: AudioBuffer) => void;
+      mockAudioContext.decodeAudioData.mockReturnValue(new Promise((resolve) => {
+        resolveDecode = resolve;
+      }));
+      const mockResume = vi.fn().mockResolvedValue(undefined);
+      (globalThis as any).AudioContext = class MockAudioContext {
+        sampleRate = 44100;
+        currentTime = 0;
+        destination = {};
+        state = 'suspended';
+        createAnalyser = mockAudioContext.createAnalyser;
+        createGain = mockAudioContext.createGain;
+        createBufferSource = mockAudioContext.createBufferSource;
+        decodeAudioData = mockAudioContext.decodeAudioData;
+        close = mockAudioContext.close;
+        resume = mockResume;
+      };
+
+      manager.cleanup();
+      manager = new AudioTextureManager(backend);
+      const loadPromise = manager.loadAudioSource("test.mp3");
+      await vi.waitFor(() => expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1));
+
+      document.dispatchEvent(new MouseEvent('click'));
+      await vi.waitFor(() => expect(mockResume).toHaveBeenCalledTimes(1));
+      resolveDecode(createMockAudioBuffer());
+      await loadPromise;
+
+      expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
+      expect(manager.isAudioPaused("test.mp3")).toBe(false);
+    });
+
     it("should resume a suspended AudioContext", async () => {
       const mockResume = vi.fn().mockResolvedValue(undefined);
       (globalThis as any).AudioContext = class MockAudioContext {

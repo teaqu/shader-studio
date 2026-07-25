@@ -28,6 +28,7 @@ export class AudioTextureManager<T> {
   private globalMuted = false;
   private globalVolume = 1;
   private readonly channelMuted: Record<string, boolean> = {};
+  private playbackUnlockedByInteraction = false;
 
   constructor(private readonly backend: TextureBackend<T>) {}
 
@@ -55,11 +56,17 @@ export class AudioTextureManager<T> {
       return;
     }
 
-    const resume = () => {
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume();
+    const resume = async () => {
+      try {
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          await this.audioContext.resume();
+        }
+        this.playbackUnlockedByInteraction = true;
+        this.resumeAll();
+        this.removeAutoResumeListeners();
+      } catch {
+        // Keep the listeners installed so a later user gesture can retry.
       }
-      this.removeAutoResumeListeners();
     };
 
     document.addEventListener('click', resume);
@@ -178,7 +185,7 @@ export class AudioTextureManager<T> {
     const startTime = options?.startTime;
     const endTime = options?.endTime;
 
-    if (startTime != null || endTime != null) {
+    if (startTime !== undefined || endTime !== undefined) {
       this.audioLoopRegions[path] = { startTime: startTime ?? 0, endTime };
     }
 
@@ -208,7 +215,9 @@ export class AudioTextureManager<T> {
       this.audioSources[path] = source;
       this.initializing.delete(path);
 
-      // Don't auto-play — let the caller decide via resumeAll/resumeAudio
+      if (this.playbackUnlockedByInteraction && !this.userPaused.has(path)) {
+        this.startSourceNode(path, source, source.offsetTime);
+      }
     } catch (error) {
       console.warn(`Failed to load audio: ${path}`, error);
       this.initializing.delete(path);
@@ -274,7 +283,7 @@ export class AudioTextureManager<T> {
 
   public updateLoopRegion(path: string, startTime?: number, endTime?: number): void {
     const source = this.audioSources[path];
-    if (startTime != null || endTime != null) {
+    if (startTime !== undefined || endTime !== undefined) {
       this.audioLoopRegions[path] = { startTime: startTime ?? 0, endTime };
       if (source?.sourceNode) {
         source.sourceNode.loopStart = startTime ?? 0;
@@ -468,6 +477,7 @@ export class AudioTextureManager<T> {
 
   public cleanup(): void {
     this.removeAutoResumeListeners();
+    this.playbackUnlockedByInteraction = false;
     for (const path of Object.keys(this.audioSources)) {
       this.removeAudioSource(path);
     }
