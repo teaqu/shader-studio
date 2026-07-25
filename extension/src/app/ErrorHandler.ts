@@ -54,12 +54,13 @@ export class ErrorHandler {
   }
 
   public clearPersistentErrors(): void {
-    // Clear all persistent errors when editor changes or a fresh shader load begins
+    // Provider pre-send and GLSL edits clear legacy/persistent errors only.
+    // Runtime Slang compiler scopes and their watermarks have independent
+    // lifetimes and must survive unrelated editor activity.
     this.persistentErrors.clear();
     this.recentErrors.clear();
-    this.scopedDiagnostics.clear();
-    this.latestCompileGenerations.clear();
     this.diagnosticCollection.clear();
+    this.republishAllDiagnostics();
   }
 
   public handleError(message: ErrorMessage): void {
@@ -225,10 +226,10 @@ export class ErrorHandler {
   }
 
   public clearErrors(): void {
-    // Clear only regular errors when shader compilation succeeds
-    // Keep persistent errors (warnings) until editor change
+    // A legacy/GLSL success clears only legacy errors. Runtime Slang scopes and
+    // persistent warnings are retained and republished after the collection reset.
     this.diagnosticCollection.clear();
-    this.restorePersistentErrors();
+    this.republishAllDiagnostics();
 
     // Also log the success message for debugging
     this.outputChannel.debug("Shader compiled and linked");
@@ -241,7 +242,11 @@ export class ErrorHandler {
    */
   public handleCompileSuccess(scope: CompileDiagnosticScope | undefined): void {
     const validScope = this.getValidCompileScope(scope);
-    if (!validScope || !this.acceptCompileScope(validScope)) {
+    if (!validScope) {
+      this.clearErrors();
+      return;
+    }
+    if (!this.acceptCompileScope(validScope)) {
       return;
     }
 
@@ -256,13 +261,6 @@ export class ErrorHandler {
     }
     for (const uri of affectedUris.values()) {
       this.publishDiagnosticsForUri(uri);
-    }
-  }
-
-  private restorePersistentErrors(): void {
-    // Restore all persistent errors to the diagnostic collection
-    for (const [normalizedError, diagnosticInfo] of this.persistentErrors.entries()) {
-      this.diagnosticCollection.set(diagnosticInfo.uri, [diagnosticInfo.diagnostic]);
     }
   }
 
@@ -295,7 +293,10 @@ export class ErrorHandler {
       return null;
     }
     const rootUris = [...new Set(scope.rootUris.filter((uri) => typeof uri === 'string' && uri.length > 0))].sort();
-    if (rootUris.length === 0 || rootUris.length !== scope.rootUris.length) {
+    // One structured compiler result belongs to exactly one prepared root. A
+    // generation may emit several messages, but its roots must not be collapsed
+    // into one ambiguous diagnostic scope.
+    if (rootUris.length !== 1 || rootUris.length !== scope.rootUris.length) {
       return null;
     }
     if (scope.ownerId !== undefined && (typeof scope.ownerId !== 'string' || scope.ownerId.length === 0)) {
@@ -421,6 +422,19 @@ export class ErrorHandler {
       }
     }
     this.diagnosticCollection.set(uri, diagnostics);
+  }
+
+  private republishAllDiagnostics(): void {
+    const uris = new Map<string, vscode.Uri>();
+    for (const set of this.scopedDiagnostics.values()) {
+      this.collectSetUris(set, uris);
+    }
+    for (const persistent of this.persistentErrors.values()) {
+      uris.set(persistent.uri.toString(), persistent.uri);
+    }
+    for (const uri of uris.values()) {
+      this.publishDiagnosticsForUri(uri);
+    }
   }
 
   private diagnosticKey(diagnostic: vscode.Diagnostic): string {

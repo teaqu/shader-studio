@@ -436,21 +436,46 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(staleDependency)), undefined);
   });
 
-  test('treats a multi-root generation as one deterministic diagnostic set', () => {
-    const roots = ['file:///project/a.slang', 'file:///project/b.slang'];
-    const currentDependency = 'file:///project/lib/current.slang';
-    const staleDependency = 'file:///project/lib/stale.slang';
+  test('falls back for an ambiguous multi-root error without replacing either root scope', () => {
+    const aRoot = 'file:///project/a.slang';
+    const bRoot = 'file:///project/b.slang';
+    const aDependency = 'file:///project/lib/a.slang';
+    const bDependency = 'file:///project/lib/b.slang';
+    const ambiguousDependency = 'file:///project/lib/ambiguous.slang';
+    errorHandler.handleError(compileError(aRoot, 2, aDependency));
+    errorHandler.handleError(compileError(bRoot, 2, bDependency));
+
     errorHandler.handleError({
-      ...compileError(roots[0], 2, currentDependency),
-      compileScope: { rootUris: roots, ownerId: 'panel:a', generationId: 2 },
-    });
-    errorHandler.handleError({
-      ...compileError(roots[0], 1, staleDependency),
-      compileScope: { rootUris: [...roots].reverse(), ownerId: 'panel:a', generationId: 1 },
+      ...compileError(aRoot, 3, ambiguousDependency),
+      payload: ['formatted ambiguous compiler error'],
+      compileScope: { rootUris: [aRoot, bRoot], ownerId: 'panel:a', generationId: 3 },
     });
 
-    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(currentDependency))?.length, 1);
-    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(staleDependency)), undefined);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(bDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(ambiguousDependency)), undefined);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl'))?.[0].message, 'formatted ambiguous compiler error');
+  });
+
+  test('falls back for an ambiguous multi-root success without partially clearing scoped roots', () => {
+    const aRoot = 'file:///project/a.slang';
+    const bRoot = 'file:///project/b.slang';
+    const aDependency = 'file:///project/lib/a.slang';
+    const bDependency = 'file:///project/lib/b.slang';
+    errorHandler.handleError(compileError(aRoot, 2, aDependency));
+    errorHandler.handleError(compileError(bRoot, 2, bDependency));
+
+    errorHandler.handleCompileSuccess({
+      rootUris: [aRoot, bRoot],
+      ownerId: 'panel:a',
+      generationId: 3,
+    });
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(bDependency))?.length, 1);
+    errorHandler.handleError(compileError(aRoot, 1, 'file:///project/lib/stale.slang'));
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse('file:///project/lib/stale.slang')), undefined);
   });
 
   test('keeps persistent diagnostics when a scoped compile succeeds', () => {
@@ -463,6 +488,55 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.deepStrictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(dependency)), []);
     assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl'))?.length, 1);
+  });
+
+  test('provider pre-send persistent clearing preserves scoped diagnostics and generation watermarks', () => {
+    const root = 'file:///project/image.slang';
+    const dependency = 'file:///project/lib/palette.slang';
+    const staleDependency = 'file:///project/lib/stale.slang';
+    errorHandler.handleError(compileError(root, 2, dependency));
+
+    errorHandler.clearPersistentErrors();
+    errorHandler.handleError(compileError(root, 1, staleDependency));
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(dependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(staleDependency)), undefined);
+  });
+
+  test('an unrelated GLSL edit preserves all scoped diagnostics and generation watermarks', () => {
+    const aRoot = 'file:///project/a.slang';
+    const bRoot = 'file:///project/b.slang';
+    const aDependency = 'file:///project/lib/a.slang';
+    const bDependency = 'file:///project/lib/b.slang';
+    errorHandler.handleError(compileError(aRoot, 2, aDependency));
+    errorHandler.handleError(compileError(bRoot, 2, bDependency));
+
+    textDocumentChangeListener?.({
+      document: {
+        languageId: 'glsl',
+        fileName: '/unrelated/other.glsl',
+        uri: vscode.Uri.file('/unrelated/other.glsl'),
+      },
+    } as vscode.TextDocumentChangeEvent);
+    errorHandler.handleError(compileError(aRoot, 1, 'file:///project/lib/stale.slang'));
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(bDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse('file:///project/lib/stale.slang')), undefined);
+  });
+
+  test('a global GLSL success clears legacy errors but republishes every scoped Slang diagnostic', () => {
+    const aDependency = 'file:///project/lib/a.slang';
+    const bDependency = 'file:///project/lib/b.slang';
+    errorHandler.handleError(compileError('file:///project/a.slang', 1, aDependency));
+    errorHandler.handleError(compileError('file:///project/b.slang', 1, bDependency));
+    errorHandler.handleError({ type: 'error', payload: ['legacy GLSL error'] });
+
+    errorHandler.clearErrors();
+
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(aDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.parse(bDependency))?.length, 1);
+    assert.strictEqual(mockDiagnosticCollection.get(vscode.Uri.file('/test/shader.glsl')), undefined);
   });
 
   test('falls back to the legacy payload when a structured compile scope is malformed', () => {
