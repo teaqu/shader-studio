@@ -86,10 +86,10 @@ function makeFakeSlang(opts: {
 
 type FailureStage = "session" | "load" | "vertex" | "fragment" | "composite" | "link" | "code";
 
-function makeInstrumentedSlang(stage?: FailureStage | `${FailureStage}-null`, events: string[] = [], aliases = false, deleteThrows?: string): SlangModuleApi {
+function makeInstrumentedSlang(stage?: FailureStage | `${FailureStage}-null`, events: string[] = [], aliases = false, deleteThrows?: string, aliasThrows = false): SlangModuleApi {
   const handle = (name: string) => ({
     delete() { events.push(`delete:${name}`); if (deleteThrows === name) throw new Error(`delete ${name}`); },
-    isAliasOf(other: { name?: string }) { return aliases && name === "linked" && other.name === "composite"; },
+    isAliasOf(other: { name?: string }) { if (aliasThrows) throw new Error("alias"); return aliases && name === "linked" && other.name === "composite"; },
     name,
   });
   const linked = { ...handle("linked"), getTargetCode() { if (stage === "code") throw new Error("code"); return stage === "code-null" ? "" : "WGSL"; }, link() { return linked; } };
@@ -216,6 +216,13 @@ describe("SlangCompiler", () => {
     expect(aliased).toContain("delete:module");
   });
 
+  it("continues reverse cleanup when both alias comparisons throw", () => {
+    const events: string[] = [];
+    const result = new SlangCompiler(makeInstrumentedSlang(undefined, events, false, undefined, true)).compile(request());
+    expect(result).toMatchObject({ success: true, wgsl: "WGSL" });
+    expect(events).toEqual(["delete:linked", "delete:composite", "delete:fragment", "delete:vertex", "delete:module", "delete:session"]);
+  });
+
   it("disposes mounted paths and its cached global once, then rejects later compiles", () => {
     const events: string[] = [];
     const slang = makeInstrumentedSlang(undefined, events);
@@ -231,6 +238,27 @@ describe("SlangCompiler", () => {
     expect(events.filter((event) => event === "delete:global")).toHaveLength(1);
     expect(events).toContain("unlink:/workspace/image.slang");
     expect(compiler.compile(request())).toMatchObject({ success: false, diagnostics: expect.any(Array) });
+  });
+
+  it("retries failed workspace unlink cleanup without deleting the global twice", () => {
+    const events: string[] = [];
+    const slang = makeInstrumentedSlang(undefined, events);
+    const files = new Set<string>();
+    let fail = true;
+    slang.FS = {
+      mkdirTree() {}, writeFile(path) { files.add(path); },
+      unlink(path) { events.push(`unlink:${path}`); if (fail) throw new Error("unlink"); files.delete(path); },
+      analyzePath(path) { return { exists: files.has(path) }; },
+    };
+    const compiler = new SlangCompiler(slang);
+    compiler.compile(request());
+    compiler.dispose();
+    expect(files.has("/workspace/image.slang")).toBe(true);
+    expect(events.filter((event) => event === "delete:global")).toHaveLength(1);
+    fail = false;
+    compiler.dispose(); compiler.dispose();
+    expect(files.size).toBe(0);
+    expect(events.filter((event) => event === "delete:global")).toHaveLength(1);
   });
 
   it("compiles user source to WGSL", () => {
