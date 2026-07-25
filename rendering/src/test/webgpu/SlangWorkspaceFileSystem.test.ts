@@ -7,6 +7,7 @@ class MemoryFileSystem implements SlangFileSystem {
   fail?: "mkdir" | "write" | "unlink";
   failPath?: string;
   readFailPath?: string;
+  failPaths?: Set<string>;
   mkdirTree(path: string) {
     if (this.fail === "mkdir") {
       throw new Error("mkdir");
@@ -21,7 +22,7 @@ class MemoryFileSystem implements SlangFileSystem {
   }
   readFile(path: string) { if (this.readFailPath === path) throw new Error("read"); const source = this.files.get(path); if (source === undefined) throw new Error("read"); return source; }
   unlink(path: string) {
-    if (this.fail === "unlink" || this.failPath === path) {
+    if (this.fail === "unlink" || this.failPath === path || this.failPaths?.has(path)) {
       throw new Error("unlink");
     }
     this.files.delete(path);
@@ -151,6 +152,21 @@ describe("SlangWorkspaceFileSystem", () => {
     expect(fs.files).toEqual(new Map([["/workspace/a", "a"]])); expect(a).toEqual(new Set(["/workspace/a"])); expect(b.size).toBe(0);
     fs.readFailPath = undefined; releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a);
     expect(fs.files.size).toBe(0);
+  });
+  it.each(["a-first", "b-first"] as const)("transfers conservative cleanup ownership when rollback fails (%s)", (order) => {
+    const fs = new MemoryFileSystem(); const a = new Set<string>(); const b = new Set<string>();
+    fs.files.set("/workspace/user", "keep");
+    syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/common", source: "A" }, { path: "/workspace/stale", source: "old" }]), a);
+    fs.failPaths = new Set(["/workspace/stale", "/workspace/b"]);
+    expect(() => syncWorkspaceToFileSystem(fs, snapshot([{ path: "/workspace/common", source: "B" }, { path: "/workspace/b", source: "only-b" }]), b)).toThrow();
+    expect(a.size).toBe(0);
+    expect(b).toEqual(new Set(["/workspace/common", "/workspace/b", "/workspace/stale"]));
+    fs.failPaths = undefined;
+    if (order === "a-first") { releaseWorkspaceFileSystem(fs, a); releaseWorkspaceFileSystem(fs, b); }
+    else { releaseWorkspaceFileSystem(fs, b); releaseWorkspaceFileSystem(fs, a); }
+    releaseWorkspaceFileSystem(fs, a); releaseWorkspaceFileSystem(fs, b);
+    expect(fs.files).toEqual(new Map([["/workspace/user", "keep"]]));
+    expect(a.size).toBe(0); expect(b.size).toBe(0);
   });
   it("keeps active ownership after a release unlink failure so cleanup can be retried", () => {
     const fs = new MemoryFileSystem();
