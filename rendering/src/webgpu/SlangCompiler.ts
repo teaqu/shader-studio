@@ -1,4 +1,4 @@
-import type { SlangDiagnostic, SlangWorkspaceSnapshot } from "@shader-studio/types";
+import type { SlangDiagnostic, SlangLanguageVersion, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import { splitSlangRootHeader } from "./SlangLanguageHeader";
 import { releaseWorkspaceFileSystem, syncWorkspaceToFileSystem } from "./SlangWorkspaceFileSystem";
 import {
@@ -17,7 +17,7 @@ import {
 
 export const PINNED_SLANG_COMPILER_VERSION = "2026.10.2";
 
-export type SlangCompileOptions = SlangWrapOptions;
+export type SlangCompileOptions = SlangWrapOptions & { languageVersion?: SlangLanguageVersion };
 export interface SlangCompileRequest {
   source: string;
   sourceUri: string;

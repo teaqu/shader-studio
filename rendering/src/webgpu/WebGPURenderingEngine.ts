@@ -680,6 +680,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     const nextPipelines = new Map<string, SlangPassPipeline>();
     const nextKeys = new Map<string, string>();
+    const pendingWgslCacheEntries: Array<{ key: string; wgsl: string }> = [];
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
     for (const pass of graph.passes) {
@@ -726,7 +727,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
             continue;
           }
           wgsl = compiled.wgsl;
-          sharedSlangWgslCache.set(key, wgsl);
+          pendingWgslCacheEntries.push({ key, wgsl });
         }
         pipeline = new SlangPassPipeline(this.device, this.format, {
           name: pass.name,
@@ -842,6 +843,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
     }
     this.customUniformManager = nextCustomUniformManager;
+    for (const entry of pendingWgslCacheEntries) {
+      sharedSlangWgslCache.set(entry.key, entry.wgsl);
+    }
     this.passGraph = graph.passes;
     this.passPipelines = nextPipelines;
     this.passKeys = nextKeys;
