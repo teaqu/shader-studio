@@ -60,7 +60,8 @@ function hasScope(token: TextMateToken, scope: string): boolean {
 }
 
 suite('Bundled Slang syntax assets', () => {
-  let grammar: IGrammar;
+  let slangGrammar: IGrammar;
+  let glslGrammar: IGrammar;
 
   suiteSetup(async () => {
     const wasm = fs.readFileSync(
@@ -78,28 +79,36 @@ suite('Bundled Slang syntax assets', () => {
         createOnigString: (value) => new OnigString(value),
       }),
       loadGrammar: async (scopeName): Promise<IRawGrammar | null> => {
-        if (scopeName !== 'source.slang') {
+        const grammarPaths: Record<string, string> = {
+          'source.glsl': 'syntaxes/glsl.tmLanguage.json',
+          'source.slang': 'syntaxes/slang.tmLanguage.json',
+        };
+        const relativePath = grammarPaths[scopeName];
+        if (!relativePath) {
           return null;
         }
 
-        const grammarPath = path.join(
-          extensionDirectory,
-          'syntaxes/slang.tmLanguage.json',
-        );
+        const grammarPath = path.join(extensionDirectory, relativePath);
         return parseRawGrammar(fs.readFileSync(grammarPath, 'utf8'), grammarPath);
       },
     });
 
-    const loadedGrammar = await registry.loadGrammar('source.slang');
-    assert.ok(loadedGrammar, 'the Slang TextMate grammar must load');
-    grammar = loadedGrammar;
+    const loadedSlangGrammar = await registry.loadGrammar('source.slang');
+    const loadedGlslGrammar = await registry.loadGrammar('source.glsl');
+    assert.ok(loadedSlangGrammar, 'the Slang TextMate grammar must load');
+    assert.ok(loadedGlslGrammar, 'the GLSL TextMate grammar must load');
+    slangGrammar = loadedSlangGrammar;
+    glslGrammar = loadedGlslGrammar;
   });
 
-  function tokenizeLines(source: string): TextMateToken[][] {
+  function tokenizeLines(
+    source: string,
+    targetGrammar = slangGrammar,
+  ): TextMateToken[][] {
     let ruleStack = INITIAL;
 
     return source.split('\n').map((line) => {
-      const result = grammar.tokenizeLine(line, ruleStack);
+      const result = targetGrammar.tokenizeLine(line, ruleStack);
       ruleStack = result.ruleStack;
       return result.tokens.map((token) => ({
         text: line.slice(token.startIndex, token.endIndex),
@@ -160,9 +169,12 @@ suite('Bundled Slang syntax assets', () => {
     assert.deepStrictEqual(
       typePatterns?.map((pattern) => pattern.name),
       [
-        'support.type.matrix.slang',
-        'support.type.scalar-vector.slang',
-        'support.type.resource.slang',
+        'storage.type.matrix.slang',
+        'storage.type.vector.slang',
+        'storage.type.slang',
+        'storage.type.sampler.slang',
+        'storage.type.image.slang',
+        'storage.type.resource.slang',
       ],
     );
     assert.deepStrictEqual(
@@ -181,6 +193,28 @@ suite('Bundled Slang syntax assets', () => {
     assert.ok(numericPatterns?.every((pattern) => pattern.match));
   });
 
+  test('uses the same theme-facing type scopes as GLSL', () => {
+    const pairs = [
+      ['float', 'float', 'storage.type'],
+      ['vec4', 'float4', 'storage.type.vector'],
+      ['mat4', 'float4x4', 'storage.type.matrix'],
+      ['sampler2D', 'Texture2D', 'storage.type.sampler'],
+      ['image2D', 'RWTexture2D', 'storage.type.image'],
+    ] as const;
+
+    for (const [glslType, slangType, scope] of pairs) {
+      const [glslTokens] = tokenizeLines(glslType, glslGrammar);
+      const [slangTokens] = tokenizeLines(slangType);
+      const glslToken = glslTokens.find((token) => token.text === glslType);
+      const slangToken = slangTokens.find((token) => token.text === slangType);
+
+      assert.ok(glslToken, `${glslType} must be emitted as one GLSL token`);
+      assert.ok(slangToken, `${slangType} must be emitted as one Slang token`);
+      assert.ok(hasScope(glslToken, scope), `${glslType} must have ${scope}`);
+      assert.ok(hasScope(slangToken, scope), `${slangType} must have ${scope}`);
+    }
+  });
+
   test('tokenizes representative Slang with native TextMate scopes', () => {
     const lines = tokenizeLines(`// module float4
 /* import
@@ -190,7 +224,7 @@ Texture2D */
 module Example;
 import Example.Core;
 interface Renderer {}
-float4 shade(Texture2D texture) { return 1.; }
+float4 shade(Texture2D texture, RWTexture2D output, StructuredBuffer data) { return 1.; }
 [shader("fragment")]
 [[vk::binding(0, 0)]]
 [[cuda::launch_bounds(256)]]`);
@@ -201,8 +235,10 @@ float4 shade(Texture2D texture) { return 1.; }
       [5, 'module', 'keyword.declaration'],
       [6, 'import', 'keyword.declaration'],
       [7, 'interface', 'keyword.declaration'],
-      [8, 'float4', 'support.type'],
-      [8, 'Texture2D', 'support.type'],
+      [8, 'float4', 'storage.type.vector'],
+      [8, 'Texture2D', 'storage.type.sampler'],
+      [8, 'RWTexture2D', 'storage.type.image'],
+      [8, 'StructuredBuffer', 'storage.type.resource'],
       [8, '1.', 'constant.numeric'],
       [9, '[shader("fragment")]', 'storage.modifier.attribute'],
       [10, '[[vk::binding(0, 0)]]', 'storage.modifier.attribute'],
@@ -234,7 +270,7 @@ float4 shade(Texture2D texture) { return 1.; }
 
     for (const token of [...lines[0], ...lines[1], ...lines[2], ...lines[3]]) {
       assert.ok(!hasScope(token, 'keyword'), `${token.text} must not be a keyword`);
-      assert.ok(!hasScope(token, 'support.type'), `${token.text} must not be a type`);
+      assert.ok(!hasScope(token, 'storage.type'), `${token.text} must not be a type`);
     }
   });
 
@@ -262,7 +298,7 @@ R"(empty " quote)";`);
 
     const float4 = lines[2].find((token) => token.text === 'float4');
     assert.ok(float4);
-    assert.ok(hasScope(float4, 'support.type'));
+    assert.ok(hasScope(float4, 'storage.type.vector'));
 
     assert.strictEqual(
       lines[3]
@@ -286,7 +322,7 @@ float4 endValue;`);
       (token) => token.text === 'float4',
     );
     assert.ok(trailingType);
-    assert.ok(hasScope(trailingType, 'support.type'));
+    assert.ok(hasScope(trailingType, 'storage.type.vector'));
   });
 
   test('does not treat ordinary array indexing as an attribute', () => {
@@ -389,31 +425,33 @@ float4 endValue;`);
 
   test('tokenizes HLSL-derived matrix and documented scalar aliases', () => {
     const validTypes = [
-      'float4x4',
-      'float3x4',
-      'half2x3',
-      'int3x2',
-      'float16_t2x2',
-      'float32_t3x4',
-      'int64_t4x3',
-      'uint8_t2x4',
-      'float16_t',
-      'float32_t',
-      'float64_t',
-    ];
-    const [validTokens] = tokenizeLines(validTypes.join(' '));
+      ['float4x4', 'storage.type.matrix'],
+      ['float3x4', 'storage.type.matrix'],
+      ['half2x3', 'storage.type.matrix'],
+      ['int3x2', 'storage.type.matrix'],
+      ['float16_t2x2', 'storage.type.matrix'],
+      ['float32_t3x4', 'storage.type.matrix'],
+      ['int64_t4x3', 'storage.type.matrix'],
+      ['uint8_t2x4', 'storage.type.matrix'],
+      ['float16_t', 'storage.type'],
+      ['float32_t', 'storage.type'],
+      ['float64_t', 'storage.type'],
+    ] as const;
+    const [validTokens] = tokenizeLines(
+      validTypes.map(([type]) => type).join(' '),
+    );
 
-    for (const type of validTypes) {
+    for (const [type, scope] of validTypes) {
       const token = validTokens.find((candidate) => candidate.text === type);
       assert.ok(token, `${type} must be emitted as one token`);
-      assert.ok(hasScope(token, 'support.type'), `${type} must be a type`);
+      assert.ok(hasScope(token, scope), `${type} must have ${scope}`);
     }
 
     const [invalidTokens] = tokenizeLines(
       'float5x5 float4x5 float16_t5x2 afloat4x4 afloat16_t2x2',
     );
     assert.ok(
-      invalidTokens.every((token) => !hasScope(token, 'support.type')),
+      invalidTokens.every((token) => !hasScope(token, 'storage.type')),
       'invalid dimensions and embedded type names must remain unscoped',
     );
   });
