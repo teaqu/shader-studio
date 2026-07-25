@@ -81,4 +81,44 @@ describe("SlangWgslCache", () => {
     b.options.passName = "b";
     expect(createSlangWgslCacheKey(a)).not.toBe(createSlangWgslCacheKey(b));
   });
+
+  it("is a 64-bit key and changes for every compile input", () => {
+    const baseline = request("2026");
+    const key = createSlangWgslCacheKey(baseline);
+    expect(key).toMatch(/^[0-9a-f]{16}$/);
+    const mutations: Array<(value: any) => void> = [
+      (v) => { v.sourceUri = "file:///other.slang"; },
+      (v) => { v.sourcePath = "/workspace/other.slang"; },
+      (v) => { v.workspace.rootUri = "file:///workspace/root.slang"; },
+      (v) => { v.source = "changed"; },
+      (v) => { v.workspace.files[0].path = "/workspace/lib/b.slang"; },
+      (v) => { v.workspace.files[0].uri = "file:///workspace/lib/b.slang"; },
+      (v) => { v.workspace.files[0].source = "changed"; },
+      (v) => { delete v.workspace.files[1].version; },
+      (v) => { v.workspace.files[1].version = 0; },
+      (v) => { v.workspace.files[1].version = 9; },
+      (v) => { v.options.passName = "BufferA"; },
+      (v) => { v.options.commonCode = "float f();"; },
+      (v) => { v.options.channels = [{ slot: 0, key: "iChannel0", kind: "texture" }]; },
+      (v) => { v.options.customUniforms = [{ name: "gain", type: "float" }]; },
+      (v) => { v.options.captureMode = true; },
+      (v) => { v.options.languageVersion = "latest"; },
+    ];
+    for (const mutate of mutations) {
+      const changed = structuredClone(baseline);
+      mutate(changed);
+      expect(createSlangWgslCacheKey(changed)).not.toBe(key);
+    }
+  });
+
+  it("handles object key order, Unicode, NUL and newlines without mutation", () => {
+    const first: any = request("legacy");
+    first.source = "é\0\n|";
+    first.options = { passName: "Image", commonCode: "x\ny", languageVersion: "legacy" };
+    const same: any = structuredClone(first);
+    same.options = { languageVersion: "legacy", commonCode: "x\ny", passName: "Image" };
+    const before = structuredClone(first);
+    expect(createSlangWgslCacheKey(first)).toBe(createSlangWgslCacheKey(same));
+    expect(first).toEqual(before);
+  });
 });
