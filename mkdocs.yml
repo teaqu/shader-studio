@@ -71,6 +71,7 @@ nav:
       - Locking: features/locking.md
       - Editor Overlay: features/editor-overlay.md
       - Compile Modes: features/compile-modes.md
+      - Slang Workspaces: features/slang-workspaces.md
       - Recording: features/recording.md
       - Open In Browser: features/web-server.md
       - Shader Explorer: features/shader-explorer.md
