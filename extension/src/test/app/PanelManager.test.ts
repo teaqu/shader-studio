@@ -200,6 +200,45 @@ suite('PanelManager Test Suite', () => {
     sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub, mockEditor);
   });
 
+  test('gives simultaneous panels distinct owned providers and releases only the disposed owner', () => {
+    const releaseA = sandbox.stub();
+    const releaseB = sandbox.stub();
+    const ownerA = { sendShaderFromEditor: sandbox.stub(), releaseSlangOwner: releaseA } as any;
+    const ownerB = { sendShaderFromEditor: sandbox.stub(), releaseSlangOwner: releaseB } as any;
+    const owned = [ownerA, ownerB];
+    const ownerFactory = sandbox.stub(mockShaderProvider as any, 'forSlangOwner').callsFake(() => owned.shift());
+    const disposeCallbacks: (() => void)[] = [];
+    const makePanel = () => ({
+      reveal: sandbox.stub(), dispose: sandbox.stub(), viewColumn: vscode.ViewColumn.One,
+      webview: { html: '', asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')), onDidReceiveMessage: sandbox.stub().returns({ dispose() {} }), postMessage: sandbox.stub(), cspSource: 'vscode-resource:' },
+      onDidDispose: sandbox.stub().callsFake((callback: () => void) => {
+        disposeCallbacks.push(callback); return { dispose() {} };
+      }),
+    });
+    const first = makePanel();
+    const second = makePanel();
+    sandbox.stub(vscode.window, 'createWebviewPanel').onFirstCall().returns(first as any).onSecondCall().returns(second as any);
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get: sandbox.stub().returns(false) } as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({ all: [{ tabs: [{}], viewColumn: vscode.ViewColumn.One }] });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([{ uri: vscode.Uri.file('/mock/workspace') }]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    const editor = { document: { uri: vscode.Uri.file('/mock/workspace/image.slang') } } as any;
+    (panelManager as any).glslFileTracker.getActiveOrLastViewedGLSLEditor.returns(editor);
+    const ownedManager = new PanelManager(mockContext, mockMessenger, mockShaderProvider, (panelManager as any).glslFileTracker, undefined, {} as any);
+
+    ownedManager.createPanel();
+    ownedManager.createPanel();
+    assert.deepStrictEqual(ownerFactory.getCalls().map((call) => call.args[0]), ['panel:1', 'panel:2']);
+    sinon.assert.calledOnceWithExactly(ownerA.sendShaderFromEditor, editor);
+    sinon.assert.calledOnceWithExactly(ownerB.sendShaderFromEditor, editor);
+    disposeCallbacks[0]();
+    sinon.assert.calledOnce(releaseA);
+    sinon.assert.notCalled(releaseB);
+    ownedManager.dispose();
+    sinon.assert.calledOnce(releaseB);
+  });
+
   test('createPanel uses empty tab group when available and locking is disabled', () => {
     // Given
     sandbox.stub(vscode.workspace, 'getConfiguration').returns({

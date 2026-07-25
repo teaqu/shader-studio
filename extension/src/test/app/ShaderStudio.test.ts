@@ -1241,4 +1241,17 @@ suite('Shader Studio Test Suite', () => {
       });
     });
   });
+
+  test('shares one Slang coordinator across studio, global provider, and panel manager then disposes both owner paths', () => {
+    const coordinator = shaderStudio['slangWorkspaces'];
+    assert.strictEqual(shaderStudio['shaderProvider']['slangWorkspaces'], coordinator);
+    assert.strictEqual(shaderStudio['panelManager']['slangWorkspaces'], coordinator);
+    const disposePanels = sandbox.spy(shaderStudio['panelManager'], 'dispose');
+    const releaseGlobalOwner = sandbox.spy(shaderStudio['shaderProvider'], 'releaseSlangOwner');
+
+    shaderStudio.dispose();
+
+    sinon.assert.calledOnce(disposePanels);
+    sinon.assert.calledOnce(releaseGlobalOwner);
+  });
 });
