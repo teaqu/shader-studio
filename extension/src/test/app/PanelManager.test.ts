@@ -210,14 +210,17 @@ suite('PanelManager Test Suite', () => {
     const owned = [ownerA, ownerB];
     const ownerFactory = (mockShaderProvider as any).forSlangOwner as sinon.SinonStub;
     ownerFactory.callsFake(() => owned.shift());
-    const disposeCallbacks: (() => void)[] = [];
-    const makePanel = () => ({
-      reveal: sandbox.stub(), dispose: sandbox.stub(), viewColumn: vscode.ViewColumn.One,
-      webview: { html: '', asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')), onDidReceiveMessage: sandbox.stub().returns({ dispose() {} }), postMessage: sandbox.stub(), cspSource: 'vscode-resource:' },
-      onDidDispose: sandbox.stub().callsFake((callback: () => void) => {
-        disposeCallbacks.push(callback); return { dispose() {} };
-      }),
-    });
+    const makePanel = () => {
+      const disposeCallbacks: (() => void)[] = [];
+      return {
+        reveal: sandbox.stub(), dispose: sandbox.stub(), viewColumn: vscode.ViewColumn.One,
+        webview: { html: '', asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')), onDidReceiveMessage: sandbox.stub().returns({ dispose() {} }), postMessage: sandbox.stub(), cspSource: 'vscode-resource:' },
+        onDidDispose: sandbox.stub().callsFake((callback: () => void) => {
+          disposeCallbacks.push(callback); return { dispose() {} };
+        }),
+        fireDispose: () => disposeCallbacks.forEach((callback) => callback()),
+      };
+    };
     const first = makePanel();
     const second = makePanel();
     sandbox.stub(vscode.window, 'createWebviewPanel').onFirstCall().returns(first as any).onSecondCall().returns(second as any);
@@ -235,7 +238,7 @@ suite('PanelManager Test Suite', () => {
     assert.deepStrictEqual(ownerFactory.getCalls().map((call) => call.args[0]), ['panel:1', 'panel:2']);
     sinon.assert.calledOnceWithExactly(ownerA.sendShaderFromEditor, editor);
     sinon.assert.calledOnceWithExactly(ownerB.sendShaderFromEditor, editor);
-    disposeCallbacks[0]();
+    first.fireDispose();
     sinon.assert.calledOnce(releaseA);
     sinon.assert.notCalled(releaseB);
     ownedManager.dispose();
