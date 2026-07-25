@@ -34,7 +34,7 @@ const SLANG_CONCRETE_BUILTIN_TYPES = [
   'double4', 'int2', 'int3', 'int4', 'uint2', 'uint3', 'uint4', 'Texture1D', 'Texture1DArray', 'Texture2D',
   'Texture2DArray', 'Texture3D', 'Texture3DArray', 'TextureCube', 'TextureCubeArray', 'SamplerState',
   'SamplerComparisonState', 'RWTexture1D', 'RWTexture1DArray', 'RWTexture2D', 'RWTexture2DArray', 'RWTexture3D',
-  'Buffer', 'RWBuffer', 'StructuredBuffer', 'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer',
+  'RWTexture3DArray', 'Buffer', 'RWBuffer', 'StructuredBuffer', 'RWStructuredBuffer', 'ByteAddressBuffer', 'RWByteAddressBuffer',
   'ParameterBlock', 'ConstantBuffer', 'RaytracingAccelerationStructure',
 ];
 

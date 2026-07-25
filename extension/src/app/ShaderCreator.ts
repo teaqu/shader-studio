@@ -20,7 +20,7 @@ const SLANG_RESERVED_MODULE_NAMES = new Set([
   "float4", "half", "half2", "half3", "half4", "int", "int8_t", "int16_t", "int32_t", "int64_t",
   "int2", "int3", "int4", "matrix", "ParameterBlock", "RaytracingAccelerationStructure", "RWBuffer",
   "RWByteAddressBuffer", "RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray", "RWTexture2D",
-  "RWTexture2DArray", "RWTexture3D", "SamplerComparisonState", "SamplerState", "StructuredBuffer",
+  "RWTexture2DArray", "RWTexture3D", "RWTexture3DArray", "SamplerComparisonState", "SamplerState", "StructuredBuffer",
   "Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray", "Texture3D", "Texture3DArray",
   "TextureCube", "TextureCubeArray", "uint", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "uint2",
   "uint3", "uint4", "vector", "void",
