@@ -107,6 +107,39 @@ suite('SlangShaderWorkspaceCoordinator', () => {
     assert.deepStrictEqual(coordinator.owningRoots('/work/a.slang'), []);
   });
 
+  test('keeps committed ownership active while a newer replacement is only pending or stale', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/old.slang': 'float old;', 'file:///work/new.slang': 'float next;',
+    }));
+    const old = coordinator.beginOwnerRequest('panel:1', '/work/old.slang');
+    const [oldPrepared] = await coordinator.prepareRoots([{ rootPath: '/work/old.slang', configuredFilePaths: [] }]);
+    coordinator.commitOwnerRequest(old, oldPrepared);
+    const pending = coordinator.beginOwnerRequest('panel:1', '/work/new.slang');
+    assert.deepStrictEqual(coordinator.owningRoots('/work/old.slang'), ['/work/old.slang']);
+    coordinator.beginOwnerRequest('panel:1', '/work/old.slang');
+    const [newPrepared] = await coordinator.prepareRoots([{ rootPath: '/work/new.slang', configuredFilePaths: [] }]);
+    assert.strictEqual(coordinator.commitOwnerRequest(pending, newPrepared), false);
+    assert.deepStrictEqual(coordinator.owningRoots('/work/old.slang'), ['/work/old.slang']);
+  });
+
+  test('refreshes panel-owned roots without granting the refresh owner ownership', async () => {
+    const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
+      'file:///work/a.slang': '#include "lib.slang"', 'file:///work/b.slang': '#include "lib.slang"', 'file:///work/lib.slang': 'float old;',
+    }));
+    const prepared = await coordinator.prepareRoots([{ rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+    const panelA = coordinator.beginOwnerRequest('panel:1', '/work/a.slang');
+    const panelB = coordinator.beginOwnerRequest('panel:2', '/work/b.slang');
+    coordinator.commitOwnerRequest(panelA, prepared[0]);
+    coordinator.commitOwnerRequest(panelB, prepared[1]);
+    const refresh = coordinator.beginOwnerRequests('shader-provider', ['/work/a.slang', '/work/b.slang']);
+    const refreshed = await coordinator.prepareRoots([{ rootPath: '/work/a.slang', configuredFilePaths: [] }, { rootPath: '/work/b.slang', configuredFilePaths: [] }]);
+    assert.strictEqual(coordinator.commitRefreshRequests([{ request: refresh[0], prepared: refreshed[0] }, { request: refresh[1], prepared: refreshed[1] }]), true);
+    coordinator.releaseOwner('panel:1');
+    assert.deepStrictEqual(coordinator.owningRoots('/work/lib.slang'), ['/work/b.slang']);
+    coordinator.releaseOwner('panel:2');
+    assert.deepStrictEqual(coordinator.owningRoots('/work/lib.slang'), []);
+  });
+
   test('releasing one shared owner preserves the other and isolates source overlays by workspace snapshot', async () => {
     const coordinator = new SlangShaderWorkspaceCoordinator(createHost({
       'file:///one/image.slang': '#include "lib.slang"', 'file:///one/lib.slang': 'float one;',

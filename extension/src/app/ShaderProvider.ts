@@ -608,7 +608,7 @@ export class ShaderProvider {
     if (!requests.every((request) => this.slangWorkspaces!.isOwnerRequestCurrent(request))) {
       return;
     }
-    if (!this.slangWorkspaces.commitOwnerRequests(messages.map(({ request, prepared: root }) => ({ request, prepared: root })))) {
+    if (!this.slangWorkspaces.commitRefreshRequests(messages.map(({ request, prepared: root }) => ({ request, prepared: root })))) {
       return;
     }
     for (const entry of messages) {

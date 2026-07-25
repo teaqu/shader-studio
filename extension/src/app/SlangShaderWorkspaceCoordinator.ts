@@ -34,6 +34,7 @@ interface OwnerState { token: number; rootUris: ReadonlySet<string>; }
 
 export class SlangShaderWorkspaceCoordinator {
   private readonly owners = new Map<string, OwnerState>();
+  private readonly pending = new Map<string, OwnerState>();
   private readonly roots = new Map<string, PreparedSlangRoot>();
   private nextToken = 0;
 
@@ -48,12 +49,12 @@ export class SlangShaderWorkspaceCoordinator {
     const rootUris = [...new Set(rootPaths.map((rootPath) => normalizeSlangUri(this.host.toUri(rootPath))))]
       .sort((left, right) => left.localeCompare(right));
     const token = ++this.nextToken;
-    this.owners.set(ownerId, { token, rootUris: new Set(rootUris) });
+    this.pending.set(ownerId, { token, rootUris: new Set(rootUris) });
     return rootUris.map((rootUri) => ({ ownerId, rootUri, token }));
   }
 
   isOwnerRequestCurrent(request: SlangOwnerRequest): boolean {
-    const state = this.owners.get(request.ownerId);
+    const state = this.pending.get(request.ownerId);
     return state?.token === request.token && state.rootUris.has(request.rootUri);
   }
 
@@ -90,12 +91,34 @@ export class SlangShaderWorkspaceCoordinator {
     if (!this.isOwnerRequestCurrent(request) || request.rootUri !== prepared.rootUri) {
       return false;
     }
-    this.roots.set(prepared.rootUri, prepared);
+    this.commitOwnerRequests([{ request, prepared }]);
     return true;
   }
 
   /** Commits a complete generation together, never leaving a prefix installed. */
   commitOwnerRequests(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
+    if (entries.length === 0 || !entries.every(({ request, prepared }) => (
+      this.isOwnerRequestCurrent(request) && request.rootUri === prepared.rootUri
+    ))) {
+      return false;
+    }
+    const ownerId = entries[0].request.ownerId;
+    const previous = this.owners.get(ownerId);
+    const nextRoots = new Set(entries.map(({ prepared }) => prepared.rootUri));
+    for (const { prepared } of entries) {
+      this.roots.set(prepared.rootUri, prepared);
+    }
+    this.owners.set(ownerId, { token: entries[0].request.token, rootUris: nextRoots });
+    for (const oldRoot of previous?.rootUris ?? []) {
+      if (!nextRoots.has(oldRoot)) {
+        this.removeUnusedRoot(oldRoot);
+      }
+    }
+    return true;
+  }
+
+  /** Updates prepared snapshots/graphs without changing which owner owns roots. */
+  commitRefreshRequests(entries: readonly { request: SlangOwnerRequest; prepared: PreparedSlangRoot }[]): boolean {
     if (entries.length === 0 || !entries.every(({ request, prepared }) => (
       this.isOwnerRequestCurrent(request) && request.rootUri === prepared.rootUri
     ))) {
@@ -111,9 +134,10 @@ export class SlangShaderWorkspaceCoordinator {
     if (!this.isOwnerRequestCurrent(request)) {
       return false;
     }
-    const owner = this.owners.get(request.ownerId)!;
+    const owner = this.owners.get(request.ownerId);
     this.owners.delete(request.ownerId);
-    for (const rootUri of owner.rootUris) {
+    this.pending.delete(request.ownerId);
+    for (const rootUri of owner?.rootUris ?? []) {
       this.removeUnusedRoot(rootUri);
     }
     return true;
@@ -146,11 +170,9 @@ export class SlangShaderWorkspaceCoordinator {
 
   releaseOwner(ownerId: string): void {
     const owner = this.owners.get(ownerId);
-    if (!owner) {
-      return;
-    }
     this.owners.delete(ownerId);
-    for (const rootUri of owner.rootUris) {
+    this.pending.delete(ownerId);
+    for (const rootUri of owner?.rootUris ?? []) {
       this.removeUnusedRoot(rootUri);
     }
   }
