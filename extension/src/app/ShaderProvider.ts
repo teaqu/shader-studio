@@ -167,7 +167,7 @@ export class ShaderProvider {
   // Uses the current in-memory TextDocument content, including unsaved edits.
   public async sendShaderFromDocument(
     document: vscode.TextDocument,
-    options?: { reload?: boolean; dependencyChange?: boolean },
+    options?: { reload?: boolean; dependencyChange?: boolean; manual?: boolean },
   ): Promise<void> {
     if (!this.messenger || !isShaderDocument(document)) {
       return;
