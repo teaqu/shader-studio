@@ -69,6 +69,10 @@
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
 
+  function languageForShaderPath(path: string): "glsl" | "slang" {
+    return path.toLowerCase().endsWith(".slang") ? "slang" : "glsl";
+  }
+
   function focusMonacoTextInput() {
     if (!containerEl) {
       return;
@@ -355,7 +359,7 @@
 
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
       value: shaderCode,
-      language: "glsl",
+      language: languageForShaderPath(shaderPath),
       theme: "shader-studio-transparent",
       minimap: { enabled: false },
       scrollbar: {
@@ -618,6 +622,10 @@
       if (fileChanged) {
         if (lastShaderPath) {
           savedViewStates.set(lastShaderPath, editor.saveViewState());
+        }
+        const model = editor.getModel();
+        if (model) {
+          monaco.editor.setModelLanguage(model, languageForShaderPath(shaderPath));
         }
         editor.setValue(shaderCode);
         const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;

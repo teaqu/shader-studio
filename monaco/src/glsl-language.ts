@@ -56,6 +56,10 @@ export const glslLanguageDefinition = {
   tokenizer: {
     root: [
       [/#\s*\w+/, 'keyword.preprocessor'],
+      [/"([^"\\]|\\.)*$/, 'string.invalid'],
+      [/'([^'\\]|\\.)*$/, 'string.invalid'],
+      [/"/, 'string', '@stringDouble'],
+      [/'/, 'string', '@stringSingle'],
       [/[a-zA-Z_]\w*/, {
         cases: {
           '@shadertoyUniforms': 'variable.predefined',
@@ -82,6 +86,16 @@ export const glslLanguageDefinition = {
       [/[ \t\r\n]+/, 'white'],
       [/\/\*/, 'comment', '@comment'],
       [/\/\/.*$/, 'comment'],
+    ],
+    stringDouble: [
+      [/[^\\"]+/, 'string'],
+      [/\\./, 'string.escape'],
+      [/"/, 'string', '@pop'],
+    ],
+    stringSingle: [
+      [/[^\\']+/, 'string'],
+      [/\\./, 'string.escape'],
+      [/'/, 'string', '@pop'],
     ],
     comment: [
       [/[^\/*]+/, 'comment'],

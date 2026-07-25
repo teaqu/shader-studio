@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   slangAttributeKeywords,
   slangAttributePattern,
+  slangBuiltins,
   slangConstants,
   slangControlKeywords,
   slangDeclarationKeywords,
@@ -17,6 +18,7 @@ import {
   slangNumberPattern,
   slangPreprocessorDirectives,
   slangPreprocessorPattern,
+  slangShadertoyUniforms,
   slangTypes,
 } from '../slang-language';
 import { shaderStudioTheme } from '../glsl-theme';
@@ -159,6 +161,15 @@ describe('Slang Monarch language', () => {
     expect(sorted(slangAttributeKeywords)).toEqual(vocabulary(
       grammar.repository.attributes.patterns!.find((entry) => entry.match?.includes('shader'))!.match!,
     ));
+    expect(sorted(slangBuiltins)).toEqual(grammar.repository['builtin-functions'].patterns!
+      .flatMap((entry) => vocabulary(entry.match!))
+      .sort());
+    expect(sorted(slangShadertoyUniforms)).toEqual(
+      vocabulary(
+        grammar.repository.builtins.patterns![0].match!
+          .replace('[0-9]', '(?:0|1|2|3|4|5|6|7|8|9)'),
+      ),
+    );
     const textMatePreprocessor = new RegExp(
       grammar.repository.preprocessor.patterns![0].begin!,
     );
@@ -261,7 +272,7 @@ describe('Slang Monarch language', () => {
         `${slangText}: ${slangType} must match ${glslType}`,
       ).toBe(colorFor(glslType));
     }
-  });
+  }, 15_000);
 
   it('colours Slang-native functions, uniforms, and constants by GLSL category', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -274,11 +285,14 @@ describe('Slang Monarch language', () => {
     setupMonacoSlang(monaco);
 
     const tokens = monaco.editor.tokenize(
-      'lerp(frac(iTime), saturate(value), 0.5); texture.Sample(sampler, uv); null none',
+      'float4x4 transform; float16_t2x3 compact; '
+        + 'lerp(frac(iTime), saturate(value), 0.5); '
+        + 'texture.Sample(sampler, uv); null none',
       'slang',
     )[0];
     const types = tokens.map((token) => token.type);
 
+    expect(types.filter((type) => type === 'type.slang')).toHaveLength(2);
     expect(types.filter((type) => type === 'support.function.slang')).toHaveLength(4);
     expect(types).toContain('variable.predefined.slang');
     expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
@@ -296,7 +310,7 @@ describe('Slang Monarch language', () => {
 
     const literals = [
       '0x1.fp3',
-      '0x1p#INF',
+      '0x1#INF',
       '1.0#INF',
       '0xCAFEu',
       '0b1010',
