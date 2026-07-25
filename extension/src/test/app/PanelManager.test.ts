@@ -212,13 +212,21 @@ suite('PanelManager Test Suite', () => {
     ownerFactory.callsFake(() => owned.shift());
     const makePanel = () => {
       const disposeCallbacks: (() => void)[] = [];
+      let disposed = false;
+      const emitDispose = () => {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        disposeCallbacks.forEach((callback) => callback());
+      };
       return {
-        reveal: sandbox.stub(), dispose: sandbox.stub(), viewColumn: vscode.ViewColumn.One,
+        reveal: sandbox.stub(), dispose: sandbox.stub().callsFake(emitDispose), viewColumn: vscode.ViewColumn.One,
         webview: { html: '', asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')), onDidReceiveMessage: sandbox.stub().returns({ dispose() {} }), postMessage: sandbox.stub(), cspSource: 'vscode-resource:' },
         onDidDispose: sandbox.stub().callsFake((callback: () => void) => {
           disposeCallbacks.push(callback); return { dispose() {} };
         }),
-        fireDispose: () => disposeCallbacks.forEach((callback) => callback()),
+        fireDispose: emitDispose,
       };
     };
     const first = makePanel();
