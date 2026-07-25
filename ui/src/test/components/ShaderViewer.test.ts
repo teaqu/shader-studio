@@ -4052,7 +4052,7 @@ describe('ShaderViewer', () => {
       expect(mockPipelineHandleShaderMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('supplies a cloned committed Slang workspace to recording and clears it after GLSL succeeds', async () => {
+    it('supplies a cloned committed Slang workspace to recording, retains it after a failed update, and clears it for GLSL', async () => {
       render(ShaderViewer, { onInitialized: vi.fn() });
       await tick();
       await tick();
@@ -4075,8 +4075,21 @@ describe('ShaderViewer', () => {
       expect(recordingInfo.workspace.files[0].source).toBe('committed');
 
       await handler({ data: {
+        type: 'shaderSource', language: 'slang', code: 'SYNTAX_ERROR',
+        config: null, path: '/workspace/image.slang', buffers: {}, requestId: 10, workspace,
+      } });
+      await tick();
+
+      const retainedInfo = mockRecordingContext();
+      expect(retainedInfo.workspace).toEqual({
+        rootUri: 'file:///project',
+        files: [{ uri: 'file:///project/image.slang', path: '/workspace/image.slang', source: 'committed' }],
+      });
+      expect(retainedInfo.workspace).not.toBe(recordingInfo.workspace);
+
+      await handler({ data: {
         type: 'shaderSource', language: 'glsl', code: 'void mainImage(out vec4 o, vec2 p) { o = vec4(1); }',
-        config: null, path: '/workspace/image.glsl', buffers: {}, requestId: 10,
+        config: null, path: '/workspace/image.glsl', buffers: {}, requestId: 11,
       } });
       await tick();
 

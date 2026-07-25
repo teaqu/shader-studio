@@ -1006,10 +1006,12 @@
           } else {
             resolutionController.handleShaderLoadFailed();
           }
-          if (result.success && msgLanguage === 'slang' && event.data.workspace) {
-            committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
-          } else {
-            committedSlangWorkspace = null;
+          if (messageTarget.kind === 'main') {
+            if (result.success && msgLanguage === 'slang' && event.data.workspace) {
+              committedSlangWorkspace = cloneSlangWorkspace(event.data.workspace);
+            } else if (result.success) {
+              committedSlangWorkspace = null;
+            }
           }
           applyCompilationResult(result);
           if (result.success && scriptInfo) {
