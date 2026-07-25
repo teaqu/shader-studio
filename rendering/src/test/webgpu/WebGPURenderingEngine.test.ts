@@ -1289,6 +1289,25 @@ describe("WebGPURenderingEngine", () => {
       expect(snapshot).toEqual(before);
     });
 
+    it("normalizes in-root dot segments but rejects traversal and foreign file authorities", async () => {
+      const snapshot = { rootUri: "file:///project", files: [
+        { path: "/workspace/image.slang", uri: "file:///project/image.slang", source },
+        { path: "/workspace/lib/a.slang", uri: "file:///project/lib/a.slang", source: "lib" },
+      ] };
+      const config = (path: string): ShaderConfig => ({ version: "1", passes: { Image: { inputs: {} }, BufferA: { path, inputs: {} } } });
+      const good = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(good);
+      await good.compileShaderPipeline(source, config("passes/../lib/a.slang"), "/project/image.slang", { BufferA: "updated" }, undefined, undefined, snapshot);
+      expect(compiler.compile.mock.calls.find(([value]: any[]) => value.options.passName === "BufferA")?.[0].sourcePath).toBe("/workspace/lib/a.slang");
+      for (const badPath of ["../../outside.slang", "%2e%2e/%2e%2e/outside.slang", "file://foreign/project/lib/a.slang"]) {
+        const engine = new WebGPURenderingEngine(assets);
+        const mocked = stubEngineInternals(engine).compiler;
+        const result = await engine.compileShaderPipeline(source, config(badPath), "/project/image.slang", { BufferA: "updated" }, undefined, undefined, snapshot);
+        expect(result?.success).toBe(false);
+        expect(mocked.compile).not.toHaveBeenCalled();
+      }
+    });
+
     it("rejects unmatched buffers before invoking the compiler", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { compiler } = stubEngineInternals(engine);
