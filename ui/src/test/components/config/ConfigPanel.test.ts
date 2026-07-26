@@ -756,13 +756,25 @@ describe('ConfigPanel', () => {
       const input = getByRole('textbox', { name: 'Rename BufferA' });
 
       await fireEvent.input(input, { target: { value: '  BufferRenamed  ' } });
-      await fireEvent.keyDown(input, { key: 'Enter' });
+      const windowKeyDown = vi.fn();
+      window.addEventListener('keydown', windowKeyDown);
+      try {
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' });
+        input.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+        expect(windowKeyDown).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener('keydown', windowKeyDown);
+      }
+      await tick();
       await tick();
 
       expect(mockManager.validateBufferRename).toHaveBeenCalledWith('BufferA', 'BufferRenamed');
       expect(mockManager.renameBuffer).toHaveBeenCalledWith('BufferA', 'BufferRenamed');
       expect(mockOnFileSelect).toHaveBeenCalledWith('BufferRenamed');
-      expect(getTab(container, 'BufferRenamed')).toHaveClass('active');
+      const renamedTab = getTab(container, 'BufferRenamed');
+      expect(renamedTab).toHaveClass('active');
+      expect(renamedTab).toBe(document.activeElement);
     });
 
     it('commits an inactive buffer rename on blur without changing the active selection', async () => {
@@ -801,12 +813,13 @@ describe('ConfigPanel', () => {
 
         input.dispatchEvent(event);
         await tick();
+        await tick();
 
         expect(event.defaultPrevented).toBe(true);
         expect(windowKeyDown).not.toHaveBeenCalled();
         expect(mockManager.validateBufferRename).not.toHaveBeenCalled();
         expect(mockManager.renameBuffer).not.toHaveBeenCalled();
-        expect(getTab(container, 'BufferA')).toBeTruthy();
+        expect(getTab(container, 'BufferA')).toBe(document.activeElement);
       } finally {
         window.removeEventListener('keydown', windowKeyDown);
       }
@@ -832,7 +845,29 @@ describe('ConfigPanel', () => {
 
       expect(mockManager.validateBufferRename).not.toHaveBeenCalled();
       expect(mockManager.renameBuffer).not.toHaveBeenCalled();
-      expect(getTab(container, 'BufferA')).toBeTruthy();
+      expect(getTab(container, 'BufferA')).toBe(document.activeElement);
+    });
+
+    it.each(['Common', 'Script'])('does not commit a UI-reserved %s rename target', async (newName) => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+      const mockManager = getLatestConfigManagerInstance();
+      mockManager.validateBufferRename.mockImplementation((_oldName: string, proposedName: string) =>
+        proposedName === newName ? 'reserved-name' : null,
+      );
+
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await fireEvent.click(getByRole('menuitem', { name: 'Rename' }));
+      await tick();
+      const input = getByRole('textbox', { name: 'Rename BufferA' });
+
+      await fireEvent.input(input, { target: { value: newName } });
+      await fireEvent.keyDown(input, { key: 'Enter' });
+      await tick();
+
+      expect(mockManager.validateBufferRename).toHaveBeenCalledWith('BufferA', newName);
+      expect(mockManager.renameBuffer).not.toHaveBeenCalled();
+      expect(getByRole('alert')).toHaveTextContent('That pass name is reserved');
     });
 
     it.each([

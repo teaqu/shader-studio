@@ -301,6 +301,8 @@ describe('ConfigManager', () => {
       expect(configManager.validateBufferRename('Image', 'BlurPass')).toBe('reserved-name');
       expect(configManager.validateBufferRename('BufferA', 'Image')).toBe('reserved-name');
       expect(configManager.validateBufferRename('BufferA', 'common')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Common')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Script')).toBe('reserved-name');
       expect(configManager.validateBufferRename('BufferA', '0invalid')).toBe('invalid-identifier');
       expect(configManager.validateBufferRename('BufferA', 'BufferB')).toBe('name-taken');
       expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBeNull();
@@ -331,6 +333,15 @@ describe('ConfigManager', () => {
       expect(configManager.renameBuffer('Image', 'Foo')).toBe(false);
       expect(configManager.renameBuffer('BufferA', 'Image')).toBe(false);
       expect(configManager.renameBuffer('BufferA', 'common')).toBe(false);
+    });
+
+    it.each(['Common', 'Script'])('rejects %s as a UI-reserved rename target', (newName) => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.validateBufferRename('BufferA', newName)).toBe('reserved-name');
+      expect(configManager.renameBuffer('BufferA', newName)).toBe(false);
     });
 
     it('should reject invalid GLSL identifiers', () => {

@@ -60,6 +60,7 @@
   let renameDraft = $state("");
   let renameError = $state<string | null>(null);
   let renameInput = $state<HTMLInputElement | null>(null);
+  let tabNavigationElement = $state<HTMLDivElement | null>(null);
 
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
@@ -353,6 +354,13 @@
     renameInput?.select();
   }
 
+  async function focusTab(tabName: string) {
+    await tick();
+    Array.from(tabNavigationElement?.querySelectorAll<HTMLButtonElement>("button.tab-button") ?? []).find(
+      (tab) => tab.dataset.tabName === tabName,
+    )?.focus();
+  }
+
   function cancelRename() {
     renamingTab = null;
     renameDraft = "";
@@ -371,7 +379,7 @@
     return messages[error];
   }
 
-  function commitRename() {
+  function commitRename(restoreFocus = false) {
     const oldName = renamingTab;
     if (!oldName) {
       return;
@@ -380,6 +388,9 @@
     const newName = renameDraft.trim();
     if (!newName || newName === oldName) {
       cancelRename();
+      if (restoreFocus) {
+        void focusTab(oldName);
+      }
       return;
     }
 
@@ -406,18 +417,26 @@
       activeTab = newName;
       onFileSelect(newName);
     }
+    if (restoreFocus) {
+      void focusTab(newName);
+    }
   }
 
   function handleRenameKeyDown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
+      const tabName = renamingTab;
       cancelRename();
+      if (tabName) {
+        void focusTab(tabName);
+      }
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      commitRename();
+      event.stopPropagation();
+      void commitRename(true);
     }
   }
 
@@ -468,7 +487,7 @@
 <div class="config-panel" class:visible={isVisible}>
   <div class="config-content">
     <!-- Tab Navigation - Always visible -->
-    <div class="tab-navigation">
+    <div class="tab-navigation" bind:this={tabNavigationElement}>
       {#each allTabs as tabName (tabName)}
         {#if renamingTab === tabName}
           <div class="tab-rename" class:active={activeTab === tabName}>
@@ -482,7 +501,7 @@
               bind:value={renameDraft}
               oninput={handleRenameInput}
               onkeydown={handleRenameKeyDown}
-              onblur={commitRename}
+              onblur={() => commitRename()}
             />
             {#if renameError}
               <p id="tab-rename-error" class="tab-rename-error" role="alert">{renameError}</p>
@@ -491,6 +510,7 @@
         {:else}
           <button
             class="tab-button {activeTab === tabName ? 'active' : ''}"
+            data-tab-name={tabName}
             onclick={() => switchTab(tabName)}
             ondblclick={() => handleTabDblClick(tabName)}
             oncontextmenu={(event) => {

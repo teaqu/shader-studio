@@ -221,10 +221,10 @@ export class ConfigManager {
     if (oldName === newName) {
       return 'same-name';
     }
-    if (oldName === 'Image' || oldName === 'common') {
+    if (oldName === 'Image' || oldName === 'common' || oldName === 'Common' || oldName === 'Script') {
       return 'reserved-name';
     }
-    if (newName === 'Image' || newName === 'common') {
+    if (newName === 'Image' || newName === 'common' || newName === 'Common' || newName === 'Script') {
       return 'reserved-name';
     }
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
