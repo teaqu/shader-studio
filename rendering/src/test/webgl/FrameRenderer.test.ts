@@ -111,6 +111,127 @@ describe("FrameRenderer", () => {
     });
   });
 
+  describe("post-image callback", () => {
+    const configureImagePass = (): void => {
+      mockShaderPipeline.getPasses.mockReturnValue([
+        { name: "Image", shaderSrc: "image shader", inputs: {} },
+      ]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({
+        Image: { mProgram: {}, mResult: true },
+      });
+    };
+
+    it("runs after the final Image pass in a normal render", () => {
+      const events: string[] = [];
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      configureImagePass();
+      mockPassRenderer.renderPass.mockImplementation(() => events.push("image"));
+      frameRenderer.setPostImageCallback(() => events.push("capture"));
+
+      frameRenderer.render(1000);
+
+      expect(events).toEqual(["image", "capture"]);
+    });
+
+    it("runs after the final Image pass during a forced capture render", () => {
+      const callback = vi.fn();
+      configureImagePass();
+      frameRenderer.setPostImageCallback(callback);
+
+      frameRenderer.renderForCapture();
+
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
+      expect(callback).toHaveBeenCalledOnce();
+    });
+
+    it("runs after the Image clear fallback", () => {
+      const events: string[] = [];
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      mockShaderPipeline.getPasses.mockReturnValue([]);
+      mockPassRenderer.clearCanvas.mockImplementation(() => events.push("clear"));
+      frameRenderer.setPostImageCallback(() => events.push("capture"));
+
+      frameRenderer.render(1000);
+
+      expect(events).toEqual(["clear", "capture"]);
+    });
+
+    it("runs once after clearing an Image pass whose shader is missing", () => {
+      const events: string[] = [];
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      mockShaderPipeline.getPasses.mockReturnValue([
+        { name: "Image", shaderSrc: "image shader", inputs: {} },
+      ]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({});
+      mockPassRenderer.clearCanvas.mockImplementation(() => events.push("clear"));
+      frameRenderer.setPostImageCallback(() => events.push("capture"));
+
+      frameRenderer.render(1000);
+
+      expect(events).toEqual(["clear", "capture"]);
+    });
+
+    it("replaces and clears the post-image callback", () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      configureImagePass();
+
+      frameRenderer.setPostImageCallback(first);
+      frameRenderer.setPostImageCallback(second);
+      frameRenderer.render(1000);
+      frameRenderer.setPostImageCallback(null);
+      frameRenderer.render(2000);
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledOnce();
+    });
+
+    it("does not run when rendering is stopped", () => {
+      const callback = vi.fn();
+      frameRenderer.setPostImageCallback(callback);
+
+      frameRenderer.render(1000);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("does not run when the FPS limit skips the frame", () => {
+      const callback = vi.fn();
+      frameRenderer.setRunning(true);
+      frameRenderer.setFPSLimit(30);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      configureImagePass();
+      frameRenderer.setPostImageCallback(callback);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1010);
+
+      expect(callback).toHaveBeenCalledOnce();
+    });
+
+    it("does not run when a duplicate frame is skipped", () => {
+      const callback = vi.fn();
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(2);
+      frameRenderer.setPostImageCallback(callback);
+
+      frameRenderer.render(1000);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
   describe("running state", () => {
     it("should track running state correctly", () => {
       expect(frameRenderer.isRunning()).toBe(false);

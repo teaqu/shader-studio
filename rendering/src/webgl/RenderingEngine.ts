@@ -24,6 +24,8 @@ import { assignInputSlots } from "../util/InputSlotAssigner";
 import type { ChannelSamplerType } from "./ShaderCompiler";
 import type { PiTexture } from "../types/piRenderer";
 import { buildBufferPassSizes } from "./BufferPassResolution";
+import { WebGLPixelRegionCapturer } from "./WebGLPixelRegionCapturer";
+import type { PixelRegionResult } from "../types/PixelRegion";
 import {
   clampSizeToWebGLRenderLimits,
   getWebGLRenderLimits,
@@ -51,8 +53,13 @@ export class RenderingEngine implements RenderingEngineInterface {
   private compileQueue: Promise<void> = Promise.resolve();
   private renderLimits: WebGLRenderLimits | null = null;
   private holdVideoResumeForResetCompile = false;
+  private pixelRegionCapturer: WebGLPixelRegionCapturer | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
+    this.frameRenderer?.setPostImageCallback?.(null);
+    this.frameRenderer?.stopRenderLoop?.();
+    this.pixelRegionCapturer?.dispose();
+    this.pixelRegionCapturer = null;
     this.glCanvas = glCanvas;
 
     const gl = piCreateGlContext(glCanvas, false, false, preserveDrawingBuffer, false);
@@ -109,6 +116,11 @@ export class RenderingEngine implements RenderingEngineInterface {
       glCanvas,
       new FPSCalculator(60, 10),
     );
+    const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
+    this.pixelRegionCapturer = pixelRegionCapturer;
+    this.frameRenderer.setPostImageCallback(() => {
+      pixelRegionCapturer.captureAfterRender(glCanvas.width, glCanvas.height);
+    });
   }
 
   public handleCanvasResize(width: number, height: number): void {
@@ -457,7 +469,11 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public cleanup(): void {
-    this.shaderPipeline.cleanup();
+    try {
+      this.pixelRegionCapturer?.cancelPendingCaptures();
+    } finally {
+      this.shaderPipeline?.cleanup();
+    }
   }
 
   public getAudioFFTData(type: string, path?: string): Uint8Array | null {
@@ -601,6 +617,18 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.glCanvas;
   }
 
+  public requestPixelRegion(requestId: number, centerX: number, centerY: number): boolean {
+    return this.pixelRegionCapturer?.queue({ requestId, centerX, centerY }) ?? false;
+  }
+
+  public collectPixelRegionResults(): PixelRegionResult[] {
+    return this.pixelRegionCapturer?.collectResults() ?? [];
+  }
+
+  public cancelPixelRegionRequests(): void {
+    this.pixelRegionCapturer?.cancelPendingCaptures();
+  }
+
   public readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
     if (!this.glCanvas) {
       return null;
@@ -640,6 +668,9 @@ export class RenderingEngine implements RenderingEngineInterface {
       }
     };
 
+    attempt(() => this.frameRenderer?.setPostImageCallback?.(null));
+    attempt(() => this.pixelRegionCapturer?.dispose());
+    this.pixelRegionCapturer = null;
     attempt(() => this.bufferManager?.dispose());
     attempt(() => this.frameRenderer?.stopRenderLoop());
     attempt(() => this.cameraManager?.dispose());
