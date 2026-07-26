@@ -128,6 +128,20 @@ describe('DebugPanel', () => {
     expect(inlineBtn).toBeTruthy();
   });
 
+  it('renders the pixel inspector section without a live canvas prop', () => {
+    setInspectorState({
+      ...DEFAULT_INSPECTOR_STATE,
+      isEnabled: true,
+    });
+
+    const { getByText } = render(DebugPanel, {
+      debugState: makeDebugState(),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(getByText('Pixel Inspector')).toBeTruthy();
+  });
+
   it('uses explicit variable capture loading and error state', () => {
     const { getByText, queryByText } = render(DebugPanel, {
       debugState: makeDebugState({
