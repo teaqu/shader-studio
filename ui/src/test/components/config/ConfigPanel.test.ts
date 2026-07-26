@@ -26,6 +26,8 @@ vi.mock('../../../lib/ConfigManager', () => ({
     generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
     createBufferFile: vi.fn(),
     getWebviewUri: vi.fn(),
+    validateBufferRename: vi.fn().mockReturnValue(null),
+    renameBuffer: vi.fn().mockReturnValue(true),
     dispose: vi.fn(),
   })),
 }));
@@ -50,6 +52,8 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
     createBufferFile: vi.fn(),
     getWebviewUri: vi.fn(),
+    validateBufferRename: vi.fn().mockReturnValue(null),
+    renameBuffer: vi.fn().mockReturnValue(true),
     dispose: vi.fn(),
   };
 }
@@ -568,6 +572,122 @@ describe('ConfigPanel', () => {
 
       expect(mockManager.addCommonBuffer).toHaveBeenCalled();
       expect(mockOnFileSelect).toHaveBeenCalledWith('common');
+    });
+  });
+
+  describe('buffer rename context menu', () => {
+    function getTab(container: HTMLElement, tabName: string): HTMLButtonElement {
+      const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button')).find(
+        (candidate) => candidate.querySelector('.tab-label')?.textContent === tabName,
+      );
+      if (!tab) {
+        throw new Error(`Missing ${tabName} tab`);
+      }
+      return tab;
+    }
+
+    function renderRenameableBuffers() {
+      return render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: {
+            Image: { inputs: {} },
+            common: { path: '/test/common.glsl', inputs: {} },
+            BufferA: { path: '/test/bufferA.glsl', inputs: {} },
+          },
+          script: './shader.uniforms.ts',
+        },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+    }
+
+    it('opens a Rename menu at the pointer without selecting an inactive buffer tab', async () => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+
+      const bufferTab = getTab(container, 'BufferA');
+      await fireEvent.contextMenu(bufferTab, { clientX: 120, clientY: 240 });
+      await tick();
+
+      const menu = getByRole('menu');
+      const rename = getByRole('menuitem', { name: 'Rename' });
+      expect(menu).toHaveStyle({ left: '120px', top: '240px' });
+      expect(rename).toBe(document.activeElement);
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+    });
+
+    it.each(['Image', 'Common', 'Script'])('does not expose Rename for protected %s tabs', async (tabName) => {
+      const { container, queryByRole } = renderRenameableBuffers();
+      await tick();
+
+      await fireEvent.contextMenu(getTab(container, tabName));
+      await tick();
+
+      expect(queryByRole('menu', { name: /rename/i })).toBeNull();
+      expect(queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+    });
+
+    it.each([
+      ['Shift+F10', { key: 'F10', shiftKey: true }],
+      ['ContextMenu', { key: 'ContextMenu' }],
+    ])('opens Rename menu with %s', async (_shortcut, init) => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+
+      await fireEvent.keyDown(getTab(container, 'BufferA'), init);
+      await tick();
+
+      expect(getByRole('menuitem', { name: 'Rename' })).toBe(document.activeElement);
+    });
+
+    it('starts an inline rename shell for only the selected buffer', async () => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Rename' }));
+      await tick();
+
+      const input = getByRole('textbox', { name: 'Rename BufferA' }) as HTMLInputElement;
+      expect(input.value).toBe('BufferA');
+      expect(input).toBe(document.activeElement);
+      expect(input.selectionStart).toBe(0);
+      expect(input.selectionEnd).toBe('BufferA'.length);
+      const tabLabels = Array.from(container.querySelectorAll('.tab-button .tab-label')).map(
+        (label) => label.textContent,
+      );
+      expect(tabLabels).not.toContain('BufferA');
+      expect(tabLabels).toEqual(expect.arrayContaining(['Image', 'Common', 'Script']));
+    });
+
+    it('dismisses the menu on outside click', async () => {
+      const { container, queryByRole } = renderRenameableBuffers();
+      await tick();
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await tick();
+
+      await fireEvent.click(container.querySelector('.tab-content')!);
+      expect(queryByRole('menu')).toBeNull();
+    });
+
+    it('dismisses the menu with Escape and restores the triggering tab focus', async () => {
+      const { container, queryByRole } = renderRenameableBuffers();
+      await tick();
+      const bufferTab = getTab(container, 'BufferA');
+      await fireEvent.contextMenu(bufferTab);
+      await tick();
+
+      await fireEvent.keyDown(window, { key: 'Escape' });
+      await tick();
+
+      expect(queryByRole('menu')).toBeNull();
+      expect(bufferTab).toBe(document.activeElement);
     });
   });
 
