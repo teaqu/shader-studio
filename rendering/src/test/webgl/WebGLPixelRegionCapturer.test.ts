@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PIXEL_INSPECTOR_REGION_SIZE, type PixelRegionRequest } from "../../types/PixelRegion";
 import { WebGLPixelRegionCapturer } from "../../webgl/WebGLPixelRegionCapturer";
+import { expectCanonicalRegion } from "../capture/canonicalPixelRegion";
 
 const createMockGl = () => {
   const buffers: object[] = [];
@@ -46,8 +47,12 @@ const createMockGl = () => {
     }),
     deleteSync: vi.fn(),
     getParameter: vi.fn((parameter: number) => {
-      if (parameter === 0x8caa) return readFramebuffer;
-      if (parameter === 0x88ef) return packBuffer;
+      if (parameter === 0x8caa) {
+        return readFramebuffer;
+      }
+      if (parameter === 0x88ef) {
+        return packBuffer;
+      }
       return null;
     }),
     isContextLost: vi.fn(() => false),
@@ -102,6 +107,20 @@ describe("WebGLPixelRegionCapturer", () => {
 
     expect(result.rgba[0]).toBe(59);
     expect(result.rgba[59 * 60 * 4]).toBe(0);
+  });
+
+  it("publishes the canonical inspector region from bottom-up GL bytes", () => {
+    vi.mocked(gl.getBufferSubData).mockImplementation((_target, _offset, bytes) => {
+      // GL's PBO starts at the bottom source row.  Output row 30 is input row 29.
+      bytes.set([3, 240, 2, 255], (29 * 60 + 30) * 4);
+      bytes.set([17, 34, 51, 68], (52 * 60 + 5) * 4);
+    });
+    vi.mocked(gl.getSyncParameter).mockReturnValue(gl.SIGNALED);
+
+    capturer.queue(request(1, 100, 80));
+    capturer.captureAfterRender(200, 160);
+
+    expectCanonicalRegion(capturer.collectResults()[0]);
   });
 
   it("clips and transparently pads every edge while retaining the selected pixel at 30,30", () => {

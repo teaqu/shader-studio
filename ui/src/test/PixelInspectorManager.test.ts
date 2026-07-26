@@ -3,6 +3,7 @@ import { PixelInspectorManager } from '../lib/PixelInspectorManager';
 import type { RenderingEngine } from '../../../rendering/src/types';
 import type { PixelRegionResult } from '../../../rendering/src/types';
 import type { TimeManager } from '../../../rendering/src/util/TimeManager';
+import { WebGPUPixelRegionCapturer } from '../../../rendering/src/webgpu/WebGPUPixelRegionCapturer';
 
 const REGION_SIZE = 60;
 
@@ -194,6 +195,52 @@ describe('PixelInspectorManager async region readback', () => {
     }
   });
 
+  it('keeps the accepted snapshot and RAF alive when collection throws', () => {
+    enableAt();
+    const first = result(1, 400, 300, [1, 2, 3, 255]);
+    requests.push(first);
+    runFrame(1);
+    const collect = engine.collectPixelRegionResults as ReturnType<typeof vi.fn>;
+    collect.mockImplementationOnce(() => {
+      throw new Error('readback collection failed');
+    });
+
+    runFrame(2);
+
+    expect(manager.getState().region?.rgba).toBe(first.rgba);
+    expect(rafCallbacks).toHaveLength(1);
+    runFrame(34);
+    expect(queued).toContainEqual([2, 400, 300]);
+  });
+
+  it('keeps an accepted UI snapshot when a real mapped WebGPU readback fails', async () => {
+    enableAt();
+    const first = result(1, 400, 300, [1, 2, 3, 255]);
+    requests.push(first);
+    runFrame(1);
+    const failingBuffer = {
+      mapAsync: vi.fn(() => Promise.reject(new Error('device lost'))),
+      getMappedRange: vi.fn(),
+      unmap: vi.fn(),
+      destroy: vi.fn(),
+    };
+    const capturer = new WebGPUPixelRegionCapturer({
+      createBuffer: vi.fn(() => failingBuffer),
+    } as unknown as GPUDevice, 'rgba8unorm');
+    capturer.queue({ requestId: 2, centerX: 400, centerY: 300 });
+    capturer.encodeAfterRender({ copyTextureToBuffer: vi.fn() } as unknown as GPUCommandEncoder, {} as GPUTexture, 800, 600);
+    capturer.beginMappings();
+    await Promise.resolve();
+    await Promise.resolve();
+    (engine.collectPixelRegionResults as ReturnType<typeof vi.fn>).mockImplementationOnce(() => capturer.collectResults());
+
+    runFrame(2);
+
+    expect(manager.getState().region?.rgba).toBe(first.rgba);
+    expect(failingBuffer.destroy).toHaveBeenCalledOnce();
+    expect(rafCallbacks).toHaveLength(1);
+  });
+
   it('requests before rendering when paused and never forces render while playing', () => {
     (timeManager.isPaused as ReturnType<typeof vi.fn>).mockReturnValue(true);
     const calls: string[] = [];
@@ -225,6 +272,23 @@ describe('PixelInspectorManager async region readback', () => {
     expect(queued).toHaveLength(2);
   });
 
+  it('publishes fresh animated bytes for a locked target at the 30fps cadence', () => {
+    manager.setEnabled(true);
+    manager.lockToPosition(123, 321);
+    runFrame(0);
+    const first = result(1, 123, 321, [1, 2, 3, 255]);
+    requests.push(first);
+    runFrame(1);
+    runFrame(34);
+    const second = result(2, 123, 321, [9, 8, 7, 255]);
+    requests.push(second);
+    runFrame(35);
+
+    expect(manager.getState().canvasPosition).toEqual({ x: 123, y: 321 });
+    expect(manager.getState().region?.rgba).toBe(second.rgba);
+    expect(manager.getState().pixelRGB).toEqual({ r: 9, g: 8, b: 7 });
+  });
+
   it('cancels and clears immediately on pointer exit, disable, replacement, and dispose', () => {
     enableAt();
     requests.push(result(1, 400, 300));
@@ -235,6 +299,28 @@ describe('PixelInspectorManager async region readback', () => {
     manager.setEnabled(false);
     manager.dispose();
     expect(engine.cancelPixelRegionRequests).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects a late pre-disable result after re-enabling a cleared inspector', () => {
+    enableAt();
+    requests.push(result(1, 400, 300, [1, 2, 3, 255]));
+    runFrame(1);
+    runFrame(34); // Queues request 2, which remains in flight.
+    manager.setEnabled(false);
+    expect(manager.getState()).toMatchObject({ region: null, pixelRGB: null, canvasPosition: null });
+
+    manager.setEnabled(true);
+    move(200, 100);
+    runFrame(35); // Starts the new session with request 3.
+    requests.push(result(2, 400, 300));
+    runFrame(36);
+    expect(manager.getState()).toMatchObject({ region: null, pixelRGB: null, canvasPosition: null });
+
+    requests.push(result(3, 200, 100, [9, 8, 7, 255]));
+    runFrame(37);
+
+    expect(manager.getState().canvasPosition).toEqual({ x: 200, y: 100 });
+    expect(manager.getState().pixelRGB).toEqual({ r: 9, g: 8, b: 7 });
   });
 
   it('drops the old target and late result when a rendering session is replaced', () => {
