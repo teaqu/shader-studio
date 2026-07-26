@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from "svelte";
-  import { ConfigManager } from "../../ConfigManager";
+  import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
@@ -353,6 +353,78 @@
     renameInput?.select();
   }
 
+  function cancelRename() {
+    renamingTab = null;
+    renameDraft = "";
+    renameError = null;
+  }
+
+  function getRenameErrorMessage(error: BufferRenameError): string {
+    const messages: Record<BufferRenameError, string> = {
+      "config-unavailable": "Configuration is unavailable",
+      "source-not-found": "This pass no longer exists",
+      "same-name": "Name is unchanged",
+      "reserved-name": "That pass name is reserved",
+      "invalid-identifier": "Enter a valid pass name",
+      "name-taken": "That pass name is already in use",
+    };
+    return messages[error];
+  }
+
+  function commitRename() {
+    const oldName = renamingTab;
+    if (!oldName) {
+      return;
+    }
+
+    const newName = renameDraft.trim();
+    if (!newName || newName === oldName) {
+      cancelRename();
+      return;
+    }
+
+    const manager = configManager;
+    if (!manager) {
+      renameError = getRenameErrorMessage("config-unavailable");
+      return;
+    }
+
+    const validationError = manager.validateBufferRename(oldName, newName);
+    if (validationError) {
+      renameError = getRenameErrorMessage(validationError);
+      return;
+    }
+
+    if (!manager.renameBuffer(oldName, newName)) {
+      renameError = "Unable to rename this pass";
+      return;
+    }
+
+    const renamedActiveTab = activeTab === oldName;
+    cancelRename();
+    if (renamedActiveTab) {
+      activeTab = newName;
+      onFileSelect(newName);
+    }
+  }
+
+  function handleRenameKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelRename();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitRename();
+    }
+  }
+
+  function handleRenameInput() {
+    renameError = null;
+  }
+
   function handleTabDblClick(tabName: string) {
     if (!isLocked) {
       return;
@@ -404,11 +476,16 @@
               class="tab-rename-input"
               type="text"
               aria-label="Rename {tabName}"
+              aria-invalid={renameError ? "true" : undefined}
+              aria-describedby={renameError ? "tab-rename-error" : undefined}
               bind:this={renameInput}
               bind:value={renameDraft}
+              oninput={handleRenameInput}
+              onkeydown={handleRenameKeyDown}
+              onblur={commitRename}
             />
             {#if renameError}
-              <p class="tab-rename-error" role="alert">{renameError}</p>
+              <p id="tab-rename-error" class="tab-rename-error" role="alert">{renameError}</p>
             {/if}
           </div>
         {:else}
