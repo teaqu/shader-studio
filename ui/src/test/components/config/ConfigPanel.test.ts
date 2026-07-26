@@ -621,6 +621,50 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
+    it('clamps the Rename menu inside the viewport near its bottom-right edge', async () => {
+      const originalBounds = HTMLElement.prototype.getBoundingClientRect;
+      const widthDescriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+      const heightDescriptor = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+      const boundsSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+        function getBounds(this: HTMLElement): DOMRect {
+          if (this.classList.contains('buffer-rename-menu')) {
+            return {
+              x: 0,
+              y: 0,
+              width: 40,
+              height: 30,
+              top: 0,
+              right: 40,
+              bottom: 30,
+              left: 0,
+              toJSON: () => ({}),
+            } as DOMRect;
+          }
+          return originalBounds.call(this);
+        },
+      );
+
+      try {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 100 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 100 });
+        const { container, getByRole } = renderRenameableBuffers();
+        await tick();
+
+        await fireEvent.contextMenu(getTab(container, 'BufferA'), { clientX: 95, clientY: 90 });
+        await tick();
+
+        expect(getByRole('menu')).toHaveStyle({ left: '60px', top: '70px' });
+      } finally {
+        boundsSpy.mockRestore();
+        if (widthDescriptor) {
+          Object.defineProperty(window, 'innerWidth', widthDescriptor);
+        }
+        if (heightDescriptor) {
+          Object.defineProperty(window, 'innerHeight', heightDescriptor);
+        }
+      }
+    });
+
     it.each(['Image', 'Common', 'Script'])('does not expose Rename for protected %s tabs', async (tabName) => {
       const { container, queryByRole } = renderRenameableBuffers();
       await tick();
