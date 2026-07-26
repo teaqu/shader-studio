@@ -36,10 +36,14 @@ describe("SlangLanguageHeader", () => {
     expect(result).toMatchObject({ header: "\uFEFF#language slang 2026\n", body: "\nfloat x;" });
     expect(bomCount(result.header + result.body)).toBe(1);
   });
-  it("keeps unsupported directives, their language, and their zero-based diagnostic", () => {
-    const result = splitSlangRootHeader("// x\n#language slang 2030\nfloat x;");
-    expect(result).toMatchObject({ language: "2030", body: "// x\n\nfloat x;", diagnostics: [{ line: 1, message: "Unsupported Slang language version \"2030\"; expected legacy, 2025, 2026, or latest" }] });
-    expect(result.header).toBe("#language slang 2030\n");
+  it.each(["2024", "2030"])("keeps unsupported %s directives, their language, and their zero-based diagnostic", (language) => {
+    const result = splitSlangRootHeader(`// x\n#language slang ${language}\nfloat x;`);
+    expect(result).toMatchObject({
+      language,
+      body: "// x\n\nfloat x;",
+      diagnostics: [{ line: 1, message: `Unsupported Slang language version "${language}"; expected legacy, 2025, 2026, or latest` }],
+    });
+    expect(result.header).toBe(`#language slang ${language}\n`);
   });
   it("does not extract a directive after real source", () => {
     expect(splitSlangRootHeader("float x;\n#language slang 2026\n")).toMatchObject({ header: "#language slang legacy\n", body: "float x;\n#language slang 2026\n", language: "legacy" });
