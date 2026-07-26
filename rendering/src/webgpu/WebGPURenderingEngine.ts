@@ -29,6 +29,8 @@ import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipelin
 import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
+import type { PixelRegionResult } from "../types/PixelRegion";
+import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
 
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -132,15 +134,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private disposed = false;
   private reloadOnNextApply = false;
 
-  // Pixel inspector readback. WebGPU readback is async, so readPixel()
-  // records the wanted coordinate and returns the last resolved pixel;
-  // render() encodes a 1×1 copy of the canvas texture each frame while a
-  // coordinate is requested and no mapping is in flight.
-  private inspectorTarget: { x: number; y: number } | null = null;
-  private inspectorPixel: { r: number; g: number; b: number; a: number } | null = null;
-  private inspectorReadbackBuffer: GPUBuffer | null = null;
-  private inspectorReadbackPending = false;
-  private inspectorCopyEncoded = false;
+  private pixelRegionCapturer: WebGPUPixelRegionCapturer | null = null;
   private capturePassName: string | null = null;
 
   private timeManager = new TimeManager();
@@ -244,6 +238,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         alphaMode: "opaque",
         usage: RENDER_ATTACHMENT | COPY_SRC,
       });
+      this.pixelRegionCapturer?.dispose();
+      this.pixelRegionCapturer = new WebGPUPixelRegionCapturer(device, this.format);
 
       const compilerStartedAt = this.now();
       this.logSlangPerf("compiler create start", {});
@@ -1189,9 +1185,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       renderPass.end();
     }
 
-    this.encodeInspectorCopy(encoder, canvasTexture);
+    if (canvasTexture && this.canvas) {
+      this.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.canvas.width, this.canvas.height);
+    }
     this.device.queue.submit([encoder.finish()]);
-    this.resolveInspectorReadback();
+    this.pixelRegionCapturer?.beginMappings();
 
     if (!skipBufferPasses) {
       for (const pass of this.passGraph) {
@@ -1536,6 +1534,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   cleanup(): void {
     this.stopRenderLoop();
+    this.pixelRegionCapturer?.cancelPendingCaptures();
     this.timeManager.cleanup();
     this.resourceManager?.cleanup();
   }
@@ -1568,11 +1567,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.compiler = null;
     attempt(() => compiler?.dispose());
 
-    const inspectorReadbackBuffer = this.inspectorReadbackBuffer;
-    this.inspectorReadbackBuffer = null;
-    this.inspectorTarget = null;
-    this.inspectorPixel = null;
-    attempt(() => inspectorReadbackBuffer?.destroy?.());
+    const pixelRegionCapturer = this.pixelRegionCapturer;
+    this.pixelRegionCapturer = null;
+    attempt(() => pixelRegionCapturer?.dispose());
 
     const passPipelines = [...this.passPipelines.values()];
     this.passPipelines.clear();
@@ -1650,67 +1647,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.lastRenderedAt = null;
   }
 
-  readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
-    if (!this.canvas || !this.device) {
-      return null;
-    }
-    const clampedX = Math.min(Math.max(Math.floor(x), 0), this.canvas.width - 1);
-    const clampedY = Math.min(Math.max(Math.floor(y), 0), this.canvas.height - 1);
-    this.inspectorTarget = { x: clampedX, y: clampedY };
-    return this.inspectorPixel;
+  requestPixelRegion(requestId: number, centerX: number, centerY: number): boolean {
+    return this.pixelRegionCapturer?.queue({
+      requestId,
+      centerX: Math.floor(centerX),
+      centerY: Math.floor(centerY),
+    }) ?? false;
   }
 
-  /**
-   * Encodes a 1×1 copy of the canvas texture at the inspector coordinate.
-   * Must be called with the frame's encoder before submit; the buffer is
-   * mapped after submit via resolveInspectorReadback().
-   */
-  private encodeInspectorCopy(encoder: GPUCommandEncoder, canvasTexture: GPUTexture | null): void {
-    this.inspectorCopyEncoded = false;
-    if (!this.inspectorTarget || this.inspectorReadbackPending || !canvasTexture || !this.device) {
-      return;
-    }
-
-    if (!this.inspectorReadbackBuffer) {
-      // GPUBufferUsage may be absent outside a browser; use the spec values.
-      const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
-      const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
-      // bytesPerRow must be 256-aligned even for a 1×1 copy.
-      this.inspectorReadbackBuffer = this.device.createBuffer({
-        size: 256,
-        usage: MAP_READ | COPY_DST,
-      });
-    }
-
-    encoder.copyTextureToBuffer(
-      { texture: canvasTexture, origin: { x: this.inspectorTarget.x, y: this.inspectorTarget.y } },
-      { buffer: this.inspectorReadbackBuffer, bytesPerRow: 256 },
-      { width: 1, height: 1 },
-    );
-    this.inspectorCopyEncoded = true;
+  collectPixelRegionResults(): PixelRegionResult[] {
+    return this.pixelRegionCapturer?.collectResults() ?? [];
   }
 
-  /** Maps the readback buffer after submit and caches the decoded pixel. */
-  private resolveInspectorReadback(): void {
-    const buffer = this.inspectorReadbackBuffer;
-    if (!this.inspectorCopyEncoded || !buffer) {
-      return;
-    }
-    this.inspectorCopyEncoded = false;
-    this.inspectorReadbackPending = true;
-    const MAP_READ_MODE = globalThis.GPUMapMode?.READ ?? 0x0001;
-    buffer.mapAsync(MAP_READ_MODE)
-      .then(() => {
-        const bytes = new Uint8Array(buffer.getMappedRange(0, 4)).slice();
-        buffer.unmap();
-        this.inspectorReadbackPending = false;
-        this.inspectorPixel = this.format === "bgra8unorm"
-          ? { r: bytes[2], g: bytes[1], b: bytes[0], a: bytes[3] }
-          : { r: bytes[0], g: bytes[1], b: bytes[2], a: bytes[3] };
-      })
-      .catch(() => {
-        this.inspectorReadbackPending = false;
-      });
+  cancelPixelRegionRequests(): void {
+    this.pixelRegionCapturer?.cancelPendingCaptures();
   }
 
   createVariableCapturer(): IVariableCapturer {
