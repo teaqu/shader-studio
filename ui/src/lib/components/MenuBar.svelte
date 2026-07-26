@@ -73,6 +73,7 @@
     isRecording?: boolean;
     isRecordingPanelVisible?: boolean;
     onToggleRecordingPanel?: () => void;
+    is3DPreview?: boolean;
   };
 
   let {
@@ -116,6 +117,7 @@
     isRecording = false,
     isRecordingPanelVisible = false,
     onToggleRecordingPanel = () => {},
+    is3DPreview = false,
   }: Props = $props();
 
   // Resolution state from context
@@ -730,7 +732,7 @@
           <button class="reset-resolution-btn" onclick={handleResetResolution}>Reset</button>
         </div>
         <div class="scale-buttons">
-          {#each [0.25, 0.5, 1, 2, 4] as scale}
+          {#each [0.25, 0.5, 1, 2, 4] as scale (scale)}
             <button class="resolution-option menu-title" class:active={currentResolution.scale === scale} onclick={() => handleResolutionScaleSelect(scale)}>{scale}x</button>
           {/each}
         </div>
@@ -782,7 +784,7 @@
         <div class="resolution-section">
           <h4>Resolution Scale</h4>
           <div class="scale-buttons">
-            {#each [0.25, 0.5, 1, 2, 4] as scale}
+            {#each [0.25, 0.5, 1, 2, 4] as scale (scale)}
               <button class="resolution-option menu-title" class:active={resCtrl.menuVM.bufferResolutionState.scale === scale} onclick={() => resCtrl.setBufferScale(scale)}>{scale}x</button>
             {/each}
           </div>
@@ -793,8 +795,13 @@
     <div class="resolution-section">
       <h4>Zoom</h4>
       <div class="zoom-control">
-        <label for="zoom-slider">Zoom: {zoomLevel.toFixed(1)}x</label>
-        <input id="zoom-slider" type="range" min="0.1" max="3.0" step="0.1" bind:value={zoomLevel} oninput={handleZoomChange} class="zoom-slider" />
+        <label for="zoom-slider">
+          {is3DPreview ? 'Canvas zoom (use scroll to zoom the 3D camera)' : `Zoom: ${zoomLevel.toFixed(1)}x`}
+        </label>
+        <input id="zoom-slider" type="range" min="0.1" max="3.0" step="0.1" bind:value={zoomLevel} oninput={handleZoomChange} class="zoom-slider" disabled={is3DPreview} />
+        {#if is3DPreview}
+          <p class="zoom-hint">Use scroll to zoom the 3D camera.</p>
+        {/if}
       </div>
     </div>
     <div class="resolution-section save-to-config-section">
@@ -1096,7 +1103,7 @@
     class="layout-submenu-portal"
     style="top: {submenuPos.top}px; left: {submenuPos.left}px; visibility: {submenuVisible ? 'visible' : 'hidden'};"
   >
-    {#each getProfileList() as profile}
+    {#each getProfileList() as profile (profile.id)}
       <button
         class="layout-submenu-item"
         class:active={profile.id === getActiveProfile()}

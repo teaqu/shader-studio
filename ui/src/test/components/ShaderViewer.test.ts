@@ -16,6 +16,10 @@ import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 import { aspectRatioStore } from '../../lib/stores/aspectRatioStore';
+import {
+  PREVIEW_3D_STORAGE_KEY,
+  resetPreviewSettings,
+} from '../../lib/state/preview3dState.svelte';
 import { get } from 'svelte/store';
 
 // Mock ResizeObserver
@@ -26,7 +30,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockSetPreviewSettings, mockResetPreviewCamera, mockSetPreviewInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -50,6 +54,9 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockResumeAllVideos = vi.fn();
   const mockReleaseMediaResetHold = vi.fn();
   const mockSetInputEnabled = vi.fn();
+  const mockSetPreviewSettings = vi.fn();
+  const mockResetPreviewCamera = vi.fn();
+  const mockSetPreviewInputEnabled = vi.fn();
   const mockTriggerDebugRecompile = vi.fn();
   const mockUpdateCurrentConfig = vi.fn();
   const mockCreateTransport = vi.fn(() => mockTransport);
@@ -57,7 +64,7 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   // step of reset) runs, so tests can assert it precedes audio/video resume.
   const mockPipelineHandleShaderMessage = vi.fn();
   const mockStopRenderLoop = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockSetPreviewSettings, mockResetPreviewCamera, mockSetPreviewInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -98,6 +105,15 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     }
     setInputEnabled(...args: any[]) {
       return mockSetInputEnabled(...args);
+    }
+    setPreviewSettings(...args: any[]) {
+      return mockSetPreviewSettings(...args);
+    }
+    resetPreviewCamera() {
+      mockResetPreviewCamera();
+    }
+    setPreviewInputEnabled(...args: any[]) {
+      return mockSetPreviewInputEnabled(...args);
     }
     setGlobalVolume(...args: any[]) {
       return mockSetGlobalVolume(...args);
@@ -218,6 +234,15 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     }
     setInputEnabled(...args: any[]) {
       return mockSetInputEnabled(...args);
+    }
+    setPreviewSettings(...args: any[]) {
+      return mockSetPreviewSettings(...args);
+    }
+    resetPreviewCamera() {
+      mockResetPreviewCamera();
+    }
+    setPreviewInputEnabled(...args: any[]) {
+      return mockSetPreviewInputEnabled(...args);
     }
     setGlobalVolume(...args: any[]) {
       return mockSetGlobalVolume(...args);
@@ -566,6 +591,8 @@ describe('ShaderViewer', () => {
     audioStore.setVolume(1);
     mockTimeManager.isPaused = vi.fn(() => false);
     localStorage.removeItem('shader-studio-sync-with-config');
+    localStorage.removeItem(PREVIEW_3D_STORAGE_KEY);
+    resetPreviewSettings();
   });
 
   it('should create transport once before initializeApp registers messages', async () => {
@@ -598,6 +625,64 @@ describe('ShaderViewer', () => {
     await tick();
 
     expect(mockSetInputEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it('syncs local preview settings and camera controls with the rendering engine', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(mockSetPreviewInputEnabled).toHaveBeenCalledWith(true);
+    expect(mockSetPreviewSettings).toHaveBeenCalledWith(expect.objectContaining({ mode: '2d' }));
+
+    await fireEvent.click(screen.getByRole('button', { name: '3D preview' }));
+    await tick();
+
+    expect(mockSetPreviewSettings).toHaveBeenLastCalledWith(expect.objectContaining({ mode: '3d' }));
+    expect(screen.getByRole('application', { name: /3D shader preview/ })).toBeTruthy();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Reset view' }));
+    await tick();
+    expect(mockResetPreviewCamera).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores a persisted 3D preview before the first engine sync', async () => {
+    localStorage.setItem(PREVIEW_3D_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      settings: {
+        mode: '3d',
+        mesh: 'sphere',
+        mapping: { scale: [1, 1], offset: [0, 0], rotation: 0, wrap: 'repeat' },
+        object: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+        lighting: 'unlit',
+        scene: { grid: true, axes: true },
+      },
+    }));
+
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(mockSetPreviewSettings).toHaveBeenCalledWith(expect.objectContaining({
+      mode: '3d',
+      mesh: 'sphere',
+    }));
+  });
+
+  it('shows a 3D preview compilation error returned asynchronously by the engine', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    mockSetPreviewSettings.mockReturnValueOnce(Promise.resolve({
+      success: false,
+      errors: ['mesh preview failed'],
+    }));
+
+    await fireEvent.click(screen.getByRole('button', { name: '3D preview' }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('mesh preview failed')).toBeTruthy();
+    });
   });
 
   // Helper: send a shaderSource message to set hasShader = true

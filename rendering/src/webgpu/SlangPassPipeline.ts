@@ -8,7 +8,10 @@ export interface SlangPassPipelineDescriptor {
   output: "texture" | "canvas";
   channels: Array<{ slot: number; key: string; kind?: string }>;
   uniformBufferSize?: number;
+  geometry?: "fullscreen" | "mesh";
 }
+
+export const PREVIEW_UNIFORM_SIZE = 256;
 
 export interface SlangChannelResource {
   slot: number;
@@ -27,6 +30,7 @@ export class SlangPassPipeline {
   private shaderModule: GPUShaderModule | null = null;
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
+  private previewUniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private sampler: GPUSampler | null = null;
@@ -53,13 +57,25 @@ export class SlangPassPipeline {
     });
     const pipelineDescriptor: GPURenderPipelineDescriptor = {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] }),
-      vertex: { module: this.shaderModule, entryPoint: SLANG_ENTRY_VERTEX },
+      vertex: {
+        module: this.shaderModule,
+        entryPoint: SLANG_ENTRY_VERTEX,
+        ...(this.isMesh() ? { buffers: [{
+          arrayStride: 32,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: "float32x3" },
+            { shaderLocation: 1, offset: 12, format: "float32x3" },
+            { shaderLocation: 2, offset: 24, format: "float32x2" },
+          ],
+        }] } : {}),
+      },
       fragment: {
         module: this.shaderModule,
         entryPoint: SLANG_ENTRY_FRAGMENT,
         targets: [{ format: this.targetFormat() }],
       },
       primitive: { topology: "triangle-list" },
+      ...(this.isMesh() ? { depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" } } : {}),
     };
     if (this.device.createRenderPipelineAsync) {
       // WebGPU's off-thread pipeline compile (the KHR_parallel_shader_compile
@@ -78,6 +94,12 @@ export class SlangPassPipeline {
       size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    if (this.isMesh()) {
+      this.previewUniformBuffer = this.device.createBuffer({
+        size: PREVIEW_UNIFORM_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+    }
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     if (this.descriptor.output === "texture") {
       this.textures = [this.createOutputTexture(), this.createOutputTexture()];
@@ -88,7 +110,7 @@ export class SlangPassPipeline {
       // creates it each frame once channel views are resolved.
       this.bindGroup = this.device.createBindGroup({
         layout: this.bindGroupLayout,
-        entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+        entries: this.baseBindGroupEntries(),
       });
     }
 
@@ -122,7 +144,7 @@ export class SlangPassPipeline {
     if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout) {
       return;
     }
-    const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
+    const entries: GPUBindGroupEntry[] = this.baseBindGroupEntries();
     const sorted = [...resources].sort((a, b) => a.slot - b.slot);
     for (let index = 0; index < sorted.length; index++) {
       const textureBinding = 1 + index * 2;
@@ -146,6 +168,14 @@ export class SlangPassPipeline {
 
   getUniformBuffer(): GPUBuffer | null {
     return this.uniformBuffer;
+  }
+
+  getPreviewUniformBuffer(): GPUBuffer | null {
+    return this.previewUniformBuffer;
+  }
+
+  isMesh(): boolean {
+    return this.descriptor.geometry === "mesh";
   }
 
   getCurrentOutputView(): GPUTextureView | null {
@@ -198,6 +228,21 @@ export class SlangPassPipeline {
         sampler: { type: "filtering" },
       });
     }
+    if (this.isMesh()) {
+      entries.push({
+        binding: 1 + sorted.length * 2,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: "uniform" },
+      });
+    }
+    return entries;
+  }
+
+  private baseBindGroupEntries(): GPUBindGroupEntry[] {
+    const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer! } }];
+    if (this.isMesh() && this.previewUniformBuffer) {
+      entries.push({ binding: 1 + this.descriptor.channels.length * 2, resource: { buffer: this.previewUniformBuffer } });
+    }
     return entries;
   }
 
@@ -217,6 +262,8 @@ export class SlangPassPipeline {
   private destroyUniformBuffer(): void {
     this.uniformBuffer?.destroy?.();
     this.uniformBuffer = null;
+    this.previewUniformBuffer?.destroy?.();
+    this.previewUniformBuffer = null;
   }
 
   private destroyTextures(): void {

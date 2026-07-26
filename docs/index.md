@@ -65,6 +65,7 @@ See [Editor Overlay](features/editor-overlay.md).
 | Feature | Description |
 |---------|-------------|
 | [Performance](features/performance.md) | Cap the frame rate or open a detailed performance panel |
+| [3D Object Preview](features/3d-object-preview.md) | Project a 2D fragment shader onto a cube, sphere, or plane |
 | [Resolution](features/resolution.md) | Scale the canvas, set custom dimensions, or change aspect ratio |
 | [Panel Layout](features/panel-layout.md) | Open the preview as an editor panel or in a separate window |
 | [Locking](features/locking.md) | Keep the preview pinned to a shader while you edit other files |

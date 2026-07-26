@@ -29,6 +29,8 @@ import {
   getWebGLRenderLimits,
   type WebGLRenderLimits,
 } from "./WebGLRenderLimits";
+import { clonePreviewSettings, type PreviewSettings } from '../preview3d/types';
+import { WebGLPreviewScene } from './WebGLPreviewScene';
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -51,11 +53,15 @@ export class RenderingEngine implements RenderingEngineInterface {
   private compileQueue: Promise<void> = Promise.resolve();
   private renderLimits: WebGLRenderLimits | null = null;
   private holdVideoResumeForResetCompile = false;
+  private previewSettings: PreviewSettings | null = null;
+  private previewInputEnabled = false;
+  private inputEnabled = true;
+  private previewScene: WebGLPreviewScene | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.glCanvas = glCanvas;
 
-    const gl = piCreateGlContext(glCanvas, false, false, preserveDrawingBuffer, false);
+    const gl = piCreateGlContext(glCanvas, false, true, preserveDrawingBuffer, false);
     if (!gl) {
       throw new Error("WebGL2 not supported");
     }
@@ -72,6 +78,9 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.keyboardManager = new KeyboardManager();
     this.mouseManager = new MouseManager();
     this.cameraManager = new CameraManager(this.keyboardManager);
+    this.previewScene = new WebGLPreviewScene(this.gl);
+    this.previewScene.attachInput(glCanvas);
+    this.previewScene.setInputEnabled(false);
 
     this.customUniformManager = new CustomUniformManager();
 
@@ -108,6 +117,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.resourceManager,
       glCanvas,
       new FPSCalculator(60, 10),
+      this.previewScene,
     );
   }
 
@@ -292,9 +302,35 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public setInputEnabled(enabled: boolean): void {
+    this.inputEnabled = enabled;
     this.keyboardManager.setEnabled(enabled);
     this.mouseManager.setEnabled(enabled);
-    this.cameraManager.setEnabled(enabled);
+    this.cameraManager.setEnabled(enabled && this.previewSettings?.mode !== '3d');
+    this.previewScene?.setInputEnabled(enabled && this.previewSettings?.mode === '3d' && this.previewInputEnabled);
+  }
+
+  public setPreviewSettings(settings: PreviewSettings): undefined {
+    this.previewSettings = clonePreviewSettings(settings);
+    this.frameRenderer?.setPreviewSettings(this.previewSettings);
+    this.updatePreviewInputMode();
+    return undefined;
+  }
+
+  public resetPreviewCamera(): void {
+    this.previewScene?.resetCamera();
+  }
+
+  public setPreviewInputEnabled(enabled: boolean): void {
+    this.previewInputEnabled = enabled;
+    this.updatePreviewInputMode();
+  }
+
+  private updatePreviewInputMode(): void {
+    const previewActive = this.previewSettings?.mode === '3d';
+    this.previewScene?.setInputEnabled(this.inputEnabled && previewActive && this.previewInputEnabled);
+    // Keep MouseManager and KeyboardManager running for shader uniforms. Only
+    // the legacy free-fly controller conflicts with orbit navigation.
+    this.cameraManager?.setEnabled(this.inputEnabled && !previewActive);
   }
 
   public async updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined> {
@@ -476,6 +512,9 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public createVariableCapturer(): VariableCapturer {
+    if (this.previewSettings?.mode === '3d') {
+      throw new Error("Variable capture is unavailable while 3D preview is active");
+    }
     const gl = this.glCanvas!.getContext('webgl2')!;
     return new VariableCapturer(
       gl,
@@ -602,7 +641,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   public readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
-    if (!this.glCanvas) {
+    if (this.previewSettings?.mode === '3d' || !this.glCanvas) {
       return null;
     }
 
@@ -642,6 +681,7 @@ export class RenderingEngine implements RenderingEngineInterface {
 
     attempt(() => this.bufferManager?.dispose());
     attempt(() => this.frameRenderer?.stopRenderLoop());
+    attempt(() => this.previewScene?.dispose());
     attempt(() => this.cameraManager?.dispose());
     attempt(() => this.mouseManager?.dispose());
     attempt(() => this.keyboardManager?.dispose());

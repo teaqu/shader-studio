@@ -28,7 +28,9 @@ import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from 
 import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
+import { WebGPUPreviewScene } from "./WebGPUPreviewScene";
 import { ResourceManager } from "../resources/ResourceManager";
+import { clonePreviewSettings, type PreviewSettings } from '../preview3d/types';
 
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -94,6 +96,13 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
  * and keyboard inputs are supported.
  */
 export class WebGPURenderingEngine implements RenderingEngine {
+  // Preview preferences are local UI state; the scene owns only GPU resources.
+  private previewSettings: PreviewSettings | null = null;
+  private previewInputEnabled = false;
+  private shaderInputEnabled = true;
+  private previewScene: WebGPUPreviewScene | null = null;
+  private previewMismatchReported = false;
+  private previewRenderFailureReported = false;
   private canvas: HTMLCanvasElement | null = null;
   private context: GPUCanvasContext | null = null;
   private device: GPUDevice | null = null;
@@ -531,6 +540,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
     }
 
+    if (this.previewSettings?.mode === "3d") {
+      try {
+        this.ensurePreviewScene();
+      } catch (error) {
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors: [`WebGPU 3D preview initialization failed: ${error instanceof Error ? error.message : String(error)}`],
+        });
+      }
+    }
+
     if (this.reloadOnNextApply) {
       this.resourceManager?.cleanup();
       this.reloadOnNextApply = false;
@@ -685,10 +705,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const errors: string[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
+      // Buffer passes retain their fullscreen ShaderToy contract. The canvas
+      // Image pass alone receives mesh attributes in 3D preview mode.
+      const geometry = pass.name === "Image" && pass.output === "canvas" && this.previewSettings?.mode === "3d"
+        ? "mesh" as const
+        : "fullscreen" as const;
       const key = WebGPURenderingEngine.passCacheKey(
         pass,
         graph.commonCode,
         nextCustomUniformManager.getUniformInfo(),
+        geometry,
       );
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
@@ -722,6 +748,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
             ...(nextCustomUniformManager.hasUniforms()
               ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
               : {}),
+            ...(geometry === "mesh" ? { geometry } : {}),
           });
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
@@ -752,6 +779,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           uniformBufferSize: createSlangCustomUniformLayout(
             nextCustomUniformManager.getUniformInfo(),
           ).size,
+          ...(geometry === "mesh" ? { geometry } : {}),
         });
         const pipelineStartedAt = this.now();
         const wgslErrors = await pipeline.rebuild(wgsl);
@@ -1048,6 +1076,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     commonCode: string,
     customUniforms: { name: string; type: string }[] = [],
+    geometry: "fullscreen" | "mesh" = "fullscreen",
   ): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
     return JSON.stringify([
@@ -1057,6 +1086,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       commonCode,
       channels,
       customUniforms,
+      geometry,
     ]);
   }
 
@@ -1175,21 +1205,78 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
-      const renderPass = encoder.beginRenderPass({
-        colorAttachments: [{
-          view: targetView,
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: "clear",
-          storeOp: "store",
-        }],
-      });
-      renderPass.setPipeline(pipeline.getPipeline()!);
-      renderPass.setBindGroup(0, bindGroup);
-      renderPass.draw(3);
-      renderPass.end();
+      const isMeshPipeline = pipeline.isMesh?.() ?? false;
+      const geometryMismatch = pass.output === "canvas"
+        && (this.previewSettings?.mode === "3d") !== isMeshPipeline;
+      if (geometryMismatch) {
+        // A mode switch recompiles asynchronously. Never feed fullscreen
+        // vertices into a mesh pipeline (or show a stale fullscreen image in
+        // 3D); leave a clear canvas until the matching atomic swap lands.
+        if (!this.previewMismatchReported) {
+          this.previewMismatchReported = true;
+          console.error("3D preview is waiting for a compatible final Image pipeline");
+        }
+        const clearPass = encoder.beginRenderPass({
+          colorAttachments: [{ view: targetView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+        });
+        clearPass.end();
+        continue;
+      }
+      this.previewMismatchReported = false;
+
+      const previewScene = pass.output === "canvas" && this.previewSettings?.mode === "3d" && isMeshPipeline
+        ? this.previewScene
+        : null;
+      let renderPass: GPURenderPassEncoder | null = null;
+      try {
+        const depthView = previewScene?.getDepthView(pass.width, pass.height) ?? null;
+        renderPass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: targetView,
+            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            loadOp: "clear",
+            storeOp: "store",
+          }],
+          ...(depthView ? { depthStencilAttachment: {
+            view: depthView,
+            depthClearValue: 1,
+            depthLoadOp: "clear" as const,
+            depthStoreOp: "store" as const,
+          } } : {}),
+        });
+        if (previewScene) {
+          previewScene.encodeGrid(renderPass, pass.width, pass.height);
+        }
+        renderPass.setPipeline(pipeline.getPipeline()!);
+        renderPass.setBindGroup(0, bindGroup);
+        if (previewScene) {
+          previewScene.writePreviewUniforms(pipeline, pass.width, pass.height);
+          previewScene.encodeMesh(renderPass);
+          previewScene.encodeAxes(renderPass, pass.width, pass.height);
+        } else {
+          renderPass.draw(3);
+        }
+        renderPass.end();
+        renderPass = null;
+        this.previewRenderFailureReported = false;
+      } catch (error) {
+        try {
+          renderPass?.end();
+        } catch {
+          // Preserve the scene failure and attempt a recoverable clear below.
+        }
+        if (previewScene && !this.previewRenderFailureReported) {
+          this.previewRenderFailureReported = true;
+          console.error("WebGPU 3D preview render failed:", error instanceof Error ? error.message : String(error));
+        }
+        this.clearRenderTarget(encoder, targetView);
+        continue;
+      }
     }
 
-    this.encodeInspectorCopy(encoder, canvasTexture);
+    if (this.previewSettings?.mode !== "3d") {
+      this.encodeInspectorCopy(encoder, canvasTexture);
+    }
     this.device.queue.submit([encoder.finish()]);
     this.resolveInspectorReadback();
 
@@ -1507,9 +1594,80 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   setInputEnabled(enabled: boolean): void {
-    this.mouseManager.setEnabled(enabled);
-    this.keyboardManager.setEnabled(enabled);
-    this.cameraManager.setEnabled(enabled);
+    this.shaderInputEnabled = enabled;
+    this.applyPreviewInputState();
+  }
+
+  setPreviewSettings(settings: PreviewSettings): Promise<CompilationResult | undefined> | undefined {
+    const nextSettings = clonePreviewSettings(settings);
+    const modeChanged = this.previewSettings?.mode !== nextSettings.mode;
+    try {
+      this.previewScene?.setSettings(nextSettings);
+    } catch (error) {
+      return Promise.resolve({
+        success: false,
+        errors: [`WebGPU 3D preview update failed: ${error instanceof Error ? error.message : String(error)}`],
+      });
+    }
+    this.previewSettings = nextSettings;
+    this.applyPreviewInputState();
+    // Geometry is part of generated WGSL. Recompile atomically so a failed
+    // 3D variant leaves the previous valid (and compatible) pass installed.
+    if (modeChanged && this.lastCompile && !this.disposed) {
+      return this.compileShaderPipeline(
+        this.lastCompile.code, this.currentConfig, this.lastCompile.path,
+        this.lastCompile.buffers, this.lastCompile.customUniformDeclarations,
+        this.lastCompile.customUniformInfo,
+      );
+    }
+    return undefined;
+  }
+
+  resetPreviewCamera(): void {
+    this.previewScene?.resetCamera();
+  }
+
+  setPreviewInputEnabled(enabled: boolean): void {
+    this.previewInputEnabled = enabled;
+    this.applyPreviewInputState();
+  }
+
+  private applyPreviewInputState(): void {
+    const previewOwnsInput = this.previewSettings?.mode === "3d" && this.previewInputEnabled;
+    this.previewScene?.setInputEnabled(previewOwnsInput);
+    // 3D navigation is pointer-only. Shader mouse and keyboard uniforms must
+    // keep updating, while the existing free-fly camera alone is suppressed.
+    this.mouseManager.setEnabled(this.shaderInputEnabled);
+    this.keyboardManager.setEnabled(this.shaderInputEnabled);
+    this.cameraManager.setEnabled(this.shaderInputEnabled && this.previewSettings?.mode !== "3d");
+  }
+
+  private clearRenderTarget(encoder: GPUCommandEncoder, targetView: GPUTextureView): void {
+    try {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{ view: targetView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
+      });
+      pass.end();
+    } catch {
+      // Rendering can recover next frame even if the surface is currently lost.
+    }
+  }
+
+  private ensurePreviewScene(): WebGPUPreviewScene {
+    if (!this.previewScene) {
+      if (!this.device) {
+        throw new Error("WebGPU device unavailable");
+      }
+      this.previewScene = new WebGPUPreviewScene(this.device, this.format);
+      if (this.canvas) {
+        this.previewScene.attach(this.canvas);
+      }
+    }
+    if (this.previewSettings) {
+      this.previewScene.setSettings(this.previewSettings);
+    }
+    this.applyPreviewInputState();
+    return this.previewScene;
   }
 
   getCurrentFPS(): number {
@@ -1563,6 +1721,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     attempt(() => this.mouseManager.dispose());
     attempt(() => this.keyboardManager.dispose());
     attempt(() => this.cameraManager.dispose());
+    const previewScene = this.previewScene;
+    this.previewScene = null;
+    attempt(() => previewScene?.dispose());
 
     const compiler = this.compiler;
     this.compiler = null;
@@ -1651,6 +1812,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   readPixel(x: number, y: number): { r: number; g: number; b: number; a: number } | null {
+    if (this.previewSettings?.mode === "3d") {
+      return null;
+    }
     if (!this.canvas || !this.device) {
       return null;
     }
@@ -1714,6 +1878,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   createVariableCapturer(): IVariableCapturer {
+    if (this.previewSettings?.mode === "3d") {
+      throw new Error("Variable capture is unavailable while 3D preview is active");
+    }
     if (!this.device || !this.compiler) {
       throw new Error("Variable capture requires an initialized WebGPU engine");
     }

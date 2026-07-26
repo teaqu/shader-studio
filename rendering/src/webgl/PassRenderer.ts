@@ -36,7 +36,7 @@ export class PassRenderer {
     this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
   }
 
-  public renderPass(
+  public preparePass(
     passConfig: Pass,
     target: PiRenderTarget | null,
     shader: PiShader | null,
@@ -126,8 +126,20 @@ export class PassRenderer {
       }
     }
 
-    const posLoc = this.renderer.GetAttribLocation(shader, "position");
-    this.renderer.DrawUnitQuad_XY(posLoc);
+  }
+
+  public renderPass(
+    passConfig: Pass,
+    target: PiRenderTarget | null,
+    shader: PiShader | null,
+    uniforms: PassUniforms,
+    customUniforms?: CustomUniform[],
+    skipInputUpdates: boolean = false,
+  ): void {
+    this.preparePass(passConfig, target, shader, uniforms, customUniforms, skipInputUpdates);
+    if (shader) {
+      this.renderer.DrawUnitQuad_XY(this.renderer.GetAttribLocation(shader, "position"));
+    }
   }
 
   private getChannelResolutions(

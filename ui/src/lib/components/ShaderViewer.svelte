@@ -7,6 +7,7 @@
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
+  import Preview3DControls from "./preview/Preview3DControls.svelte";
   import MenuBar from "./MenuBar.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
@@ -51,6 +52,11 @@
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
+  import {
+    getPreviewCameraResetToken,
+    getPreviewSettings,
+    restorePreviewSettingsFromStorage,
+  } from "../state/preview3dState.svelte";
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -141,6 +147,10 @@
   let zoomLevel = $state(1.0);
   let sessionResolutionRefreshScheduled = false;
   const inspectorState = $derived(getInspectorState());
+  const previewSettings = $derived(getPreviewSettings());
+  const is3DPreview = $derived(previewSettings.mode === '3d');
+  let previewSettingsGeneration = 0;
+  let lastPreviewCameraResetToken = getPreviewCameraResetToken();
 
   // Managers and controllers
   let pipeline: ShaderPipeline;
@@ -278,9 +288,9 @@
 
   // Reactive: notify variable capture manager when relevant state changes.
   $effect(() => {
-    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugEnabled) {
+    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugEnabled && !is3DPreview) {
       notifyVariableCaptureManager();
-    } else if (initialized && variableCaptureManager && (!varInspectorEnabled || !debugEnabled)) {
+    } else if (initialized && variableCaptureManager) {
       variableCaptureManager.stop();
     }
   });
@@ -292,6 +302,51 @@
     }
 
     applyCompilationResult(result);
+  });
+
+  $effect(() => {
+    const engine = renderingEngine;
+    const settings = previewSettings;
+    if (!initialized || !engine) {
+      return;
+    }
+
+    const generation = ++previewSettingsGeneration;
+    try {
+      const result = engine.setPreviewSettings(settings);
+      if (result) {
+        void result
+          .then((compilationResult) => {
+            if (generation === previewSettingsGeneration && compilationResult) {
+              applyCompilationResult(compilationResult);
+            }
+          })
+          .catch((error: unknown) => {
+            if (generation === previewSettingsGeneration) {
+              applyCompilationResult({
+                success: false,
+                errors: [`3D preview update failed: ${error instanceof Error ? error.message : String(error)}`],
+              });
+            }
+          });
+      }
+    } catch (error) {
+      applyCompilationResult({
+        success: false,
+        errors: [`3D preview update failed: ${error instanceof Error ? error.message : String(error)}`],
+      });
+    }
+  });
+
+  $effect(() => {
+    const token = getPreviewCameraResetToken();
+    if (token === lastPreviewCameraResetToken) {
+      return;
+    }
+    lastPreviewCameraResetToken = token;
+    if (initialized && renderingEngine) {
+      renderingEngine.resetPreviewCamera();
+    }
   });
 
   // Shared MenuBar props — two instances exist in different DOM positions for dockview layout
@@ -336,6 +391,7 @@
     compileMode: $compileModeStore.mode,
     onSetCompileMode: handleSetCompileMode,
     onManualCompile: handleManualCompile,
+    is3DPreview,
   }));
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
@@ -479,6 +535,7 @@
     renderingEngine = createEngineForLanguage(engineLanguage);
     try {
       renderingEngine.initialize(glCanvas, true);
+      renderingEngine.setPreviewInputEnabled(true);
     } catch (err) {
       console.info('[ShaderSwitchTiming] setupRenderingEngine failed', {
         engineLanguage,
@@ -499,7 +556,7 @@
       // Swap: re-point managers that captured the engine/canvas eagerly, and
       // carry the prior play/pause state onto the fresh engine.
       pixelInspectorManager?.initialize(renderingEngine, timeManager, glCanvas);
-      pixelInspectorManager?.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
+      pixelInspectorManager?.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled && !is3DPreview);
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
         shaderDebugManager?.setCapturedVariables(vars);
       });
@@ -529,11 +586,14 @@
   }
 
   function handleCanvasClick() {
+    if (is3DPreview) {
+      return;
+    }
     pixelInspectorManager?.handleCanvasClick();
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
-    if (!pixelInspectorManager || !initialized) {
+    if (!pixelInspectorManager || !initialized || is3DPreview) {
       return;
     }
     pixelInspectorManager.handleMouseMove(event);
@@ -687,7 +747,7 @@
         lastSentDebugEnabled = $debugPanelStore.isVisible;
 
         if ($debugPanelStore.isVisible) {
-          pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled);
+          pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && !is3DPreview);
         } else {
           pixelInspectorManager.setEnabled(false);
         }
@@ -705,7 +765,9 @@
 
   $effect(() => {
     if (pixelInspectorManager) {
-      const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible;
+      const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled
+        && $debugPanelStore.isVisible
+        && !is3DPreview;
       const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
       if (currentInspectorEnabled !== desiredInspectorEnabled) {
         pixelInspectorManager.setEnabled(desiredInspectorEnabled);
@@ -808,7 +870,7 @@
   }
 
   function notifyVariableCaptureManager() {
-    if (!variableCaptureManager || !shaderDebugManager) {
+    if (!variableCaptureManager || !shaderDebugManager || is3DPreview) {
       return;
     }
     const state = shaderDebugManager.getState();
@@ -896,6 +958,9 @@
   }
 
   function applyCompilationResult(result: CompilationResult) {
+    if (result.superseded) {
+      return;
+    }
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
   }
 
@@ -1027,6 +1092,7 @@
 
   async function initializeApp() {
     try {
+      restorePreviewSettingsFromStorage();
       transport.onMessage(async (event: MessageEvent) => {
         profileAdapter.handleMessage(event);
         if (routerInitialized) {
@@ -1088,7 +1154,7 @@
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
-      pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
+      pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled && !is3DPreview);
       registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {
@@ -1177,7 +1243,8 @@
     }
 
     const canPreview = initialized
-      && debugState.isEnabled;
+      && debugState.isEnabled
+      && !is3DPreview;
 
     if (!canPreview) {
       lastAppliedVariablePreviewToken = -1;
@@ -1316,11 +1383,15 @@
       <ShaderCanvas
         {zoomLevel}
         isInspectorActive={inspectorState.isActive}
+        {is3DPreview}
         onCanvasReady={handleCanvasReady}
         onCanvasResize={handleCanvasResize}
         onCanvasClick={handleCanvasClick}
       />
     {/key}
+    <Preview3DControls
+      debugUnavailableNote="Pixel inspector and variable capture are available in 2D preview."
+    />
     {#if !hasShader}
       <div class="no-active-shader-state">No active shader</div>
     {/if}

@@ -21,6 +21,8 @@ export class ShaderPipeline {
   private shaderPath = "";
   private passes: Pass[] = [];
   private passShaders: Record<string, PiShader> = {};
+  private meshPassShaders: Record<string, PiShader> = {};
+  private meshPassError: string | null = null;
   private customUniformManager: CustomUniformManager | null = null;
   private disposed = false;
   // Which resources to reload when the next compiled pipeline is applied.
@@ -70,6 +72,14 @@ export class ShaderPipeline {
 
   public getPassShader(passName: string): PiShader | undefined {
     return this.passShaders[passName];
+  }
+
+  public getMeshPassShader(passName: string): PiShader | undefined {
+    return this.meshPassShaders[passName];
+  }
+
+  public getMeshPassError(): string | null {
+    return this.meshPassError;
   }
 
   public setCustomUniformManager(manager: CustomUniformManager | null): void {
@@ -201,6 +211,7 @@ export class ShaderPipeline {
     passShaders?: Record<string, PiShader>;
   }> {
     const newPassShaders: Record<string, PiShader> = {};
+    const warnings: string[] = [];
 
     // Extract common code if it exists
     const commonBufferPass = candidatePasses.find(pass => pass.name === "common");
@@ -259,11 +270,34 @@ export class ShaderPipeline {
       }
 
       newPassShaders[pass.name] = shader;
+      if (pass.name === 'Image') {
+        // Older isolated test doubles intentionally only expose the legacy
+        // compiler contract; production ShaderCompiler always has this method.
+        const meshCompiler = this.shaderCompiler as ShaderCompiler & { compileMeshShader?: ShaderCompiler['compileMeshShader'] };
+        if (meshCompiler.compileMeshShader) {
+          const meshSource = meshCompiler.wrapMeshShaderToyCode?.(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+          const meshShader = meshCompiler.compileMeshShader(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+          if (!meshShader?.mResult) {
+            if (meshShader) {
+              this.cleanupPartialShaders({ Image: meshShader });
+            }
+            const formattedErrors = meshShader && meshSource
+              ? ShaderErrorFormatter.formatShaderError(meshShader.mInfo, this.renderer, meshSource.headerLineCount, meshSource.commonCodeLineCount)
+              : [];
+            const error = formattedErrors[0]?.message ?? meshShader?.mInfo ?? 'Failed to compile 3D preview shader';
+            (newPassShaders as Record<string, PiShader> & { __meshError?: string }).__meshError = error;
+            warnings.push(`Image: 3D preview unavailable: ${error}`);
+          } else {
+            (newPassShaders as Record<string, PiShader> & { __mesh?: PiShader }).__mesh = meshShader;
+          }
+        }
+      }
     }
 
     return {
       success: true,
       passShaders: newPassShaders,
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
 
@@ -285,10 +319,14 @@ export class ShaderPipeline {
       } else {
         this.resourceManager.cleanup();
       }
-      this.cleanupShaders();
+      this.cleanupShaders(this.passShaders);
+      this.passShaders = {};
+      this.cleanupShaders(this.meshPassShaders);
+      this.meshPassShaders = {};
       this.bufferManager.dispose();
     } else {
       this.cleanupShaders(this.passShaders);
+      this.cleanupShaders(this.meshPassShaders);
     }
 
     // Allocate buffers synchronously from current state — no async window means no stale references.
@@ -316,7 +354,14 @@ export class ShaderPipeline {
 
     this.shaderPath = path;
     this.passes = nextPasses;
+    const previewShaders = nextPassShaders as Record<string, PiShader> & { __mesh?: PiShader; __meshError?: string };
+    const meshShader = previewShaders.__mesh;
+    const meshError = previewShaders.__meshError ?? null;
+    delete previewShaders.__mesh;
+    delete previewShaders.__meshError;
     this.passShaders = nextPassShaders;
+    this.meshPassShaders = meshShader ? { Image: meshShader } : {};
+    this.meshPassError = meshError;
     this.bufferManager.setPassBuffers(nextPassBuffers);
   }
 
@@ -404,7 +449,11 @@ export class ShaderPipeline {
 
   public cleanup(): void {
     this.resourceManager.cleanup();
-    this.cleanupShaders();
+    this.cleanupShaders(this.passShaders);
+    this.cleanupShaders(this.meshPassShaders);
+    this.passShaders = {};
+    this.meshPassShaders = {};
+    this.meshPassError = null;
     this.bufferManager.dispose();
     this.timeManager.cleanup();
   }
@@ -427,10 +476,14 @@ export class ShaderPipeline {
       }
     };
     const shaders = this.passShaders;
+    const meshShaders = this.meshPassShaders;
     this.passes = [];
     this.passShaders = {};
+    this.meshPassShaders = {};
+    this.meshPassError = null;
     attempt(() => this.resourceManager.cleanup());
     attempt(() => this.cleanupShaders(shaders));
+    attempt(() => this.cleanupShaders(meshShaders));
     attempt(() => this.bufferManager.dispose());
     attempt(() => this.timeManager.cleanup());
     if (hasError) {
