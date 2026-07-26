@@ -15,6 +15,7 @@ import { setInspectorState } from '../../../lib/state/pixelInspectorState.svelte
 const DEFAULT_INSPECTOR_STATE = {
   isEnabled: false, isActive: false, isLocked: false,
   mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null,
+  region: null,
 };
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {

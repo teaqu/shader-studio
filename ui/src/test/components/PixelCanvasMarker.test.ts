@@ -17,6 +17,7 @@ function makeInspectorState(overrides: Partial<PixelInspectorState> = {}): Pixel
     pixelRGB: { r: 1, g: 2, b: 3 },
     fragCoord: { x: 400, y: 300 },
     canvasPosition: { x: 400, y: 300 },
+    region: null,
     ...overrides,
   };
 }

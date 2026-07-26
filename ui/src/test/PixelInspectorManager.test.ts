@@ -1,64 +1,61 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PixelInspectorManager } from '../lib/PixelInspectorManager';
-import type { PixelInspectorState } from '../lib/types/PixelInspectorState';
 import type { RenderingEngine } from '../../../rendering/src/types';
+import type { PixelRegionResult } from '../../../rendering/src/types';
 import type { TimeManager } from '../../../rendering/src/util/TimeManager';
 
-describe('PixelInspectorManager', () => {
+const REGION_SIZE = 60;
+
+function result(requestId: number, centerX: number, centerY: number, colour = [3, 240, 2, 255]): PixelRegionResult {
+  const rgba = new Uint8ClampedArray(REGION_SIZE * REGION_SIZE * 4);
+  const center = ((REGION_SIZE / 2) * REGION_SIZE + REGION_SIZE / 2) * 4;
+  rgba.set(colour, center);
+  return { requestId, centerX, centerY, width: REGION_SIZE, height: REGION_SIZE, rgba };
+}
+
+describe('PixelInspectorManager async region readback', () => {
   let manager: PixelInspectorManager;
-  let stateCallback: ReturnType<typeof vi.fn>;
-  let mockRenderingEngine: RenderingEngine;
-  let mockTimeManager: TimeManager;
-  let mockCanvas: HTMLCanvasElement;
+  let requests: PixelRegionResult[] = [];
+  let queued: Array<[number, number, number]> = [];
+  let engine: RenderingEngine;
+  let timeManager: TimeManager;
+  let rafCallbacks: Map<number, FrameRequestCallback>;
+  let nextRafId: number;
+
+  const runFrame = (time: number) => {
+    const callbacks = [...rafCallbacks.values()];
+    rafCallbacks.clear();
+    callbacks.forEach((callback) => callback(time));
+  };
 
   beforeEach(() => {
-    // Mock rendering engine
-    mockRenderingEngine = {
-      readPixel: vi.fn().mockReturnValue({ r: 255, g: 128, b: 64, a: 255 }),
-      render: vi.fn(),
-    } as any;
-
-    // Mock time manager
-    mockTimeManager = {
-      isPaused: vi.fn().mockReturnValue(false),
-    } as any;
-
-    // Mock canvas
-    mockCanvas = {
-      width: 800,
-      height: 600,
-      getBoundingClientRect: vi.fn().mockReturnValue({
-        left: 0,
-        top: 0,
-        width: 800,
-        height: 600,
-      }),
-    } as any;
-
-    // Mock requestAnimationFrame - store callbacks for manual execution
-    let rafId = 0;
-    const rafCallbacks = new Map<number, FrameRequestCallback>();
-
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
-      const id = ++rafId;
-      rafCallbacks.set(id, cb);
+    requests = [];
+    queued = [];
+    rafCallbacks = new Map();
+    nextRafId = 0;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      const id = ++nextRafId;
+      rafCallbacks.set(id, callback);
       return id;
     });
-
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id: number) => {
-      rafCallbacks.delete(id);
-    });
-
-    // Helper to execute pending RAF callbacks
-    (global as any).executeRAFCallbacks = (timestamp: number = performance.now()) => {
-      const callbacks = Array.from(rafCallbacks.values());
-      rafCallbacks.clear();
-      callbacks.forEach(cb => cb(timestamp));
-    };
-
-    stateCallback = vi.fn();
-    manager = new PixelInspectorManager(stateCallback);
-    manager.initialize(mockRenderingEngine, mockTimeManager, mockCanvas);
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => rafCallbacks.delete(id));
+    // The manager only needs this narrow RenderingEngine surface in these unit tests.
+    engine = {
+      requestPixelRegion: vi.fn((id: number, x: number, y: number) => {
+        queued.push([id, x, y]);
+        return true;
+      }),
+      collectPixelRegionResults: vi.fn(() => requests.splice(0)),
+      cancelPixelRegionRequests: vi.fn(),
+      render: vi.fn(),
+    } as unknown as RenderingEngine;
+    timeManager = { isPaused: vi.fn(() => false) } as unknown as TimeManager;
+    manager = new PixelInspectorManager();
+    manager.initialize(engine, timeManager, {
+      width: 800,
+      height: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLCanvasElement);
   });
 
   afterEach(() => {
@@ -66,386 +63,213 @@ describe('PixelInspectorManager', () => {
     vi.restoreAllMocks();
   });
 
-  describe('Initial State', () => {
-    it('should initialize with correct default state', () => {
-      const state = manager.getState();
+  const move = (x = 400.9, y = 300.1) => manager.handleMouseMove({ clientX: x, clientY: y } as MouseEvent);
+  const enableAt = (time = 0) => {
+    manager.setEnabled(true); move(); runFrame(time);
+  };
 
-      expect(state.isEnabled).toBe(false);
-      expect(state.isActive).toBe(false);
-      expect(state.isLocked).toBe(false);
-      expect(state.mouseX).toBe(0);
-      expect(state.mouseY).toBe(0);
-      expect(state.pixelRGB).toBeNull();
-      expect(state.fragCoord).toBeNull();
-      expect(state.canvasPosition).toBeNull();
-    });
+  it('starts with an empty atomic region snapshot', () => {
+    expect(manager.getState()).toMatchObject({ region: null, pixelRGB: null, canvasPosition: null });
   });
 
-  describe('toggleEnabled', () => {
-    it('should enable inspector and activate it', () => {
-      manager.toggleEnabled(); // Enable (starts disabled)
-      const state = manager.getState();
-
-      expect(state.isEnabled).toBe(true);
-      expect(state.isActive).toBe(true);
-      expect(stateCallback).toHaveBeenCalled();
-    });
-
-    it('should disable inspector after enabling', () => {
-      manager.toggleEnabled(); // Enable
-      manager.toggleEnabled(); // Disable
-      const state = manager.getState();
-
-      expect(state.isEnabled).toBe(false);
-      expect(state.isActive).toBe(false);
-    });
-
-    it('should clear state when disabling', () => {
-      manager.toggleEnabled(); // Enable first
-      const mockEvent = { clientX: 100, clientY: 100 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      manager.toggleEnabled(); // Disable
-      const state = manager.getState();
-
-      expect(state.pixelRGB).toBeNull();
-      expect(state.fragCoord).toBeNull();
-      expect(state.canvasPosition).toBeNull();
-    });
-
-    it('should start continuous updates when enabled', () => {
-      (window.requestAnimationFrame as any).mockClear();
-      manager.toggleEnabled(); // Enable
-      expect(window.requestAnimationFrame).toHaveBeenCalled();
-    });
-
-    it('should stop continuous updates when disabled', () => {
-      manager.toggleEnabled(); // Enable first
-      manager.toggleEnabled(); // Disable
-      expect(window.cancelAnimationFrame).toHaveBeenCalled();
-    });
+  it('queues floored coordinates at 30fps and polls results every RAF', () => {
+    enableAt(0);
+    expect(queued).toEqual([[1, 400, 300]]);
+    runFrame(20);
+    expect(queued).toHaveLength(1);
+    requests.push(result(1, 400, 300));
+    runFrame(21);
+    expect(manager.getState().pixelRGB).toEqual({ r: 3, g: 240, b: 2 });
+    runFrame(34);
+    expect(queued).toEqual([[1, 400, 300], [2, 400, 300]]);
   });
 
-  describe('setEnabled', () => {
-    it('should enable when disabled', () => {
-      manager.setEnabled(true);
-      const state = manager.getState();
-
-      expect(state.isEnabled).toBe(true);
-      expect(state.isActive).toBe(true);
-      expect(stateCallback).toHaveBeenCalled();
-    });
-
-    it('should disable when enabled', () => {
-      manager.setEnabled(true);
-      stateCallback.mockClear();
-      manager.setEnabled(false);
-      const state = manager.getState();
-
-      expect(state.isEnabled).toBe(false);
-      expect(state.isActive).toBe(false);
-      expect(stateCallback).toHaveBeenCalled();
-    });
-
-    it('should be a no-op when already enabled', () => {
-      manager.setEnabled(true);
-      stateCallback.mockClear();
-      manager.setEnabled(true);
-
-      expect(stateCallback).not.toHaveBeenCalled();
-    });
-
-    it('should be a no-op when already disabled', () => {
-      // Manager starts disabled
-      stateCallback.mockClear();
-      manager.setEnabled(false);
-
-      expect(stateCallback).not.toHaveBeenCalled();
-    });
-
-    it('should start continuous updates when enabling', () => {
-      (window.requestAnimationFrame as any).mockClear();
-      manager.setEnabled(true);
-      expect(window.requestAnimationFrame).toHaveBeenCalled();
-    });
-
-    it('should stop continuous updates when disabling', () => {
-      manager.setEnabled(true);
-      manager.setEnabled(false);
-      expect(window.cancelAnimationFrame).toHaveBeenCalled();
-    });
-
-    it('should clear state when disabling', () => {
-      manager.setEnabled(true);
-      const mockEvent = { clientX: 100, clientY: 100 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      manager.setEnabled(false);
-      const state = manager.getState();
-
-      expect(state.pixelRGB).toBeNull();
-      expect(state.fragCoord).toBeNull();
-      expect(state.canvasPosition).toBeNull();
-      expect(state.isLocked).toBe(false);
-    });
+  it.each(['GLSL', 'Slang'])('keeps the previous %s region while the next read is pending', () => {
+    enableAt();
+    requests.push(result(1, 400, 300));
+    runFrame(1);
+    const accepted = manager.getState().region;
+    move(500, 200);
+    runFrame(34);
+    expect(manager.getState().region).toBe(accepted);
+    expect(manager.getState().canvasPosition).toEqual({ x: 400, y: 300 });
   });
 
-  describe('handleCanvasClick', () => {
-    it('should toggle lock state', () => {
-      manager.toggleEnabled(); // Enable first
-      manager.handleCanvasClick();
-      expect(manager.getState().isLocked).toBe(true);
-
-      manager.handleCanvasClick();
-      expect(manager.getState().isLocked).toBe(false);
+  it('publishes the newest valid completed result as one consistent snapshot', () => {
+    enableAt();
+    runFrame(34);
+    runFrame(68);
+    const newest = result(3, 100, 200, [9, 8, 7, 6]);
+    requests.push(result(1, 400, 300, [1, 2, 3, 4]), newest, result(2, 1, 2));
+    runFrame(69);
+    expect(manager.getState()).toMatchObject({
+      pixelRGB: { r: 9, g: 8, b: 7 },
+      canvasPosition: { x: 100, y: 200 },
+      fragCoord: { x: 100, y: 400 },
     });
-
-    it('should not do anything if inspector is not active', () => {
-      // Inspector starts disabled
-      const stateBefore = manager.getState();
-
-      manager.handleCanvasClick();
-      const stateAfter = manager.getState();
-
-      expect(stateAfter.isLocked).toBe(stateBefore.isLocked);
-    });
-
-    it('should keep continuous updates running when locked', () => {
-      manager.toggleEnabled(); // Enable first
-      manager.handleCanvasClick(); // Lock
-      const state = manager.getState();
-
-      // Lock state should be toggled
-      expect(state.isLocked).toBe(true);
-      // Continuous updates continue (tested in other tests)
-    });
+    expect(manager.getState().region?.rgba).toBe(newest.rgba);
   });
 
-  describe('handleMouseMove', () => {
-    it('should update mouse position immediately', () => {
-      manager.toggleEnabled(); // Enable first
-      const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-      const state = manager.getState();
-
-      expect(state.mouseX).toBe(100);
-      expect(state.mouseY).toBe(200);
-    });
-
-    it('should not update position when locked', () => {
-      manager.toggleEnabled(); // Enable first
-      manager.handleCanvasClick(); // Lock
-
-      const mockEvent1 = { clientX: 100, clientY: 200 } as MouseEvent;
-      manager.handleMouseMove(mockEvent1);
-
-      const mockEvent2 = { clientX: 150, clientY: 250 } as MouseEvent;
-      manager.handleMouseMove(mockEvent2);
-      const state = manager.getState();
-
-      // Position should not change when locked
-      expect(state.mouseX).toBe(0); // Still at initial
-      expect(state.mouseY).toBe(0);
-    });
-
-    it('should not update position when inspector is not active', () => {
-      // Inspector starts disabled - no need to toggle
-      const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-      const state = manager.getState();
-
-      expect(state.mouseX).toBe(0);
-      expect(state.mouseY).toBe(0);
-    });
-
-    it('should calculate canvas coordinates correctly', () => {
-      manager.toggleEnabled(); // Enable first
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      // Canvas position should be set (but we need to wait for pixel read in continuous update)
-      // This test verifies the calculation is correct
-      expect(mockCanvas.getBoundingClientRect).toHaveBeenCalled();
-    });
-
-    it('should clear pixel data when mouse is outside canvas bounds', () => {
-      manager.toggleEnabled(); // Enable first
-      // First, set some position inside canvas
-      const mockEvent1 = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent1);
-
-      // Mock outside bounds
-      const mockEvent2 = { clientX: -100, clientY: -100 } as MouseEvent;
-      manager.handleMouseMove(mockEvent2);
-      const state = manager.getState();
-
-      expect(state.pixelRGB).toBeNull();
-      expect(state.fragCoord).toBeNull();
-      expect(state.canvasPosition).toBeNull();
-    });
-
-    it('should notify state change immediately', () => {
-      manager.toggleEnabled(); // Enable first
-      stateCallback.mockClear();
-      const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      expect(stateCallback).toHaveBeenCalled();
-    });
+  it('accepts a completed result after a newer target has been queued', () => {
+    enableAt();
+    move(500, 200);
+    runFrame(34);
+    requests.push(result(1, 400, 300));
+    runFrame(35);
+    expect(manager.getState().canvasPosition).toEqual({ x: 400, y: 300 });
   });
 
-  describe('Continuous Pixel Reading', () => {
-    beforeEach(() => {
-      manager.toggleEnabled(); // Enable inspector for all pixel reading tests
-    });
-
-    it('should read pixels continuously when active', () => {
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      // Execute the RAF callback with a timestamp >= 100ms later
-      (global as any).executeRAFCallbacks(100);
-
-      expect(mockRenderingEngine.readPixel).toHaveBeenCalled();
-    });
-
-    it('should throttle pixel reads to ~10fps (100ms)', () => {
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      // Execute at 50ms - should not read (throttled)
-      (mockRenderingEngine.readPixel as any).mockClear();
-      (global as any).executeRAFCallbacks(50);
-      expect(mockRenderingEngine.readPixel).not.toHaveBeenCalled();
-
-      // Execute at 110ms - should read
-      (global as any).executeRAFCallbacks(110);
-      expect(mockRenderingEngine.readPixel).toHaveBeenCalled();
-    });
-
-    it('should render before reading pixels when paused', () => {
-      (mockTimeManager.isPaused as any).mockReturnValue(true);
-
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      (global as any).executeRAFCallbacks(150);
-
-      expect(mockRenderingEngine.render).toHaveBeenCalled();
-      expect(mockRenderingEngine.readPixel).toHaveBeenCalled();
-    });
-
-    it('should not render before reading pixels when playing', () => {
-      (mockTimeManager.isPaused as any).mockReturnValue(false);
-
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      (global as any).executeRAFCallbacks(150);
-
-      expect(mockRenderingEngine.render).not.toHaveBeenCalled();
-      expect(mockRenderingEngine.readPixel).toHaveBeenCalled();
-    });
-
-    it('should update pixel color when locked (position frozen, color updates)', () => {
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-      manager.handleCanvasClick(); // Lock
-
-      // Change the pixel color
-      (mockRenderingEngine.readPixel as any).mockReturnValue({ r: 128, g: 255, b: 0, a: 255 });
-
-      (global as any).executeRAFCallbacks(150);
-
-      // Should still be reading pixels even when locked
-      expect(mockRenderingEngine.readPixel).toHaveBeenCalled();
-    });
-
-    it('should update state with pixel data', () => {
-      (mockRenderingEngine.readPixel as any).mockReturnValue({ r: 255, g: 128, b: 64, a: 255 });
-
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      (global as any).executeRAFCallbacks(150);
-
-      const state = manager.getState();
-      expect(state.pixelRGB).toEqual({ r: 255, g: 128, b: 64 });
-    });
-
-    it('should calculate fragCoord correctly', () => {
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      (global as any).executeRAFCallbacks(150);
-
-      const state = manager.getState();
-      expect(state.fragCoord).toBeDefined();
-      expect(state.fragCoord?.x).toBe(400); // canvasX
-      expect(state.fragCoord?.y).toBe(300); // canvas.height - canvasY = 600 - 300
-    });
-
-    it('should set canvas position for crosshair', () => {
-      const mockEvent = { clientX: 400, clientY: 300 } as MouseEvent;
-      manager.handleMouseMove(mockEvent);
-
-      (global as any).executeRAFCallbacks(150);
-
-      const state = manager.getState();
-      expect(state.canvasPosition).toBeDefined();
-      expect(state.canvasPosition?.x).toBe(400);
-      expect(state.canvasPosition?.y).toBe(300);
-    });
+  it('ignores stale and malformed results without clearing a prior snapshot', () => {
+    enableAt();
+    requests.push(result(1, 400, 300));
+    runFrame(1);
+    const accepted = manager.getState().region;
+    requests.push({ ...result(2, 500, 200), width: 59 }, result(1, 1, 1));
+    runFrame(2);
+    expect(manager.getState().region).toBe(accepted);
   });
 
-  describe('Disposal', () => {
-    it('should stop continuous updates on dispose', () => {
-      manager.toggleEnabled(); // Enable first so continuous updates are running
-      manager.dispose();
+  it('rejects hostile collection values and future IDs without advancing the accepted floor', () => {
+    enableAt();
+    const first = result(1, 400, 300, [1, 2, 3, 255]);
+    requests.push(first);
+    runFrame(1);
+    runFrame(34); // Issues request 2.
+    const accepted = manager.getState().region;
+    const collect = engine.collectPixelRegionResults as ReturnType<typeof vi.fn>;
+    collect
+      .mockReturnValueOnce('not an array')
+      .mockReturnValueOnce([
+        null,
+        undefined,
+        7,
+        {},
+        { ...result(2, 10, 20), rgba: new Uint8Array(REGION_SIZE * REGION_SIZE * 4) },
+        { ...result(2, 10, 20), rgba: new Uint8ClampedArray(4) },
+        { ...result(Number.NaN, 10, 20) },
+        { ...result(Number.POSITIVE_INFINITY, 10, 20) },
+        { ...result(1.5, 10, 20) },
+        { ...result(999, 10, 20) },
+        { ...result(2, Number.POSITIVE_INFINITY, 20) },
+        { ...result(2, 10, Number.NaN) },
+        { ...result(2, 10.5, 20) },
+        { ...result(2, 10, 20.5) },
+      ]);
 
-      expect(window.cancelAnimationFrame).toHaveBeenCalled();
-    });
+    expect(() => runFrame(35)).not.toThrow();
+    expect(rafCallbacks).toHaveLength(1);
+    expect(() => runFrame(36)).not.toThrow();
+    expect(rafCallbacks).toHaveLength(1);
+    expect(manager.getState().region).toBe(accepted);
 
-    it('should clear rendering engine reference', () => {
-      manager.dispose();
-
-      // Verify cleanup by trying to read state - should not crash
-      const state = manager.getState();
-      expect(state).toBeDefined();
-    });
+    const genuine = result(2, 500, 200, [9, 8, 7, 255]);
+    requests.push(genuine);
+    runFrame(37);
+    expect(manager.getState().region?.rgba).toBe(genuine.rgba);
+    expect(manager.getState().pixelRGB).toEqual({ r: 9, g: 8, b: 7 });
   });
 
-  describe('Performance - No Lag When Playing', () => {
-    beforeEach(() => {
-      manager.toggleEnabled(); // Enable inspector for performance tests
-    });
-
-    it('should not render on every mouse move when playing', () => {
-      (mockTimeManager.isPaused as any).mockReturnValue(false);
-
-      // Move mouse multiple times
-      for (let i = 0; i < 10; i++) {
-        const mockEvent = { clientX: 100 + i * 10, clientY: 100 + i * 10 } as MouseEvent;
-        manager.handleMouseMove(mockEvent);
+  it('reschedules its RAF in finally when an unexpected publication error escapes', () => {
+    manager.dispose();
+    let throwOnUpdate = false;
+    manager = new PixelInspectorManager(() => {
+      if (throwOnUpdate) {
+        throw new Error('state callback failed');
       }
-
-      // Should not have called render (only reads from already-rendered buffer)
-      expect(mockRenderingEngine.render).not.toHaveBeenCalled();
     });
+    manager.initialize(engine, timeManager, {
+      width: 800,
+      height: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLCanvasElement);
+    enableAt();
+    requests.push(result(1, 400, 300));
+    throwOnUpdate = true;
 
-    it('should update mouse position smoothly (not throttled)', () => {
-      const positions = [
-        { clientX: 100, clientY: 100 },
-        { clientX: 110, clientY: 110 },
-        { clientX: 120, clientY: 120 },
-      ];
+    try {
+      expect(() => runFrame(1)).toThrowError('state callback failed');
+      expect(rafCallbacks).toHaveLength(1);
+    } finally {
+      throwOnUpdate = false;
+    }
+  });
 
-      positions.forEach((pos) => {
-        manager.handleMouseMove(pos as MouseEvent);
-        const state = manager.getState();
-        expect(state.mouseX).toBe(pos.clientX);
-        expect(state.mouseY).toBe(pos.clientY);
-      });
+  it('requests before rendering when paused and never forces render while playing', () => {
+    (timeManager.isPaused as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const calls: string[] = [];
+    (engine.requestPixelRegion as ReturnType<typeof vi.fn>).mockImplementation((id, x, y) => {
+      calls.push('request'); queued.push([id, x, y]); return true;
     });
+    (engine.render as ReturnType<typeof vi.fn>).mockImplementation(() => calls.push('render'));
+    enableAt();
+    expect(calls).toEqual(['request', 'render']);
+    (timeManager.isPaused as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    runFrame(34);
+    expect(calls).toEqual(['request', 'render', 'request']);
+  });
+
+  it('retries rejected queues without advancing the cadence timestamp', () => {
+    (engine.requestPixelRegion as ReturnType<typeof vi.fn>).mockReturnValueOnce(false).mockReturnValue(true);
+    enableAt();
+    runFrame(1);
+    expect(engine.requestPixelRegion).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes a locked target and lockToPosition only schedules its next read', () => {
+    manager.setEnabled(true);
+    manager.lockToPosition(123.8, 321.2);
+    expect(queued).toEqual([]);
+    runFrame(0);
+    expect(queued).toEqual([[1, 123, 321]]);
+    runFrame(34);
+    expect(queued).toHaveLength(2);
+  });
+
+  it('cancels and clears immediately on pointer exit, disable, replacement, and dispose', () => {
+    enableAt();
+    requests.push(result(1, 400, 300));
+    runFrame(1);
+    move(-1, -1);
+    expect(manager.getState()).toMatchObject({ region: null, pixelRGB: null, canvasPosition: null });
+    expect(engine.cancelPixelRegionRequests).toHaveBeenCalled();
+    manager.setEnabled(false);
+    manager.dispose();
+    expect(engine.cancelPixelRegionRequests).toHaveBeenCalledTimes(3);
+  });
+
+  it('drops the old target and late result when a rendering session is replaced', () => {
+    enableAt();
+    const replacementRequests: Array<[number, number, number]> = [];
+    const replacementResults: PixelRegionResult[] = [result(1, 400, 300)];
+    const replacement = {
+      requestPixelRegion: vi.fn((id: number, x: number, y: number) => {
+        replacementRequests.push([id, x, y]);
+        return true;
+      }),
+      collectPixelRegionResults: vi.fn(() => replacementResults.splice(0)),
+      cancelPixelRegionRequests: vi.fn(),
+      render: vi.fn(),
+    } as unknown as RenderingEngine;
+
+    manager.initialize(replacement, timeManager, {
+      width: 800,
+      height: 600,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    } as HTMLCanvasElement);
+    runFrame(34);
+
+    expect(engine.cancelPixelRegionRequests).toHaveBeenCalled();
+    expect(replacementRequests).toEqual([]);
+    expect(manager.getState().region).toBeNull();
+
+    move(200, 100);
+    runFrame(35);
+    expect(replacementRequests).toEqual([[2, 200, 100]]);
+  });
+
+  it('does not start duplicate RAF loops', () => {
+    manager.setEnabled(true);
+    manager.setEnabled(true);
+    expect(rafCallbacks).toHaveLength(1);
   });
 });

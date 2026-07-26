@@ -2,6 +2,7 @@
 import { render, fireEvent } from '@testing-library/svelte';
 import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { tick } from 'svelte';
 import PixelInspectorSection from '../../../lib/components/debug/PixelInspectorSection.svelte';
 import {
   setInspectorState,
@@ -20,6 +21,7 @@ const DEFAULT_STATE: PixelInspectorState = {
   pixelRGB: null,
   fragCoord: null,
   canvasPosition: null,
+  region: null,
 };
 
 const PIXEL_STATE: PixelInspectorState = {
@@ -84,6 +86,44 @@ describe('PixelInspectorSection', () => {
   describe('with pixel selected', () => {
     beforeEach(() => {
       setInspectorState({ ...PIXEL_STATE });
+    });
+
+    it('redraws the zoom canvas when movement only changes screen-space mouse coordinates', async () => {
+      const drawImage = vi.fn();
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+        mockRestore(): void;
+        mockReturnValue(value: CanvasRenderingContext2D): void;
+      };
+      getContext.mockReturnValue({
+        beginPath: vi.fn(),
+        clearRect: vi.fn(),
+        drawImage,
+        lineTo: vi.fn(),
+        moveTo: vi.fn(),
+        stroke: vi.fn(),
+        strokeRect: vi.fn(),
+      } as unknown as CanvasRenderingContext2D);
+
+      try {
+        render(PixelInspectorSection, {
+          canvasElement: makeCanvas(),
+          canvasWidth: 400,
+          canvasHeight: 300,
+        });
+        await tick();
+        expect(drawImage).toHaveBeenCalledTimes(1);
+
+        setInspectorState({
+          ...PIXEL_STATE,
+          mouseX: 40,
+          mouseY: 50,
+        });
+        await tick();
+
+        expect(drawImage).toHaveBeenCalledTimes(2);
+      } finally {
+        getContext.mockRestore();
+      }
     });
 
     it('shows info grid with RGB, Hex, Float, fragCoord, UV', () => {
