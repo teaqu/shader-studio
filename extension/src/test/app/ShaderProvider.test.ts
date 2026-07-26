@@ -382,20 +382,20 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
     });
 
-    test('should map BufferA-D to resolved absolute paths', () => {
+    test('should map configured buffer names to resolved absolute paths', () => {
       const config = {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
           BufferA: { path: 'bufferA.glsl', inputs: {} },
-          BufferB: { path: 'bufferB.glsl', inputs: {} },
+          BlurPass: { path: 'blur.glsl', inputs: {} },
         }
       };
 
       const result = (provider as any).buildBufferPathMap(config, '/path/to/shader.glsl');
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
       assert.strictEqual(result.BufferA, '/resolved/bufferA.glsl');
-      assert.strictEqual(result.BufferB, '/resolved/bufferB.glsl');
+      assert.strictEqual(result.BlurPass, '/resolved/blur.glsl');
     });
 
     test('should handle common buffer', () => {

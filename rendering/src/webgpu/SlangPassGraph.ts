@@ -22,13 +22,7 @@ export interface BuildSlangPassGraphOptions {
   canvasHeight: number;
 }
 
-const RENDERABLE_PASS_NAMES: RenderPassName[] = ["BufferA", "BufferB", "BufferC", "BufferD", "Image"];
-
-// Only buffer passes render to textures a channel can sample. "Image" and
-// "common" are configured passes too, so a configured-names check alone would
-// let them through and the pass would silently skip every frame at render
-// time (its channel source never resolves to a texture view).
-const BUFFER_PASS_NAMES = new Set<string>(["BufferA", "BufferB", "BufferC", "BufferD"]);
+const RESERVED_PASS_NAMES = new Set<string>(["Image", "common"]);
 
 export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): RenderPassGraph {
   const canvasWidth = Math.max(1, Math.round(options.canvasWidth));
@@ -55,9 +49,14 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   }
 
   const configuredNames = new Set(Object.keys(config.passes));
+  const bufferPassNames = Object.keys(config.passes).filter(
+    (name) => !RESERVED_PASS_NAMES.has(name),
+  );
+  const configuredBufferNames = new Set(bufferPassNames);
+  const renderablePassNames: RenderPassName[] = [...bufferPassNames, "Image"];
   const passes: RenderPassNode[] = [];
 
-  for (const name of RENDERABLE_PASS_NAMES) {
+  for (const name of renderablePassNames) {
     const passConfig = config.passes[name];
     if (!passConfig && name !== "Image") {
       continue;
@@ -94,6 +93,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         passName: name,
         inputs: passConfig?.inputs ?? {},
         configuredNames,
+        configuredBufferNames,
         warnings,
         errors,
       }),
@@ -154,6 +154,7 @@ function resolveChannels(options: {
   passName: RenderPassName;
   inputs: Record<string, ConfigInput>;
   configuredNames: Set<string>;
+  configuredBufferNames: Set<string>;
   warnings: string[];
   errors: string[];
 }): RenderPassChannel[] {
@@ -245,15 +246,14 @@ function resolveChannels(options: {
       continue;
     }
 
-    if (!BUFFER_PASS_NAMES.has(input.source)) {
-      options.errors.push(
-        `${options.passName}: ${key} source "${input.source}" is not a buffer pass (must be BufferA-BufferD)`,
-      );
-      continue;
-    }
-
-    if (!options.configuredNames.has(input.source)) {
-      options.errors.push(`${options.passName}: ${key} references missing buffer "${input.source}"`);
+    if (!options.configuredBufferNames.has(input.source)) {
+      if (options.configuredNames.has(input.source)) {
+        options.errors.push(
+          `${options.passName}: ${key} source "${input.source}" is not a buffer pass`,
+        );
+      } else {
+        options.errors.push(`${options.passName}: ${key} references missing buffer "${input.source}"`);
+      }
       continue;
     }
 

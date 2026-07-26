@@ -733,6 +733,41 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
+  it("compiles arbitrary configured buffer names", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const { compiler } = stubEngineInternals(engine);
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "Bloom" } } },
+        SceneData: { path: "scene.slang", inputs: {} },
+        Bloom: { path: "bloom.slang", inputs: {} },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      config,
+      "/image.slang",
+      {
+        SceneData: "float4 mainImage(float2 c) { return float4(1); }",
+        Bloom: "float4 mainImage(float2 c) { return float4(2); }",
+      },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(engine.getPasses().map((pass) => pass.name)).toEqual([
+      "SceneData",
+      "Bloom",
+      "Image",
+    ]);
+    expect(compiler.compile.mock.calls.map((call) => call[1].passName)).toEqual([
+      "SceneData",
+      "Bloom",
+      "Image",
+    ]);
+  });
+
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
@@ -2411,8 +2446,8 @@ describe("WebGPURenderingEngine", () => {
     const bufferConfig: ShaderConfig = {
       version: "1",
       passes: {
-        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-        BufferA: { path: "buffer-a.slang", inputs: {} },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BlurPass" } } },
+        BlurPass: { path: "blur.slang", inputs: {} },
       },
     };
 
@@ -2424,7 +2459,7 @@ describe("WebGPURenderingEngine", () => {
         "float4 mainImage(float2 c) { return float4(0); }",
         bufferConfig,
         "/image.slang",
-        { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+        { BlurPass: "float4 mainImage(float2 c) { return float4(1); }" },
       );
       expect(result?.success).toBe(true);
       return { engine, device, compiler };
@@ -2435,20 +2470,20 @@ describe("WebGPURenderingEngine", () => {
       compiler.compile.mockClear();
 
       const result = await engine.updateBufferAndRecompile(
-        "BufferA",
+        "BlurPass",
         "float4 mainImage(float2 c) { return float4(9); }",
       );
 
       expect(result?.success).toBe(true);
-      // Only BufferA's content changed; the per-pass compile cache reuses
+      // Only BlurPass's content changed; the per-pass compile cache reuses
       // Image's unchanged pipeline instead of recompiling it.
       expect(compiler.compile).toHaveBeenCalledTimes(1);
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(9)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ passName: "BlurPass" }),
       );
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
     });
 
     it("keeps the previous pipelines when the recompile fails", async () => {
@@ -2456,12 +2491,12 @@ describe("WebGPURenderingEngine", () => {
       const pipelinesBefore = new Map((engine as any).passPipelines as Map<string, unknown>);
       compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
 
-      const result = await engine.updateBufferAndRecompile("BufferA", "broken {");
+      const result = await engine.updateBufferAndRecompile("BlurPass", "broken {");
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
       expect((engine as any).passPipelines).toEqual(pipelinesBefore);
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
       expect(device.createCommandEncoder).not.toHaveBeenCalled();
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
@@ -2479,7 +2514,7 @@ describe("WebGPURenderingEngine", () => {
         "float4 mainImage(float2 c) { broken syntax }",
         bufferConfig,
         "/different.slang",
-        { BufferA: "broken {" },
+        { BlurPass: "broken {" },
       );
 
       expect(result?.success).toBe(false);
@@ -2508,14 +2543,14 @@ describe("WebGPURenderingEngine", () => {
     it("uses the updated content on subsequent updates too", async () => {
       const { engine, compiler } = await compiledEngine();
 
-      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(7); }");
+      await engine.updateBufferAndRecompile("BlurPass", "float4 mainImage(float2 c) { return float4(7); }");
       compiler.compile.mockClear();
-      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(8); }");
+      await engine.updateBufferAndRecompile("BlurPass", "float4 mainImage(float2 c) { return float4(8); }");
 
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(8)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ passName: "BlurPass" }),
       );
     });
 
@@ -2526,7 +2561,7 @@ describe("WebGPURenderingEngine", () => {
       const result = await engine.updateBufferAndRecompile("BufferZ", "float4 mainImage(float2 c) { return float4(0); }");
 
       expect(result?.success).toBe(true);
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
     });
 
     it("returns a clear failure when no shader has been compiled yet", async () => {

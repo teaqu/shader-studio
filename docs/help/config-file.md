@@ -220,10 +220,10 @@ Buffer passes use a simpler fixed-size resolution:
 | Pass | Description |
 |------|-------------|
 | **Image** | Main output pass (required, always present) |
-| **BufferA–D** | Intermediate render passes. Each renders to its own framebuffer and can be read by other passes. |
+| **Named buffer passes** | Intermediate render passes. `BufferA`–`BufferD` are conventional examples, but any valid identifier such as `BlurPass` is supported. Each renders to its own framebuffer and can be read by other passes. |
 | **Common** | Shared GLSL code included in all passes. Useful for shared functions and constants. |
 
-Each non-Image pass needs a `path` field pointing to its `.glsl` file. If the file doesn't exist, the visual editor offers a button to create it.
+Each buffer pass needs a `path` field pointing to its `.glsl` or `.slang` file. If the file doesn't exist, the visual editor offers a button to create it.
 
 ## Channel Types
 

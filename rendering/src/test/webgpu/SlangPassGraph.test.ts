@@ -74,14 +74,67 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
-  it("marks buffer pass inputs as previous-frame reads so self-feedback is valid", () => {
+  it("creates arbitrary configured buffer passes in declaration order before Image", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-        BufferA: {
-          path: "buffer-a.slang",
-          inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BlurPass" } } },
+        GBuffer: { path: "gbuffer.slang", inputs: {} },
+        BlurPass: { path: "blur.slang", inputs: {} },
+      },
+    };
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: { GBuffer: imageCode, BlurPass: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => pass.name)).toEqual(["GBuffer", "BlurPass", "Image"]);
+    expect(graph.passes.at(-1)?.channels).toEqual([
+      {
+        kind: "buffer",
+        slot: 0,
+        key: "iChannel0",
+        source: "BlurPass",
+        readFrom: "current-frame",
+      },
+    ]);
+  });
+
+  it("creates more than four configured buffer passes", () => {
+    const names = ["First", "Second", "Third", "Fourth", "Fifth"];
+    const passes = Object.fromEntries(
+      names.map((name) => [name, { path: `${name}.slang`, inputs: {} }]),
+    );
+    const buffers = Object.fromEntries(names.map((name) => [name, imageCode]));
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: { Image: { inputs: {} }, ...passes },
+      } as ShaderConfig,
+      buffers,
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => pass.name)).toEqual([...names, "Image"]);
+  });
+
+  it("marks arbitrary buffer pass inputs as previous-frame reads so self-feedback is valid", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        FeedbackState: {
+          path: "feedback.slang",
+          inputs: { iChannel0: { type: "buffer", source: "FeedbackState" } },
         },
       },
     };
@@ -89,14 +142,20 @@ describe("buildSlangPassGraph", () => {
     const graph = buildSlangPassGraph({
       imageCode,
       config,
-      buffers: { BufferA: imageCode },
+      buffers: { FeedbackState: imageCode },
       canvasWidth: 128,
       canvasHeight: 64,
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.passes.find((pass) => pass.name === "BufferA")?.channels).toEqual([
-      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "previous-frame" },
+    expect(graph.passes.find((pass) => pass.name === "FeedbackState")?.channels).toEqual([
+      {
+        kind: "buffer",
+        slot: 0,
+        key: "iChannel0",
+        source: "FeedbackState",
+        readFrom: "previous-frame",
+      },
     ]);
   });
 
@@ -107,7 +166,7 @@ describe("buildSlangPassGraph", () => {
         Image: {
           inputs: {
             iChannel0: { type: "audio", path: "noise.mp3" },
-            iChannel1: { type: "buffer", source: "BufferB" },
+            iChannel1: { type: "buffer", source: "MissingPass" },
           },
         },
         BufferA: { path: "buffer-a.slang", inputs: {} },
@@ -123,7 +182,7 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
-    expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"BufferB\"");
+    expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"MissingPass\"");
     expect(graph.warnings).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toContainEqual({
       kind: "audio", slot: 0, key: "iChannel0", path: "noise.mp3",
@@ -156,10 +215,10 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toContain(
-      "Image: iChannel0 source \"common\" is not a buffer pass (must be BufferA-BufferD)",
+      "Image: iChannel0 source \"common\" is not a buffer pass",
     );
     expect(graph.errors).toContain(
-      "Image: iChannel1 source \"Image\" is not a buffer pass (must be BufferA-BufferD)",
+      "Image: iChannel1 source \"Image\" is not a buffer pass",
     );
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
   });
@@ -315,7 +374,7 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
   });
 
-  it("orders passes BufferA, BufferB, Image regardless of config key order", () => {
+  it("preserves configured buffer order and places Image last", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
@@ -334,7 +393,7 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.passes.map((pass) => pass.name)).toEqual(["BufferA", "BufferB", "Image"]);
+    expect(graph.passes.map((pass) => pass.name)).toEqual(["BufferB", "BufferA", "Image"]);
   });
 
   it("sorts channels by slot when inputs are declared out of order", () => {
