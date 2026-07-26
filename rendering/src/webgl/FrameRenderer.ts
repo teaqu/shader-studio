@@ -37,6 +37,7 @@ export class FrameRenderer {
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
+  private postImageCallback: (() => void) | null = null;
 
   constructor(
     timeManager: TimeManager,
@@ -76,6 +77,11 @@ export class FrameRenderer {
 
   public setCustomUniformManager(manager: CustomUniformManager | null): void {
     this.customUniformManager = manager;
+  }
+
+  /** Runs after the final Image pass (or its clear fallback) has completed. */
+  public setPostImageCallback(callback: (() => void) | null): void {
+    this.postImageCallback = callback;
   }
 
   public setFPSLimit(limit: number): void {
@@ -177,6 +183,7 @@ export class FrameRenderer {
     const customUniforms = this.evaluateCustomUniforms();
     this.renderBufferPasses(uniforms, customUniforms);
     this.renderImagePass(uniforms, customUniforms);
+    this.postImageCallback?.();
   }
 
   public startRenderLoop(): void {
@@ -268,6 +275,7 @@ export class FrameRenderer {
     }
 
     this.renderImagePass(uniforms, customUniforms, isPaused);
+    this.postImageCallback?.();
 
     // Track actual frame-to-frame wall time (RAF delta) only when running
     if (!isPaused) {
