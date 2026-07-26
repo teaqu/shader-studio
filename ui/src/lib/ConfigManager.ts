@@ -2,6 +2,14 @@ import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferRes
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
 
+export type BufferRenameError =
+  | 'config-unavailable'
+  | 'source-not-found'
+  | 'same-name'
+  | 'reserved-name'
+  | 'invalid-identifier'
+  | 'name-taken';
+
 export class ConfigManager {
   private config: ShaderConfig | null = null;
   private pathMap: Record<string, string> = {};
@@ -199,36 +207,48 @@ export class ConfigManager {
   }
 
   /**
+     * Validate a buffer-pass rename without changing the configuration.
+     */
+  validateBufferRename(oldName: string, newName: string): BufferRenameError | null {
+    if (!this.config) {
+      return 'config-unavailable';
+    }
+
+    const sourcePass: BufferPass | ImagePass | undefined = this.config.passes[oldName];
+    if (!sourcePass) {
+      return 'source-not-found';
+    }
+    if (oldName === newName) {
+      return 'same-name';
+    }
+    if (oldName === 'Image' || oldName === 'common') {
+      return 'reserved-name';
+    }
+    if (newName === 'Image' || newName === 'common') {
+      return 'reserved-name';
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
+      return 'invalid-identifier';
+    }
+    if (this.config.passes[newName]) {
+      return 'name-taken';
+    }
+
+    return null;
+  }
+
+  /**
      * Rename a buffer pass
      */
   renameBuffer(oldName: string, newName: string): boolean {
-    if (!this.config) {
-      return false;
-    }
-    if (oldName === newName) {
-      return false;
-    }
-    if (oldName === 'Image' || oldName === 'common') {
-      return false;
-    }
-    if (newName === 'Image' || newName === 'common') {
-      return false;
-    }
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
-      return false;
-    }
-    if (this.config.passes[newName]) {
-      return false;
-    }
-
-    const pass = this.config.passes[oldName];
-    if (!pass) {
+    if (this.validateBufferRename(oldName, newName) !== null || !this.config) {
       return false;
     }
 
     // Build new passes object preserving key order
-    const newPasses: Record<string, any> = {};
-    for (const [key, value] of Object.entries(this.config.passes)) {
+    const newPasses = {} as ShaderConfig['passes'];
+    for (const key of Object.keys(this.config.passes)) {
+      const value: BufferPass | ImagePass | undefined = this.config.passes[key];
       if (key === oldName) {
         newPasses[newName] = value;
       } else {
@@ -238,7 +258,7 @@ export class ConfigManager {
 
     const updatedConfig = {
       ...this.config,
-      passes: newPasses as typeof this.config.passes
+      passes: newPasses
     };
     this.updateConfig(updatedConfig);
     return true;

@@ -288,6 +288,22 @@ describe('ConfigManager', () => {
   });
 
   describe('renameBuffer', () => {
+    it('reports typed validation results for every rename outcome', () => {
+      expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBe('config-unavailable');
+
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.validateBufferRename('Missing', 'BlurPass')).toBe('source-not-found');
+      expect(configManager.validateBufferRename('BufferA', 'BufferA')).toBe('same-name');
+      expect(configManager.validateBufferRename('Image', 'BlurPass')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', '0invalid')).toBe('invalid-identifier');
+      expect(configManager.validateBufferRename('BufferA', 'BufferB')).toBe('name-taken');
+      expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBeNull();
+    });
+
     it('should rename a buffer pass', () => {
       const config = createTestConfig();
       config.passes.BufferA = { path: 'a.glsl', inputs: {} };
