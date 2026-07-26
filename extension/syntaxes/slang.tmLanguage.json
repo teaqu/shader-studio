@@ -296,7 +296,7 @@
         {
           "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b",
           "captures": {
-            "1": { "name": "punctuation.accessor.slang" },
+            "1": { "name": "variable.other.property.swizzle.slang" },
             "2": { "name": "variable.other.property.swizzle.slang" }
           }
         }

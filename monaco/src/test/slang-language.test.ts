@@ -277,6 +277,130 @@ describe('Slang Monarch language', () => {
     }
   }, 15_000);
 
+  it('highlights control flow, user functions, and complete swizzles in both languages', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
+    setupMonacoGlsl(monaco);
+    setupMonacoSlang(monaco);
+
+    const sourceLines = [
+      'float shade(float value) {',
+      '  if (value > 0.0) {',
+      '    for (int index = 0; index < 2; index++) {',
+      '      value += shade(iResolution.xy.x + color.rgba.x + texcoord.stpq.x);',
+      '    }',
+      '    while (value > 1.0) { value -= 1.0; }',
+      '    switch (int(value)) { case 0: break; default: continue; }',
+      '  }',
+      '  return value;',
+      '}',
+    ];
+    const source = sourceLines.join('\n');
+    const expectedTypes = {
+      glsl: {
+        control: 'keyword.glsl',
+        function: 'support.function.glsl',
+        swizzle: 'variable.predefined.member.glsl',
+      },
+      slang: {
+        control: 'keyword.control.slang',
+        function: 'support.function.slang',
+        swizzle: 'variable.predefined.member.slang',
+      },
+    } as const;
+
+    for (const language of ['glsl', 'slang'] as const) {
+      const lines = monaco.editor.tokenize(source, language);
+      const tokenAt = (lineIndex: number, text: string, last = false) => {
+        const line = sourceLines[lineIndex];
+        const offset = last ? line.lastIndexOf(text) : line.indexOf(text);
+        return [...lines[lineIndex]].reverse().find((token) => token.offset <= offset)?.type;
+      };
+
+      expect.soft(tokenAt(1, 'if'), `${language} if`).toBe(expectedTypes[language].control);
+      expect.soft(tokenAt(2, 'for'), `${language} for`).toBe(expectedTypes[language].control);
+      expect.soft(tokenAt(5, 'while'), `${language} while`).toBe(expectedTypes[language].control);
+      expect.soft(tokenAt(6, 'switch'), `${language} switch`).toBe(expectedTypes[language].control);
+      expect.soft(tokenAt(0, 'shade'), `${language} function definition`)
+        .toBe(expectedTypes[language].function);
+      expect.soft(tokenAt(3, 'shade'), `${language} function call`)
+        .toBe(expectedTypes[language].function);
+      expect.soft(tokenAt(3, '.xy'), `${language} .xy`)
+        .toBe(expectedTypes[language].swizzle);
+      expect.soft(tokenAt(3, '.rgba'), `${language} .rgba`)
+        .toBe(expectedTypes[language].swizzle);
+      expect.soft(tokenAt(3, '.stpq'), `${language} .stpq`)
+        .toBe(expectedTypes[language].swizzle);
+      expect.soft(tokenAt(3, '.x', true), `${language} .x`)
+        .toBe(expectedTypes[language].swizzle);
+    }
+  });
+
+  it('covers the remaining GLSL theme-facing vocabulary families', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoGlsl } = await import('../setup');
+    setupMonacoGlsl(monaco);
+
+    const sourceLines = [
+      'layout(std430) sample readonly buffer Data { dvec3 value; };',
+      'uniform dmat4x4 transform;',
+      'uniform samplerCubeArrayShadow shadowMap;',
+      'uniform image2D outputImage;',
+      'atomic_uint counter;',
+      'void main() {',
+      '  vec2 uv = gl_FragCoord.xy / iResolution.xy;',
+      '  imageStore(outputImage, ivec2(uv), vec4(subgroupAdd(value.x)));',
+      '  vec4 channel = texture(iChannel9, uv);',
+      '}',
+    ];
+    const lines = monaco.editor.tokenize(sourceLines.join('\n'), 'glsl');
+    const tokenAt = (lineIndex: number, text: string) => {
+      const offset = sourceLines[lineIndex].indexOf(text);
+      return [...lines[lineIndex]].reverse().find((token) => token.offset <= offset)?.type;
+    };
+
+    for (const [line, text] of [
+      [0, 'layout'],
+      [0, 'sample'],
+      [0, 'readonly'],
+      [0, 'buffer'],
+    ] as const) {
+      expect.soft(tokenAt(line, text), text).toBe('keyword.glsl');
+    }
+    for (const [line, text] of [
+      [0, 'dvec3'],
+      [1, 'dmat4x4'],
+      [2, 'samplerCubeArrayShadow'],
+      [3, 'image2D'],
+      [4, 'atomic_uint'],
+    ] as const) {
+      expect.soft(tokenAt(line, text), text).toBe('type.glsl');
+    }
+    for (const [line, text] of [
+      [6, 'gl_FragCoord'],
+      [8, 'iChannel9'],
+    ] as const) {
+      expect.soft(tokenAt(line, text), text).toBe('variable.predefined.glsl');
+    }
+    for (const [line, text] of [
+      [5, 'main'],
+      [7, 'imageStore'],
+      [7, 'subgroupAdd'],
+    ] as const) {
+      expect.soft(tokenAt(line, text), text).toBe('support.function.glsl');
+    }
+  });
+
   it('colours Slang-native functions, uniforms, and constants by GLSL category', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,
