@@ -9,6 +9,7 @@ const DEFAULT: PixelInspectorState = {
   pixelRGB: null,
   fragCoord: null,
   canvasPosition: null,
+  region: null,
 };
 
 let _state = $state<PixelInspectorState>({ ...DEFAULT });
