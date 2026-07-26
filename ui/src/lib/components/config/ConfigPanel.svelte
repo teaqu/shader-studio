@@ -53,6 +53,7 @@
   let menuTab = $state<string | null>(null);
   let menuX = $state(0);
   let menuY = $state(0);
+  let menuElement = $state<HTMLDivElement | null>(null);
   let menuButton = $state<HTMLButtonElement | null>(null);
   let menuTrigger = $state<HTMLButtonElement | null>(null);
   let renamingTab = $state<string | null>(null);
@@ -277,6 +278,7 @@
     menuY = event.clientY;
     menuTrigger = trigger;
     await tick();
+    clampMenuPosition();
     menuButton?.focus();
   }
 
@@ -292,7 +294,17 @@
     menuY = bounds.bottom;
     menuTrigger = trigger;
     await tick();
+    clampMenuPosition();
     menuButton?.focus();
+  }
+
+  function clampMenuPosition() {
+    if (!menuElement) {
+      return;
+    }
+    const bounds = menuElement.getBoundingClientRect();
+    menuX = Math.max(0, Math.min(menuX, window.innerWidth - bounds.width));
+    menuY = Math.max(0, Math.min(menuY, window.innerHeight - bounds.height));
   }
 
   function dismissRenameMenu(restoreTriggerFocus = false) {
@@ -311,6 +323,19 @@
 
   function handleWindowClick(event: MouseEvent) {
     if (menuTab && !(event.target as HTMLElement).closest(".buffer-rename-menu")) {
+      dismissRenameMenu();
+    }
+  }
+
+  function handleWindowContextMenu() {
+    if (menuTab) {
+      dismissRenameMenu();
+    }
+  }
+
+  function handleWindowFocusOut(event: FocusEvent) {
+    const nextFocusTarget = event.relatedTarget as Node | null;
+    if (menuTab && !menuElement?.contains(nextFocusTarget)) {
       dismissRenameMenu();
     }
   }
@@ -361,7 +386,12 @@
   });
 </script>
 
-<svelte:window onkeydown={handleWindowKeyDown} onclick={handleWindowClick} />
+<svelte:window
+  onkeydown={handleWindowKeyDown}
+  onclick={handleWindowClick}
+  oncontextmenu={handleWindowContextMenu}
+  onfocusout={handleWindowFocusOut}
+/>
 
 <div class="config-panel" class:visible={isVisible}>
   <div class="config-content">
@@ -369,7 +399,7 @@
     <div class="tab-navigation">
       {#each allTabs as tabName (tabName)}
         {#if renamingTab === tabName}
-          <div class="tab-rename">
+          <div class="tab-rename" class:active={activeTab === tabName}>
             <input
               class="tab-rename-input"
               type="text"
@@ -377,28 +407,6 @@
               bind:this={renameInput}
               bind:value={renameDraft}
             />
-            {#if config}
-              <span
-                class="tab-close"
-                role="button"
-                tabindex="0"
-                onclick={(event) => {
-                  event.stopPropagation();
-                  removeBuffer(tabName);
-                }}
-                onkeydown={(event) => {
-                  event.stopPropagation();
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    removeBuffer(tabName);
-                  }
-                }}
-                title="Remove {tabName}"
-                aria-label="Remove {tabName}"
-              >
-                ×
-              </span>
-            {/if}
             {#if renameError}
               <p class="tab-rename-error" role="alert">{renameError}</p>
             {/if}
@@ -408,7 +416,12 @@
             class="tab-button {activeTab === tabName ? 'active' : ''}"
             onclick={() => switchTab(tabName)}
             ondblclick={() => handleTabDblClick(tabName)}
-            oncontextmenu={(event) => openRenameMenu(tabName, event, event.currentTarget)}
+            oncontextmenu={(event) => {
+              if (isRenameableTab(tabName)) {
+                event.stopPropagation();
+                openRenameMenu(tabName, event, event.currentTarget);
+              }
+            }}
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
             <span class="tab-label">{tabName}</span>
@@ -511,7 +524,7 @@
 </div>
 
 {#if menuTab}
-  <div class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
+  <div bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
     <button bind:this={menuButton} role="menuitem" onclick={startRename}>Rename</button>
   </div>
 {/if}
@@ -596,6 +609,11 @@
     align-items: center;
     min-height: 28px;
     padding: 2px 8px;
+    color: var(--vscode-tab-inactiveForeground);
+    background: var(--vscode-tab-inactiveBackground);
+  }
+
+  .tab-rename.active {
     color: var(--vscode-tab-activeForeground);
     background: var(--vscode-tab-activeBackground);
   }

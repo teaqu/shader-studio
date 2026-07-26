@@ -646,7 +646,7 @@ describe('ConfigPanel', () => {
     });
 
     it('starts an inline rename shell for only the selected buffer', async () => {
-      const { container, getByRole } = renderRenameableBuffers();
+      const { container, getByRole, queryByRole } = renderRenameableBuffers();
       await tick();
       await fireEvent.contextMenu(getTab(container, 'BufferA'));
       await tick();
@@ -664,6 +664,8 @@ describe('ConfigPanel', () => {
       );
       expect(tabLabels).not.toContain('BufferA');
       expect(tabLabels).toEqual(expect.arrayContaining(['Image', 'Common', 'Script']));
+      expect(queryByRole('button', { name: 'Remove BufferA' })).toBeNull();
+      expect(container.querySelector('.tab-rename')).not.toHaveClass('active');
     });
 
     it('dismisses the menu on outside click', async () => {
@@ -688,6 +690,37 @@ describe('ConfigPanel', () => {
 
       expect(queryByRole('menu')).toBeNull();
       expect(bufferTab).toBe(document.activeElement);
+    });
+
+    it('dismisses the menu when focus leaves without restoring the triggering tab focus', async () => {
+      const { container, getByRole, queryByRole } = renderRenameableBuffers();
+      await tick();
+      const bufferTab = getTab(container, 'BufferA');
+      const imageTab = getTab(container, 'Image');
+      await fireEvent.contextMenu(bufferTab);
+      await tick();
+      expect(getByRole('menuitem', { name: 'Rename' })).toBe(document.activeElement);
+
+      imageTab.focus();
+      await tick();
+
+      expect(queryByRole('menu')).toBeNull();
+      expect(imageTab).toBe(document.activeElement);
+    });
+
+    it('dismisses an open buffer menu when right-clicking protected tabs', async () => {
+      const { container, queryByRole } = renderRenameableBuffers();
+      await tick();
+
+      for (const tabName of ['Image', 'Common', 'Script']) {
+        await fireEvent.contextMenu(getTab(container, 'BufferA'));
+        await tick();
+        expect(queryByRole('menu')).toBeTruthy();
+
+        await fireEvent.contextMenu(getTab(container, tabName));
+        await tick();
+        expect(queryByRole('menu')).toBeNull();
+      }
     });
   });
 
