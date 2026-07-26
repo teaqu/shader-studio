@@ -104,6 +104,7 @@ export const slangPreprocessorPattern = new RegExp(
 const slangMonarchPreprocessorPattern = new RegExp(
   `^\\s*#\\s*(?:${preprocessorAlternation})\\b`,
 );
+const slangMonarchLanguageDirectivePattern = /^(\s*)(#\s*language)\b/;
 export const slangAttributePattern = new RegExp([
   `\\[(?:${attributeAlternation})\\b[^\\]]*\\]`,
   `\\[\\[\\s*${identifier}(?:::${identifier})+(?:\\s*\\([^\\[\\]]*\\))?\\s*\\]\\]`,
@@ -177,6 +178,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
   symbols: /[=><!~?:&|+\-*\/\^%]+/,
   tokenizer: {
     root: [
+      [slangMonarchLanguageDirectivePattern, ['white', 'keyword.preprocessor.language']],
       [slangMonarchPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
       [/R"([^"()\s]*)\([^\r\n]*?\)\1"/, 'string'],

@@ -318,6 +318,23 @@ suite('Bundled Slang syntax assets', () => {
     assert.ok(hasScope(noneValue, 'constant.language.null'));
   });
 
+  test('highlights the complete Slang language directive without swallowing its value', () => {
+    const [tokens] = tokenizeLines('#language "slang" // shader language');
+    const hash = tokens.find((token) => token.text === '#');
+    const directive = tokens.find((token) => token.text === 'language');
+    const value = tokens.find((token) => token.text === 'slang');
+    const comment = tokens.find((token) => hasScope(token, 'comment.line.double-slash'));
+
+    assert.ok(hash);
+    assert.ok(directive);
+    assert.ok(value);
+    assert.ok(comment);
+    assert.ok(hasScope(hash, 'keyword.control.directive.language'));
+    assert.ok(hasScope(directive, 'keyword.control.directive.language'));
+    assert.ok(hasScope(value, 'string.quoted.double'));
+    assert.ok(hasScope(comment, 'comment.line.double-slash'));
+  });
+
   test('uses the same theme-facing function scopes as GLSL', () => {
     const glslLines = tokenizeLines(
       `vec4 shade(vec2 uv) { return vec4(cos(uv.x)); }

@@ -89,6 +89,21 @@
     "preprocessor": {
       "patterns": [
         {
+          "name": "meta.preprocessor.language.slang",
+          "begin": "^\\s*(#)\\s*(language)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.directive.language.slang" },
+            "2": { "name": "keyword.control.directive.language.slang" }
+          },
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#operators" }
+          ]
+        },
+        {
           "name": "meta.preprocessor.slang",
           "begin": "^\\s*(#)\\s*(language|define|undef|if|ifdef|ifndef|elif|else|endif|include|line|pragma|error|warning)\\b",
           "end": "$",
