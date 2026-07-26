@@ -214,6 +214,19 @@ describe('MenuBar', () => {
   });
 
   describe('resolution menu', () => {
+    it('disables canvas zoom in 3D preview and points users to camera zoom', async () => {
+      renderMenuBar({ ...defaultProps, is3DPreview: true });
+      await tick();
+
+      const resolutionButton = screen.getByLabelText('Change resolution settings');
+      await fireEvent.click(resolutionButton);
+      await tick();
+
+      const zoom = screen.getByLabelText('Canvas zoom (use scroll to zoom the 3D camera)') as HTMLInputElement;
+      expect(zoom).toBeDisabled();
+      expect(screen.getByText('Use scroll to zoom the 3D camera.')).toBeTruthy();
+    });
+
     it('should use number inputs for custom resolution width and height', async () => {
       renderMenuBar();
       await tick();

@@ -3,6 +3,13 @@ import type { SlotAssignment } from "../util/InputSlotAssigner";
 
 export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
+export interface MeshShaderSource {
+  vertexSource: string;
+  wrappedCode: string;
+  headerLineCount: number;
+  commonCodeLineCount: number;
+}
+
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 
 export class ShaderCompiler {
@@ -89,6 +96,53 @@ uniform struct {
     const shaderCode = header + code + "\nvoid main() {\n mainImage(fragColor, gl_FragCoord.xy);\n}";
     const headerLineCount = (header.match(/\n/g) || []).length;
     return { wrappedCode: shaderCode, headerLineCount, commonCodeLineCount };
+  }
+
+  /** Buffer passes remain fullscreen; this generated shell is only for Image. */
+  public wrapMeshShaderToyCode(
+    code: string,
+    commonCode?: string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
+  ): MeshShaderSource {
+    const base = this.wrapShaderToyCode(code, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
+    const mainMarker = '\nvoid main() {\n mainImage(fragColor, gl_FragCoord.xy);\n}';
+    const meshMain = `
+in vec2 vPreviewUv;
+in vec3 vPreviewNormal;
+uniform vec2 uPreviewUvScale;
+uniform vec2 uPreviewUvOffset;
+uniform float uPreviewUvRotation;
+uniform int uPreviewWrapMode;
+uniform int uPreviewLit;
+vec2 previewWrap(vec2 value) {
+  if (uPreviewWrapMode == 1) return 1.0 - abs(fract(value * 0.5) * 2.0 - 1.0);
+  if (uPreviewWrapMode == 2) return clamp(value, 0.0, 1.0);
+  return fract(value);
+}
+void main() {
+  vec2 scaledUv = vPreviewUv * uPreviewUvScale + uPreviewUvOffset;
+  float cosine = cos(uPreviewUvRotation); float sine = sin(uPreviewUvRotation);
+  vec2 centeredUv = scaledUv - vec2(0.5);
+  vec2 mappedUv = previewWrap(vec2(centeredUv.x * cosine - centeredUv.y * sine, centeredUv.x * sine + centeredUv.y * cosine) + vec2(0.5));
+  vec4 color; mainImage(color, mappedUv * iResolution.xy);
+  if (uPreviewLit == 1) { float light = 0.3 + 0.7 * max(dot(normalize(vPreviewNormal), normalize(vec3(0.45, 0.8, 0.35))), 0.0); color.rgb *= light; }
+  fragColor = color;
+}`;
+    const vertexSource = `layout(location = 0) in vec3 position;\nlayout(location = 1) in vec3 normal;\nlayout(location = 2) in vec2 uv;\nuniform mat4 uPreviewModel;\nuniform mat4 uPreviewView;\nuniform mat4 uPreviewProjection;\nuniform mat3 uPreviewNormalMatrix;\nout vec2 vPreviewUv;\nout vec3 vPreviewNormal;\nvoid main() {\n vec4 worldPosition = uPreviewModel * vec4(position, 1.0);\n gl_Position = uPreviewProjection * uPreviewView * worldPosition;\n vPreviewUv = uv;\n vPreviewNormal = uPreviewNormalMatrix * normal;\n}`;
+    return { vertexSource, wrappedCode: base.wrappedCode.replace(mainMarker, meshMain), headerLineCount: base.headerLineCount, commonCodeLineCount: base.commonCodeLineCount };
+  }
+
+  public compileMeshShader(
+    shaderSrc: string,
+    commonCode?: string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
+  ): PiShader | null {
+    const mesh = this.wrapMeshShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
+    return this.renderer.CreateShader(mesh.vertexSource, mesh.wrappedCode);
   }
 
   public async compileShaderAsync(

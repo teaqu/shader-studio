@@ -919,6 +919,69 @@ describe("FrameRenderer", () => {
         expect.any(Object)
       );
     });
+
+    it("uses the mesh Image path when redrawing a resized 3D preview", () => {
+      const previewScene = { render: vi.fn() };
+      const previewRenderer = new FrameRenderer(
+        mockTimeManager, mockKeyboardManager, mockMouseManager, mockCameraManager,
+        mockShaderPipeline, mockBufferManager, mockPassRenderer, mockResourceManager,
+        mockCanvas, mockFPSCalculator, previewScene as any,
+      );
+      const imagePass = { name: 'Image', shaderSrc: 'image shader', inputs: {} };
+      const meshShader = { mProgram: {}, mResult: true };
+      mockShaderPipeline.getPasses.mockReturnValue([imagePass]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: { mProgram: {}, mResult: true } });
+      mockShaderPipeline.getMeshPassShader = vi.fn(() => meshShader);
+      mockPassRenderer.preparePass = vi.fn();
+      previewRenderer.setPreviewSettings({
+        mode: '3d', mesh: 'cube', mapping: { scale: [1, 1], offset: [0, 0], rotation: 0, wrap: 'repeat' },
+        object: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, lighting: 'unlit', scene: { grid: true, axes: true },
+      });
+
+      previewRenderer.renderSinglePass(imagePass);
+
+      expect(mockPassRenderer.preparePass).toHaveBeenCalledWith(imagePass, null, meshShader, expect.any(Object), undefined, false);
+      expect(previewScene.render).toHaveBeenCalledWith(meshShader.mProgram, expect.any(Object), 800, 600);
+      expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+    });
+
+    it('clears the canvas and reports a preview-scene error only once', () => {
+      const previewScene = { render: vi.fn(), consumeError: vi.fn(() => 'Unable to allocate WebGL preview geometry') };
+      const previewRenderer = new FrameRenderer(mockTimeManager, mockKeyboardManager, mockMouseManager, mockCameraManager, mockShaderPipeline, mockBufferManager, mockPassRenderer, mockResourceManager, mockCanvas, mockFPSCalculator, previewScene as any);
+      const imagePass = { name: 'Image', shaderSrc: 'image shader', inputs: {} };
+      const meshShader = { mProgram: {}, mResult: true };
+      mockShaderPipeline.getPasses.mockReturnValue([imagePass]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: meshShader });
+      mockShaderPipeline.getMeshPassShader = vi.fn(() => meshShader);
+      mockPassRenderer.preparePass = vi.fn();
+      previewRenderer.setPreviewSettings({ mode: '3d', mesh: 'cube', mapping: { scale: [1, 1], offset: [0, 0], rotation: 0, wrap: 'repeat' }, object: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, lighting: 'unlit', scene: { grid: true, axes: true } });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      previewRenderer.renderSinglePass(imagePass);
+      previewRenderer.renderSinglePass(imagePass);
+
+      expect(mockPassRenderer.clearCanvas).toHaveBeenCalledTimes(4);
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
+    });
+
+    it('clears rather than falls back to fullscreen when 3D has no mesh variant', () => {
+      const imagePass = { name: 'Image', shaderSrc: 'image shader', inputs: {} };
+      mockShaderPipeline.getPasses.mockReturnValue([imagePass]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: { mProgram: {}, mResult: true } });
+      mockShaderPipeline.getMeshPassShader = vi.fn(() => undefined);
+      mockShaderPipeline.getMeshPassError = vi.fn(() => 'Mesh shader failed');
+      frameRenderer.setPreviewSettings({ mode: '3d', mesh: 'cube', mapping: { scale: [1, 1], offset: [0, 0], rotation: 0, wrap: 'repeat' }, object: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, lighting: 'unlit', scene: { grid: true, axes: true } });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      frameRenderer.renderSinglePass(imagePass);
+      frameRenderer.renderSinglePass(imagePass);
+
+      expect(mockPassRenderer.clearCanvas).toHaveBeenCalledTimes(2);
+      expect(mockPassRenderer.renderPass).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
+    });
   });
 
   describe("buffer swapping", () => {

@@ -197,4 +197,36 @@ describe('ShaderCanvas Component', () => {
       expect(onCanvasClick).toHaveBeenCalledOnce();
     });
   });
+
+  describe('3D preview navigation', () => {
+    it('suppresses inspector focus and clicks while exposing navigation semantics', async () => {
+      const onCanvasClick = vi.fn();
+      const { container } = render(ShaderCanvas, {
+        props: { ...defaultProps, isInspectorActive: true, is3DPreview: true, onCanvasClick },
+      });
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const focusSpy = vi.spyOn(canvas, 'focus');
+
+      expect(canvasContainer).toHaveAttribute('role', 'application');
+      expect(canvasContainer).toHaveAttribute('aria-label', '3D shader preview. Drag to orbit, Shift-drag to pan, scroll to zoom.');
+      expect(canvasContainer).toHaveAttribute('tabindex', '0');
+
+      await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+      await fireEvent.keyDown(canvasContainer, { key: 'Enter' });
+
+      expect(focusSpy).not.toHaveBeenCalled();
+      expect(onCanvasClick).not.toHaveBeenCalled();
+      expect(container.querySelector('.pixel-canvas-marker')).toBeNull();
+      focusSpy.mockRestore();
+    });
+
+    it('keeps its existing button semantics in 2D preview', () => {
+      const { container } = render(ShaderCanvas, { props: defaultProps });
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      expect(canvasContainer).toHaveAttribute('role', 'button');
+      expect(canvasContainer).toHaveAttribute('aria-label', 'Shader preview');
+    });
+  });
 });

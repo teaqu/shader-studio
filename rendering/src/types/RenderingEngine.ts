@@ -2,6 +2,7 @@ import type { ShaderConfig } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
+import type { PreviewSettings } from '../preview3d/types';
 
 export interface RenderingEngine {
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer?: boolean): void;
@@ -16,6 +17,9 @@ export interface RenderingEngine {
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   setInputEnabled(enabled: boolean): void;
+  setPreviewSettings(settings: PreviewSettings): Promise<CompilationResult | undefined> | undefined;
+  resetPreviewCamera(): void;
+  setPreviewInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): any[];
   togglePause(): void;

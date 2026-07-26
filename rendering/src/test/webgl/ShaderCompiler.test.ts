@@ -72,6 +72,28 @@ describe("ShaderCompiler", () => {
   });
 
   describe("wrapShaderToyCode", () => {
+    it("builds a mesh Image wrapper that maps UVs before calling mainImage", () => {
+      const code = "void mainImage(out vec4 color, in vec2 coord) { color = vec4(coord, 0.0, 1.0); }";
+
+      const { vertexSource, wrappedCode } = shaderCompiler.wrapMeshShaderToyCode(code);
+
+      expect(vertexSource).toContain("layout(location = 0) in vec3 position;");
+      expect(vertexSource).toContain("layout(location = 1) in vec3 normal;");
+      expect(vertexSource).toContain("layout(location = 2) in vec2 uv;");
+      expect(vertexSource).toContain("uniform mat4 uPreviewModel;");
+      expect(vertexSource).toContain("uniform mat3 uPreviewNormalMatrix;");
+      expect(vertexSource).toContain("vPreviewNormal = uPreviewNormalMatrix * normal;");
+      expect(wrappedCode).toContain("uPreviewUvScale");
+      expect(wrappedCode).toContain("uPreviewUvOffset");
+      expect(wrappedCode).toContain("uPreviewUvRotation");
+      expect(wrappedCode).toContain("uPreviewWrapMode");
+      expect(wrappedCode).toContain("1.0 - abs(fract(value * 0.5) * 2.0 - 1.0)");
+      expect(wrappedCode).toContain("mappedUv * iResolution.xy");
+      expect(wrappedCode).toContain("mainImage(color, mappedUv * iResolution.xy);");
+      expect(wrappedCode).toContain("color.rgb *=");
+      expect(wrappedCode).not.toContain("color.a *=");
+    });
+
     it("should inject all uniforms that match PassRenderer expectations", () => {
       const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);

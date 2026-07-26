@@ -14,6 +14,7 @@
     onCanvasResize?: (data: { width: number; height: number }) => void;
     onCanvasClick?: (event: MouseEvent) => void;
     isInspectorActive?: boolean;
+    is3DPreview?: boolean;
   }
 
   let {
@@ -22,6 +23,7 @@
     onCanvasResize = () => {},
     onCanvasClick = () => {},
     isInspectorActive = false,
+    is3DPreview = false,
   }: Props = $props();
 
   let glCanvas: HTMLCanvasElement = $state(undefined!);
@@ -90,16 +92,20 @@
 
   function handleMouseDown(event: MouseEvent) {
     mouseDownPosition = { x: event.clientX, y: event.clientY };
-    if (isInspectorActive) {
+    if (isInspectorActive && !is3DPreview) {
       glCanvas?.focus();
     }
-    if (isInspectorActive) {
+    if (isInspectorActive && !is3DPreview) {
       event.stopPropagation();
       event.preventDefault();
     }
   }
 
   function handleClick(event: MouseEvent) {
+    if (is3DPreview) {
+      mouseDownPosition = null;
+      return;
+    }
     if (mouseDownPosition) {
       const dx = Math.abs(event.clientX - mouseDownPosition.x);
       const dy = Math.abs(event.clientY - mouseDownPosition.y);
@@ -125,17 +131,21 @@
   });
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="canvas-container"
   class:force-black-background={currentResolution.forceBlackBackground}
-  role="button"
+  role={is3DPreview ? "application" : "button"}
+  aria-label={is3DPreview ? "3D shader preview. Drag to orbit, Shift-drag to pan, scroll to zoom." : "Shader preview"}
   tabindex="0"
   bind:this={containerEl}
   onclick={handleClick}
-  onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
+  onkeydown={(e) => !is3DPreview && e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
 >
   <canvas bind:this={glCanvas} onmousedown={handleMouseDown}></canvas>
-  <PixelCanvasMarker {glCanvas} container={containerEl} />
+  {#if !is3DPreview}
+    <PixelCanvasMarker {glCanvas} container={containerEl} />
+  {/if}
 </div>
 
 <style>

@@ -10,6 +10,8 @@ import type { MouseManager } from "../input/MouseManager";
 import type { CameraManager } from "../input/CameraManager";
 import type { CustomUniformManager, CustomUniform } from "./CustomUniformManager";
 import { FPSCalculator } from "../util/FPSCalculator";
+import type { PreviewSettings } from '../preview3d/types';
+import type { WebGLPreviewScene } from './WebGLPreviewScene';
 
 export class FrameRenderer {
   private running = false;
@@ -37,6 +39,8 @@ export class FrameRenderer {
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
+  private previewSettings: PreviewSettings | null = null;
+  private reportedPreviewSceneError: string | null = null;
 
   constructor(
     timeManager: TimeManager,
@@ -49,6 +53,7 @@ export class FrameRenderer {
     resourceManager: ResourceManager<PiTexture>,
     glCanvas: HTMLCanvasElement,
     fpsCalculator: FPSCalculator,
+    private readonly previewScene: WebGLPreviewScene | null = null,
   ) {
     this.timeManager = timeManager;
     this.keyboardManager = keyboardManager;
@@ -81,6 +86,10 @@ export class FrameRenderer {
   public setFPSLimit(limit: number): void {
     this.fpsLimit = limit;
     this.lastRenderedAt = null;
+  }
+
+  public setPreviewSettings(settings: PreviewSettings | null): void {
+    this.previewSettings = settings;
   }
 
   public getUniforms(): PassUniforms {
@@ -344,6 +353,33 @@ export class FrameRenderer {
     if (imagePass) {
       const passShaders = this.shaderPipeline.getPassShaders();
       const shader = passShaders[imagePass.name];
+      const meshShader = this.shaderPipeline.getMeshPassShader?.(imagePass.name);
+      if (this.previewSettings?.mode === '3d') {
+        if (!meshShader?.mProgram || !this.previewScene) {
+          this.passRenderer.clearCanvas();
+          const meshError = this.shaderPipeline.getMeshPassError?.() ?? '3D preview shader is unavailable';
+          if (meshError !== this.reportedPreviewSceneError) {
+            this.reportedPreviewSceneError = meshError;
+            console.error('[FrameRenderer] 3D preview is unavailable:', meshError);
+          }
+          return;
+        }
+        const passUniforms = this.getPassUniforms(imagePass, uniforms);
+        this.passRenderer.clearCanvas();
+        this.passRenderer.preparePass(imagePass, null, meshShader, passUniforms, customUniforms, isPaused);
+        this.previewScene.render(meshShader.mProgram, this.previewSettings, this.glCanvas.width, this.glCanvas.height);
+        const sceneError = this.previewScene.consumeError?.();
+        if (sceneError) {
+          this.passRenderer.clearCanvas();
+          if (sceneError !== this.reportedPreviewSceneError) {
+            this.reportedPreviewSceneError = sceneError;
+            console.error('[FrameRenderer] 3D preview scene failed:', sceneError);
+          }
+        } else {
+          this.reportedPreviewSceneError = null;
+        }
+        return;
+      }
       if (shader) {
         const passUniforms = this.getPassUniforms(imagePass, uniforms);
         this.passRenderer.renderPass(imagePass, null, shader, passUniforms, customUniforms, isPaused);
@@ -373,6 +409,10 @@ export class FrameRenderer {
   }
 
   public renderSinglePass(pass: Pass): void {
+    if (pass.name === 'Image' && this.previewSettings?.mode === '3d') {
+      this.renderImagePass(this.getUniforms());
+      return;
+    }
     const baseUniforms = this.getUniforms();
     const passUniforms = this.getPassUniforms(pass, baseUniforms);
     const shader = this.shaderPipeline.getPassShader(pass.name) || null;

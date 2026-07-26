@@ -15,7 +15,9 @@ const createMockCanvas = () => ({
 const createMockShaderCompiler = () => ({
   compileShader: vi.fn(),
   compileShaderAsync: vi.fn(),
+  compileMeshShader: undefined as ReturnType<typeof vi.fn> | undefined,
   wrapShaderToyCode: vi.fn().mockReturnValue({ headerLineCount: 0, commonCodeLineCount: 0 }),
+  wrapMeshShaderToyCode: undefined as ReturnType<typeof vi.fn> | undefined,
 });
 
 const createMockResourceManager = () => ({
@@ -30,6 +32,7 @@ const createMockResourceManager = () => ({
 
 const createMockRenderer = () => ({
   DestroyShader: vi.fn(),
+  GetShaderHeaderLines: vi.fn(() => 0),
 });
 
 const createMockBufferManager = () => ({
@@ -435,6 +438,60 @@ describe("ShaderPipeline", () => {
       expect(shaderPipeline.getPassShaders()).toEqual({ Image: initialShader });
       expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
       expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
+    });
+  });
+
+  describe('3D Image shader ownership', () => {
+    it('keeps a valid 2D pipeline and returns a formatted warning when its mesh variant fails', async () => {
+      mockRenderer.GetShaderHeaderLines = vi.fn(() => 6);
+      mockShaderCompiler.wrapMeshShaderToyCode = vi.fn(() => ({ headerLineCount: 10, commonCodeLineCount: 2 }));
+      mockShaderCompiler.compileMeshShader = vi.fn(() => ({ mResult: false, mInfo: 'ERROR: 0:19: bad mesh wrapper', mProgram: null }));
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        'void mainImage() {}',
+        { version: '1', passes: { common: { inputs: {} }, BufferA: { path: 'buffer.glsl', inputs: {} }, Image: { inputs: {} } } } as any,
+        '/image.glsl',
+        { common: 'float shared;', BufferA: 'void mainImage() {}' },
+      );
+
+      expect(mockShaderCompiler.compileMeshShader).toHaveBeenCalledTimes(1);
+      expect(mockShaderCompiler.compileMeshShader).toHaveBeenCalledWith('void mainImage() {}', 'float shared;', expect.any(Array), expect.any(Array), undefined);
+      expect(result).toMatchObject({ success: true, warnings: ['Image: 3D preview unavailable: ERROR: 0:3: bad mesh wrapper'] });
+      expect(shaderPipeline.getPassShader('Image')).toBeDefined();
+      expect(shaderPipeline.getMeshPassShader('Image')).toBeUndefined();
+      expect(shaderPipeline.getMeshPassError()).toBe('ERROR: 0:3: bad mesh wrapper');
+    });
+
+    it('keeps the old live mesh shader when a candidate mesh shader fails and destroys candidate resources', async () => {
+      const oldImage = createMockShader(); const oldMesh = createMockShader();
+      const nextImage = createMockShader(); const failedMesh = { mResult: false, mInfo: 'mesh fail', mProgram: {} } as PiShader;
+      mockShaderCompiler.compileMeshShader = vi.fn().mockReturnValueOnce(oldMesh).mockReturnValueOnce(failedMesh);
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(oldImage).mockResolvedValueOnce(nextImage);
+
+      await shaderPipeline.compileShaderPipeline('void mainImage() {}', null, '/image.glsl');
+      const result = await shaderPipeline.compileShaderPipeline('void mainImage() { }', null, '/image.glsl');
+
+      expect(result).toMatchObject({ success: true, warnings: ['Image: 3D preview unavailable: mesh fail'] });
+      expect(shaderPipeline.getPassShader('Image')).toBe(nextImage);
+      expect(shaderPipeline.getMeshPassShader('Image')).toBeUndefined();
+      expect(shaderPipeline.getMeshPassError()).toBe('mesh fail');
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(oldImage);
+      expect(mockRenderer.DestroyShader.mock.calls.some(([shader]) => shader === oldMesh)).toBe(true);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(failedMesh);
+    });
+
+    it('destroys replaced and disposed live mesh shaders exactly once', async () => {
+      const firstImage = createMockShader(); const firstMesh = createMockShader();
+      const secondImage = createMockShader(); const secondMesh = createMockShader();
+      mockShaderCompiler.compileMeshShader = vi.fn().mockReturnValueOnce(firstMesh).mockReturnValueOnce(secondMesh);
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(firstImage).mockResolvedValueOnce(secondImage);
+
+      await shaderPipeline.compileShaderPipeline('void mainImage() {}', null, '/image.glsl');
+      await shaderPipeline.compileShaderPipeline('void mainImage() { }', null, '/image.glsl');
+      shaderPipeline.dispose();
+
+      expect(mockRenderer.DestroyShader.mock.calls.filter(([shader]) => shader === firstMesh)).toHaveLength(1);
+      expect(mockRenderer.DestroyShader.mock.calls.filter(([shader]) => shader === secondMesh)).toHaveLength(1);
     });
   });
 

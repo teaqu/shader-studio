@@ -34,7 +34,7 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,
         false, // useAlpha
-        false, // useDepth
+        true, // useDepth: required for the 3D preview scene
         false, // usePreserveBuffer (default)
         false, // useSupersampling
       );
@@ -55,7 +55,7 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,
         false, // useAlpha
-        false, // useDepth
+        true, // useDepth: required for the 3D preview scene
         true,  // usePreserveBuffer
         false, // useSupersampling
       );

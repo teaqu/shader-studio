@@ -335,6 +335,16 @@ describe("RenderingEngine", () => {
   });
 
   describe("getVariableCaptureCompileContext", () => {
+    it("rejects variable capture while 3D preview is active", () => {
+      Object.defineProperty(renderingEngine, "previewSettings", {
+        value: { mode: "3d" }, writable: true, configurable: true,
+      });
+
+      expect(() => renderingEngine.createVariableCapturer()).toThrow(
+        "Variable capture is unavailable while 3D preview is active",
+      );
+    });
+
     it("does not include commonCode when the active capture code is the common pass itself", () => {
       const mockPipeline = {
         getPasses: vi.fn(() => [
@@ -738,6 +748,25 @@ describe("RenderingEngine", () => {
   });
 
   describe("readPixel", () => {
+    it("returns null without reading the framebuffer while 3D preview is active", () => {
+      const mockCanvas = document.createElement("canvas");
+      const mockGl = {
+        readPixels: vi.fn(),
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+      };
+      mockCanvas.getContext = vi.fn().mockReturnValue(mockGl);
+      Object.defineProperty(renderingEngine, "glCanvas", {
+        value: mockCanvas, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "previewSettings", {
+        value: { mode: "3d" }, writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.readPixel(0, 0)).toBeNull();
+      expect(mockGl.readPixels).not.toHaveBeenCalled();
+    });
+
     it("should return null when canvas is not initialized", () => {
       const result = renderingEngine.readPixel(0, 0);
       expect(result).toBeNull();

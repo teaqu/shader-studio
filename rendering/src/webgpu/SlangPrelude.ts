@@ -143,6 +143,8 @@ export interface SlangWrapOptions {
    * immutable, so the remap cannot be injected into the user body like GLSL.
    */
   captureMode?: boolean;
+  /** Final Image only: use mesh attributes instead of the fullscreen triangle. */
+  geometry?: "fullscreen" | "mesh";
 }
 
 // Capture uniform block layout (bytes): coordGrid float4 @0
@@ -193,6 +195,72 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
         ? _dbgCapU.coordGrid.xy
         : fragCoord.xy / _dbgCapU.coordGrid.zw * _st.resolution.xy;
     return mainImage(coord);
+}
+`;
+
+function buildPreviewPrelude(previewBinding: number): string {
+  return `// ---- shader-studio 3D preview prelude (generated) ----
+struct PreviewUniforms
+{
+    column_major float4x4 model;
+    column_major float4x4 viewProjection;
+    column_major float4x4 normalMatrix;
+    // xy scale, zw offset
+    float4 mapping;
+    // x wrap (0 repeat, 1 mirror, 2 clamp), y lighting (0 unlit, 1 lit), z rotation
+    float4 options;
+};
+
+[[vk::binding(${previewBinding}, 0)]]
+ConstantBuffer<PreviewUniforms> _preview;
+`;
+}
+
+const MESH_ENTRY_POINTS = `
+// ---- shader-studio 3D preview entry points (generated) ----
+struct PreviewVertexOut
+{
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+    float3 normal : TEXCOORD1;
+};
+
+[shader("vertex")]
+PreviewVertexOut ${SLANG_ENTRY_VERTEX}(
+    [[vk::location(0)]] float3 position : POSITION,
+    [[vk::location(1)]] float3 normal : NORMAL,
+    [[vk::location(2)]] float2 uv : TEXCOORD0)
+{
+    PreviewVertexOut output;
+    float4 worldPosition = mul(_preview.model, float4(position, 1));
+    output.position = mul(_preview.viewProjection, worldPosition);
+    output.uv = uv;
+    output.normal = normalize(mul(_preview.normalMatrix, float4(normal, 0)).xyz);
+    return output;
+}
+
+float _previewWrap(float value, float mode)
+{
+    if (mode < 0.5) return frac(value);
+    if (mode < 1.5) return 1.0 - abs(frac(value * 0.5) * 2.0 - 1.0);
+    return clamp(value, 0.0, 1.0);
+}
+
+[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(PreviewVertexOut input) : SV_Target
+{
+    float2 mapped = input.uv * _preview.mapping.xy + _preview.mapping.zw;
+    float angle = _preview.options.z;
+    float sine = sin(angle);
+    float cosine = cos(angle);
+    mapped -= 0.5;
+    mapped = float2(cosine * mapped.x - sine * mapped.y, sine * mapped.x + cosine * mapped.y);
+    mapped += 0.5;
+    mapped = float2(_previewWrap(mapped.x, _preview.options.x), _previewWrap(mapped.y, _preview.options.x));
+    float4 color = mainImage(mapped * _st.resolution.xy);
+    if (_preview.options.y < 0.5) return color;
+    float light = 0.25 + 0.75 * max(0.0, dot(normalize(input.normal), normalize(float3(0.45, 0.8, 0.35))));
+    return float4(color.rgb * light, color.a);
 }
 `;
 
@@ -304,6 +372,10 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
     const capturePrelude = buildCapturePrelude(captureBinding);
     return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+  }
+  if (options.geometry === "mesh") {
+    const previewBinding = 1 + (options.channels?.length ?? 0) * 2;
+    return `${prelude}\n${channelPrelude}\n${buildPreviewPrelude(previewBinding)}\n${commonCode}#line 1\n${userSource}\n${MESH_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
