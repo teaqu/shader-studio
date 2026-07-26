@@ -89,6 +89,21 @@
     "preprocessor": {
       "patterns": [
         {
+          "name": "meta.preprocessor.language.slang",
+          "begin": "^\\s*(#)\\s*(language)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.directive.language.slang" },
+            "2": { "name": "keyword.control.directive.language.slang" }
+          },
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#operators" }
+          ]
+        },
+        {
           "name": "meta.preprocessor.slang",
           "begin": "^\\s*(#)\\s*(language|define|undef|if|ifdef|ifndef|elif|else|endif|include|line|pragma|error|warning)\\b",
           "end": "$",
@@ -210,7 +225,6 @@
     "builtins": {
       "patterns": [
         {
-          "name": "variable.other.builtin.shadertoy.slang",
           "match": "\\b(?:iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
         }
       ]
@@ -294,11 +308,7 @@
     "swizzle": {
       "patterns": [
         {
-          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b",
-          "captures": {
-            "1": { "name": "variable.other.property.swizzle.slang" },
-            "2": { "name": "variable.other.property.swizzle.slang" }
-          }
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b"
         }
       ]
     },

@@ -104,6 +104,7 @@ export const slangPreprocessorPattern = new RegExp(
 const slangMonarchPreprocessorPattern = new RegExp(
   `^\\s*#\\s*(?:${preprocessorAlternation})\\b`,
 );
+const slangMonarchLanguageDirectivePattern = /^(\s*)(#\s*language)\b/;
 export const slangAttributePattern = new RegExp([
   `\\[(?:${attributeAlternation})\\b[^\\]]*\\]`,
   `\\[\\[\\s*${identifier}(?:::${identifier})+(?:\\s*\\([^\\[\\]]*\\))?\\s*\\]\\]`,
@@ -177,6 +178,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
   symbols: /[=><!~?:&|+\-*\/\^%]+/,
   tokenizer: {
     root: [
+      [slangMonarchLanguageDirectivePattern, ['white', 'keyword.preprocessor.language']],
       [slangMonarchPreprocessorPattern, 'keyword.preprocessor'],
       [slangAttributePattern, 'keyword.attribute'],
       [/R"([^"()\s]*)\([^\r\n]*?\)\1"/, 'string'],
@@ -185,7 +187,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [invalidLeadingZeroPattern, 'invalid'],
       [invalidIdentifierNumberChainPattern, 'invalid'],
       [invalidDottedNumberChainPattern, 'invalid'],
-      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'variable.predefined.member'],
+      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'identifier'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
           '@controlKeywords': 'keyword.control',
@@ -199,7 +201,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       }],
       [/[a-zA-Z_]\w*/, {
         cases: {
-          '@shadertoyUniforms': 'variable.predefined',
+          '@shadertoyUniforms': 'identifier',
           '@types': 'type',
           '@modifiers': 'keyword.modifier',
           '@constants': 'keyword',

@@ -117,7 +117,7 @@ export const glslLanguageDefinition = {
       [/'([^'\\]|\\.)*$/, 'string.invalid'],
       [/"/, 'string', '@stringDouble'],
       [/'/, 'string', '@stringSingle'],
-      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'variable.predefined.member'],
+      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'identifier'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
           '@keywords': 'keyword',
@@ -128,7 +128,7 @@ export const glslLanguageDefinition = {
       }],
       [/[a-zA-Z_]\w*/, {
         cases: {
-          '@shadertoyUniforms': 'variable.predefined',
+          '@shadertoyUniforms': 'identifier',
           '@predefinedVariables': 'variable.predefined',
           '@builtins': 'support.function',
           '@types': 'type',
