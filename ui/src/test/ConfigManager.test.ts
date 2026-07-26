@@ -299,6 +299,8 @@ describe('ConfigManager', () => {
       expect(configManager.validateBufferRename('Missing', 'BlurPass')).toBe('source-not-found');
       expect(configManager.validateBufferRename('BufferA', 'BufferA')).toBe('same-name');
       expect(configManager.validateBufferRename('Image', 'BlurPass')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Image')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'common')).toBe('reserved-name');
       expect(configManager.validateBufferRename('BufferA', '0invalid')).toBe('invalid-identifier');
       expect(configManager.validateBufferRename('BufferA', 'BufferB')).toBe('name-taken');
       expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBeNull();
