@@ -1,4 +1,4 @@
-import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution } from '@shader-studio/types';
+import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution, ConfigInput } from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
 
@@ -249,10 +249,13 @@ export class ConfigManager {
     const newPasses = {} as ShaderConfig['passes'];
     for (const key of Object.keys(this.config.passes)) {
       const value: BufferPass | ImagePass | undefined = this.config.passes[key];
+      const rewrittenPass = value
+        ? this.rewriteBufferReferences(value, oldName, newName)
+        : value;
       if (key === oldName) {
-        newPasses[newName] = value;
+        newPasses[newName] = rewrittenPass;
       } else {
-        newPasses[key] = value;
+        newPasses[key] = rewrittenPass;
       }
     }
 
@@ -262,6 +265,26 @@ export class ConfigManager {
     };
     this.updateConfig(updatedConfig);
     return true;
+  }
+
+  private rewriteBufferReferences(
+    pass: BufferPass | ImagePass,
+    oldName: string,
+    newName: string,
+  ): BufferPass | ImagePass {
+    if (!pass.inputs) {
+      return pass;
+    }
+
+    let rewrittenInputs: Record<string, ConfigInput> | null = null;
+    for (const [inputName, input] of Object.entries(pass.inputs)) {
+      if (input.type === 'buffer' && input.source === oldName) {
+        rewrittenInputs ??= { ...pass.inputs };
+        rewrittenInputs[inputName] = { ...input, source: newName };
+      }
+    }
+
+    return rewrittenInputs ? { ...pass, inputs: rewrittenInputs } : pass;
   }
 
   /**
