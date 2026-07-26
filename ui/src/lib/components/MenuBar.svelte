@@ -73,6 +73,9 @@
     isRecording?: boolean;
     isRecordingPanelVisible?: boolean;
     onToggleRecordingPanel?: () => void;
+    shaderLanguage?: "glsl" | "slang";
+    isCompilingHlsl?: boolean;
+    onCompileImageToHlsl?: () => void;
   };
 
   let {
@@ -116,6 +119,9 @@
     isRecording = false,
     isRecordingPanelVisible = false,
     onToggleRecordingPanel = () => {},
+    shaderLanguage = "glsl",
+    isCompilingHlsl = false,
+    onCompileImageToHlsl = () => {},
   }: Props = $props();
 
   // Resolution state from context
@@ -924,6 +930,19 @@
       <i class="codicon codicon-refresh"></i>
       <span>Refresh</span>
     </button>
+    {#if shaderLanguage === "slang" && hasShader}
+      <button
+        class="options-menu-item"
+        onclick={() => {
+          onCompileImageToHlsl(); showOptionsMenu = false;
+        }}
+        aria-label="Compile Image to HLSL"
+        disabled={isCompilingHlsl}
+      >
+        <i class={`codicon codicon-${isCompilingHlsl ? 'loading codicon-modifier-spin' : 'file-code'}`}></i>
+        <span>{isCompilingHlsl ? 'Compiling HLSL…' : 'Compile Image to HLSL…'}</span>
+      </button>
+    {/if}
     {#if showThemeButton}
       <button
         class="options-menu-item"

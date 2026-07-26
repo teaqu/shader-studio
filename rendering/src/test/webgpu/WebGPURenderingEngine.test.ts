@@ -1237,7 +1237,16 @@ describe("WebGPURenderingEngine", () => {
 
   function stubEngineInternals(engine: WebGPURenderingEngine) {
     const device = fullDevice();
-    const compiler = { compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })), dispose: vi.fn() };
+    const compiler = {
+      compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
+      compileTarget: vi.fn(() => ({
+        success: true,
+        target: "HLSL",
+        code: "// hlsl",
+        diagnostics: [],
+      })),
+      dispose: vi.fn(),
+    };
     const canvas = { width: 320, height: 180 };
 
     (engine as any).canvas = canvas;
@@ -1271,6 +1280,115 @@ describe("WebGPURenderingEngine", () => {
       expect(image).toEqual(expect.objectContaining({ sourcePath: "/workspace/shaders/image.slang", sourceUri: "file:///workspace/shaders/image.slang" }));
       expect(buffer.workspace.files).toHaveLength(3);
       expect(snapshot).toEqual(before);
+    });
+
+    it("exports only the current Image pass as a complete HLSL target request", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const snapshot = workspace();
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "passes/buffera.slang", inputs: {} },
+        },
+      };
+      await engine.compileShaderPipeline(
+        source,
+        config,
+        "/workspace/shaders/image.slang",
+        { BufferA: "buffer v2" },
+        undefined,
+        undefined,
+        snapshot,
+      );
+
+      const result = await engine.compileImageTarget("HLSL");
+
+      expect(result).toEqual({
+        success: true,
+        target: "HLSL",
+        code: "// hlsl",
+        diagnostics: [],
+      });
+      expect(compiler.compileTarget).toHaveBeenCalledTimes(1);
+      expect(compiler.compileTarget).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source,
+          sourcePath: "/workspace/shaders/image.slang",
+          sourceUri: "file:///workspace/shaders/image.slang",
+          workspace: expect.objectContaining({ files: expect.any(Array) }),
+          options: expect.objectContaining({ passName: "Image" }),
+        }),
+        "HLSL",
+      );
+    });
+
+    it("snapshots proxy-backed configs without breaking normal compilation or HLSL export", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const imagePass = new Proxy({ inputs: {} }, {});
+      const config = new Proxy({
+        version: "1",
+        passes: new Proxy({ Image: imagePass }, {}),
+      }, {}) as ShaderConfig;
+
+      const compileResult = await engine.compileShaderPipeline(
+        source,
+        config,
+        "/workspace/shaders/image.slang",
+      );
+
+      expect(compileResult?.success).toBe(true);
+      const retainedConfig = (engine as unknown as {
+        lastCompileAttempt: { config: ShaderConfig | null };
+      }).lastCompileAttempt.config;
+      expect(() => structuredClone(retainedConfig)).not.toThrow();
+
+      await engine.compileImageTarget("HLSL");
+      expect(compiler.compileTarget).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source,
+          options: expect.objectContaining({ passName: "Image" }),
+        }),
+        "HLSL",
+      );
+    });
+
+    it("exports the latest requested Image source after its render compile fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(source, null, "/workspace/shaders/image.slang");
+      compiler.compile.mockReturnValueOnce({
+        success: false,
+        errors: ["current edit is broken"],
+      });
+      const currentSource = "float4 mainImage(float2 c) { broken current edit }";
+      await engine.compileShaderPipeline(
+        currentSource,
+        null,
+        "/workspace/shaders/image.slang",
+      );
+
+      await engine.compileImageTarget("HLSL");
+
+      expect(compiler.compileTarget).toHaveBeenCalledWith(
+        expect.objectContaining({ source: currentSource }),
+        "HLSL",
+      );
+    });
+
+    it("returns an export failure before any shader has been requested", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+
+      const result = await engine.compileImageTarget("HLSL");
+
+      expect(result).toMatchObject({
+        success: false,
+        errors: [expect.stringMatching(/before a shader/i)],
+      });
+      expect(compiler.compileTarget).not.toHaveBeenCalled();
     });
 
     it("rejects conflicting exact workspace identities before compilation", async () => {

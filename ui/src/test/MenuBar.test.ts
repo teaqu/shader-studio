@@ -330,6 +330,75 @@ describe('MenuBar Component', () => {
       // Menu should be closed (refresh button should no longer be visible)
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
     });
+
+    it('shows HLSL export only for an active Slang shader', async () => {
+      const { rerender } = renderMenuBar({
+        props: {
+          ...defaultProps,
+          hasShader: true,
+          shaderLanguage: 'glsl',
+        },
+      });
+      const optionsButton = screen.getByLabelText('Open options menu');
+      await fireEvent.click(optionsButton);
+      expect(screen.queryByLabelText('Compile Image to HLSL')).not.toBeInTheDocument();
+      await fireEvent.click(optionsButton);
+
+      await rerender({
+        ...defaultProps,
+        hasShader: true,
+        shaderLanguage: 'slang',
+      });
+      await fireEvent.click(optionsButton);
+      expect(screen.getByLabelText('Compile Image to HLSL')).toBeInTheDocument();
+    });
+
+    it('hides HLSL export when Slang has no active shader', async () => {
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          hasShader: false,
+          shaderLanguage: 'slang',
+        },
+      });
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+
+      expect(screen.queryByLabelText('Compile Image to HLSL')).not.toBeInTheDocument();
+    });
+
+    it('runs Slang HLSL export once and closes the menu', async () => {
+      const onCompileImageToHlsl = vi.fn();
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          hasShader: true,
+          shaderLanguage: 'slang',
+          onCompileImageToHlsl,
+        },
+      });
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+
+      await fireEvent.click(screen.getByLabelText('Compile Image to HLSL'));
+
+      expect(onCompileImageToHlsl).toHaveBeenCalledOnce();
+      expect(screen.queryByLabelText('Compile Image to HLSL')).not.toBeInTheDocument();
+    });
+
+    it('disables the HLSL export action while compilation is in progress', async () => {
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          hasShader: true,
+          shaderLanguage: 'slang',
+          isCompilingHlsl: true,
+        },
+      });
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+
+      const action = screen.getByLabelText('Compile Image to HLSL');
+      expect(action).toBeDisabled();
+      expect(action).toHaveTextContent('Compiling HLSL…');
+    });
   });
 
   describe('Theme Toggle', () => {

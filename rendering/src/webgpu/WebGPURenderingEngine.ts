@@ -14,7 +14,12 @@ import { MouseManager } from "../input/MouseManager";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
-import { SlangCompiler, type SlangCompileRequest } from "./SlangCompiler";
+import {
+  SlangCompiler,
+  type SlangCompileRequest,
+  type SlangCompileTargetName,
+  type SlangTargetCompileResult,
+} from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import {
@@ -62,6 +67,26 @@ function cloneWorkspace(workspace: SlangWorkspaceSnapshot): SlangWorkspaceSnapsh
   return { rootUri: workspace.rootUri, files: workspace.files.map((file) => ({ ...file })) };
 }
 
+function cloneJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(cloneJsonValue);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, cloneJsonValue(child)]),
+    );
+  }
+  return value;
+}
+
+function cloneShaderConfig(config: ShaderConfig): ShaderConfig {
+  return cloneJsonValue(config) as ShaderConfig;
+}
+
+function targetFailure(...errors: string[]): SlangTargetCompileResult {
+  return { success: false, errors, diagnostics: [] };
+}
+
 function workspaceCandidates(workspace: SlangWorkspaceSnapshot, selector: string | undefined, topLevelPath: string) {
   if (!selector) {
     return [];
@@ -86,6 +111,13 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
 
   compile(request: SlangCompileRequest): Promise<ReturnType<AsyncSlangCompiler["compile"]> extends Promise<infer T> ? T : never> {
     return this.inner.compile(request);
+  }
+
+  compileTarget(
+    request: SlangCompileRequest,
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult> {
+    return this.inner.compileTarget(request, target);
   }
 
   dispose(): void {
@@ -137,6 +169,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string>;
     customUniformDeclarations?: string;
     customUniformInfo?: { name: string; type: string }[];
+    workspace?: SlangWorkspaceSnapshot;
+  } | null = null;
+  private lastCompileAttempt: {
+    code: string;
+    config: ShaderConfig | null;
+    path: string;
+    buffers: Record<string, string>;
+    customUniformInfo: { name: string; type: string }[];
     workspace?: SlangWorkspaceSnapshot;
   } | null = null;
   private customUniformManager = new CustomUniformManager();
@@ -499,6 +539,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
+    this.lastCompileAttempt = {
+      code,
+      config: config ? cloneShaderConfig(config) : null,
+      path,
+      buffers: { ...buffers },
+      customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })) ?? [],
+      workspace: workspace ? cloneWorkspace(workspace) : undefined,
+    };
     // WebGL parity: the config is remembered even when invalid, but an
     // invalid one fails the compile before any Slang work starts.
     if (config) {
@@ -973,6 +1021,60 @@ export class WebGPURenderingEngine implements RenderingEngine {
     };
   }
 
+  async compileImageTarget(
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult> {
+    const attempt = this.lastCompileAttempt;
+    if (!attempt) {
+      return targetFailure("Cannot export before a shader has been requested");
+    }
+    if (this.disposed) {
+      return targetFailure("Engine disposed");
+    }
+    if (this.ready) {
+      await this.ready;
+    }
+    if (this.disposed) {
+      return targetFailure("Engine disposed");
+    }
+    if (this.initError || !this.compiler) {
+      const reason = this.initError ?? this.describeUnavailableInitState();
+      return targetFailure(`WebGPU init failed: ${reason}`);
+    }
+
+    const graph = buildSlangPassGraph({
+      imageCode: attempt.code,
+      config: attempt.config,
+      buffers: attempt.buffers,
+      canvasWidth: this.canvas?.width ?? 1,
+      canvasHeight: this.canvas?.height ?? 1,
+    });
+    if (graph.errors.length) {
+      return targetFailure(...graph.errors);
+    }
+    const image = graph.passes.find((pass) => pass.name === "Image");
+    if (!image) {
+      return targetFailure("Slang export could not find the Image pass");
+    }
+    const request = this.createCompileRequest(
+      image,
+      graph.commonCode,
+      attempt.customUniformInfo,
+      attempt.path,
+      attempt.workspace,
+    );
+    if (!request) {
+      return targetFailure(
+        `Workspace does not uniquely identify ${image.path ?? attempt.path}`,
+      );
+    }
+    try {
+      return await this.compiler.compileTarget(request, target);
+    } catch (error) {
+      return targetFailure(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private failedCompilation(
     path: string,
     generation: number,
@@ -1151,7 +1253,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       options: {
         passName: pass.name, commonCode,
         channels: pass.channels.map((channel) => ({ slot: channel.slot, key: channel.key, kind: channel.kind })),
-        ...(this.customUniformManager.hasUniforms() || customUniforms.length ? { customUniforms } : {}),
+        ...(customUniforms.length ? { customUniforms } : {}),
       },
     };
   }

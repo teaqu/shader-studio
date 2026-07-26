@@ -25,20 +25,36 @@ export interface SlangCompileRequest {
   workspace: SlangWorkspaceSnapshot;
   options: SlangCompileOptions;
 }
+export type SlangCompileTargetName = "WGSL" | "HLSL";
+type SlangCompileFailure = { success: false; errors: string[]; diagnostics: SlangDiagnostic[] };
 export type SlangCompileResult =
   | { success: true; wgsl: string; diagnostics: SlangDiagnostic[] }
-  | { success: false; errors: string[]; diagnostics: SlangDiagnostic[] };
+  | SlangCompileFailure;
+export type SlangTargetCompileResult =
+  | { success: true; target: SlangCompileTargetName; code: string; diagnostics: SlangDiagnostic[] }
+  | SlangCompileFailure;
 
 /** Synchronous workspace compiler. Per-request Embind values are always released. */
 export class SlangCompiler {
   private globalSession: SlangGlobalSession | null = null;
-  private wgslTargetValue: number | null = null;
+  private readonly targetValues = new Map<SlangCompileTargetName, number>();
   private readonly ownedPaths = new Set<string>();
   private disposed = false;
 
   constructor(private readonly slang: SlangModuleApi) {}
 
   public compile(request: SlangCompileRequest): SlangCompileResult {
+    const result = this.compileTarget(request, "WGSL");
+    if (!result.success) {
+      return result;
+    }
+    return { success: true, wgsl: result.code, diagnostics: result.diagnostics };
+  }
+
+  public compileTarget(
+    request: SlangCompileRequest,
+    targetName: SlangCompileTargetName,
+  ): SlangTargetCompileResult {
     if (this.disposed) {
       return failure("Slang compiler has been disposed", request.sourceUri);
     }
@@ -61,7 +77,7 @@ export class SlangCompiler {
 
     let sessionHandles: SlangEmbindHandle[] = [];
     try {
-      const { globalSession, target } = this.ensureGlobalSession();
+      const { globalSession, target } = this.ensureGlobalSession(targetName);
       const session = globalSession.createSession(target);
       if (!session) {
         return this.lastFailure("Slang: failed to create session", request, diagnostics);
@@ -95,11 +111,11 @@ export class SlangCompiler {
         return this.lastFailure("Slang: failed to link program", request, diagnostics);
       }
       sessionHandles.push(linked);
-      const wgsl = linked.getTargetCode(0);
-      if (!wgsl) {
-        return this.lastFailure("Slang: produced empty WGSL", request, diagnostics);
+      const code = linked.getTargetCode(0);
+      if (!code) {
+        return this.lastFailure(`Slang: produced empty ${targetName}`, request, diagnostics);
       }
-      return { success: true, wgsl, diagnostics };
+      return { success: true, target: targetName, code, diagnostics };
     } catch (error) {
       return failure(errMessage(error), request.sourceUri, diagnostics);
     } finally {
@@ -128,35 +144,43 @@ export class SlangCompiler {
     if (this.globalSession) {
       const global = this.globalSession;
       this.globalSession = null;
-      this.wgslTargetValue = null;
+      this.targetValues.clear();
       deleteHandles([global]);
     }
   }
 
-  private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
-    if (this.globalSession && this.wgslTargetValue !== null) {
-      return { globalSession: this.globalSession, target: this.wgslTargetValue };
+  private ensureGlobalSession(
+    targetName: SlangCompileTargetName,
+  ): { globalSession: SlangGlobalSession; target: number } {
+    const cachedTarget = this.targetValues.get(targetName);
+    if (this.globalSession && cachedTarget !== undefined) {
+      return { globalSession: this.globalSession, target: cachedTarget };
     }
-    const globalSession = this.slang.createGlobalSession();
+    const createdGlobalSession = !this.globalSession;
+    const globalSession = this.globalSession ?? this.slang.createGlobalSession();
     if (!globalSession) {
       throw new Error("Slang: createGlobalSession returned null");
     }
     try {
       const targets = slangVectorToArray(this.slang.getCompileTargets());
-      const wgsl = targets.find((target) => /wgsl/i.test(target.name));
-      if (!wgsl) {
-        throw new Error(`Slang: no WGSL compile target (available: ${targets.map((target) => target.name).join(", ") || "none"})`);
+      const requestedTarget = targets.find(
+        (target) => target.name.toUpperCase() === targetName,
+      );
+      if (!requestedTarget) {
+        throw new Error(`Slang: no ${targetName} compile target (available: ${targets.map((target) => target.name).join(", ") || "none"})`);
       }
       this.globalSession = globalSession;
-      this.wgslTargetValue = wgsl.value;
-      return { globalSession, target: wgsl.value };
+      this.targetValues.set(targetName, requestedTarget.value);
+      return { globalSession, target: requestedTarget.value };
     } catch (error) {
-      deleteHandles([globalSession]);
+      if (createdGlobalSession) {
+        deleteHandles([globalSession]);
+      }
       throw error;
     }
   }
 
-  private lastFailure(fallback: string, request: SlangCompileRequest, diagnostics: SlangDiagnostic[]): SlangCompileResult {
+  private lastFailure(fallback: string, request: SlangCompileRequest, diagnostics: SlangDiagnostic[]): SlangCompileFailure {
     const message = this.lastError(fallback);
     return { success: false, errors: [message], diagnostics: [...diagnostics, ...parseDiagnostics(message, request.workspace, request.sourceUri)] };
   }
@@ -197,7 +221,7 @@ function aliases(left: SlangEmbindHandle, right: SlangEmbindHandle): boolean {
   }
 }
 
-function failure(message: string, uri: string, diagnostics: SlangDiagnostic[] = []): SlangCompileResult {
+function failure(message: string, uri: string, diagnostics: SlangDiagnostic[] = []): SlangCompileFailure {
   return { success: false, errors: [message], diagnostics: diagnostics.length ? diagnostics : [diagnosticFor(message, uri)] };
 }
 

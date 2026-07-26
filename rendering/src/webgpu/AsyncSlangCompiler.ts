@@ -1,4 +1,10 @@
-import type { SlangCompiler, SlangCompileRequest, SlangCompileResult } from "./SlangCompiler";
+import type {
+  SlangCompiler,
+  SlangCompileRequest,
+  SlangCompileResult,
+  SlangCompileTargetName,
+  SlangTargetCompileResult,
+} from "./SlangCompiler";
 
 /**
  * Async facade over Slang→WGSL compilation. The engine awaits compile() and
@@ -8,6 +14,10 @@ import type { SlangCompiler, SlangCompileRequest, SlangCompileResult } from "./S
  */
 export interface AsyncSlangCompiler {
   compile(request: SlangCompileRequest): Promise<SlangCompileResult>;
+  compileTarget(
+    request: SlangCompileRequest,
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult>;
   dispose(): void;
 }
 
@@ -19,13 +29,20 @@ export class MainThreadSlangCompiler implements AsyncSlangCompiler {
     return this.inner.compile(request);
   }
 
+  async compileTarget(
+    request: SlangCompileRequest,
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult> {
+    return this.inner.compileTarget(request, target);
+  }
+
   dispose(): void {
     this.inner.dispose();
   }
 }
 
 type WorkerResponse =
-  | { id: number; ok: true; result?: SlangCompileResult }
+  | { id: number; ok: true; result?: SlangCompileResult | SlangTargetCompileResult }
   | { id: number; ok: false; error: string };
 
 export type WorkerStatus = {
@@ -38,7 +55,7 @@ export type WorkerStatus = {
 type WorkerMessage = WorkerResponse | WorkerStatus;
 
 type Pending = {
-  resolve: (result: SlangCompileResult) => void;
+  resolve: (result: SlangCompileResult | SlangTargetCompileResult) => void;
   isInit: boolean;
   initResolve?: () => void;
   initReject?: (error: Error) => void;
@@ -137,19 +154,17 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
   }
 
   compile(request: SlangCompileRequest): Promise<SlangCompileResult> {
-    if (this.disposed) {
-      // Accurate whether disposed via dispose() or a prior worker crash.
-      return Promise.resolve({ success: false, errors: ["Slang worker unavailable"], diagnostics: [] });
-    }
-    const id = this.nextId++;
-    return new Promise<SlangCompileResult>((resolve) => {
-      this.pending.set(id, { resolve, isInit: false });
-      try {
-        this.worker.postMessage({ id, type: "compile", request });
-      } catch (error) {
-        this.pending.delete(id);
-        resolve({ success: false, errors: [error instanceof Error ? error.message : String(error)], diagnostics: [] });
-      }
+    return this.postCompile<SlangCompileResult>({ type: "compile", request });
+  }
+
+  compileTarget(
+    request: SlangCompileRequest,
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult> {
+    return this.postCompile<SlangTargetCompileResult>({
+      type: "compileTarget",
+      request,
+      target,
     });
   }
 
@@ -167,6 +182,37 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
     this.worker.terminate();
   }
 
+  private postCompile<TResult extends SlangCompileResult | SlangTargetCompileResult>(
+    message: {
+      type: "compile";
+      request: SlangCompileRequest;
+    } | {
+      type: "compileTarget";
+      request: SlangCompileRequest;
+      target: SlangCompileTargetName;
+    },
+  ): Promise<TResult> {
+    if (this.disposed) {
+      // Accurate whether disposed via dispose() or a prior worker crash.
+      return Promise.resolve(workerFailure("Slang worker unavailable") as TResult);
+    }
+    const id = this.nextId++;
+    return new Promise<TResult>((resolve) => {
+      this.pending.set(id, {
+        isInit: false,
+        resolve: (result) => resolve(result as TResult),
+      });
+      try {
+        this.worker.postMessage({ id, ...message });
+      } catch (error) {
+        this.pending.delete(id);
+        resolve(workerFailure(
+          error instanceof Error ? error.message : String(error),
+        ) as TResult);
+      }
+    });
+  }
+
   private failAllPending(message: string): void {
     for (const [, entry] of this.pending) {
       if (entry.isInit) {
@@ -181,4 +227,10 @@ export class WorkerSlangCompiler implements AsyncSlangCompiler {
 
 function isWorkerStatus(message: WorkerMessage): message is WorkerStatus {
   return "type" in message && message.type === "status";
+}
+
+function workerFailure(
+  message: string,
+): Extract<SlangCompileResult, { success: false }> {
+  return { success: false, errors: [message], diagnostics: [] };
 }

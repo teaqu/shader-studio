@@ -53,6 +53,7 @@
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { cloneSlangWorkspace } from '../slangSourceIdentity';
   import type { ShaderInfo } from '../recording/types';
+  import { exportSlangImageToHlsl } from '../slangHlslExport';
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -202,6 +203,7 @@
   // Recording
   let isRecording = $state(false);
   let recordingManager: RecordingManager;
+  let isCompilingHlsl = $state(false);
 
   // Config panel state
   let currentConfig = $state<ShaderConfig | null>(null);
@@ -344,6 +346,9 @@
     compileMode: $compileModeStore.mode,
     onSetCompileMode: handleSetCompileMode,
     onManualCompile: handleManualCompile,
+    shaderLanguage: engineLanguage,
+    isCompilingHlsl,
+    onCompileImageToHlsl: handleCompileImageToHlsl,
   }));
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
@@ -1210,6 +1215,25 @@
     errors = [...errors, message];
     if (transport) {
       transport.postMessage({ type: "error", payload: [message] });
+    }
+  }
+
+  async function handleCompileImageToHlsl(): Promise<void> {
+    if (engineLanguage !== "slang" || isCompilingHlsl) {
+      return;
+    }
+    isCompilingHlsl = true;
+    try {
+      await exportSlangImageToHlsl({
+        engine: renderingEngine,
+        path: shaderPath,
+        saveFile: (payload) => {
+          transport.postMessage({ type: "saveFile", payload });
+        },
+        reportError: addError,
+      });
+    } finally {
+      isCompilingHlsl = false;
     }
   }
 

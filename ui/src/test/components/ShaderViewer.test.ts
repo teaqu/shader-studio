@@ -26,7 +26,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 }));
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
-const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize } = vi.hoisted(() => {
+const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize, mockCompileImageTarget } = vi.hoisted(() => {
   const mockTimeManager = {
     getCurrentTime: () => 0.0,
     isPaused: () => false,
@@ -61,7 +61,8 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
   const mockDeferredCompileResolvers: Array<(result: { success: boolean; errors?: string[] }) => void> = [];
   const mockFailNextWebGPUInitialize = { value: false };
   const mockWebGPUInitialize = vi.fn();
-  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize };
+  const mockCompileImageTarget = vi.fn();
+  return { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop, mockRecordingContext, mockDeferredCompileResolvers, mockFailNextWebGPUInitialize, mockWebGPUInitialize, mockCompileImageTarget };
 });
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
@@ -222,6 +223,9 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
     cleanup() {}
     compileShaderPipeline() {
       return Promise.resolve({ success: true });
+    }
+    compileImageTarget(...args: unknown[]) {
+      return mockCompileImageTarget(...args);
     }
     getPasses() {
       return [];
@@ -640,6 +644,12 @@ describe('ShaderViewer', () => {
     audioStore.setVolume(1);
     mockTimeManager.isPaused = vi.fn(() => false);
     mockFailNextWebGPUInitialize.value = false;
+    mockCompileImageTarget.mockResolvedValue({
+      success: true,
+      target: 'HLSL',
+      code: '// generated HLSL',
+      diagnostics: [],
+    });
     localStorage.removeItem('shader-studio-sync-with-config');
   });
 
@@ -652,6 +662,34 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('compiles a Slang Image pass to HLSL and opens the save dialog transport', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/project/image.slang',
+      code: '#language slang 2026\nfloat4 mainImage(float2 c) { return 1; }',
+      config: { passes: { Image: {} } },
+      pathMap: { Image: '/project/image.slang' },
+      buffers: {},
+    });
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+
+    await fireEvent.click(screen.getByLabelText('Compile Image to HLSL'));
+
+    await vi.waitFor(() => {
+      expect(mockCompileImageTarget).toHaveBeenCalledWith('HLSL');
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'saveFile',
+        payload: {
+          data: btoa('// generated HLSL'),
+          defaultName: '/project/image.hlsl',
+          filters: { 'HLSL files': ['hlsl'] },
+        },
+      });
+    });
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {

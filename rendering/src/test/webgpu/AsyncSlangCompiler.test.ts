@@ -33,6 +33,27 @@ describe("MainThreadSlangCompiler", () => {
     expect(inner.compile).toHaveBeenCalledWith(input);
   });
 
+  it("delegates explicit HLSL target compilation", async () => {
+    const inner = {
+      compileTarget: vi.fn(() => ({
+        success: true as const,
+        target: "HLSL" as const,
+        code: "hlsl",
+        diagnostics: [],
+      })),
+    };
+    const compiler = new MainThreadSlangCompiler(inner as any);
+    const input = request("2026");
+
+    await expect(compiler.compileTarget(input, "HLSL")).resolves.toEqual({
+      success: true,
+      target: "HLSL",
+      code: "hlsl",
+      diagnostics: [],
+    });
+    expect(inner.compileTarget).toHaveBeenCalledWith(input, "HLSL");
+  });
+
   it("disposes the wrapped main-thread compiler", () => {
     const inner = { compile: vi.fn(), dispose: vi.fn() };
     new MainThreadSlangCompiler(inner as any).dispose();
@@ -62,6 +83,34 @@ describe("WorkerSlangCompiler", () => {
     expect(worker.posted[1]).toEqual({ id: worker.posted[1].id, type: "compile", request: input });
     worker.emit({ id: worker.posted[1].id, ok: true, result: { success: true, wgsl: "w", diagnostics: [] } });
     await expect(compilePromise).resolves.toEqual({ success: true, wgsl: "w", diagnostics: [] });
+  });
+
+  it("round-trips an explicit HLSL target compile by id", async () => {
+    const worker = fakeWorker();
+    const createPromise = WorkerSlangCompiler.create(() => worker as any, "s.js", "s.wasm");
+    worker.emit({ id: worker.posted[0].id, ok: true });
+    const compiler = await createPromise;
+    const input = request("2026");
+
+    const compilePromise = compiler.compileTarget(input, "HLSL");
+    const message = worker.posted[1];
+    expect(message).toEqual({
+      id: message.id,
+      type: "compileTarget",
+      request: input,
+      target: "HLSL",
+    });
+    worker.emit({
+      id: message.id,
+      ok: true,
+      result: { success: true, target: "HLSL", code: "hlsl", diagnostics: [] },
+    });
+    await expect(compilePromise).resolves.toEqual({
+      success: true,
+      target: "HLSL",
+      code: "hlsl",
+      diagnostics: [],
+    });
   });
 
   it.each([undefined, "legacy", "2025", "2026", "latest"] as const)("posts the complete %s request unchanged", async (version) => {

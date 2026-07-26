@@ -34,19 +34,23 @@ function makeFakeSlang(opts: {
   compositeNull?: boolean;
   linkNull?: boolean;
   wgsl?: string;
+  hlsl?: string;
   lastError?: string;
   onLoad?: (source: string, name?: string, path?: string) => void;
+  onCreateSession?: (target: number) => void;
   events?: string[];
   onGlobalDelete?: () => void;
 } = {}): SlangModuleApi {
   const wgsl = opts.wgsl ?? "// wgsl output";
+  const hlsl = opts.hlsl ?? "// hlsl output";
+  let activeTarget = 3;
   const linked = {
     link: () => linked,
-    getTargetCode: () => wgsl,
+    getTargetCode: () => activeTarget === 5 ? hlsl : wgsl,
   };
   const composite = {
     link: () => (opts.linkNull ? null : linked),
-    getTargetCode: () => wgsl,
+    getTargetCode: () => activeTarget === 5 ? hlsl : wgsl,
   };
   const module = {
     findEntryPointByName: (name: string) =>
@@ -62,7 +66,11 @@ function makeFakeSlang(opts: {
     createCompositeComponentType: () => (opts.compositeNull ? null : composite),
   };
   const globalSession = {
-    createSession: () => (opts.sessionNull ? null : session),
+    createSession: (target: number) => {
+      activeTarget = target;
+      opts.onCreateSession?.(target);
+      return opts.sessionNull ? null : session;
+    },
     delete: () => opts.onGlobalDelete?.(),
   };
 
@@ -72,6 +80,7 @@ function makeFakeSlang(opts: {
       opts.targets ?? [
         { name: "GLSL", value: 1 },
         { name: "WGSL", value: 3 },
+        { name: "HLSL", value: 5 },
       ],
     getLastError: () => ({ type: "error", result: -1, message: opts.lastError ?? "" }),
     getVersionString: () => "test",
@@ -163,6 +172,35 @@ describe("SlangCompiler", () => {
       wgsl: "FINAL_WGSL",
       diagnostics: [],
     });
+  });
+
+  it("compiles the wrapped workspace root to the requested HLSL target", () => {
+    const onCreateSession = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({
+      hlsl: "FINAL_HLSL",
+      onCreateSession,
+    }));
+
+    expect(compiler.compileTarget(request(), "HLSL")).toEqual({
+      success: true,
+      target: "HLSL",
+      code: "FINAL_HLSL",
+      diagnostics: [],
+    });
+    expect(onCreateSession).toHaveBeenCalledWith(5);
+  });
+
+  it("reports when the requested HLSL target is unavailable", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      targets: [{ name: "WGSL", value: 3 }],
+    }));
+
+    const result = compiler.compileTarget(request(), "HLSL");
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors[0]).toMatch(/no HLSL compile target/i);
+    }
   });
 
   it("mounts all workspace files before loading the root without rewriting dependencies", () => {

@@ -1,11 +1,21 @@
 /// <reference lib="webworker" />
 // Dedicated worker: owns its own slang-wasm instance and answers
 // init/compile messages from WorkerSlangCompiler. Never imports WebGPU.
-import { SlangCompiler, type SlangCompileRequest } from "./SlangCompiler";
+import {
+  SlangCompiler,
+  type SlangCompileRequest,
+  type SlangCompileTargetName,
+} from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 
 type InitMessage = { id: number; type: "init"; scriptUrl: string; wasmUrl: string };
 type CompileMessage = { id: number; type: "compile"; request: SlangCompileRequest };
+type CompileTargetMessage = {
+  id: number;
+  type: "compileTarget";
+  request: SlangCompileRequest;
+  target: SlangCompileTargetName;
+};
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let compiler: SlangCompiler | null = null;
@@ -16,7 +26,9 @@ function postStatus(label: string, id?: number, detail?: string): void {
 
 postStatus("boot");
 
-scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
+scope.onmessage = async (
+  event: MessageEvent<InitMessage | CompileMessage | CompileTargetMessage>,
+) => {
   const message = event.data;
   try {
     if (message.type === "init") {
@@ -32,7 +44,9 @@ scope.onmessage = async (event: MessageEvent<InitMessage | CompileMessage>) => {
     if (!compiler) {
       throw new Error("compile requested before worker init");
     }
-    const result = compiler.compile(message.request);
+    const result = message.type === "compileTarget"
+      ? compiler.compileTarget(message.request, message.target)
+      : compiler.compile(message.request);
     scope.postMessage({ id: message.id, ok: true, result });
   } catch (error) {
     scope.postMessage({

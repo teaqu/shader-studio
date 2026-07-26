@@ -1,5 +1,9 @@
 import type { ShaderConfig, SlangWorkspaceSnapshot } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
+import type {
+  SlangCompileTargetName,
+  SlangTargetCompileResult,
+} from "../webgpu/SlangCompiler";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
 
@@ -15,6 +19,9 @@ export interface RenderingEngine {
     customUniformInfo?: { name: string; type: string }[],
     workspace?: SlangWorkspaceSnapshot,
   ): Promise<CompilationResult | undefined>;
+  compileImageTarget?(
+    target: SlangCompileTargetName,
+  ): Promise<SlangTargetCompileResult>;
   getCurrentConfig(): ShaderConfig | null;
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string, workspace?: SlangWorkspaceSnapshot): Promise<CompilationResult | undefined>;
