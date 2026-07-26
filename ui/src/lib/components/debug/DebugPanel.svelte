@@ -18,7 +18,6 @@
     debugState?: ShaderDebugState;
     getUniforms?: () => PassUniforms | null;
     uniforms?: PassUniforms | null;
-    canvasElement?: HTMLCanvasElement | null;
     canvasWidth?: number;
     canvasHeight?: number;
     shaderDebugManager?: ShaderDebugManager;
@@ -41,7 +40,6 @@
     debugState = undefined,
     getUniforms = () => null,
     uniforms = null,
-    canvasElement = null,
     canvasWidth = 0,
     canvasHeight = 0,
     shaderDebugManager = undefined,
@@ -633,7 +631,7 @@
       </div>
     {/if}
     {#if isInspectorEnabled}
-      <PixelInspectorSection {canvasElement} {canvasWidth} {canvasHeight} />
+      <PixelInspectorSection {canvasWidth} {canvasHeight} />
     {/if}
 
     {#if isInlineOn || isVarInspectorOn}

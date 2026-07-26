@@ -650,7 +650,9 @@ describe('ShaderViewer', () => {
   it('pixel inspector zoom is rendered inside DebugPanel via PixelInspectorSection', () => {
     expect(shaderViewerSource).toContain('getInspectorState');
     expect(shaderViewerSource).toContain('setInspectorState');
-    expect(shaderViewerSource).toContain('canvasElement={glCanvas}');
+    expect(shaderViewerSource).toContain('canvasElement: glCanvas');
+    const debugPanelMarkup = shaderViewerSource.slice(shaderViewerSource.indexOf('<DebugPanel'));
+    expect(debugPanelMarkup).not.toContain('canvasElement={glCanvas}');
   });
 
   it('should update the active debugger size button after sample size changes', async () => {

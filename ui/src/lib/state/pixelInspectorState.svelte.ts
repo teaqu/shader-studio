@@ -12,7 +12,9 @@ const DEFAULT: PixelInspectorState = {
   region: null,
 };
 
-let _state = $state<PixelInspectorState>({ ...DEFAULT });
+// Regions are immutable readback snapshots. Keeping the enclosing state raw
+// preserves a snapshot's object identity for the canvas raster cache.
+let _state = $state.raw<PixelInspectorState>({ ...DEFAULT });
 let _lockAtHandler: ((x: number, y: number) => void) | null = null;
 
 export function getInspectorState(): PixelInspectorState {

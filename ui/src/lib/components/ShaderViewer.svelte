@@ -1354,7 +1354,6 @@
         {getUniforms}
         {shaderDebugManager}
         {variableCaptureManager}
-        canvasElement={glCanvas}
         {canvasWidth}
         {canvasHeight}
         onExpandVarHistogram={handleExpandVarHistogram}

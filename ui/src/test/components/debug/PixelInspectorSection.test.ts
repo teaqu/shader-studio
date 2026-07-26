@@ -10,7 +10,7 @@ import {
 } from '../../../lib/state/pixelInspectorState.svelte';
 import { debugPanelStore } from '../../../lib/stores/debugPanelStore';
 import { get } from 'svelte/store';
-import type { PixelInspectorState } from '../../../lib/types/PixelInspectorState';
+import type { PixelInspectorRegion, PixelInspectorState } from '../../../lib/types/PixelInspectorState';
 
 const DEFAULT_STATE: PixelInspectorState = {
   isEnabled: true,
@@ -30,14 +30,12 @@ const PIXEL_STATE: PixelInspectorState = {
   pixelRGB: { r: 255, g: 128, b: 0 },
   fragCoord: { x: 100.5, y: 200.5 },
   canvasPosition: { x: 100, y: 200 },
+  region: {
+    width: 60,
+    height: 60,
+    rgba: new Uint8ClampedArray(Array.from({ length: 60 * 60 * 4 }, (_, index) => index % 256)),
+  },
 };
-
-function makeCanvas(width = 400, height = 300): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = width;
-  c.height = height;
-  return c;
-}
 
 describe('PixelInspectorSection', () => {
   beforeAll(() => {
@@ -65,7 +63,6 @@ describe('PixelInspectorSection', () => {
   describe('empty state', () => {
     it('shows hint text when no pixel selected', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -75,7 +72,6 @@ describe('PixelInspectorSection', () => {
 
     it('zoom canvas has empty class when no pixel', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -88,30 +84,34 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
     });
 
-    it('redraws the zoom canvas when movement only changes screen-space mouse coordinates', async () => {
-      const drawImage = vi.fn();
+    it('does not rerasterize when movement only changes screen-space mouse coordinates', async () => {
+      const visibleDrawImage = vi.fn();
+      const scratchPutImageData = vi.fn();
       const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
         mockRestore(): void;
-        mockReturnValue(value: CanvasRenderingContext2D): void;
+        mockImplementation(implementation: (this: HTMLCanvasElement) => CanvasRenderingContext2D): void;
       };
-      getContext.mockReturnValue({
-        beginPath: vi.fn(),
-        clearRect: vi.fn(),
-        drawImage,
-        lineTo: vi.fn(),
-        moveTo: vi.fn(),
-        stroke: vi.fn(),
-        strokeRect: vi.fn(),
-      } as unknown as CanvasRenderingContext2D);
+      getContext.mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          beginPath: vi.fn(),
+          clearRect: vi.fn(),
+          drawImage: this.isConnected ? visibleDrawImage : vi.fn(),
+          lineTo: vi.fn(),
+          moveTo: vi.fn(),
+          putImageData: this.isConnected ? vi.fn() : scratchPutImageData,
+          stroke: vi.fn(),
+          strokeRect: vi.fn(),
+        } as unknown as CanvasRenderingContext2D;
+      });
 
       try {
         render(PixelInspectorSection, {
-          canvasElement: makeCanvas(),
           canvasWidth: 400,
           canvasHeight: 300,
         });
         await tick();
-        expect(drawImage).toHaveBeenCalledTimes(1);
+        expect(visibleDrawImage).toHaveBeenCalledTimes(1);
+        expect(scratchPutImageData).toHaveBeenCalledTimes(1);
 
         setInspectorState({
           ...PIXEL_STATE,
@@ -120,7 +120,150 @@ describe('PixelInspectorSection', () => {
         });
         await tick();
 
-        expect(drawImage).toHaveBeenCalledTimes(2);
+        expect(visibleDrawImage).toHaveBeenCalledTimes(1);
+        expect(scratchPutImageData).toHaveBeenCalledTimes(1);
+      } finally {
+        getContext.mockRestore();
+      }
+    });
+
+    it('uses the region bytes from a private scratch canvas at the expected default crop', async () => {
+      const visibleDrawImage = vi.fn();
+      const scratchPutImageData = vi.fn();
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+        mockRestore(): void;
+        mockImplementation(implementation: (this: HTMLCanvasElement) => CanvasRenderingContext2D): void;
+      };
+      getContext.mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          beginPath: vi.fn(), clearRect: vi.fn(),
+          drawImage: this.isConnected ? visibleDrawImage : vi.fn(),
+          lineTo: vi.fn(), moveTo: vi.fn(),
+          putImageData: this.isConnected ? vi.fn() : scratchPutImageData,
+          stroke: vi.fn(), strokeRect: vi.fn(),
+        } as unknown as CanvasRenderingContext2D;
+      });
+
+      try {
+        const { container } = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+        await tick();
+
+        expect(scratchPutImageData).toHaveBeenCalledTimes(1);
+        const imageData = scratchPutImageData.mock.calls[0][0] as ImageData;
+        expect(Array.from(imageData.data)).toEqual(Array.from(PIXEL_STATE.region!.rgba));
+        expect(visibleDrawImage).toHaveBeenCalledWith(
+          expect.any(HTMLCanvasElement), 23, 23, 15, 15, 0, 0, 120, 120
+        );
+        expect(visibleDrawImage.mock.calls[0][0]).not.toBe(container.querySelector('canvas'));
+      } finally {
+        getContext.mockRestore();
+      }
+    });
+
+    it('rerasterizes when a new region object shares the previous byte array', async () => {
+      const scratchPutImageData = vi.fn();
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+        mockRestore(): void;
+        mockImplementation(implementation: (this: HTMLCanvasElement) => CanvasRenderingContext2D): void;
+      };
+      getContext.mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          beginPath: vi.fn(), clearRect: vi.fn(), drawImage: vi.fn(),
+          lineTo: vi.fn(), moveTo: vi.fn(),
+          putImageData: this.isConnected ? vi.fn() : scratchPutImageData,
+          stroke: vi.fn(), strokeRect: vi.fn(),
+        } as unknown as CanvasRenderingContext2D;
+      });
+
+      try {
+        render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+        await tick();
+        const sharedRgba = PIXEL_STATE.region!.rgba;
+        const nextRegion: PixelInspectorRegion = { width: 60, height: 60, rgba: sharedRgba };
+
+        setInspectorState({ ...PIXEL_STATE, region: nextRegion });
+        await tick();
+
+        expect(scratchPutImageData).toHaveBeenCalledTimes(2);
+      } finally {
+        getContext.mockRestore();
+      }
+    });
+
+    it('uses centered crop rectangles for the lowest and highest zoom levels', async () => {
+      const visibleDrawImage = vi.fn();
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+        mockRestore(): void;
+        mockImplementation(implementation: (this: HTMLCanvasElement) => CanvasRenderingContext2D): void;
+      };
+      getContext.mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          beginPath: vi.fn(), clearRect: vi.fn(),
+          drawImage: this.isConnected ? visibleDrawImage : vi.fn(),
+          lineTo: vi.fn(), moveTo: vi.fn(), putImageData: vi.fn(),
+          stroke: vi.fn(), strokeRect: vi.fn(),
+        } as unknown as CanvasRenderingContext2D;
+      });
+
+      try {
+        const { container } = render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+        const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+        for (let index = 0; index < 50; index += 1) {
+          await fireEvent.wheel(canvas, { deltaY: 100 });
+        }
+        await tick();
+        expect(visibleDrawImage).toHaveBeenLastCalledWith(
+          expect.any(HTMLCanvasElement), 0, 0, 60, 60, 0, 0, 120, 120
+        );
+
+        for (let index = 0; index < 50; index += 1) {
+          await fireEvent.wheel(canvas, { deltaY: -100 });
+        }
+        expect(visibleDrawImage).toHaveBeenLastCalledWith(
+          expect.any(HTMLCanvasElement), 28, 28, 4, 4, 0, 0, 120, 120
+        );
+      } finally {
+        getContext.mockRestore();
+      }
+    });
+
+    it('copies a new region identity including transparent padding and clears when the region disappears', async () => {
+      const visibleDrawImage = vi.fn();
+      const scratchPutImageData = vi.fn();
+      const visibleClearRect = vi.fn();
+      const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as {
+        mockRestore(): void;
+        mockImplementation(implementation: (this: HTMLCanvasElement) => CanvasRenderingContext2D): void;
+      };
+      getContext.mockImplementation(function (this: HTMLCanvasElement) {
+        return {
+          beginPath: vi.fn(),
+          clearRect: this.isConnected ? visibleClearRect : vi.fn(),
+          drawImage: this.isConnected ? visibleDrawImage : vi.fn(),
+          lineTo: vi.fn(), moveTo: vi.fn(),
+          putImageData: this.isConnected ? vi.fn() : scratchPutImageData,
+          stroke: vi.fn(), strokeRect: vi.fn(),
+        } as unknown as CanvasRenderingContext2D;
+      });
+
+      try {
+        render(PixelInspectorSection, { canvasWidth: 400, canvasHeight: 300 });
+        await tick();
+        const transparentEdgeRegion = new Uint8ClampedArray(60 * 60 * 4);
+        transparentEdgeRegion[4] = 255;
+        setInspectorState({
+          ...PIXEL_STATE,
+          region: { width: 60, height: 60, rgba: transparentEdgeRegion },
+        });
+        await tick();
+        expect(scratchPutImageData).toHaveBeenCalledTimes(2);
+        expect(Array.from((scratchPutImageData.mock.calls[1][0] as ImageData).data.slice(0, 4))).toEqual([0, 0, 0, 0]);
+        expect(visibleDrawImage).toHaveBeenCalledTimes(2);
+
+        setInspectorState({ ...PIXEL_STATE, region: null });
+        await tick();
+        expect(visibleClearRect).toHaveBeenCalled();
+        expect(visibleDrawImage).toHaveBeenCalledTimes(2);
       } finally {
         getContext.mockRestore();
       }
@@ -128,7 +271,6 @@ describe('PixelInspectorSection', () => {
 
     it('shows info grid with RGB, Hex, Float, fragCoord, UV', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -144,7 +286,6 @@ describe('PixelInspectorSection', () => {
 
     it('does not show UV when canvas dimensions are zero', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 0,
         canvasHeight: 0,
       });
@@ -156,7 +297,6 @@ describe('PixelInspectorSection', () => {
 
     it('zoom canvas has locked class when locked', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -165,7 +305,6 @@ describe('PixelInspectorSection', () => {
 
     it('zoom canvas shows crosshair cursor', () => {
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -181,7 +320,6 @@ describe('PixelInspectorSection', () => {
 
     function renderSection() {
       return render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -243,7 +381,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -262,7 +399,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -282,7 +418,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -300,7 +435,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -322,7 +456,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -341,7 +474,6 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -363,7 +495,6 @@ describe('PixelInspectorSection', () => {
       registerLockAtHandler(locked);
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -388,7 +519,6 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -406,7 +536,6 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -421,7 +550,6 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -437,7 +565,6 @@ describe('PixelInspectorSection', () => {
       setInspectorState({ ...PIXEL_STATE });
 
       const { container } = render(PixelInspectorSection, {
-        canvasElement: makeCanvas(),
         canvasWidth: 400,
         canvasHeight: 300,
       });
@@ -455,7 +582,6 @@ describe('PixelInspectorSection', () => {
         setInspectorState({ ...PIXEL_STATE });
 
         const { container } = render(PixelInspectorSection, {
-          canvasElement: makeCanvas(),
           canvasWidth: 400,
           canvasHeight: 300,
         });
