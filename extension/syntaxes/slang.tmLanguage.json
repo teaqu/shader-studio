@@ -210,7 +210,6 @@
     "builtins": {
       "patterns": [
         {
-          "name": "variable.other.builtin.shadertoy.slang",
           "match": "\\b(?:iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
         }
       ]
@@ -294,11 +293,7 @@
     "swizzle": {
       "patterns": [
         {
-          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b",
-          "captures": {
-            "1": { "name": "variable.other.property.swizzle.slang" },
-            "2": { "name": "variable.other.property.swizzle.slang" }
-          }
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b"
         }
       ]
     },

@@ -268,14 +268,12 @@ suite('Bundled Slang syntax assets', () => {
       ['0xFF', '0xFF', '0xFF', 'constant.numeric.hex'],
       ['077', '077', '077', 'constant.numeric.octal'],
       ['true', 'true', 'true', 'constant.language.boolean'],
-      ['iTime', 'iTime', 'iTime', 'variable.other.builtin.shadertoy'],
       ['=', '=', '=', 'keyword.operator.assignment'],
       ['==', '==', '==', 'keyword.operator.comparison'],
       ['+', '+', '+', 'keyword.operator.arithmetic'],
       ['&&', '&&', '&&', 'keyword.operator.logical'],
       ['&', '&', '&', 'keyword.operator.bitwise'],
       ['?', '?', '?', 'keyword.operator.ternary'],
-      ['value.xyz', 'value.xyz', 'xyz', 'variable.other.property.swizzle'],
       [';', ';', ';', 'punctuation.terminator.statement'],
       [',', ',', ',', 'punctuation.separator.comma'],
       ['{', '{', '{', 'punctuation.section.block.begin'],
@@ -352,22 +350,24 @@ void main() { shade(float2(0.)); }`,
     }
   });
 
-  test('colours the complete swizzle suffix in both GLSL and Slang', () => {
+  test('keeps Shadertoy uniforms and member suffixes at the base scope', () => {
     for (const [grammar, language] of [
       [glslGrammar, 'GLSL'],
       [slangGrammar, 'Slang'],
     ] as const) {
-      const [tokens] = tokenizeLines('iResolution.xy', grammar);
-      const accessor = tokens.find((token) => token.text === '.');
-      const swizzle = tokens.find((token) => token.text === 'xy');
+      const source =
+        'iTime; iResolution.xy; iMouse.x; iChannel0; uv.y; uv.x; '
+        + 'color.rgba; texcoord.stpq;';
+      const [tokens] = tokenizeLines(source, grammar);
 
-      assert.ok(accessor, `${language} must emit the swizzle accessor`);
-      assert.ok(swizzle, `${language} must emit the swizzle components`);
-      assert.ok(
-        hasScope(accessor, 'variable.other.property.swizzle'),
-        `${language} must colour the swizzle accessor with its components`,
-      );
-      assert.ok(hasScope(swizzle, 'variable.other.property.swizzle'));
+      assert.strictEqual(tokens.map((token) => token.text).join(''), source);
+      for (const token of tokens.filter((candidate) => candidate.text !== ';')) {
+        assert.deepStrictEqual(
+          token.scopes,
+          [`source.${language.toLowerCase()}`],
+          `${language} ${JSON.stringify(token.text)} must inherit the editor foreground`,
+        );
+      }
     }
   });
 

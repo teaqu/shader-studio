@@ -277,7 +277,7 @@ describe('Slang Monarch language', () => {
     }
   }, 15_000);
 
-  it('highlights control flow, user functions, and complete swizzles in both languages', async () => {
+  it('highlights control flow and user functions while keeping members neutral', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
       matches: false,
       addEventListener: vi.fn(),
@@ -292,7 +292,7 @@ describe('Slang Monarch language', () => {
       'float shade(float value) {',
       '  if (value > 0.0) {',
       '    for (int index = 0; index < 2; index++) {',
-      '      value += shade(iResolution.xy.x + color.rgba.x + texcoord.stpq.x);',
+      '      value += shade(iTime + iResolution.xy.x + color.rgba.x + texcoord.stpq.x);',
       '    }',
       '    while (value > 1.0) { value -= 1.0; }',
       '    switch (int(value)) { case 0: break; default: continue; }',
@@ -305,12 +305,12 @@ describe('Slang Monarch language', () => {
       glsl: {
         control: 'keyword.glsl',
         function: 'support.function.glsl',
-        swizzle: 'variable.predefined.member.glsl',
+        identifier: 'identifier.glsl',
       },
       slang: {
         control: 'keyword.control.slang',
         function: 'support.function.slang',
-        swizzle: 'variable.predefined.member.slang',
+        identifier: 'identifier.slang',
       },
     } as const;
 
@@ -330,14 +330,18 @@ describe('Slang Monarch language', () => {
         .toBe(expectedTypes[language].function);
       expect.soft(tokenAt(3, 'shade'), `${language} function call`)
         .toBe(expectedTypes[language].function);
+      expect.soft(tokenAt(3, 'iTime'), `${language} iTime`)
+        .toBe(expectedTypes[language].identifier);
+      expect.soft(tokenAt(3, 'iResolution'), `${language} iResolution`)
+        .toBe(expectedTypes[language].identifier);
       expect.soft(tokenAt(3, '.xy'), `${language} .xy`)
-        .toBe(expectedTypes[language].swizzle);
+        .toBe(expectedTypes[language].identifier);
       expect.soft(tokenAt(3, '.rgba'), `${language} .rgba`)
-        .toBe(expectedTypes[language].swizzle);
+        .toBe(expectedTypes[language].identifier);
       expect.soft(tokenAt(3, '.stpq'), `${language} .stpq`)
-        .toBe(expectedTypes[language].swizzle);
+        .toBe(expectedTypes[language].identifier);
       expect.soft(tokenAt(3, '.x', true), `${language} .x`)
-        .toBe(expectedTypes[language].swizzle);
+        .toBe(expectedTypes[language].identifier);
     }
   });
 
@@ -386,12 +390,10 @@ describe('Slang Monarch language', () => {
     ] as const) {
       expect.soft(tokenAt(line, text), text).toBe('type.glsl');
     }
-    for (const [line, text] of [
-      [6, 'gl_FragCoord'],
-      [8, 'iChannel9'],
-    ] as const) {
+    for (const [line, text] of [[6, 'gl_FragCoord']] as const) {
       expect.soft(tokenAt(line, text), text).toBe('variable.predefined.glsl');
     }
+    expect.soft(tokenAt(8, 'iChannel9'), 'iChannel9').toBe('identifier.glsl');
     for (const [line, text] of [
       [5, 'main'],
       [7, 'imageStore'],
@@ -411,17 +413,17 @@ describe('Slang Monarch language', () => {
     const { setupMonacoSlang } = await import('../setup');
     setupMonacoSlang(monaco);
 
-    const tokens = monaco.editor.tokenize(
-      'float4x4 transform; float16_t2x3 compact; '
-        + 'lerp(frac(iTime), saturate(value), 0.5); '
-        + 'texture.Sample(sampler, uv); null none',
-      'slang',
-    )[0];
+    const source = 'float4x4 transform; float16_t2x3 compact; '
+      + 'lerp(frac(iTime), saturate(value), 0.5); '
+      + 'texture.Sample(sampler, uv); null none';
+    const tokens = monaco.editor.tokenize(source, 'slang')[0];
     const types = tokens.map((token) => token.type);
+    const iTimeOffset = source.indexOf('iTime');
+    const iTimeToken = [...tokens].reverse().find((token) => token.offset <= iTimeOffset);
 
     expect(types.filter((type) => type === 'type.slang')).toHaveLength(2);
     expect(types.filter((type) => type === 'support.function.slang')).toHaveLength(4);
-    expect(types).toContain('variable.predefined.slang');
+    expect(iTimeToken?.type).toBe('identifier.slang');
     expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
   });
 

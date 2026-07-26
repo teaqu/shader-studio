@@ -185,7 +185,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [invalidLeadingZeroPattern, 'invalid'],
       [invalidIdentifierNumberChainPattern, 'invalid'],
       [invalidDottedNumberChainPattern, 'invalid'],
-      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'variable.predefined.member'],
+      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'identifier'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
           '@controlKeywords': 'keyword.control',
@@ -199,7 +199,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       }],
       [/[a-zA-Z_]\w*/, {
         cases: {
-          '@shadertoyUniforms': 'variable.predefined',
+          '@shadertoyUniforms': 'identifier',
           '@types': 'type',
           '@modifiers': 'keyword.modifier',
           '@constants': 'keyword',

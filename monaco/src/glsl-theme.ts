@@ -10,7 +10,6 @@ export const shaderStudioTheme = {
     { token: 'keyword.preprocessor', foreground: 'F0F0F0' },
     { token: 'support.function', foreground: 'FFF550' },
     { token: 'variable.predefined', foreground: '50F5FF' },
-    { token: 'variable.predefined.member', foreground: '50F5FF' },
     { token: 'type', foreground: 'CC99FF' },
     { token: 'number', foreground: 'FFB866' },
     { token: 'number.float', foreground: 'FFB866' },
