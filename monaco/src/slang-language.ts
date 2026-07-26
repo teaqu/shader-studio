@@ -185,11 +185,16 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [invalidLeadingZeroPattern, 'invalid'],
       [invalidIdentifierNumberChainPattern, 'invalid'],
       [invalidDottedNumberChainPattern, 'invalid'],
+      [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'variable.predefined.member'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
+          '@controlKeywords': 'keyword.control',
+          '@declarationKeywords': 'keyword.declaration',
+          '@modifiers': 'keyword.modifier',
+          '@constants': 'keyword',
           '@builtins': 'support.function',
           '@types': 'type',
-          '@default': 'identifier',
+          '@default': 'support.function',
         },
       }],
       [/[a-zA-Z_]\w*/, {

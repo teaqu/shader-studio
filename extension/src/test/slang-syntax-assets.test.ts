@@ -352,6 +352,25 @@ void main() { shade(float2(0.)); }`,
     }
   });
 
+  test('colours the complete swizzle suffix in both GLSL and Slang', () => {
+    for (const [grammar, language] of [
+      [glslGrammar, 'GLSL'],
+      [slangGrammar, 'Slang'],
+    ] as const) {
+      const [tokens] = tokenizeLines('iResolution.xy', grammar);
+      const accessor = tokens.find((token) => token.text === '.');
+      const swizzle = tokens.find((token) => token.text === 'xy');
+
+      assert.ok(accessor, `${language} must emit the swizzle accessor`);
+      assert.ok(swizzle, `${language} must emit the swizzle components`);
+      assert.ok(
+        hasScope(accessor, 'variable.other.property.swizzle'),
+        `${language} must colour the swizzle accessor with its components`,
+      );
+      assert.ok(hasScope(swizzle, 'variable.other.property.swizzle'));
+    }
+  });
+
   test('scopes Slang-native built-ins without leaking into comments or strings', () => {
     const lines = tokenizeLines(`lerp(frac(value), saturate(value), 0.5);
 texture.Sample(samplerState, uv);
