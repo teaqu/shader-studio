@@ -16,6 +16,8 @@ import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 import { aspectRatioStore } from '../../lib/stores/aspectRatioStore';
+import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
+import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
 
 // Mock ResizeObserver
@@ -561,6 +563,17 @@ describe('ShaderViewer', () => {
     debugPanelStore.setVariableInspectorEnabled(false);
     debugPanelStore.setInlineRenderingEnabled(true);
     debugPanelStore.setPixelInspectorEnabled(true);
+    setInspectorState({
+      isEnabled: false,
+      isActive: false,
+      isLocked: false,
+      mouseX: 0,
+      mouseY: 0,
+      pixelRGB: null,
+      fragCoord: null,
+      canvasPosition: null,
+      region: null,
+    });
     setEditorOverlayVisible(false);
     audioStore.setMuted(true);
     audioStore.setVolume(1);
@@ -653,6 +666,29 @@ describe('ShaderViewer', () => {
     expect(shaderViewerSource).toContain('canvasElement: glCanvas');
     const debugPanelMarkup = shaderViewerSource.slice(shaderViewerSource.indexOf('<DebugPanel'));
     expect(debugPanelMarkup).not.toContain('canvasElement={glCanvas}');
+  });
+
+  it('uses accepted inspector snapshot coordinates for variable capture instead of the pointer-ahead target', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    await enableDebugAndVariableInspector();
+
+    const acceptedState: PixelInspectorState = {
+      isEnabled: true,
+      isActive: true,
+      isLocked: false,
+      mouseX: 700,
+      mouseY: 500,
+      pixelRGB: { r: 3, g: 240, b: 2 },
+      fragCoord: { x: 123, y: 279 },
+      canvasPosition: { x: 123, y: 321 },
+      region: { width: 60, height: 60, rgba: new Uint8ClampedArray(60 * 60 * 4) },
+    };
+    setInspectorState(acceptedState);
+    await tick();
+
+    expect(mockVCMFactory._lastNotifyParams).toMatchObject({ pixelX: 123, pixelY: 321 });
   });
 
   it('should update the active debugger size button after sample size changes', async () => {

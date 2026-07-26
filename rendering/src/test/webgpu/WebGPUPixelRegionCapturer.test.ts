@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PixelRegionRequest } from "../../types/PixelRegion";
 import { WebGPUPixelRegionCapturer } from "../../webgpu/WebGPUPixelRegionCapturer";
+import { expectCanonicalRegion } from "../capture/canonicalPixelRegion";
 
 const request = (requestId: number, centerX = 40, centerY = 50): PixelRegionRequest => ({
   requestId,
@@ -198,6 +199,21 @@ describe("WebGPUPixelRegionCapturer", () => {
     expect([...first.rgba.slice(0, 4)]).toEqual([3, 240, 2, 255]);
   });
 
+  it("publishes the canonical inspector region from padded BGRA bytes", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUPixelRegionCapturer(gpu.device, "bgra8unorm-srgb");
+    capturer.queue(request(1, 100, 80));
+    capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 200, 160);
+    // WebGPU rows are padded to 256 bytes and BGRA must become canonical RGBA.
+    gpu.buffers[0].data.set([2, 240, 3, 255], 30 * 256 + 30 * 4);
+    gpu.buffers[0].data.set([51, 34, 17, 68], 7 * 256 + 5 * 4);
+    capturer.beginMappings();
+    gpu.buffers[0].map.resolve();
+    await flush();
+
+    expectCanonicalRegion(capturer.collectResults()[0]);
+  });
+
   it("converts non-sRGB BGRA readback to RGBA", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUPixelRegionCapturer(gpu.device, "bgra8unorm");
@@ -322,5 +338,22 @@ describe("WebGPUPixelRegionCapturer", () => {
     capturer.dispose();
     expect(capturer.queue(request(3))).toBe(false);
     expect(capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100)).toBe(false);
+  });
+
+  it("releases all three occupied readback buffers when inspector work is cancelled", () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+    for (let requestId = 1; requestId <= 3; requestId += 1) {
+      capturer.queue(request(requestId, requestId * 10, 50));
+      capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 200, 100);
+      capturer.beginMappings();
+    }
+
+    capturer.cancelPendingCaptures();
+
+    expect(gpu.buffers).toHaveLength(3);
+    for (const buffer of gpu.buffers) {
+      expect(buffer.destroy).toHaveBeenCalledOnce();
+    }
   });
 });
