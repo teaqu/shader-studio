@@ -825,6 +825,28 @@ describe('ConfigPanel', () => {
       }
     });
 
+    it('does not remove, select, or navigate while cancelling an edited rename draft', async () => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+      const mockManager = getLatestConfigManagerInstance();
+
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await fireEvent.click(getByRole('menuitem', { name: 'Rename' }));
+      await tick();
+
+      const input = getByRole('textbox', { name: 'Rename BufferA' });
+      await fireEvent.input(input, { target: { value: 'BufferDraft' } });
+      await fireEvent.keyDown(input, { key: 'Escape' });
+      await tick();
+
+      expect(mockManager.removeBuffer).not.toHaveBeenCalled();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'navigateToBuffer' }),
+      );
+      expect(getTab(container, 'BufferA')).toBe(document.activeElement);
+    });
+
     it.each([
       ['empty', ''],
       ['whitespace', '   '],
