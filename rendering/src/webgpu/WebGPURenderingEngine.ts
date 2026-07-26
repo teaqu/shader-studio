@@ -138,9 +138,9 @@ class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
 /**
  * WebGPU/Slang counterpart to the WebGL RenderingEngine. Supports multi-pass
  * rendering driven by the ShaderToy-style Slang convention (iTime,
- * iResolution, iMouse, iFrame): BufferA-D passes render to float ping-pong
- * textures that other passes sample via iChannelN, and the Image pass renders
- * to the canvas. Inline Slang debugging, pixel inspection (async readback),
+ * iResolution, iMouse, iFrame): configured buffer passes render to float
+ * ping-pong textures that other passes sample via iChannelN, and the Image pass
+ * renders to the canvas. Inline Slang debugging, pixel inspection (async readback),
  * variable capture, texture inputs, video inputs, cubemap inputs, audio inputs,
  * and keyboard inputs are supported.
  */

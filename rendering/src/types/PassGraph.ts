@@ -5,7 +5,7 @@ import type {
   VideoConfigInput,
 } from "@shader-studio/types";
 
-export type RenderPassName = "BufferA" | "BufferB" | "BufferC" | "BufferD" | "Image";
+export type RenderPassName = string;
 export type ChannelReadTiming = "previous-frame" | "current-frame";
 
 export type RenderPassChannel =

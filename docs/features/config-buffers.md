@@ -19,8 +19,8 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | Tab | Description |
 |-----|-------------|
 | **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
-| **BufferA / B / C / D** | Intermediate render passes, each backed by a separate `.glsl` file. |
-| **Common** | Shared GLSL included verbatim at the top of every pass. Not a render pass — has no framebuffer. |
+| **Named buffers** | Intermediate render passes, each backed by a separate shader file. `BufferA`–`BufferD` are conventional examples, but you can use any valid identifier such as `BlurPass`. |
+| **Common** | Shared shader code included verbatim at the top of every pass. Not a render pass — has no framebuffer. |
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
@@ -48,15 +48,15 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 ## Buffer Passes
 
-Each buffer pass renders a `.glsl` file to an offscreen framebuffer that other passes can read as a texture. You can also configure input channels (`iChannel0`–`iChannel15`) for each buffer pass. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+Each buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer names follow the same identifier rules as shader variables, so names such as `BlurPass`, `GBuffer`, and `FeedbackState` work alongside the conventional `BufferA`–`BufferD` names. You can also configure input channels (`iChannel0`–`iChannel15`) for each buffer pass. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
-**Path field** — points to the GLSL file for this buffer. Three path forms are supported:
+**Path field** — points to the shader file for this buffer. Three path forms are supported:
 
 | Form | Example | Resolves relative to |
 |------|---------|----------------------|
-| Relative | `shader.bufferA.glsl` | The main shader file |
-| Absolute | `/Users/me/project/bufferA.glsl` | Filesystem root |
-| Workspace-root | `@/src/bufferA.glsl` | VS Code workspace root |
+| Relative | `shader.blur.slang` | The main shader file |
+| Absolute | `/Users/me/project/blur.slang` | Filesystem root |
+| Workspace-root | `@/src/blur.slang` | VS Code workspace root |
 
 If the file doesn't exist yet, the editor shows a **Create File** button that generates it with a `mainImage` stub.
 
