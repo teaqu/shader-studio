@@ -8,6 +8,29 @@ import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
+const pixelRegionCapturerMock = vi.hoisted(() => ({ constructor: vi.fn() }));
+
+vi.mock("../../webgpu/WebGPUPixelRegionCapturer", () => ({
+  WebGPUPixelRegionCapturer: class {
+    constructor(device: GPUDevice, format: GPUTextureFormat) {
+      pixelRegionCapturerMock.constructor(device, format);
+    }
+
+    queue(): boolean {
+      return true;
+    }
+    collectResults() {
+      return [];
+    }
+    cancelPendingCaptures(): void {}
+    encodeAfterRender(): boolean {
+      return false;
+    }
+    beginMappings(): void {}
+    dispose(): void {}
+  },
+}));
+
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
   return {
@@ -70,6 +93,7 @@ function lifecycleDevice() {
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
+    pixelRegionCapturerMock.constructor.mockClear();
   });
 
   it("initializes without throwing when WebGPU is unavailable", () => {
@@ -197,6 +221,105 @@ describe("WebGPURenderingEngine", () => {
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: { maxTextureDimension2D: 16384 },
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("constructs the pixel-region capturer only after configuring the resolved device", async () => {
+    const deviceResult = deferred<GPUDevice>();
+    const requestDevice = vi.fn(() => deviceResult.promise);
+    const adapter = { requestDevice } as unknown as GPUAdapter;
+    const context = { configure: vi.fn() };
+    const { device } = lifecycleDevice();
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => adapter),
+        getPreferredCanvasFormat: vi.fn(() => "rgba8unorm-srgb"),
+      },
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
+      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
+
+    try {
+      engine.initialize(webGpuCanvas(context));
+      await vi.waitFor(() => expect(requestDevice).toHaveBeenCalledOnce());
+      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
+
+      deviceResult.resolve(device);
+      await lifecycleInternals(engine).ready;
+
+      expect(context.configure).toHaveBeenCalledWith(expect.objectContaining({
+        device,
+        format: "rgba8unorm-srgb",
+        usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01),
+      }));
+      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledOnce();
+      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledWith(device, "rgba8unorm-srgb");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("disposes an existing region capturer before replacing it during initialization", async () => {
+    const context = { configure: vi.fn() };
+    const { device } = lifecycleDevice();
+    const adapter = { requestDevice: vi.fn(async () => device) } as unknown as GPUAdapter;
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => adapter),
+        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+      },
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const oldCapturer = { dispose: vi.fn() };
+    (engine as unknown as { pixelRegionCapturer: unknown }).pixelRegionCapturer = oldCapturer;
+    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
+      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
+
+    try {
+      engine.initialize(webGpuCanvas(context));
+      await lifecycleInternals(engine).ready;
+
+      expect(oldCapturer.dispose).toHaveBeenCalledOnce();
+      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledWith(device, "bgra8unorm");
+      expect(pixelRegionCapturerMock.constructor.mock.invocationCallOrder[0]).toBeGreaterThan(oldCapturer.dispose.mock.invocationCallOrder[0]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not construct a region capturer after disposal or a failed device request", async () => {
+    const deviceResult = deferred<GPUDevice>();
+    const context = { configure: vi.fn() };
+    vi.stubGlobal("navigator", {
+      gpu: {
+        requestAdapter: vi.fn(async () => ({ requestDevice: vi.fn(() => deviceResult.promise) })),
+        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+      },
+    });
+    const engine = new WebGPURenderingEngine(assets);
+
+    try {
+      engine.initialize(webGpuCanvas(context));
+      engine.dispose();
+      deviceResult.resolve(lifecycleDevice().device);
+      await lifecycleInternals(engine).ready;
+      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
+
+      const failedEngine = new WebGPURenderingEngine(assets);
+      vi.stubGlobal("navigator", {
+        gpu: {
+          requestAdapter: vi.fn(async () => ({ requestDevice: vi.fn(async () => {
+            throw new Error("lost");
+          }) })),
+          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+        },
+      });
+      failedEngine.initialize(webGpuCanvas({ configure: vi.fn() }));
+      await lifecycleInternals(failedEngine).ready;
+      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -637,7 +760,8 @@ describe("WebGPURenderingEngine", () => {
     expect(engine.getPasses()).toEqual([]);
     expect(engine.getCustomUniformInfo()).toEqual([]);
     expect(engine.getCustomUniformDeclarations()).toBe("");
-    expect(engine.readPixel(0, 0)).toBeNull();
+    expect(engine.requestPixelRegion(1, 0, 0)).toBe(false);
+    expect(engine.collectPixelRegionResults()).toEqual([]);
     expect(engine.getAudioFFTData()).toBeNull();
   });
 
@@ -3341,7 +3465,7 @@ describe("WebGPURenderingEngine", () => {
   describe("dispose()", () => {
     interface DisposableEngineInternals {
       compiler: { dispose(): void } | null;
-      inspectorReadbackBuffer: { destroy(): void } | null;
+      pixelRegionCapturer: { dispose(): void } | null;
       passPipelines: Map<string, { dispose(): void }>;
       passKeys: Map<string, string>;
       passGraph: Array<{ name: string }>;
@@ -3503,7 +3627,7 @@ describe("WebGPURenderingEngine", () => {
       const compiler = { dispose: vi.fn(() => {
         throw compilerError;
       }) };
-      const inspector = { destroy: vi.fn() };
+      const inspector = { dispose: vi.fn() };
       const firstPipeline = { dispose: vi.fn() };
       const secondPipeline = { dispose: vi.fn() };
       const resources = { cleanup: vi.fn() };
@@ -3511,7 +3635,7 @@ describe("WebGPURenderingEngine", () => {
       const engine = new WebGPURenderingEngine(assets);
       const internals = disposableInternals(engine);
       internals.compiler = compiler;
-      internals.inspectorReadbackBuffer = inspector;
+      internals.pixelRegionCapturer = inspector;
       internals.passPipelines = new Map([
         ["BufferA", firstPipeline],
         ["Image", secondPipeline],
@@ -3524,13 +3648,13 @@ describe("WebGPURenderingEngine", () => {
       expect(() => engine.dispose()).toThrow(compilerError);
 
       expect(compiler.dispose).toHaveBeenCalledOnce();
-      expect(inspector.destroy).toHaveBeenCalledOnce();
+      expect(inspector.dispose).toHaveBeenCalledOnce();
       expect(firstPipeline.dispose).toHaveBeenCalledOnce();
       expect(secondPipeline.dispose).toHaveBeenCalledOnce();
       expect(resources.cleanup).toHaveBeenCalledOnce();
       expect(device.destroy).toHaveBeenCalledOnce();
       expect(internals.compiler).toBeNull();
-      expect(internals.inspectorReadbackBuffer).toBeNull();
+      expect(internals.pixelRegionCapturer).toBeNull();
       expect(internals.passPipelines.size).toBe(0);
       expect(internals.passKeys.size).toBe(0);
       expect(internals.passGraph).toEqual([]);
@@ -3558,7 +3682,7 @@ describe("WebGPURenderingEngine", () => {
       const compiler = { dispose: vi.fn(() => {
         throw compilerError;
       }) };
-      const inspector = { destroy: vi.fn(() => {
+      const inspector = { dispose: vi.fn(() => {
         throw inspectorError;
       }) };
       const failedPipeline = { dispose: vi.fn(() => {
@@ -3578,7 +3702,7 @@ describe("WebGPURenderingEngine", () => {
       const internals = disposableInternals(engine);
       Object.assign(engine as any, { mouseManager, keyboardManager });
       internals.compiler = compiler;
-      internals.inspectorReadbackBuffer = inspector;
+      internals.pixelRegionCapturer = inspector;
       internals.passPipelines = new Map([
         ["BufferA", failedPipeline],
         ["Image", successfulPipeline],
@@ -3593,14 +3717,14 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.dispose).toHaveBeenCalledOnce();
       expect(mouseManager.dispose).toHaveBeenCalledOnce();
       expect(keyboardManager.dispose).toHaveBeenCalledOnce();
-      expect(inspector.destroy).toHaveBeenCalledOnce();
+      expect(inspector.dispose).toHaveBeenCalledOnce();
       expect(failedPipeline.dispose).toHaveBeenCalledOnce();
       expect(successfulPipeline.dispose).toHaveBeenCalledOnce();
       expect(resources.cleanup).toHaveBeenCalledOnce();
       expect(device.destroy).toHaveBeenCalledOnce();
       expect(internals).toMatchObject({
         compiler: null,
-        inspectorReadbackBuffer: null,
+        pixelRegionCapturer: null,
         resourceManager: null,
         device: null,
       });
