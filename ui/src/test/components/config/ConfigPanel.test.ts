@@ -621,6 +621,18 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
+    it('portals the Rename menu outside the clipped config panel', async () => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+
+      await fireEvent.contextMenu(getTab(container, 'BufferA'), { clientX: 120, clientY: 240 });
+      await tick();
+
+      const menu = getByRole('menu');
+      expect(container).not.toContainElement(menu);
+      expect(menu.parentElement).toBe(document.body);
+    });
+
     it('clamps the Rename menu inside the viewport near its bottom-right edge', async () => {
       const originalBounds = HTMLElement.prototype.getBoundingClientRect;
       const widthDescriptor = Object.getOwnPropertyDescriptor(window, 'innerWidth');

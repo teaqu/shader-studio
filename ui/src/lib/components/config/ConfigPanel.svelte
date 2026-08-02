@@ -2,6 +2,7 @@
   import { onMount, onDestroy, tick, untrack } from "svelte";
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
@@ -621,7 +622,7 @@
 </div>
 
 {#if menuTab}
-  <div bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
+  <div use:portal bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
     <button bind:this={menuButton} role="menuitem" onclick={startRename}>Rename</button>
   </div>
 {/if}
