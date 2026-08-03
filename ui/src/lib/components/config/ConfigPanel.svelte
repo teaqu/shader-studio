@@ -54,7 +54,7 @@
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
   $effect(() => {
-    const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
+    const displayName = getDisplayBufferName(selectedBuffer);
     untrack(() => {
       if (displayName !== activeTab && activeTab !== "Script") {
         activeTab = displayName;
@@ -200,7 +200,17 @@
   }
 
   function getActualBufferName(tabName: string): string {
-    return tabName === "Common" ? "common" : tabName;
+    if (tabName === "Common") {
+      return "common";
+    }
+    return tabName === "Vertex" ? "vertex" : tabName;
+  }
+
+  function getDisplayBufferName(bufferName: string): string {
+    if (bufferName === "common") {
+      return "Common";
+    }
+    return bufferName === "vertex" ? "Vertex" : bufferName;
   }
 
   function getWebviewUri(path: string): string | undefined {
@@ -211,13 +221,16 @@
     if (!config?.passes) {
       return [];
     }
-    return Object.keys(config.passes).filter((k) => k !== "Image" && k !== "common");
+    return Object.keys(config.passes).filter(
+      (name) => name !== "Image" && name !== "common" && name !== "vertex",
+    );
   });
 
   // Reactive statement to ensure tabs update when config changes
   let allTabs = $derived.by(() => {
     const bufferTabs: string[] = [];
     let hasCommon = false;
+    let hasVertex = false;
     if (config?.passes) {
       for (const name of Object.keys(config.passes)) {
         if (name === "Image") {
@@ -225,6 +238,8 @@
         }
         if (name === "common") {
           hasCommon = true;
+        } else if (name === "vertex") {
+          hasVertex = true;
         } else {
           bufferTabs.push(name);
         }
@@ -234,6 +249,9 @@
     const tabs = ["Image"];
     if (hasCommon) {
       tabs.push("Common");
+    }
+    if (hasVertex) {
+      tabs.push("Vertex");
     }
     tabs.push(...bufferTabs);
     if (config && config.script !== undefined) {
@@ -287,7 +305,7 @@
   <div class="config-content">
     <!-- Tab Navigation - Always visible -->
     <div class="tab-navigation">
-      {#each allTabs as tabName}
+      {#each allTabs as tabName (tabName)}
         <button
           class="tab-button {activeTab === tabName ? 'active' : ''}"
           onclick={() => switchTab(tabName)}

@@ -94,6 +94,39 @@ describe("ConfigValidator", () => {
     });
 
     describe("buffer pass validation", () => {
+      it("should accept a path-only vertex source pass", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            vertex: { path: "vertex.slang" }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(true);
+        expect(result.errors).toHaveLength(0);
+      });
+
+      it("should reject inputs and resolution on the vertex source pass", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            vertex: {
+              path: "vertex.slang",
+              inputs: {},
+              resolution: { scale: 0.5 }
+            }
+          }
+        } as any;
+
+        const result = ConfigValidator.validateConfig(config);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain("vertex pass cannot define inputs");
+        expect(result.errors).toContain("vertex pass cannot define resolution");
+      });
+
       it("should accept buffer pass without path (not yet configured)", () => {
         const config: ShaderConfig = {
           version: "1.0",
@@ -522,6 +555,26 @@ describe("ConfigValidator", () => {
           const result = ConfigValidator.validateConfig(config);
           expect(result.isValid).toBe(false);
           expect(result.errors).toContain('Image pass has invalid input configuration for iChannel0');
+        });
+
+        it("should reject buffer input with 'vertex' as source", () => {
+          const config = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  iChannel0: { type: "buffer", source: "vertex" }
+                }
+              },
+              vertex: { path: "vertex.slang" }
+            }
+          } as any;
+
+          const result = ConfigValidator.validateConfig(config);
+          expect(result.isValid).toBe(false);
+          expect(result.errors).toContain(
+            "Image pass has invalid input configuration for iChannel0",
+          );
         });
       });
 

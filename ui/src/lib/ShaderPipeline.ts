@@ -100,9 +100,9 @@ export class ShaderPipeline {
         }
 
         const bufferName = messageTarget.passName;
-        if (bufferName === 'common') {
+        if (bufferName === 'common' || bufferName === 'vertex') {
           this.syncStoredShaderContextForBufferUpdate(bufferName, code);
-          return await this.handleCommonBufferUpdate(path, buffers, code);
+          return await this.handleSourceOnlyBufferUpdate();
         }
 
         this.syncStoredShaderContextForBufferUpdate(bufferName, code);
@@ -169,9 +169,9 @@ export class ShaderPipeline {
     return Object.keys(buffers).length > 0 || !!code;
   }
 
-  private async handleCommonBufferUpdate(_path: string, _buffers: Record<string, string>, _code: string): Promise<CompilationResult> {
-    // Common updates are only valid while locked; refresh the locked main shader
-    // so the pipeline picks up the updated common content.
+  private async handleSourceOnlyBufferUpdate(): Promise<CompilationResult> {
+    // Source-only pass updates are only valid while locked; refresh the locked
+    // main shader so the pipeline picks up the updated common/vertex content.
     this.refresh(this.shaderLocker.getLockedShaderPath());
     return { success: true };
   }

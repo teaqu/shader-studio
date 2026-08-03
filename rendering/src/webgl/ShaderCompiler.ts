@@ -97,16 +97,24 @@ uniform struct {
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
     customUniformDeclarations?: string,
+    vertexSource?: string,
   ): Promise<PiShader | null> {
     const gl = this.gl;
     const ext = this.khrParallelCompile;
     if (!gl || !ext) {
-      return this.compileShader(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
+      return this.compileShader(
+        shaderSrc,
+        commonCode,
+        slotAssignments,
+        channelTypes,
+        customUniformDeclarations,
+        vertexSource,
+      );
     }
 
     const glslPrefix = `#version 300 es\n#ifdef GL_ES\nprecision highp float;\nprecision highp int;\nprecision mediump sampler3D;\n#endif\n`;
     const glslPrefixLines = (glslPrefix.match(/\n/g) ?? []).length;
-    const vsSource = `${glslPrefix}in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    const vsSource = `${glslPrefix}${this.vertexSourceOrDefault(vertexSource)}`;
     const { wrappedCode: fsSource, headerLineCount } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
     const fsPrefixed = `${glslPrefix}${fsSource}`;
     const mHeaderLines = glslPrefixLines + headerLineCount;
@@ -254,11 +262,16 @@ uniform struct {
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
     customUniformDeclarations?: string,
+    vertexSource?: string,
   ): PiShader | null {
-    const vs =
-      `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+    const vs = this.vertexSourceOrDefault(vertexSource);
     const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
     return this.renderer.CreateShader(vs, fs);
+  }
+
+  private vertexSourceOrDefault(vertexSource?: string): string {
+    return vertexSource?.trim()
+      || "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
   }
 
   private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {

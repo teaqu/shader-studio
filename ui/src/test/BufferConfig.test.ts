@@ -128,6 +128,20 @@ describe('BufferConfig', () => {
       expect(result.isValid).toBe(false);
     });
 
+    it('should reject buffer input with vertex as source', () => {
+      const config: BufferPass = {
+        path: 'shader.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'vertex' } as any
+        }
+      };
+      const bufferConfig = new BufferConfig('BufferA', config);
+
+      const result = bufferConfig.validate();
+
+      expect(result.isValid).toBe(false);
+    });
+
     it('should reject buffer input with empty source', () => {
       const config: BufferPass = {
         path: 'shader.glsl',

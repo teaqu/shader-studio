@@ -58,10 +58,18 @@ export class SlangCompiler {
 
     const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
     const fs = module.findEntryPointByName(SLANG_ENTRY_FRAGMENT);
-    if (!vs || !fs) {
+    if (!vs) {
       return {
         success: false,
-        errors: ["Slang: entry points not found (is `mainImage` defined?)"],
+        errors: [options.vertexSource
+          ? `vertex.slang: vertex entry point \`${SLANG_ENTRY_VERTEX}\` not found`
+          : `Slang: vertex entry point \`${SLANG_ENTRY_VERTEX}\` not found`],
+      };
+    }
+    if (!fs) {
+      return {
+        success: false,
+        errors: ["Slang: fragment entry point not found (is `mainImage` defined?)"],
       };
     }
 

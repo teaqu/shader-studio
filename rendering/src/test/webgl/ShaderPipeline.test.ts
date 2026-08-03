@@ -703,6 +703,55 @@ describe("ShaderPipeline", () => {
         undefined,
       );
     });
+
+    it("uses vertex as shared source without creating a render pass", async () => {
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const vertexCode = "in vec2 position; void main() { gl_Position = vec4(position * 0.5, 0.0, 1.0); }";
+      const config = {
+        version: "1.0",
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          vertex: { path: "vertex.glsl" },
+        },
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "test.glsl", {
+        BufferA: shaderCode,
+        vertex: vertexCode,
+      });
+
+      expect(result.success).toBe(true);
+      expect(shaderPipeline.getPasses().map((pass) => pass.name)).toEqual(["Image", "BufferA"]);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2);
+      for (const call of mockShaderCompiler.compileShaderAsync.mock.calls) {
+        expect(call[5]).toBe(vertexCode);
+      }
+    });
+
+    it("attributes a custom vertex compilation failure to vertex", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue({
+        mResult: false,
+        mInfo: "ERROR: 0:3: invalid vertex expression",
+        mErrorType: 0,
+      });
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        {
+          version: "1.0",
+          passes: {
+            Image: {},
+            vertex: { path: "vertex.glsl" },
+          },
+        },
+        "test.glsl",
+        { vertex: "broken vertex source" },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(["vertex: ERROR: 0:3: invalid vertex expression"]);
+    });
   });
 
   describe("error handling for missing buffer files", () => {

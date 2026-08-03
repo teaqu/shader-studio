@@ -76,6 +76,28 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
+  it("uses a configured vertex entry instead of the generated fullscreen entry", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    const vertexSource = `
+[shader("vertex")]
+float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position
+{
+    return float4(vertexID == 0 ? -0.5 : 0.5, 0, 0, 1);
+}`;
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      { vertexSource },
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain(vertexSource.trim());
+    expect(wrapped).toContain('#line 1 "vertex.slang"');
+    expect(wrapped).toContain(SLANG_ENTRY_FRAGMENT);
+    expect(wrapped).not.toContain("float2 verts[3]");
+  });
+
   it("caches the global session across compiles", () => {
     const slang = makeFakeSlang();
     const spy = vi.spyOn(slang, "createGlobalSession");
@@ -128,6 +150,28 @@ describe("SlangCompiler", () => {
     if (!result.success) {
       expect(result.errors[0]).toMatch(/mainImage/);
     }
+  });
+
+  it("attributes a missing custom vertexMain entry point to the vertex source", () => {
+    const compiler = new SlangCompiler(
+      makeFakeSlang({ missingEntryPoint: SLANG_ENTRY_VERTEX }),
+    );
+    const result = compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      {
+        vertexSource: `
+[shader("vertex")]
+float4 wrongName(uint vertexID : SV_VertexID) : SV_Position
+{
+    return float4(0, 0, 0, 1);
+}`,
+      },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["vertex.slang: vertex entry point `vertexMain` not found"],
+    });
   });
 
   it("fails on link failure with a fallback message when no diagnostic", () => {

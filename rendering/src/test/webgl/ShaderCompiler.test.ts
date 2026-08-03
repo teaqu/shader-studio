@@ -500,6 +500,26 @@ describe("ShaderCompiler", () => {
       expect(capturedFs).toMatch(/precision highp float;[\s\S]*out vec4 fragColor;[\s\S]*#define HW_PERFORMANCE 1[\s\S]*uniform vec3 iResolution;[\s\S]*void main\(\) \{[\s\S]*mainImage\(fragColor, gl_FragCoord\.xy\);[\s\S]*\}/);
     });
 
+    it("uses a custom vertex source when one is supplied", () => {
+      const mockShader = createMockShader();
+      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
+      const vertexSource = "in vec2 position; void main() { gl_Position = vec4(position * 0.5, 0.0, 1.0); }";
+
+      shaderCompiler.compileShader(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        vertexSource,
+      );
+
+      expect(mockRenderer.CreateShader).toHaveBeenCalledWith(
+        vertexSource,
+        expect.stringContaining("mainImage"),
+      );
+    });
+
     it("should pass common code to wrapShaderToyCode when compiling", () => {
       const mockShader = createMockShader();
       (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
@@ -627,6 +647,29 @@ describe("ShaderCompiler", () => {
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
       expect(gl.deleteProgram).not.toHaveBeenCalled();
+    });
+
+    it("uses a custom vertex source for KHR asynchronous compilation", async () => {
+      vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }));
+      const gl = createMockGl();
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+      const vertexSource = "in vec2 position; void main() { gl_Position = vec4(position * 0.25, 0.0, 1.0); }";
+
+      await compiler.compileShaderAsync(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        vertexSource,
+      );
+
+      expect(gl.__shaderSources[0]).toContain("#version 300 es");
+      expect(gl.__shaderSources[0]).toContain(vertexSource);
+      expect(gl.__shaderSources[0]).not.toContain("vec4(position, 0.0, 1.0)");
     });
 
 

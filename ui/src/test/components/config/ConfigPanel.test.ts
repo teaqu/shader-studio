@@ -248,6 +248,33 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).toHaveBeenCalledWith('common');
     });
 
+    it('shows configured vertex source as a path-only Vertex tab', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          vertex: { path: '/test/vertex.glsl' },
+        },
+      };
+
+      const { getByText, queryByText } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+      await fireEvent.click(getByText('Vertex'));
+
+      expect(mockOnFileSelect).toHaveBeenCalledWith('vertex');
+      expect(queryByText('+ Add Channel')).toBeNull();
+      expect(queryByText('Resolution')).toBeNull();
+    });
+
     it('should sync activeTab when selectedBuffer prop changes', async () => {
       const config: ShaderConfig = {
         version: '1.0',
@@ -396,6 +423,33 @@ describe('ConfigPanel', () => {
       const bufferAIdx = labels.indexOf('BufferA');
       expect(imageIdx).toBeLessThan(commonIdx);
       expect(commonIdx).toBeLessThan(bufferAIdx);
+    });
+
+    it('Vertex tab appears with Common before render buffers', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+          vertex: { path: './vertex.glsl' },
+          common: { path: './common.glsl' },
+        },
+      };
+
+      const { container } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      const labels = tabLabels(container).filter(l => l !== '+ New');
+      expect(labels).toEqual(['Image', 'Common', 'Vertex', 'BufferA']);
     });
 
     it('Script tab appears last', async () => {

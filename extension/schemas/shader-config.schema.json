@@ -37,10 +37,13 @@
         },
         "common": {
           "$ref": "#/definitions/BufferPass"
+        },
+        "vertex": {
+          "$ref": "#/definitions/VertexPass"
         }
       },
       "patternProperties": {
-        "^(?!Image$|common$)[a-zA-Z_][a-zA-Z0-9_]*$": {
+        "^(?!Image$|common$|vertex$)[a-zA-Z_][a-zA-Z0-9_]*$": {
           "$ref": "#/definitions/BufferPass"
         }
       },
@@ -73,6 +76,18 @@
         },
         "resolution": {
           "$ref": "#/definitions/BufferResolution"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VertexPass": {
+      "type": "object",
+      "description": "Custom vertex shader source configuration",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path to the vertex GLSL or Slang file (relative, absolute, or @ for workspace root)"
         }
       },
       "additionalProperties": false
@@ -171,7 +186,7 @@
             },
             "source": {
               "type": "string",
-              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+              "pattern": "^(?!Image$|common$|vertex$)[a-zA-Z_][a-zA-Z0-9_]*$",
               "description": "Source buffer name (any valid GLSL identifier)"
             }
           },

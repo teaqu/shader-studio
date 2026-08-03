@@ -61,6 +61,10 @@ const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
 const SLANG_WGSL_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 
+function isVertexShaderDiagnostic(error: string): boolean {
+  return /(?:^|[\\/])vertex\.slang(?:\b|\()/i.test(error);
+}
+
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
     private readonly inner: AsyncSlangCompiler,
@@ -679,12 +683,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextKeys = new Map<string, string>();
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    const vertexSource = buffers.vertex?.trim() ? buffers.vertex : undefined;
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
       const key = WebGPURenderingEngine.passCacheKey(
         pass,
         graph.commonCode,
         nextCustomUniformManager.getUniformInfo(),
+        vertexSource,
       );
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
@@ -715,13 +721,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
               key: channel.key,
               kind: channel.kind,
             })),
+            ...(vertexSource ? { vertexSource } : {}),
             ...(nextCustomUniformManager.hasUniforms()
               ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
               : {}),
           });
           slangMs = this.now() - slangStartedAt;
           if (!compiled.success) {
-            errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
+            const vertexErrors = vertexSource
+              ? compiled.errors.filter(isVertexShaderDiagnostic)
+              : [];
+            const passErrors = compiled.errors.filter(
+              (error) => !vertexErrors.includes(error),
+            );
+            errors.push(...vertexErrors.map((error) => `vertex: ${error}`));
+            errors.push(...passErrors.map((error) => `${pass.name}: ${error}`));
             passTimings.push({
               name: pass.name,
               cacheHit: false,
@@ -730,6 +744,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               totalMs: this.ms(this.now() - passStartedAt),
               errorCount: compiled.errors.length,
             });
+            if (vertexErrors.length > 0) {
+              break;
+            }
             continue;
           }
           wgsl = compiled.wgsl;
@@ -1036,7 +1053,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   /**
    * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key + kind).
+   * common/vertex code, cache key version, and channel layout (slot + key + kind).
    * Width/height are texture concerns handled by resize() without recompiling,
    * so they're deliberately excluded from the key.
    */
@@ -1044,6 +1061,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     commonCode: string,
     customUniforms: { name: string; type: string }[] = [],
+    vertexSource?: string,
   ): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
     return JSON.stringify([
@@ -1051,6 +1069,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.name,
       pass.source,
       commonCode,
+      vertexSource ?? "",
       channels,
       customUniforms,
     ]);

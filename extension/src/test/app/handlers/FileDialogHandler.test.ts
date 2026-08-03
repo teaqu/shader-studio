@@ -116,6 +116,20 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(opts.filters, { 'Script files': ['ts', 'js'] });
     });
 
+    test('allows GLSL and Slang files when selecting a vertex shader', async () => {
+      const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      await handler.handleSelectFile(
+        { shaderPath: '/test/shader.slang', fileType: 'vertex-shader', requestId: 'req1' },
+        respondFn,
+      );
+
+      const opts = showOpenStub.firstCall.args[0]!;
+      assert.deepStrictEqual(opts.filters, {
+        'Vertex shader files': ['glsl', 'frag', 'vert', 'slang'],
+      });
+    });
+
     test('calls writeWorkspaceTypeDefs when a .ts script file is selected', async () => {
       const WorkspaceTypeDefs = require('../../../app/WorkspaceTypeDefs');
       const writeStub = sandbox.stub(WorkspaceTypeDefs, 'writeWorkspaceTypeDefs');
@@ -296,6 +310,30 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(writeStub.calledOnce);
       const content: string = writeStub.firstCall.args[1];
       assert.ok(content.includes('Common functions'));
+    });
+
+    test('writes a Slang vertex template for vertex-shader fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(
+        vscode.Uri.file('/test/shader.vertex.slang'),
+      );
+
+      await handler.handleCreateFile(
+        {
+          shaderPath: '/test/shader.slang',
+          suggestedPath: 'shader.vertex.slang',
+          fileType: 'vertex-shader',
+          requestId: 'req-vertex',
+        },
+        respondFn,
+      );
+
+      const content: string = writeStub.firstCall.args[1];
+      assert.ok(content.includes('[shader("vertex")]'));
+      assert.ok(content.includes('vertexMain'));
     });
 
     test('writes default mainImage template for glsl fileType', async () => {

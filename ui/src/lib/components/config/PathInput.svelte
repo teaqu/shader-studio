@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
 
-  type FileType = 'script' | 'glsl-buffer' | 'glsl-common' | 'texture' | 'video' | 'audio' | 'cubemap';
+  type FileType =
+    | 'script'
+    | 'glsl-buffer'
+    | 'glsl-common'
+    | 'vertex-shader'
+    | 'texture'
+    | 'video'
+    | 'audio'
+    | 'cubemap';
 
   interface Props {
     value: string;
@@ -34,7 +42,7 @@
   }: Props = $props();
 
   let pathInputFocused = $state(false);
-  let localPath = $state(value);
+  let localPath = $state(untrack(() => value));
   $effect(() => {
     const v = value; // force track value
     if (!pathInputFocused) {
@@ -58,7 +66,7 @@
   // preventing a flash while fileExists hasn't yet been confirmed by the extension.
   let suppressCreate = $state(false);
   let suppressTimer: ReturnType<typeof setTimeout> | undefined;
-  let prevValue = value;
+  let prevValue = untrack(() => value);
 
   $effect(() => {
     const v = value;

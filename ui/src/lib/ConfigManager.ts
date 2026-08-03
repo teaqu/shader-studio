@@ -73,10 +73,12 @@ export class ConfigManager {
     // Extract just the filename without path
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.glsl$/, '');
+    const sourceExtension = filename.match(/\.(glsl|frag|slang)$/i)?.[1].toLowerCase();
+    const baseName = filename.replace(/\.(glsl|frag|slang)$/i, '');
+    const generatedExtension = sourceExtension === 'slang' ? 'slang' : 'glsl';
 
     const suffix = bufferName.toLowerCase();
-    return `${baseName}.${suffix}.glsl`;
+    return `${baseName}.${suffix}.${generatedExtension}`;
   }
 
   /**

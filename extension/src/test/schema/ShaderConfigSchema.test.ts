@@ -69,6 +69,54 @@ suite('Shader config JSON schema', () => {
     });
   });
 
+  test('reserves vertex as an explicit source-only pass for GLSL and Slang files', () => {
+    const vertexSchema = schema.definitions.ShaderPasses.properties.vertex;
+    assert.deepStrictEqual(vertexSchema, { $ref: '#/definitions/VertexPass' });
+    assert.ok(
+      Object.keys(schema.definitions.ShaderPasses.patternProperties)
+        .every((pattern) => !new RegExp(pattern).test('vertex')),
+      'vertex must not be matched as a generic render-buffer name',
+    );
+
+    for (const vertexPath of ['shader.vertex.glsl', 'shader.vertex.slang']) {
+      assertValid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          vertex: { path: vertexPath },
+        },
+      });
+    }
+
+    for (const unsupportedProperty of [
+      { inputs: {} },
+      { resolution: { scale: 0.5 } },
+    ]) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          vertex: {
+            path: 'shader.vertex.slang',
+            ...unsupportedProperty,
+          },
+        },
+      }, 'should NOT have additional properties');
+    }
+
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'buffer', source: 'vertex' },
+          },
+        },
+        vertex: { path: 'shader.vertex.slang' },
+      },
+    }, 'should match pattern');
+  });
+
   test('accepts every supported input type with persisted fields', () => {
     assertValid({
       version: '1.0',

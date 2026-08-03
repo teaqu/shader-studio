@@ -91,7 +91,7 @@ export class ShaderPipeline {
     }
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
     const nextPasses = this.buildPasses(code, config, buffers);
-    const compilation = await this.compileShaders(nextPasses);
+    const compilation = await this.compileShaders(nextPasses, buffers.vertex);
 
     if (this.disposed) {
       if (compilation.passShaders) {
@@ -150,6 +150,9 @@ export class ShaderPipeline {
 
     return passNames
       .map(passName => {
+        if (passName === "vertex") {
+          return null;
+        }
         const pass = config?.passes?.[passName];
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
 
@@ -197,6 +200,7 @@ export class ShaderPipeline {
 
   private async compileShaders(
     candidatePasses: Pass[],
+    vertexSource?: string,
   ): Promise<CompilationResult & {
     passShaders?: Record<string, PiShader>;
   }> {
@@ -228,7 +232,22 @@ export class ShaderPipeline {
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
         .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
-      const shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+      const shader = vertexSource?.trim()
+        ? await this.shaderCompiler.compileShaderAsync(
+          pass.shaderSrc,
+          commonCode,
+          slotAssignments,
+          channelTypes,
+          customDecl,
+          vertexSource,
+        )
+        : await this.shaderCompiler.compileShaderAsync(
+          pass.shaderSrc,
+          commonCode,
+          slotAssignments,
+          channelTypes,
+          customDecl,
+        );
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);
@@ -237,6 +256,13 @@ export class ShaderPipeline {
           return {
             success: false,
             errors: [`${pass.name}: Failed to compile shader`],
+          };
+        }
+
+        if (vertexSource?.trim() && shader.mErrorType === 0) {
+          return {
+            success: false,
+            errors: [`vertex: ${shader.mInfo}`],
           };
         }
 

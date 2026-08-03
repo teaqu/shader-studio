@@ -155,7 +155,8 @@ export class BufferConfig {
            input.source.length > 0 &&
            BufferConfig.GLSL_IDENTIFIER.test(input.source) &&
            input.source !== 'Image' &&
-           input.source !== 'common';
+           input.source !== 'common' &&
+           input.source !== 'vertex';
   }
 
   private validateTextureInput(input: any): boolean {

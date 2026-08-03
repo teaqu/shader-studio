@@ -142,6 +142,21 @@ describe('BufferConfig', () => {
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
+    it('should request GLSL or Slang files for the vertex source', async () => {
+      const config: BufferPass = { path: 'vertex.slang' };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'vertex',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+      });
+
+      await fireEvent.click(getByText('Select'));
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('vertex-shader');
+    });
+
     it('should show path input instead of create button for common buffer with existing path', () => {
       const config: BufferPass = { path: 'myshader.common.glsl', inputs: {} };
 

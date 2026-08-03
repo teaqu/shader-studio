@@ -6,6 +6,7 @@ export type {
   ShaderConfig,
   ImagePass,
   BufferPass,
+  VertexPass,
   ConfigInput,
   BufferConfigInput,
   TextureConfigInput,

@@ -857,6 +857,69 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
+  it("supplies a configured Slang vertex source to every render pass", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const { compiler } = stubEngineInternals(engine);
+    const vertexSource = `
+[shader("vertex")]
+float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position
+{
+    return float4(0, 0, 0, 1);
+}`;
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+        vertex: { path: "vertex.slang" },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline(
+      "image source",
+      config,
+      "/image.slang",
+      { BufferA: "buffer source", vertex: vertexSource },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+    for (const [, options] of compiler.compile.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ vertexSource }));
+    }
+  });
+
+  it("reports a custom vertex diagnostic once instead of once per render pass", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const { compiler } = stubEngineInternals(engine);
+    compiler.compile.mockResolvedValue({
+      success: false,
+      errors: ["vertex.slang: vertex entry point `vertexMain` not found"],
+    });
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+        vertex: { path: "vertex.slang" },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline(
+      "image source",
+      config,
+      "/image.slang",
+      { BufferA: "buffer source", vertex: "broken vertex source" },
+    );
+
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      errors: ["vertex: vertex.slang: vertex entry point `vertexMain` not found"],
+    }));
+    expect(compiler.compile).toHaveBeenCalledTimes(1);
+  });
+
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
@@ -3226,6 +3289,32 @@ describe("WebGPURenderingEngine", () => {
         common: "float k(){return 2.0;}",
       });
       expect(compiler.compile).toHaveBeenCalledTimes(2);
+    });
+
+    it("recompiles every pass when vertex code changes", async () => {
+      const { engine, compiler } = cachedSetup();
+      const config: ShaderConfig = {
+        ...twoPassConfig,
+        passes: {
+          ...twoPassConfig.passes,
+          vertex: { path: "vertex.slang" },
+        },
+      };
+      await engine.compileShaderPipeline("img", config, "/vertex-cache.slang", {
+        BufferA: "buf",
+        vertex: "vertex v1",
+      });
+      compiler.compile.mockClear();
+
+      await engine.compileShaderPipeline("img", config, "/vertex-cache.slang", {
+        BufferA: "buf",
+        vertex: "vertex v2",
+      });
+
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
+      for (const [, options] of compiler.compile.mock.calls) {
+        expect(options).toEqual(expect.objectContaining({ vertexSource: "vertex v2" }));
+      }
     });
 
     it("keeps reused pipelines alive when the changed pass fails to compile", async () => {

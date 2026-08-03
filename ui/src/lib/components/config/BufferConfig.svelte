@@ -53,8 +53,15 @@
 
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
+  const isSourceOnlyPass = $derived(bufferName === 'common' || bufferName === 'vertex');
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
-  const fileType = $derived(bufferName === 'common' ? 'glsl-common' as const : 'glsl-buffer' as const);
+  const fileType = $derived(
+    bufferName === 'common'
+      ? 'glsl-common' as const
+      : bufferName === 'vertex'
+      ? 'vertex-shader' as const
+      : 'glsl-buffer' as const,
+  );
   const validation = $derived(configModel.validate() || { isValid: true, errors: [] });
   const configuredInputs = $derived(config.inputs || {});
   const imageResolution = $derived(imageConfig?.resolution);
@@ -76,7 +83,7 @@
   });
   const configuredChannelNames = $derived(Object.keys(configuredInputs));
 
-  let currentPath = $state("path" in config ? config.path : "");
+  let currentPath = $state("");
   let activeModalChannel = $state<string | null>(null);
   let tempChannelInput = $state<ConfigInput | undefined>(undefined);
   let widthInput = $state<number | null>(null);
@@ -272,7 +279,11 @@
           onPathChange={handlePathChange}
           hasError={!validation.isValid}
           note="Relative, absolute, or @ for workspace root"
-          placeholder={suggestedPath || (bufferName === 'common' ? 'e.g., ./common.glsl' : 'e.g., ./buffer.glsl')}
+          placeholder={suggestedPath || (bufferName === 'common'
+            ? 'e.g., ./common.glsl'
+            : bufferName === 'vertex'
+            ? 'e.g., ./vertex.glsl'
+            : 'e.g., ./buffer.glsl')}
           {fileType}
           {shaderPath}
           {suggestedPath}
@@ -282,7 +293,7 @@
 
         {#if !validation.isValid}
           <div class="validation-errors">
-            {#each validation.errors as error}
+            {#each validation.errors as error (error)}
               <p class="error-message">{error}</p>
             {/each}
           </div>
@@ -290,12 +301,12 @@
       </div>
     {/if}
 
-    {#if bufferName !== "common"}
+    {#if !isSourceOnlyPass}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
         {#if configuredChannelNames.length > 0}
           <div class="channel-list">
-            {#each configuredChannelNames as channelName}
+            {#each configuredChannelNames as channelName (channelName)}
               <ChannelListItem
                 {channelName}
                 channelInput={configuredInputs[channelName]!}
@@ -330,7 +341,7 @@
         <div class="resolution-row">
           <span class="resolution-label">Scale</span>
           <div class="preset-buttons">
-            {#each IMAGE_SCALES as s}
+            {#each IMAGE_SCALES as s (s)}
               <button
                 class="preset-btn {imageScale === s ? 'active' : ''}"
                 onclick={() => handleImageScale(s)}
@@ -342,7 +353,7 @@
         <div class="resolution-row">
           <span class="resolution-label">Aspect</span>
           <div class="preset-buttons">
-            {#each ASPECT_MODES as mode}
+            {#each ASPECT_MODES as mode (mode)}
               <button
                 class="preset-btn {imageAspect === mode ? 'active' : ''}"
                 disabled={imageHasCustom}
@@ -381,7 +392,7 @@
       </div>
     {/if}
 
-    {#if !isImagePass && bufferName !== "common"}
+    {#if !isImagePass && !isSourceOnlyPass}
       <div class="config-item resolution-section">
         <h3 class="section-title">Resolution</h3>
         <div class="resolution-row">
@@ -418,7 +429,7 @@
           <div class="resolution-row">
             <span class="resolution-label">Scale</span>
             <div class="preset-buttons">
-              {#each BUFFER_SCALES as s}
+              {#each BUFFER_SCALES as s (s)}
                 <button
                   class="preset-btn {bufferResolution?.scale === s ? 'active' : ''}"
                   onclick={() => handleBufferScale(s)}

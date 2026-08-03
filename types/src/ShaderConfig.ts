@@ -85,6 +85,11 @@ export interface BufferPass {
     resolution?: BufferResolution;
 }
 
+export interface VertexPass extends BufferPass {
+    inputs?: never;
+    resolution?: never;
+}
+
 export interface ShaderPasses {
     Image: ImagePass;
     BufferA?: BufferPass;
@@ -92,6 +97,7 @@ export interface ShaderPasses {
     BufferC?: BufferPass;
     BufferD?: BufferPass;
     common?: BufferPass;
+    vertex?: VertexPass;
     [name: string]: BufferPass | ImagePass | undefined;
 }
 

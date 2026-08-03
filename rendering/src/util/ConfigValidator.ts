@@ -42,7 +42,11 @@ export class ConfigValidator {
       }
       const pass = config.passes[passName];
       if (pass) {
-        this.validateBufferPass(pass, passName, errors);
+        if (passName === "vertex") {
+          this.validateVertexPass(pass, errors);
+        } else {
+          this.validateBufferPass(pass, passName, errors);
+        }
       }
     }
 
@@ -66,6 +70,18 @@ export class ConfigValidator {
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);
+    }
+  }
+
+  private static validateVertexPass(pass: any, errors: string[]): void {
+    if (typeof pass.path !== "string") {
+      errors.push("vertex pass path must be a string");
+    }
+    if (pass.inputs !== undefined) {
+      errors.push("vertex pass cannot define inputs");
+    }
+    if (pass.resolution !== undefined) {
+      errors.push("vertex pass cannot define resolution");
     }
   }
 
@@ -124,7 +140,8 @@ export class ConfigValidator {
            input.source.length > 0 &&
            this.GLSL_IDENTIFIER.test(input.source) &&
            input.source !== 'Image' &&
-           input.source !== 'common';
+           input.source !== 'common' &&
+           input.source !== 'vertex';
   }
 
   private static validateTextureInput(input: any): boolean {

@@ -52,7 +52,13 @@ export function buildBufferPassSizes(
 
   const sizes: Record<string, BufferPassSize> = {};
   for (const [name, passConfig] of Object.entries(passes)) {
-    if (name === "Image" || name === "common" || !passConfig || !("path" in passConfig)) {
+    if (
+      name === "Image" ||
+      name === "common" ||
+      name === "vertex" ||
+      !passConfig ||
+      !("path" in passConfig)
+    ) {
       continue;
     }
     sizes[name] = resolveBufferPassSize(passConfig, canvasWidth, canvasHeight, limits);

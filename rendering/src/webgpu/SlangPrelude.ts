@@ -107,15 +107,18 @@ ${aliases}
 `;
 }
 
-const ENTRY_POINTS = `
-// ---- shader-studio Slang entry points (generated) ----
+const DEFAULT_VERTEX_ENTRY_POINT = `
+// ---- shader-studio Slang vertex entry point (generated) ----
 [shader("vertex")]
 float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
 {
     float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
     return float4(verts[vertexID], 0, 1);
 }
+`;
 
+const FRAGMENT_ENTRY_POINT = `
+// ---- shader-studio Slang fragment entry point (generated) ----
 [shader("fragment")]
 float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 {
@@ -134,6 +137,7 @@ export interface SlangChannelBinding {
 export interface SlangWrapOptions {
   passName?: string;
   commonCode?: string;
+  vertexSource?: string;
   channels?: SlangChannelBinding[];
   customUniforms?: SlangCustomUniformInfo[];
   /**
@@ -305,8 +309,11 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     const capturePrelude = buildCapturePrelude(captureBinding);
     return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
+  const vertexEntryPoint = options.vertexSource?.trim()
+    ? `#line 1 "vertex.slang"\n${options.vertexSource.trim()}\n#line 1 "fragment-wrapper.slang"`
+    : DEFAULT_VERTEX_ENTRY_POINT;
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${vertexEntryPoint}\n${FRAGMENT_ENTRY_POINT}`;
 }

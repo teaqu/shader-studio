@@ -429,6 +429,11 @@ describe('ConfigManager', () => {
       expect(configManager.generateBufferPath('common')).toBe('myshader.common.glsl');
     });
 
+    it('should preserve the Slang extension for a vertex source suggestion', () => {
+      configManager.setShaderPath('/path/to/myshader.slang');
+      expect(configManager.generateBufferPath('vertex')).toBe('myshader.vertex.slang');
+    });
+
     it('should handle shader paths with backslashes', () => {
       configManager.setShaderPath('C:\\Users\\dev\\myshader.glsl');
       expect(configManager.generateBufferPath('BufferB')).toBe('myshader.bufferb.glsl');

@@ -13,6 +13,7 @@ import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSION
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
     case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
+    case 'vertex-shader': return { 'Vertex shader files': [...GLSL_EXTENSIONS, 'slang'] };
     case 'texture':  return { 'Texture files': TEXTURE_EXTENSIONS };
     case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
@@ -76,9 +77,11 @@ export class FileDialogHandler {
           return e ? path.dirname(e.document.uri.fsPath) : null;
         })();
       const isScript = payload.fileType === 'script';
-      const filters: { [name: string]: string[] } = isScript
-        ? { 'Script files': ['ts', 'js'] }
-        : { 'GLSL files': ['glsl', 'frag', 'vert'] };
+      const filters: { [name: string]: string[] } = payload.fileType === 'vertex-shader'
+        ? fileTypeToFilters(payload.fileType)
+        : isScript
+          ? { 'Script files': ['ts', 'js'] }
+          : { 'GLSL files': ['glsl', 'frag', 'vert'] };
       const defaultPath = shaderDir && payload.suggestedPath
         ? path.resolve(shaderDir, payload.suggestedPath)
         : shaderDir
@@ -102,6 +105,21 @@ export class FileDialogHandler {
             : `export function uniforms(ctx) {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
         } else if (payload.fileType === 'glsl-common') {
           template = `// Common functions shared across all passes\n`;
+        } else if (payload.fileType === 'vertex-shader') {
+          template = filePath.endsWith('.slang')
+            ? `[shader("vertex")]
+float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position
+{
+    float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
+    return float4(verts[vertexID], 0, 1);
+}
+`
+            : `in vec2 position;
+void main()
+{
+    gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
         } else {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }

@@ -209,6 +209,33 @@ suite('ShaderConfigProcessor Test Suite', () => {
     });
   });
 
+  suite('vertex source loading', () => {
+    for (const extension of ['glsl', 'slang']) {
+      test(`loads configured .${extension} vertex source into the vertex buffer`, () => {
+        const fs = require('fs');
+        const readFileSyncStub = sandbox.stub(fs, 'readFileSync').returns(`// ${extension} vertex source`);
+        sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+        fsExistsSyncStub.returns(true);
+        const buffers: Record<string, string> = {};
+
+        configProcessor.processConfig({
+          version: '1.0',
+          passes: {
+            Image: {},
+            vertex: { path: `vertex.${extension}` },
+          },
+        }, '/path/to/shader.glsl', buffers);
+
+        assert.strictEqual(buffers.vertex, `// ${extension} vertex source`);
+        sinon.assert.calledWith(
+          readFileSyncStub,
+          path.join('/path/to', `vertex.${extension}`),
+          'utf-8',
+        );
+      });
+    }
+  });
+
   suite('constructor injection', () => {
     test('should use injected error handler for errors', () => {
       fsExistsSyncStub.returns(false);

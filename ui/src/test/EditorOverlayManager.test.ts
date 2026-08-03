@@ -76,4 +76,33 @@ describe('EditorOverlayManager', () => {
     const event = callbacks.handleShaderMessage.mock.calls[0][0];
     expect(event.data.code).toBe('compiled code');
   });
+
+  it('loads and recompiles a configured vertex source as an editor buffer', async () => {
+    const { manager, transport, renderingEngine } = createManager();
+    renderingEngine.updateBufferAndRecompile.mockResolvedValue({ success: true });
+    manager.setConfig({
+      version: '1.0',
+      passes: {
+        Image: {},
+        vertex: { path: 'vertex.slang' },
+      },
+    });
+
+    expect(manager.getState().bufferNames).toEqual(['Image', 'vertex']);
+
+    manager.handleConfigFileSelect('vertex', '/test/shader.slang');
+    expect(transport.postMessage).toHaveBeenCalledWith({
+      type: 'requestFileContents',
+      payload: { bufferName: 'vertex', shaderPath: '/test/shader.slang' },
+    });
+
+    manager.handleFileContents('/test/vertex.slang', 'old vertex source');
+    await manager.handleEditorCodeChange('new vertex source');
+    await manager.compileCurrentCode();
+
+    expect(renderingEngine.updateBufferAndRecompile).toHaveBeenCalledWith(
+      'vertex',
+      'new vertex source',
+    );
+  });
 });

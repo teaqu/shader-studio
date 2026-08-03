@@ -351,6 +351,49 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       });
     });
 
+    it('refreshes the locked shader when its configured vertex source changes', async () => {
+      const lockedPath = '/project/main.slang';
+      const vertexPath = '/project/vertex.slang';
+      const config = {
+        passes: {
+          Image: {},
+          vertex: { path: vertexPath },
+        },
+      };
+      (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          code: 'main code',
+          path: lockedPath,
+          config,
+          buffers: { vertex: 'old vertex code' },
+          bufferPathMap: {
+            Image: lockedPath,
+            vertex: vertexPath,
+          },
+        },
+      } as unknown as MessageEvent<ShaderSourceMessage>;
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+      vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(config as never);
+
+      const result = await pipeline.handleShaderMessage({
+        data: {
+          type: 'shaderSource',
+          code: 'updated vertex code',
+          path: vertexPath,
+          buffers: {},
+        },
+      } as MessageEvent<ShaderSourceMessage>);
+
+      expect(result).toEqual({ success: true });
+      expect(mocks.renderEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
+      expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+        type: 'refresh',
+        payload: { path: lockedPath },
+      });
+    });
+
     it.each([
       ['GLSL', '/project/locked.glsl', '/project/unrelated.glsl'],
       ['Slang', '/project/locked.slang', '/project/unrelated.slang'],
