@@ -17,6 +17,18 @@ function device() {
 }
 
 describe("WebGPUPreviewScene", () => {
+  it("uses WGSL struct syntax for the built-in grid and axis shader", () => {
+    const gpu = device();
+
+    new WebGPUPreviewScene(gpu, "bgra8unorm");
+
+    const shaderCode = (gpu.createShaderModule as ReturnType<typeof vi.fn>).mock.calls[0][0].code as string;
+    expect(shaderCode).toContain("struct SceneUniforms { viewProjection: mat4x4f }");
+    expect(shaderCode).toContain("struct VertexIn { @location(0) position: vec3f, @location(1) color: vec3f }");
+    expect(shaderCode).toContain("struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec3f }");
+    expect(shaderCode).not.toMatch(/}\s*;/);
+  });
+
   it("uploads interleaved indexed geometry, writes preview matrices, and recreates depth resources", () => {
     const gpu = device();
     const scene = new WebGPUPreviewScene(gpu, "bgra8unorm");

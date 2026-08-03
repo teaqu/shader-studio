@@ -72,14 +72,38 @@ describe("WebGPU 3D preview shader variant", () => {
       getCurrentOutputView: () => null, rebuildBindGroup: vi.fn(), swap: vi.fn(),
     }]]);
     (engine as any).previewSettings = { ...DEFAULT_PREVIEW_SETTINGS, mode };
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       engine.render(1);
     } finally {
-      error.mockRestore();
+      info.mockRestore();
     }
     expect(draw).not.toHaveBeenCalled();
     expect(beginRenderPass).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports transient preview geometry mismatches as informational state instead of a hard error", () => {
+    const engine = new WebGPURenderingEngine({ scriptUrl: "slang.js", wasmUrl: "slang.wasm" });
+    const draw = vi.fn(); const beginRenderPass = vi.fn(() => ({ setPipeline: vi.fn(), setBindGroup: vi.fn(), draw, end: vi.fn() }));
+    (engine as any).device = { queue: { writeBuffer: vi.fn(), submit: vi.fn() }, createCommandEncoder: () => ({ beginRenderPass, finish: () => ({}) }) };
+    (engine as any).context = { getCurrentTexture: () => ({ createView: () => ({}) }) };
+    (engine as any).canvas = { width: 32, height: 32 };
+    (engine as any).passGraph = [{ name: "Image", width: 32, height: 32, output: "canvas", channels: [] }];
+    (engine as any).passPipelines = new Map([["Image", {
+      getPipeline: () => ({}), getBindGroup: () => ({}), getUniformBuffer: () => ({}), isMesh: () => false,
+      getCurrentOutputView: () => null, rebuildBindGroup: vi.fn(), swap: vi.fn(),
+    }]]);
+    (engine as any).previewSettings = { ...DEFAULT_PREVIEW_SETTINGS, mode: "3d" };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      engine.render(1);
+      expect(error).not.toHaveBeenCalled();
+      expect(info).toHaveBeenCalledWith("3D preview is waiting for a compatible final Image pipeline");
+    } finally {
+      error.mockRestore();
+      info.mockRestore();
+    }
   });
 
   it("returns the generation-safe mode-switch compilation result instead of fire-and-forget", async () => {
@@ -141,6 +165,71 @@ describe("WebGPU 3D preview shader variant", () => {
     expect(draw).not.toHaveBeenCalled();
     expect(beginRenderPass).toHaveBeenCalledTimes(1);
     expect(end).toHaveBeenCalledOnce();
+  });
+
+  it("sizes 3D depth and camera uniforms from the actual canvas texture", () => {
+    const engine = new WebGPURenderingEngine({ scriptUrl: "slang.js", wasmUrl: "slang.wasm" });
+    const renderPass = {
+      setPipeline: vi.fn(), setBindGroup: vi.fn(), setVertexBuffer: vi.fn(),
+      setIndexBuffer: vi.fn(), draw: vi.fn(), drawIndexed: vi.fn(), end: vi.fn(),
+    };
+    const beginRenderPass = vi.fn(() => renderPass);
+    (engine as any).device = {
+      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      createCommandEncoder: () => ({ beginRenderPass, finish: () => ({}) }),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ width: 64, height: 48, createView: () => ({}) }),
+    };
+    (engine as any).canvas = { width: 32, height: 32 };
+    (engine as any).passGraph = [{ name: "Image", width: 32, height: 32, output: "canvas", channels: [] }];
+    (engine as any).passPipelines = new Map([["Image", {
+      getPipeline: () => ({}), getBindGroup: () => ({}), getUniformBuffer: () => ({}),
+      isMesh: () => true, rebuildBindGroup: vi.fn(),
+    }]]);
+    (engine as any).previewSettings = { ...DEFAULT_PREVIEW_SETTINGS, mode: "3d" };
+    const previewScene = {
+      getDepthView: vi.fn(() => ({})),
+      encodeGrid: vi.fn(),
+      writePreviewUniforms: vi.fn(),
+      encodeMesh: vi.fn(),
+      encodeAxes: vi.fn(),
+    };
+    (engine as any).previewScene = previewScene;
+
+    engine.render(1);
+
+    expect(previewScene.getDepthView).toHaveBeenCalledWith(64, 48);
+    expect(previewScene.encodeGrid).toHaveBeenCalledWith(renderPass, 64, 48);
+    expect(previewScene.writePreviewUniforms).toHaveBeenCalledWith(expect.anything(), 64, 48);
+    expect(previewScene.encodeAxes).toHaveBeenCalledWith(renderPass, 64, 48);
+  });
+
+  it("never submits a depth-enabled mesh pipeline without a 3D preview scene", () => {
+    const engine = new WebGPURenderingEngine({ scriptUrl: "slang.js", wasmUrl: "slang.wasm" });
+    const setPipeline = vi.fn(); const draw = vi.fn();
+    const beginRenderPass = vi.fn(() => ({ setPipeline, setBindGroup: vi.fn(), draw, end: vi.fn() }));
+    (engine as any).device = {
+      queue: { writeBuffer: vi.fn(), submit: vi.fn() },
+      createCommandEncoder: () => ({ beginRenderPass, finish: () => ({}) }),
+    };
+    (engine as any).context = {
+      getCurrentTexture: () => ({ width: 32, height: 32, createView: () => ({}) }),
+    };
+    (engine as any).canvas = { width: 32, height: 32 };
+    (engine as any).passGraph = [{ name: "Image", width: 32, height: 32, output: "canvas", channels: [] }];
+    (engine as any).passPipelines = new Map([["Image", {
+      getPipeline: () => ({}), getBindGroup: () => ({}), getUniformBuffer: () => ({}),
+      isMesh: () => true, rebuildBindGroup: vi.fn(),
+    }]]);
+    (engine as any).previewSettings = { ...DEFAULT_PREVIEW_SETTINGS, mode: "3d" };
+    (engine as any).previewScene = null;
+
+    engine.render(1);
+
+    expect(setPipeline).not.toHaveBeenCalled();
+    expect(draw).not.toHaveBeenCalled();
+    expect(beginRenderPass).toHaveBeenCalledTimes(1);
   });
 
   it("ends a partially encoded preview pass, reports once, and retries the next frame", () => {

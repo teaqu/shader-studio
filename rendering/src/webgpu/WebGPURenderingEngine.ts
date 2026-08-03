@@ -1190,20 +1190,32 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      let renderWidth = pass.width;
+      let renderHeight = pass.height;
+      let targetView: GPUTextureView | null;
+      if (pass.output === "canvas") {
+        canvasTexture = this.context.getCurrentTexture();
+        targetView = canvasTexture.createView();
+        // The surface texture is authoritative. During a webview/layout resize
+        // it can advance one frame ahead of the logical pass resolution; a
+        // depth attachment built from the stale size invalidates every 3D
+        // render pass until the next resize notification.
+        renderWidth = canvasTexture.width > 0 ? canvasTexture.width : pass.width;
+        renderHeight = canvasTexture.height > 0 ? canvasTexture.height : pass.height;
+      } else {
+        targetView = pipeline.getCurrentOutputView();
+      }
+      if (!targetView) {
+        continue;
+      }
+
       const data = packShaderToyUniforms({
-        width: pass.width,
-        height: pass.height,
+        width: renderWidth,
+        height: renderHeight,
         ...frameInput,
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
-
-      const targetView = pass.output === "canvas"
-        ? (canvasTexture = this.context.getCurrentTexture()).createView()
-        : pipeline.getCurrentOutputView();
-      if (!targetView) {
-        continue;
-      }
 
       const isMeshPipeline = pipeline.isMesh?.() ?? false;
       const geometryMismatch = pass.output === "canvas"
@@ -1214,7 +1226,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         // 3D); leave a clear canvas until the matching atomic swap lands.
         if (!this.previewMismatchReported) {
           this.previewMismatchReported = true;
-          console.error("3D preview is waiting for a compatible final Image pipeline");
+          console.info("3D preview is waiting for a compatible final Image pipeline");
         }
         const clearPass = encoder.beginRenderPass({
           colorAttachments: [{ view: targetView, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: "clear", storeOp: "store" }],
@@ -1224,12 +1236,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       this.previewMismatchReported = false;
 
-      const previewScene = pass.output === "canvas" && this.previewSettings?.mode === "3d" && isMeshPipeline
+      const requiresPreviewScene = pass.output === "canvas"
+        && this.previewSettings?.mode === "3d"
+        && isMeshPipeline;
+      const previewScene = requiresPreviewScene
         ? this.previewScene
         : null;
+      if (requiresPreviewScene && !previewScene) {
+        // Mesh pipelines declare depth state. Drawing one without the matching
+        // scene/depth attachment is a WebGPU validation error, not a valid
+        // fullscreen fallback.
+        this.clearRenderTarget(encoder, targetView);
+        continue;
+      }
       let renderPass: GPURenderPassEncoder | null = null;
       try {
-        const depthView = previewScene?.getDepthView(pass.width, pass.height) ?? null;
+        const depthView = previewScene?.getDepthView(renderWidth, renderHeight) ?? null;
+        if (requiresPreviewScene && !depthView) {
+          this.clearRenderTarget(encoder, targetView);
+          continue;
+        }
         renderPass = encoder.beginRenderPass({
           colorAttachments: [{
             view: targetView,
@@ -1245,14 +1271,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
           } } : {}),
         });
         if (previewScene) {
-          previewScene.encodeGrid(renderPass, pass.width, pass.height);
+          previewScene.encodeGrid(renderPass, renderWidth, renderHeight);
         }
         renderPass.setPipeline(pipeline.getPipeline()!);
         renderPass.setBindGroup(0, bindGroup);
         if (previewScene) {
-          previewScene.writePreviewUniforms(pipeline, pass.width, pass.height);
+          previewScene.writePreviewUniforms(pipeline, renderWidth, renderHeight);
           previewScene.encodeMesh(renderPass);
-          previewScene.encodeAxes(renderPass, pass.width, pass.height);
+          previewScene.encodeAxes(renderPass, renderWidth, renderHeight);
         } else {
           renderPass.draw(3);
         }

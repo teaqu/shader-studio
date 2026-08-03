@@ -6,10 +6,10 @@ import type { PreviewSettings } from "../preview3d/types";
 import type { SlangPassPipeline } from "./SlangPassPipeline";
 
 const LINE_SHADER = `
-struct SceneUniforms { viewProjection: mat4x4f; };
+struct SceneUniforms { viewProjection: mat4x4f }
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
-struct VertexIn { @location(0) position: vec3f, @location(1) color: vec3f };
-struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec3f };
+struct VertexIn { @location(0) position: vec3f, @location(1) color: vec3f }
+struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec3f }
 @vertex fn vs(input: VertexIn) -> VertexOut {
   var output: VertexOut;
   output.position = scene.viewProjection * vec4f(input.position, 1.0);
