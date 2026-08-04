@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prebuild": "node scripts/ensure-slang-wasm.mjs",
     "dev": "vite",
     "build": "vite build",
     "copy-to-extension": "rimraf ../extension/ui-dist && cpx \"dist/**/*\" ../extension/ui-dist",
