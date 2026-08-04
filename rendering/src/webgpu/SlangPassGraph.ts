@@ -1,10 +1,12 @@
 import type { ConfigInput, ShaderConfig } from "@shader-studio/types";
 import type {
+  ChannelReadTiming,
   RenderPassChannel,
   RenderPassGraph,
   RenderPassName,
   RenderPassNode,
 } from "../types/PassGraph";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export type {
   ChannelReadTiming,
@@ -54,6 +56,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   );
   const configuredBufferNames = new Set(bufferPassNames);
   const renderablePassNames: RenderPassName[] = [...bufferPassNames, "Image"];
+  const passIndexByName = new Map(renderablePassNames.map((name, index) => [name, index]));
   const passes: RenderPassNode[] = [];
 
   for (const name of renderablePassNames) {
@@ -94,6 +97,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         inputs: passConfig?.inputs ?? {},
         configuredNames,
         configuredBufferNames,
+        passIndexByName,
         warnings,
         errors,
       }),
@@ -155,17 +159,24 @@ function resolveChannels(options: {
   inputs: Record<string, ConfigInput>;
   configuredNames: Set<string>;
   configuredBufferNames: Set<string>;
+  passIndexByName: Map<string, number>;
   warnings: string[];
   errors: string[];
 }): RenderPassChannel[] {
   const channels: RenderPassChannel[] = [];
+  const validInputs: Record<string, ConfigInput> = {};
 
   for (const [key, input] of Object.entries(options.inputs)) {
-    const slot = channelSlotFromKey(key);
-    if (slot === null) {
-      options.warnings.push(`${options.passName}: ignoring non-iChannel input "${key}"`);
+    const numericName = /^iChannel(\d+)$/.exec(key);
+    if (numericName && Number.parseInt(numericName[1], 10) > 15) {
+      options.warnings.push(`${options.passName}: ignoring channel input "${key}" above slot 15`);
       continue;
     }
+    validInputs[key] = input;
+  }
+
+  for (const { slot, key } of assignInputSlots(validInputs)) {
+    const input = validInputs[key];
 
     if (input.type === "texture") {
       const path = input.resolved_path || input.path;
@@ -262,18 +273,28 @@ function resolveChannels(options: {
       slot,
       key,
       source: input.source,
-      readFrom: options.passName === "Image" ? "current-frame" : "previous-frame",
+      readFrom: resolveBufferReadTiming(
+        options.passName,
+        input.source,
+        options.passIndexByName,
+      ),
     });
   }
 
   return channels.sort((a, b) => a.slot - b.slot);
 }
 
-function channelSlotFromKey(key: string): number | null {
-  const match = /^iChannel(\d+)$/.exec(key);
-  if (!match) {
-    return null;
+function resolveBufferReadTiming(
+  passName: RenderPassName,
+  sourceName: string,
+  passIndexByName: Map<string, number>,
+): ChannelReadTiming {
+  if (passName === "Image") {
+    return "current-frame";
   }
-  const slot = Number.parseInt(match[1], 10);
-  return Number.isInteger(slot) && slot >= 0 && slot <= 15 ? slot : null;
+  const passIndex = passIndexByName.get(passName);
+  const sourceIndex = passIndexByName.get(sourceName);
+  return sourceIndex !== undefined && passIndex !== undefined && sourceIndex < passIndex
+    ? "current-frame"
+    : "previous-frame";
 }

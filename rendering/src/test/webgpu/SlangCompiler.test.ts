@@ -76,6 +76,26 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
+  it("lets a standalone shader sample all four standard channels without slot configuration", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(`
+      float4 mainImage(float2 c) {
+        return sampleIChannel0(c) + sampleIChannel1(c)
+          + sampleIChannel2(c) + sampleIChannel3(c);
+      }
+    `);
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    for (let slot = 0; slot < 4; slot++) {
+      expect(wrapped).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
+    }
+    expect(wrapped.match(/return float4\(0\.0, 0\.0, 0\.0, 1\.0\);/g)).toHaveLength(4);
+    expect(wrapped).not.toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).not.toContain("sampleIChannel4");
+  });
+
   it("caches the global session across compiles", () => {
     const slang = makeFakeSlang();
     const spy = vi.spyOn(slang, "createGlobalSession");
@@ -159,6 +179,22 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("Texture2D<float4> iChannel0;");
     expect(wrapped).toContain("[[vk::binding(2, 0)]]");
     expect(wrapped).toContain("SamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
+  });
+
+  it("exposes a custom channel through its Slang name and canonical slot helper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleAlbedo(c); }", {
+      passName: "Image",
+      channels: [{ slot: 0, key: "albedo", kind: "texture" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("Texture2D<float4> albedo;");
+    expect(wrapped).toContain("SamplerState albedoSampler;");
+    expect(wrapped).toContain("float4 sampleAlbedo(float2 uv)");
     expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
   });
 

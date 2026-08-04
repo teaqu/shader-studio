@@ -25,7 +25,12 @@ import {
 import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
 import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
-import { SlangPassPipeline, type SlangChannelResource } from "./SlangPassPipeline";
+import {
+  BUFFER_TEXTURE_FORMAT,
+  HIGH_PRECISION_BUFFER_TEXTURE_FORMAT,
+  SlangPassPipeline,
+  type SlangChannelResource,
+} from "./SlangPassPipeline";
 import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
@@ -100,6 +105,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private context: GPUCanvasContext | null = null;
   private device: GPUDevice | null = null;
   private format: GPUTextureFormat = "bgra8unorm";
+  private bufferTextureFormat: GPUTextureFormat = BUFFER_TEXTURE_FORMAT;
   private ready: Promise<void> | null = null;
   private initError: string | null = null;
   private maxTextureDimension2D = DEFAULT_MAX_TEXTURE_DIMENSION_2D;
@@ -133,6 +139,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private compileGeneration = 0;
   private disposed = false;
   private reloadOnNextApply = false;
+  private resetFeedbackOnNextApply = false;
 
   private pixelRegionCapturer: WebGPUPixelRegionCapturer | null = null;
   private capturePassName: string | null = null;
@@ -224,6 +231,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return;
       }
       this.device = device;
+      this.bufferTextureFormat = adapter.features?.has?.("float32-filterable")
+        ? HIGH_PRECISION_BUFFER_TEXTURE_FORMAT
+        : BUFFER_TEXTURE_FORMAT;
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
@@ -250,6 +260,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
       this.compiler = compiler;
       this.logSlangPerf("init complete", {
+        bufferTextureFormat: this.bufferTextureFormat,
         adapterMs: this.ms(adapterMs),
         deviceMs: this.ms(deviceMs),
         compilerMs: this.ms(this.now() - compilerStartedAt),
@@ -269,18 +280,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   private buildDeviceDescriptor(adapter: GPUAdapter): GPUDeviceDescriptor | undefined {
     const adapterLimit = adapter.limits?.maxTextureDimension2D;
+    const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
+    const hasHigherTextureLimit = typeof adapterLimit === "number"
+      && Number.isFinite(adapterLimit)
+      && adapterLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D;
+    if (!supportsFloat32Filtering && !hasHigherTextureLimit) {
+      return undefined;
+    }
+
+    const descriptor: GPUDeviceDescriptor = {};
+    if (supportsFloat32Filtering) {
+      descriptor.requiredFeatures = ["float32-filterable"];
+    }
     if (
-      typeof adapterLimit === "number" &&
-      Number.isFinite(adapterLimit) &&
-      adapterLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D
+      hasHigherTextureLimit
     ) {
-      return {
-        requiredLimits: {
-          maxTextureDimension2D: adapterLimit,
-        },
+      descriptor.requiredLimits = {
+        maxTextureDimension2D: adapterLimit,
       };
     }
-    return undefined;
+    return descriptor;
   }
 
   private resolveDeviceTextureLimit(device: GPUDevice): number {
@@ -748,7 +767,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           uniformBufferSize: createSlangCustomUniformLayout(
             nextCustomUniformManager.getUniformInfo(),
           ).size,
-        });
+        }, this.bufferTextureFormat);
         const pipelineStartedAt = this.now();
         const wgslErrors = await pipeline.rebuild(wgsl);
         const pipelineMs = this.now() - pipelineStartedAt;
@@ -856,6 +875,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Correct any canvas resize that landed mid-compile immediately, rather
     // than leaving passes stale until the next resize/recompile.
     this.applyPassResolutions();
+    if (this.resetFeedbackOnNextApply) {
+      for (const pass of this.passGraph) {
+        if (pass.output === "texture") {
+          this.passPipelines.get(pass.name)?.resetOutputTextures();
+        }
+      }
+      this.resetFeedbackOnNextApply = false;
+    }
 
     // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
     // textures load with autoplay disabled, so without this they'd sit frozen
@@ -1060,7 +1087,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.renderFrame(time, false);
   }
 
-  private renderFrame(time: number, capture: boolean): void {
+  private renderFrame(time: number, capture: boolean, imageOnly = false): void {
     if (!this.device || !this.context || this.passGraph.length === 0) {
       return;
     }
@@ -1129,6 +1156,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     let canvasTexture: GPUTexture | null = null;
 
     for (const pass of this.passGraph) {
+      if (imageOnly && pass.output !== "canvas") {
+        continue;
+      }
       if (skipBufferPasses && pass.output === "texture") {
         continue;
       }
@@ -1191,7 +1221,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.device.queue.submit([encoder.finish()]);
     this.pixelRegionCapturer?.beginMappings();
 
-    if (!skipBufferPasses) {
+    if (!skipBufferPasses && !imageOnly) {
       for (const pass of this.passGraph) {
         if (pass.output === "texture") {
           this.passPipelines.get(pass.name)?.swap();
@@ -1432,6 +1462,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.canvas.width = w;
       this.canvas.height = h;
       this.applyPassResolutions();
+      if (this.running) {
+        // Resizing a canvas clears its current presentation. Match WebGL by
+        // redrawing Image immediately; render it without advancing time or
+        // swapping feedback buffers a second time.
+        this.renderFrame(this.now(), true, true);
+      }
     }
   }
 
@@ -1447,6 +1483,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     const canvasWidth = Math.max(1, this.canvas.width);
     const canvasHeight = Math.max(1, this.canvas.height);
+    let resizeEncoder: GPUCommandEncoder | null = null;
+    const finishResizes: Array<() => void> = [];
     for (const pass of this.passGraph) {
       const unclampedResolution = pass.output === "canvas"
         ? { width: canvasWidth, height: canvasHeight }
@@ -1460,9 +1498,25 @@ export class WebGPURenderingEngine implements RenderingEngine {
           errors: [],
         });
       const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
+      const sizeChanged = pass.width !== resolution.width || pass.height !== resolution.height;
+      const pipeline = this.passPipelines.get(pass.name);
+      if (sizeChanged && pass.output === "texture" && pipeline && this.device) {
+        resizeEncoder ??= this.device.createCommandEncoder();
+        const finishResize = pipeline.encodeResize(resolution.width, resolution.height, resizeEncoder);
+        if (finishResize) {
+          finishResizes.push(finishResize);
+        }
+      } else {
+        pipeline?.resize(resolution.width, resolution.height);
+      }
       pass.width = resolution.width;
       pass.height = resolution.height;
-      this.passPipelines.get(pass.name)?.resize(resolution.width, resolution.height);
+    }
+    if (resizeEncoder && finishResizes.length > 0 && this.device) {
+      this.device.queue.submit([resizeEncoder.finish()]);
+      for (const finishResize of finishResizes) {
+        finishResize();
+      }
     }
   }
 
@@ -1502,6 +1556,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   resetTime(): void {
     this.timeManager.cleanup();
     this.cameraManager.reset();
+    this.resetFeedbackOnNextApply = true;
   }
 
   setInputEnabled(enabled: boolean): void {

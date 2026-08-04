@@ -248,6 +248,9 @@ struct ShaderToyChannelCube
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      const customHelperName = channel.key === `iChannel${channel.slot}`
+        ? null
+        : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
       const objectAccessor = channel.slot < 4
         ? `
 ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
@@ -272,7 +275,11 @@ float4 ${helperName}(float3 dir)
 {
     return ${channel.key}.Sample(${channel.key}Sampler, dir);
 }
-${objectAccessor}
+${customHelperName ? `float4 ${customHelperName}(float3 dir)
+{
+    return ${helperName}(dir);
+}
+` : ""}${objectAccessor}
 `;
       }
       return `[[vk::binding(${textureBinding}, 0)]]
@@ -286,12 +293,32 @@ float4 ${helperName}(float2 uv)
     // the texel the caller expects.
     return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
 }
-${objectAccessor}
+${customHelperName ? `float4 ${customHelperName}(float2 uv)
+{
+    return ${helperName}(uv);
+}
+` : ""}${objectAccessor}
 `;
     })
     .join("\n");
 
-  return objectTypes + bindings;
+  const claimedStandardHelpers = new Set(sortedChannels.map(({ slot }) => slot));
+  for (const { key } of sortedChannels) {
+    const match = /^iChannel([0-3])$/.exec(key);
+    if (match) {
+      claimedStandardHelpers.add(Number.parseInt(match[1], 10));
+    }
+  }
+  const fallbackHelpers = [0, 1, 2, 3]
+    .filter((slot) => !claimedStandardHelpers.has(slot))
+    .map((slot) => `float4 sampleIChannel${slot}(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+`)
+    .join("\n");
+
+  return objectTypes + bindings + fallbackHelpers;
 }
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
