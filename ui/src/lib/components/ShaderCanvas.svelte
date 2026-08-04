@@ -134,7 +134,11 @@
   onclick={handleClick}
   onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
 >
-  <canvas bind:this={glCanvas} onmousedown={handleMouseDown}></canvas>
+  <canvas
+    bind:this={glCanvas}
+    style:cursor={isInspectorActive ? 'crosshair' : undefined}
+    onmousedown={handleMouseDown}
+  ></canvas>
   <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>
 

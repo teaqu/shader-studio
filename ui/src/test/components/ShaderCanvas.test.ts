@@ -81,6 +81,27 @@ describe('ShaderCanvas Component', () => {
     });
   });
 
+  describe('pixel inspector cursor', () => {
+    it('shows a crosshair whenever the pixel inspector is active', () => {
+      const { container } = render(ShaderCanvas, {
+        props: {
+          ...defaultProps,
+          isInspectorActive: true,
+        },
+      });
+
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      expect(canvas.style.cursor).toBe('crosshair');
+    });
+
+    it('does not force a crosshair when the pixel inspector is inactive', () => {
+      const { container } = render(ShaderCanvas, { props: defaultProps });
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+
+      expect(canvas.style.cursor).toBe('');
+    });
+  });
+
   describe('background override', () => {
     it('should apply a black canvas background when forced in the resolution store', async () => {
       resolutionStore.setForceBlackBackground(true);
