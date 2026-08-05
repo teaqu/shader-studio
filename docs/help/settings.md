@@ -9,7 +9,7 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 
 Shader Studio can prepare diagnostics for the separately installed [Shader Validator](https://marketplace.visualstudio.com/items?itemName=antaalt.shader-validator) extension (`antaalt.shader-validator`). The companion is optional: Shader Studio still generates its preamble file without it, and Shader Studio rendering is unaffected if Shader Validator is disabled or uninstalled.
 
-For each workspace folder, Shader Studio generates one `.vscode/shader-studio-preamble.glsl` file from the active GLSL pass. It includes stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. Shader Studio configures the single path string `shader-validator.glsl.preamble` for all GLSL shaders in that folder only when you have not already configured the setting; existing global, workspace, and folder values remain unchanged.
+For each workspace folder, Shader Studio installs a baseline preamble on activation, then updates `.vscode/shader-studio-preamble.glsl` from the active GLSL pass. It includes stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. Shader Studio configures the single path string `shader-validator.glsl.preamble` for all GLSL shaders in that folder only when you have not already configured the setting; existing global, workspace, and folder values remain unchanged.
 
 Within one extension host, all Shader Studio panels share the active GLSL selection. The active or focused shader context controls the preamble; background panels and refreshes cannot overwrite it. Separate workspace folders are independent.
 

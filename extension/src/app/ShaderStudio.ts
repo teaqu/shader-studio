@@ -54,6 +54,7 @@ export class ShaderStudio {
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
     this.shaderValidatorPreambleManager = new ShaderValidatorPreambleManager(context, this.logger);
+    void this.shaderValidatorPreambleManager.initializeWorkspaceFolders();
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);

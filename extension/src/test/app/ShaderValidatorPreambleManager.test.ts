@@ -43,6 +43,7 @@ suite('Shader Validator preamble manager', () => {
     error: sinon.SinonStub;
   };
   let getExtension: sinon.SinonStub;
+  let getWorkspaceFolders: sinon.SinonStub;
   let showInformationMessage: sinon.SinonStub;
   let extensionListener: (() => void) | undefined;
   let listenerDisposable: { dispose: sinon.SinonStub };
@@ -53,6 +54,7 @@ suite('Shader Validator preamble manager', () => {
     return new ShaderValidatorPreambleManager(context, logger, {
       fs,
       getExtension,
+      getWorkspaceFolders,
       onDidChangeExtensions: (listener: () => void) => {
         extensionListener = listener;
         return listenerDisposable;
@@ -104,6 +106,7 @@ suite('Shader Validator preamble manager', () => {
       error: sandbox.stub(),
     };
     getExtension = sandbox.stub().returns(installedExtension);
+    getWorkspaceFolders = sandbox.stub().returns([folder]);
     showInformationMessage = sandbox.stub().resolves(undefined);
     listenerDisposable = { dispose: sandbox.stub() };
 
@@ -130,6 +133,24 @@ suite('Shader Validator preamble manager', () => {
     assert.strictEqual(configuration.update.firstCall.args[1], managedSetting);
     assert.strictEqual(
       configuration.update.firstCall.args[2],
+      vscode.ConfigurationTarget.WorkspaceFolder,
+    );
+  });
+
+  test('installs a baseline preamble for each workspace on activation', async () => {
+    const manager = createManager();
+
+    await manager.initializeWorkspaceFolders();
+
+    sinon.assert.calledOnceWithExactly(fs.writeFileSync, tempPath, sinon.match(
+      (content: unknown) => typeof content === 'string'
+        && content.includes('uniform vec3 iResolution;')
+        && content.includes('uniform float iTime;'),
+    ), 'utf8');
+    sinon.assert.calledOnceWithExactly(
+      configuration.update,
+      SHADER_VALIDATOR_PREAMBLE_SETTING,
+      managedSetting,
       vscode.ConfigurationTarget.WorkspaceFolder,
     );
   });

@@ -26,6 +26,7 @@ suite('Shader Validator documentation', () => {
 
   test('documents the generated preamble content and non-destructive setting ownership', () => {
     assert.match(settingsDoc, /\.vscode\/shader-studio-preamble\.glsl/);
+    assert.match(settingsDoc, /baseline preamble.*activation/i);
     assert.match(settingsDoc, /active GLSL pass/i);
     assert.match(settingsDoc, /stable built-in uniforms/i);
     assert.match(settingsDoc, /configured channels and aliases/i);

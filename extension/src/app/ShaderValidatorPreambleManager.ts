@@ -20,6 +20,7 @@ type PreambleFs = Pick<typeof import('node:fs'),
 interface PreambleManagerDeps {
   fs: PreambleFs;
   getExtension(id: string): vscode.Extension<unknown> | undefined;
+  getWorkspaceFolders(): readonly vscode.WorkspaceFolder[];
   onDidChangeExtensions(listener: () => void): vscode.Disposable;
   showInformationMessage(message: string): Thenable<string | undefined>;
 }
@@ -57,6 +58,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
     this.deps = {
       fs: nodeFs,
       getExtension: (id) => vscode.extensions.getExtension(id),
+      getWorkspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
       onDidChangeExtensions: (listener) => vscode.extensions.onDidChange(listener),
       showInformationMessage: (message) => vscode.window.showInformationMessage(message),
       ...deps,
@@ -122,6 +124,29 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
     }
 
     await this.coordinateWorkspace(folder);
+  }
+
+  async initializeWorkspaceFolders(): Promise<void> {
+    for (const folder of this.deps.getWorkspaceFolders()) {
+      if (this.disposed) {
+        return;
+      }
+
+      const workspaceKey = folder.uri.toString();
+      this.recentWorkspaceFolders.set(workspaceKey, folder);
+      try {
+        const result = buildShaderValidatorPreamble({
+          shaderPath: path.join(folder.uri.fsPath, 'shader-studio.glsl'),
+          configPath: null,
+          passName: 'Image',
+        });
+        this.replaceFileIfChanged(folder, result.content);
+      } catch (error) {
+        this.logger.error(`Unable to initialize the Shader Validator preamble: ${errorText(error)}`);
+      }
+
+      await this.coordinateWorkspace(folder);
+    }
   }
 
   dispose(): void {
