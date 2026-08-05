@@ -25,4 +25,23 @@ describe("native Slang debug acceptance", () => {
 
     expect(compiler.compileImagePass(root.source, { passName: "Image", sourcePath: root.path })).toMatchObject({ success: true });
   });
+
+  it("compiles a generated root capture workspace with the capture prelude", () => {
+    const source = "float4 mainImage(float2 fragCoord) {\n  float value = fragCoord.x;\n  return float4(value);\n}\n";
+    const engine = new SlangDebugEngine();
+    const analysis = engine.analyze({
+      workspace: { rootUri: "/main.slang", rootPath: "/main.slang", passName: "Image", contentHash: "a1b2c3d4", files: [{ uri: "/main.slang", path: "/main.slang", source, version: 1, moduleName: "", ownerPass: "Image" }] },
+      sourceUri: "/main.slang", position: { line: 1, character: 2 },
+    });
+    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    const plan = engine.planCapture({
+      workspace: { rootUri: "/main.slang", rootPath: "/main.slang", passName: "Image", contentHash: "a1b2c3d4", files: [{ uri: "/main.slang", path: "/main.slang", source, version: 1, moduleName: "", ownerPass: "Image" }] },
+      sourceUri: "/main.slang", position: { line: 1, character: 2 },
+    }, [analysis.analysis.previewValueId!]);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    const root = plan.plan.files.find((file) => file.uri === plan.plan.rootUri)!;
+
+    expect(compiler.compileImagePass(root.source, { passName: "Image", sourcePath: root.path, captureMode: true })).toMatchObject({ success: true });
+  });
 });
