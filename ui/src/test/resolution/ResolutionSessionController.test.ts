@@ -580,6 +580,30 @@ describe('ResolutionSessionController — handleConfigUpdated does not post', ()
 
     expect(postedPayloads(deps)).toHaveLength(0);
   });
+
+  it('recompiles when a pass geometry changes because shader entry points differ', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: { Image: { inputs: {}, geometry: { type: 'cube' } } },
+    });
+
+    expect(deps.recompileCurrentShader).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not recompile for config edits that leave all geometry unchanged', () => {
+    const deps = makeDeps();
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: { Image: { inputs: {}, resolution: { scale: 4 } } },
+    });
+
+    expect(deps.recompileCurrentShader).not.toHaveBeenCalled();
+  });
 });
 
 describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig=false', () => {

@@ -34,6 +34,19 @@ type AspectRatioStoreLike = {
   setSessionMode(mode?: AspectRatioMode): void;
 };
 
+function geometryType(config: ShaderConfig | null, passName: string): string {
+  const pass = config?.passes[passName];
+  return pass && 'geometry' in pass ? pass.geometry?.type ?? 'fullscreen' : 'fullscreen';
+}
+
+function geometryChanged(previous: ShaderConfig | null, next: ShaderConfig): boolean {
+  const passNames = new Set([
+    ...Object.keys(previous?.passes ?? {}),
+    ...Object.keys(next.passes),
+  ]);
+  return [...passNames].some((passName) => geometryType(previous, passName) !== geometryType(next, passName));
+}
+
 export interface ControllerDeps {
   readonly currentConfig: ShaderConfig | null;
   readonly debugState: ShaderDebugState;
@@ -111,11 +124,15 @@ export class ResolutionSessionController {
   }
 
   public handleConfigUpdated(updatedConfig: ShaderConfig): void {
+    const requiresGeometryRecompile = geometryChanged(this.deps.currentConfig, updatedConfig);
     this.deps.setCurrentConfig(updatedConfig);
     this.deps.setEditorConfig(updatedConfig);
     this.deps.setShaderContext(updatedConfig, this.deps.getShaderPath(), this.deps.getBufferPathMap());
     this.deps.updatePipelineConfig(updatedConfig);
     this.syncStoresToCurrentTarget(updatedConfig);
+    if (requiresGeometryRecompile) {
+      this.deps.recompileCurrentShader();
+    }
   }
 
   public handleDebugStateChanged(): void {
