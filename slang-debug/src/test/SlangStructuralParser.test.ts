@@ -291,6 +291,11 @@ describe("parseSlangStructure", () => {
       {
         id: "scope:file:///workspace/full.slang:17:32",
         kind: "block",
+        parentId: "scope:file:///workspace/full.slang:17:4",
+      },
+      {
+        id: "scope:file:///workspace/full.slang:17:4",
+        kind: "loop",
         parentId: "scope:file:///workspace/full.slang:12:31",
       },
       {
@@ -324,6 +329,66 @@ describe("parseSlangStructure", () => {
         { start: { line: 41, character: 2 }, end: { line: 41, character: 24 } },
         { start: { line: 46, character: 2 }, end: { line: 46, character: 30 } },
       ]));
+    expect({
+      types: structure.types.size,
+      callables: structure.callables.size,
+      declarations: structure.declarations.size,
+      scopes: structure.scopes.size,
+      statements: structure.statements.size,
+      controlFlows: structure.controlFlows.size,
+      delimiters: structure.delimiters.size,
+    }).toEqual({
+      types: 3,
+      callables: 5,
+      declarations: 13,
+      scopes: 12,
+      statements: 13,
+      controlFlows: 2,
+      delimiters: 28,
+    });
+    expect([...structure.callables.values()].flatMap((callable) => callable.parameters.map((parameter) => ({
+      callableId: callable.id,
+      name: parameter.name,
+      access: parameter.access,
+      modifiers: parameter.modifiers,
+    })))).toEqual([
+      {
+        callableId: "callable:file:///workspace/full.slang:5:8",
+        name: "value",
+        access: "read",
+        modifiers: [],
+      },
+      {
+        callableId: "callable:file:///workspace/full.slang:12:8",
+        name: "value",
+        access: "read",
+        modifiers: ["in"],
+      },
+      {
+        callableId: "callable:file:///workspace/full.slang:26:8",
+        name: "value",
+        access: "write",
+        modifiers: ["out"],
+      },
+      {
+        callableId: "callable:file:///workspace/full.slang:33:7",
+        name: "uv",
+        access: "readwrite",
+        modifiers: ["inout"],
+      },
+      {
+        callableId: "callable:file:///workspace/full.slang:33:7",
+        name: "weight",
+        access: "read",
+        modifiers: ["nointerpolation"],
+      },
+      {
+        callableId: "callable:file:///workspace/full.slang:45:7",
+        name: "uv",
+        access: "read",
+        modifiers: [],
+      },
+    ]);
     expect(structure.diagnostics).toEqual([]);
   });
 
@@ -500,13 +565,16 @@ describe("parseSlangStructure", () => {
     ]);
   });
 
-  // Mutation caught: materializing recursive or nested macro output assigns writable structure to generated tokens.
-  it("diagnoses recursive and nested declaration macro output while keeping direct declarations writable", () => {
+  // Mutation caught: diagnosing every nested expansion leaks expression-only macro concerns into the structural layer.
+  it("diagnoses unsupported declaration expansion without diagnosing nested expression expansion", () => {
     const structure = parse("file:///workspace/recursive-macro.slang", "#define DECL(name) float name\n"
-      + "#define LOOP(name) LOOP(name)\n"
+      + "#define LOOP(name) float name; LOOP(name)\n"
       + "#define WRAP(name) DECL(name)\n"
+      + "#define EXPR(x) ((x) + 1)\n"
+      + "#define WRAP_EXPR(x) EXPR(x)\n"
       + "LOOP(bad);\n"
       + "WRAP(hidden);\n"
+      + "WRAP_EXPR(value);\n"
       + "DECL(good);\n");
 
     expect([...structure.declarations.values()].map((declaration) => ({
@@ -519,7 +587,7 @@ describe("parseSlangStructure", () => {
         typeName: "float",
         origin: {
           kind: "macro-invocation",
-          writableRange: { start: { line: 5, character: 0 }, end: { line: 5, character: 10 } },
+          writableRange: { start: { line: 8, character: 0 }, end: { line: 8, character: 10 } },
         },
       },
     ]);
@@ -528,13 +596,13 @@ describe("parseSlangStructure", () => {
         code: "slang-debug-no-writable-origin",
         message: "Macro expansion for LOOP has no writable declaration origin.",
         sourceUri: "file:///workspace/recursive-macro.slang",
-        range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } },
+        range: { start: { line: 5, character: 0 }, end: { line: 5, character: 9 } },
       },
       {
         code: "slang-debug-no-writable-origin",
         message: "Macro expansion for DECL has no writable declaration origin.",
         sourceUri: "file:///workspace/recursive-macro.slang",
-        range: { start: { line: 4, character: 0 }, end: { line: 4, character: 12 } },
+        range: { start: { line: 6, character: 0 }, end: { line: 6, character: 12 } },
       },
     ]);
   });
@@ -576,8 +644,8 @@ describe("parseSlangStructure", () => {
     expect(structure.diagnostics).toEqual([]);
   });
 
-  // Mutation caught: skipping every semicolon inside parentheses drops the declaration owned by a for-loop initializer.
-  it("records an explicit for initializer declaration in the containing callable scope", () => {
+  // Mutation caught: assigning a for initializer to its callable leaks the declaration after the loop completes.
+  it("records a complete for-loop scope containing its initializer and body", () => {
     const structure = parse("file:///workspace/for-init.slang", "float f() {\n"
       + "  for (int i = 0; i < 2; i++) {\n"
       + "    return i;\n"
@@ -598,7 +666,176 @@ describe("parseSlangStructure", () => {
         typeName: "int",
         range: { start: { line: 1, character: 11 }, end: { line: 1, character: 12 } },
         statementRange: { start: { line: 1, character: 7 }, end: { line: 1, character: 17 } },
-        scopeId: "scope:file:///workspace/for-init.slang:0:10",
+        scopeId: "scope:file:///workspace/for-init.slang:1:2",
+      },
+    ]);
+    expect([...structure.scopes.values()].map((scope) => ({
+      id: scope.id,
+      kind: scope.kind,
+      range: scope.range,
+      parentId: scope.parentId,
+    }))).toEqual([
+      {
+        id: "scope:file:///workspace/for-init.slang:0:0",
+        kind: "module",
+        range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
+        parentId: null,
+      },
+      {
+        id: "scope:file:///workspace/for-init.slang:0:10",
+        kind: "callable",
+        range: { start: { line: 0, character: 10 }, end: { line: 4, character: 1 } },
+        parentId: "scope:file:///workspace/for-init.slang:0:0",
+      },
+      {
+        id: "scope:file:///workspace/for-init.slang:1:30",
+        kind: "block",
+        range: { start: { line: 1, character: 30 }, end: { line: 3, character: 3 } },
+        parentId: "scope:file:///workspace/for-init.slang:1:2",
+      },
+      {
+        id: "scope:file:///workspace/for-init.slang:1:2",
+        kind: "loop",
+        range: { start: { line: 1, character: 2 }, end: { line: 3, character: 3 } },
+        parentId: "scope:file:///workspace/for-init.slang:0:10",
+      },
+    ]);
+    expect(structure.diagnostics).toEqual([]);
+  });
+
+  // Mutations caught: treating expressions as declarations, flattening array types to scalars, retaining comments,
+  // or silently choosing one name from a comma-separated declarator list.
+  it("accepts only bounded explicit declarations and preserves array/trivia boundaries", () => {
+    const structure = parse("file:///workspace/declarations.slang", "float f() {\n"
+      + "  object.field;\n"
+      + "  a + b;\n"
+      + "  float values[4];\n"
+      + "  float left, right;\n"
+      + "  float /*note*/ value;\n"
+      + "}\n");
+
+    expect([...structure.declarations.values()].map((declaration) => ({
+      name: declaration.name,
+      typeName: declaration.typeName,
+      range: declaration.range,
+    }))).toEqual([
+      {
+        name: "values",
+        typeName: "float[4]",
+        range: { start: { line: 3, character: 8 }, end: { line: 3, character: 14 } },
+      },
+      {
+        name: "value",
+        typeName: "float",
+        range: { start: { line: 5, character: 17 }, end: { line: 5, character: 22 } },
+      },
+    ]);
+    expect(structure.diagnostics).toEqual([
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Multiple declarators in one statement are unsupported.",
+        sourceUri: "file:///workspace/declarations.slang",
+        range: { start: { line: 4, character: 2 }, end: { line: 4, character: 20 } },
+      },
+    ]);
+  });
+
+  // Mutation caught: globally guessing angle pairs either turns comparisons into generics or pairs a later comparison with a broken header.
+  it("diagnoses confident unmatched declaration generics without pairing comparisons", () => {
+    const structure = parse("file:///workspace/generics.slang", "struct Broken<T {\n"
+      + "}\n"
+      + "float compare(float a, float b, float c) {\n"
+      + "  bool value = a < b > c;\n"
+      + "  bool compact = a<b>c;\n"
+      + "  Pair< float > spaced;\n"
+      + "  return value;\n"
+      + "}\n");
+
+    expect([...structure.delimiters.values()].filter((delimiter) => delimiter.kind === "generic").map((delimiter) => delimiter.range))
+      .toEqual([
+        { start: { line: 5, character: 6 }, end: { line: 5, character: 15 } },
+      ]);
+    expect(structure.diagnostics).toEqual([
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Unmatched generic '<' delimiter.",
+        sourceUri: "file:///workspace/generics.slang",
+        range: { start: { line: 0, character: 13 }, end: { line: 0, character: 14 } },
+      },
+    ]);
+  });
+
+  // Mutation caught: requiring braced bodies drops legal control flow and ending do at its body omits the while condition.
+  it("ranges unbraced controls and the complete do-while statement", () => {
+    const structure = parse("file:///workspace/unbraced-controls.slang", "float f(bool test) {\n"
+      + "  if (test) return 1;\n"
+      + "  for (int i = 0; i < 1; i++) continue;\n"
+      + "  while (test) break;\n"
+      + "  do test = false; while (test);\n"
+      + "}\n");
+
+    expect([...structure.controlFlows.values()].map((control) => ({
+      kind: control.kind,
+      range: control.range,
+    }))).toEqual([
+      { kind: "if", range: { start: { line: 1, character: 2 }, end: { line: 1, character: 21 } } },
+      { kind: "for", range: { start: { line: 2, character: 2 }, end: { line: 2, character: 39 } } },
+      { kind: "while", range: { start: { line: 3, character: 2 }, end: { line: 3, character: 21 } } },
+      { kind: "do", range: { start: { line: 4, character: 2 }, end: { line: 4, character: 32 } } },
+    ]);
+    expect([...structure.statements.values()].map((statement) => ({
+      kind: statement.kind,
+      range: statement.range,
+      scopeId: statement.scopeId,
+    })).sort((left, right) => left.range.start.line - right.range.start.line
+      || left.range.start.character - right.range.start.character)).toEqual([
+      {
+        kind: "return",
+        range: { start: { line: 1, character: 12 }, end: { line: 1, character: 21 } },
+        scopeId: "scope:file:///workspace/unbraced-controls.slang:0:19",
+      },
+      {
+        kind: "declaration",
+        range: { start: { line: 2, character: 7 }, end: { line: 2, character: 17 } },
+        scopeId: "scope:file:///workspace/unbraced-controls.slang:2:2",
+      },
+      {
+        kind: "continue",
+        range: { start: { line: 2, character: 30 }, end: { line: 2, character: 39 } },
+        scopeId: "scope:file:///workspace/unbraced-controls.slang:2:2",
+      },
+      {
+        kind: "break",
+        range: { start: { line: 3, character: 15 }, end: { line: 3, character: 21 } },
+        scopeId: "scope:file:///workspace/unbraced-controls.slang:0:19",
+      },
+      {
+        kind: "expression",
+        range: { start: { line: 4, character: 5 }, end: { line: 4, character: 18 } },
+        scopeId: "scope:file:///workspace/unbraced-controls.slang:0:19",
+      },
+    ]);
+  });
+
+  // Mutation caught: hard-coding empty type metadata drops source attributes/modifiers and starts the type range too late.
+  it("retains type attributes and modifiers before a generic declaration", () => {
+    const structure = parse("file:///workspace/type-metadata.slang", "[Reflectable]\n"
+      + "public struct S<T> {\n"
+      + "}\n");
+
+    expect([...structure.types.values()].map((type) => ({
+      kind: type.kind,
+      name: type.name,
+      attributes: type.attributes,
+      modifiers: type.modifiers,
+      range: type.range,
+    }))).toEqual([
+      {
+        kind: "struct",
+        name: "S",
+        attributes: ["Reflectable"],
+        modifiers: ["public"],
+        range: { start: { line: 0, character: 0 }, end: { line: 2, character: 1 } },
       },
     ]);
     expect(structure.diagnostics).toEqual([]);

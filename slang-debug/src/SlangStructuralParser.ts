@@ -54,7 +54,8 @@ export function parseSlangStructure(
   const tokens = preprocessor.activeTokens.filter((token) => token.kind !== "whitespace" && token.kind !== "comment");
   const delimiterResult = matchBalancedDelimiters(tokens);
   const pairs = delimiterResult.pairs;
-  pairs.push(...matchGenericDelimiters(tokens));
+  const genericResult = matchGenericDelimiters(tokens);
+  pairs.push(...genericResult.pairs);
   pairs.sort((left, right) => tokens[left.openIndex].startOffset - tokens[right.openIndex].startOffset);
   const pairsByOpen = new Map(pairs.map((pair) => [pair.openIndex, pair]));
   const pairsByClose = new Map(pairs.map((pair) => [pair.closeIndex, pair]));
@@ -74,6 +75,7 @@ export function parseSlangStructure(
   }
 
   const scopes = buildScopes(document, tokens, pairs);
+  appendForLoopScopes(document, tokens, pairsByOpen, scopes);
   const { moduleName, imports } = parseModuleHeader(tokens);
   const types = parseTypes(document, tokens, pairsByOpen);
   const { callables, declarations: parameterDeclarations, signatureSemicolons } = parseCallables(
@@ -84,18 +86,28 @@ export function parseSlangStructure(
     types,
     scopes,
   );
-  const { declarations, statements } = parseStatementsAndDeclarations(
+  const embeddedControls = collectUnbracedControlStatements(document, tokens, pairsByOpen, scopes);
+  const { declarations, statements, diagnostics: declarationDiagnostics } = parseStatementsAndDeclarations(
     document,
     tokens,
     pairs,
     scopes,
     signatureSemicolons,
+    embeddedControls.semicolons,
   );
+  for (const statement of embeddedControls.statements.values()) {
+    statements.set(statement.id, statement);
+  }
   appendForInitializerDeclarations(document, tokens, pairsByOpen, scopes, declarations, statements);
   for (const declaration of parameterDeclarations.values()) {
     declarations.set(declaration.id, declaration);
   }
-  const diagnostics = [...preprocessor.diagnostics, ...delimiterResult.diagnostics];
+  const diagnostics = [
+    ...preprocessor.diagnostics,
+    ...delimiterResult.diagnostics,
+    ...genericResult.diagnostics,
+    ...declarationDiagnostics,
+  ];
   appendMacroDeclarations(document, preprocessor, tokens, scopes, declarations, statements, diagnostics);
   const controlFlows = parseControlFlows(document, tokens, pairsByOpen, scopes);
   return {
@@ -148,6 +160,7 @@ function parseTypes(
     if (!kind || tokens[index + 1]?.kind !== "identifier") {
       continue;
     }
+    const metadata = parseMetadataPrefix(document, tokens, previousBoundary(tokens, index) + 1, index);
     const nameIndex = index + 1;
     let headerIndex = nameIndex + 1;
     let genericPair: DelimiterPair | undefined;
@@ -181,16 +194,42 @@ function parseTypes(
       name: nameToken.text,
       genericParameters,
       conformances,
-      range: { start: tokens[index].range.start, end: bodyClose.range.end },
+      range: { start: tokens[metadata.startIndex].range.start, end: bodyClose.range.end },
       bodyRange: { start: bodyOpen.range.start, end: bodyClose.range.end },
       nameToken,
       scopeId: stableId("scope", bodyOpen),
-      attributes: [],
-      modifiers: [],
+      attributes: metadata.attributes,
+      modifiers: metadata.modifiers,
     });
     index = bodyOpenIndex;
   }
   return types;
+}
+
+function parseMetadataPrefix(
+  document: SlangTokenDocument,
+  tokens: SlangToken[],
+  startIndex: number,
+  declarationIndex: number,
+): { startIndex: number; attributes: string[]; modifiers: string[] } {
+  const attributes: string[] = [];
+  const modifiers: string[] = [];
+  let cursor = startIndex;
+  while (tokens[cursor]?.text === "[") {
+    const close = findMatchingText(tokens, cursor, "[", "]");
+    if (close === undefined || close >= declarationIndex) {
+      break;
+    }
+    attributes.push(normalizedText(document, tokens, cursor + 1, close));
+    cursor = close + 1;
+  }
+  while (cursor < declarationIndex && declarationModifiers.has(tokens[cursor].text)) {
+    modifiers.push(tokens[cursor].text);
+    cursor += 1;
+  }
+  return cursor === declarationIndex
+    ? { startIndex, attributes, modifiers }
+    : { startIndex: declarationIndex, attributes: [], modifiers: [] };
 }
 
 function parseCallables(
@@ -342,25 +381,33 @@ function parseParameter(
   const statementStart = startIndex;
   let cursor = startIndex;
   let access: SlangDeclarationNode["access"] = "read";
+  const modifiers: string[] = [];
   if (parameterAccess.has(tokens[cursor].text)) {
     access = parameterAccess.get(tokens[cursor].text)!;
+    modifiers.push(tokens[cursor].text);
     cursor += 1;
   }
   while (cursor < endIndex && declarationModifiers.has(tokens[cursor].text)) {
+    modifiers.push(tokens[cursor].text);
     cursor += 1;
   }
   const equalsIndex = findTokenInRange(tokens, cursor, endIndex, "=") ?? endIndex;
-  const nameIndex = findLastIdentifier(tokens, cursor, equalsIndex);
+  const nameIndex = findDeclarationName(tokens, cursor, equalsIndex);
   if (nameIndex === undefined || nameIndex <= cursor) {
+    return undefined;
+  }
+  const suffix = arraySuffixText(document, tokens, nameIndex + 1, equalsIndex);
+  if (suffix === null) {
     return undefined;
   }
   return directDeclaration(
     document,
     tokens[nameIndex],
-    normalizedText(document, tokens, cursor, nameIndex),
+    `${normalizedText(document, tokens, cursor, nameIndex)}${suffix}`,
     { start: tokens[statementStart].range.start, end: tokens[nameIndex].range.end },
     scopeId,
     access,
+    modifiers,
   );
 }
 
@@ -370,12 +417,18 @@ function parseStatementsAndDeclarations(
   pairs: DelimiterPair[],
   scopes: Map<string, SlangScopeNode>,
   signatureSemicolons: Set<number>,
-): { declarations: Map<string, SlangDeclarationNode>; statements: Map<string, SlangStatementNode> } {
+  ignoredSemicolons: Set<number>,
+): {
+  declarations: Map<string, SlangDeclarationNode>;
+  statements: Map<string, SlangStatementNode>;
+  diagnostics: DebugDiagnostic[];
+} {
   const declarations = new Map<string, SlangDeclarationNode>();
   const statements = new Map<string, SlangStatementNode>();
+  const diagnostics: DebugDiagnostic[] = [];
   const parenthesisRanges = pairs.filter((pair) => pair.kind === "parenthesis");
   for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index].text !== ";" || signatureSemicolons.has(index)) {
+    if (tokens[index].text !== ";" || signatureSemicolons.has(index) || ignoredSemicolons.has(index)) {
       continue;
     }
     if (parenthesisRanges.some((pair) => pair.openIndex < index && index < pair.closeIndex)) {
@@ -393,6 +446,15 @@ function parseStatementsAndDeclarations(
       statements.set(statement.id, statement);
       continue;
     }
+    if (findTopLevelToken(tokens, start, index, ",") !== undefined) {
+      diagnostics.push({
+        code: "slang-debug-unsupported-syntax",
+        message: "Multiple declarators in one statement are unsupported.",
+        sourceUri: document.sourceUri,
+        range,
+      });
+      continue;
+    }
     const declaration = parseDirectStatementDeclaration(document, tokens, start, index, scope.id, range);
     if (declaration) {
       declarations.set(declaration.id, declaration);
@@ -403,7 +465,70 @@ function parseStatementsAndDeclarations(
     const statement = createStatement(tokens[start], "expression", range, scope.id);
     statements.set(statement.id, statement);
   }
-  return { declarations, statements };
+  return { declarations, statements, diagnostics };
+}
+
+function collectUnbracedControlStatements(
+  document: SlangTokenDocument,
+  tokens: SlangToken[],
+  pairsByOpen: Map<number, DelimiterPair>,
+  scopes: Map<string, SlangScopeNode>,
+): { statements: Map<string, SlangStatementNode>; semicolons: Set<number> } {
+  const statements = new Map<string, SlangStatementNode>();
+  const semicolons = new Set<number>();
+  const doWhileTrailers = new Set<number>();
+  const append = (controlIndex: number, startIndex: number, endIndex: number): void => {
+    const scope = tokens[controlIndex].text === "for"
+      ? scopes.get(stableId("scope", tokens[controlIndex]))
+      : innermostScope(scopes, tokens[startIndex].startOffset, document, tokens);
+    if (!scope) {
+      return;
+    }
+    const kind = statementKind(tokens[startIndex].text) ?? "expression";
+    const range = { start: tokens[startIndex].range.start, end: tokens[endIndex].range.end };
+    const statement = createStatement(tokens[startIndex], kind, range, scope.id);
+    statements.set(statement.id, statement);
+    semicolons.add(endIndex);
+  };
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (doWhileTrailers.has(index)) {
+      continue;
+    }
+    if (tokens[index].text === "do") {
+      const bodyStartIndex = index + 1;
+      const bodyEndIndex = controlledStatementEndIndex(tokens, bodyStartIndex, pairsByOpen);
+      if (bodyEndIndex === undefined) {
+        continue;
+      }
+      if (tokens[bodyStartIndex].text !== "{") {
+        append(index, bodyStartIndex, bodyEndIndex);
+      }
+      const whileIndex = bodyEndIndex + 1;
+      const conditionPair = tokens[whileIndex]?.text === "while" && tokens[whileIndex + 1]?.text === "("
+        ? pairsByOpen.get(whileIndex + 1)
+        : undefined;
+      const terminatorIndex = conditionPair?.kind === "parenthesis" ? conditionPair.closeIndex + 1 : undefined;
+      if (tokens[terminatorIndex ?? -1]?.text === ";") {
+        doWhileTrailers.add(whileIndex);
+        semicolons.add(terminatorIndex!);
+      }
+      continue;
+    }
+    if (!controlFlowKeywords.has(tokens[index].text) || tokens[index + 1]?.text !== "(") {
+      continue;
+    }
+    const conditionPair = pairsByOpen.get(index + 1);
+    const bodyStartIndex = conditionPair?.kind === "parenthesis" ? conditionPair.closeIndex + 1 : undefined;
+    if (bodyStartIndex === undefined || tokens[bodyStartIndex]?.text === "{") {
+      continue;
+    }
+    const bodyEndIndex = controlledStatementEndIndex(tokens, bodyStartIndex, pairsByOpen);
+    if (bodyEndIndex !== undefined) {
+      append(index, bodyStartIndex, bodyEndIndex);
+    }
+  }
+  return { statements, semicolons };
 }
 
 function parseDirectStatementDeclaration(
@@ -415,22 +540,37 @@ function parseDirectStatementDeclaration(
   statementRange: DebugSourceRange,
 ): SlangDeclarationNode | undefined {
   let cursor = startIndex;
+  const modifiers: string[] = [];
   while (cursor < endIndex && declarationModifiers.has(tokens[cursor].text)) {
+    modifiers.push(tokens[cursor].text);
     cursor += 1;
   }
   const equalsIndex = findTokenInRange(tokens, cursor, endIndex, "=") ?? endIndex;
-  const nameIndex = findLastIdentifier(tokens, cursor, equalsIndex);
+  const nameIndex = findDeclarationName(tokens, cursor, equalsIndex);
   if (nameIndex === undefined || nameIndex <= cursor) {
     return undefined;
   }
-  if (tokens.slice(cursor, nameIndex).some((token) => ["(", ")", "="].includes(token.text))) {
+  const typeTokens = tokens.slice(cursor, nameIndex);
+  if (!isExplicitTypeTokenSequence(typeTokens)) {
     return undefined;
   }
   const typeName = normalizedText(document, tokens, cursor, nameIndex);
   if (!typeName || ["return", "break", "continue", "discard"].includes(typeName)) {
     return undefined;
   }
-  return directDeclaration(document, tokens[nameIndex], typeName, statementRange, scopeId, "readwrite");
+  const suffix = arraySuffixText(document, tokens, nameIndex + 1, equalsIndex);
+  if (suffix === null) {
+    return undefined;
+  }
+  return directDeclaration(
+    document,
+    tokens[nameIndex],
+    `${typeName}${suffix}`,
+    statementRange,
+    scopeId,
+    "readwrite",
+    modifiers,
+  );
 }
 
 function appendForInitializerDeclarations(
@@ -454,7 +594,8 @@ function appendForInitializerDeclarations(
       continue;
     }
     const startIndex = conditionPair.openIndex + 1;
-    const scope = innermostScope(scopes, tokens[index].startOffset, document, tokens);
+    const scope = scopes.get(stableId("scope", tokens[index]))
+      ?? innermostScope(scopes, tokens[index].startOffset, document, tokens);
     const range = { start: tokens[startIndex].range.start, end: tokens[semicolonIndex].range.end };
     const declaration = parseDirectStatementDeclaration(
       document,
@@ -473,6 +614,43 @@ function appendForInitializerDeclarations(
   }
 }
 
+function appendForLoopScopes(
+  document: SlangTokenDocument,
+  tokens: SlangToken[],
+  pairsByOpen: Map<number, DelimiterPair>,
+  scopes: Map<string, SlangScopeNode>,
+): void {
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].text !== "for" || tokens[index + 1]?.text !== "(") {
+      continue;
+    }
+    const conditionPair = pairsByOpen.get(index + 1);
+    const bodyOpenIndex = conditionPair?.kind === "parenthesis" ? conditionPair.closeIndex + 1 : undefined;
+    const bodyEndIndex = bodyOpenIndex === undefined
+      ? undefined
+      : controlledStatementEndIndex(tokens, bodyOpenIndex, pairsByOpen);
+    if (bodyOpenIndex === undefined || bodyEndIndex === undefined) {
+      continue;
+    }
+    const token = tokens[index];
+    const parent = innermostScope(scopes, token.startOffset, document, tokens);
+    const id = stableId("scope", token);
+    scopes.set(id, {
+      id,
+      kind: "loop",
+      sourceUri: document.sourceUri,
+      range: { start: token.range.start, end: tokens[bodyEndIndex].range.end },
+      parentId: parent.id,
+    });
+    const bodyScope = tokens[bodyOpenIndex].text === "{"
+      ? scopes.get(stableId("scope", tokens[bodyOpenIndex]))
+      : undefined;
+    if (bodyScope) {
+      bodyScope.parentId = id;
+    }
+  }
+}
+
 function appendMacroDeclarations(
   document: SlangTokenDocument,
   preprocessor: SlangPreprocessorModel,
@@ -484,12 +662,15 @@ function appendMacroDeclarations(
 ): void {
   for (const invocation of preprocessor.invocations) {
     if (!invocation.writableOrigin) {
-      diagnostics.push({
-        code: "slang-debug-no-writable-origin",
-        message: `Macro expansion for ${invocation.name} has no writable declaration origin.`,
-        sourceUri: document.sourceUri,
-        range: invocation.invocationRange,
-      });
+      const definition = preprocessor.macros.get(invocation.name);
+      if (definition && macroBodyContainsDeclaration(definition.bodyTokens, definition.parameters)) {
+        diagnostics.push({
+          code: "slang-debug-no-writable-origin",
+          message: `Macro expansion for ${invocation.name} has no writable declaration origin.`,
+          sourceUri: document.sourceUri,
+          range: invocation.invocationRange,
+        });
+      }
       continue;
     }
     const definition = preprocessor.macros.get(invocation.name);
@@ -522,6 +703,17 @@ function appendMacroDeclarations(
   }
 }
 
+function macroBodyContainsDeclaration(tokens: SlangToken[], parameters: string[]): boolean {
+  const body = tokens.filter((token) => token.kind !== "whitespace" && token.kind !== "comment");
+  const end = body.findIndex((token) => token.text === ";");
+  const declaration = body.slice(0, end < 0 ? body.length : end);
+  if (declaration.length < 2 || !parameters.includes(declaration[declaration.length - 1].text)) {
+    return false;
+  }
+  return declaration.slice(0, -1).every((token) => token.kind === "identifier"
+    || ["<", ">", ",", ".", "[", "]", "*", "&"].includes(token.text));
+}
+
 function parseControlFlows(
   document: SlangTokenDocument,
   tokens: SlangToken[],
@@ -529,24 +721,39 @@ function parseControlFlows(
   scopes: Map<string, SlangScopeNode>,
 ): Map<string, SlangControlFlowNode> {
   const controls = new Map<string, SlangControlFlowNode>();
+  const doWhileTrailers = new Set<number>();
   for (let index = 0; index < tokens.length; index += 1) {
+    if (doWhileTrailers.has(index)) {
+      continue;
+    }
     const kind = controlFlowKeywords.has(tokens[index].text)
       ? tokens[index].text as SlangControlFlowKind
       : tokens[index].text === "do" ? "do" : undefined;
     if (!kind) {
       continue;
     }
-    let bodyOpenIndex: number | undefined;
+    let endIndex: number | undefined;
     if (kind === "do") {
-      bodyOpenIndex = tokens[index + 1]?.text === "{" ? index + 1 : undefined;
+      const bodyEndIndex = controlledStatementEndIndex(tokens, index + 1, pairsByOpen);
+      const whileIndex = bodyEndIndex === undefined ? undefined : bodyEndIndex + 1;
+      const conditionPair = whileIndex !== undefined
+        && tokens[whileIndex]?.text === "while"
+        && tokens[whileIndex + 1]?.text === "("
+        ? pairsByOpen.get(whileIndex + 1)
+        : undefined;
+      const terminatorIndex = conditionPair?.kind === "parenthesis" ? conditionPair.closeIndex + 1 : undefined;
+      if (whileIndex !== undefined && tokens[terminatorIndex ?? -1]?.text === ";") {
+        doWhileTrailers.add(whileIndex);
+        endIndex = terminatorIndex;
+      }
     } else {
       const conditionPair = tokens[index + 1]?.text === "(" ? pairsByOpen.get(index + 1) : undefined;
-      bodyOpenIndex = conditionPair && tokens[conditionPair.closeIndex + 1]?.text === "{"
-        ? conditionPair.closeIndex + 1
-        : undefined;
+      const bodyStartIndex = conditionPair?.kind === "parenthesis" ? conditionPair.closeIndex + 1 : undefined;
+      endIndex = bodyStartIndex === undefined
+        ? undefined
+        : controlledStatementEndIndex(tokens, bodyStartIndex, pairsByOpen);
     }
-    const bodyPair = bodyOpenIndex === undefined ? undefined : pairsByOpen.get(bodyOpenIndex);
-    if (bodyPair?.kind !== "brace") {
+    if (endIndex === undefined) {
       continue;
     }
     const scope = innermostScope(scopes, tokens[index].startOffset, document, tokens);
@@ -555,11 +762,23 @@ function parseControlFlows(
       id,
       kind,
       sourceUri: document.sourceUri,
-      range: { start: tokens[index].range.start, end: tokens[bodyPair.closeIndex].range.end },
+      range: { start: tokens[index].range.start, end: tokens[endIndex].range.end },
       scopeId: scope.id,
     });
   }
   return controls;
+}
+
+function controlledStatementEndIndex(
+  tokens: SlangToken[],
+  startIndex: number,
+  pairsByOpen: Map<number, DelimiterPair>,
+): number | undefined {
+  if (tokens[startIndex]?.text === "{") {
+    const pair = pairsByOpen.get(startIndex);
+    return pair?.kind === "brace" ? pair.closeIndex : undefined;
+  }
+  return findNextToken(tokens, startIndex, ";");
 }
 
 function matchBalancedDelimiters(tokens: SlangToken[]): {
@@ -604,23 +823,48 @@ function unmatchedDelimiterDiagnostic(token: SlangToken, message: string): Debug
   };
 }
 
-function matchGenericDelimiters(tokens: SlangToken[]): DelimiterPair[] {
-  const pairs: DelimiterPair[] = [];
+function matchGenericDelimiters(tokens: SlangToken[]): {
+  pairs: DelimiterPair[];
+  diagnostics: DebugDiagnostic[];
+} {
+  const candidates: DelimiterPair[] = [];
+  const diagnostics: DebugDiagnostic[] = [];
   const stack: number[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index].text === "<" && isPlausibleGenericOpen(tokens, index)) {
       stack.push(index);
       continue;
     }
+    if (["{", ";", "="].includes(tokens[index].text) && stack.length > 0) {
+      appendUnmatchedGenericDiagnostics(tokens, stack.splice(0), diagnostics);
+      continue;
+    }
     if (tokens[index].text !== ">" || stack.length === 0) {
       continue;
     }
     const openIndex = stack.pop()!;
-    if (stack.length > 0 || isPlausibleGenericClose(tokens[index + 1])) {
-      pairs.push({ kind: "generic", openIndex, closeIndex: index });
+    candidates.push({ kind: "generic", openIndex, closeIndex: index });
+  }
+  appendUnmatchedGenericDiagnostics(tokens, stack, diagnostics);
+  const pairs = candidates.filter((pair) => isGenericPairContext(tokens, pair));
+  return { pairs, diagnostics };
+}
+
+function appendUnmatchedGenericDiagnostics(
+  tokens: SlangToken[],
+  openIndices: number[],
+  diagnostics: DebugDiagnostic[],
+): void {
+  for (const openIndex of openIndices) {
+    if (isConfidentDeclarationGenericOpen(tokens, openIndex)) {
+      diagnostics.push({
+        code: "slang-debug-unsupported-syntax",
+        message: "Unmatched generic '<' delimiter.",
+        sourceUri: tokens[openIndex].sourceUri,
+        range: tokens[openIndex].range,
+      });
     }
   }
-  return pairs;
 }
 
 function isPlausibleGenericOpen(tokens: SlangToken[], index: number): boolean {
@@ -630,10 +874,47 @@ function isPlausibleGenericOpen(tokens: SlangToken[], index: number): boolean {
     && (next?.kind === "identifier" || next?.text === "[");
 }
 
-function isPlausibleGenericClose(next: SlangToken | undefined): boolean {
-  return next === undefined
-    || next.kind === "identifier"
-    || ["(", ")", "[", "]", "{", "}", ":", ",", ";", ".", ">"].includes(next.text);
+function isGenericPairContext(tokens: SlangToken[], pair: DelimiterPair): boolean {
+  const beforeName = tokens[pair.openIndex - 2];
+  if (typeKeywords.has(beforeName?.text as SlangTypeKind)) {
+    return true;
+  }
+  if (["=", "+", "-", "/", "%", "!", "&&", "||", "return"].includes(beforeName?.text ?? "")) {
+    return false;
+  }
+  if (beforeName?.text === "(" && controlFlowKeywords.has(tokens[pair.openIndex - 3]?.text ?? "")) {
+    return false;
+  }
+  const next = tokens[pair.closeIndex + 1];
+  if (!next) {
+    return true;
+  }
+  if (["(", "{", ":", ",", ">", "[", "]", "."].includes(next.text)) {
+    return true;
+  }
+  const afterName = tokens[pair.closeIndex + 2];
+  return next.kind === "identifier"
+    && afterName !== undefined
+    && ["=", ",", ")", ";", "["].includes(afterName.text);
+}
+
+function isConfidentDeclarationGenericOpen(tokens: SlangToken[], openIndex: number): boolean {
+  if (typeKeywords.has(tokens[openIndex - 2]?.text as SlangTypeKind)) {
+    return true;
+  }
+  let identifiersAfter = 0;
+  for (let index = openIndex + 1; index < tokens.length; index += 1) {
+    if ([";", "{", "}"].includes(tokens[index].text)) {
+      return identifiersAfter >= 2;
+    }
+    if (tokens[index].text === "(") {
+      return identifiersAfter >= 1;
+    }
+    if (tokens[index].kind === "identifier") {
+      identifiersAfter += 1;
+    }
+  }
+  return false;
 }
 
 function buildScopes(
@@ -798,6 +1079,7 @@ function directDeclaration(
   statementRange: DebugSourceRange,
   scopeId: string,
   access: SlangDeclarationNode["access"],
+  modifiers: string[] = [],
 ): SlangDeclarationNode {
   return createDeclaration(
     document,
@@ -807,6 +1089,7 @@ function directDeclaration(
     scopeId,
     access,
     { kind: "direct", writableRange: nameToken.range },
+    modifiers,
   );
 }
 
@@ -818,6 +1101,7 @@ function createDeclaration(
   scopeId: string,
   access: SlangDeclarationNode["access"],
   origin: DebugOrigin,
+  modifiers: string[] = [],
 ): SlangDeclarationNode {
   const id = stableId("declaration", nameToken);
   return {
@@ -830,6 +1114,7 @@ function createDeclaration(
     scopeId,
     access,
     origin,
+    modifiers,
   };
 }
 
@@ -904,10 +1189,14 @@ function normalizedText(
   if (startIndex >= endIndex) {
     return "";
   }
-  return document.source
-    .slice(tokens[startIndex].startOffset, tokens[endIndex - 1].endOffset)
-    .trim()
-    .replace(/\s+/g, " ");
+  let text = tokens[startIndex].text;
+  for (let index = startIndex + 1; index < endIndex; index += 1) {
+    const previous = tokens[index - 1];
+    const token = tokens[index];
+    const separator = previous.endOffset < token.startOffset ? " " : "";
+    text += `${separator}${token.text}`;
+  }
+  return text;
 }
 
 function findNextToken(tokens: SlangToken[], startIndex: number, wanted: string, stop?: string): number | undefined {
@@ -956,9 +1245,70 @@ function findTokenInRange(
   return undefined;
 }
 
-function findLastIdentifier(tokens: SlangToken[], startIndex: number, endIndex: number): number | undefined {
-  for (let index = endIndex - 1; index >= startIndex; index -= 1) {
-    if (tokens[index].kind === "identifier") {
+function findDeclarationName(tokens: SlangToken[], startIndex: number, endIndex: number): number | undefined {
+  let depth = 0;
+  let candidate: number | undefined;
+  for (let index = startIndex; index < endIndex; index += 1) {
+    if (["<", "[", "("].includes(tokens[index].text)) {
+      depth += 1;
+    } else if ([">", "]", ")"].includes(tokens[index].text)) {
+      depth -= 1;
+    } else if (depth === 0 && tokens[index].kind === "identifier") {
+      candidate = index;
+    }
+  }
+  return candidate;
+}
+
+function isExplicitTypeTokenSequence(tokens: SlangToken[]): boolean {
+  if (tokens.length === 0 || tokens[0].kind !== "identifier") {
+    return false;
+  }
+  const last = tokens[tokens.length - 1];
+  if (!(last.kind === "identifier" || [">", "]", "*", "&"].includes(last.text))) {
+    return false;
+  }
+  return tokens.every((token) => token.kind === "identifier"
+    || token.kind === "number"
+    || ["<", ">", ",", ".", "[", "]", "*", "&"].includes(token.text));
+}
+
+function arraySuffixText(
+  document: SlangTokenDocument,
+  tokens: SlangToken[],
+  startIndex: number,
+  endIndex: number,
+): string | null {
+  if (startIndex === endIndex) {
+    return "";
+  }
+  let cursor = startIndex;
+  while (cursor < endIndex) {
+    if (tokens[cursor].text !== "[") {
+      return null;
+    }
+    const close = findMatchingText(tokens, cursor, "[", "]");
+    if (close === undefined || close >= endIndex) {
+      return null;
+    }
+    cursor = close + 1;
+  }
+  return normalizedText(document, tokens, startIndex, endIndex).replace(/\s+/g, "");
+}
+
+function findTopLevelToken(
+  tokens: SlangToken[],
+  startIndex: number,
+  endIndex: number,
+  text: string,
+): number | undefined {
+  let depth = 0;
+  for (let index = startIndex; index < endIndex; index += 1) {
+    if (["(", "[", "{", "<"].includes(tokens[index].text)) {
+      depth += 1;
+    } else if ([")", "]", "}", ">"].includes(tokens[index].text)) {
+      depth -= 1;
+    } else if (depth === 0 && tokens[index].text === text) {
       return index;
     }
   }

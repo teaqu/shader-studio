@@ -29,9 +29,10 @@ export interface SlangDeclarationNode {
   scopeId: string;
   access: "read" | "write" | "readwrite";
   origin: DebugOrigin;
+  modifiers: string[];
 }
 
-export type SlangScopeKind = "module" | "type" | "callable" | "block";
+export type SlangScopeKind = "module" | "type" | "callable" | "block" | "loop";
 
 export interface SlangScopeNode {
   id: string;
