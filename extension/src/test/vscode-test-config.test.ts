@@ -11,6 +11,7 @@ interface ConfigProbe {
   launchArgs: string[];
   profilePath: string;
   profileExistsDuringImport: boolean;
+  version?: string;
 }
 
 suite('VS Code test runner configuration', () => {
@@ -22,7 +23,7 @@ suite('VS Code test runner configuration', () => {
       'const launchArgs = config.launchArgs ?? [];',
       'const profileArg = launchArgs.find((arg) => arg.startsWith("--user-data-dir="));',
       'const profilePath = profileArg?.slice("--user-data-dir=".length) ?? "";',
-      'console.log(JSON.stringify({ launchArgs, profilePath, profileExistsDuringImport: existsSync(profilePath) }));',
+      'console.log(JSON.stringify({ launchArgs, profilePath, profileExistsDuringImport: existsSync(profilePath), version: config.version }));',
     ].join('\n');
     const { stdout } = await execFileAsync('node', [
       '--input-type=module',
@@ -42,5 +43,6 @@ suite('VS Code test runner configuration', () => {
     }
     assert.strictEqual(probe.profileExistsDuringImport, true);
     assert.strictEqual(existsSync(probe.profilePath), false);
+    assert.strictEqual(probe.version, '1.101.0');
   });
 });

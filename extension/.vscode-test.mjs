@@ -29,6 +29,7 @@ process.once('exit', removeTemporaryProfile);
 
 export default defineConfig({
 	files: 'out/test/**/*.test.js',
+	version: '1.101.0',
 	launchArgs: [
 		`--user-data-dir=${temporaryTestDirectory}`,
 	],
