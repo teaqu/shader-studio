@@ -1,9 +1,25 @@
 import { describe, it, expect } from "vitest";
+import { resolveGlslInputBindings } from "@shader-studio/types";
 import { assignInputSlots } from "../../util/InputSlotAssigner";
 
 describe("assignInputSlots", () => {
   it("returns empty array for empty inputs", () => {
     expect(assignInputSlots({})).toEqual([]);
+  });
+
+  it("preserves the shared input binding assignments without sampler metadata", () => {
+    const inputs = {
+      environment: { type: "cubemap" },
+      iChannel1: { type: "texture" },
+    };
+
+    expect(assignInputSlots(inputs)).toEqual(
+      resolveGlslInputBindings(inputs).map(({ slot, key, isCustomName }) => ({
+        slot,
+        key,
+        isCustomName,
+      })),
+    );
   });
 
   it("assigns keys sequentially in insertion order", () => {
