@@ -4,6 +4,7 @@ import * as sinon from 'sinon';
 import {
   SHADER_VALIDATOR_EXTENSION_ID,
   SHADER_VALIDATOR_PREAMBLE_SETTING,
+  SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
   ShaderValidatorPreambleManager,
 } from '../../app/ShaderValidatorPreambleManager';
 import type { ShaderValidatorPreambleSnapshot } from '../../app/ShaderValidatorPreamble';
@@ -137,6 +138,39 @@ suite('Shader Validator preamble manager', () => {
     );
   });
 
+  test('sets Shader Validator to its OpenGL target when the user has not configured one', async () => {
+    configuration.get.withArgs(SHADER_VALIDATOR_TARGET_CLIENT_SETTING).returns('Vulkan1_3');
+    configuration.inspect.withArgs(SHADER_VALIDATOR_TARGET_CLIENT_SETTING).returns(
+      inspectWith({ defaultValue: 'Vulkan1_3' }),
+    );
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledWithExactly(
+      configuration.update,
+      SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
+      'OpenGL450',
+      vscode.ConfigurationTarget.Workspace,
+    );
+  });
+
+  test('preserves a user-configured Shader Validator target client', async () => {
+    configuration.inspect.withArgs(SHADER_VALIDATOR_TARGET_CLIENT_SETTING).returns(
+      inspectWith({ workspaceValue: 'Vulkan1_3' }),
+    );
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.neverCalledWith(
+      configuration.update,
+      SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
+      sinon.match.any,
+      sinon.match.any,
+    );
+  });
+
   test('installs a baseline preamble for each workspace on activation', async () => {
     const manager = createManager();
 
@@ -147,7 +181,7 @@ suite('Shader Validator preamble manager', () => {
         && content.includes('uniform vec3 iResolution;')
         && content.includes('uniform float iTime;'),
     ), 'utf8');
-    sinon.assert.calledOnceWithExactly(
+    sinon.assert.calledWithExactly(
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
@@ -176,7 +210,6 @@ suite('Shader Validator preamble manager', () => {
 
     sinon.assert.calledWith(getExtension, SHADER_VALIDATOR_EXTENSION_ID);
     assert.strictEqual(getExtension.firstCall.args[0], 'antaalt.shader-validator');
-    sinon.assert.calledOnce(configuration.update);
     sinon.assert.calledWith(
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
@@ -212,7 +245,12 @@ suite('Shader Validator preamble manager', () => {
 
     await manager.apply({ kind: 'valid', snapshot });
 
-    sinon.assert.calledOnce(configuration.update);
+    sinon.assert.calledWith(
+      configuration.update,
+      SHADER_VALIDATOR_PREAMBLE_SETTING,
+      managedSetting,
+      vscode.ConfigurationTarget.Workspace,
+    );
     sinon.assert.notCalled(showInformationMessage);
   });
 
@@ -480,7 +518,12 @@ suite('Shader Validator preamble manager', () => {
     extensionListener();
     await flushPromises();
 
-    sinon.assert.calledOnce(configuration.update);
+    sinon.assert.calledWith(
+      configuration.update,
+      SHADER_VALIDATOR_PREAMBLE_SETTING,
+      managedSetting,
+      vscode.ConfigurationTarget.Workspace,
+    );
     sinon.assert.calledWith(
       vscode.workspace.getConfiguration as sinon.SinonStub,
       'shader-validator',

@@ -32,6 +32,7 @@ suite('Shader Validator documentation', () => {
     assert.match(settingsDoc, /configured channels and aliases/i);
     assert.match(settingsDoc, /successfully inferred custom uniforms/i);
     assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
+    assert.match(settingsDoc, /OpenGL450/);
     assert.match(settingsDoc, /only when you have not already configured the setting/i);
     assert.match(settingsDoc, /existing global and workspace values remain unchanged/i);
     assert.match(settingsDoc, /one.*workspace folder/i);

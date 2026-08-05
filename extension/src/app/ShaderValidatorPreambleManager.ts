@@ -10,6 +10,9 @@ import type { Logger } from './services/Logger';
 
 export const SHADER_VALIDATOR_EXTENSION_ID = 'antaalt.shader-validator';
 export const SHADER_VALIDATOR_PREAMBLE_SETTING = 'glsl.preamble';
+export const SHADER_VALIDATOR_TARGET_CLIENT_SETTING = 'glsl.targetClient';
+
+const SHADER_VALIDATOR_OPENGL_TARGET = 'OpenGL450';
 
 const PREAMBLE_FILE_NAME = 'shader-studio-preamble.glsl';
 const LEGACY_MANAGED_PREAMBLE_SETTING = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
@@ -212,6 +215,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
       const managedPreambleSetting = managedPreamblePath(folder);
       const effectiveValue = configuration.get<string>(SHADER_VALIDATOR_PREAMBLE_SETTING);
       if (effectiveValue === managedPreambleSetting) {
+        await this.coordinateTargetClient(configuration);
         return;
       }
 
@@ -221,6 +225,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
           managedPreambleSetting,
           vscode.ConfigurationTarget.Workspace,
         );
+        await this.coordinateTargetClient(configuration);
         return;
       }
 
@@ -237,6 +242,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
           managedPreambleSetting,
           vscode.ConfigurationTarget.Workspace,
         );
+        await this.coordinateTargetClient(configuration);
         return;
       }
 
@@ -255,8 +261,27 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         this.notifiedConflictWorkspaces.delete(workspaceKey);
         throw error;
       }
+      await this.coordinateTargetClient(configuration);
     } catch (error) {
       this.logger.error(`Unable to coordinate the Shader Validator preamble setting: ${errorText(error)}`);
     }
+  }
+
+  private async coordinateTargetClient(configuration: vscode.WorkspaceConfiguration): Promise<void> {
+    const inspected = configuration.inspect<string>(SHADER_VALIDATOR_TARGET_CLIENT_SETTING);
+    const hasExistingUserValue = inspected !== undefined && [
+      inspected.globalValue,
+      inspected.workspaceValue,
+      inspected.workspaceFolderValue,
+    ].some(isNonEmptySetting);
+    if (hasExistingUserValue) {
+      return;
+    }
+
+    await configuration.update(
+      SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
+      SHADER_VALIDATOR_OPENGL_TARGET,
+      vscode.ConfigurationTarget.Workspace,
+    );
   }
 }
