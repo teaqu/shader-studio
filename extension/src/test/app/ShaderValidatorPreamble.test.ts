@@ -45,18 +45,32 @@ suite('Shader Validator preamble builder', () => {
     assert.match(result.content, /uniform vec3 iChannelResolution\[4\];/);
   });
 
-  test('uses up to sixteen input slots in insertion order', () => {
+  test('resizes channel resolution for five through sixteen inputs and preserves insertion order', () => {
+    for (const channelCount of [5, 16]) {
+      const inputs = Object.fromEntries(Array.from({ length: channelCount }, (_, slot) => [
+        `input${slot}`,
+        { type: slot === 4 ? 'cubemap' : 'texture' },
+      ]));
+      const result = build({ inputs });
+
+      assert.match(result.content, new RegExp(`uniform vec3 iChannelResolution\\[${channelCount}\\];`));
+      assert.match(result.content, /uniform samplerCube iChannel4;/);
+      assert.ok(result.content.indexOf('uniform sampler2D input0;') < result.content.indexOf('uniform samplerCube input4;'));
+      if (channelCount > 5) {
+        assert.ok(result.content.indexOf('uniform samplerCube input4;') < result.content.indexOf(`uniform sampler2D input${channelCount - 1};`));
+      }
+    }
+  });
+
+  test('limits bindings to sixteen inputs', () => {
     const inputs = Object.fromEntries(Array.from({ length: 17 }, (_, slot) => [
       `input${slot}`,
-      { type: slot === 4 ? 'cubemap' : 'texture' },
+      { type: 'texture' },
     ]));
     const result = build({ inputs });
 
     assert.match(result.content, /uniform vec3 iChannelResolution\[16\];/);
-    assert.match(result.content, /uniform samplerCube iChannel4;/);
     assert.doesNotMatch(result.content, /iChannel16/);
-    assert.ok(result.content.indexOf('uniform sampler2D input0;') < result.content.indexOf('uniform samplerCube input4;'));
-    assert.ok(result.content.indexOf('uniform samplerCube input4;') < result.content.indexOf('uniform sampler2D input15;'));
     assert.doesNotMatch(result.content, /input16/);
   });
 
@@ -105,6 +119,18 @@ suite('Shader Validator preamble builder', () => {
     assert.doesNotMatch(result.content, /uniform float albedo;/);
   });
 
+  test('omits duplicate custom uniform names after the first declaration', () => {
+    const result = build({
+      customUniformDeclarations: 'uniform float repeated;\nuniform vec3 repeated;',
+    });
+
+    assert.match(result.content, /uniform float repeated;/);
+    assert.doesNotMatch(result.content, /uniform vec3 repeated;/);
+    assert.deepStrictEqual(result.warnings, [
+      'Custom uniform "repeated" conflicts with an existing GLSL name and was omitted.',
+    ]);
+  });
+
   test('omits input aliases that conflict with stable or generated slot names', () => {
     const result = build({
       inputs: {
@@ -120,6 +146,26 @@ suite('Shader Validator preamble builder', () => {
     assert.strictEqual((result.content.match(/uniform float iTime;/g) ?? []).length, 1);
     assert.strictEqual((result.content.match(/uniform sampler2D iChannel1;/g) ?? []).length, 1);
     assert.strictEqual(result.warnings.length, 2);
+  });
+
+  test('omits input aliases that conflict with channel resolution or compatibility structs', () => {
+    const result = build({
+      inputs: {
+        iChannelResolution: { type: 'texture' },
+        iCh0: { type: 'cubemap' },
+        safe: { type: 'texture' },
+      },
+    });
+
+    assert.match(result.content, /uniform sampler2D iChannel0;/);
+    assert.match(result.content, /uniform samplerCube iChannel1;/);
+    assert.match(result.content, /uniform sampler2D safe;/);
+    assert.doesNotMatch(result.content, /uniform sampler2D iChannelResolution;/);
+    assert.doesNotMatch(result.content, /uniform samplerCube iCh0;/);
+    assert.deepStrictEqual(result.warnings, [
+      'Input alias "iChannelResolution" conflicts with an existing GLSL name and was omitted.',
+      'Input alias "iCh0" conflicts with an existing GLSL name and was omitted.',
+    ]);
   });
 
   test('returns byte-identical output for equivalent snapshots', () => {
