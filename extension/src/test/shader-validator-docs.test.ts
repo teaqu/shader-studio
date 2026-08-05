@@ -31,9 +31,21 @@ suite('Shader Validator documentation', () => {
     assert.match(settingsDoc, /configured channels and aliases/i);
     assert.match(settingsDoc, /successfully inferred custom uniforms/i);
     assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
+    assert.match(settingsDoc, /single-folder workspace/i);
+    assert.match(settingsDoc, /workspace setting/i);
     assert.match(settingsDoc, /only when you have not already configured the setting/i);
-    assert.match(settingsDoc, /existing global, workspace, and folder values remain unchanged/i);
-    assert.match(settingsDoc, /one.*workspace folder/i);
+    assert.match(settingsDoc, /existing value.*unchanged/i);
+  });
+
+  test('documents the singular multi-root companion setting and manual path choice', () => {
+    assert.match(settingsDoc, /multi-root/i);
+    assert.match(settingsDoc, /one workspace-wide.*preamble/i);
+    assert.match(settingsDoc, /does not automatically (?:set|configure)/i);
+    assert.match(settingsDoc, /choose.*generated.*file.*configure.*path/is);
+    assert.match(troubleshootingDoc, /multi-root/i);
+    assert.match(troubleshootingDoc, /choose.*preamble.*path/is);
+    assert.match(extensionReadme, /multi-root/i);
+    assert.match(extensionReadme, /one workspace-wide.*preamble/i);
   });
 
   test('documents the workspace-wide active-shader limitation and stale-diagnostics recovery', () => {
@@ -43,5 +55,8 @@ suite('Shader Validator documentation', () => {
     assert.match(troubleshootingDoc, /Shader Studio output/i);
     assert.match(troubleshootingDoc, /Shader Language Server or Shader Validator Output/i);
     assert.match(troubleshootingDoc, /Restart the companion server/i);
+    assert.match(settingsDoc, /one extension host.*workspace folders.*share.*active GLSL selection/is);
+    assert.match(settingsDoc, /Separate VS Code windows.*independent/i);
+    assert.doesNotMatch(settingsDoc, /Separate workspace folders are independent/i);
   });
 });

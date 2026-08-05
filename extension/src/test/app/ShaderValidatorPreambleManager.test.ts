@@ -117,6 +117,7 @@ suite('Shader Validator preamble manager', () => {
   });
 
   test('atomically writes the generated file and configures an installed companion extension', async () => {
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder]);
     const manager = createManager();
 
     await manager.apply({ kind: 'valid', snapshot });
@@ -129,7 +130,7 @@ suite('Shader Validator preamble manager', () => {
     assert.strictEqual(configuration.update.firstCall.args[1], managedSetting);
     assert.strictEqual(
       configuration.update.firstCall.args[2],
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 
@@ -147,7 +148,8 @@ suite('Shader Validator preamble manager', () => {
     sinon.assert.notCalled(showInformationMessage);
   });
 
-  test('updates the workspace-folder setting only when every user scope is empty', async () => {
+  test('updates only the workspace setting in a single-folder window when every user scope is empty', async () => {
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder]);
     const manager = createManager();
 
     await manager.apply({ kind: 'valid', snapshot });
@@ -156,6 +158,12 @@ suite('Shader Validator preamble manager', () => {
     assert.strictEqual(getExtension.firstCall.args[0], 'antaalt.shader-validator');
     sinon.assert.calledOnce(configuration.update);
     sinon.assert.calledWith(
+      configuration.update,
+      SHADER_VALIDATOR_PREAMBLE_SETTING,
+      managedSetting,
+      vscode.ConfigurationTarget.Workspace,
+    );
+    sinon.assert.neverCalledWith(
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
@@ -198,7 +206,7 @@ suite('Shader Validator preamble manager', () => {
     configuration.get.withArgs('glsl.preamble').returns(managedSetting);
     configuration.inspect.returns(inspectWith({
       globalValue: '/global/user-preamble.glsl',
-      workspaceFolderValue: managedSetting,
+      workspaceValue: managedSetting,
     }));
     const manager = createManager();
 
@@ -234,15 +242,15 @@ suite('Shader Validator preamble manager', () => {
     );
   });
 
-  test('tracks existing-setting notifications independently for each workspace', async () => {
+  test('generates every multi-root file without setting one misleading workspace path', async () => {
     const secondFolder = {
       uri: vscode.Uri.file('/second'),
       name: 'second',
       index: 1,
     };
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder, secondFolder]);
     const getWorkspaceFolder = vscode.workspace.getWorkspaceFolder as sinon.SinonStub;
     getWorkspaceFolder.callsFake((uri: vscode.Uri) => uri.fsPath.startsWith('/second') ? secondFolder : folder);
-    configuration.inspect.returns(inspectWith({ workspaceValue: '/workspace/user-preamble.glsl' }));
     const manager = createManager();
 
     await manager.apply({ kind: 'valid', snapshot });
@@ -250,9 +258,51 @@ suite('Shader Validator preamble manager', () => {
       kind: 'valid',
       snapshot: { ...snapshot, shaderPath: '/second/image.glsl' },
     });
+
+    sinon.assert.calledWith(
+      fs.writeFileSync,
+      '/workspace/.vscode/shader-studio-preamble.glsl.tmp-' + process.pid,
+      sinon.match.string,
+      'utf8',
+    );
+    sinon.assert.calledWith(
+      fs.writeFileSync,
+      '/second/.vscode/shader-studio-preamble.glsl.tmp-' + process.pid,
+      sinon.match.string,
+      'utf8',
+    );
+    sinon.assert.notCalled(configuration.update);
+    sinon.assert.calledOnceWithExactly(
+      showInformationMessage,
+      'Shader Validator supports one workspace-wide GLSL preamble in a multi-root window. '
+        + 'Shader Studio generates a preamble file in each folder and leaves '
+        + 'shader-validator.glsl.preamble unchanged. Choose one folder\'s '
+        + '.vscode/shader-studio-preamble.glsl file and configure '
+        + 'shader-validator.glsl.preamble to that file\'s path.',
+    );
+  });
+
+  test('retries multi-root guidance that previously failed to appear', async () => {
+    const secondFolder = {
+      uri: vscode.Uri.file('/second'),
+      name: 'second',
+      index: 1,
+    };
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([folder, secondFolder]);
+    const getWorkspaceFolder = vscode.workspace.getWorkspaceFolder as sinon.SinonStub;
+    getWorkspaceFolder.callsFake((uri: vscode.Uri) => uri.fsPath.startsWith('/second') ? secondFolder : folder);
+    showInformationMessage.onFirstCall().rejects(new Error('notification failed'));
+    showInformationMessage.onSecondCall().resolves(undefined);
+    const manager = createManager();
+
     await manager.apply({ kind: 'valid', snapshot });
+    await manager.apply({
+      kind: 'valid',
+      snapshot: { ...snapshot, shaderPath: '/second/image.glsl' },
+    });
 
     sinon.assert.calledTwice(showInformationMessage);
+    sinon.assert.calledOnce(logger.error);
     sinon.assert.notCalled(configuration.update);
   });
 
@@ -479,7 +529,7 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 

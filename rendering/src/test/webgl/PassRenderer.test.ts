@@ -681,6 +681,31 @@ describe("PassRenderer", () => {
   });
 
   describe("iCh struct uniforms", () => {
+    it("should bind iCh0-iCh3 samplers to matching channel units when locations are absent", () => {
+      const passConfig: Pass = {
+        name: "TestPass",
+        shaderSrc: "",
+        inputs: {
+          noiseMap: { type: "texture", path: "noise.png" },
+        }
+      };
+      const mockShader = createMockShader();
+      mockResourceManager.getImageTextureCache.mockReturnValue({
+        "noise.png": createMockTexture(512, 512),
+      });
+      vi.mocked(mockRenderer.SetShaderTextureUnit).mockReturnValue(false);
+
+      expect(() => {
+        passRenderer.renderPass(passConfig, null, mockShader, defaultUniforms);
+      }).not.toThrow();
+
+      for (let i = 0; i < 4; i++) {
+        expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith(`iCh${i}.sampler`, i);
+        expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith(`iChannel${i}`, i);
+      }
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("noiseMap", 0);
+    });
+
     it("should set iCh0-iCh3 time, size, and loaded uniforms", () => {
       const passConfig: Pass = {
         name: "TestPass",

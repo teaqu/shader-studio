@@ -70,6 +70,8 @@ For editor diagnostics that understand Shader Studio's Shadertoy-style uniforms,
 
 Shader Studio generates a `.vscode/shader-studio-preamble.glsl` file for the active GLSL pass. The file contains stable built-in uniforms, configured channels and aliases, and custom uniforms that Shader Studio successfully infers. See the [settings guide](https://teaqu.github.io/shader-studio/help/settings/) for setup and the active-shader limitation.
 
+In a single-folder workspace, Shader Studio can configure the generated file automatically when the companion setting is empty. In a multi-root window, Shader Validator has one workspace-wide preamble setting, so Shader Studio generates each folder's file without choosing one for you. Choose the intended generated file and configure its path manually, or use separate VS Code windows for independent companion settings.
+
 ## Visual Debugging
 
 Enable debug mode with the bug icon in the toolbar to open a panel of tools for inspecting your shader while it runs:

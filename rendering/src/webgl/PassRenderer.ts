@@ -77,6 +77,7 @@ export class PassRenderer {
 
     // Set iCh struct uniforms (Shadertoy "new API")
     for (let i = 0; i < 4; i++) {
+      this.renderer.SetShaderTextureUnit(`iCh${i}.sampler`, i);
       this.renderer.SetShaderConstant1F(`iCh${i}.time`, uniforms.channelTime[i]);
       this.renderer.SetShaderConstant3F(
         `iCh${i}.size`,

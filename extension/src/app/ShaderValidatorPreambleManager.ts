@@ -43,6 +43,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
   private readonly workspaceStates = new Map<string, WorkspacePreambleState>();
   private readonly recentWorkspaceFolders = new Map<string, vscode.WorkspaceFolder>();
   private readonly notifiedConflictWorkspaces = new Set<string>();
+  private notifiedMultiRootWorkspace = false;
   private disposed = false;
 
   constructor(
@@ -179,6 +180,24 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         return;
       }
 
+      if ((vscode.workspace.workspaceFolders?.length ?? 1) > 1) {
+        if (!this.notifiedMultiRootWorkspace) {
+          this.notifiedMultiRootWorkspace = true;
+          try {
+            await this.deps.showInformationMessage(
+              'Shader Validator supports one workspace-wide GLSL preamble in a multi-root window. '
+                + 'Shader Studio generates a preamble file in each folder and leaves '
+                + 'shader-validator.glsl.preamble unchanged. Choose one folder\'s '
+                + '.vscode/shader-studio-preamble.glsl file and configure '
+                + 'shader-validator.glsl.preamble to that file\'s path.',
+            );
+          } catch (error) {
+            this.notifiedMultiRootWorkspace = false;
+            throw error;
+          }
+        }
+        return;
+      }
       const configuration = vscode.workspace.getConfiguration('shader-validator', folder.uri);
       const effectiveValue = configuration.get<string>(SHADER_VALIDATOR_PREAMBLE_SETTING);
       if (effectiveValue === MANAGED_PREAMBLE_SETTING) {
@@ -196,7 +215,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         await configuration.update(
           SHADER_VALIDATOR_PREAMBLE_SETTING,
           MANAGED_PREAMBLE_SETTING,
-          vscode.ConfigurationTarget.WorkspaceFolder,
+          vscode.ConfigurationTarget.Workspace,
         );
         return;
       }

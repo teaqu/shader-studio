@@ -9,9 +9,11 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 
 Shader Studio can prepare diagnostics for the separately installed [Shader Validator](https://marketplace.visualstudio.com/items?itemName=antaalt.shader-validator) extension (`antaalt.shader-validator`). The companion is optional: Shader Studio still generates its preamble file without it, and Shader Studio rendering is unaffected if Shader Validator is disabled or uninstalled.
 
-For each workspace folder, Shader Studio generates one `.vscode/shader-studio-preamble.glsl` file from the active GLSL pass. It includes stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. Shader Studio configures the single path string `shader-validator.glsl.preamble` for all GLSL shaders in that folder only when you have not already configured the setting; existing global, workspace, and folder values remain unchanged.
+For each workspace folder, Shader Studio generates one `.vscode/shader-studio-preamble.glsl` file from the active GLSL pass. It includes stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. In a single-folder workspace, Shader Studio sets the portable `${workspaceFolder}/.vscode/shader-studio-preamble.glsl` path as the `shader-validator.glsl.preamble` workspace setting only when you have not already configured the setting; any existing value remains unchanged.
 
-Within one extension host, all Shader Studio panels share the active GLSL selection. The active or focused shader context controls the preamble; background panels and refreshes cannot overwrite it. Separate workspace folders are independent.
+In a multi-root window, Shader Validator supports one workspace-wide GLSL preamble setting. Shader Studio still generates the file for each folder but does not automatically set `shader-validator.glsl.preamble`, because one workspace value cannot select every folder's preamble. Choose one generated preamble file and manually configure the setting to that file's path. Use separate VS Code windows if each folder needs independent companion configuration.
+
+Within one extension host, all Shader Studio panels and workspace folders share one active GLSL selection. The active or focused shader context controls the preamble; background panels and refreshes cannot overwrite it. Separate VS Code windows run separate extension hosts and are independent.
 
 Dynamic declarations come from the active shader's `.sha.json` pass inputs and configuration, plus already-evaluated custom uniforms. If a shader or config update is invalid, Shader Studio retains the last-valid shader-specific preamble. Before any valid update, it generates a stable shader-local Image fallback.
 

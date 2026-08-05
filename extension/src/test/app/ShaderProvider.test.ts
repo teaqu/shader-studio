@@ -1532,6 +1532,69 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
+    test('resolves a shared pass to the newly selected root while its script is pending', async () => {
+      const previousRoot = '/workspace/previous-root.glsl';
+      const selectedRoot = '/workspace/pending-selected-root.glsl';
+      const sharedPath = '/workspace/pending-shared-pass.glsl';
+      const selectedInputs = { selected: { type: 'texture' } };
+      const previousConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          common: { path: './pending-shared-pass.glsl', inputs: { previous: { type: 'cubemap' } } },
+        },
+      };
+      const selectedConfig = {
+        version: '1.0',
+        script: './uniforms.ts',
+        passes: {
+          Image: {},
+          BufferA: { path: './pending-shared-pass.glsl', inputs: selectedInputs },
+        },
+      };
+      const pendingBundle = deferred<{ success: boolean; code: string }>();
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => (
+        shaderPath === selectedRoot ? selectedConfig : previousConfig
+      ));
+      const bundle = sandbox.stub((provider as any).scriptBundler, 'bundle')
+        .returns(pendingBundle.promise);
+      sandbox.stub((provider as any).scriptEvaluator, 'loadScript').returns({
+        declarations: 'uniform float selected;',
+        uniforms: [],
+      });
+
+      await sendForegroundShaderFromEditor(previousRoot, mainImageCode);
+      onPreamblePreparation.resetHistory();
+      sendSpy.resetHistory();
+
+      provider.claimActiveAnalysisContext(selectedRoot);
+      const pendingRootSend = provider.sendShaderFromEditor(editorFor(selectedRoot, mainImageCode));
+      await new Promise(resolve => setImmediate(resolve));
+      sinon.assert.calledOnce(bundle);
+
+      await sendForegroundShaderFromEditor(sharedPath, 'void renderShared() {}');
+
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.deepStrictEqual(onPreamblePreparation.firstCall.args[0].snapshot, {
+        shaderPath: selectedRoot,
+        configPath: '/workspace/pending-selected-root.sha.json',
+        passName: 'BufferA',
+        inputs: selectedInputs,
+        customUniformDeclarations: undefined,
+      });
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].type, 'shaderSource');
+      assert.strictEqual(sendSpy.firstCall.args[0].path, sharedPath);
+
+      pendingBundle.resolve({ success: true, code: 'selected bundle' });
+      await pendingRootSend;
+      sinon.assert.calledOnce(onPreamblePreparation);
+      sinon.assert.calledOnce(sendSpy);
+    });
+
     test('ignores a background Buffer path refresh without replacing the active pass', async () => {
       const shaderPath = '/workspace/multi-buffer.glsl';
       const activeBuffer = '/workspace/active-a.glsl';
