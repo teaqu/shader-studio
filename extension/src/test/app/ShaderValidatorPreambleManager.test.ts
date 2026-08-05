@@ -13,7 +13,8 @@ suite('Shader Validator preamble manager', () => {
   const shaderPath = `${workspacePath}/image.glsl`;
   const destination = `${workspacePath}/.vscode/shader-studio-preamble.glsl`;
   const tempPath = `${destination}.tmp-${process.pid}`;
-  const managedSetting = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
+  const managedSetting = destination;
+  const legacyManagedSetting = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
   const snapshot: ShaderValidatorPreambleSnapshot = {
     shaderPath,
     configPath: `${workspacePath}/image.sha.json`,
@@ -208,6 +209,22 @@ suite('Shader Validator preamble manager', () => {
     sinon.assert.notCalled(showInformationMessage);
   });
 
+  test('migrates the legacy workspace-variable setting to the generated absolute path', async () => {
+    configuration.get.withArgs('glsl.preamble').returns(legacyManagedSetting);
+    configuration.inspect.returns(inspectWith({ workspaceFolderValue: legacyManagedSetting }));
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledOnceWithExactly(
+      configuration.update,
+      SHADER_VALIDATOR_PREAMBLE_SETTING,
+      managedSetting,
+      vscode.ConfigurationTarget.WorkspaceFolder,
+    );
+    sinon.assert.notCalled(showInformationMessage);
+  });
+
   test('shows the existing-setting message once per workspace during a manager lifetime', async () => {
     configuration.inspect.returns(inspectWith({ workspaceValue: '/workspace/user-preamble.glsl' }));
     const manager = createManager();
@@ -230,7 +247,7 @@ suite('Shader Validator preamble manager', () => {
       'Shader Validator already has a GLSL preamble configured for workspace; '
         + 'Shader Studio left it unchanged. To use Shader Studio\'s generated preamble, '
         + 'manually set shader-validator.glsl.preamble to '
-        + '${workspaceFolder}/.vscode/shader-studio-preamble.glsl.',
+        + '/workspace/.vscode/shader-studio-preamble.glsl.',
     );
   });
 

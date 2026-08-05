@@ -12,7 +12,7 @@ export const SHADER_VALIDATOR_EXTENSION_ID = 'antaalt.shader-validator';
 export const SHADER_VALIDATOR_PREAMBLE_SETTING = 'glsl.preamble';
 
 const PREAMBLE_FILE_NAME = 'shader-studio-preamble.glsl';
-const MANAGED_PREAMBLE_SETTING = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
+const LEGACY_MANAGED_PREAMBLE_SETTING = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
 
 type PreambleFs = Pick<typeof import('node:fs'),
   'existsSync' | 'readFileSync' | 'mkdirSync' | 'writeFileSync' | 'renameSync' | 'unlinkSync'>;
@@ -35,6 +35,10 @@ function errorText(error: unknown): string {
 
 function isNonEmptySetting(value: string | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function managedPreamblePath(folder: vscode.WorkspaceFolder): string {
+  return path.join(folder.uri.fsPath, '.vscode', PREAMBLE_FILE_NAME);
 }
 
 export class ShaderValidatorPreambleManager implements vscode.Disposable {
@@ -180,8 +184,18 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
       }
 
       const configuration = vscode.workspace.getConfiguration('shader-validator', folder.uri);
+      const managedPreambleSetting = managedPreamblePath(folder);
       const effectiveValue = configuration.get<string>(SHADER_VALIDATOR_PREAMBLE_SETTING);
-      if (effectiveValue === MANAGED_PREAMBLE_SETTING) {
+      if (effectiveValue === managedPreambleSetting) {
+        return;
+      }
+
+      if (effectiveValue === LEGACY_MANAGED_PREAMBLE_SETTING) {
+        await configuration.update(
+          SHADER_VALIDATOR_PREAMBLE_SETTING,
+          managedPreambleSetting,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
         return;
       }
 
@@ -195,7 +209,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
       if (!hasExistingUserValue) {
         await configuration.update(
           SHADER_VALIDATOR_PREAMBLE_SETTING,
-          MANAGED_PREAMBLE_SETTING,
+          managedPreambleSetting,
           vscode.ConfigurationTarget.WorkspaceFolder,
         );
         return;
@@ -210,7 +224,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         await this.deps.showInformationMessage(
           `Shader Validator already has a GLSL preamble configured for ${folder.name}; `
             + `Shader Studio left it unchanged. To use Shader Studio's generated preamble, `
-            + `manually set shader-validator.glsl.preamble to ${MANAGED_PREAMBLE_SETTING}.`,
+            + `manually set shader-validator.glsl.preamble to ${managedPreambleSetting}.`,
         );
       } catch (error) {
         this.notifiedConflictWorkspaces.delete(workspaceKey);
