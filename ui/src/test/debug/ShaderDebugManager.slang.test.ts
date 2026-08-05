@@ -26,6 +26,18 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(manager.getLanguage()).toBe('slang');
   });
 
+  it('builds an in-place Slang preview plan without calling the GLSL modifier', () => {
+    manager.setShaderContext(null, '/flow.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
+
+    const plan = manager.getSlangPreviewPlan(slangShader, null);
+
+    expect(plan?.rootUri).toBe('file:///flow.slang');
+    expect(plan?.selectedSourceUri).toBe('file:///flow.slang');
+    expect(plan?.files[0].source).toContain('_ssdbg_');
+  });
+
   it('generates Slang debug output for line debugging', () => {
     manager.toggleEnabled();
     manager.updateDebugLine(3, '    float3 col = float3(uv, 0.5);', 'flow.slang');

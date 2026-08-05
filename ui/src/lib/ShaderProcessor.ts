@@ -1,6 +1,7 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
 import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
+import type { DebugInstrumentationPlan } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
@@ -60,18 +61,21 @@ export class ShaderProcessor {
         passName: debugPassName,
         slangModules: debugSlangModules,
         sourcePath: debugSourcePath,
+        debugPlan,
       } = this.getDebugCompileArgs(code, config ?? null);
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
-      const result = await this.compileWithSlangContext(
-        codeToCompile,
-        configToCompile,
-        path,
-        buffersToCompile,
-        message.customUniformDeclarations,
-        message.customUniformInfo,
-        debugSlangModules ?? message.slangModules,
-        debugSourcePath,
-      );
+      const result = debugPlan && this.renderEngine.compileSlangDebugPlan
+        ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+        : await this.compileWithSlangContext(
+          codeToCompile,
+          configToCompile,
+          path,
+          buffersToCompile,
+          message.customUniformDeclarations,
+          message.customUniformInfo,
+          debugSlangModules ?? message.slangModules,
+          debugSourcePath,
+        );
 
       // Handle compilation failure
       if (result?.superseded) {
@@ -80,7 +84,7 @@ export class ShaderProcessor {
 
       if (!result?.success) {
         // If debug mode compilation failed, try original code
-        if (codeToCompile !== code) {
+        if (debugPlan || codeToCompile !== code) {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
@@ -135,11 +139,17 @@ export class ShaderProcessor {
     passName: string;
     slangModules?: import("@shader-studio/types").SlangSourceModule[];
     sourcePath?: string;
+    debugPlan?: DebugInstrumentationPlan;
   } {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
+
+    const slangPlan = this.shaderDebugManager.getSlangPreviewPlan?.(imageShaderCode, config);
+    if (slangPlan) {
+      return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
+    }
 
     if (debugState.isActive && debugState.currentLine !== null) {
       const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(

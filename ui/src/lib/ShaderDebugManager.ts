@@ -2,6 +2,8 @@ import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./ty
 import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
+import type { DebugInstrumentationPlan } from "@shader-studio/types";
+import { SlangDebugEngine } from "@shader-studio/slang-debug";
 
 export interface DebugTarget {
   passName: string;
@@ -66,6 +68,7 @@ export class ShaderDebugManager {
   private slangModules: SlangSourceModule[] = [];
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
+  private readonly slangDebugEngine = new SlangDebugEngine();
 
   public setLanguage(language: ShaderDialect): void {
     this.language = language;
@@ -155,6 +158,52 @@ export class ShaderDebugManager {
       inputConfig,
       ...sourceDetails,
     };
+  }
+
+  public getSlangPreviewPlan(imageCode: string, config: ShaderConfig | null): DebugInstrumentationPlan | null {
+    if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
+      return null;
+    }
+    const target = this.getDebugTarget(imageCode, config);
+    const rootPath = target.passName === 'Image'
+      ? this.imagePassPath
+      : this.bufferPathMap[target.passName];
+    if (!rootPath) return null;
+    const rootSource = target.passName === 'Image'
+      ? imageCode
+      : this.bufferCodes[target.passName] ?? imageCode;
+    const files = [
+      { uri: rootPath, path: rootPath, source: rootSource, version: 1, moduleName: '', ownerPass: target.passName },
+      ...this.slangModules
+        .filter((module) => module.ownerPass === target.passName)
+        .map((module) => ({ ...module, uri: module.path, version: 1 })),
+    ];
+    const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
+    const selectedLine = this.variablePreview?.debugLine ?? this.state.currentLine;
+    const selectedCharacter = Math.max(0, (this.state.lineContent ?? '').search(/\S/));
+    const result = this.slangDebugEngine.planPreview({
+      workspace: { rootUri: rootPath, rootPath, passName: target.passName, files, contentHash: this.slangWorkspaceHash(files) },
+      sourceUri: selectedPath,
+      position: { line: selectedLine, character: selectedCharacter },
+    }, {
+      normalizeMode: this.state.normalizeMode,
+      stepEdge: this.state.isStepEnabled ? this.state.stepEdge : null,
+    });
+    if (!result.ok) {
+      this.setDebugError(result.diagnostics[0]?.message ?? 'Slang debug planning failed');
+      return null;
+    }
+    return result.plan;
+  }
+
+  private slangWorkspaceHash(files: Array<{ path: string; source: string; version: number }>): string {
+    let hash = 2166136261;
+    for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
+      for (const character of `${file.path}\0${file.version}\0${file.source}`) {
+        hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+      }
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
   }
 
   private findSlangModule(filePath: string | null): SlangSourceModule | undefined {

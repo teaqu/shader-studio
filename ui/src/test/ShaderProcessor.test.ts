@@ -63,6 +63,18 @@ describe('ShaderProcessor', () => {
     });
   });
 
+  it('routes a Slang debug plan to the structured rendering entry point', async () => {
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue({
+      workspaceHash: 'hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang', executionMarkerSlot: 0, captureSlots: [], files: [],
+    });
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: true });
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {} });
+
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledTimes(1);
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);
