@@ -223,8 +223,7 @@ suite('Shader Validator preamble builder', () => {
 
     assert.strictEqual(first.content, second.content);
     assert.deepStrictEqual(first.warnings, second.warnings);
-    assert.ok(first.content.endsWith('\n'));
-    assert.ok(!first.content.endsWith('\n\n'));
+    assert.ok(!first.content.endsWith('\n'));
   });
 
   test('sanitizes metadata labels so comments cannot be escaped', () => {

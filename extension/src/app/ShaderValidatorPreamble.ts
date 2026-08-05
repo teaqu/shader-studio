@@ -121,5 +121,7 @@ export function buildShaderValidatorPreamble(
     lines.push('', ...customLines);
   }
 
-  return { content: `${lines.join('\n')}\n`, warnings };
+  // Shader Validator 1.4.3 drops a preamble that ends in a newline; keep this
+  // newline-free until its upstream loader is fixed.
+  return { content: lines.join('\n'), warnings };
 }
