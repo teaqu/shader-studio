@@ -24,19 +24,17 @@ export function planSlangInstrumentation(
   if (analysis.origin.kind !== "direct" || !analysis.origin.writableRange) {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-no-writable-origin", "The selected Slang statement has no writable source origin.");
   }
-  if (selectedFile.source.uri !== workspace.rootUri) {
-    return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", "Slang capture from an imported module is not available yet.");
-  }
   const values = selectValues(analysis, valueIds);
   if (!values) {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-stale-request", "The requested Slang debug value is no longer visible at this location.");
   }
-  const mainImage = [...selectedFile.structure.callables.values()].find((callable) => callable.kind === "free" && callable.name === "mainImage");
+  const rootFile = workspace.filesByUri.get(workspace.rootUri);
+  const mainImage = rootFile && [...rootFile.structure.callables.values()].find((callable) => callable.kind === "free" && callable.name === "mainImage");
   if (!mainImage) {
     return failure(workspace.rootUri, { line: 0, character: 0 }, "slang-debug-unsupported-syntax", "The Slang workspace root has no mainImage function.");
   }
   const prefix = instrumentationPrefix(workspace.contentHash);
-  if ([...selectedFile.document.tokens].some((token) => token.kind === "identifier" && token.text.startsWith(prefix))) {
+  if ([...workspace.filesByUri.values()].some((file) => [...file.document.tokens].some((token) => token.kind === "identifier" && token.text.startsWith(prefix)))) {
     return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-instrumentation-conflict", `Slang debug identifier '${prefix}' already exists.`);
   }
 
@@ -45,20 +43,31 @@ export function planSlangInstrumentation(
     ...values.map((value, index) => ({ index: index + 1, valueId: value.id, name: value.name, typeName: value.typeName, hidden: false })),
   ];
   const generatedSlots = values.map((value, index) => ({ value, name: `${prefix}_slot${index + 1}` }));
-  const declarations = [emitSlangStatic("bool", `${prefix}_executed`), ...generatedSlots.map((slot) => emitSlangStatic(slot.value.typeName, slot.name))].join("\n");
+  const imported = selectedFile.source.uri !== workspace.rootUri;
+  const accessors = imported
+    ? [`public bool ${prefix}_wasExecuted() { return ${prefix}_executed; }`, ...generatedSlots.map((slot) => `public ${slot.value.typeName} ${prefix}_value${slot.name.slice(-1)}() { return ${slot.name}; }`)]
+    : [];
+  const declarations = [emitSlangStatic("bool", `${prefix}_executed`), ...generatedSlots.map((slot) => emitSlangStatic(slot.value.typeName, slot.name)), ...accessors].join("\n");
   const captureAssignment = `\n  ${prefix}_executed = true;\n${generatedSlots.map((slot) => `  ${slot.name} = ${slot.value.name};`).join("\n")}`;
-  const wrapper = emitRootWrapper(prefix, generatedSlots, mode);
+  const wrapperSlots = generatedSlots.map((slot, index) => ({ ...slot, expression: imported ? `${prefix}_value${index + 1}()` : slot.name }));
+  const wrapper = emitRootWrapper(prefix, wrapperSlots, mode, imported ? `${prefix}_wasExecuted()` : `${prefix}_executed`);
   const renameStart = mainImage.nameToken.startOffset;
   const statementEnd = offsetAt(selectedFile.source.source, analysis.statementRange.end);
-  const edits = [
-    { start: renameStart, end: mainImage.nameToken.endOffset, text: `${prefix}_userMain` },
+  const selectedEdits = [
     { start: statementEnd, end: statementEnd, text: captureAssignment },
-    { start: selectedFile.source.source.length, end: selectedFile.source.source.length, text: `\n${declarations}\n${wrapper}` },
+    { start: selectedFile.source.source.length, end: selectedFile.source.source.length, text: `\n${declarations}\n` },
   ];
-  const applied = applySourceEdits(selectedFile.source.source, edits);
-  if (!applied.ok) return failure(analysis.sourceUri, analysis.selectedRange.start, applied.code, "Slang debug source edits overlap.");
+  const rootEdits = [
+    { start: renameStart, end: mainImage.nameToken.endOffset, text: `${prefix}_userMain` },
+    { start: rootFile!.source.source.length, end: rootFile!.source.source.length, text: `\n${wrapper}` },
+  ];
+  const selectedApplied = applySourceEdits(selectedFile.source.source, imported ? selectedEdits : [...selectedEdits, ...rootEdits]);
+  const rootApplied = imported ? applySourceEdits(rootFile!.source.source, rootEdits) : selectedApplied;
+  if (!selectedApplied.ok || !rootApplied.ok) return failure(analysis.sourceUri, analysis.selectedRange.start, "debug-overlapping-edits", "Slang debug source edits overlap.");
   const files = [...workspace.filesByUri.values()].map((file) => file.source.uri === selectedFile.source.uri
-    ? { ...file.source, source: applied.source, version: file.source.version + 1 }
+    ? { ...file.source, source: selectedApplied.source, version: file.source.version + 1 }
+    : file.source.uri === rootFile!.source.uri
+      ? { ...file.source, source: rootApplied.source, version: file.source.version + 1 }
     : { ...file.source });
   const plan: DebugInstrumentationPlan = {
     workspaceHash: workspace.contentHash,
@@ -83,19 +92,20 @@ function instrumentationPrefix(contentHash: string): string {
 
 function emitRootWrapper(
   prefix: string,
-  slots: Array<{ value: DebugVisibleValue; name: string }>,
+  slots: Array<{ value: DebugVisibleValue; name: string; expression: string }>,
   mode: SlangInstrumentationMode,
+  executionExpression: string,
 ): string {
   const originalCall = `${prefix}_userMain(fragCoord)`;
   if (mode === "preview") {
     const slot = slots[0]!;
-    return `float4 mainImage(float2 fragCoord) {\n  ${prefix}_executed = false;\n  float4 ${prefix}_color = ${originalCall};\n  return ${prefix}_executed ? ${emitSlangFloat4(slot.value.typeName, slot.name)} : ${prefix}_color;\n}`;
+    return `float4 mainImage(float2 fragCoord) {\n  ${!executionExpression.includes("()") ? `${executionExpression} = false;\n  ` : ""}float4 ${prefix}_color = ${originalCall};\n  return ${executionExpression} ? ${emitSlangFloat4(slot.value.typeName, slot.expression)} : ${prefix}_color;\n}`;
   }
   const outputs = [
-    `  if (_dbgVarIndex == 0) return float4(${prefix}_executed ? 1.0 : 0.0, 0.0, 0.0, 1.0);`,
-    ...slots.map((slot, index) => `  if (_dbgVarIndex == ${index + 1}) return ${emitSlangFloat4(slot.value.typeName, slot.name)};`),
+    `  if (_dbgVarIndex == 0) return float4(${executionExpression} ? 1.0 : 0.0, 0.0, 0.0, 1.0);`,
+    ...slots.map((slot, index) => `  if (_dbgVarIndex == ${index + 1}) return ${emitSlangFloat4(slot.value.typeName, slot.expression)};`),
   ];
-  return `float4 mainImage(float2 fragCoord) {\n  ${prefix}_executed = false;\n  float4 ${prefix}_color = ${originalCall};\n${outputs.join("\n")}\n  return ${prefix}_color;\n}`;
+  return `float4 mainImage(float2 fragCoord) {\n  ${!executionExpression.includes("()") ? `${executionExpression} = false;\n  ` : ""}float4 ${prefix}_color = ${originalCall};\n${outputs.join("\n")}\n  return ${prefix}_color;\n}`;
 }
 
 function offsetAt(source: string, position: DebugSourcePosition): number {
