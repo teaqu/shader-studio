@@ -260,6 +260,29 @@ describe('BufferConfig', () => {
     });
   });
 
+  describe('Geometry', () => {
+    it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
+      const config: BufferPass = { path: 'a.glsl', inputs: {} };
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'BufferA', config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+
+      const select = getByLabelText('Geometry') as HTMLSelectElement;
+      expect(select.value).toBe('fullscreen');
+      await fireEvent.change(select, { target: { value: 'sphere' } });
+      expect(mockOnUpdate).toHaveBeenCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' } });
+    });
+
+    it('does not show geometry controls for Common', () => {
+      const { queryByLabelText, queryByText } = render(BufferConfig, {
+        bufferName: 'common', config: { path: 'common.glsl' } as BufferPass,
+        onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+      expect(queryByLabelText('Geometry')).toBeNull();
+      expect(queryByText('Geometry')).toBeNull();
+    });
+  });
+
   describe('Channel Grid', () => {
     it('should show channels list for regular buffers', () => {
       const config: BufferPass = { path: 'buffer.glsl', inputs: {} };
