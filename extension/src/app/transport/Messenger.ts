@@ -11,10 +11,16 @@ export class Messenger {
   constructor(
     outputChannel: vscode.LogOutputChannel,
     errorHandler: ErrorHandler,
-    onDebugModeChanged?: (enabled: boolean) => void
+    onDebugModeChanged?: (enabled: boolean) => void,
+    onShaderLockChanged?: (lockedShaderPath?: string) => void,
   ) {
     this.errorHandler = errorHandler;
-    this.messageHandler = new MessageHandler(outputChannel, errorHandler, onDebugModeChanged);
+    this.messageHandler = new MessageHandler(
+      outputChannel,
+      errorHandler,
+      onDebugModeChanged,
+      onShaderLockChanged,
+    );
   }
 
   public getErrorHandler(): ErrorHandler {

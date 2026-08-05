@@ -102,6 +102,25 @@ describe('ShaderProcessor — buffer debugging', () => {
     processor = new ShaderProcessor(mockRenderEngine, mockDebugManager);
   });
 
+  it('rejects unresolved Slang dependencies before compiling', async () => {
+    const result = await processor.processMainShaderCompilation(makeMessage({
+      language: 'slang',
+      slangDependencyDiagnostics: [{
+        code: 'slang-module-not-found',
+        importerPath: '/shaders/image.slang',
+        moduleName: 'palette',
+        resolvedPath: '/shaders/palette.slang',
+        message: "Cannot resolve Slang module 'palette' imported by /shaders/image.slang",
+      }],
+    }));
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Cannot resolve Slang module 'palette' imported by /shaders/image.slang"],
+    });
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
   // -------------------------------------------------------------------------
   describe('Image pass debugging (existing behaviour unchanged)', () => {
     it('uses Image code when activeBufferName is Image', async () => {
@@ -519,6 +538,38 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       const [, , , buffersArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
       expect(buffersArg).toEqual({ BufferA: BUFFER_A_CODE });
+    });
+
+    it('keeps common when a hovered variable preview targets BufferA while the editor remains on common', async () => {
+      const config = makeConfig();
+      (config.passes as any).common = { path: 'common.slang', inputs: {} };
+      (mockDebugManager.getState as any).mockReturnValue(makeDebugState({
+        isEnabled: true, isActive: true, currentLine: 1,
+        lineContent: 'return debugVignette(uv);', activeBufferName: 'common',
+      }));
+      (mockDebugManager.getDebugTarget as any).mockReturnValue(makeDebugTarget({
+        passName: 'BufferA',
+        code: BUFFER_A_CODE,
+        config: {
+          ...config,
+          passes: {
+            ...config.passes,
+            Image: { inputs: BUFFER_A_INPUTS },
+          },
+        },
+        inputConfig: BUFFER_A_INPUTS,
+        sourcePath: '/shaders/bufferA.slang',
+      }));
+      (mockDebugManager.modifyShaderForDebugging as any).mockReturnValue(MODIFIED_CODE);
+
+      await processor.debugCompile(makeMessage({
+        language: 'slang',
+        config,
+        buffers: { BufferA: BUFFER_A_CODE, common: COMMON_CODE },
+      }));
+
+      const [, , , buffersArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      expect(buffersArg).toEqual({ BufferA: BUFFER_A_CODE, common: COMMON_CODE });
     });
   });
 

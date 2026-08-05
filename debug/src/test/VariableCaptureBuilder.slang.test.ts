@@ -34,6 +34,68 @@ describe('VariableCaptureBuilder - Slang in-scope variables', () => {
     expect(ret).toBeDefined();
     expect(ret!.varType).toBe('float4');
   });
+
+  it('adds _dbgReturn for a public Slang helper return line', () => {
+    const shader = `public float debugWave(float phase)
+{
+    return sin(phase);
+}`;
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(shader, 2);
+
+    expect(vars).toContainEqual({
+      varName: '_dbgReturn',
+      varType: 'float',
+      declarationLine: 2,
+    });
+  });
+
+  it('excludes locals from a closed conditional block at a later return line', () => {
+    const shader = `#language slang 2026
+module history;
+float4 mainImage(float2 fragCoord)
+{
+    float outer = fragCoord.x;
+    if (iMouse.z > 0.0)
+    {
+        float mouseInk = fragCoord.y;
+        outer += mouseInk;
+    }
+    float result = outer * 0.5;
+    return float4(result, 0.0, 0.0, 1.0);
+}`;
+
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(shader, 11);
+    expect(vars.map(variable => variable.varName)).not.toContain('mouseInk');
+
+    const capture = VariableCaptureBuilder.generateMultiCaptureShader(
+      shader, 11, vars, new Map(), new Map(), false, 32, 32, 'slang',
+    );
+    expect(capture).not.toContain('return float4(mouseInk, 0.0, 0.0, 0.0);');
+  });
+
+  it('shadows a conditional-block local before selector output leaves its scope', () => {
+    const shader = `#language slang 2026
+module history;
+float4 mainImage(float2 fragCoord)
+{
+    float outer = fragCoord.x;
+    if (iMouse.z > 0.0)
+    {
+        float mouseInk = fragCoord.y;
+        outer += mouseInk;
+    }
+    return float4(outer, 0.0, 0.0, 1.0);
+}`;
+    const vars = VariableCaptureBuilder.getAllInScopeVariables(shader, 8);
+    expect(vars.map(variable => variable.varName)).toContain('mouseInk');
+
+    const capture = VariableCaptureBuilder.generateMultiCaptureShader(
+      shader, 8, vars, new Map(), new Map(), false, 32, 32, 'slang',
+    );
+    expect(capture).toContain('float _dbgShadow');
+    expect(capture).toContain('_dbgShadow');
+    expect(capture).not.toContain('return float4(mouseInk, 0.0, 0.0, 0.0);');
+  });
 });
 
 describe('VariableCaptureBuilder - Slang multi-capture shader (mainImage scope)', () => {
@@ -103,5 +165,33 @@ float4 mainImage(float2 fragCoord)
     expect(shader).toContain('return float4(_dbgCaptured0, 0.0);');
     expect(shader).not.toContain('uniform ');
     expect(shader).not.toContain('out vec4 fragColor');
+  });
+
+  it('captures locals from a public helper in a standalone module without mainImage', () => {
+    const source = `#language slang 2026
+module debugmath;
+
+public float debugWave(float phase)
+{
+    float accumulated = sin(phase);
+    return accumulated;
+}`;
+    const shader = VariableCaptureBuilder.generateMultiCaptureShader(
+      source,
+      5,
+      [{ varName: 'accumulated', varType: 'float', declarationLine: 5 }],
+      new Map(),
+      new Map(),
+      false,
+      32,
+      32,
+      'slang',
+    );
+
+    expect(shader).not.toBeNull();
+    expect(shader).toContain('public float _dbg_debugWave(float phase)');
+    expect(shader).toContain('float4 mainImage(float2 fragCoord)');
+    expect(shader).toContain('_dbg_debugWave(0.5);');
+    expect(shader!.match(/public float debugWave\(float phase\)/g)).toHaveLength(1);
   });
 });

@@ -169,6 +169,32 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(2);
   });
 
+  it("compiles captures with imported modules and the selected source path", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      commonCode: "",
+      slangSourcePath: "/shaders/palette.slang",
+      slangModules: [{
+        moduleName: "tone_map",
+        path: "/shaders/tone-map.slang",
+        source: "module tone_map;",
+      }],
+    });
+
+    await capturer.issueCaptureGrid([
+      { varName: "color", varType: "float3", captureShader: "capture shader" },
+    ], uniforms, 2, 2);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("capture shader", expect.objectContaining({
+      sourcePath: "/shaders/palette.slang",
+      modules: [{
+        moduleName: "tone_map",
+        path: "/shaders/tone-map.slang",
+        source: "module tone_map;",
+      }],
+    }));
+  });
+
   it("passes the pass channels into the capture compile", async () => {
     const gpu = mockGpu();
     const channels = [{ slot: 0, key: "iChannel0", kind: "cubemap" as const }];
@@ -387,6 +413,24 @@ describe("WebGPURenderingEngine capture wiring", () => {
     expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
   });
 
+  it("does not inject configured common code when that common source is itself being captured", async () => {
+    const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
+    const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
+    const commonCode = "float helper(float x) { return x * 2.0; }";
+    (engine as any).passGraph = [
+      { name: "Image", source: "image", output: "canvas", width: 1, height: 1, channels: [] },
+    ];
+    (engine as any).lastCompile = {
+      code: "image",
+      path: "/image.slang",
+      buffers: { common: commonCode },
+      slangModules: [],
+    };
+
+    expect(engine.getVariableCaptureCompileContext(commonCode, "common").commonCode).toBe("");
+    expect(engine.getVariableCaptureCompileContext(commonCode, "BufferA").commonCode).toBe("");
+  });
+
   it("derives Image pass capture channels from compile inputs before the live pass graph is installed", async () => {
     const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
@@ -412,7 +456,7 @@ float4 mainImage(float2 fragCoord) {
     };
     (engine as any).lastCompile = {
       code: imageCode,
-      path: "/slang-multipass-test/flow.slang",
+      path: "/shaders/flow.slang",
       buffers: {
         BufferA: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",
         BufferB: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",

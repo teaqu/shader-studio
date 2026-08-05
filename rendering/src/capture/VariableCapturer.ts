@@ -3,6 +3,7 @@ import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
 import type { ConfigInput } from '@shader-studio/types';
+import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 
 export interface CaptureUniforms {
@@ -39,6 +40,10 @@ export interface CaptureCompileContext {
   }>;
   /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
   slangPassName?: string;
+  /** Slang modules that must be preloaded before compiling the capture root. */
+  slangModules?: Array<Omit<SlangSourceModule, 'ownerPass'>>;
+  /** Original selected file path used for capture diagnostics. */
+  slangSourcePath?: string;
 }
 
 interface PendingCapture {

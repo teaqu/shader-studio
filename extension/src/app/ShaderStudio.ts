@@ -34,6 +34,7 @@ export class ShaderStudio {
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
+  private lockedShaderPath: string | undefined;
   private compileController: CompileController;
   private configChangeDebounce = new Map<string, NodeJS.Timeout>();
   private static readonly CONFIG_CHANGE_DEBOUNCE_MS = 150;
@@ -61,12 +62,16 @@ export class ShaderStudio {
     this.messenger = new Messenger(
       outputChannel,
       errorHandler,
-      (enabled) => this.setDebugModeEnabled(enabled)
+      (enabled) => this.setDebugModeEnabled(enabled),
+      (lockedShaderPath) => {
+        this.lockedShaderPath = lockedShaderPath;
+      },
     );
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
+      () => this.lockedShaderPath,
     );
     this.compileController = new CompileController(
       context,

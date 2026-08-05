@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -124,6 +124,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string>;
     customUniformDeclarations?: string;
     customUniformInfo?: { name: string; type: string }[];
+    slangModules?: SlangSourceModule[];
+    slangSourcePath?: string;
   } | null = null;
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
@@ -477,6 +479,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     buffers: Record<string, string> = {},
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    slangModules: SlangSourceModule[] = [],
+    slangSourcePath?: string,
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
@@ -517,6 +521,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: { ...buffers },
       customUniformDeclarations,
       customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
+      slangModules: slangModules.map((module) => ({ ...module })),
+      slangSourcePath,
     };
     const nextCustomUniformManager = new CustomUniformManager();
     if (customUniformDeclarations && customUniformInfo) {
@@ -700,10 +706,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const errors: string[] = [];
     for (const pass of graph.passes) {
       const passStartedAt = this.now();
+      const passModules = slangModules
+        .filter((module) => module.ownerPass === pass.name)
+        .map(({ ownerPass: _ownerPass, ...module }) => module);
       const key = WebGPURenderingEngine.passCacheKey(
         pass,
         graph.commonCode,
         nextCustomUniformManager.getUniformInfo(),
+        passModules,
       );
       const existing = this.passPipelines.get(pass.name);
       if (existing && this.passKeys.get(pass.name) === key) {
@@ -734,6 +744,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
               key: channel.key,
               kind: channel.kind,
             })),
+            ...(passModules.length > 0 ? { modules: passModules } : {}),
+            ...(slangSourcePath ? { sourcePath: slangSourcePath } : {}),
             ...(nextCustomUniformManager.hasUniforms()
               ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
               : {}),
@@ -1071,6 +1083,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     commonCode: string,
     customUniforms: { name: string; type: string }[] = [],
+    modules: Array<{ moduleName: string; path: string; source: string }> = [],
   ): string {
     const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
     return JSON.stringify([
@@ -1080,6 +1093,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       commonCode,
       channels,
       customUniforms,
+      modules,
     ]);
   }
 
@@ -1088,10 +1102,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private renderFrame(time: number, capture: boolean, imageOnly = false): void {
-    if (!this.device || !this.context || this.passGraph.length === 0) {
+    if (!this.device || !this.context) {
       return;
     }
     if (!capture && !this.shouldRenderFrame(time)) {
+      return;
+    }
+    if (this.passGraph.length === 0) {
+      // WebGL clears on every rendered frame without an Image pass. Repeating
+      // the clear matters for WebGPU canvas presentation: a single submitted
+      // clear during an async failed switch can otherwise leave an older
+      // swap-chain image visible even though its pipeline has been removed.
+      if (this.shaderPath !== "") {
+        this.clearCanvas();
+      }
       return;
     }
 
@@ -1667,6 +1691,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.lastCompile.buffers,
       this.lastCompile.customUniformDeclarations,
       this.lastCompile.customUniformInfo,
+      this.lastCompile.slangModules,
+      this.lastCompile.slangSourcePath,
     );
   }
 
@@ -1735,20 +1761,49 @@ export class WebGPURenderingEngine implements RenderingEngine {
     );
   }
 
-  getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext {
+  getVariableCaptureCompileContext(code?: string, passName?: string, sourcePath?: string | null): CaptureCompileContext {
     const graph = this.getVariableCapturePassGraph();
+    const configuredCommonCode = this.lastCompile?.buffers?.common ?? "";
+    const isCapturingCommon = passName === "common"
+      || (code !== undefined && code === configuredCommonCode);
     const targetPass = (passName
       ? graph.find((pass) => pass.name === passName)
       : undefined) ?? (code
       ? graph.find((pass) => pass.source === code)
       : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
-    const commonCode = this.lastCompile?.buffers?.common ?? "";
+    const ownerModules = (this.lastCompile?.slangModules ?? [])
+      .filter((module) => module.ownerPass === targetPass?.name);
+    const selectedModuleIndex = sourcePath
+      ? ownerModules.findIndex((module) => module.path === sourcePath)
+      : -1;
+    const selectedModule = selectedModuleIndex >= 0 ? ownerModules[selectedModuleIndex] : undefined;
+    const commonCode = this.removeSelectedModuleImport(
+      isCapturingCommon ? "" : configuredCommonCode,
+      selectedModule?.moduleName,
+    );
+    const slangModules = (selectedModuleIndex >= 0
+      ? ownerModules.slice(0, selectedModuleIndex)
+      : ownerModules)
+      .map(({ ownerPass: _ownerPass, ...module }) => module);
     this.capturePassName = targetPass?.name ?? null;
     return {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      slangModules,
+      slangSourcePath: sourcePath ?? undefined,
     };
+  }
+
+  private removeSelectedModuleImport(commonCode: string, moduleName?: string): string {
+    if (!moduleName) {
+      return commonCode;
+    }
+    const escapedName = moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return commonCode.replace(
+      new RegExp(`^\\s*(?:__exported\\s+)?import\\s+${escapedName}\\s*;\\s*$`, "gm"),
+      "",
+    );
   }
 
   private getVariableCapturePassGraph(): RenderPassNode[] {

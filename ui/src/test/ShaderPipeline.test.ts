@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ShaderPipeline } from '../lib/ShaderPipeline';
 import type { ShaderLocker } from '../lib/ShaderLocker';
-import type { ShaderDebugManager } from '../lib/ShaderDebugManager';
+import { ShaderDebugManager } from '../lib/ShaderDebugManager';
 import type { Transport } from '../lib/transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { CursorPositionMessage, ShaderSourceMessage } from '@shader-studio/types';
@@ -243,6 +243,8 @@ describe('ShaderPipeline — overlay cursor gate', () => {
           mainEvent.data.config,
           lockedPath,
           { BufferA: 'updated buffer code' },
+          [],
+          mainEvent.data.bufferPathMap,
         );
       },
     );
@@ -417,6 +419,30 @@ describe('ShaderPipeline — overlay cursor gate', () => {
 
       expect(mocks.shaderDebugManager.updateDebugLine).not.toHaveBeenCalled();
     });
+
+    it('accepts cursor updates from an imported Slang module', () => {
+      vi.mocked(getEditorOverlayVisible).mockReturnValue(false);
+      (pipeline as any).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/image.slang',
+          config: { passes: { Image: {} } },
+          buffers: {},
+          slangModules: [{
+            moduleName: 'palette',
+            path: '/project/palette.slang',
+            source: 'module palette;',
+            ownerPass: 'Image',
+          }],
+        },
+      } as MessageEvent;
+
+      pipeline.handleCursorPositionMessage(cursorMsg('/project/palette.slang'));
+
+      expect(mocks.shaderDebugManager.updateDebugLine).toHaveBeenCalledWith(
+        5, 'float x = 1.0;', '/project/palette.slang',
+      );
+    });
   });
 
   describe('handleOverlayCursor', () => {
@@ -521,6 +547,80 @@ describe('ShaderPipeline — overlay cursor gate', () => {
 
       expect(debugCompileSpy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ShaderPipeline — standalone function debugging', () => {
+  it('compiles a synthesized Slang entry point before reporting a missing mainImage error', async () => {
+    const code = [
+      'public float debugWave(float2 uv)',
+      '{',
+      '    float phase = uv.x * 6.2831853;',
+      '    return sin(phase);',
+      '}',
+    ].join('\n');
+    const compiledSources: string[] = [];
+    const renderEngine = {
+      compileShaderPipeline: vi.fn(async (source: string) => {
+        compiledSources.push(source);
+        return source.includes('mainImage')
+          ? { success: true }
+          : { success: false, errors: ['Image: Missing mainImage function'] };
+      }),
+      flagReloadOnNextApply: vi.fn(),
+      startRenderLoop: vi.fn(),
+      getCurrentConfig: vi.fn(() => null),
+      getPasses: vi.fn(() => []),
+      stopRenderLoop: vi.fn(),
+      updateBufferAndRecompile: vi.fn(),
+      cleanup: vi.fn(),
+    } as unknown as RenderingEngine;
+    const transport = {
+      postMessage: vi.fn(),
+      onMessage: vi.fn(),
+      dispose: vi.fn(),
+      getType: () => 'vscode' as const,
+      isConnected: () => true,
+    } as Transport;
+    const shaderLocker = {
+      isLocked: () => false,
+      getLockedShaderPath: () => undefined,
+    } as unknown as ShaderLocker;
+    const shaderDebugManager = new ShaderDebugManager();
+    shaderDebugManager.setLanguage('slang');
+    shaderDebugManager.toggleEnabled();
+    const pipeline = new ShaderPipeline(
+      transport,
+      renderEngine,
+      shaderLocker,
+      shaderDebugManager,
+    );
+
+    const result = await pipeline.handleShaderMessage({
+      data: {
+        type: 'shaderSource',
+        code,
+        config: null,
+        path: '/debugmath.slang',
+        buffers: {},
+        language: 'slang',
+        reload: true,
+        cursorPosition: {
+          line: 1,
+          character: 0,
+          lineContent: '{',
+          filePath: '/debugmath.slang',
+        },
+      },
+    } as MessageEvent<ShaderSourceMessage>);
+
+    expect(result).toEqual({ success: true, warnings: undefined });
+    expect(compiledSources).toHaveLength(1);
+    expect(compiledSources[0]).toContain('float4 mainImage');
+    expect(compiledSources[0]).toContain('_dbg_debugWave');
+    expect(transport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'error',
+    }));
   });
 });
 

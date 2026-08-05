@@ -606,6 +606,10 @@
     const currentShaderPath = pipeline.getLastEvent()?.data?.path;
     shaderLocker.toggleLock(currentShaderPath);
     isLocked = shaderLocker.isLocked();
+    transport.postMessage({
+      type: 'shaderLockState',
+      payload: { lockedShaderPath: shaderLocker.getLockedShaderPath() },
+    });
   }
 
   function handleOverlayBufferSelect(name: string) {

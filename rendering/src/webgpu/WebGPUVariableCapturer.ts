@@ -71,9 +71,18 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   setCompileContext(context: CaptureCompileContext): void {
     const nextCommon = context.commonCode ?? "";
     const nextChannels = JSON.stringify(context.slangChannels ?? []);
+    const nextModules = JSON.stringify(context.slangModules ?? []);
+    const nextSourcePath = context.slangSourcePath ?? "";
     const currentCommon = this.compileContext.commonCode ?? "";
     const currentChannels = JSON.stringify(this.compileContext.slangChannels ?? []);
-    if (nextCommon !== currentCommon || nextChannels !== currentChannels) {
+    const currentModules = JSON.stringify(this.compileContext.slangModules ?? []);
+    const currentSourcePath = this.compileContext.slangSourcePath ?? "";
+    if (
+      nextCommon !== currentCommon
+      || nextChannels !== currentChannels
+      || nextModules !== currentModules
+      || nextSourcePath !== currentSourcePath
+    ) {
       this.pipelineCache.clear();
       this.pipelineCacheOrder = [];
     }
@@ -380,6 +389,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       channels,
       captureMode: true,
       customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+      ...(this.compileContext.slangModules?.length
+        ? { modules: this.compileContext.slangModules }
+        : {}),
+      ...(this.compileContext.slangSourcePath
+        ? { sourcePath: this.compileContext.slangSourcePath }
+        : {}),
     });
     if (this.disposed) {
       return null;

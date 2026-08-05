@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
 import { ErrorHandler } from '../../app/ErrorHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage, ShaderLockStateMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -412,6 +412,30 @@ suite('MessageHandler Test Suite', () => {
 
     sinon.assert.calledOnce(onDebugModeChangedCallback);
     sinon.assert.calledWith(onDebugModeChangedCallback, false);
+  });
+
+  test('should report shader lock and unlock state through the callback', () => {
+    const onShaderLockChanged = sandbox.stub();
+    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
+    const handler = new MessageHandler(
+      mockOutputChannel,
+      errorHandler,
+      undefined,
+      onShaderLockChanged,
+    );
+    const locked: ShaderLockStateMessage = {
+      type: 'shaderLockState',
+      payload: { lockedShaderPath: '/shaders/image.slang' },
+    };
+    const unlocked: ShaderLockStateMessage = {
+      type: 'shaderLockState',
+      payload: {},
+    };
+
+    handler.handleMessage(locked);
+    sinon.assert.calledWith(onShaderLockChanged, '/shaders/image.slang');
+    handler.handleMessage(unlocked);
+    sinon.assert.calledWith(onShaderLockChanged, undefined);
   });
 
   test('should not throw error when onDebugModeChanged callback is not provided', () => {

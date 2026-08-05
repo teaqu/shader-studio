@@ -119,6 +119,180 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.path, shaderPath);
     });
 
+    test('should attach imported Slang modules to the shader message', async () => {
+      const shaderPath = '/path/to/image.slang';
+      const dependencyPath = '/path/to/palette.slang';
+      const dependencySource = 'module palette;\npublic float4 color() { return 1; }';
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => filePath === dependencyPath);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => {
+        if (filePath === dependencyPath) {
+          return dependencySource;
+        }
+        throw new Error(`unexpected read: ${filePath}`);
+      });
+
+      const mockEditor = {
+        document: {
+          getText: sandbox.stub().returns('import palette;\nfloat4 mainImage(float2 p) { return color(); }'),
+          uri: { fsPath: shaderPath },
+          fileName: shaderPath,
+          languageId: 'slang',
+          lineAt: sandbox.stub().returns({ text: '' }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      };
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderFromEditor(mockEditor as any);
+
+      const message = sendSpy.firstCall.args[0];
+      assert.deepStrictEqual(message.slangModules, [{
+        moduleName: 'palette',
+        path: dependencyPath,
+        source: dependencySource,
+        ownerPass: 'Image',
+      }]);
+      assert.deepStrictEqual(message.slangDependencyDiagnostics, []);
+    });
+
+    test('should attach imports when debugging an unlocked Slang helper without mainImage', async () => {
+      const shaderPath = '/path/to/debugpalette.slang';
+      const dependencyPath = '/path/to/debugmath.slang';
+      const dependencySource = 'module debugmath;\npublic float debugWave(float phase) { return sin(phase); }';
+      const source = [
+        'module debugpalette;',
+        'import debugmath;',
+        'public float3 debugPalette(float phase)',
+        '{',
+        '    float blend = debugWave(phase);',
+        '    return float3(blend);',
+        '}',
+      ].join('\n');
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => filePath === dependencyPath);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => {
+        if (filePath === dependencyPath) {
+          return dependencySource;
+        }
+        throw new Error(`unexpected read: ${filePath}`);
+      });
+      const providerWithDebug = new ShaderProvider(mockMessenger, () => true);
+
+      await providerWithDebug.sendShaderFromEditor({
+        document: {
+          getText: sandbox.stub().returns(source),
+          uri: { fsPath: shaderPath },
+          fileName: shaderPath,
+          languageId: 'slang',
+          lineAt: sandbox.stub().returns({ text: '    float blend = debugWave(phase);' }),
+        },
+        selection: { active: { line: 4, character: 10 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.deepStrictEqual(message.slangModules, [{
+        moduleName: 'debugmath',
+        path: dependencyPath,
+        source: dependencySource,
+        ownerPass: 'Image',
+      }]);
+      assert.deepStrictEqual(message.slangDependencyDiagnostics, []);
+      assert.strictEqual(message.cursorPosition?.filePath, shaderPath);
+    });
+
+    test('should switch to an imported Slang module without mainImage when the owner is not locked', async () => {
+      const ownerPath = '/path/to/image.slang';
+      const dependencyPath = '/path/to/palette.slang';
+      const ownerSource = 'import palette;\nfloat4 mainImage(float2 p) { return color(); }';
+      const dependencySource = 'module palette;\npublic float4 color() { return 0.5; }';
+      (provider as any).activeShaders.add(ownerPath);
+      sandbox.stub(provider as any, 'readShaderSource').callsFake((filePath: unknown) => {
+        if (filePath === ownerPath) {
+          return ownerSource;
+        }
+        if (filePath === dependencyPath) {
+          return dependencySource;
+        }
+        return null;
+      });
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderFromEditor({
+        document: {
+          getText: sandbox.stub().returns(dependencySource),
+          uri: { fsPath: dependencyPath },
+          fileName: dependencyPath,
+          languageId: 'slang',
+          lineAt: sandbox.stub().returns({ text: 'public float4 color() { return 0.5; }' }),
+        },
+        selection: { active: { line: 1, character: 8 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.deepStrictEqual(message, {
+        type: 'shaderSource',
+        code: dependencySource,
+        config: null,
+        path: dependencyPath,
+        buffers: {},
+        language: 'slang',
+        reload: true,
+        cursorPosition: undefined,
+        slangModules: [],
+        slangDependencyDiagnostics: [],
+      });
+    });
+
+    test('should resend the locked owner when navigating to an imported Slang module', async () => {
+      const ownerPath = '/path/to/image.slang';
+      const dependencyPath = '/path/to/palette.slang';
+      const ownerSource = 'import palette;\nfloat4 mainImage(float2 p) { return color(); }';
+      const dependencySource = 'module palette;\npublic float4 color() { return 0.5; }';
+      const lockedProvider = new ShaderProvider(
+        mockMessenger,
+        () => true,
+        new ConfigChangeClassifier(),
+        () => ownerPath,
+      );
+      (lockedProvider as any).activeShaders.add(ownerPath);
+      sandbox.stub(lockedProvider as any, 'readShaderSource').callsFake((filePath: unknown) => {
+        if (filePath === ownerPath) {
+          return ownerSource;
+        }
+        if (filePath === dependencyPath) {
+          return dependencySource;
+        }
+        return null;
+      });
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await lockedProvider.sendShaderFromEditor({
+        document: {
+          getText: sandbox.stub().returns(dependencySource),
+          uri: { fsPath: dependencyPath },
+          fileName: dependencyPath,
+          languageId: 'slang',
+          lineAt: sandbox.stub().returns({ text: 'public float4 color() { return 0.5; }' }),
+        },
+        selection: { active: { line: 1, character: 8 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSource');
+      assert.strictEqual(message.path, ownerPath);
+      assert.strictEqual(message.cursorPosition?.filePath, dependencyPath);
+      assert.deepStrictEqual(message.slangModules, [{
+        moduleName: 'palette',
+        path: dependencyPath,
+        source: dependencySource,
+        ownerPass: 'Image',
+      }]);
+    });
+
     test('should include reload in message when option is provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
 
@@ -309,27 +483,49 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.cursorPosition.lineContent, line3Text);
     });
 
-    test('should send error to UI for GLSL files without mainImage', () => {
-      const shaderPath = '/path/to/shader.glsl';
+    for (const fixture of [
+      {
+        label: 'GLSL',
+        shaderPath: '/path/to/shader.glsl',
+        languageId: 'glsl',
+        code: 'void someFunction() {}',
+        language: 'glsl',
+      },
+      {
+        label: 'Slang',
+        shaderPath: '/path/to/shader.slang',
+        languageId: 'slang',
+        code: 'float someFunction() { return 1.0; }',
+        language: 'slang',
+      },
+    ] as const) {
+      test(`should send unlocked ${fixture.label} files without mainImage through the normal shader switch path`, async () => {
+        const mockEditor = {
+          document: {
+            getText: sandbox.stub().returns(fixture.code),
+            uri: { fsPath: fixture.shaderPath },
+            fileName: fixture.shaderPath,
+            languageId: fixture.languageId,
+          },
+          selection: { active: { line: 0, character: 0 } },
+        };
 
-      const mockEditor = {
-        document: {
-          getText: sandbox.stub().returns('void someFunction() {}'),
-          uri: { fsPath: shaderPath },
-          languageId: 'glsl'
-        }
-      };
+        await provider.sendShaderFromEditor(mockEditor as any);
 
-      provider.sendShaderFromEditor(mockEditor as any);
-
-      sinon.assert.calledOnce(sendSpy);
-      sinon.assert.calledWith(sendSpy, {
-        type: 'error',
-        payload: ['Missing mainImage function']
+        sinon.assert.calledOnce(sendSpy);
+        sinon.assert.calledWith(sendSpy, sinon.match({
+          type: 'shaderSource',
+          code: fixture.code,
+          config: null,
+          path: fixture.shaderPath,
+          buffers: {},
+          language: fixture.language,
+          reload: true,
+        }));
       });
-    });
+    }
 
-    test('should send error for standalone common editor files without mainImage', async () => {
+    test('should switch to standalone common editor files without mainImage', async () => {
       const shaderPath = '/path/to/shader.common.glsl';
       const mockEditor = {
         document: {
@@ -343,8 +539,14 @@ suite('ShaderProvider Test Suite', () => {
 
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledWith(sendSpy, {
-        type: 'error',
-        payload: ['Missing mainImage function']
+        type: 'shaderSource',
+        code: 'float helper() { return 1.0; }',
+        config: null,
+        path: shaderPath,
+        buffers: {},
+        language: 'glsl',
+        reload: true,
+        cursorPosition: undefined,
       });
     });
 
@@ -497,7 +699,7 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.reload, undefined);
     });
 
-    test('should send error to UI for files without mainImage', async () => {
+    test('should switch to files without mainImage', async () => {
       const shaderPath = '/path/to/shader.glsl';
       const fs = require('fs');
 
@@ -508,12 +710,18 @@ suite('ShaderProvider Test Suite', () => {
 
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledWith(sendSpy, {
-        type: 'error',
-        payload: ['Missing mainImage function']
+        type: 'shaderSource',
+        code: 'void someFunction() {}',
+        config: null,
+        path: shaderPath,
+        buffers: {},
+        language: 'glsl',
+        reload: true,
+        cursorPosition: undefined,
       });
     });
 
-    test('should send error for standalone common paths without mainImage', async () => {
+    test('should switch to standalone common paths without mainImage', async () => {
       const shaderPath = '/path/to/shader.common.glsl';
       const fs = require('fs');
 
@@ -525,8 +733,14 @@ suite('ShaderProvider Test Suite', () => {
 
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledWith(sendSpy, {
-        type: 'error',
-        payload: ['Missing mainImage function']
+        type: 'shaderSource',
+        code: 'float helper() { return 1.0; }',
+        config: null,
+        path: shaderPath,
+        buffers: {},
+        language: 'glsl',
+        reload: true,
+        cursorPosition: undefined,
       });
     });
 
@@ -542,6 +756,39 @@ suite('ShaderProvider Test Suite', () => {
       await provider.sendShaderFromPath(shaderPath);
 
       sinon.assert.notCalled(showWarningStub);
+    });
+  });
+
+  suite('sendShaderWithScriptContent', () => {
+    test('preserves Slang dependency modules when script content changes', async () => {
+      const shaderPath = '/path/to/image.slang';
+      const dependencyPath = '/path/to/palette.slang';
+      const rootSource = 'import palette;\nfloat4 mainImage(float2 p) { return color(); }';
+      const dependencySource = 'module palette;\npublic float4 color() { return 1; }';
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) =>
+        filePath === shaderPath || filePath === dependencyPath);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => {
+        if (filePath === shaderPath) {
+          return rootSource;
+        }
+        if (filePath === dependencyPath) {
+          return dependencySource;
+        }
+        throw new Error(`unexpected read: ${filePath}`);
+      });
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderWithScriptContent(shaderPath, 'export default {}');
+
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.language, 'slang');
+      assert.deepStrictEqual(message.slangModules, [{
+        moduleName: 'palette',
+        path: dependencyPath,
+        source: dependencySource,
+        ownerPass: 'Image',
+      }]);
     });
   });
 
@@ -650,7 +897,7 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.cursorPosition?.line, 0);
     });
 
-    test('should send error for standalone common documents without mainImage', async () => {
+    test('should switch to standalone common documents without mainImage', async () => {
       const shaderPath = '/path/to/shader.common.glsl';
       const document = {
         getText: sandbox.stub().returns('float helper() { return 1.0; }'),
@@ -662,8 +909,14 @@ suite('ShaderProvider Test Suite', () => {
 
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledWith(sendSpy, {
-        type: 'error',
-        payload: ['Missing mainImage function']
+        type: 'shaderSource',
+        code: 'float helper() { return 1.0; }',
+        config: null,
+        path: shaderPath,
+        buffers: {},
+        language: 'glsl',
+        reload: true,
+        cursorPosition: undefined,
       });
     });
 

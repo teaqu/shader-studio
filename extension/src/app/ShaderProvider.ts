@@ -11,7 +11,14 @@ import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
-import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
+import { collectSlangDependencies } from "./SlangDependencyGraph";
+import type {
+  ShaderConfig,
+  ShaderSourceMessage,
+  CustomUniformValuesMessage,
+  SlangDependencyDiagnostic,
+  SlangSourceModule,
+} from "@shader-studio/types";
 
 export class ShaderProvider {
   private logger = Logger.getInstance();
@@ -25,6 +32,7 @@ export class ShaderProvider {
     private messenger: Messenger,
     getDebugModeEnabled?: () => boolean,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
+    private getLockedShaderPath: () => string | undefined = () => undefined,
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
@@ -44,6 +52,16 @@ export class ShaderProvider {
 
     const code = editor.document.getText();
     const shaderPath = editor.document.uri.fsPath;
+    let cursorPosition: ShaderSourceMessage["cursorPosition"];
+    if (this.getDebugModeEnabled()) {
+      const line = editor.selection.active.line;
+      cursorPosition = {
+        line,
+        character: editor.selection.active.character,
+        lineContent: editor.document.lineAt(line).text,
+        filePath: shaderPath,
+      };
+    }
 
     // Clear stale persistent errors before re-evaluating the shader.
     // This ensures "file not found" errors from a previous load don't survive
@@ -52,23 +70,15 @@ export class ShaderProvider {
 
     if (await this.trySendNonMainImageShader(shaderPath, code, () => (
       this.sendNonMainImageShaderFromEditor(shaderPath, code, editor, options)
-    ))) {
+    ), options, cursorPosition)) {
       return;
     }
 
-    const line = editor.selection.active.line;
     await this.sendMainImageShader(
       shaderPath,
       code,
       options,
-      this.getDebugModeEnabled()
-        ? {
-          line,
-          character: editor.selection.active.character,
-          lineContent: editor.document.lineAt(line).text,
-          filePath: shaderPath,
-        }
-        : undefined,
+      cursorPosition,
       true,
     );
   }
@@ -93,7 +103,7 @@ export class ShaderProvider {
 
       if (await this.trySendNonMainImageShader(shaderPath, code, () => (
         this.sendNonMainImageShaderFromPath(shaderPath, code, options)
-      ))) {
+      ), options)) {
         return;
       }
 
@@ -117,12 +127,6 @@ export class ShaderProvider {
 
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
-      this.sendNonMainImageShaderFromDocument(shaderPath, code, document, options)
-    ))) {
-      return;
-    }
-
     let cursorPosition: ShaderSourceMessage["cursorPosition"];
     if (this.getDebugModeEnabled()) {
       const matchingEditor = vscode.window.visibleTextEditors.find(
@@ -137,6 +141,12 @@ export class ShaderProvider {
           filePath: shaderPath,
         };
       }
+    }
+
+    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      this.sendNonMainImageShaderFromDocument(shaderPath, code, document, options)
+    ), options, cursorPosition)) {
+      return;
     }
 
     await this.sendMainImageShader(shaderPath, code, options, cursorPosition, true);
@@ -175,9 +185,14 @@ export class ShaderProvider {
         config,
         path: shaderPath,
         buffers,
+        language: getShaderLanguage(shaderPath),
         pathMap,
         bufferPathMap,
       };
+
+      if (message.language === "slang") {
+        this.attachSlangDependencies(message);
+      }
 
       await this.bundleScript(config, shaderPath, message, scriptContent);
 
@@ -369,6 +384,8 @@ export class ShaderProvider {
     shaderPath: string,
     code: string,
     sendOwnedShader: () => Promise<void>,
+    options?: { reload?: boolean },
+    cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
     if (code.includes("mainImage")) {
       return false;
@@ -381,12 +398,66 @@ export class ShaderProvider {
       return true;
     }
 
-    const errorMsg: ErrorMessage = {
-      type: "error",
-      payload: ["Missing mainImage function"],
-    };
-    this.messenger.send(errorMsg);
+
+    const lockedShaderPath = this.getLockedShaderPath();
+    const dependencyOwnerPath = lockedShaderPath
+      ? this.resolveOwningSlangDependency(shaderPath)
+      : null;
+    if (dependencyOwnerPath && path.normalize(dependencyOwnerPath) === path.normalize(lockedShaderPath!)) {
+      const ownerSource = this.readShaderSource(dependencyOwnerPath);
+      if (ownerSource !== null) {
+        this.logger.debug(`Sending imported Slang source ${shaderPath} with owner shader context ${dependencyOwnerPath}`);
+        await this.sendMainImageShader(
+          dependencyOwnerPath,
+          ownerSource,
+          options,
+          cursorPosition,
+          false,
+        );
+        return true;
+      }
+    }
+
+    // Treat an unlocked file without an entry point as a normal shader switch.
+    // Both renderers clear the previous shader when compilation fails for a
+    // different path, while preserving last-good output for same-path edits.
+    await sendOwnedShader();
     return true;
+  }
+
+  private resolveOwningSlangDependency(filePath: string): string | null {
+    const normalizedFilePath = path.normalize(filePath);
+    for (const shaderPath of this.activeShaders) {
+      if (getShaderLanguage(shaderPath) !== "slang") {
+        continue;
+      }
+      const source = this.readShaderSource(shaderPath);
+      if (source === null) {
+        continue;
+      }
+      const buffers: Record<string, string> = {};
+      const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+      const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
+      const roots = [{ passName: "Image", rootPath: shaderPath, rootSource: source }];
+      for (const [passName, rootSource] of Object.entries(buffers)) {
+        const rootPath = bufferPathMap[passName];
+        if (rootPath) {
+          roots.push({ passName, rootPath, rootSource });
+        }
+      }
+      for (const root of roots) {
+        const result = collectSlangDependencies({
+          rootPath: root.rootPath,
+          rootSource: root.rootSource,
+          ownerPass: root.passName,
+          readSource: (dependencyPath) => this.readShaderSource(dependencyPath),
+        });
+        if (result.modules.some((module) => path.normalize(module.path) === normalizedFilePath)) {
+          return shaderPath;
+        }
+      }
+    }
+    return null;
   }
 
   private async sendMainImageShader(
@@ -415,6 +486,10 @@ export class ShaderProvider {
       cursorPosition,
     };
 
+    if (message.language === "slang") {
+      this.attachSlangDependencies(message);
+    }
+
     // Snapshot the RAW config file text (not the processed `config` above, which
     // injects resolved_path etc. and would make every diff look structural) so the
     // next watcher/fallback change can be classified against what we actually sent.
@@ -441,22 +516,78 @@ export class ShaderProvider {
     editor: vscode.TextEditor,
     options?: { reload?: boolean },
   ): Promise<void> {
-    const line = editor.selection.active.line;
+    const activePosition = this.getDebugModeEnabled()
+      ? editor.selection.active
+      : undefined;
     const message = this.buildNonMainImageShaderMessage(
       filePath,
       code,
       options,
-      this.getDebugModeEnabled()
+      activePosition
         ? {
-          line,
-          character: editor.selection.active.character,
-          lineContent: editor.document.lineAt(line).text,
+          line: activePosition.line,
+          character: activePosition.character,
+          lineContent: editor.document.lineAt(activePosition.line).text,
           filePath,
         }
         : undefined,
     );
 
     this.messenger.send(message);
+  }
+
+  private attachSlangDependencies(message: ShaderSourceMessage): void {
+    const bufferPathMap = message.bufferPathMap ?? this.buildBufferPathMap(message.config ?? null, message.path);
+    const roots: Array<{ passName: string; filePath: string; source: string }> = [{
+      passName: "Image",
+      filePath: message.path,
+      source: message.code,
+    }];
+    for (const [passName, source] of Object.entries(message.buffers ?? {})) {
+      const filePath = bufferPathMap[passName];
+      if (filePath) {
+        roots.push({ passName, filePath, source });
+      }
+    }
+
+    const modules: SlangSourceModule[] = [];
+    const errors: SlangDependencyDiagnostic[] = [];
+    const renderPassNames = roots
+      .map((root) => root.passName)
+      .filter((passName) => passName !== "common");
+    for (const root of roots) {
+      const owners = root.passName === "common" ? renderPassNames : [root.passName];
+      for (const ownerPass of owners) {
+        const result = collectSlangDependencies({
+          rootPath: root.filePath,
+          rootSource: root.source,
+          ownerPass,
+          readSource: (filePath) => this.readShaderSource(filePath),
+        });
+        modules.push(...result.modules);
+        errors.push(...result.errors);
+      }
+    }
+    message.slangModules = Array.from(new Map(
+      modules.map((module) => [`${module.ownerPass}\0${module.moduleName}\0${module.path}`, module]),
+    ).values());
+    message.slangDependencyDiagnostics = Array.from(new Map(
+      errors.map((error) => [`${error.code}\0${error.importerPath}\0${error.moduleName}`, error]),
+    ).values());
+  }
+
+  private readShaderSource(filePath: string): string | null {
+    const openDocument = vscode.workspace.textDocuments.find(
+      (document) => path.normalize(document.uri.fsPath) === path.normalize(filePath),
+    );
+    if (openDocument) {
+      return openDocument.getText();
+    }
+    try {
+      return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
+    } catch {
+      return null;
+    }
   }
 
   private async sendNonMainImageShaderFromPath(
@@ -513,15 +644,22 @@ export class ShaderProvider {
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): ShaderSourceMessage {
-    return {
+    const message: ShaderSourceMessage = {
       type: "shaderSource",
       code,
       config: null,
       path: filePath,
       buffers: {},
+      language: getShaderLanguage(filePath),
       reload: true,
       cursorPosition,
     };
+
+    if (message.language === "slang") {
+      this.attachSlangDependencies(message);
+    }
+
+    return message;
   }
 
 }

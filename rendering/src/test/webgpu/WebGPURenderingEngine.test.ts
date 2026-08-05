@@ -903,6 +903,12 @@ describe("WebGPURenderingEngine", () => {
       },
       "/image.slang",
       { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+      undefined,
+      undefined,
+      [
+        { moduleName: "buffer_helpers", path: "/buffer-helpers.slang", source: "module buffer_helpers;", ownerPass: "BufferA" },
+        { moduleName: "image_helpers", path: "/image-helpers.slang", source: "module image_helpers;", ownerPass: "Image" },
+      ],
     );
 
     expect(result?.success).toBe(true);
@@ -912,11 +918,13 @@ describe("WebGPURenderingEngine", () => {
       passName: "BufferA",
       commonCode: "",
       channels: [],
+      modules: [{ moduleName: "buffer_helpers", path: "/buffer-helpers.slang", source: "module buffer_helpers;" }],
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
       channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+      modules: [{ moduleName: "image_helpers", path: "/image-helpers.slang", source: "module image_helpers;" }],
     });
   });
 
@@ -1687,15 +1695,30 @@ describe("WebGPURenderingEngine", () => {
           channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/image.png" }],
         },
       ];
+      (engine as any).lastCompile = {
+        code: 'image-source',
+        path: '/image.slang',
+        buffers: { BufferA: 'buffer-source', common: 'import palette;\nfloat helper() { return 1; }' },
+        slangModules: [
+          { moduleName: 'tone_map', path: '/tone-map.slang', source: 'module tone_map;', ownerPass: 'BufferA' },
+          { moduleName: 'palette', path: '/palette.slang', source: 'module palette;', ownerPass: 'BufferA' },
+          { moduleName: 'image_only', path: '/image-only.slang', source: 'module image_only;', ownerPass: 'Image' },
+        ],
+      };
 
       const capturer = engine.createVariableCapturer();
-      const context = engine.getVariableCaptureCompileContext(undefined, "BufferA");
+      const context = engine.getVariableCaptureCompileContext(undefined, "BufferA", "/palette.slang");
       capturer.setCompileContext(context);
 
       expect(context).toMatchObject({
         slangPassName: "BufferA",
         slangChannels: [{ slot: 0, key: "iChannel0", kind: "texture" }],
+        slangSourcePath: '/palette.slang',
+        slangModules: [{ moduleName: 'tone_map', path: '/tone-map.slang', source: 'module tone_map;' }],
       });
+      expect(context.commonCode).toBe('\nfloat helper() { return 1; }');
+      expect(engine.getVariableCaptureCompileContext(undefined, "BufferA", "/tone-map.slang").slangModules)
+        .toEqual([]);
       expect((capturer as any).getChannelResources(context)).toEqual([
         expect.objectContaining({ slot: 0, textureView: bufferHandle.view }),
       ]);
@@ -2800,6 +2823,33 @@ describe("WebGPURenderingEngine", () => {
       }
       expect(cleanupResources).toHaveBeenCalledTimes(1);
       expect(cleanupTime).toHaveBeenCalledTimes(1);
+      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
+      const encoder = device.createCommandEncoder.mock.results[0].value;
+      expect(encoder.beginRenderPass).toHaveBeenCalledWith({
+        colorAttachments: [{
+          view: { label: "canvas" },
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+      });
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps presenting a black canvas after a different shader path fails", async () => {
+      const { engine, device, compiler } = await compiledEngine();
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { broken syntax }",
+        null,
+        "/different.slang",
+      );
+      device.createCommandEncoder.mockClear();
+      device.queue.submit.mockClear();
+
+      engine.render(16);
+
       expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
       const encoder = device.createCommandEncoder.mock.results[0].value;
       expect(encoder.beginRenderPass).toHaveBeenCalledWith({

@@ -76,6 +76,77 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
+  it("preloads imported modules before compiling the root module", () => {
+    const loads: Array<{ source: string; name?: string; path?: string }> = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onLoad: (source, name, path) => loads.push({ source, name, path }),
+    }));
+
+    compiler.compileImagePass("import palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }", {
+      sourcePath: "/shaders/image.slang",
+      modules: [{
+        moduleName: "palette",
+        path: "/shaders/palette.slang",
+        source: "module palette;\npublic float4 paletteColor() { return 1; }",
+      }],
+    });
+
+    expect(loads).toHaveLength(2);
+    expect(loads[0]).toEqual({
+      source: "module palette;\npublic float4 paletteColor() { return 1; }",
+      name: "palette",
+      path: "/shaders/palette.slang",
+    });
+    expect(loads[1].name).toBe("image");
+    expect(loads[1].path).toBe("/shaders/image.slang");
+  });
+
+  it("stops before the root compile when an imported module fails", () => {
+    let loadCount = 0;
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "/shaders/palette.slang(4): error: broken dependency",
+      onLoad: () => {
+        loadCount += 1;
+      },
+    }));
+
+    const result = compiler.compileImagePass("float4 mainImage(float2 c) { return 1; }", {
+      modules: [{
+        moduleName: "palette",
+        path: "/shaders/palette.slang",
+        source: "broken",
+      }],
+    });
+
+    expect(loadCount).toBe(1);
+    expect(result).toEqual({
+      success: false,
+      errors: ["/shaders/palette.slang(4): error: broken dependency"],
+    });
+  });
+
+  it("reports a clean missing-mainImage diagnostic instead of a generated wrapper error", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: `error[E30015]: undefined identifier
+  --> /debugmath.slang:34:12
+   |
+34 | return mainImage(coord);
+   |        ^^^^^^^^^ undefined identifier 'mainImage'.`,
+    }));
+
+    const result = compiler.compileImagePass(
+      "float debugValue(float2 coord) { return coord.x; }",
+      { sourcePath: "/debugmath.slang" },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Missing mainImage function"],
+    });
+  });
+
   it("lets a standalone shader sample all four standard channels without slot configuration", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
@@ -471,6 +542,22 @@ describe("SlangCompiler", () => {
     });
 
     expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/buffera.slang");
+  });
+
+  it("preserves an explicit module declaration when compiling an imported source as the root", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("#language slang 2026\nmodule palette;\nfloat4 mainImage(float2 c) { return 1; }", {
+      passName: "capture",
+      sourcePath: "/shaders/palette.slang",
+    });
+
+    expect(onLoad).toHaveBeenCalledWith(
+      expect.any(String),
+      "palette",
+      "/shaders/palette.slang",
+    );
   });
 
   it("defaults the module name to image when no pass name is given", () => {
