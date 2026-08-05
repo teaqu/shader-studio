@@ -8,6 +8,7 @@ import type { SlangToken, SlangTokenDocument } from "./tokens";
 
 export interface SlangMacroDefinition {
   name: string;
+  functionLike: boolean;
   parameters: string[];
   bodyTokens: SlangToken[];
   definitionRange: DebugSourceRange;
@@ -32,6 +33,7 @@ interface ConditionalFrame {
   parentActive: boolean;
   condition: boolean;
   sawElse: boolean;
+  openingToken: SlangToken;
 }
 
 interface ParsedInvocation {
@@ -71,6 +73,12 @@ export function buildSlangPreprocessorModel(document: SlangTokenDocument): Slang
     }
   }
   closeInactiveRange(positionAt(document.source, document.source.length));
+  for (const frame of frames) {
+    diagnostics.push(unsupportedDirectiveDiagnostic(
+      frame.openingToken,
+      `Unclosed #${directiveName(frame.openingToken)} directive.`,
+    ));
+  }
 
   const invocations = findMacroInvocations(activeTokens, macros).map((invocation) => ({
     ...invocation,
@@ -90,7 +98,7 @@ function applyDirective(
   frames: ConditionalFrame[],
   diagnostics: DebugDiagnostic[],
 ): void {
-  const logicalDirective = token.text.replace(/\\\r?\n/g, "");
+  const logicalDirective = token.text.replace(/\\(?:\r\n|\r|\n)/g, "");
   const match = /^#\s*([A-Za-z]+)/.exec(logicalDirective);
   if (!match) {
     diagnostics.push(unsupportedDirectiveDiagnostic(token, "Malformed preprocessor directive."));
@@ -105,12 +113,17 @@ function applyDirective(
     if (condition === null) {
       diagnostics.push(unsupportedDirectiveDiagnostic(token, "Unsupported #if condition."));
     }
-    frames.push({ parentActive: active, condition: condition ?? false, sawElse: false });
+    frames.push({ parentActive: active, condition: condition ?? false, sawElse: false, openingToken: token });
     return;
   }
   if (name === "ifdef" || name === "ifndef") {
     const isDefined = macros.has(expression);
-    frames.push({ parentActive: active, condition: name === "ifdef" ? isDefined : !isDefined, sawElse: false });
+    frames.push({
+      parentActive: active,
+      condition: name === "ifdef" ? isDefined : !isDefined,
+      sawElse: false,
+      openingToken: token,
+    });
     return;
   }
   if (name === "else") {
@@ -128,14 +141,18 @@ function applyDirective(
     }
     return;
   }
-  if (name === "define" && active) {
-    const definition = parseMacroDefinition(token, document);
-    if (definition) {
-      macros.set(definition.name, definition);
-    } else {
-      diagnostics.push(unsupportedDirectiveDiagnostic(token, "Malformed #define directive."));
+  if (name === "define") {
+    if (active) {
+      const definition = parseMacroDefinition(token, document);
+      if (definition) {
+        macros.set(definition.name, definition);
+      } else {
+        diagnostics.push(unsupportedDirectiveDiagnostic(token, "Malformed #define directive."));
+      }
     }
+    return;
   }
+  diagnostics.push(unsupportedDirectiveDiagnostic(token, `Unsupported #${name} directive.`));
 }
 
 function evaluateCondition(expression: string, macros: Map<string, SlangMacroDefinition>): boolean | null {
@@ -150,7 +167,7 @@ function evaluateCondition(expression: string, macros: Map<string, SlangMacroDef
 }
 
 function parseMacroDefinition(token: SlangToken, document: SlangTokenDocument): SlangMacroDefinition | null {
-  const header = /^#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(([^)]*)\))?/.exec(token.text);
+  const header = /^#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:(\()([^)]*)\))?/.exec(token.text);
   if (!header) {
     return null;
   }
@@ -158,9 +175,10 @@ function parseMacroDefinition(token: SlangToken, document: SlangTokenDocument): 
   const bodyTokens = tokenizeFragment(document, bodyStart, token.endOffset);
   return {
     name: header[1],
-    parameters: header[2] === undefined || header[2].trim() === ""
+    functionLike: header[2] === "(",
+    parameters: header[3] === undefined || header[3].trim() === ""
       ? []
-      : header[2].split(",").map((parameter) => parameter.trim()),
+      : header[3].split(",").map((parameter) => parameter.trim()),
     bodyTokens,
     definitionRange: token.range,
   };
@@ -190,7 +208,7 @@ function findMacroInvocations(
     if (token.kind !== "identifier" || !macros.has(token.text)) {
       continue;
     }
-    const parsed = parseInvocation(tokens, index);
+    const parsed = parseInvocation(tokens, index, macros.get(token.text)!);
     if (parsed) {
       invocations.push(parsed);
     }
@@ -198,10 +216,17 @@ function findMacroInvocations(
   return invocations;
 }
 
-function parseInvocation(tokens: SlangToken[], identifierIndex: number): ParsedInvocation | null {
+function parseInvocation(
+  tokens: SlangToken[],
+  identifierIndex: number,
+  definition: SlangMacroDefinition,
+): ParsedInvocation | null {
   const identifier = tokens[identifierIndex];
   const openIndex = nextMeaningfulToken(tokens, identifierIndex + 1);
   if (openIndex === undefined || tokens[openIndex].text !== "(") {
+    if (definition.functionLike) {
+      return null;
+    }
     return {
       name: identifier.text,
       invocationRange: identifier.range,
@@ -290,6 +315,10 @@ function unsupportedDirectiveDiagnostic(token: SlangToken, message: string): Deb
     sourceUri: token.sourceUri,
     range: token.range,
   };
+}
+
+function directiveName(token: SlangToken): string {
+  return /^#\s*([A-Za-z]+)/.exec(token.text)?.[1] ?? "directive";
 }
 
 function rangeAt(source: string, startOffset: number, endOffset: number): DebugSourceRange {

@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { buildSlangPreprocessorModel } from "../SlangPreprocessor";
 import { tokenizeSlang } from "../SlangTokenizer";
 
+function invocationSummaries(model: ReturnType<typeof buildSlangPreprocessorModel>) {
+  return model.invocations.map((invocation) => ({
+    name: invocation.name,
+    invocationRange: invocation.invocationRange,
+    argumentTexts: invocation.argumentTokens.map((argument) => argument.map((token) => token.text)),
+    writableOrigin: invocation.writableOrigin,
+  }));
+}
+
 describe("buildSlangPreprocessorModel", () => {
   // Mutation caught: interpreting #if branches as active leaks declarations that cannot exist at runtime.
   it("keeps literal and defined active branches while retaining exact inactive ranges", () => {
@@ -41,13 +50,11 @@ describe("buildSlangPreprocessorModel", () => {
     const source = "#define DECL_FLOAT(name) float name\nDECL_FLOAT(accum);\n";
     const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/direct.slang", source));
 
-    expect(model.invocations).toEqual([
+    expect(invocationSummaries(model)).toEqual([
       {
         name: "DECL_FLOAT",
         invocationRange: { start: { line: 1, character: 0 }, end: { line: 1, character: 17 } },
-        argumentTokens: [expect.arrayContaining([
-          expect.objectContaining({ text: "accum", startOffset: 47, endOffset: 52 }),
-        ])],
+        argumentTexts: [["accum"]],
         writableOrigin: true,
       },
     ]);
@@ -64,28 +71,32 @@ describe("buildSlangPreprocessorModel", () => {
       + "LOOP(count);\n";
     const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/nested.slang", source));
 
-    expect(model.invocations).toEqual(expect.arrayContaining([
-      expect.objectContaining({
+    expect(invocationSummaries(model)).toEqual([
+      {
         name: "WRAPPED",
         invocationRange: { start: { line: 3, character: 0 }, end: { line: 3, character: 14 } },
+        argumentTexts: [["total"]],
         writableOrigin: true,
-      }),
-      expect.objectContaining({
+      },
+      {
+        name: "LOOP",
+        invocationRange: { start: { line: 4, character: 0 }, end: { line: 4, character: 11 } },
+        argumentTexts: [["count"]],
+        writableOrigin: true,
+      },
+      {
         name: "DECL_FLOAT",
         invocationRange: { start: { line: 3, character: 0 }, end: { line: 3, character: 14 } },
+        argumentTexts: [["name"]],
         writableOrigin: false,
-      }),
-      expect.objectContaining({
+      },
+      {
         name: "LOOP",
         invocationRange: { start: { line: 4, character: 0 }, end: { line: 4, character: 11 } },
-        writableOrigin: true,
-      }),
-      expect.objectContaining({
-        name: "LOOP",
-        invocationRange: { start: { line: 4, character: 0 }, end: { line: 4, character: 11 } },
+        argumentTexts: [["name"]],
         writableOrigin: false,
-      }),
-    ]));
+      },
+    ]);
   });
 
   // Mutation caught: treating a continued macro definition as a standalone line loses its replacement tokens.
@@ -96,12 +107,13 @@ describe("buildSlangPreprocessorModel", () => {
     expect(model.macros.get("JOIN")?.parameters).toEqual(["a", "b"]);
     expect(model.macros.get("JOIN")?.bodyTokens.map((token) => token.text).join(""))
       .toBe("a + \\\n  b\n");
-    expect(model.invocations).toEqual([
-      expect.objectContaining({
+    expect(invocationSummaries(model)).toEqual([
+      {
         name: "JOIN",
         invocationRange: { start: { line: 2, character: 0 }, end: { line: 2, character: 17 } },
+        argumentTexts: [["left"], [" ", "right"]],
         writableOrigin: true,
-      }),
+      },
     ]);
   });
 
@@ -135,5 +147,129 @@ describe("buildSlangPreprocessorModel", () => {
         range: { start: { line: 9, character: 0 }, end: { line: 10, character: 0 } },
       },
     ]);
+  });
+
+  // Mutation caught: treating unsupported branch directives as supported changes active source without a bounded-model diagnostic.
+  it("retains nested branch state while diagnosing #elif and #include", () => {
+    const source = "#if 1\n"
+      + "#if 0\n"
+      + "float innerHidden;\n"
+      + "#else\n"
+      + "float innerVisible;\n"
+      + "#endif\n"
+      + "#elif 0\n"
+      + "float stillActive;\n"
+      + "#endif\n"
+      + "#include \"other.slang\"\n";
+    const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/unsupported.slang", source));
+
+    expect(model.activeTokens.map((token) => token.text).join(""))
+      .toBe("float innerVisible;\nfloat stillActive;\n");
+    expect(model.inactiveRanges).toEqual([
+      { start: { line: 2, character: 0 }, end: { line: 3, character: 0 } },
+    ]);
+    expect(model.diagnostics).toEqual([
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Unsupported #elif directive.",
+        sourceUri: "file:///workspace/unsupported.slang",
+        range: { start: { line: 6, character: 0 }, end: { line: 7, character: 0 } },
+      },
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Unsupported #include directive.",
+        sourceUri: "file:///workspace/unsupported.slang",
+        range: { start: { line: 9, character: 0 }, end: { line: 10, character: 0 } },
+      },
+    ]);
+  });
+
+  // Mutation caught: dropping unmatched opening frames at EOF loses the source range needed to explain unsupported scope.
+  it("reports every unclosed conditional at its opening directive range", () => {
+    const source = "#if 1\n#ifdef FLAG\nfloat hidden;\n";
+    const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/unclosed.slang", source));
+
+    expect(model.activeTokens).toEqual([]);
+    expect(model.diagnostics).toEqual([
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Unclosed #if directive.",
+        sourceUri: "file:///workspace/unclosed.slang",
+        range: { start: { line: 0, character: 0 }, end: { line: 1, character: 0 } },
+      },
+      {
+        code: "slang-debug-unsupported-syntax",
+        message: "Unclosed #ifdef directive.",
+        sourceUri: "file:///workspace/unclosed.slang",
+        range: { start: { line: 1, character: 0 }, end: { line: 2, character: 0 } },
+      },
+    ]);
+  });
+
+  // Mutation caught: treating a bare function-like macro name as an invocation invents a writable edit origin.
+  it("distinguishes function-like macros and groups nested-call arguments", () => {
+    const source = "#define DECL_FLOAT(name) float name\n"
+      + "#define VALUE 1\n"
+      + "DECL_FLOAT;\n"
+      + "DECL_FLOAT(f(x, y), g);\n"
+      + "VALUE;\n";
+    const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/function-like.slang", source));
+
+    expect([...model.macros.values()].map((macro) => ({
+      name: macro.name,
+      functionLike: macro.functionLike,
+      parameters: macro.parameters,
+    }))).toEqual([
+      { name: "DECL_FLOAT", functionLike: true, parameters: ["name"] },
+      { name: "VALUE", functionLike: false, parameters: [] },
+    ]);
+    expect(invocationSummaries(model)).toEqual([
+      {
+        name: "DECL_FLOAT",
+        invocationRange: { start: { line: 3, character: 0 }, end: { line: 3, character: 22 } },
+        argumentTexts: [["f", "(", "x", ",", " ", "y", ")"], [" ", "g"]],
+        writableOrigin: true,
+      },
+      {
+        name: "VALUE",
+        invocationRange: { start: { line: 4, character: 0 }, end: { line: 4, character: 5 } },
+        argumentTexts: [],
+        writableOrigin: true,
+      },
+    ]);
+  });
+
+  // Mutation caught: dropping a CRLF continuation separates one physical directive into two fake lines.
+  it("preserves CRLF continued directive bytes and physical invocation ranges", () => {
+    const source = "#define JOIN(a, b) a + \\\r\n  b\r\nJOIN(f(x, y), g);\r\n";
+    const document = tokenizeSlang("file:///workspace/crlf.slang", source);
+    const model = buildSlangPreprocessorModel(document);
+
+    expect(document.tokens[0]).toMatchObject({
+      kind: "preprocessor",
+      text: "#define JOIN(a, b) a + \\\r\n  b\r\n",
+      startOffset: 0,
+      endOffset: 31,
+      range: { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } },
+    });
+    expect(model.macros.get("JOIN")?.definitionRange)
+      .toEqual({ start: { line: 0, character: 0 }, end: { line: 2, character: 0 } });
+    expect(invocationSummaries(model)).toEqual([
+      {
+        name: "JOIN",
+        invocationRange: { start: { line: 2, character: 0 }, end: { line: 2, character: 16 } },
+        argumentTexts: [["f", "(", "x", ",", " ", "y", ")"], [" ", "g"]],
+        writableOrigin: true,
+      },
+    ]);
+  });
+
+  // Mutation caught: handling only LF/CRLF continuations makes a lone-CR directive condition unsupported.
+  it("evaluates lone-CR continued directives as one physical condition", () => {
+    const source = "#if \\\r1\rfloat live;\r#endif\r";
+    const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/lone-cr.slang", source));
+
+    expect(model.activeTokens.map((token) => token.text).join("")).toBe("float live;\r");
+    expect(model.diagnostics).toEqual([]);
   });
 });
