@@ -159,6 +159,42 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
+  it("matches sequential GLSL timing for cross-buffer dependencies", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        BufferA: {
+          path: "a.slang",
+          inputs: { iChannel0: { type: "buffer", source: "BufferB" } },
+        },
+        BufferB: {
+          path: "b.slang",
+          inputs: {
+            iChannel0: { type: "buffer", source: "BufferA" },
+            iChannel1: { type: "buffer", source: "BufferB" },
+          },
+        },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferB" } } },
+      },
+    };
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: { BufferA: imageCode, BufferB: imageCode },
+      canvasWidth: 128,
+      canvasHeight: 64,
+    });
+
+    const bufferA = graph.passes.find((pass) => pass.name === "BufferA")!;
+    const bufferB = graph.passes.find((pass) => pass.name === "BufferB")!;
+    const image = graph.passes.find((pass) => pass.name === "Image")!;
+    expect(bufferA.channels[0]).toMatchObject({ source: "BufferB", readFrom: "previous-frame" });
+    expect(bufferB.channels[0]).toMatchObject({ source: "BufferA", readFrom: "current-frame" });
+    expect(bufferB.channels[1]).toMatchObject({ source: "BufferB", readFrom: "previous-frame" });
+    expect(image.channels[0]).toMatchObject({ source: "BufferB", readFrom: "current-frame" });
+  });
+
   it("accepts audio inputs while reporting missing buffer sources", () => {
     const config: ShaderConfig = {
       version: "1",
@@ -322,7 +358,7 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes[0]).toMatchObject({ name: "BufferA", width: 800, height: 600 });
   });
 
-  it("warns and ignores inputs whose keys are not iChannelN", () => {
+  it("assigns custom input names to slots in declaration order", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
@@ -344,8 +380,16 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.warnings).toContain("Image: ignoring non-iChannel input \"myTexture\"");
-    expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
+    expect(graph.warnings).toEqual([]);
+    expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([
+      {
+        kind: "buffer",
+        slot: 0,
+        key: "myTexture",
+        source: "BufferA",
+        readFrom: "current-frame",
+      },
+    ]);
   });
 
   it("warns and ignores iChannel slots above 15", () => {
@@ -370,7 +414,7 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.warnings).toContain("Image: ignoring non-iChannel input \"iChannel16\"");
+    expect(graph.warnings).toContain("Image: ignoring channel input \"iChannel16\" above slot 15");
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
   });
 
@@ -396,7 +440,7 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes.map((pass) => pass.name)).toEqual(["BufferB", "BufferA", "Image"]);
   });
 
-  it("sorts channels by slot when inputs are declared out of order", () => {
+  it("preserves declaration-order slot assignment for out-of-order numeric aliases", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
@@ -421,8 +465,8 @@ describe("buildSlangPassGraph", () => {
 
     expect(graph.errors).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([
-      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
-      { kind: "buffer", slot: 1, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
+      { kind: "buffer", slot: 0, key: "iChannel1", source: "BufferB", readFrom: "current-frame" },
+      { kind: "buffer", slot: 1, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
     ]);
   });
 
@@ -583,7 +627,7 @@ describe("file and input channels", () => {
       config: { version: "1", passes: { Image: { inputs: { iChannel1: { type: "keyboard" } } } } },
       buffers: {}, canvasWidth: 100, canvasHeight: 50,
     });
-    expect(graph.passes[0].channels).toEqual([{ kind: "keyboard", slot: 1, key: "iChannel1" }]);
+    expect(graph.passes[0].channels).toEqual([{ kind: "keyboard", slot: 0, key: "iChannel1" }]);
   });
 
   it("resolves audio inputs with playback options", () => {
@@ -605,7 +649,7 @@ describe("file and input channels", () => {
     expect(graph.warnings).toEqual([]);
     expect(graph.passes[0].channels).toEqual([{
       kind: "audio",
-      slot: 1,
+      slot: 0,
       key: "iChannel1",
       path: "/abs/a.wav",
       muted: true,
@@ -656,7 +700,7 @@ describe("file and input channels", () => {
     });
     expect(graph.passes.map(p => p.name)).toEqual(["BufferA", "Image"]);
     expect(graph.passes[1].channels.map(c => [c.kind, c.slot])).toEqual([
-      ["texture", 0], ["buffer", 1], ["keyboard", 2], ["video", 3], ["cubemap", 4], ["audio", 5],
+      ["keyboard", 0], ["texture", 1], ["buffer", 2], ["video", 3], ["cubemap", 4], ["audio", 5],
     ]);
   });
 });

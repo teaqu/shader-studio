@@ -15,6 +15,15 @@
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 
+const SHADER_STUDIO_EDITOR_IMPORT = /^(\s*)(?:__exported\s+)?import\s+(?:shader_studio|"shader-studio(?:\.slang)?")\s*;[^\r\n]*$/gm;
+
+export function stripShaderStudioEditorImport(source: string): string {
+  return source.replace(
+    SHADER_STUDIO_EDITOR_IMPORT,
+    "$1// Shader Studio editor support import",
+  );
+}
+
 // Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Script fields are appended after
 // this prefix, and the total allocation is rounded to a multiple of 16.
@@ -248,6 +257,9 @@ struct ShaderToyChannelCube
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      const customHelperName = channel.key === `iChannel${channel.slot}`
+        ? null
+        : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
       const objectAccessor = channel.slot < 4
         ? `
 ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
@@ -272,7 +284,11 @@ float4 ${helperName}(float3 dir)
 {
     return ${channel.key}.Sample(${channel.key}Sampler, dir);
 }
-${objectAccessor}
+${customHelperName ? `float4 ${customHelperName}(float3 dir)
+{
+    return ${helperName}(dir);
+}
+` : ""}${objectAccessor}
 `;
       }
       return `[[vk::binding(${textureBinding}, 0)]]
@@ -286,27 +302,49 @@ float4 ${helperName}(float2 uv)
     // the texel the caller expects.
     return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
 }
-${objectAccessor}
+${customHelperName ? `float4 ${customHelperName}(float2 uv)
+{
+    return ${helperName}(uv);
+}
+` : ""}${objectAccessor}
 `;
     })
     .join("\n");
 
-  return objectTypes + bindings;
+  const claimedStandardHelpers = new Set(sortedChannels.map(({ slot }) => slot));
+  for (const { key } of sortedChannels) {
+    const match = /^iChannel([0-3])$/.exec(key);
+    if (match) {
+      claimedStandardHelpers.add(Number.parseInt(match[1], 10));
+    }
+  }
+  const fallbackHelpers = [0, 1, 2, 3]
+    .filter((slot) => !claimedStandardHelpers.has(slot))
+    .map((slot) => `float4 sampleIChannel${slot}(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+`)
+    .join("\n");
+
+  return objectTypes + bindings + fallbackHelpers;
 }
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const prelude = buildPrelude(options.customUniforms);
-  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
+  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
+  const strippedUserSource = stripShaderStudioEditorImport(userSource);
   const channelPrelude = buildChannelPrelude(options.channels);
   if (options.captureMode) {
     // Capture uniforms bind right after the channel texture/sampler pairs.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${strippedUserSource}\n${ENTRY_POINTS}`;
 }

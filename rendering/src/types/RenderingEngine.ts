@@ -1,4 +1,4 @@
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
@@ -14,6 +14,8 @@ export interface RenderingEngine {
     buffers?: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    slangModules?: SlangSourceModule[],
+    slangSourcePath?: string,
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   setInputEnabled(enabled: boolean): void;
@@ -36,7 +38,7 @@ export interface RenderingEngine {
   collectPixelRegionResults(): PixelRegionResult[];
   cancelPixelRegionRequests(): void;
   createVariableCapturer(): IVariableCapturer;
-  getVariableCaptureCompileContext(code?: string, passName?: string): CaptureCompileContext;
+  getVariableCaptureCompileContext(code?: string, passName?: string, sourcePath?: string | null): CaptureCompileContext;
   /** Shader source dialect the engine renders ('glsl' for WebGL, 'slang' for WebGPU). */
   getShaderLanguage(): "glsl" | "slang";
   getCaptureUniforms(): CaptureUniforms;

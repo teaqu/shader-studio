@@ -6,6 +6,10 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
   const pipeline = {
     getBindGroupLayout: vi.fn(() => ({})),
   };
+  const encoder = {
+    copyTextureToTexture: vi.fn(),
+    finish: vi.fn(() => ({ label: "copy-command" })),
+  };
   return {
     createShaderModule: vi.fn(() => ({
       getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
@@ -20,6 +24,8 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
       createView: vi.fn(() => ({ label: "texture-view" })),
       destroy: vi.fn(),
     })),
+    createCommandEncoder: vi.fn(() => encoder),
+    queue: { submit: vi.fn() },
   } as unknown as GPUDevice & {
     createShaderModule: ReturnType<typeof vi.fn>;
     createRenderPipeline: ReturnType<typeof vi.fn>;
@@ -29,6 +35,8 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
     createSampler: ReturnType<typeof vi.fn>;
     createTexture: ReturnType<typeof vi.fn>;
     createBindGroup: ReturnType<typeof vi.fn>;
+    createCommandEncoder: ReturnType<typeof vi.fn>;
+    queue: { submit: ReturnType<typeof vi.fn> };
   };
 }
 
@@ -67,6 +75,26 @@ describe("SlangPassPipeline", () => {
 
     expect(device.createTexture).toHaveBeenCalledTimes(2);
     expect(before).not.toBe(pass.getCurrentOutputView());
+  });
+
+  it("uses a negotiated rgba32float format for buffer targets", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    }, "rgba32float");
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createTexture).toHaveBeenCalledTimes(2);
+    expect(device.createTexture).toHaveBeenCalledWith(expect.objectContaining({
+      format: "rgba32float",
+    }));
+    const pipelineDescriptor = device.createRenderPipeline.mock.calls[0][0];
+    expect(pipelineDescriptor.fragment.targets).toEqual([{ format: "rgba32float" }]);
   });
 
   it("returns null getters before rebuild has ever run", () => {
@@ -394,6 +422,28 @@ describe("SlangPassPipeline", () => {
     expect(pass.getPreviousOutputView()).toBeNull();
   });
 
+  it("resetOutputTextures clears feedback without rebuilding the shader pipeline", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    (pass as unknown as { resetOutputTextures(): void }).resetOutputTextures();
+
+    expect(device.createTexture).toHaveBeenCalledTimes(4);
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+    expect(device.createShaderModule).toHaveBeenCalledTimes(1);
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+  });
+
   it("dispose() is a safe no-op for a canvas pass with no textures", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -456,9 +506,80 @@ describe("SlangPassPipeline", () => {
     for (const [descriptor] of newCalls) {
       expect(descriptor.size).toEqual({ width: 640, height: 360 });
     }
+    const encoder = device.createCommandEncoder.mock.results[0].value;
+    expect(encoder.copyTextureToTexture).toHaveBeenCalledTimes(2);
+    expect(encoder.copyTextureToTexture).toHaveBeenNthCalledWith(
+      1,
+      { texture: firstTextures[0], origin: { x: 0, y: 0 } },
+      { texture: device.createTexture.mock.results[2].value, origin: { x: 0, y: 180 } },
+      { width: 320, height: 180, depthOrArrayLayers: 1 },
+    );
+    expect(encoder.copyTextureToTexture).toHaveBeenNthCalledWith(
+      2,
+      { texture: firstTextures[1], origin: { x: 0, y: 0 } },
+      { texture: device.createTexture.mock.results[3].value, origin: { x: 0, y: 180 } },
+      { width: 320, height: 180, depthOrArrayLayers: 1 },
+    );
+    expect(device.queue.submit).toHaveBeenCalledWith([{ label: "copy-command" }]);
     // No shader/pipeline recompilation happened.
     expect(device.createShaderModule).toHaveBeenCalledTimes(1);
     expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("resize() keeps the bottom-left region when shrinking feedback textures", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 640,
+      height: 360,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const firstTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.resize(320, 180);
+
+    const encoder = device.createCommandEncoder.mock.results[0].value;
+    expect(encoder.copyTextureToTexture).toHaveBeenNthCalledWith(
+      1,
+      { texture: firstTextures[0], origin: { x: 0, y: 180 } },
+      { texture: device.createTexture.mock.results[2].value, origin: { x: 0, y: 0 } },
+      { width: 320, height: 180, depthOrArrayLayers: 1 },
+    );
+    expect(encoder.copyTextureToTexture).toHaveBeenNthCalledWith(
+      2,
+      { texture: firstTextures[1], origin: { x: 0, y: 180 } },
+      { texture: device.createTexture.mock.results[3].value, origin: { x: 0, y: 0 } },
+      { width: 320, height: 180, depthOrArrayLayers: 1 },
+    );
+  });
+
+  it("encodeResize() records migration without submitting or destroying textures early", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+    const encoder = device.createCommandEncoder();
+
+    const finishResize = pass.encodeResize(640, 360, encoder);
+
+    expect(encoder.copyTextureToTexture).toHaveBeenCalledTimes(2);
+    expect(device.queue.submit).not.toHaveBeenCalled();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    finishResize?.();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("resize() with an unchanged size does not recreate textures", async () => {

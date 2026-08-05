@@ -703,7 +703,7 @@ export class CodeGenerator {
     wrapper.push(...preservedSource);
     wrapper.push('');
     if (useCaptureSideChannel) {
-      wrapper.push(`${varInfo.type} ${captureVarName};`);
+      wrapper.push(getDebugDialect(dialect).moduleCaptureDeclaration(varInfo.type, captureVarName));
     }
     wrapper.push(...result);
     wrapper.push('');
@@ -961,13 +961,13 @@ export class CodeGenerator {
     // untouched so any existing callers in preserved shader source keep working.
     const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const signaturePattern = new RegExp(
-      `^(\\s*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`
+      `^(\\s*)((?:(?:public|private|internal|static|inline|extern|export|__exported)\\s+)*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`,
     );
 
     return line.replace(
       signaturePattern,
-      (_match, indent, returnType, spacing, openParen) =>
-        `${indent}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
+      (_match, indent, modifiers, returnType, spacing, openParen) =>
+        `${indent}${modifiers}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
     );
   }
 }

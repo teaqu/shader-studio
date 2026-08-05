@@ -32,7 +32,7 @@ describe("packShaderToyUniforms", () => {
 
     expect(f(UNIFORM_OFFSETS.iResolution)).toBe(800);
     expect(f(UNIFORM_OFFSETS.iResolution + 4)).toBe(600);
-    expect(f(UNIFORM_OFFSETS.iResolution + 8)).toBe(1); // pixel aspect
+    expect(f(UNIFORM_OFFSETS.iResolution + 8)).toBeCloseTo(800 / 600);
 
     expect(f(UNIFORM_OFFSETS.iMouse)).toBe(10);
     expect(f(UNIFORM_OFFSETS.iMouse + 4)).toBe(20);

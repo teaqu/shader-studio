@@ -81,7 +81,7 @@ export function packShaderToyUniforms(
 
   f32[0] = input.width;
   f32[1] = input.height;
-  f32[2] = 1;
+  f32[2] = input.height === 0 ? 1 : input.width / input.height;
 
   for (let component = 0; component < 4; component++) {
     f32[4 + component] = input.mouse[component] ?? 0;

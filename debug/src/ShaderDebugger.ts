@@ -184,7 +184,9 @@ export class ShaderDebugger {
     let functionReturnType: string | undefined;
     if (functionInfo.name && functionInfo.start >= 0) {
       const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
-      const returnTypeMatch = funcLine.match(/^\s*([A-Za-z_]\w*)\s+\w+\s*\(/);
+      const returnTypeMatch = funcLine.match(
+        /^\s*(?:(?:public|private|internal|static|inline|extern|export|__exported)\s+)*([A-Za-z_]\w*)\s+\w+\s*\(/,
+      );
       if (returnTypeMatch) {
         functionReturnType = returnTypeMatch[1];
       }
@@ -378,7 +380,9 @@ export class ShaderDebugger {
 
     // Parse return type
     const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
-    const returnTypeMatch = funcLine.match(/^\s*(void|float2x2|float3x3|float4x4|float[234]|float|vec[234]|mat[234]|int|bool)\s+\w+\s*\(/);
+    const returnTypeMatch = funcLine.match(
+      /^\s*(?:(?:public|private|internal|static|inline|extern|export|__exported)\s+)*(void|float2x2|float3x3|float4x4|float[234]|float|vec[234]|mat[234]|int|bool)\s+\w+\s*\(/,
+    );
     const returnType = returnTypeMatch ? returnTypeMatch[1] : 'void';
 
     // Parse parameters
@@ -687,16 +691,24 @@ export class ShaderDebugger {
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
 
-    // Slang mainImage returns its color, so debugging a `return X;` line means
-    // visualizing the returned expression. Rewrite the return into a
-    // declaration of _dbgReturn so the output statement below can reference it.
-    if (dialect === 'slang' && varInfo.name === '_dbgReturn') {
+    // Slang mainImage returns its color. The generated visualization is appended
+    // after the selected statement, so an original return on that statement
+    // must be rewritten or it would make the debug output unreachable.
+    if (dialect === 'slang') {
       const returnRange = CodeGenerator.findReturnRange(truncatedLines, debugLine, truncationEnd);
       if (returnRange) {
-        truncatedLines[returnRange.start] = truncatedLines[returnRange.start].replace(
-          /\breturn\b/,
-          `${varInfo.type} ${varInfo.name} =`,
-        );
+        if (varInfo.name === '_dbgReturn') {
+          truncatedLines[returnRange.start] = truncatedLines[returnRange.start].replace(
+            /\breturn\b/,
+            `${varInfo.type} ${varInfo.name} =`,
+          );
+        } else {
+          const indent = truncatedLines[returnRange.start].match(/^\s*/)?.[0] ?? '';
+          truncatedLines[returnRange.start] = `${indent}// Debug: replaced original return`;
+          for (let line = returnRange.start + 1; line <= returnRange.end; line++) {
+            truncatedLines[line] = `${indent}// Debug: replaced return continuation`;
+          }
+        }
       }
     }
 

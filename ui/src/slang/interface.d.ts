@@ -148,45 +148,45 @@ declare namespace RuntimeExports {
     }
 }
 declare class ErrnoError extends Error {
-    constructor(errno: any);
-    errno: any;
-    code: string;
+  constructor(errno: any);
+  errno: any;
+  code: string;
 }
 declare class FSStream {
-    shared: {};
-    set object(val: any);
-    get object(): any;
-    node: any;
-    get isRead(): boolean;
-    get isWrite(): boolean;
-    get isAppend(): number;
-    set flags(val: any);
-    get flags(): any;
-    set position(val: any);
-    get position(): any;
+  shared: {};
+  set object(val: any);
+  get object(): any;
+  node: any;
+  get isRead(): boolean;
+  get isWrite(): boolean;
+  get isAppend(): number;
+  set flags(val: any);
+  get flags(): any;
+  set position(val: any);
+  get position(): any;
 }
 declare class FSNode {
-    constructor(parent: any, name: any, mode: any, rdev: any);
-    node_ops: {};
-    stream_ops: {};
-    readMode: number;
-    writeMode: number;
-    mounted: any;
-    parent: any;
-    mount: any;
-    id: number;
-    name: any;
-    mode: any;
-    rdev: any;
-    atime: number;
-    mtime: number;
-    ctime: number;
-    set read(val: boolean);
-    get read(): boolean;
-    set write(val: boolean);
-    get write(): boolean;
-    get isFolder(): any;
-    get isDevice(): any;
+  constructor(parent: any, name: any, mode: any, rdev: any);
+  node_ops: {};
+  stream_ops: {};
+  readMode: number;
+  writeMode: number;
+  mounted: any;
+  parent: any;
+  mount: any;
+  id: number;
+  name: any;
+  mode: any;
+  rdev: any;
+  atime: number;
+  mtime: number;
+  ctime: number;
+  set read(val: boolean);
+  get read(): boolean;
+  set write(val: boolean);
+  get write(): boolean;
+  get isFolder(): any;
+  get isDevice(): any;
 }
 interface WasmModule {
 }

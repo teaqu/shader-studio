@@ -11,6 +11,7 @@
   interface Props {
     zoomLevel?: number;
     onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+    onCanvasSizeChange?: (data: { width: number; height: number }) => void;
     onCanvasResize?: (data: { width: number; height: number }) => void;
     onCanvasClick?: (event: MouseEvent) => void;
     isInspectorActive?: boolean;
@@ -19,6 +20,7 @@
   let {
     zoomLevel = 1.0,
     onCanvasReady = () => {},
+    onCanvasSizeChange = () => {},
     onCanvasResize = () => {},
     onCanvasClick = () => {},
     isInspectorActive = false,
@@ -30,10 +32,27 @@
   let currentResolution: ResolutionState = $state({ scale: 1, forceBlackBackground: false, source: 'session' });
   let aspectRatioCalculator: AspectRatioCalculator;
   let resizeCanvasToFitAspectRatio: () => void;
+  let resizeFrameId: number | null = null;
+  let pendingRenderSize: { width: number; height: number } | null = null;
 
   onMount(() => {
     const container = glCanvas.parentElement!;
     aspectRatioCalculator = new AspectRatioCalculator(container);
+
+    const scheduleCanvasResize = (width: number, height: number) => {
+      pendingRenderSize = { width, height };
+      if (resizeFrameId !== null) {
+        return;
+      }
+      resizeFrameId = requestAnimationFrame(() => {
+        resizeFrameId = null;
+        const size = pendingRenderSize;
+        pendingRenderSize = null;
+        if (size) {
+          onCanvasResize(size);
+        }
+      });
+    };
 
     resizeCanvasToFitAspectRatio = () => {
       const result = aspectRatioCalculator.calculate(
@@ -47,10 +66,8 @@
       glCanvas.style.width = `${result.visualWidth}px`;
       glCanvas.style.height = `${result.visualHeight}px`;
 
-      onCanvasResize({
-        width: result.renderWidth,
-        height: result.renderHeight,
-      });
+      onCanvasSizeChange({ width: result.renderWidth, height: result.renderHeight });
+      scheduleCanvasResize(result.renderWidth, result.renderHeight);
     };
 
     const resizeObserver = new ResizeObserver(resizeCanvasToFitAspectRatio);
@@ -76,6 +93,11 @@
       unsubscribeAspectRatio();
       unsubscribeResolution();
       resizeObserver.disconnect();
+      if (resizeFrameId !== null) {
+        cancelAnimationFrame(resizeFrameId);
+        resizeFrameId = null;
+      }
+      pendingRenderSize = null;
     };
   });
 

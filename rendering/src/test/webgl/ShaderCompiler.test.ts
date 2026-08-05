@@ -73,6 +73,24 @@ describe("ShaderCompiler", () => {
   });
 
   describe("wrapShaderToyCode", () => {
+    it("lets a standalone shader sample all four standard channels without slot configuration", () => {
+      const code = `
+        void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+          vec2 uv = fragCoord / iResolution.xy;
+          fragColor = texture(iChannel0, uv)
+            + texture(iChannel1, uv)
+            + texture(iChannel2, uv)
+            + texture(iChannel3, uv);
+        }
+      `;
+
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);
+
+      for (let slot = 0; slot < 4; slot++) {
+        expect(wrappedCode).toContain(`uniform sampler2D iChannel${slot};`);
+      }
+    });
+
     it("should inject all uniforms that match PassRenderer expectations", () => {
       const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);

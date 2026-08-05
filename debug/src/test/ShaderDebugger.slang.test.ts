@@ -233,6 +233,61 @@ float4 mainImage(float2 fragCoord)
     expect(result).toContain('float2 uv = fragCoord / iResolution.xy;');
     expect(result).not.toContain('vec2 uv');
   });
+
+  it('wraps a public helper in a standalone module without mainImage', () => {
+    const shader = `#language slang 2026
+module debugmath;
+
+public float debugWave(float phase)
+{
+    float accumulated = sin(phase);
+    return accumulated;
+}`;
+
+    const result = ShaderDebugger.modifyShaderForLineDebug(
+      shader,
+      5,
+      '    float accumulated = sin(phase);',
+      new Map(),
+      new Map(),
+      'off',
+      null,
+      'slang',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain('public float _dbg_debugWave(float phase)');
+    expect(result).toContain('float4 mainImage(float2 fragCoord)');
+    expect(result).toContain('float result = _dbg_debugWave(0.5);');
+    expect(result!.match(/public float debugWave\(float phase\)/g)).toHaveLength(1);
+  });
+
+  it('renders the return value from the opening brace of a public standalone helper', () => {
+    const shader = `#language slang 2026
+module debugmath;
+
+public float debugWave(float phase)
+{
+    float accumulated = sin(phase);
+    return accumulated;
+}`;
+
+    const result = ShaderDebugger.modifyShaderForLineDebug(
+      shader,
+      4,
+      '{',
+      new Map(),
+      new Map(),
+      'off',
+      null,
+      'slang',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain('public float _dbg_debugWave(float phase)');
+    expect(result).toContain('float4 mainImage(float2 fragCoord)');
+    expect(result).toContain('float result = _dbg_debugWave(0.5);');
+  });
 });
 
 describe('ShaderDebugger - Slang full-shader post-processing', () => {
@@ -290,6 +345,64 @@ describe('ShaderDebugger - Slang variable preview', () => {
 
     expect(result).toBeNull();
   });
+
+  it('replaces the original mainImage return when previewing another local from that line', () => {
+    const shader = `float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    float held = uv.x > 0.5 ? 1.0 : 0.0;
+    float3 color = float3(uv, 0.0);
+    return float4(color, 1.0);
+}`;
+
+    const result = ShaderDebugger.modifyShaderForVariablePreview(
+      shader,
+      5,
+      { name: 'held', type: 'float' },
+      new Map(),
+      new Map(),
+      'off',
+      null,
+      'slang',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).not.toContain('return float4(color, 1.0);');
+    expect(result).toContain('return float4(float3(held), 1.0);');
+  });
+
+  it('previews a local from an imported public helper without mainImage', () => {
+    const shader = `#language slang 2026
+module debugpalette;
+import debugmath;
+
+public float3 debugPalette(float phase)
+{
+    float blend = debugWave(phase);
+    float3 coolColor = float3(0.03, 0.22, 1.0);
+    float3 warmColor = float3(1.0, 0.12, 0.38);
+    float3 color = lerp(coolColor, warmColor, blend);
+    return color;
+}`;
+
+    const result = ShaderDebugger.modifyShaderForVariablePreview(
+      shader,
+      10,
+      { name: 'blend', type: 'float' },
+      new Map(),
+      new Map(),
+      'off',
+      null,
+      'slang',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result).toContain('import debugmath;');
+    expect(result).toContain('static float _dbgCaptured;');
+    expect(result).toContain('public float3 _dbg_debugPalette(float phase)');
+    expect(result).toContain('float4 mainImage(float2 fragCoord)');
+    expect(result).toContain('return float4(float3(_dbgCaptured), 1.0);');
+  });
 });
 
 describe('ShaderDebugger - Slang function context extraction', () => {
@@ -307,6 +420,17 @@ describe('ShaderDebugger - Slang function context extraction', () => {
     expect(context!.parameters).toHaveLength(1);
     expect(context!.parameters[0].name).toBe('t');
     expect(context!.parameters[0].type).toBe('float');
+  });
+
+  it('extracts the return type after a public modifier', () => {
+    const shader = `public float debugWave(float phase)
+{
+    return sin(phase);
+}`;
+    const context = ShaderDebugger.extractFunctionContext(shader, 2, 'slang');
+
+    expect(context?.functionName).toBe('debugWave');
+    expect(context?.returnType).toBe('float');
   });
 
   it('uses Slang constructors for parameter defaults', () => {

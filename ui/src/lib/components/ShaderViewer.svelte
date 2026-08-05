@@ -519,9 +519,13 @@
     return true;
   }
 
-  function handleCanvasResize(data: { width: number; height: number }) {
+  function handleCanvasSizeChange(data: { width: number; height: number }) {
     canvasWidth = Math.round(data.width);
     canvasHeight = Math.round(data.height);
+  }
+
+  function handleCanvasResize(data: { width: number; height: number }) {
+    handleCanvasSizeChange(data);
     if (!initialized) {
       return;
     }
@@ -602,6 +606,10 @@
     const currentShaderPath = pipeline.getLastEvent()?.data?.path;
     shaderLocker.toggleLock(currentShaderPath);
     isLocked = shaderLocker.isLocked();
+    transport.postMessage({
+      type: 'shaderLockState',
+      payload: { lockedShaderPath: shaderLocker.getLockedShaderPath() },
+    });
   }
 
   function handleOverlayBufferSelect(name: string) {
@@ -815,9 +823,6 @@
     if (!state.isEnabled || !state.isVariableInspectorEnabled) {
       return;
     }
-    const engineCanvas = renderingEngine?.getCanvas?.();
-    const effectiveCanvasWidth = engineCanvas?.width ?? canvasWidth;
-    const effectiveCanvasHeight = engineCanvas?.height ?? canvasHeight;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
@@ -827,8 +832,8 @@
       filePath: state.filePath,
       pixelX: capturePixelX,
       pixelY: capturePixelY,
-      canvasWidth: effectiveCanvasWidth,
-      canvasHeight: effectiveCanvasHeight,
+      canvasWidth,
+      canvasHeight,
       loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
       customParams: shaderDebugManager.getCustomParameters(),
       sampleSize: variableCaptureManager.sampleSize,
@@ -1317,6 +1322,7 @@
         {zoomLevel}
         isInspectorActive={inspectorState.isActive}
         onCanvasReady={handleCanvasReady}
+        onCanvasSizeChange={handleCanvasSizeChange}
         onCanvasResize={handleCanvasResize}
         onCanvasClick={handleCanvasClick}
       />

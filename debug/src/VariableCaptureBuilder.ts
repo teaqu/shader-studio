@@ -94,7 +94,7 @@ export class VariableCaptureBuilder {
     if (debugLine !== -1 && functionInfo.start >= 0 && result.length < 15) {
       const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
       const returnTypeMatch = funcLine.match(
-        /^\s*(float2x2|float[234]|float|vec[234]|int|bool|mat2)\s+\w+\s*\(/
+        /^\s*(?:(?:public|private|internal|static|inline|extern|export|__exported)\s+)*(float2x2|float[234]|float|vec[234]|int|bool|mat2)\s+\w+\s*\(/,
       );
       if (returnTypeMatch && CAPTURABLE_TYPES.has(returnTypeMatch[1])) {
         const lineContent = lines[resolvedLine] || '';
@@ -461,25 +461,30 @@ export class VariableCaptureBuilder {
   ): { lines: string[]; vars: CaptureVarInfo[] } {
     const shadowSpecs = vars
       .map((captureVar, index) => {
-        const loop = VariableCaptureBuilder.findContainingLoopClosedBeforeOutput(
+        const closedScope = VariableCaptureBuilder.findContainingLoopClosedBeforeOutput(
+          originalLines,
+          functionStart,
+          captureVar.declarationLine,
+          truncationEnd,
+        ) ?? VariableCaptureBuilder.findContainingBlockClosedBeforeOutput(
           originalLines,
           functionStart,
           captureVar.declarationLine,
           truncationEnd,
         );
-        if (!loop) return null;
+        if (!closedScope) return null;
         return {
           originalIndex: index,
           originalName: captureVar.varName,
           shadowName: `_dbgShadow${index}`,
           type: captureVar.varType,
           declarationLine: captureVar.declarationLine,
-          loopLine: loop.lineNumber,
+          loopLine: closedScope.lineNumber,
           insertionLine: VariableCaptureBuilder.findSelectorShadowAssignmentLine(
             originalLines,
             captureVar.declarationLine,
             captureVar.varName,
-            loop.lineNumber,
+            closedScope.lineNumber,
           ),
         };
       })
@@ -547,6 +552,39 @@ export class VariableCaptureBuilder {
       return headerLoops[0] ?? null;
     }
     return containingLoops[0];
+  }
+
+  private static findContainingBlockClosedBeforeOutput(
+    lines: string[],
+    functionStart: number,
+    declarationLine: number,
+    truncationEnd: number,
+  ): { lineNumber: number; endLine: number } | null {
+    if (declarationLine < 0) return null;
+
+    const openBlocks: Array<{ lineNumber: number }> = [];
+    const closedBlocks: Array<{ lineNumber: number; endLine: number }> = [];
+    for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex].replace(/\/\/.*$/, '');
+      for (const char of line) {
+        if (char === '{') {
+          openBlocks.push({ lineNumber: lineIndex });
+        } else if (char === '}') {
+          const block = openBlocks.pop();
+          if (block) {
+            closedBlocks.push({ ...block, endLine: lineIndex });
+          }
+        }
+      }
+    }
+
+    return closedBlocks
+      .filter(block =>
+        block.lineNumber < declarationLine
+        && declarationLine < block.endLine
+        && block.endLine <= truncationEnd
+      )
+      .sort((first, second) => second.lineNumber - first.lineNumber)[0] ?? null;
   }
 
   private static findSelectorShadowAssignmentLine(
@@ -632,7 +670,9 @@ export class VariableCaptureBuilder {
 
   private static getFunctionReturnType(lines: string[], functionStart: number): string | null {
     const signature = GlslParser.getFullFunctionSignature(lines, functionStart);
-    const match = signature.match(/^\s*([A-Za-z_]\w*)\s+\w+\s*\(/);
+    const match = signature.match(
+      /^\s*(?:(?:public|private|internal|static|inline|extern|export|__exported)\s+)*([A-Za-z_]\w*)\s+\w+\s*\(/,
+    );
     return match?.[1] ?? null;
   }
 
@@ -713,13 +753,13 @@ export class VariableCaptureBuilder {
     // untouched so any preserved callers still bind to the original symbol.
     const escapedName = originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const signaturePattern = new RegExp(
-      `^(\\s*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`
+      `^(\\s*)((?:(?:public|private|internal|static|inline|extern|export|__exported)\\s+)*)([A-Za-z_]\\w*)(\\s+)${escapedName}(\\s*\\()`,
     );
 
     return line.replace(
       signaturePattern,
-      (_match, indent, returnType, spacing, openParen) =>
-        `${indent}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
+      (_match, indent, modifiers, returnType, spacing, openParen) =>
+        `${indent}${modifiers}${newReturnType ?? returnType}${spacing}${newName}${openParen}`,
     );
   }
 

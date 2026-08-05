@@ -52,6 +52,7 @@ function captureParams(code: string) {
     sampleSize: 8,
     refreshMode: 'manual' as const,
     pollingMs: 0,
+    filePath: '/shaders/image.slang',
   };
 }
 
@@ -90,6 +91,11 @@ describe('VariableCaptureManager - Slang engine', () => {
     expect(captures[0].captureShader).toContain('_dbgVarIndex');
     expect(captures[0].captureShader).not.toContain('uniform ');
     expect(captures[0].captureShader).not.toContain('vec4(');
+    expect(engine.getVariableCaptureCompileContext).toHaveBeenCalledWith(
+      slangShader,
+      undefined,
+      '/shaders/image.slang',
+    );
     manager.dispose();
   });
 });

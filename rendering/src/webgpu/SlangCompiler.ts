@@ -5,16 +5,23 @@ import {
 } from "./slangTypes";
 import {
   wrapSlangImageSource,
+  stripShaderStudioEditorImport,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
   type SlangWrapOptions,
 } from "./SlangPrelude";
+import type { SlangSourceModule } from "@shader-studio/types";
 
 export type SlangCompileResult =
   | { success: true; wgsl: string }
   | { success: false; errors: string[] };
 
-export type SlangCompileOptions = SlangWrapOptions;
+export type SlangCompileModule = Omit<SlangSourceModule, "ownerPass">;
+
+export type SlangCompileOptions = SlangWrapOptions & {
+  modules?: SlangCompileModule[];
+  sourcePath?: string;
+};
 
 /**
  * Compiles user `.slang` image-shader source to WGSL via slang-wasm.
@@ -47,13 +54,39 @@ export class SlangCompiler {
       return { success: false, errors: [this.lastError("Slang: failed to create session")] };
     }
 
+    for (const dependency of options.modules ?? []) {
+      const dependencyModule = session.loadModuleFromSource(
+        stripShaderStudioEditorImport(dependency.source),
+        dependency.moduleName,
+        dependency.path,
+      );
+      if (!dependencyModule) {
+        return { success: false, errors: [this.lastError(
+          `Slang: failed to compile imported module ${dependency.moduleName} (${dependency.path})`,
+        )] };
+      }
+    }
+
     const wrapped = wrapSlangImageSource(userSource, options);
     // Name the module after the pass so Slang diagnostics cite the right
     // file (e.g. /buffera.slang) rather than always claiming /image.slang.
-    const moduleName = (options.passName ?? "image").toLowerCase();
-    const module = session.loadModuleFromSource(wrapped, moduleName, `/${moduleName}.slang`);
+    const sourceWithoutComments = userSource
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    const declaredModuleName = sourceWithoutComments.match(
+      /^\s*module\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/m,
+    )?.[1];
+    const moduleName = declaredModuleName ?? (options.passName ?? "image").toLowerCase();
+    const modulePath = options.sourcePath ?? `/${moduleName}.slang`;
+    const module = session.loadModuleFromSource(wrapped, moduleName, modulePath);
     if (!module) {
-      return { success: false, errors: [this.lastError("Slang: failed to compile module")] };
+      const error = this.lastError("Slang: failed to compile module");
+      return {
+        success: false,
+        errors: [isMissingMainImageDiagnostic(error)
+          ? "Missing mainImage function"
+          : error],
+      };
     }
 
     const vs = module.findEntryPointByName(SLANG_ENTRY_VERTEX);
@@ -114,4 +147,8 @@ export class SlangCompiler {
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function isMissingMainImageDiagnostic(error: string): boolean {
+  return /undefined identifier[\s\S]*['"]mainImage['"]/i.test(error);
 }

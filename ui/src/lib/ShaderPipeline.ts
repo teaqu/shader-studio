@@ -182,11 +182,7 @@ export class ShaderPipeline {
   ): Promise<CompilationResult | undefined> {
     this.lastEvent = event;
 
-    this.shaderDebugManager.setShaderContext(
-      message.config ?? null,
-      message.path,
-      message.buffers ?? {},
-    );
+    this.setDebugShaderContext(message);
 
     const result = await this.shaderProcessor.processMainShaderCompilation(
       message,
@@ -253,11 +249,7 @@ export class ShaderPipeline {
       data: nextMessage,
     } as MessageEvent;
 
-    this.shaderDebugManager.setShaderContext(
-      nextMessage.config ?? null,
-      nextMessage.path,
-      nextMessage.buffers ?? {},
-    );
+    this.setDebugShaderContext(nextMessage);
   }
 
   private sendErrorMessage(errors: string[]): void {
@@ -401,11 +393,25 @@ export class ShaderPipeline {
       data: nextMessage,
     } as MessageEvent;
 
-    this.shaderDebugManager.setShaderContext(
-      config,
-      nextMessage.path,
-      nextMessage.buffers ?? {},
-    );
+    this.setDebugShaderContext(nextMessage);
+  }
+
+  private setDebugShaderContext(message: ShaderSourceMessage): void {
+    const args: Parameters<ShaderDebugManager['setShaderContext']> = [
+      message.config ?? null,
+      message.path,
+      message.buffers ?? {},
+    ];
+    if (message.slangModules) {
+      args.push(message.slangModules);
+    }
+    if (message.bufferPathMap) {
+      if (!message.slangModules) {
+        args.push([]);
+      }
+      args.push(message.bufferPathMap);
+    }
+    this.shaderDebugManager.setShaderContext(...args);
   }
 
   public triggerDebugRecompile(): void {
@@ -460,6 +466,7 @@ export class ShaderPipeline {
       return !lockedPath
         || filePath === lockedPath
         || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+        || this.messageContainsSlangModule(message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined), filePath)
         || this.messageContainsBufferFile(message, filePath);
     }
 
@@ -470,7 +477,14 @@ export class ShaderPipeline {
 
     return filePath === currentMessage.path
       || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+      || this.messageContainsSlangModule(currentMessage, filePath)
       || this.messageContainsBufferFile(currentMessage, filePath);
+  }
+
+  private messageContainsSlangModule(message: ShaderSourceMessage | undefined, filePath: string): boolean {
+    const normalizedFilePath = this.normalizePath(filePath);
+    return message?.slangModules?.some((module) =>
+      this.normalizePath(module.path) === normalizedFilePath) ?? false;
   }
 
   private messageContainsBufferFile(message: ShaderSourceMessage | undefined, filePath: string): boolean {

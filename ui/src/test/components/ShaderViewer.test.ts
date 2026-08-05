@@ -3968,12 +3968,21 @@ describe('ShaderViewer', () => {
       await tick();
       await loadShader();
       await tick();
+      vi.clearAllMocks();
 
       const lockButton = screen.getByLabelText('Toggle lock');
       await fireEvent.click(lockButton);
 
-      // After clicking, lock state should toggle
-      expect(lockButton).toBeTruthy();
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'shaderLockState',
+        payload: { lockedShaderPath: expect.any(String) },
+      });
+
+      await fireEvent.click(lockButton);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'shaderLockState',
+        payload: { lockedShaderPath: undefined },
+      });
     });
   });
 

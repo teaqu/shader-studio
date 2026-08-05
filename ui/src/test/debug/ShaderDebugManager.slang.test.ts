@@ -94,4 +94,43 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(result).toContain('return float4(col, 1.0);');
     expect(result).not.toContain('vec4(');
   });
+
+  it('uses writable Slang storage when previewing an earlier local in an imported standalone helper', () => {
+    const source = `#language slang 2026
+module debugpalette;
+import debugmath;
+
+public float3 debugPalette(float phase)
+{
+    float blend = debugWave(phase);
+    float3 coolColor = float3(0.03, 0.22, 1.0);
+    float3 warmColor = float3(1.0, 0.12, 0.38);
+    float3 color = lerp(coolColor, warmColor, blend);
+    return color;
+}`;
+    manager.setImageShaderCode(source);
+    manager.setShaderContext(null, '/debugpalette.slang', {}, [{
+      moduleName: 'debugmath',
+      path: '/debugmath.slang',
+      source: 'module debugmath; public float debugWave(float phase) { return sin(phase); }',
+      ownerPass: 'Image',
+    }]);
+    manager.toggleEnabled();
+    manager.updateDebugLine(10, '    return color;', '/debugpalette.slang');
+
+    expect(manager.setVariablePreview({
+      varName: 'blend',
+      varType: 'float',
+      debugLine: 10,
+      activeBufferName: 'Image',
+      filePath: '/debugpalette.slang',
+    })).toBe(true);
+
+    const target = manager.getDebugTarget(source, null);
+    const result = manager.modifyShaderForDebugging(target.code, 10);
+
+    expect(target.slangModules).toHaveLength(1);
+    expect(result).toContain('static float _dbgCaptured;');
+    expect(result).toContain('return float4(float3(_dbgCaptured), 1.0);');
+  });
 });
