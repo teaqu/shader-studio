@@ -34,6 +34,7 @@ const createMockResourceManager = () => ({
 
 const createMockRenderer = () => ({
   DestroyShader: vi.fn(),
+  GetShaderHeaderLines: vi.fn().mockReturnValue(0),
 });
 
 const createMockBufferManager = () => ({
@@ -329,6 +330,7 @@ describe("ShaderPipeline", () => {
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         shaderCode,
         {
+          geometry: "fullscreen",
           commonCode: "",
           slotAssignments: [{ slot: 0, key: "iChannel0", isCustomName: false }],
           channelTypes: ["Cube", "2D", "2D", "2D"],
@@ -441,6 +443,158 @@ describe("ShaderPipeline", () => {
       expect(shaderPipeline.getPassShaders()).toEqual({ Image: initialShader });
       expect(shaderPipeline.getPasses().map(pass => pass.name)).toEqual(["Image"]);
       expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
+    });
+
+    it("compiles mixed pass geometry once per pass in configured order", async () => {
+      const previousImageShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(previousImageShader);
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.0); }",
+        null,
+        "mixed.glsl",
+      );
+      const previousShaders = shaderPipeline.getPassShaders();
+      const bufferAShader = createMockShader();
+      const bufferBShader = createMockShader();
+      const imageShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockClear();
+      mockShaderCompiler.wrapShaderToyCode.mockClear();
+      mockRenderer.DestroyShader.mockClear();
+      mockShaderCompiler.compileShaderAsync
+        .mockResolvedValueOnce(bufferAShader)
+        .mockResolvedValueOnce(bufferBShader)
+        .mockResolvedValueOnce(imageShader);
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const config = {
+        version: "1",
+        passes: {
+          BufferA: { path: "buffer-a.glsl", geometry: { type: "fullscreen" }, inputs: {} },
+          BufferB: { path: "buffer-b.glsl", geometry: { type: "sphere" }, inputs: {} },
+          Image: { geometry: { type: "fullscreen" }, inputs: {} },
+        },
+      } as const;
+      const buffers = {
+        BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.1); }",
+        BufferB: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.2); }",
+      };
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "mixed.glsl", buffers);
+
+      expect(result.success).toBe(true);
+      expect(mockShaderCompiler.compileShaderAsync.mock.calls).toEqual([
+        [buffers.BufferA, {
+          geometry: "fullscreen",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        }],
+        [buffers.BufferB, {
+          geometry: "sphere",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        }],
+        [shaderCode, {
+          geometry: "fullscreen",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        }],
+      ]);
+      expect(mockShaderCompiler.wrapShaderToyCode).toHaveBeenCalledTimes(3);
+      expect(mockShaderCompiler.wrapShaderToyCode.mock.calls.map(([, options]) => options)).toEqual([
+        {
+          geometry: "fullscreen",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        },
+        {
+          geometry: "sphere",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        },
+        {
+          geometry: "fullscreen",
+          commonCode: "",
+          slotAssignments: [],
+          channelTypes: ["2D", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        },
+      ]);
+      expect(shaderPipeline.getPassShaders()).not.toBe(previousShaders);
+      expect(shaderPipeline.getPassShader("BufferA")).toBe(bufferAShader);
+      expect(shaderPipeline.getPassShader("BufferB")).toBe(bufferBShader);
+      expect(shaderPipeline.getPassShader("Image")).toBe(imageShader);
+      expect(Object.keys(shaderPipeline.getPassShaders())).toEqual(["BufferA", "BufferB", "Image"]);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.DestroyShader.mock.calls[0][0]).toBe(previousImageShader);
+    });
+
+    it.each([
+      { stage: "vertex allocation", mErrorType: 0, message: "Failed to create vertex shader" },
+      { stage: "vertex compile", mErrorType: 0, message: "mesh vertex failed" },
+      { stage: "fragment compile", mErrorType: 1, message: "mesh fragment failed" },
+      { stage: "link", mErrorType: 2, message: "mesh link failed" },
+    ])("rolls back a mixed generation when BufferB $stage fails", async ({ mErrorType, message }) => {
+      const previousImageShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(previousImageShader);
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
+        null,
+        "mixed.glsl",
+      );
+      const previousShaders = shaderPipeline.getPassShaders();
+      const nextBufferAShader = createMockShader();
+      const failedBufferBShader = {
+        mProgram: null,
+        mResult: false,
+        mInfo: message,
+        mHeaderLines: 0,
+        mErrorType,
+      } as PiShader;
+      mockShaderCompiler.compileShaderAsync
+        .mockResolvedValueOnce(nextBufferAShader)
+        .mockResolvedValueOnce(failedBufferBShader);
+      const bufferASource = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.1); }";
+      const bufferBSource = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.2); }";
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.3); }",
+        {
+          version: "1",
+          passes: {
+            BufferA: { path: "buffer-a.glsl", geometry: { type: "fullscreen" }, inputs: {} },
+            BufferB: { path: "buffer-b.glsl", geometry: { type: "sphere" }, inputs: {} },
+            Image: { geometry: { type: "fullscreen" }, inputs: {} },
+          },
+        },
+        "mixed.glsl",
+        { BufferA: bufferASource, BufferB: bufferBSource },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: [expect.stringContaining("BufferB")],
+      });
+      expect(shaderPipeline.getPassShaders()).toBe(previousShaders);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.DestroyShader.mock.calls[0][0]).toBe(nextBufferAShader);
+      expect(mockRenderer.DestroyShader.mock.calls[0][0]).not.toBe(previousImageShader);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(3);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenNthCalledWith(3, bufferBSource, {
+        geometry: "sphere",
+        commonCode: "",
+        slotAssignments: [],
+        channelTypes: ["2D", "2D", "2D", "2D"],
+        customUniformDeclarations: undefined,
+      });
     });
   });
 
@@ -1851,6 +2005,7 @@ describe("ShaderPipeline", () => {
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         expect.any(String),
         {
+          geometry: "fullscreen",
           commonCode: "",
           slotAssignments: [{ slot: 0, key: "myTexture", isCustomName: true }],
           channelTypes: expect.any(Array),

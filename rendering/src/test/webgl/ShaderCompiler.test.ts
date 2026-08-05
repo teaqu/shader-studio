@@ -705,7 +705,50 @@ describe("ShaderCompiler", () => {
     });
 
 
-    it("returns a fragment shader error and deletes resources when async fragment compilation fails", async () => {
+    it("returns a mesh vertex error and deletes resources when async vertex compilation fails", async () => {
+      vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const gl = createMockGl();
+      vi.mocked(gl.getShaderParameter).mockImplementation((shader: WebGLShader) => shader === gl.__fragmentShader);
+      vi.mocked(gl.getShaderInfoLog).mockImplementation((shader: WebGLShader) => (
+        shader === gl.__vertexShader ? "mesh vertex failed" : null
+      ));
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+
+      try {
+        const result = await compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+          { geometry: "sphere" },
+        );
+
+        expect(result).toMatchObject({
+          mProgram: null,
+          mResult: false,
+          mInfo: "mesh vertex failed",
+          mErrorType: 0,
+        });
+        expect(errorSpy).toHaveBeenCalledWith(
+          "[ShaderCompiler] async compile failure",
+          expect.objectContaining({
+            compileId: expect.any(Number),
+            stage: "vertex",
+            info: "mesh vertex failed",
+            glError: null,
+          }),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+      expect(gl.__shaderSources[0]).toContain("layout(location = 0) in vec3 position;");
+      expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
+      expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
+      expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
+    });
+
+    it("returns a mesh fragment error and deletes resources when async fragment compilation fails", async () => {
       vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
         callback(0);
         return 1;
@@ -719,7 +762,10 @@ describe("ShaderCompiler", () => {
       const compiler = new ShaderCompiler(mockRenderer, gl);
 
       try {
-        const result = await compiler.compileShaderAsync("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}");
+        const result = await compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+          { geometry: "sphere" },
+        );
 
         expect(result).toMatchObject({
           mProgram: null,
@@ -742,25 +788,83 @@ describe("ShaderCompiler", () => {
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
       expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
+      expect(gl.__shaderSources[1]).toContain("in vec3 iNormal;");
     });
 
-    it("returns an error instead of throwing when async vertex shader allocation fails", async () => {
+    it("returns an error instead of throwing when async mesh vertex shader allocation fails", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const gl = createMockGl();
       vi.mocked(gl.createShader).mockImplementation((type: number) => (
         type === gl.VERTEX_SHADER ? null : gl.__fragmentShader
       ));
       const compiler = new ShaderCompiler(mockRenderer, gl);
 
-      const result = await compiler.compileShaderAsync("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}");
+      try {
+        const result = await compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+          { geometry: "sphere" },
+        );
 
-      expect(result).toMatchObject({
-        mProgram: null,
-        mResult: false,
-        mInfo: "Failed to create vertex shader",
-        mErrorType: 0,
-      });
+        expect(result).toMatchObject({
+          mProgram: null,
+          mResult: false,
+          mInfo: "Failed to create vertex shader",
+          mErrorType: 0,
+        });
+        expect(errorSpy).toHaveBeenCalledWith(
+          "[ShaderCompiler] async compile failure",
+          expect.objectContaining({
+            stage: "vertex-allocation",
+            info: "Failed to create vertex shader",
+          }),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
       expect(gl.shaderSource).not.toHaveBeenCalled();
       expect(gl.createProgram).not.toHaveBeenCalled();
+    });
+
+    it("returns a mesh link error and deletes resources when async linking fails", async () => {
+      vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const gl = createMockGl();
+      vi.mocked(gl.getProgramParameter).mockImplementation((_program: WebGLProgram, param: number) => (
+        param === KHR_COMPLETION_STATUS
+      ));
+      vi.mocked(gl.getProgramInfoLog).mockReturnValue("mesh link failed");
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+
+      try {
+        const result = await compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+          { geometry: "sphere" },
+        );
+
+        expect(result).toMatchObject({
+          mProgram: null,
+          mResult: false,
+          mInfo: "mesh link failed",
+          mErrorType: 2,
+        });
+        expect(errorSpy).toHaveBeenCalledWith(
+          "[ShaderCompiler] async compile failure",
+          expect.objectContaining({
+            compileId: expect.any(Number),
+            stage: "link",
+            info: "mesh link failed",
+            glError: null,
+          }),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+      expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
+      expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
+      expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
     });
 
     it("aborts async compile when KHR completion does not finish within timeout", async () => {
