@@ -293,11 +293,14 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshSpecificShaderByPath",
-        (shaderPath: string) => {
+        (
+          shaderPath: string,
+          options?: { claimActiveAnalysisContext?: boolean },
+        ) => {
           this.logger.info(
             `shader-studio.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
           );
-          this.refreshSpecificShaderByPath(shaderPath);
+          this.refreshSpecificShaderByPath(shaderPath, options);
         },
       ),
     );
@@ -495,6 +498,7 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
+      this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
       this.shaderProvider.sendShaderFromEditor(activeEditor, { reload: true });
     } else {
       // Only fall back to the last viewed file if it is currently open in VS Code.
@@ -507,6 +511,7 @@ export class ShaderStudio {
         this.logger.info(
           `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
         );
+        this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
         // Use sendShaderFromPath to avoid switching focus
         await this.shaderProvider.sendShaderFromPath(lastViewedFile, { reload: true });
       } else {
@@ -515,7 +520,10 @@ export class ShaderStudio {
     }
   }
 
-  private async refreshSpecificShaderByPath(shaderPath: string): Promise<void> {
+  private async refreshSpecificShaderByPath(
+    shaderPath: string,
+    options?: { claimActiveAnalysisContext?: boolean },
+  ): Promise<void> {
     this.logger.info(`Refreshing shader by path: ${shaderPath}`);
 
     try {
@@ -528,7 +536,10 @@ export class ShaderStudio {
 
       // Always read from file to avoid switching focus
       this.logger.info(`Sending shader from path: ${shaderPath}`);
-      this.glslFileTracker.setLastViewedGlslFile(shaderPath);
+      if (options?.claimActiveAnalysisContext) {
+        this.glslFileTracker.setLastViewedGlslFile(shaderPath);
+        this.shaderProvider.claimActiveAnalysisContext(shaderPath);
+      }
       await this.shaderProvider.sendShaderFromPath(shaderPath, { reload: true });
     } catch (error) {
       this.logger.error(

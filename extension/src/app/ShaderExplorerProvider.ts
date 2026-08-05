@@ -627,6 +627,7 @@ export class ShaderExplorerProvider {
       await vscode.commands.executeCommand(
         "shader-studio.refreshSpecificShaderByPath",
         shaderPath,
+        { claimActiveAnalysisContext: true },
       );
     } catch (error) {
       vscode.window.showErrorMessage(

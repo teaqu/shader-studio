@@ -1,4 +1,8 @@
-import { GLSL_STABLE_DECLARATION_LINES, glslSamplerType } from "@shader-studio/types";
+import {
+  buildGlslCompatibilityUniformDeclarationLines,
+  GLSL_STABLE_DECLARATION_LINES,
+  glslSamplerType,
+} from "@shader-studio/types";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
 
@@ -25,34 +29,14 @@ export class ShaderCompiler {
   ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelDeclarations = this.buildChannelDeclarations(slotAssignments, types);
+    const compatibilityDeclarations = buildGlslCompatibilityUniformDeclarationLines(
+      Array.from({ length: 4 }, (_, slot) => glslSamplerType(types[slot] ?? '2D')),
+    ).join("\n");
 
     let header = `
 ${GLSL_STABLE_DECLARATION_LINES.join("\n")}
 ${channelDeclarations}
-uniform struct {
-  ${glslSamplerType(types[0])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh0;
-uniform struct {
-  ${glslSamplerType(types[1])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh1;
-uniform struct {
-  ${glslSamplerType(types[2])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh2;
-uniform struct {
-  ${glslSamplerType(types[3])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh3;
+${compatibilityDeclarations}
 `;
 
     if (customUniformDeclarations) {

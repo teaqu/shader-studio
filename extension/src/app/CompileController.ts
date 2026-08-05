@@ -46,7 +46,7 @@ export class CompileController {
     this.glslFileTracker.setLastViewedGlslFile(shaderPath);
 
     if (this.compileMode === "hot" || switchedShader) {
-      this.performShaderUpdate(editor);
+      this.performShaderUpdate(editor, true);
     }
 
     this.lastActiveGlslPath = shaderPath;
@@ -56,7 +56,9 @@ export class CompileController {
     event: vscode.TextDocumentChangeEvent,
   ): void {
     if (isShaderDocument(event.document)) {
-      this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
+      if (vscode.window.activeTextEditor?.document.uri.fsPath === event.document.uri.fsPath) {
+        this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
+      }
       if (this.compileMode === "hot") {
         this.performShaderDocumentUpdate(event.document);
       }
@@ -77,13 +79,18 @@ export class CompileController {
     }
 
     if (isShaderDocument(document)) {
-      this.glslFileTracker.setLastViewedGlslFile(document.uri.fsPath);
+      const isActiveDocument = (
+        vscode.window.activeTextEditor?.document.uri.fsPath === document.uri.fsPath
+      );
+      if (isActiveDocument) {
+        this.glslFileTracker.setLastViewedGlslFile(document.uri.fsPath);
+      }
       const visibleEditor = visibleTextEditors.find(
         (editor) => editor.document.uri.fsPath === document.uri.fsPath,
       );
 
       if (visibleEditor && this.glslFileTracker.isGlslEditor(visibleEditor)) {
-        this.performShaderUpdate(visibleEditor);
+        this.performShaderUpdate(visibleEditor, isActiveDocument);
       } else if (this.messenger.hasActiveClients()) {
         void this.shaderProvider.sendShaderFromPath(document.uri.fsPath);
       }
@@ -108,12 +115,14 @@ export class CompileController {
 
     if (targetEditor && this.glslFileTracker.isGlslEditor(targetEditor)) {
       this.glslFileTracker.setLastViewedGlslFile(targetEditor.document.uri.fsPath);
+      this.shaderProvider.claimActiveAnalysisContext(targetEditor.document.uri.fsPath);
       await this.shaderProvider.sendShaderFromEditor(targetEditor);
       return;
     }
 
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
     if (lastViewedFile) {
+      this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
       await this.shaderProvider.sendShaderFromPath(lastViewedFile);
       return;
     }
@@ -130,8 +139,11 @@ export class CompileController {
     return stored === "save" || stored === "manual" ? stored : "hot";
   }
 
-  private performShaderUpdate(editor: vscode.TextEditor): void {
+  private performShaderUpdate(editor: vscode.TextEditor, claimActiveAnalysisContext: boolean): void {
     if (this.messenger.hasActiveClients()) {
+      if (claimActiveAnalysisContext) {
+        this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
+      }
       void this.shaderProvider.sendShaderFromEditor(editor);
     }
   }

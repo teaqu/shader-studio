@@ -1,5 +1,6 @@
 import * as path from 'path';
 import {
+  buildGlslCompatibilityUniformDeclarationLines,
   GLSL_STABLE_DECLARATION_LINES,
   GLSL_STABLE_NAMES,
   resolveGlslInputBindings,
@@ -113,14 +114,7 @@ export function buildShaderValidatorPreamble(
     ...aliasLines,
     `uniform vec3 iChannelResolution[${channelCount}];`,
     '',
-    ...Array.from({ length: 4 }, (_, slot) => [
-      'uniform struct {',
-      `  ${slotTypes[slot]} sampler;`,
-      '  vec3 size;',
-      '  float time;',
-      '  int loaded;',
-      `} iCh${slot};`,
-    ]).flat(),
+    ...buildGlslCompatibilityUniformDeclarationLines(slotTypes),
   ];
   const customLines = customUniformLines(snapshot.customUniformDeclarations, ownedNames, warnings);
   if (customLines.length > 0) {

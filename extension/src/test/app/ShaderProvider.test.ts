@@ -691,6 +691,17 @@ suite('ShaderProvider Test Suite', () => {
   suite('preamble preparation', () => {
     const mainImageCode = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
 
+    function deferred<T>(): {
+      promise: Promise<T>;
+      resolve: (value: T) => void;
+      } {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((resolver) => {
+        resolve = resolver;
+      });
+      return { promise, resolve };
+    }
+
     function editorFor(filePath: string, code: string, languageId = 'glsl'): vscode.TextEditor {
       return {
         document: {
@@ -704,6 +715,15 @@ suite('ShaderProvider Test Suite', () => {
       } as any;
     }
 
+    async function sendForegroundShaderFromEditor(
+      filePath: string,
+      code: string,
+      languageId = 'glsl',
+    ): Promise<void> {
+      provider.claimActiveAnalysisContext(filePath);
+      await provider.sendShaderFromEditor(editorFor(filePath, code, languageId));
+    }
+
     function stubSuccessfulScript(declarations: string): sinon.SinonStub {
       sandbox.stub((provider as any).scriptBundler, 'bundle').resolves({
         success: true,
@@ -714,6 +734,174 @@ suite('ShaderProvider Test Suite', () => {
         uniforms: [],
       });
     }
+
+    test('keeps an explicitly claimed Buffer active across a background document edit', async () => {
+      const activeRoot = '/workspace/active-document-root.glsl';
+      const activeBuffer = '/workspace/active-document-buffer.glsl';
+      const backgroundRoot = '/workspace/background-document.glsl';
+      const activeConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: './active-document-buffer.glsl' },
+        },
+      };
+      const backgroundConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: { background: { type: 'texture' } } } },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(activeRoot, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => (
+        shaderPath === backgroundRoot ? backgroundConfig : activeConfig
+      ));
+
+      provider.claimActiveAnalysisContext(activeRoot);
+      await provider.sendShaderFromEditor(editorFor(activeRoot, mainImageCode));
+      provider.claimActiveAnalysisContext(activeBuffer);
+      await provider.sendShaderFromEditor(editorFor(activeBuffer, 'void renderBuffer() {}'));
+      onPreamblePreparation.resetHistory();
+
+      await provider.sendShaderFromDocument({
+        ...editorFor(backgroundRoot, mainImageCode).document,
+        lineCount: 1,
+      });
+
+      sinon.assert.notCalled(onPreamblePreparation);
+
+      await provider.sendShaderFromPath(activeRoot);
+
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.strictEqual(onPreamblePreparation.firstCall.args[0].snapshot.shaderPath, activeRoot);
+      assert.strictEqual(onPreamblePreparation.firstCall.args[0].snapshot.passName, 'BufferA');
+    });
+
+    test('latches an explicit foreground path activation before later background refreshes', async () => {
+      const foregroundRoot = '/workspace/path-foreground.glsl';
+      const backgroundRoot = '/workspace/path-background.glsl';
+      const foregroundInputs = { foreground: { type: 'cubemap' } };
+      const backgroundInputs = { background: { type: 'texture' } };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(foregroundRoot, 'utf-8').returns(mainImageCode);
+      readFile.withArgs(backgroundRoot, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => ({
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: shaderPath === foregroundRoot ? foregroundInputs : backgroundInputs,
+          },
+        },
+      }));
+
+      provider.claimActiveAnalysisContext(foregroundRoot);
+      await provider.sendShaderFromPath(foregroundRoot);
+      onPreamblePreparation.resetHistory();
+
+      await provider.sendShaderFromPath(backgroundRoot);
+      sinon.assert.notCalled(onPreamblePreparation);
+
+      await provider.sendShaderFromPath(foregroundRoot);
+
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.deepStrictEqual(
+        onPreamblePreparation.firstCall.args[0].snapshot.inputs,
+        foregroundInputs,
+      );
+    });
+
+    test('keeps active analysis contexts independent between workspace folders', async () => {
+      const firstRoot = '/first/active.glsl';
+      const secondRoot = '/second/active.glsl';
+      const firstFolder = {
+        uri: vscode.Uri.file('/first'),
+        name: 'first',
+        index: 0,
+      };
+      const secondFolder = {
+        uri: vscode.Uri.file('/second'),
+        name: 'second',
+        index: 1,
+      };
+      sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((uri: vscode.Uri) => (
+        uri.fsPath.startsWith('/second') ? secondFolder : firstFolder
+      ));
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(firstRoot, 'utf-8').returns(mainImageCode);
+      readFile.withArgs(secondRoot, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => ({
+        version: '1.0',
+        passes: { Image: { inputs: { [shaderPath]: { type: 'texture' } } } },
+      }));
+
+      provider.claimActiveAnalysisContext(firstRoot);
+      await provider.sendShaderFromPath(firstRoot);
+      provider.claimActiveAnalysisContext(secondRoot);
+      await provider.sendShaderFromPath(secondRoot);
+      onPreamblePreparation.resetHistory();
+
+      await provider.sendShaderFromPath(firstRoot);
+      await provider.sendShaderFromPath(secondRoot);
+
+      sinon.assert.calledTwice(onPreamblePreparation);
+      assert.strictEqual(onPreamblePreparation.firstCall.args[0].snapshot.shaderPath, firstRoot);
+      assert.strictEqual(onPreamblePreparation.secondCall.args[0].snapshot.shaderPath, secondRoot);
+    });
+
+    test('discards an obsolete same-root script preparation that completes last', async () => {
+      const shaderPath = '/workspace/concurrent.glsl';
+      const config = {
+        version: '1.0',
+        script: './uniforms.ts',
+        passes: { Image: {} },
+      };
+      const olderBundle = deferred<{ success: boolean; code: string }>();
+      const newerBundle = deferred<{ success: boolean; code: string }>();
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('{}');
+      loadAndProcessConfigStub.returns(config);
+      const bundle = sandbox.stub((provider as any).scriptBundler, 'bundle');
+      bundle.onFirstCall().returns(olderBundle.promise);
+      bundle.onSecondCall().returns(newerBundle.promise);
+      const loadScript = sandbox.stub((provider as any).scriptEvaluator, 'loadScript');
+      loadScript.callsFake((...args: unknown[]) => ({
+        declarations: args[0] === 'new bundle'
+          ? 'uniform float newest;'
+          : 'uniform float obsolete;',
+        uniforms: [],
+      }));
+
+      provider.claimActiveAnalysisContext(shaderPath);
+      const olderSend = provider.sendShaderFromEditor(editorFor(shaderPath, `${mainImageCode}\n// old`));
+      const newerSend = provider.sendShaderFromEditor(editorFor(shaderPath, `${mainImageCode}\n// new`));
+
+      newerBundle.resolve({ success: true, code: 'new bundle' });
+      await newerSend;
+      olderBundle.resolve({ success: true, code: 'old bundle' });
+      await olderSend;
+
+      sinon.assert.calledOnceWithExactly(loadScript, 'new bundle', '/workspace/uniforms.ts');
+      sinon.assert.calledOnce(sendSpy);
+      assert.match(sendSpy.firstCall.args[0].code, /\/\/ new/);
+      assert.strictEqual(
+        sendSpy.firstCall.args[0].customUniformDeclarations,
+        'uniform float newest;',
+      );
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.strictEqual(
+        onPreamblePreparation.firstCall.args[0].snapshot.customUniformDeclarations,
+        'uniform float newest;',
+      );
+    });
 
     test('emits the active Image inputs, paths, and evaluated custom declarations', async () => {
       const shaderPath = '/workspace/shader.glsl';
@@ -732,7 +920,7 @@ suite('ShaderProvider Test Suite', () => {
       loadAndProcessConfigStub.returns(config);
       stubSuccessfulScript('uniform float exposure;');
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
 
       sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
         kind: 'valid',
@@ -767,9 +955,9 @@ suite('ShaderProvider Test Suite', () => {
       loadAndProcessConfigStub.returns(config);
       const loadScript = stubSuccessfulScript('uniform vec3 tint;');
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
       onPreamblePreparation.resetHistory();
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
 
       sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
         kind: 'valid',
@@ -804,8 +992,9 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'readFileSync').returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
       onPreamblePreparation.resetHistory();
+      provider.claimActiveAnalysisContext(commonPath);
       await provider.sendShaderFromDocument({
         ...editorFor(commonPath, 'float helper() { return 1.0; }').document,
         lineCount: 1,
@@ -818,54 +1007,6 @@ suite('ShaderProvider Test Suite', () => {
           configPath: '/workspace/shader.sha.json',
           passName: 'common',
           inputs,
-          customUniformDeclarations: '',
-        },
-      });
-    });
-
-    test('uses the most recently active root when two roots own one shared pass file', async () => {
-      const rootA = '/workspace/root-a.glsl';
-      const rootB = '/workspace/root-b.glsl';
-      const sharedPath = '/workspace/shared.glsl';
-      const rootAInputs = {
-        fromRootA: { type: 'texture', path: './a.png' },
-      };
-      const rootBInputs = {
-        fromRootB: { type: 'cubemap', path: './b.png' },
-      };
-      const rootAConfig = {
-        version: '1.0',
-        passes: {
-          Image: {},
-          BufferA: { path: './shared.glsl', inputs: rootAInputs },
-        },
-      };
-      const rootBConfig = {
-        version: '1.0',
-        passes: {
-          Image: {},
-          common: { path: './shared.glsl', inputs: rootBInputs },
-        },
-      };
-      const fs = require('fs');
-      sandbox.stub(fs, 'existsSync').returns(true);
-      sandbox.stub(fs, 'readFileSync').returns('{}');
-      loadAndProcessConfigStub.callsFake((shaderPath: string) => (
-        shaderPath === rootB ? rootBConfig : rootAConfig
-      ));
-
-      await provider.sendShaderFromEditor(editorFor(rootA, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(rootB, mainImageCode));
-      onPreamblePreparation.resetHistory();
-      await provider.sendShaderFromEditor(editorFor(sharedPath, 'float sharedHelper() { return 1.0; }'));
-
-      sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
-        kind: 'valid',
-        snapshot: {
-          shaderPath: rootB,
-          configPath: '/workspace/root-b.sha.json',
-          passName: 'common',
-          inputs: rootBInputs,
           customUniformDeclarations: '',
         },
       });
@@ -886,7 +1027,7 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'readFileSync').returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
 
       assert.deepStrictEqual(onPreamblePreparation.firstCall.args[0].snapshot.inputs, inputs);
     });
@@ -897,7 +1038,7 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(false);
       loadAndProcessConfigStub.returns(null);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
 
       sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
         kind: 'valid',
@@ -919,7 +1060,7 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'readFileSync').throws(new Error('malformed config'));
       loadAndProcessConfigStub.returns(null);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
 
       sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
         kind: 'invalid',
@@ -944,8 +1085,8 @@ suite('ShaderProvider Test Suite', () => {
       readFile.returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(commonPath, 'float helper() { return 1.0; }'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(commonPath, 'float helper() { return 1.0; }');
       onPreamblePreparation.resetHistory();
       loadAndProcessConfigStub.returns(null);
 
@@ -978,8 +1119,8 @@ suite('ShaderProvider Test Suite', () => {
       readFile.returns('{}');
       loadAndProcessConfigStub.returns(ownedConfig);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
       onPreamblePreparation.resetHistory();
       loadAndProcessConfigStub.returns(configWithoutOwner);
 
@@ -1019,14 +1160,14 @@ suite('ShaderProvider Test Suite', () => {
         uniforms: [],
       });
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
       loadAndProcessConfigStub.returns(null);
       await provider.sendShaderFromPath(shaderPath);
       onPreamblePreparation.resetHistory();
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
 
       sinon.assert.calledOnce(onPreamblePreparation);
       assert.strictEqual(
@@ -1061,7 +1202,7 @@ suite('ShaderProvider Test Suite', () => {
           });
         }
 
-        await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+        await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
 
         sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
           kind: 'invalid',
@@ -1108,10 +1249,10 @@ suite('ShaderProvider Test Suite', () => {
         error: 'evaluation failed',
       });
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
       await provider.sendShaderFromPath(shaderPath);
       onPreamblePreparation.resetHistory();
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
 
       assert.strictEqual(
         onPreamblePreparation.firstCall.args[0].snapshot.customUniformDeclarations,
@@ -1140,7 +1281,7 @@ suite('ShaderProvider Test Suite', () => {
       loadScript.onFirstCall().returns({ declarations: 'uniform float before;', uniforms: [] });
       loadScript.onSecondCall().returns({ declarations: 'uniform float after;', uniforms: [] });
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
       onPreamblePreparation.resetHistory();
       await provider.sendShaderWithScriptContent(shaderPath, 'export function uniforms() {}');
 
@@ -1158,7 +1299,7 @@ suite('ShaderProvider Test Suite', () => {
       sandbox.stub(fs, 'existsSync').returns(false);
       loadAndProcessConfigStub.returns(null);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode, 'slang'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode, 'slang');
 
       sinon.assert.notCalled(onPreamblePreparation);
       assert.strictEqual(sendSpy.firstCall.args[0].language, 'slang');
@@ -1182,9 +1323,9 @@ suite('ShaderProvider Test Suite', () => {
       readFile.returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
-      await provider.sendShaderFromEditor(editorFor(slangPath, mainImageCode, 'slang'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
+      await sendForegroundShaderFromEditor(slangPath, mainImageCode, 'slang');
       onPreamblePreparation.resetHistory();
       await provider.sendShaderFromPath(shaderPath);
 
@@ -1210,8 +1351,8 @@ suite('ShaderProvider Test Suite', () => {
       readFile.returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(bufferPath, 'void renderBuffer() {}');
       onPreamblePreparation.resetHistory();
       await provider.sendShaderFromPath(shaderPath);
 
@@ -1251,8 +1392,8 @@ suite('ShaderProvider Test Suite', () => {
       loadScript.onFirstCall().returns({ declarations: 'uniform float before;', uniforms: [] });
       loadScript.onSecondCall().returns({ declarations: 'uniform float after;', uniforms: [] });
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(commonPath, 'float helper() { return 1.0; }'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(commonPath, 'float helper() { return 1.0; }');
       onPreamblePreparation.resetHistory();
       await provider.sendShaderWithScriptContent(shaderPath, 'export function uniforms() {}');
 
@@ -1291,8 +1432,8 @@ suite('ShaderProvider Test Suite', () => {
         shaderPath === backgroundRoot ? backgroundConfig : activeConfig
       ));
 
-      await provider.sendShaderFromEditor(editorFor(activeRoot, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(activeBuffer, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(activeRoot, mainImageCode);
+      await sendForegroundShaderFromEditor(activeBuffer, 'void renderBuffer() {}');
       onPreamblePreparation.resetHistory();
       await provider.sendShaderFromPath(backgroundRoot);
 
@@ -1324,8 +1465,8 @@ suite('ShaderProvider Test Suite', () => {
       readFile.returns('{}');
       loadAndProcessConfigStub.returns(config);
 
-      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(activeBuffer, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(shaderPath, mainImageCode);
+      await sendForegroundShaderFromEditor(activeBuffer, 'void renderBuffer() {}');
       onPreamblePreparation.resetHistory();
       await provider.sendShaderFromPath(backgroundBuffer);
 
@@ -1374,15 +1515,15 @@ suite('ShaderProvider Test Suite', () => {
       loadScript.onFirstCall().returns({ declarations: 'uniform float before;', uniforms: [] });
       loadScript.onSecondCall().returns({ declarations: 'uniform float after;', uniforms: [] });
 
-      await provider.sendShaderFromEditor(editorFor(backgroundRoot, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(activeRoot, mainImageCode));
-      await provider.sendShaderFromEditor(editorFor(activeBuffer, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(backgroundRoot, mainImageCode);
+      await sendForegroundShaderFromEditor(activeRoot, mainImageCode);
+      await sendForegroundShaderFromEditor(activeBuffer, 'void renderBuffer() {}');
       onPreamblePreparation.resetHistory();
 
       await provider.sendShaderFromPath(backgroundRoot);
       sinon.assert.notCalled(onPreamblePreparation);
 
-      await provider.sendShaderFromEditor(editorFor(backgroundBuffer, 'void renderBuffer() {}'));
+      await sendForegroundShaderFromEditor(backgroundBuffer, 'void renderBuffer() {}');
       sinon.assert.calledOnce(onPreamblePreparation);
       assert.strictEqual(
         onPreamblePreparation.firstCall.args[0].snapshot.customUniformDeclarations,
@@ -1422,7 +1563,7 @@ suite('ShaderProvider Test Suite', () => {
         }
 
         await assert.doesNotReject(() => (
-          provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode))
+          sendForegroundShaderFromEditor(shaderPath, mainImageCode)
         ));
         await new Promise(resolve => setImmediate(resolve));
 

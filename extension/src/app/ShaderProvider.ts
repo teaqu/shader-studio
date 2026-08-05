@@ -26,6 +26,15 @@ interface ActivePreamblePass {
   passName: string;
 }
 
+interface ActiveAnalysisContext {
+  filePath: string;
+  pass: ActivePreamblePass | null;
+  preferredRootShaderPath: string | null;
+  generation: number;
+}
+
+const EXTENSION_HOST_CONTEXT_KEY = 'shader-studio:extension-host';
+
 export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
@@ -33,9 +42,9 @@ export class ShaderProvider {
   private getDebugModeEnabled: () => boolean;
   private scriptBundler = new ScriptBundler();
   private scriptEvaluator = new ScriptEvaluator();
-  private activePreambleFilePath: string | null = null;
-  private activePreamblePass: ActivePreamblePass | null = null;
-  private activeOwningRootShaderPath: string | null = null;
+  private readonly activeAnalysisContexts = new Map<string, ActiveAnalysisContext>();
+  private nextAnalysisContextGeneration = 1;
+  private readonly preparationGenerations = new Map<string, number>();
   private readonly customDeclarationsByShader = new Map<string, string>();
 
   constructor(
@@ -48,6 +57,24 @@ export class ShaderProvider {
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
     this.getDebugModeEnabled = getDebugModeEnabled || (() => false);
+  }
+
+  public claimActiveAnalysisContext(filePath: string): void {
+    if (getShaderLanguage(filePath) !== 'glsl') {
+      return;
+    }
+
+    const contextKey = this.resolveAnalysisContextKey(filePath);
+    const previous = this.activeAnalysisContexts.get(contextKey);
+    this.activeAnalysisContexts.set(contextKey, {
+      filePath,
+      pass: null,
+      preferredRootShaderPath:
+        previous?.pass?.shaderPath
+        ?? previous?.preferredRootShaderPath
+        ?? null,
+      generation: this.nextAnalysisContextGeneration++,
+    });
   }
 
   public async sendShaderFromEditor(
@@ -64,13 +91,6 @@ export class ShaderProvider {
 
     const code = editor.document.getText();
     const shaderPath = editor.document.uri.fsPath;
-    if (getShaderLanguage(shaderPath) === "glsl") {
-      this.activePreambleFilePath = shaderPath;
-      this.activePreamblePass = null;
-      if (code.includes("mainImage")) {
-        this.activeOwningRootShaderPath = shaderPath;
-      }
-    }
 
     // Clear stale persistent errors before re-evaluating the shader.
     // This ensures "file not found" errors from a previous load don't survive
@@ -141,13 +161,6 @@ export class ShaderProvider {
 
     const shaderPath = document.uri.fsPath;
     const code = document.getText();
-    if (getShaderLanguage(shaderPath) === "glsl") {
-      this.activePreambleFilePath = shaderPath;
-      this.activePreamblePass = null;
-      if (code.includes("mainImage")) {
-        this.activeOwningRootShaderPath = shaderPath;
-      }
-    }
 
     this.messenger.getErrorHandler().clearPersistentErrors();
 
@@ -188,6 +201,12 @@ export class ShaderProvider {
       return;
     }
 
+    const preparationGeneration = this.beginPreparation(shaderPath);
+    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
+    const isCurrentPreparation = () => (
+      this.isCurrentPreparation(shaderPath, preparationGeneration)
+    );
+
     try {
       if (!fs.existsSync(shaderPath)) {
         return;
@@ -213,8 +232,17 @@ export class ShaderProvider {
         bufferPathMap,
       };
 
-      await this.bundleScript(config, shaderPath, message, scriptContent);
-      this.emitActiveRootPreamble(shaderPath, config, message);
+      const prepared = await this.bundleScript(
+        config,
+        shaderPath,
+        message,
+        scriptContent,
+        isCurrentPreparation,
+      );
+      if (!prepared || !isCurrentPreparation()) {
+        return;
+      }
+      this.emitActiveRootPreamble(shaderPath, config, message, contextGeneration);
 
       this.messenger.send(message);
       this.startScriptPolling(config);
@@ -245,37 +273,42 @@ export class ShaderProvider {
     shaderPath: string,
     message: ShaderSourceMessage,
     scriptContent?: string,
-  ): Promise<void> {
+    isCurrentPreparation: () => boolean = () => true,
+  ): Promise<boolean> {
     const scriptPath = this.getScriptPath(config, shaderPath);
     if (!scriptPath) {
       this.scriptEvaluator.dispose();
-      return;
+      return isCurrentPreparation();
     }
 
     // When bundling from editor content, skip the file existence check
     if (scriptContent === undefined && !fs.existsSync(scriptPath)) {
       message.scriptBundleError = `Script file not found: ${config!.script}`;
       this.scriptEvaluator.dispose();
-      return;
+      return isCurrentPreparation();
     }
 
     const result = await this.scriptBundler.bundle(scriptPath, scriptContent);
+    if (!isCurrentPreparation()) {
+      return false;
+    }
     if (!result.success || !result.code) {
       message.scriptBundleError = result.error || "Unknown bundling error";
       this.scriptEvaluator.dispose();
-      return;
+      return true;
     }
 
     // Evaluate script in extension host (Node.js context) to get declarations
     const loadResult = this.scriptEvaluator.loadScript(result.code, scriptPath);
     if (loadResult.error) {
       message.scriptBundleError = loadResult.error;
-      return;
+      return true;
     }
 
     // Send declarations and type info (not the bundle) to the webview
     message.customUniformDeclarations = loadResult.declarations;
     message.customUniformInfo = loadResult.uniforms;
+    return true;
   }
 
   /**
@@ -382,6 +415,33 @@ export class ShaderProvider {
     return bufferPathMap;
   }
 
+  private resolveAnalysisContextKey(filePath: string): string {
+    try {
+      return vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath))?.uri.toString()
+        ?? EXTENSION_HOST_CONTEXT_KEY;
+    } catch {
+      return EXTENSION_HOST_CONTEXT_KEY;
+    }
+  }
+
+  private getActiveAnalysisContext(filePath: string): ActiveAnalysisContext | undefined {
+    return this.activeAnalysisContexts.get(this.resolveAnalysisContextKey(filePath));
+  }
+
+  private captureAnalysisContextGeneration(filePath: string): number | null {
+    return this.getActiveAnalysisContext(filePath)?.generation ?? null;
+  }
+
+  private beginPreparation(shaderPath: string): number {
+    const generation = (this.preparationGenerations.get(shaderPath) ?? 0) + 1;
+    this.preparationGenerations.set(shaderPath, generation);
+    return generation;
+  }
+
+  private isCurrentPreparation(shaderPath: string, generation: number): boolean {
+    return this.preparationGenerations.get(shaderPath) === generation;
+  }
+
   private resolveOwnedShaderPassForRoot(
     filePath: string,
     shaderPath: string,
@@ -396,18 +456,21 @@ export class ShaderProvider {
   }
 
   private resolveOwningShaderPass(filePath: string): OwnedShaderPass | null {
-    if (this.activeOwningRootShaderPath) {
-      const activeOwner = this.resolveOwnedShaderPassForRoot(
-        filePath,
-        this.activeOwningRootShaderPath,
-      );
-      if (activeOwner) {
-        return activeOwner;
+    const context = this.getActiveAnalysisContext(filePath);
+    const preferredRoot = context?.pass?.shaderPath ?? context?.preferredRootShaderPath;
+    if (preferredRoot) {
+      const preferredOwner = this.resolveOwnedShaderPassForRoot(filePath, preferredRoot);
+      if (preferredOwner) {
+        return preferredOwner;
       }
     }
 
+    const contextKey = this.resolveAnalysisContextKey(filePath);
     for (const shaderPath of this.activeShaders) {
-      if (shaderPath === this.activeOwningRootShaderPath) {
+      if (
+        shaderPath === preferredRoot
+        || this.resolveAnalysisContextKey(shaderPath) !== contextKey
+      ) {
         continue;
       }
       const owner = this.resolveOwnedShaderPassForRoot(filePath, shaderPath);
@@ -450,6 +513,11 @@ export class ShaderProvider {
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
   ): Promise<void> {
+    const preparationGeneration = this.beginPreparation(shaderPath);
+    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
+    const isCurrentPreparation = () => (
+      this.isCurrentPreparation(shaderPath, preparationGeneration)
+    );
     const buffers: Record<string, string> = {};
     const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
 
@@ -479,8 +547,17 @@ export class ShaderProvider {
       this.configChangeClassifier.recordSentConfig(configPath, null);
     }
 
-    await this.bundleScript(config, shaderPath, message);
-    this.emitActiveRootPreamble(shaderPath, config, message);
+    const prepared = await this.bundleScript(
+      config,
+      shaderPath,
+      message,
+      undefined,
+      isCurrentPreparation,
+    );
+    if (!prepared || !isCurrentPreparation()) {
+      return;
+    }
+    this.emitActiveRootPreamble(shaderPath, config, message, contextGeneration);
     this.messenger.send(message);
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
@@ -571,25 +648,29 @@ export class ShaderProvider {
   private resolveActivePassName(
     rootShaderPath: string,
     config: ShaderConfig | null,
+    context: ActiveAnalysisContext,
   ): string | null {
-    if (!this.activePreambleFilePath || this.activePreambleFilePath === rootShaderPath) {
+    if (context.filePath === rootShaderPath) {
       return "Image";
     }
     return Object.entries(this.buildBufferPathMap(config, rootShaderPath))
       .find(([passName, candidatePath]) => (
-        passName !== "Image" && candidatePath === this.activePreambleFilePath
+        passName !== "Image" && candidatePath === context.filePath
       ))?.[0] ?? null;
   }
 
-  private resolveRetainedActivePassName(rootShaderPath: string): string | null {
-    if (!this.activePreambleFilePath || this.activePreambleFilePath === rootShaderPath) {
+  private resolveRetainedActivePassName(
+    rootShaderPath: string,
+    context: ActiveAnalysisContext,
+  ): string | null {
+    if (context.filePath === rootShaderPath) {
       return "Image";
     }
     if (
-      this.activePreamblePass?.filePath === this.activePreambleFilePath
-      && this.activePreamblePass.shaderPath === rootShaderPath
+      context.pass?.filePath === context.filePath
+      && context.pass.shaderPath === rootShaderPath
     ) {
-      return this.activePreamblePass.passName;
+      return context.pass.passName;
     }
     return null;
   }
@@ -598,6 +679,7 @@ export class ShaderProvider {
     shaderPath: string,
     config: ShaderConfig | null,
     message: ShaderSourceMessage,
+    expectedContextGeneration: number | null,
   ): void {
     if (getShaderLanguage(shaderPath) !== "glsl" || !this.onPreamblePreparation) {
       return;
@@ -613,21 +695,31 @@ export class ShaderProvider {
       );
     }
 
+    const context = this.getActiveAnalysisContext(shaderPath);
+    if (
+      expectedContextGeneration === null
+      || !context
+      || context.generation !== expectedContextGeneration
+    ) {
+      return;
+    }
+
     const passName = configInvalid
-      ? this.resolveRetainedActivePassName(shaderPath)
-      : this.resolveActivePassName(shaderPath, config);
+      ? this.resolveRetainedActivePassName(shaderPath, context)
+      : this.resolveActivePassName(shaderPath, config, context);
     if (!passName) {
-      if (config && this.activePreamblePass?.shaderPath === shaderPath) {
-        this.activePreamblePass = null;
+      if (config && context.pass?.shaderPath === shaderPath) {
+        context.pass = null;
       }
       return;
     }
 
-    this.activePreamblePass = {
-      filePath: this.activePreambleFilePath ?? shaderPath,
+    context.pass = {
+      filePath: context.filePath,
       shaderPath,
       passName,
     };
+    context.preferredRootShaderPath = shaderPath;
     this.emitPreamblePreparation(
       shaderPath,
       config,
@@ -638,15 +730,16 @@ export class ShaderProvider {
   }
 
   private emitOwnedPassPreamble(owner: OwnedShaderPass, filePath: string): void {
-    if (this.activePreambleFilePath !== filePath) {
+    const context = this.getActiveAnalysisContext(filePath);
+    if (!context || context.filePath !== filePath) {
       return;
     }
-    this.activeOwningRootShaderPath = owner.shaderPath;
-    this.activePreamblePass = {
+    context.pass = {
       filePath,
       shaderPath: owner.shaderPath,
       passName: owner.passName,
     };
+    context.preferredRootShaderPath = owner.shaderPath;
     this.emitPreamblePreparation(
       owner.shaderPath,
       owner.config,

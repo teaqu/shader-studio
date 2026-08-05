@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGlslCompatibilityUniformDeclarationLines,
   GLSL_STABLE_DECLARATION_LINES,
   GLSL_STABLE_NAMES,
   glslSamplerType,
@@ -45,6 +46,42 @@ describe("GLSL shader environment", () => {
       samplerType: "sampler2D",
     });
     expect(bindings[1]?.samplerType).toBe("samplerCube");
+    expect(bindings[15]?.key).toBe("iChannel15");
+    expect(bindings.map(({ key }) => key)).not.toContain("iChannel16");
+    expect(bindings.map(({ key }) => key)).not.toContain("iChannel17");
+  });
+
+  it("builds the complete renderer-compatible anonymous uniform structs", () => {
+    expect(buildGlslCompatibilityUniformDeclarationLines([
+      "samplerCube",
+      "sampler2D",
+      "sampler3D",
+    ])).toEqual([
+      "uniform struct {",
+      "  samplerCube sampler;",
+      "  vec3 size;",
+      "  float time;",
+      "  int loaded;",
+      "} iCh0;",
+      "uniform struct {",
+      "  sampler2D sampler;",
+      "  vec3 size;",
+      "  float time;",
+      "  int loaded;",
+      "} iCh1;",
+      "uniform struct {",
+      "  sampler3D sampler;",
+      "  vec3 size;",
+      "  float time;",
+      "  int loaded;",
+      "} iCh2;",
+      "uniform struct {",
+      "  sampler2D sampler;",
+      "  vec3 size;",
+      "  float time;",
+      "  int loaded;",
+      "} iCh3;",
+    ]);
   });
 
   it("maps renderer channel types without changing sampler spelling", () => {

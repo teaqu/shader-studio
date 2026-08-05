@@ -291,6 +291,7 @@ suite('Shader Studio Test Suite', () => {
     (editor.document.getText as sinon.SinonStub).returns(
       'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}',
     );
+    shaderStudio['shaderProvider'].claimActiveAnalysisContext(editor.document.uri.fsPath);
     await shaderStudio['shaderProvider'].sendShaderFromEditor(editor);
 
     sinon.assert.calledOnce(preambleApplyStub);
@@ -601,6 +602,34 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
     sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { reload: true });
+  });
+
+  test('foreground path activation claims analysis ownership before refreshing', async () => {
+    const shaderPath = '/mock/path/foreground.glsl';
+    const claim = sandbox.spy(shaderStudio['shaderProvider'], 'claimActiveAnalysisContext');
+    const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath, {
+      claimActiveAnalysisContext: true,
+    });
+
+    sinon.assert.calledOnceWithExactly(claim, shaderPath);
+    sinon.assert.callOrder(claim, send);
+  });
+
+  test('background specific-path refresh preserves active shader tracking and analysis ownership', async () => {
+    const shaderPath = '/mock/path/background.glsl';
+    const activeShaderPath = '/mock/path/active.glsl';
+    const claim = sandbox.spy(shaderStudio['shaderProvider'], 'claimActiveAnalysisContext');
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(activeShaderPath);
+
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath);
+
+    sinon.assert.notCalled(claim);
+    assert.strictEqual(
+      shaderStudio['glslFileTracker'].getLastViewedGlslFile(),
+      activeShaderPath,
+    );
   });
 
   test('refreshCurrentShader should call sendShaderFromPath when last viewed file is currently open', async () => {

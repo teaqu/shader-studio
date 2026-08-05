@@ -38,6 +38,19 @@ export function glslSamplerType(type: "2D" | "Cube" | "3D"): GlslSamplerType {
   return type === "Cube" ? "samplerCube" : type === "3D" ? "sampler3D" : "sampler2D";
 }
 
+export function buildGlslCompatibilityUniformDeclarationLines(
+  samplerTypes: readonly GlslSamplerType[] = [],
+): string[] {
+  return Array.from({ length: 4 }, (_, slot) => [
+    "uniform struct {",
+    `  ${samplerTypes[slot] ?? "sampler2D"} sampler;`,
+    "  vec3 size;",
+    "  float time;",
+    "  int loaded;",
+    `} iCh${slot};`,
+  ]).flat();
+}
+
 export function resolveGlslInputBindings(
   inputs: Readonly<Record<string, GlslInputLike>> = {},
 ): GlslInputBinding[] {

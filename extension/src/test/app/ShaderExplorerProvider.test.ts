@@ -1499,6 +1499,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       executeCommandStub.withArgs(
         'shader-studio.refreshSpecificShaderByPath',
         '/test/shader.glsl',
+        { claimActiveAnalysisContext: true },
       ).resolves();
 
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
@@ -1511,6 +1512,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(executeCommandStub.calledWith(
         'shader-studio.refreshSpecificShaderByPath',
         '/test/shader.glsl',
+        { claimActiveAnalysisContext: true },
       ));
     });
 
@@ -1521,6 +1523,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       executeCommandStub.withArgs(
         'shader-studio.refreshSpecificShaderByPath',
         '/test/shader.glsl',
+        { claimActiveAnalysisContext: true },
       ).resolves();
 
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
@@ -1532,6 +1535,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(executeCommandStub.calledWith(
         'shader-studio.refreshSpecificShaderByPath',
         '/test/shader.glsl',
+        { claimActiveAnalysisContext: true },
       ));
     });
 

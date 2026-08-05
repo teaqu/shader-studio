@@ -111,6 +111,55 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform samplerCube environment;");
     });
 
+    it("declares renderer compatibility values for every public field expression", () => {
+      const code = `
+        void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+          vec4 sampled = texture(iCh0.sampler, vec3(0.0));
+          vec3 channelSize = iCh1.size;
+          float channelTime = iCh2.time;
+          int channelLoaded = iCh3.loaded;
+          fragColor = sampled + vec4(channelSize, channelTime) + float(channelLoaded);
+        }
+      `;
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(
+        code,
+        undefined,
+        undefined,
+        ["Cube", "2D", "3D", "2D"],
+      );
+
+      expect(wrappedCode).toContain([
+        "uniform struct {",
+        "  samplerCube sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh0;",
+        "uniform struct {",
+        "  sampler2D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh1;",
+        "uniform struct {",
+        "  sampler3D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh2;",
+        "uniform struct {",
+        "  sampler2D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh3;",
+      ].join("\n"));
+      expect(wrappedCode).toContain("texture(iCh0.sampler, vec3(0.0))");
+      expect(wrappedCode).toContain("vec3 channelSize = iCh1.size;");
+      expect(wrappedCode).toContain("float channelTime = iCh2.time;");
+      expect(wrappedCode).toContain("int channelLoaded = iCh3.loaded;");
+    });
+
     it("should always inject all uniforms regardless of user declarations (Like ShaderToy)", () => {
       const code = `
         uniform vec4 iMouse;

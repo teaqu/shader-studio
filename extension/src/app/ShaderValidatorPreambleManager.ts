@@ -208,7 +208,9 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
       this.notifiedConflictWorkspaces.add(workspaceKey);
       try {
         await this.deps.showInformationMessage(
-          `Shader Validator already has a GLSL preamble configured for ${folder.name}; Shader Studio left it unchanged.`,
+          `Shader Validator already has a GLSL preamble configured for ${folder.name}; `
+            + `Shader Studio left it unchanged. To use Shader Studio's generated preamble, `
+            + `manually set shader-validator.glsl.preamble to ${MANAGED_PREAMBLE_SETTING}.`,
         );
       } catch (error) {
         this.notifiedConflictWorkspaces.delete(workspaceKey);

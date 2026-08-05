@@ -219,6 +219,21 @@ suite('Shader Validator preamble manager', () => {
     sinon.assert.notCalled(configuration.update);
   });
 
+  test('explains how to manually select the generated preamble after a setting conflict', async () => {
+    configuration.inspect.returns(inspectWith({ workspaceValue: '/workspace/user-preamble.glsl' }));
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledOnceWithExactly(
+      showInformationMessage,
+      'Shader Validator already has a GLSL preamble configured for workspace; '
+        + 'Shader Studio left it unchanged. To use Shader Studio\'s generated preamble, '
+        + 'manually set shader-validator.glsl.preamble to '
+        + '${workspaceFolder}/.vscode/shader-studio-preamble.glsl.',
+    );
+  });
+
   test('tracks existing-setting notifications independently for each workspace', async () => {
     const secondFolder = {
       uri: vscode.Uri.file('/second'),
