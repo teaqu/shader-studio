@@ -4,6 +4,7 @@ import * as sinon from 'sinon';
 import {
   SHADER_VALIDATOR_EXTENSION_ID,
   SHADER_VALIDATOR_PREAMBLE_SETTING,
+  SHADER_VALIDATOR_SPIRV_VERSION_SETTING,
   SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
   ShaderValidatorPreambleManager,
 } from '../../app/ShaderValidatorPreambleManager';
@@ -151,6 +152,25 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_TARGET_CLIENT_SETTING,
       'OpenGL450',
+      vscode.ConfigurationTarget.Workspace,
+    );
+  });
+
+  test('disables SPIR-V when configuring Shader Validator for WebGL-style uniforms', async () => {
+    configuration.inspect.withArgs(SHADER_VALIDATOR_TARGET_CLIENT_SETTING).returns(
+      inspectWith({ defaultValue: 'Vulkan1_3' }),
+    );
+    configuration.inspect.withArgs(SHADER_VALIDATOR_SPIRV_VERSION_SETTING).returns(
+      inspectWith({ defaultValue: 'SPIRV1_6' }),
+    );
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledWithExactly(
+      configuration.update,
+      SHADER_VALIDATOR_SPIRV_VERSION_SETTING,
+      'None',
       vscode.ConfigurationTarget.Workspace,
     );
   });
