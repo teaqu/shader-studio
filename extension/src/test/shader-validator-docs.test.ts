@@ -17,23 +17,31 @@ const troubleshootingDoc = fs.readFileSync(
 );
 
 suite('Shader Validator documentation', () => {
-  test('documents the optional companion, preamble setting, and diagnostics guidance', () => {
-    assert.match(extensionReadme, /Shader Validator/i);
-    assert.match(extensionReadme, /optional/i);
-    assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
+  test('documents installation and rendering independence of the optional companion', () => {
+    assert.match(extensionReadme, /optional.*Shader Validator|Shader Validator.*Optional/i);
+    assert.match(extensionReadme, /antaalt\.shader-validator/);
+    assert.match(extensionReadme, /install.*separately/i);
+    assert.match(extensionReadme, /uninstalling.*does not affect rendering/i);
+  });
+
+  test('documents the generated preamble content and non-destructive setting ownership', () => {
     assert.match(settingsDoc, /\.vscode\/shader-studio-preamble\.glsl/);
-    assert.match(settingsDoc, /existing.*unchanged/i);
-    assert.match(settingsDoc, /active shader.*\.sha\.json.*pass inputs/i);
-    assert.match(settingsDoc, /already-evaluated custom uniforms/i);
-    assert.match(settingsDoc, /invalid.*retain.*last-valid shader-specific preamble/i);
-    assert.match(settingsDoc, /before any valid update.*stable shader-local Image fallback/i);
+    assert.match(settingsDoc, /active GLSL pass/i);
+    assert.match(settingsDoc, /stable built-in uniforms/i);
+    assert.match(settingsDoc, /configured channels and aliases/i);
+    assert.match(settingsDoc, /successfully inferred custom uniforms/i);
+    assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
+    assert.match(settingsDoc, /only when you have not already configured the setting/i);
+    assert.match(settingsDoc, /existing global, workspace, and folder values remain unchanged/i);
+    assert.match(settingsDoc, /one.*workspace folder/i);
+  });
+
+  test('documents the workspace-wide active-shader limitation and stale-diagnostics recovery', () => {
     assert.match(troubleshootingDoc, /active shader/i);
-    assert.match(troubleshootingDoc, /Shader Language Server|Shader Validator.*Output/i);
-    assert.match(troubleshootingDoc, /focus or select.*intended active shader/i);
-    assert.match(
-      troubleshootingDoc,
-      /existing.*shader-validator\.glsl\.preamble.*intentionally preserved/i
-    );
-    assert.match(troubleshootingDoc, /remove or change.*yourself/i);
+    assert.match(troubleshootingDoc, /currently active Shader Studio pass/i);
+    assert.match(troubleshootingDoc, /\.vscode\/shader-studio-preamble\.glsl/);
+    assert.match(troubleshootingDoc, /Shader Studio output/i);
+    assert.match(troubleshootingDoc, /Shader Language Server or Shader Validator Output/i);
+    assert.match(troubleshootingDoc, /Restart the companion server/i);
   });
 });
