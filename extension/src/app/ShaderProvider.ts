@@ -78,12 +78,31 @@ export class ShaderProvider {
     this.activeAnalysisContexts.set(contextKey, {
       filePath,
       pass: null,
-      preferredRootShaderPath:
-        previous?.pass?.shaderPath
-        ?? previous?.preferredRootShaderPath
-        ?? null,
+      preferredRootShaderPath: this.resolvePreferredRootForClaim(filePath, previous),
       generation: this.nextAnalysisContextGeneration++,
     });
+  }
+
+  private resolvePreferredRootForClaim(
+    filePath: string,
+    previous: ActiveAnalysisContext | undefined,
+  ): string {
+    if (previous?.pass?.filePath === filePath) {
+      return previous.pass.shaderPath;
+    }
+
+    const previousRoot = previous?.pass?.shaderPath ?? previous?.preferredRootShaderPath;
+    if (!previousRoot) {
+      return filePath;
+    }
+
+    try {
+      return this.resolveOwnedShaderPassForRoot(filePath, previousRoot)
+        ? previousRoot
+        : filePath;
+    } catch {
+      return filePath;
+    }
   }
 
   public async sendShaderFromEditor(

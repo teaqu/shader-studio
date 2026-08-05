@@ -9,13 +9,19 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 
 Shader Studio can prepare diagnostics, completion, and navigation for the separately installed [WebGL GLSL Editor](https://marketplace.visualstudio.com/items?itemName=raczzalan.webgl-glsl-editor) extension (`raczzalan.webgl-glsl-editor`). The companion is optional: rendering is unaffected if it is disabled or uninstalled.
 
-Use WebGL GLSL Editor instead of Shader Validator for Shader Studio GLSL files. Disable Shader Validator to avoid duplicate diagnostics.
+WebGL GLSL Editor and Shader Validator can both use Shader Studio's generated GLSL context. If you enable diagnostics in both companions, they can report duplicate errors; disable one companion's diagnostics if you prefer a single source.
 
 For an installed companion, Shader Studio manages `webgl-glsl-editor.codeInjection` and `webgl-glsl-editor.codeInjectionSource` at workspace scope. The injected GLSL ES 300 source includes stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. Shader Studio leaves a user-owned injection configuration unchanged.
 
-Within one extension host, all Shader Studio panels share the active GLSL selection. The active or focused shader context controls the injected declarations; background panels and refreshes cannot overwrite it. In a multi-root workspace, WebGL GLSL Editor has one workspace-wide injection source, so the active shader's workspace folder owns it.
+Within one extension host, all Shader Studio panels and workspace folders share the active GLSL selection. The active or focused shader context controls the injected declarations; background panels and refreshes cannot overwrite it. In a multi-root workspace, WebGL GLSL Editor has one workspace-wide injection source, so the active shader's workspace folder owns it. Separate VS Code windows are independent.
 
 Dynamic declarations come from the active shader's `.sha.json` pass inputs and configuration, plus already-evaluated custom uniforms. If a shader or config update is invalid, Shader Studio retains the last-valid shader-specific preamble. Before any valid update, it generates a stable shader-local Image fallback.
+
+## Optional Shader Validator companion
+
+Shader Studio can also prepare diagnostics for the separately installed [Shader Validator](https://marketplace.visualstudio.com/items?itemName=antaalt.shader-validator) extension (`antaalt.shader-validator`). It generates `.vscode/shader-studio-preamble.glsl` from the active GLSL pass, including stable built-in uniforms, configured channels and aliases, and successfully inferred custom uniforms. Rendering is unaffected if Shader Validator is disabled or uninstalled.
+
+In a single-folder workspace, Shader Studio sets `shader-validator.glsl.preamble` as a workspace setting to `${workspaceFolder}/.vscode/shader-studio-preamble.glsl` only when you have not already configured the setting; it preserves any existing value unchanged. In a multi-root window Shader Validator has one workspace-wide preamble setting, so Shader Studio generates a preamble for every folder but does not automatically set the companion path. Choose a generated preamble file and configure its path manually, or open folders in separate VS Code windows.
 
 ## Optional Slang editor companion
 

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderStudio } from '../../app/ShaderStudio';
 import { WebglGlslEditorManager } from '../../app/WebglGlslEditorManager';
+import { ShaderValidatorPreambleManager } from '../../app/ShaderValidatorPreambleManager';
 
 interface ExtensionManifest {
   extensionDependencies?: string[];
@@ -19,6 +20,8 @@ suite('Shader Studio Test Suite', () => {
   let sendShaderSpy: sinon.SinonSpy;
   let preambleApplyStub: sinon.SinonStub;
   let preambleDisposeStub: sinon.SinonStub;
+  let shaderValidatorApplyStub: sinon.SinonStub;
+  let shaderValidatorDisposeStub: sinon.SinonStub;
   let getExtensionStub: sinon.SinonStub;
   let activeEditorChangeListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
@@ -119,6 +122,8 @@ suite('Shader Studio Test Suite', () => {
     getExtensionStub = sandbox.stub(vscode.extensions, 'getExtension').returns(undefined);
     preambleApplyStub = sandbox.stub(WebglGlslEditorManager.prototype, 'apply').resolves();
     preambleDisposeStub = sandbox.stub(WebglGlslEditorManager.prototype, 'dispose');
+    shaderValidatorApplyStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'apply').resolves();
+    shaderValidatorDisposeStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'dispose');
     sandbox.stub(
       ShaderStudio.prototype as unknown as { startWebSocketTransport: () => void },
       'startWebSocketTransport',
@@ -129,7 +134,7 @@ suite('Shader Studio Test Suite', () => {
   });
 
   teardown(() => {
-    if (!preambleDisposeStub.called) {
+    if (!preambleDisposeStub.called || !shaderValidatorDisposeStub.called) {
       shaderStudio.dispose();
     }
     sandbox.restore();
@@ -262,6 +267,14 @@ suite('Shader Studio Test Suite', () => {
     }).webglGlslEditorManager;
   }
 
+  function getShaderValidatorPreambleManager(
+    studio: ShaderStudio,
+  ): ShaderValidatorPreambleManager | undefined {
+    return (studio as unknown as {
+      shaderValidatorPreambleManager?: ShaderValidatorPreambleManager;
+    }).shaderValidatorPreambleManager;
+  }
+
   function createMockWebviewPanel(): vscode.WebviewPanel {
     return {
       reveal: sandbox.stub(),
@@ -275,9 +288,11 @@ suite('Shader Studio Test Suite', () => {
     } as unknown as vscode.WebviewPanel;
   }
 
-  test('uses one Studio-owned WebGL GLSL Editor manager across repeated panel activity', async () => {
+  test('uses one Studio-owned GLSL companion manager of each kind across repeated panel activity', async () => {
     const manager = getPreambleManager(shaderStudio);
+    const shaderValidatorManager = getShaderValidatorPreambleManager(shaderStudio);
     assert.ok(manager, 'ShaderStudio should own the preamble manager');
+    assert.ok(shaderValidatorManager, 'ShaderStudio should own the Shader Validator preamble manager');
     const subscriptionCount = mockContext.subscriptions.length;
 
     sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(createMockWebviewPanel);
@@ -285,6 +300,7 @@ suite('Shader Studio Test Suite', () => {
     shaderStudio['panelManager'].createPanel();
 
     assert.strictEqual(getPreambleManager(shaderStudio), manager);
+    assert.strictEqual(getShaderValidatorPreambleManager(shaderStudio), shaderValidatorManager);
     assert.strictEqual(mockContext.subscriptions.length, subscriptionCount);
 
     const editor = createMockGLSLEditor();
@@ -296,6 +312,8 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(preambleApplyStub);
     assert.strictEqual(preambleApplyStub.thisValues[0], manager);
+    sinon.assert.calledOnce(shaderValidatorApplyStub);
+    assert.strictEqual(shaderValidatorApplyStub.thisValues[0], shaderValidatorManager);
     shaderStudio.dispose();
   });
 
@@ -306,14 +324,18 @@ suite('Shader Studio Test Suite', () => {
     shaderStudio.dispose();
   });
 
-  test('disposes the Studio-owned WebGL GLSL Editor manager during shutdown', () => {
+  test('disposes both Studio-owned GLSL companion managers during shutdown', () => {
     const manager = getPreambleManager(shaderStudio);
+    const shaderValidatorManager = getShaderValidatorPreambleManager(shaderStudio);
     assert.ok(manager, 'ShaderStudio should own the preamble manager');
+    assert.ok(shaderValidatorManager, 'ShaderStudio should own the Shader Validator preamble manager');
 
     shaderStudio.dispose();
 
     sinon.assert.calledOnce(preambleDisposeStub);
     assert.strictEqual(preambleDisposeStub.thisValues[0], manager);
+    sinon.assert.calledOnce(shaderValidatorDisposeStub);
+    assert.strictEqual(shaderValidatorDisposeStub.thisValues[0], shaderValidatorManager);
   });
 
   test('should not process shader updates when no clients are connected', () => {

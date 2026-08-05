@@ -17,6 +17,7 @@ import { CompileController, type CompileMode } from "./CompileController";
 import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
 import { ConfigChangeClassifier, type ConfigChangeVerdict } from "./services/ConfigChangeClassifier";
 import { WebglGlslEditorManager } from "./WebglGlslEditorManager";
+import { ShaderValidatorPreambleManager } from "./ShaderValidatorPreambleManager";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -44,6 +45,7 @@ export class ShaderStudio {
   // agree on what was last sent for a given config path.
   private configChangeClassifier = new ConfigChangeClassifier();
   private webglGlslEditorManager: WebglGlslEditorManager;
+  private shaderValidatorPreambleManager: ShaderValidatorPreambleManager;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -55,6 +57,7 @@ export class ShaderStudio {
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
     this.webglGlslEditorManager = new WebglGlslEditorManager(context, this.logger);
+    this.shaderValidatorPreambleManager = new ShaderValidatorPreambleManager(context, this.logger);
     void this.webglGlslEditorManager.initializeWorkspaceFolders();
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
@@ -75,7 +78,10 @@ export class ShaderStudio {
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
-      (preparation) => this.webglGlslEditorManager.apply(preparation),
+      (preparation) => Promise.all([
+        this.webglGlslEditorManager.apply(preparation),
+        this.shaderValidatorPreambleManager.apply(preparation),
+      ]).then(() => undefined),
       () => this.lockedShaderPath,
     );
     this.compileController = new CompileController(
@@ -123,6 +129,7 @@ export class ShaderStudio {
     this.sShaderExplorerProvider.dispose();
     this.errorHandler.dispose();
     this.webglGlslEditorManager.dispose();
+    this.shaderValidatorPreambleManager.dispose();
     this.logger.info("Shader extension disposed");
   }
 

@@ -1,0 +1,242 @@
+import * as nodeFs from 'node:fs';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import {
+  buildShaderValidatorPreamble,
+  type ShaderValidatorPreamblePreparation,
+  type ShaderValidatorPreambleSnapshot,
+} from './ShaderValidatorPreamble';
+import type { Logger } from './services/Logger';
+
+export const SHADER_VALIDATOR_EXTENSION_ID = 'antaalt.shader-validator';
+export const SHADER_VALIDATOR_PREAMBLE_SETTING = 'glsl.preamble';
+
+const PREAMBLE_FILE_NAME = 'shader-studio-preamble.glsl';
+const MANAGED_PREAMBLE_SETTING = '${workspaceFolder}/.vscode/shader-studio-preamble.glsl';
+
+type PreambleFs = Pick<typeof import('node:fs'),
+  'existsSync' | 'readFileSync' | 'mkdirSync' | 'writeFileSync' | 'renameSync' | 'unlinkSync'>;
+
+interface PreambleManagerDeps {
+  fs: PreambleFs;
+  getExtension(id: string): vscode.Extension<unknown> | undefined;
+  onDidChangeExtensions(listener: () => void): vscode.Disposable;
+  showInformationMessage(message: string): Thenable<string | undefined>;
+}
+
+interface WorkspacePreambleState {
+  hasValidSnapshot: boolean;
+  lastValidSnapshot?: ShaderValidatorPreambleSnapshot;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isNonEmptySetting(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export class ShaderValidatorPreambleManager implements vscode.Disposable {
+  private readonly deps: PreambleManagerDeps;
+  private readonly extensionChangeListener: vscode.Disposable;
+  private readonly workspaceStates = new Map<string, WorkspacePreambleState>();
+  private readonly recentWorkspaceFolders = new Map<string, vscode.WorkspaceFolder>();
+  private readonly notifiedConflictWorkspaces = new Set<string>();
+  private notifiedMultiRootWorkspace = false;
+  private disposed = false;
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly logger: Pick<Logger, 'warn' | 'error'>,
+    deps?: Partial<PreambleManagerDeps>,
+  ) {
+    this.deps = {
+      fs: nodeFs,
+      getExtension: (id) => vscode.extensions.getExtension(id),
+      onDidChangeExtensions: (listener) => vscode.extensions.onDidChange(listener),
+      showInformationMessage: (message) => vscode.window.showInformationMessage(message),
+      ...deps,
+    };
+    this.extensionChangeListener = this.deps.onDidChangeExtensions(() => {
+      if (this.disposed) {
+        return;
+      }
+      void this.coordinateRecentWorkspaces();
+    });
+    this.context.subscriptions.push(this.extensionChangeListener);
+  }
+
+  async apply(preparation: ShaderValidatorPreamblePreparation): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
+    const shaderPath = preparation.kind === 'valid'
+      ? preparation.snapshot.shaderPath
+      : preparation.shaderPath;
+    let folder: vscode.WorkspaceFolder | undefined;
+    try {
+      folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath));
+    } catch (error) {
+      this.logger.error(`Unable to resolve the Shader Validator preamble workspace: ${errorText(error)}`);
+      return;
+    }
+
+    if (!folder) {
+      this.logger.error(`Unable to generate a Shader Validator preamble because no workspace owns ${shaderPath}.`);
+      return;
+    }
+
+    const workspaceKey = folder.uri.toString();
+    this.recentWorkspaceFolders.set(workspaceKey, folder);
+    const state = this.workspaceStates.get(workspaceKey) ?? { hasValidSnapshot: false };
+    let snapshot: ShaderValidatorPreambleSnapshot;
+
+    if (preparation.kind === 'valid') {
+      state.hasValidSnapshot = true;
+      state.lastValidSnapshot = preparation.snapshot;
+      snapshot = preparation.snapshot;
+    } else if (state.hasValidSnapshot && state.lastValidSnapshot) {
+      snapshot = state.lastValidSnapshot;
+    } else {
+      snapshot = {
+        shaderPath: preparation.shaderPath,
+        configPath: null,
+        passName: 'Image',
+      };
+    }
+    this.workspaceStates.set(workspaceKey, state);
+
+    try {
+      const result = buildShaderValidatorPreamble(snapshot);
+      for (const warning of result.warnings) {
+        this.logger.warn(warning);
+      }
+      this.replaceFileIfChanged(folder, result.content);
+    } catch (error) {
+      this.logger.error(`Unable to update the Shader Validator preamble: ${errorText(error)}`);
+    }
+
+    await this.coordinateWorkspace(folder);
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.extensionChangeListener.dispose();
+  }
+
+  private replaceFileIfChanged(folder: vscode.WorkspaceFolder, content: string): void {
+    const vscodeDirectory = path.join(folder.uri.fsPath, '.vscode');
+    const destination = path.join(vscodeDirectory, PREAMBLE_FILE_NAME);
+    const tempPath = `${destination}.tmp-${process.pid}`;
+
+    try {
+      if (
+        this.deps.fs.existsSync(destination)
+        && this.deps.fs.readFileSync(destination, 'utf8') === content
+      ) {
+        return;
+      }
+
+      this.deps.fs.mkdirSync(vscodeDirectory, { recursive: true });
+      this.deps.fs.writeFileSync(tempPath, content, 'utf8');
+      this.deps.fs.renameSync(tempPath, destination);
+    } catch (error) {
+      this.logger.error(`Unable to write the Shader Validator preamble: ${errorText(error)}`);
+      this.removeTempFile(tempPath);
+    }
+  }
+
+  private removeTempFile(tempPath: string): void {
+    try {
+      if (this.deps.fs.existsSync(tempPath)) {
+        this.deps.fs.unlinkSync(tempPath);
+      }
+    } catch (error) {
+      this.logger.error(`Unable to remove the Shader Validator preamble temp file: ${errorText(error)}`);
+    }
+  }
+
+  private async coordinateRecentWorkspaces(): Promise<void> {
+    for (const folder of this.recentWorkspaceFolders.values()) {
+      if (this.disposed) {
+        return;
+      }
+      await this.coordinateWorkspace(folder);
+    }
+  }
+
+  private async coordinateWorkspace(folder: vscode.WorkspaceFolder): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
+
+    try {
+      if (!this.deps.getExtension(SHADER_VALIDATOR_EXTENSION_ID)) {
+        return;
+      }
+
+      if ((vscode.workspace.workspaceFolders?.length ?? 1) > 1) {
+        if (!this.notifiedMultiRootWorkspace) {
+          this.notifiedMultiRootWorkspace = true;
+          try {
+            await this.deps.showInformationMessage(
+              'Shader Validator supports one workspace-wide GLSL preamble in a multi-root window. '
+                + 'Shader Studio generates a preamble file in each folder and leaves '
+                + 'shader-validator.glsl.preamble unchanged. Choose one folder\'s '
+                + '.vscode/shader-studio-preamble.glsl file and configure '
+                + 'shader-validator.glsl.preamble to that file\'s path.',
+            );
+          } catch (error) {
+            this.notifiedMultiRootWorkspace = false;
+            throw error;
+          }
+        }
+        return;
+      }
+      const configuration = vscode.workspace.getConfiguration('shader-validator', folder.uri);
+      const effectiveValue = configuration.get<string>(SHADER_VALIDATOR_PREAMBLE_SETTING);
+      if (effectiveValue === MANAGED_PREAMBLE_SETTING) {
+        return;
+      }
+
+      const inspected = configuration.inspect<string>(SHADER_VALIDATOR_PREAMBLE_SETTING);
+      const hasExistingUserValue = inspected !== undefined && [
+        inspected.globalValue,
+        inspected.workspaceValue,
+        inspected.workspaceFolderValue,
+      ].some(isNonEmptySetting);
+
+      if (!hasExistingUserValue) {
+        await configuration.update(
+          SHADER_VALIDATOR_PREAMBLE_SETTING,
+          MANAGED_PREAMBLE_SETTING,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        return;
+      }
+
+      const workspaceKey = folder.uri.toString();
+      if (this.notifiedConflictWorkspaces.has(workspaceKey)) {
+        return;
+      }
+      this.notifiedConflictWorkspaces.add(workspaceKey);
+      try {
+        await this.deps.showInformationMessage(
+          `Shader Validator already has a GLSL preamble configured for ${folder.name}; `
+            + `Shader Studio left it unchanged. To use Shader Studio's generated preamble, `
+            + `manually set shader-validator.glsl.preamble to ${MANAGED_PREAMBLE_SETTING}.`,
+        );
+      } catch (error) {
+        this.notifiedConflictWorkspaces.delete(workspaceKey);
+        throw error;
+      }
+    } catch (error) {
+      this.logger.error(`Unable to coordinate the Shader Validator preamble setting: ${errorText(error)}`);
+    }
+  }
+}
