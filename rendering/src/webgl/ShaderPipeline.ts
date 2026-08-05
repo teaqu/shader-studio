@@ -331,17 +331,27 @@ export class ShaderPipeline {
     // Allocate buffers synchronously from current state — no async window means no stale references.
     const currentPassBuffers = this.bufferManager.getPassBuffers();
     const nextPassBuffers: Record<string, any> = {};
+    const replacedBuffers: Record<string, any> = {};
 
     for (const pass of nextPasses) {
       if (pass.name === "Image" || pass.name === "common") {
         continue;
       }
       const size = resolveBufferPassSize(pass, this.canvas.width || 800, this.canvas.height || 600, this.renderLimits);
-      nextPassBuffers[pass.name] = currentPassBuffers[pass.name]
-        ?? this.bufferManager.createPingPongBuffers(
-          size.width,
-          size.height,
-        );
+      const requiresDepth = pass.geometry !== "fullscreen";
+      const current = currentPassBuffers[pass.name];
+      const matches = current
+        && current.front?.mTex0?.mXres === size.width
+        && current.front?.mTex0?.mYres === size.height
+        && (current.requiresDepth ?? false) === requiresDepth;
+      if (matches) {
+        nextPassBuffers[pass.name] = current;
+      } else {
+        nextPassBuffers[pass.name] = this.bufferManager.createPingPongBuffers(size.width, size.height, requiresDepth);
+        if (current) {
+          replacedBuffers[pass.name] = current;
+        }
+      }
     }
 
     // Clean up buffers for passes that no longer exist
@@ -350,6 +360,7 @@ export class ShaderPipeline {
       delete oldPassBuffers[name];
     }
     this.bufferManager.cleanupBuffers(oldPassBuffers);
+    this.bufferManager.cleanupBuffers(replacedBuffers);
 
     this.shaderPath = path;
     this.passes = nextPasses;

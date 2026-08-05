@@ -25,6 +25,7 @@ import type { ChannelSamplerType } from "./ShaderCompiler";
 import type { PiTexture } from "../types/piRenderer";
 import { buildBufferPassSizes } from "./BufferPassResolution";
 import { WebGLPixelRegionCapturer } from "./WebGLPixelRegionCapturer";
+import { WebGLMeshResources } from "./WebGLMeshResources";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import {
   clampSizeToWebGLRenderLimits,
@@ -54,6 +55,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private renderLimits: WebGLRenderLimits | null = null;
   private holdVideoResumeForResetCompile = false;
   private pixelRegionCapturer: WebGLPixelRegionCapturer | null = null;
+  private meshResources: WebGLMeshResources | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
@@ -68,6 +70,8 @@ export class RenderingEngine implements RenderingEngineInterface {
     }
 
     this.gl = gl as WebGL2RenderingContext;
+    this.meshResources?.dispose();
+    this.meshResources = new WebGLMeshResources(this.gl);
     this.renderLimits = getWebGLRenderLimits(this.gl);
     this.clampCanvasToRenderLimits();
     this.renderer = piRenderer();
@@ -102,7 +106,9 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.bufferManager,
       this.renderer,
       this.keyboardManager,
+      this.meshResources,
     );
+    this.passRenderer.attachMeshCamera();
 
     this.frameRenderer = new FrameRenderer(
       this.timeManager,
@@ -679,6 +685,9 @@ export class RenderingEngine implements RenderingEngineInterface {
     attempt(() => this.frameRenderer?.setPostImageCallback?.(null));
     attempt(() => this.pixelRegionCapturer?.dispose());
     this.pixelRegionCapturer = null;
+    attempt(() => this.meshResources?.dispose());
+    this.meshResources = null;
+    attempt(() => this.passRenderer?.dispose());
     attempt(() => this.bufferManager?.dispose());
     attempt(() => this.frameRenderer?.stopRenderLoop());
     attempt(() => this.cameraManager?.dispose());

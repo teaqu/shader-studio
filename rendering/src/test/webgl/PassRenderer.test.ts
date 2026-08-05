@@ -12,6 +12,7 @@ const createMockRenderer = () => ({
   SetShaderConstant3F: vi.fn(),
   SetShaderConstant3FV: vi.fn(),
   SetShaderConstant4FV: vi.fn(),
+  SetShaderConstantMat4F: vi.fn(),
   SetShaderTextureUnit: vi.fn(),
   DrawUnitQuad: vi.fn(),
   SetViewport: vi.fn(),
@@ -29,7 +30,7 @@ const createMockTexture = (xres = 0, yres = 0) => ({
   mObjectID: {},
 }) as PiTexture;
 
-const createMockShader = () => ({}) as PiShader;
+const createMockShader = () => ({ mProgram: null }) as PiShader;
 
 const createMockResourceManager = () => ({
   getKeyboardTexture: vi.fn(),
@@ -59,6 +60,19 @@ const createMockGl = () => ({
   TEXTURE_CUBE_MAP: 34067,
   activeTexture: vi.fn(),
   bindTexture: vi.fn(),
+  DEPTH_TEST: 0x0b71,
+  LEQUAL: 0x0203,
+  DEPTH_BUFFER_BIT: 0x0100,
+  TRIANGLES: 0x0004,
+  UNSIGNED_SHORT: 0x1403,
+  enable: vi.fn(),
+  disable: vi.fn(),
+  depthFunc: vi.fn(),
+  clear: vi.fn(),
+  bindVertexArray: vi.fn(),
+  drawElements: vi.fn(),
+  getUniformLocation: vi.fn(),
+  uniformMatrix3fv: vi.fn(),
 });
 
 describe("PassRenderer", () => {
@@ -102,6 +116,29 @@ describe("PassRenderer", () => {
   };
 
   describe("renderPass", () => {
+    it("draws mesh passes indexed and restores depth/VAO state", () => {
+      const meshResources = { get: vi.fn(() => ({ vao: {}, indexCount: 36 })) };
+      passRenderer = new PassRenderer(
+        mockCanvas,
+        mockResourceManager as any,
+        mockBufferManager as any,
+        mockRenderer,
+        mockKeyboardManager as any,
+        meshResources as any,
+      );
+      const passConfig: Pass = { geometry: "cube", name: "TestPass", shaderSrc: "", inputs: {} };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
+      expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+      expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LEQUAL);
+      expect(mockGl.clear).toHaveBeenCalledWith(mockGl.DEPTH_BUFFER_BIT);
+      expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
+      expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
+      expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+    });
+
     it("should not render when shader is null", () => {
       const passConfig: Pass = {
         geometry: "fullscreen",

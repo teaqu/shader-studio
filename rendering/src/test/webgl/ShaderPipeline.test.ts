@@ -2438,8 +2438,8 @@ describe("ShaderPipeline", () => {
         },
       );
 
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(800, 600);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(400, 300);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(800, 600, false);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(400, 300, false);
     });
 
     it("clamps compile-time ping-pong buffers to WebGL render limits", async () => {
@@ -2480,9 +2480,9 @@ describe("ShaderPipeline", () => {
         },
       );
 
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(6_000, 4_096);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(6_000, 4_096, false);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false);
     });
   });
 
@@ -2534,6 +2534,8 @@ describe("ShaderPipeline", () => {
 
       // Simulate resize happening before compilation resolves: buffer1 is gone, buffer2 is current
       mockBufferManager.getPassBuffers.mockReturnValue({ BufferA: buffer2 });
+      mockCanvas.width = 400;
+      mockCanvas.height = 300;
 
       // Resolve the compilation
       resolveCompile(createMockShader());

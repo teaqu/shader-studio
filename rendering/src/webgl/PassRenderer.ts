@@ -6,6 +6,9 @@ import type { KeyboardManager } from "../input/KeyboardManager";
 import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
 import { bindTextures } from "../util/TextureBinder";
+import type { WebGLMeshResources } from "./WebGLMeshResources";
+import { OrbitCamera } from "../preview3d/OrbitCamera";
+import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
@@ -14,6 +17,7 @@ export class PassRenderer {
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
   private gl: WebGL2RenderingContext | null = null;
+  private readonly meshCamera = new OrbitCamera();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -21,6 +25,7 @@ export class PassRenderer {
     bufferManager: BufferManager,
     renderer: PiRenderer,
     keyboardManager: KeyboardManager,
+    private readonly meshResources: WebGLMeshResources | null = null,
   ) {
     this.canvas = canvas;
     this.resourceManager = resourceManager;
@@ -34,6 +39,14 @@ export class PassRenderer {
     this.renderer.SetRenderTarget(null);
     this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
     this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+  }
+
+  public attachMeshCamera(): void {
+    this.meshCamera.attach(this.canvas);
+  }
+
+  public dispose(): void {
+    this.meshCamera.detach();
   }
 
   public renderPass(
@@ -127,8 +140,34 @@ export class PassRenderer {
       }
     }
 
-    const posLoc = this.renderer.GetAttribLocation(shader, "position");
-    this.renderer.DrawUnitQuad_XY(posLoc);
+    if (passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources) {
+      const posLoc = this.renderer.GetAttribLocation(shader, "position");
+      this.renderer.DrawUnitQuad_XY(posLoc);
+      return;
+    }
+
+    const mesh = this.meshResources.get(passConfig.geometry);
+    const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
+    const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+    const view = this.meshCamera.getViewMatrix();
+    this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), false);
+    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), false);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(this.meshCamera.getProjectionMatrix(aspect)), false);
+    const normalLocation = shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
+    if (normalLocation) {
+      this.gl.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
+    }
+    this.renderer.SetShaderConstant3FV("iCameraPosition", this.meshCamera.getPosition());
+    this.gl.enable(this.gl.DEPTH_TEST);
+    this.gl.depthFunc(this.gl.LEQUAL);
+    this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
+    try {
+      this.gl.bindVertexArray(mesh.vao);
+      this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, this.gl.UNSIGNED_SHORT, 0);
+    } finally {
+      this.gl.bindVertexArray(null);
+      this.gl.disable(this.gl.DEPTH_TEST);
+    }
   }
 
   private getChannelResolutions(

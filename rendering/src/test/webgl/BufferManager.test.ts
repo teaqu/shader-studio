@@ -118,6 +118,14 @@ describe('BufferManager', () => {
       expect(buffer.back?.mTex0?.mXres).toBe(800);
       expect(buffer.back?.mTex0?.mYres).toBe(600);
     });
+
+    it('creates depth-capable targets when a mesh pass requires depth', () => {
+      const buffer = bufferManager.createPingPongBuffers(800, 600, true);
+
+      expect(buffer.requiresDepth).toBe(true);
+      expect(mockRenderer.CreateRenderTarget).toHaveBeenNthCalledWith(1, expect.anything(), null, null, null, null, true);
+      expect(mockRenderer.CreateRenderTarget).toHaveBeenNthCalledWith(2, expect.anything(), null, null, null, null, true);
+    });
   });
 
   describe('Buffer Resize with Data Preservation', () => {

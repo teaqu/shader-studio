@@ -11,7 +11,7 @@ export class BufferManager {
     this.copyShader = this.createCopyShader();
   }
 
-  public createPingPongBuffers(width: number, height: number): Buffer {
+  public createPingPongBuffers(width: number, height: number, requiresDepth: boolean = false): Buffer {
     const filter = this.renderer.FILTER.LINEAR;
 
     const frontTex = this.createFloatTexture(width, height, filter);
@@ -22,13 +22,13 @@ export class BufferManager {
     }
 
     const frontRT = this.renderer.CreateRenderTarget(
-      frontTex, null, null, null, null, false
+      frontTex, null, null, null, null, requiresDepth
     );
     const backRT = this.renderer.CreateRenderTarget(
-      backTex, null, null, null, null, false
+      backTex, null, null, null, null, requiresDepth
     );
 
-    return { front: frontRT, back: backRT };
+    return { front: frontRT, back: backRT, requiresDepth };
   }
 
   public resizeBuffers(
