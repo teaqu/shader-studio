@@ -148,24 +148,38 @@ suite('Shader Validator preamble builder', () => {
     assert.strictEqual(result.warnings.length, 2);
   });
 
-  test('omits input aliases that conflict with channel resolution or compatibility structs', () => {
+  test('omits input aliases that conflict with channel resolution', () => {
     const result = build({
       inputs: {
         iChannelResolution: { type: 'texture' },
-        iCh0: { type: 'cubemap' },
         safe: { type: 'texture' },
       },
     });
 
     assert.match(result.content, /uniform sampler2D iChannel0;/);
-    assert.match(result.content, /uniform samplerCube iChannel1;/);
+    assert.match(result.content, /uniform sampler2D iChannel1;/);
     assert.match(result.content, /uniform sampler2D safe;/);
     assert.doesNotMatch(result.content, /uniform sampler2D iChannelResolution;/);
-    assert.doesNotMatch(result.content, /uniform samplerCube iCh0;/);
     assert.deepStrictEqual(result.warnings, [
       'Input alias "iChannelResolution" conflicts with an existing GLSL name and was omitted.',
-      'Input alias "iCh0" conflicts with an existing GLSL name and was omitted.',
     ]);
+  });
+
+  test('omits input aliases that conflict with compatibility structs', () => {
+    for (const alias of ['iCh0', 'iCh1', 'iCh2', 'iCh3']) {
+      const result = build({
+        inputs: {
+          [alias]: { type: 'cubemap' },
+          safe: { type: 'texture' },
+        },
+      });
+
+      assert.doesNotMatch(result.content, new RegExp(`uniform samplerCube ${alias};`));
+      assert.match(result.content, /uniform sampler2D safe;/);
+      assert.deepStrictEqual(result.warnings, [
+        `Input alias "${alias}" conflicts with an existing GLSL name and was omitted.`,
+      ]);
+    }
   });
 
   test('returns byte-identical output for equivalent snapshots', () => {
