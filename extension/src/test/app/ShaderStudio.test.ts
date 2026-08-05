@@ -128,10 +128,9 @@ suite('Shader Studio Test Suite', () => {
     sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromEditor');
   });
 
-  teardown(async () => {
+  teardown(() => {
     if (!preambleDisposeStub.called) {
       shaderStudio.dispose();
-      await new Promise((resolve) => setTimeout(resolve, 25));
     }
     sandbox.restore();
   });
