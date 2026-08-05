@@ -35,6 +35,7 @@ export class ShaderProvider {
   private scriptEvaluator = new ScriptEvaluator();
   private activePreambleFilePath: string | null = null;
   private activePreamblePass: ActivePreamblePass | null = null;
+  private activeOwningRootShaderPath: string | null = null;
   private readonly customDeclarationsByShader = new Map<string, string>();
 
   constructor(
@@ -66,6 +67,9 @@ export class ShaderProvider {
     if (getShaderLanguage(shaderPath) === "glsl") {
       this.activePreambleFilePath = shaderPath;
       this.activePreamblePass = null;
+      if (code.includes("mainImage")) {
+        this.activeOwningRootShaderPath = shaderPath;
+      }
     }
 
     // Clear stale persistent errors before re-evaluating the shader.
@@ -140,6 +144,9 @@ export class ShaderProvider {
     if (getShaderLanguage(shaderPath) === "glsl") {
       this.activePreambleFilePath = shaderPath;
       this.activePreamblePass = null;
+      if (code.includes("mainImage")) {
+        this.activeOwningRootShaderPath = shaderPath;
+      }
     }
 
     this.messenger.getErrorHandler().clearPersistentErrors();
@@ -375,16 +382,37 @@ export class ShaderProvider {
     return bufferPathMap;
   }
 
+  private resolveOwnedShaderPassForRoot(
+    filePath: string,
+    shaderPath: string,
+  ): OwnedShaderPass | null {
+    const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
+    if (!config) {
+      return null;
+    }
+    const match = Object.entries(this.buildBufferPathMap(config, shaderPath))
+      .find(([passName, candidatePath]) => passName !== "Image" && candidatePath === filePath);
+    return match ? { shaderPath, passName: match[0], config } : null;
+  }
+
   private resolveOwningShaderPass(filePath: string): OwnedShaderPass | null {
+    if (this.activeOwningRootShaderPath) {
+      const activeOwner = this.resolveOwnedShaderPassForRoot(
+        filePath,
+        this.activeOwningRootShaderPath,
+      );
+      if (activeOwner) {
+        return activeOwner;
+      }
+    }
+
     for (const shaderPath of this.activeShaders) {
-      const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
-      if (!config) {
+      if (shaderPath === this.activeOwningRootShaderPath) {
         continue;
       }
-      const match = Object.entries(this.buildBufferPathMap(config, shaderPath))
-        .find(([passName, candidatePath]) => passName !== "Image" && candidatePath === filePath);
-      if (match) {
-        return { shaderPath, passName: match[0], config };
+      const owner = this.resolveOwnedShaderPassForRoot(filePath, shaderPath);
+      if (owner) {
+        return owner;
       }
     }
 
@@ -613,6 +641,7 @@ export class ShaderProvider {
     if (this.activePreambleFilePath !== filePath) {
       return;
     }
+    this.activeOwningRootShaderPath = owner.shaderPath;
     this.activePreamblePass = {
       filePath,
       shaderPath: owner.shaderPath,

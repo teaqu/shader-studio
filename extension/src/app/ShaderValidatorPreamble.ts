@@ -113,7 +113,14 @@ export function buildShaderValidatorPreamble(
     ...aliasLines,
     `uniform vec3 iChannelResolution[${channelCount}];`,
     '',
-    ...Array.from({ length: 4 }, (_, slot) => `struct iCh${slot} { ${slotTypes[slot]} sampler; };`),
+    ...Array.from({ length: 4 }, (_, slot) => [
+      'uniform struct {',
+      `  ${slotTypes[slot]} sampler;`,
+      '  vec3 size;',
+      '  float time;',
+      '  int loaded;',
+      `} iCh${slot};`,
+    ]).flat(),
   ];
   const customLines = customUniformLines(snapshot.customUniformDeclarations, ownedNames, warnings);
   if (customLines.length > 0) {

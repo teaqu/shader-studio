@@ -12,6 +12,19 @@ suite('Shader Validator preamble builder', () => {
     ...snapshot,
   });
 
+  function compatibilityFieldType(preamble: string, expression: string): string | null {
+    const [objectName, fieldName] = expression.split('.');
+    const uniformStructPattern = /uniform\s+struct\s*\{([^}]*)\}\s+([A-Za-z_]\w*)\s*;/gs;
+    for (const match of preamble.matchAll(uniformStructPattern)) {
+      if (match[2] !== objectName) {
+        continue;
+      }
+      const fieldPattern = new RegExp(`\\b([A-Za-z_]\\w*)\\s+${fieldName}\\s*;`);
+      return match[1].match(fieldPattern)?.[1] ?? null;
+    }
+    return null;
+  }
+
   test('emits stable declarations, bindings, aliases, and valid custom uniforms', () => {
     const result = build({
       inputs: {
@@ -74,7 +87,7 @@ suite('Shader Validator preamble builder', () => {
     assert.doesNotMatch(result.content, /input16/);
   });
 
-  test('uses the first four slot sampler types in compatibility structs', () => {
+  test('resolves renderer-compatible field expressions through uniform struct values', () => {
     const result = build({
       inputs: {
         one: { type: 'cubemap' },
@@ -84,8 +97,22 @@ suite('Shader Validator preamble builder', () => {
       },
     });
 
-    for (const [slot, samplerType] of ['samplerCube', 'sampler2D', 'samplerCube', 'sampler2D'].entries()) {
-      assert.match(result.content, new RegExp(`struct iCh${slot}\\s*\\{\\s*${samplerType} sampler;`, 's'));
+    const fieldExpressions = new Map([
+      ['iCh0.sampler', 'samplerCube'],
+      ['iCh1.sampler', 'sampler2D'],
+      ['iCh2.sampler', 'samplerCube'],
+      ['iCh3.sampler', 'sampler2D'],
+      ['iCh0.size', 'vec3'],
+      ['iCh1.time', 'float'],
+      ['iCh2.loaded', 'int'],
+    ]);
+
+    for (const [expression, expectedType] of fieldExpressions) {
+      assert.strictEqual(
+        compatibilityFieldType(result.content, expression),
+        expectedType,
+        `${expression} must resolve to a field on a generated uniform value`,
+      );
     }
   });
 

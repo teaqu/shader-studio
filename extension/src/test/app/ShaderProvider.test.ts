@@ -823,6 +823,54 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
+    test('uses the most recently active root when two roots own one shared pass file', async () => {
+      const rootA = '/workspace/root-a.glsl';
+      const rootB = '/workspace/root-b.glsl';
+      const sharedPath = '/workspace/shared.glsl';
+      const rootAInputs = {
+        fromRootA: { type: 'texture', path: './a.png' },
+      };
+      const rootBInputs = {
+        fromRootB: { type: 'cubemap', path: './b.png' },
+      };
+      const rootAConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: './shared.glsl', inputs: rootAInputs },
+        },
+      };
+      const rootBConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          common: { path: './shared.glsl', inputs: rootBInputs },
+        },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => (
+        shaderPath === rootB ? rootBConfig : rootAConfig
+      ));
+
+      await provider.sendShaderFromEditor(editorFor(rootA, mainImageCode));
+      await provider.sendShaderFromEditor(editorFor(rootB, mainImageCode));
+      onPreamblePreparation.resetHistory();
+      await provider.sendShaderFromEditor(editorFor(sharedPath, 'float sharedHelper() { return 1.0; }'));
+
+      sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
+        kind: 'valid',
+        snapshot: {
+          shaderPath: rootB,
+          configPath: '/workspace/root-b.sha.json',
+          passName: 'common',
+          inputs: rootBInputs,
+          customUniformDeclarations: '',
+        },
+      });
+    });
+
     test('preserves cubemap and custom-alias inputs unchanged in the snapshot', async () => {
       const shaderPath = '/workspace/aliases.glsl';
       const inputs = {
