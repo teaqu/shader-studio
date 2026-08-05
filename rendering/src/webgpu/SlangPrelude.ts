@@ -15,6 +15,15 @@
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 
+const SHADER_STUDIO_EDITOR_IMPORT = /^(\s*)(?:__exported\s+)?import\s+(?:shader_studio|"shader-studio(?:\.slang)?")\s*;[^\r\n]*$/gm;
+
+export function stripShaderStudioEditorImport(source: string): string {
+  return source.replace(
+    SHADER_STUDIO_EDITOR_IMPORT,
+    "$1// Shader Studio editor support import",
+  );
+}
+
 // Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Script fields are appended after
 // this prefix, and the total allocation is rounded to a multiple of 16.
@@ -324,16 +333,18 @@ ${customHelperName ? `float4 ${customHelperName}(float2 uv)
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const prelude = buildPrelude(options.customUniforms);
-  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
+  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
+  const strippedUserSource = stripShaderStudioEditorImport(userSource);
   const channelPrelude = buildChannelPrelude(options.channels);
   if (options.captureMode) {
     // Capture uniforms bind right after the channel texture/sampler pairs.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode) to keep user diagnostics on the
   // user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${strippedUserSource}\n${ENTRY_POINTS}`;
 }

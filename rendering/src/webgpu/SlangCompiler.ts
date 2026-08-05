@@ -5,6 +5,7 @@ import {
 } from "./slangTypes";
 import {
   wrapSlangImageSource,
+  stripShaderStudioEditorImport,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
   type SlangWrapOptions,
@@ -55,7 +56,7 @@ export class SlangCompiler {
 
     for (const dependency of options.modules ?? []) {
       const dependencyModule = session.loadModuleFromSource(
-        dependency.source,
+        stripShaderStudioEditorImport(dependency.source),
         dependency.moduleName,
         dependency.path,
       );

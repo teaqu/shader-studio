@@ -87,9 +87,9 @@ export class ErrorHandler {
 
       this.outputChannel.error(errorText);
 
-      const match = errorText.match(/ERROR:\s*\d+:(\d+):/);
-      if (match) {
-        const lineNum = parseInt(match[1], 10) - 1; // VS Code is 0-based
+      const reportedLine = getReportedDiagnosticLine(errorText);
+      if (reportedLine !== undefined) {
+        const lineNum = reportedLine - 1; // VS Code is 0-based
 
         // Parse pass name from error message (format: "PassName: ERROR: ...")
         const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
@@ -341,4 +341,16 @@ export class ErrorHandler {
       return null;
     }
   }
+}
+
+function getReportedDiagnosticLine(errorText: string): number | undefined {
+  const glslLine = errorText.match(/ERROR:\s*\d+:(\d+):/);
+  if (glslLine) {
+    return Number.parseInt(glslLine[1], 10);
+  }
+
+  // Slang reports locations on a separate source-map-style line, for example:
+  //   --> /image.slang:14:49
+  const slangLine = errorText.match(/^\s*-->\s+.+?:(\d+)(?::\d+)?\s*$/m);
+  return slangLine ? Number.parseInt(slangLine[1], 10) : undefined;
 }

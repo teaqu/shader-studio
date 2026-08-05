@@ -76,6 +76,33 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
+  it("neutralizes the Shader Studio editor import without changing line numbers", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass([
+      "import shader_studio;",
+      "import palette;",
+      "float4 mainImage(float2 c) { return float4(0); }",
+    ].join("\n"));
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("import shader_studio;");
+    expect(wrapped).toContain("// Shader Studio editor support import");
+    expect(wrapped).toContain("import palette;");
+  });
+
+  it("neutralizes the editor import in common code", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass("float4 mainImage(float2 c) { return helper(); }", {
+      commonCode: "import \"shader-studio.slang\";\nfloat4 helper() { return 1; }",
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("import \"shader-studio.slang\";");
+    expect(wrapped).toContain("float4 helper() { return 1; }");
+  });
+
   it("preloads imported modules before compiling the root module", () => {
     const loads: Array<{ source: string; name?: string; path?: string }> = [];
     const compiler = new SlangCompiler(makeFakeSlang({
@@ -99,6 +126,24 @@ describe("SlangCompiler", () => {
     });
     expect(loads[1].name).toBe("image");
     expect(loads[1].path).toBe("/shaders/image.slang");
+  });
+
+  it("neutralizes the editor import inside preloaded user modules", () => {
+    const loads: Array<{ source: string; name?: string; path?: string }> = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onLoad: (source, name, path) => loads.push({ source, name, path }),
+    }));
+
+    compiler.compileImagePass("import palette;\nfloat4 mainImage(float2 c) { return color(); }", {
+      modules: [{
+        moduleName: "palette",
+        path: "/shaders/palette.slang",
+        source: "module palette;\nimport shader_studio;\npublic float4 color() { return iResolution.x; }",
+      }],
+    });
+
+    expect(loads[0].source).not.toContain("import shader_studio;");
+    expect(loads[0].source).toContain("// Shader Studio editor support import");
   });
 
   it("stops before the root compile when an imported module fails", () => {
