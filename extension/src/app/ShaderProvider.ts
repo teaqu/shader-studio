@@ -653,6 +653,10 @@ export class ShaderProvider {
     if (context.filePath === rootShaderPath) {
       return "Image";
     }
+    const preferredRoot = context.pass?.shaderPath ?? context.preferredRootShaderPath;
+    if (preferredRoot && preferredRoot !== rootShaderPath) {
+      return null;
+    }
     return Object.entries(this.buildBufferPathMap(config, rootShaderPath))
       .find(([passName, candidatePath]) => (
         passName !== "Image" && candidatePath === context.filePath

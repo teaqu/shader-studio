@@ -1445,6 +1445,55 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(onPreamblePreparation.firstCall.args[0].snapshot.shaderPath, activeRoot);
     });
 
+    test('keeps the explicitly selected root when two roots share the active pass file', async () => {
+      const selectedRoot = '/workspace/selected-root.glsl';
+      const backgroundRoot = '/workspace/background-root.glsl';
+      const sharedPath = '/workspace/shared-pass.glsl';
+      const selectedInputs = { selected: { type: 'texture' } };
+      const backgroundInputs = { background: { type: 'cubemap' } };
+      const selectedConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: './shared-pass.glsl', inputs: selectedInputs },
+        },
+      };
+      const backgroundConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          common: { path: './shared-pass.glsl', inputs: backgroundInputs },
+        },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(selectedRoot, 'utf-8').returns(mainImageCode);
+      readFile.withArgs(backgroundRoot, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.callsFake((shaderPath: string) => (
+        shaderPath === backgroundRoot ? backgroundConfig : selectedConfig
+      ));
+
+      await sendForegroundShaderFromEditor(backgroundRoot, mainImageCode);
+      await sendForegroundShaderFromEditor(selectedRoot, mainImageCode);
+      await sendForegroundShaderFromEditor(sharedPath, 'void renderShared() {}');
+      onPreamblePreparation.resetHistory();
+
+      await provider.sendShaderFromPath(backgroundRoot);
+      sinon.assert.notCalled(onPreamblePreparation);
+
+      await provider.sendShaderFromPath(selectedRoot);
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.deepStrictEqual(onPreamblePreparation.firstCall.args[0].snapshot, {
+        shaderPath: selectedRoot,
+        configPath: '/workspace/selected-root.sha.json',
+        passName: 'BufferA',
+        inputs: selectedInputs,
+        customUniformDeclarations: '',
+      });
+    });
+
     test('ignores a background Buffer path refresh without replacing the active pass', async () => {
       const shaderPath = '/workspace/multi-buffer.glsl';
       const activeBuffer = '/workspace/active-a.glsl';
