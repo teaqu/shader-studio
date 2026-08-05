@@ -258,7 +258,7 @@ export class VariableCaptureManager {
   private collectionRequestId = 0;
   private disposed = false;
   // Accumulate partial PBO results until all fences have signaled
-  private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
+  private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }> = [];
   private expectedCount = 0;
   private emptyCollectFrames = 0;
   private declaredOrder: string[] = [];
@@ -651,7 +651,7 @@ export class VariableCaptureManager {
       params.canvasHeight,
     );
 
-    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number }> = [];
+    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number; hidden?: boolean; slangPlan?: DebugInstrumentationPlan }> = [];
 
     // Store declaration lines for each variable
     this.varDeclarationLines.clear();
@@ -672,6 +672,9 @@ export class VariableCaptureManager {
     );
 
     if (selectorShader) {
+      if (params.slangCapture) {
+        captures.push({ varName: params.slangCapture.plan.captureSlots[0].name, varType: 'bool', captureShader: selectorShader, selectorIndex: 0, hidden: true, slangPlan: params.slangCapture.plan });
+      }
       for (let index = 0; index < vars.length; index++) {
         const v = vars[index];
         captures.push({
@@ -778,7 +781,7 @@ export class VariableCaptureManager {
   }
 
   private decodeAndUpdate(
-    results: Array<{ varName: string; varType: string; rgba: Float32Array }>
+    results: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }>
   ): void {
     captureCounters.decodeCalls++;
     const decodeStartedAt = performance.now();
@@ -792,7 +795,14 @@ export class VariableCaptureManager {
       captureBufferName: this.lastCaptureBufferName,
     };
 
-    for (const result of results) {
+    const marker = results.find((result) => result.hidden);
+    if (marker && !marker.rgba.some((value, index) => index % 4 === 0 && value >= 0.5)) {
+      this.emitErrorState('Selected Slang statement was not executed for this capture');
+      this.finishCollection([]);
+      return;
+    }
+
+    for (const result of results.filter((result) => !result.hidden)) {
       if (isPixelMode) {
         // 1×1 capture: exact component values
         const value = CaptureDecoder.decodePixel(result.rgba, result.varType);

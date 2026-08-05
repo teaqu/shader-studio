@@ -36,6 +36,7 @@ interface PendingCapture {
   resolved: boolean;
   discarded: boolean;
   rgba: Float32Array | null;
+  hidden?: boolean;
 }
 
 /**
@@ -157,7 +158,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         continue;
       }
       if (pending.resolved && pending.rgba) {
-        results.push({ varName: pending.varName, varType: pending.varType, rgba: pending.rgba });
+        results.push({ varName: pending.varName, varType: pending.varType, rgba: pending.rgba, hidden: pending.hidden });
       } else {
         remaining.push(pending);
       }
@@ -346,6 +347,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           resolved: false,
           discarded: false,
           rgba: null,
+          hidden: capture.hidden,
         };
         this.pendingCaptures.push(pending);
         this.beginReadback(pending);

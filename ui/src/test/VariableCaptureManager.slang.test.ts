@@ -112,7 +112,10 @@ describe('VariableCaptureManager - Slang engine', () => {
     await vi.waitFor(() => expect(capturer.issueCaptureGrid).toHaveBeenCalled());
 
     const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; selectorIndex?: number; slangPlan?: unknown }>;
-    expect(captures).toEqual([expect.objectContaining({ varName: 'uv', selectorIndex: 1, slangPlan: plan })]);
+    expect(captures).toEqual([
+      expect.objectContaining({ varName: '_marker', selectorIndex: 0, hidden: true, slangPlan: plan }),
+      expect.objectContaining({ varName: 'uv', selectorIndex: 1, slangPlan: plan }),
+    ]);
     manager.dispose();
   });
 

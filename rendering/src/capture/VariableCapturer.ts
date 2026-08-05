@@ -66,12 +66,14 @@ export interface CaptureRequest {
   selectorIndex?: number;
   /** Complete Slang workspace for native capture; ignored by the WebGL capturer. */
   slangPlan?: DebugInstrumentationPlan;
+  hidden?: boolean;
 }
 
 export interface CaptureResult {
   varName: string;
   varType: string;
   rgba: Float32Array;
+  hidden?: boolean;
 }
 
 /**
