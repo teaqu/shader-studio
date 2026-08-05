@@ -20,6 +20,12 @@ interface OwnedShaderPass {
   config: ShaderConfig;
 }
 
+interface ActivePreamblePass {
+  filePath: string;
+  shaderPath: string;
+  passName: string;
+}
+
 export class ShaderProvider {
   private logger = Logger.getInstance();
   private activeShaders: Set<string> = new Set(); // Track currently active shader paths
@@ -28,6 +34,7 @@ export class ShaderProvider {
   private scriptBundler = new ScriptBundler();
   private scriptEvaluator = new ScriptEvaluator();
   private activePreambleFilePath: string | null = null;
+  private activePreamblePass: ActivePreamblePass | null = null;
   private readonly customDeclarationsByShader = new Map<string, string>();
 
   constructor(
@@ -58,6 +65,7 @@ export class ShaderProvider {
     const shaderPath = editor.document.uri.fsPath;
     if (getShaderLanguage(shaderPath) === "glsl") {
       this.activePreambleFilePath = shaderPath;
+      this.activePreamblePass = null;
     }
 
     // Clear stale persistent errors before re-evaluating the shader.
@@ -131,6 +139,7 @@ export class ShaderProvider {
     const code = document.getText();
     if (getShaderLanguage(shaderPath) === "glsl") {
       this.activePreambleFilePath = shaderPath;
+      this.activePreamblePass = null;
     }
 
     this.messenger.getErrorHandler().clearPersistentErrors();
@@ -544,6 +553,19 @@ export class ShaderProvider {
       ))?.[0] ?? null;
   }
 
+  private resolveRetainedActivePassName(rootShaderPath: string): string | null {
+    if (!this.activePreambleFilePath || this.activePreambleFilePath === rootShaderPath) {
+      return "Image";
+    }
+    if (
+      this.activePreamblePass?.filePath === this.activePreambleFilePath
+      && this.activePreamblePass.shaderPath === rootShaderPath
+    ) {
+      return this.activePreamblePass.passName;
+    }
+    return null;
+  }
+
   private emitActiveRootPreamble(
     shaderPath: string,
     config: ShaderConfig | null,
@@ -553,27 +575,34 @@ export class ShaderProvider {
       return;
     }
 
-    const scriptInvalid = message.scriptBundleError !== undefined;
-    if (!scriptInvalid) {
+    const configPath = getConfigPathForShaderPath(shaderPath);
+    const configInvalid = !config && fs.existsSync(configPath);
+    const invalid = message.scriptBundleError !== undefined || configInvalid;
+    if (!invalid) {
       this.customDeclarationsByShader.set(
         shaderPath,
         message.customUniformDeclarations ?? "",
       );
     }
 
-    const passName = this.resolveActivePassName(shaderPath, config);
+    const passName = configInvalid
+      ? this.resolveRetainedActivePassName(shaderPath)
+      : this.resolveActivePassName(shaderPath, config);
     if (!passName) {
       return;
     }
 
-    const configPath = getConfigPathForShaderPath(shaderPath);
-    const configInvalid = !config && fs.existsSync(configPath);
+    this.activePreamblePass = {
+      filePath: this.activePreambleFilePath ?? shaderPath,
+      shaderPath,
+      passName,
+    };
     this.emitPreamblePreparation(
       shaderPath,
       config,
       passName,
       this.customDeclarationsByShader.get(shaderPath),
-      scriptInvalid || configInvalid,
+      invalid,
     );
   }
 
@@ -581,6 +610,11 @@ export class ShaderProvider {
     if (this.activePreambleFilePath !== filePath) {
       return;
     }
+    this.activePreamblePass = {
+      filePath,
+      shaderPath: owner.shaderPath,
+      passName: owner.passName,
+    };
     this.emitPreamblePreparation(
       owner.shaderPath,
       owner.config,

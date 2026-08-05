@@ -879,6 +879,79 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
+    test('emits invalid when the active common pass owning config becomes malformed', async () => {
+      const shaderPath = '/workspace/malformed-owner.glsl';
+      const commonPath = '/workspace/malformed-owner-common.glsl';
+      const config = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          common: { path: './malformed-owner-common.glsl' },
+        },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(shaderPath, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.returns(config);
+
+      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await provider.sendShaderFromEditor(editorFor(commonPath, 'float helper() { return 1.0; }'));
+      onPreamblePreparation.resetHistory();
+      loadAndProcessConfigStub.returns(null);
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
+        kind: 'invalid',
+        shaderPath,
+      });
+    });
+
+    test('retains successful declarations when the active Buffer owning config becomes malformed', async () => {
+      const shaderPath = '/workspace/malformed-cache.glsl';
+      const bufferPath = '/workspace/malformed-cache-buffer.glsl';
+      const config = {
+        version: '1.0',
+        script: './uniforms.ts',
+        passes: {
+          Image: {},
+          BufferA: { path: './malformed-cache-buffer.glsl' },
+        },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(shaderPath, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.returns(config);
+      sandbox.stub((provider as any).scriptBundler, 'bundle').resolves({
+        success: true,
+        code: 'bundled script',
+      });
+      const loadScript = sandbox.stub((provider as any).scriptEvaluator, 'loadScript').returns({
+        declarations: 'uniform float retained;',
+        uniforms: [],
+      });
+
+      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      loadAndProcessConfigStub.returns(null);
+      await provider.sendShaderFromPath(shaderPath);
+      onPreamblePreparation.resetHistory();
+      loadAndProcessConfigStub.returns(config);
+
+      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+
+      sinon.assert.calledOnce(onPreamblePreparation);
+      assert.strictEqual(
+        onPreamblePreparation.firstCall.args[0].snapshot.customUniformDeclarations,
+        'uniform float retained;',
+      );
+      sinon.assert.calledOnce(loadScript);
+    });
+
     for (const failure of ['bundle', 'evaluation'] as const) {
       test(`emits invalid without partial declarations after ${failure} failure`, async () => {
         const shaderPath = `/workspace/${failure}-failure.glsl`;
@@ -1271,6 +1344,11 @@ suite('ShaderProvider Test Suite', () => {
 
         sinon.assert.calledOnce(sendSpy);
         assert.strictEqual(sendSpy.firstCall.args[0].type, 'shaderSource');
+        sinon.assert.calledOnce(mockOutputChannel.warn);
+        assert.match(
+          mockOutputChannel.warn.firstCall.args[0],
+          /Failed to publish Shader Validator preamble context: Error: callback failed/,
+        );
       });
     }
   });
