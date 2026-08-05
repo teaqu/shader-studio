@@ -263,7 +263,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          common: { path: '/test/common.glsl', inputs: {} },
+          common: { path: '/test/common.glsl' },
           BufferA: { path: '/test/bufferA.glsl', inputs: {} },
         },
       };
@@ -325,7 +325,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          common: { path: '/test/common.glsl', inputs: {} },
+          common: { path: '/test/common.glsl' },
         },
       };
 
@@ -402,7 +402,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          common: { path: '/test/common.glsl', inputs: {} },
+          common: { path: '/test/common.glsl' },
         },
       };
 
@@ -1062,7 +1062,7 @@ describe('ConfigPanel', () => {
           version: '1.0',
           passes: {
             Image: { inputs: {} },
-            common: { path: '/test/common.glsl', inputs: {} },
+            common: { path: '/test/common.glsl' },
             BufferA: { path: '/test/bufferA.glsl', inputs: {} },
           },
           script: './shader.uniforms.ts',
@@ -1199,7 +1199,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          common: { path: '/test/common.glsl', inputs: {} },
+          common: { path: '/test/common.glsl' },
           BufferRenamed: { path: '/test/bufferA.glsl', inputs: {} },
         },
         script: './shader.uniforms.ts',
@@ -1218,7 +1218,7 @@ describe('ConfigPanel', () => {
           version: '1.0',
           passes: {
             Image: { inputs: {} },
-            common: { path: '/test/common.glsl', inputs: {} },
+            common: { path: '/test/common.glsl' },
             BufferA: { path: '/test/bufferA.glsl', inputs: {} },
           },
           script: './shader.uniforms.ts',

@@ -3,6 +3,81 @@ import { BufferConfig } from '../lib/BufferConfig';
 import type { BufferPass, ImagePass } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
+  describe('geometry validation', () => {
+    it('accepts every supported geometry type for image and buffer configs', () => {
+      const geometryTypes = ['fullscreen', 'plane', 'cube', 'sphere'] as const;
+
+      for (const type of geometryTypes) {
+        const imageConfig: ImagePass = { geometry: { type } };
+        const bufferConfig: BufferPass = { path: 'buffer.glsl', geometry: { type } };
+
+        expect(new BufferConfig('Image', imageConfig).validate()).toEqual({
+          isValid: true,
+          errors: []
+        });
+        expect(new BufferConfig('BufferA', bufferConfig).validate()).toEqual({
+          isValid: true,
+          errors: []
+        });
+      }
+    });
+
+    it('keeps omitted geometry valid without materializing a default', () => {
+      const config: ImagePass = {};
+      const bufferConfig = new BufferConfig('Image', config);
+
+      expect(bufferConfig.validate()).toEqual({ isValid: true, errors: [] });
+      expect(bufferConfig.getConfig()).toEqual({});
+    });
+
+    it.each([
+      null,
+      'sphere',
+      [],
+      {},
+      { type: null },
+      { type: 'sphere', extra: true }
+    ])('rejects malformed image geometry %#', (geometry) => {
+      const config = { geometry } as never;
+
+      expect(new BufferConfig('Image', config).validate().isValid).toBe(false);
+    });
+
+    it.each([
+      null,
+      'cube',
+      [],
+      {},
+      { type: null },
+      { type: 'cube', extra: true }
+    ])('rejects malformed buffer geometry %#', (geometry) => {
+      const config = { path: 'buffer.glsl', geometry } as never;
+
+      expect(new BufferConfig('BufferA', config).validate().isValid).toBe(false);
+    });
+
+    it('reports the supported types for unknown geometry', () => {
+      const config = {
+        path: 'buffer.glsl',
+        geometry: { type: 'torus' }
+      } as never;
+
+      expect(new BufferConfig('BufferA', config).validate().errors)
+        .toContain('BufferA pass geometry type must be one of: fullscreen, plane, cube, sphere');
+    });
+
+    it('rejects geometry on the Common pass', () => {
+      const config = {
+        path: 'common.glsl',
+        geometry: { type: 'plane' }
+      } as never;
+
+      const result = new BufferConfig('common', config).validate();
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('common pass cannot define geometry');
+    });
+  });
+
   describe('validate', () => {
     it('should accept buffer paths with .glsl extension', () => {
       const config: BufferPass = { path: 'shader.glsl', inputs: {} };

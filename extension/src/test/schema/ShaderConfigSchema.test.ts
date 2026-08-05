@@ -23,6 +23,63 @@ suite('Shader config JSON schema', () => {
     );
   }
 
+  test('accepts every supported image and buffer geometry type plus omission', () => {
+    for (const type of ['fullscreen', 'plane', 'cube', 'sphere']) {
+      assertValid({
+        version: '1.0',
+        passes: {
+          Image: { geometry: { type } },
+          BufferA: { path: 'buffer-a.glsl', geometry: { type } }
+        }
+      });
+    }
+
+    assertValid({
+      version: '1.0',
+      passes: { Image: {} }
+    });
+  });
+
+  test('rejects malformed image and buffer geometry objects', () => {
+    const malformedCases: Array<[unknown, string]> = [
+      [null, 'should be object'],
+      ['sphere', 'should be object'],
+      [[], 'should be object'],
+      [{}, "should have required property 'type'"],
+      [{ type: null }, 'should be equal to one of the allowed values'],
+      [{ type: 'sphere', extra: true }, 'should NOT have additional properties']
+    ];
+
+    for (const [geometry, expectedMessage] of malformedCases) {
+      assertInvalid({
+        version: '1.0',
+        passes: {
+          Image: { geometry },
+          BufferA: { path: 'buffer-a.glsl', geometry }
+        }
+      }, expectedMessage);
+    }
+  });
+
+  test('rejects unknown geometry types', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: { geometry: { type: 'torus' } }
+      }
+    }, 'should be equal to one of the allowed values');
+  });
+
+  test('rejects geometry on the Common pass', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        common: { path: 'common.glsl', geometry: { type: 'cube' } }
+      }
+    }, 'should NOT have additional properties');
+  });
+
   test('accepts image and buffer resolution settings plus current polling field', () => {
     assertValid({
       version: '1.0',

@@ -1,7 +1,9 @@
+import type { GeometryType } from '@shader-studio/types';
+
 /** A fixed-size tuple used by preview scene APIs. */
 export type Vec3 = readonly [number, number, number];
 
-export type PreviewMeshKind = 'cube' | 'sphere' | 'plane';
+export type PreviewMeshKind = Exclude<GeometryType, 'fullscreen'>;
 
 export interface PreviewMesh {
   positions: Float32Array;

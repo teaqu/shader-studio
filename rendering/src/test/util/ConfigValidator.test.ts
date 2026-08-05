@@ -23,6 +23,99 @@ describe("ConfigValidator", () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    describe("geometry validation", () => {
+      it("should accept every supported geometry type on image and buffer passes", () => {
+        const geometryTypes = ["fullscreen", "plane", "cube", "sphere"] as const;
+
+        for (const type of geometryTypes) {
+          const config: ShaderConfig = {
+            version: "1.0",
+            passes: {
+              Image: { geometry: { type } },
+              BufferA: { path: "buffer-a.glsl", geometry: { type } }
+            }
+          };
+
+          expect(ConfigValidator.validateConfig(config)).toEqual({
+            isValid: true,
+            errors: []
+          });
+        }
+      });
+
+      it("should keep omitted geometry valid without materializing a default", () => {
+        const config: ShaderConfig = {
+          version: "1.0",
+          passes: { Image: {} }
+        };
+
+        expect(ConfigValidator.validateConfig(config)).toEqual({
+          isValid: true,
+          errors: []
+        });
+        expect(config.passes.Image).toEqual({});
+      });
+
+      it.each([
+        null,
+        "sphere",
+        [],
+        {},
+        { type: null },
+        { type: "sphere", extra: true }
+      ])("should reject malformed image geometry %#", (geometry) => {
+        const config = {
+          version: "1.0",
+          passes: { Image: { geometry } }
+        };
+
+        expect(ConfigValidator.validateConfig(config as never).isValid).toBe(false);
+      });
+
+      it.each([
+        null,
+        "cube",
+        [],
+        {},
+        { type: null },
+        { type: "cube", extra: true }
+      ])("should reject malformed buffer geometry %#", (geometry) => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            BufferA: { path: "buffer-a.glsl", geometry }
+          }
+        };
+
+        expect(ConfigValidator.validateConfig(config as never).isValid).toBe(false);
+      });
+
+      it("should report the supported types for unknown geometry", () => {
+        const config = {
+          version: "1.0",
+          passes: { Image: { geometry: { type: "torus" } } }
+        };
+
+        expect(ConfigValidator.validateConfig(config as never).errors)
+          .toContain("Image pass geometry type must be one of: fullscreen, plane, cube, sphere");
+      });
+
+      it("should reject geometry on the Common pass", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: { path: "common.glsl", geometry: { type: "sphere" } }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config as never);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain("common pass cannot define geometry");
+      });
+    });
+
     describe("version validation", () => {
       it("should reject config without version", () => {
         const config = {

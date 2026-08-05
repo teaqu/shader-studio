@@ -6,6 +6,9 @@ export type {
   ShaderConfig,
   ImagePass,
   BufferPass,
+  CommonPass,
+  GeometryConfig,
+  GeometryType,
   ConfigInput,
   BufferConfigInput,
   TextureConfigInput,
@@ -14,3 +17,4 @@ export type {
   ResolutionSettings,
   AspectRatioMode,
 } from "@shader-studio/types";
+export { GEOMETRY_TYPES } from "@shader-studio/types";

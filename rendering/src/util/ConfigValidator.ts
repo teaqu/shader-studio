@@ -1,4 +1,20 @@
-import type { ShaderConfig } from "@shader-studio/types";
+import { GEOMETRY_TYPES, type GeometryConfig, type ShaderConfig } from "@shader-studio/types";
+
+function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
+  if (geometry === undefined) {
+    return true;
+  }
+  if (!geometry || typeof geometry !== "object" || Array.isArray(geometry)) {
+    return false;
+  }
+
+  const properties = Object.keys(geometry);
+  const type = (geometry as { type?: unknown }).type;
+  return properties.length === 1 &&
+    properties[0] === "type" &&
+    typeof type === "string" &&
+    GEOMETRY_TYPES.includes(type as GeometryConfig["type"]);
+}
 
 export interface ValidationResult {
   isValid: boolean;
@@ -42,7 +58,11 @@ export class ConfigValidator {
       }
       const pass = config.passes[passName];
       if (pass) {
-        this.validateBufferPass(pass, passName, errors);
+        if (passName === "common") {
+          this.validateCommonPass(pass, errors);
+        } else {
+          this.validateBufferPass(pass, passName, errors);
+        }
       }
     }
 
@@ -53,6 +73,10 @@ export class ConfigValidator {
   }
 
   private static validateImagePass(pass: any, errors: string[]): void {
+    if (!isValidGeometry(pass.geometry)) {
+      errors.push(`Image pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
+    }
+
     if (pass.inputs) {
       this.validateInputs(pass.inputs, 'Image', errors);
     }
@@ -64,8 +88,21 @@ export class ConfigValidator {
       errors.push(`${passName} pass path must be a string`);
     }
 
+    if (!isValidGeometry(pass.geometry)) {
+      errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
+    }
+
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);
+    }
+  }
+
+  private static validateCommonPass(pass: any, errors: string[]): void {
+    if (pass.path !== undefined && typeof pass.path !== "string") {
+      errors.push("common pass path must be a string");
+    }
+    if (pass.geometry !== undefined) {
+      errors.push("common pass cannot define geometry");
     }
   }
 

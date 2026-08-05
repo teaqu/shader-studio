@@ -51,7 +51,6 @@ function makeConfig(): ShaderConfig {
       },
       common: {
         path: 'common.glsl',
-        inputs: {},
       },
     },
   };

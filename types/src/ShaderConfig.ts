@@ -76,15 +76,28 @@ export type BufferResolution =
     | { width: number; height: number; scale?: never }
     | { scale: number; width?: never; height?: never };
 
+export const GEOMETRY_TYPES = ["fullscreen", "plane", "cube", "sphere"] as const;
+export type GeometryType = (typeof GEOMETRY_TYPES)[number];
+export interface GeometryConfig { type: GeometryType; }
+
 export interface ImagePass {
     inputs?: Record<string, ConfigInput>;
     resolution?: ResolutionSettings;
+    geometry?: GeometryConfig;
 }
 
 export interface BufferPass {
     path: string;
     inputs?: Record<string, ConfigInput>;
     resolution?: BufferResolution;
+    geometry?: GeometryConfig;
+}
+
+export interface CommonPass {
+    path: string;
+    inputs?: never;
+    resolution?: never;
+    geometry?: never;
 }
 
 /** Describes the layout of a named GPU storage buffer. */
@@ -120,8 +133,8 @@ export interface ShaderPasses {
     BufferB?: BufferPass;
     BufferC?: BufferPass;
     BufferD?: BufferPass;
-    common?: BufferPass;
-    [name: string]: BufferPass | ImagePass | ComputePass | undefined;
+    common?: CommonPass;
+    [name: string]: BufferPass | ImagePass | ComputePass | CommonPass | undefined;
 }
 
 export interface ShaderConfig {

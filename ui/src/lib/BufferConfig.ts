@@ -1,4 +1,27 @@
-import type { BufferPass, ComputePass, ImagePass, ConfigInput } from '@shader-studio/types';
+import {
+  GEOMETRY_TYPES,
+  type BufferPass,
+  type ComputePass,
+  type ConfigInput,
+  type GeometryConfig,
+  type ImagePass
+} from '@shader-studio/types';
+
+function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
+  if (geometry === undefined) {
+    return true;
+  }
+  if (!geometry || typeof geometry !== 'object' || Array.isArray(geometry)) {
+    return false;
+  }
+
+  const properties = Object.keys(geometry);
+  const type = (geometry as { type?: unknown }).type;
+  return properties.length === 1 &&
+    properties[0] === 'type' &&
+    typeof type === 'string' &&
+    GEOMETRY_TYPES.includes(type as GeometryConfig['type']);
+}
 
 export class BufferConfig {
   private bufferName: string;
@@ -111,6 +134,12 @@ export class BufferConfig {
    */
   validate(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
+
+    if (this.bufferName === 'common' && this.config.geometry !== undefined) {
+      errors.push('common pass cannot define geometry');
+    } else if (!isValidGeometry(this.config.geometry)) {
+      errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
+    }
 
     // Validate input channels
     if (this.config.inputs) {

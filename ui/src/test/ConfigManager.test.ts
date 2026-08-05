@@ -473,10 +473,6 @@ describe('ConfigManager', () => {
           },
           common: {
             path: 'common.glsl',
-            inputs: {
-              iChannel0: { type: 'buffer', source: 'BufferA' },
-              iChannel1: { type: 'buffer', source: 'BufferC' },
-            },
           },
         },
       };
@@ -517,10 +513,6 @@ describe('ConfigManager', () => {
       });
       expect(updated.passes.common).toMatchObject({
         path: 'common.glsl',
-        inputs: {
-          iChannel0: { type: 'buffer', source: 'Feedback' },
-          iChannel1: { type: 'buffer', source: 'BufferC' },
-        },
       });
       expect(config.passes.Image).toBe(originalImage);
       expect(config.passes.BufferB).toBe(originalBufferB);
