@@ -100,6 +100,8 @@ export function buildWebglGlslInjection(
     ...aliases,
     `uniform vec3 iChannelResolution[${channelCount}];`,
     ...buildGlslCompatibilityUniformDeclarationLines(slotTypes),
+    'void mainImage(out vec4 fragColor, in vec2 fragCoord);',
+    'void main() { mainImage(fragColor, gl_FragCoord.xy); }',
   ];
   const customLines = customUniformLines(snapshot.customUniformDeclarations, ownedNames, warnings);
   return { lines: customLines.length > 0 ? [...lines, ...customLines] : lines, warnings };

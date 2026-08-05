@@ -20,6 +20,8 @@ suite('WebGL GLSL Editor injection builder', () => {
     assert.ok(result.lines.includes('uniform samplerCube iChannel0;'));
     assert.ok(result.lines.includes('uniform samplerCube environment;'));
     assert.ok(result.lines.includes('uniform float exposure;'));
+    assert.ok(result.lines.includes('void mainImage(out vec4 fragColor, in vec2 fragCoord);'));
+    assert.ok(result.lines.includes('void main() { mainImage(fragColor, gl_FragCoord.xy); }'));
     assert.ok(isManagedWebglGlslInjection(result.lines));
   });
 
