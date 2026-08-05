@@ -133,7 +133,7 @@ suite('Shader Validator preamble manager', () => {
     assert.strictEqual(configuration.update.firstCall.args[1], managedSetting);
     assert.strictEqual(
       configuration.update.firstCall.args[2],
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 
@@ -151,7 +151,7 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 
@@ -169,7 +169,7 @@ suite('Shader Validator preamble manager', () => {
     sinon.assert.notCalled(showInformationMessage);
   });
 
-  test('updates the workspace-folder setting only when every user scope is empty', async () => {
+  test('updates the workspace setting only when every user scope is empty', async () => {
     const manager = createManager();
 
     await manager.apply({ kind: 'valid', snapshot });
@@ -181,7 +181,7 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 
@@ -241,7 +241,7 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
     sinon.assert.notCalled(showInformationMessage);
   });
@@ -517,7 +517,7 @@ suite('Shader Validator preamble manager', () => {
       configuration.update,
       SHADER_VALIDATOR_PREAMBLE_SETTING,
       managedSetting,
-      vscode.ConfigurationTarget.WorkspaceFolder,
+      vscode.ConfigurationTarget.Workspace,
     );
   });
 

@@ -33,7 +33,7 @@ suite('Shader Validator documentation', () => {
     assert.match(settingsDoc, /successfully inferred custom uniforms/i);
     assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
     assert.match(settingsDoc, /only when you have not already configured the setting/i);
-    assert.match(settingsDoc, /existing global, workspace, and folder values remain unchanged/i);
+    assert.match(settingsDoc, /existing global and workspace values remain unchanged/i);
     assert.match(settingsDoc, /one.*workspace folder/i);
   });
 

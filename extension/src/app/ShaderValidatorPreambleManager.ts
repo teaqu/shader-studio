@@ -219,7 +219,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         await configuration.update(
           SHADER_VALIDATOR_PREAMBLE_SETTING,
           managedPreambleSetting,
-          vscode.ConfigurationTarget.WorkspaceFolder,
+          vscode.ConfigurationTarget.Workspace,
         );
         return;
       }
@@ -235,7 +235,7 @@ export class ShaderValidatorPreambleManager implements vscode.Disposable {
         await configuration.update(
           SHADER_VALIDATOR_PREAMBLE_SETTING,
           managedPreambleSetting,
-          vscode.ConfigurationTarget.WorkspaceFolder,
+          vscode.ConfigurationTarget.Workspace,
         );
         return;
       }
