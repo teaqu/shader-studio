@@ -15,6 +15,7 @@ export const WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING = 'codeInjectionSource';
 interface ManagerDeps {
   getExtension(id: string): vscode.Extension<unknown> | undefined;
   getWorkspaceFolders(): readonly vscode.WorkspaceFolder[];
+  isIntegrationEnabled(folder: vscode.WorkspaceFolder): boolean;
   onDidChangeExtensions(listener: () => void): vscode.Disposable;
   showInformationMessage(message: string): Thenable<string | undefined>;
 }
@@ -58,6 +59,10 @@ export class WebglGlslEditorManager implements vscode.Disposable {
     this.deps = {
       getExtension: (id) => vscode.extensions.getExtension(id),
       getWorkspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
+      isIntegrationEnabled: (folder) => (
+        vscode.workspace.getConfiguration('shader-studio', folder.uri)
+          .get<boolean>('webglGlslEditorIntegration', true) !== false
+      ),
       onDidChangeExtensions: (listener) => vscode.extensions.onDidChange(listener),
       showInformationMessage: (message) => vscode.window.showInformationMessage(message),
       ...deps,
@@ -68,6 +73,11 @@ export class WebglGlslEditorManager implements vscode.Disposable {
       }
     });
     this.context.subscriptions.push(this.extensionChangeListener);
+    this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+      if (!this.disposed && event.affectsConfiguration('shader-studio.webglGlslEditorIntegration')) {
+        void this.coordinateRecentWorkspaces();
+      }
+    }));
   }
 
   async initializeWorkspaceFolders(): Promise<void> {
@@ -149,6 +159,16 @@ export class WebglGlslEditorManager implements vscode.Disposable {
     const existingSource = configuration.get<unknown>(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING);
     const sourceInspection = configuration.inspect<unknown>(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING);
     const enabledInspection = configuration.inspect<boolean>(WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING);
+    if (!this.deps.isIntegrationEnabled(folder)) {
+      if (isManagedWebglGlslInjection(existingSource)) {
+        await configuration.update(
+          WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING,
+          false,
+          vscode.ConfigurationTarget.Workspace,
+        );
+      }
+      return;
+    }
     if (isManagedWebglGlslInjection(existingSource)) {
       if (existingSource.join('\n') !== lines.join('\n')) {
         await configuration.update(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING, lines, vscode.ConfigurationTarget.Workspace);

@@ -15,6 +15,7 @@ suite('WebGL GLSL Editor documentation', () => {
     assert.match(readme, /disable Shader Validator/i);
     assert.match(settings, /webgl-glsl-editor\.codeInjection/);
     assert.match(settings, /webgl-glsl-editor\.codeInjectionSource/);
+    assert.match(settings, /webglGlslEditorIntegration/);
     assert.match(settings, /user-owned injection configuration unchanged/i);
   });
 });

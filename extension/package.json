@@ -177,6 +177,11 @@
           "type": "boolean",
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
+        },
+        "shader-studio.webglGlslEditorIntegration": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic WebGL GLSL Editor code injection for Shader Studio uniforms."
         }
       }
     },

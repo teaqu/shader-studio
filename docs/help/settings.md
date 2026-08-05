@@ -26,6 +26,7 @@ Dynamic declarations come from the active shader's `.sha.json` pass inputs and c
 | `shader-studio.defaultConfigView` | string | `gui` | Yes | Default view when opening `.sha.json` files: `gui` (visual editor) or `code` (JSON source). |
 | `shader-studio.navigateOnBufferSwitch` | boolean | `true` | No | When enabled, switching buffers in the config panel or editor overlay syncs the active file in the VS Code editor. Works in combination with shader lock. |
 | `shader-studio.lockEditorGroup` | boolean | `true` | No | Lock the editor group when opening a shader panel, preventing other editors from opening in it. |
+| `shader-studio.webglGlslEditorIntegration` | boolean | `true` | No | Automatically configure WebGL GLSL Editor code injection with Shader Studio uniforms. Disabling it turns off only Shader Studio-managed injection. |
 
 ## Port Configuration
 
