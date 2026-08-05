@@ -97,6 +97,23 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("compiles a structured Slang debug plan through the normal root/module pipeline", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+
+    await engine.compileSlangDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: "file:///main.slang", path: "/main.slang", source: "float4 mainImage(float2 c) { return 1; }", version: 1, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 1, moduleName: "helper", ownerPass: "Image" },
+      ],
+    });
+
+    expect(compile).toHaveBeenCalledWith(expect.any(String), null, "/main.slang", {}, "", [], [{
+      uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 1, moduleName: "helper", ownerPass: "Image",
+    }], "/main.slang");
+  });
+
   it("initializes without throwing when WebGPU is unavailable", () => {
     const engine = new WebGPURenderingEngine(assets);
     expect(() => engine.initialize(noWebGpuCanvas())).not.toThrow();

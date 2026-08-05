@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
+import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -2701,6 +2701,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getResourceManager(): ResourceManager<WebGPUTextureHandle> | null {
     return this.resourceManager;
+  }
+
+  async compileSlangDebugPlan(plan: DebugInstrumentationPlan): Promise<CompilationResult | undefined> {
+    const root = plan.files.find((file) => file.uri === plan.rootUri);
+    if (!root) {
+      return { success: false, errors: ["Slang debug plan root is missing"] };
+    }
+    const modules: SlangSourceModule[] = plan.files
+      .filter((file) => file.uri !== root.uri)
+      .map((file) => ({ ...file, ownerPass: root.ownerPass }));
+    return this.compileShaderPipeline(
+      root.source,
+      this.currentConfig,
+      root.path,
+      {},
+      this.customUniformManager.getDeclarations(),
+      this.customUniformManager.getUniformInfo(),
+      modules,
+      root.path,
+    );
   }
 
   getCurrentConfig(): ShaderConfig | null {
