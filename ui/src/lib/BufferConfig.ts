@@ -135,17 +135,27 @@ export class BufferConfig {
   validate(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    if (this.bufferName === 'common' && this.config.geometry !== undefined) {
-      errors.push('common pass cannot define geometry');
-    } else if (!isValidGeometry(this.config.geometry)) {
-      errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
-    }
+    if (this.bufferName === 'common') {
+      if (this.config.inputs !== undefined) {
+        errors.push('common pass cannot define inputs');
+      }
+      if (this.config.resolution !== undefined) {
+        errors.push('common pass cannot define resolution');
+      }
+      if (this.config.geometry !== undefined) {
+        errors.push('common pass cannot define geometry');
+      }
+    } else {
+      if (!isValidGeometry(this.config.geometry)) {
+        errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
+      }
 
-    // Validate input channels
-    if (this.config.inputs) {
-      for (const [channelName, input] of Object.entries(this.config.inputs)) {
-        if (!this.validateInput(input)) {
-          errors.push(`${this.bufferName} pass has invalid input configuration for ${channelName}`);
+      // Validate input channels
+      if (this.config.inputs) {
+        for (const [channelName, input] of Object.entries(this.config.inputs)) {
+          if (!this.validateInput(input)) {
+            errors.push(`${this.bufferName} pass has invalid input configuration for ${channelName}`);
+          }
         }
       }
     }

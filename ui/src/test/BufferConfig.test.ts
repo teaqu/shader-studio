@@ -76,6 +76,28 @@ describe('BufferConfig', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('common pass cannot define geometry');
     });
+
+    it('rejects inputs on the Common pass without renderable-input validation', () => {
+      const config = {
+        path: 'common.glsl',
+        inputs: { iChannel0: { type: 'unknown' } }
+      } as never;
+
+      expect(new BufferConfig('common', config).validate().errors).toEqual([
+        'common pass cannot define inputs'
+      ]);
+    });
+
+    it('rejects resolution on the Common pass', () => {
+      const config = {
+        path: 'common.glsl',
+        resolution: { scale: 0.5 }
+      } as never;
+
+      expect(new BufferConfig('common', config).validate().errors).toEqual([
+        'common pass cannot define resolution'
+      ]);
+    });
   });
 
   describe('validate', () => {

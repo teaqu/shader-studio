@@ -101,6 +101,12 @@ export class ConfigValidator {
     if (pass.path !== undefined && typeof pass.path !== "string") {
       errors.push("common pass path must be a string");
     }
+    if (pass.inputs !== undefined) {
+      errors.push("common pass cannot define inputs");
+    }
+    if (pass.resolution !== undefined) {
+      errors.push("common pass cannot define resolution");
+    }
     if (pass.geometry !== undefined) {
       errors.push("common pass cannot define geometry");
     }

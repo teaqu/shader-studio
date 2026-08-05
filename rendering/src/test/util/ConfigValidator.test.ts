@@ -114,6 +114,37 @@ describe("ConfigValidator", () => {
         expect(result.isValid).toBe(false);
         expect(result.errors).toContain("common pass cannot define geometry");
       });
+
+      it("should reject inputs on the Common pass without renderable-input validation", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: {
+              path: "common.glsl",
+              inputs: { "invalid-channel": { type: "unknown" } }
+            }
+          }
+        };
+
+        expect(ConfigValidator.validateConfig(config as never).errors).toEqual([
+          "common pass cannot define inputs"
+        ]);
+      });
+
+      it("should reject resolution on the Common pass", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: { path: "common.glsl", resolution: { scale: 0.5 } }
+          }
+        };
+
+        expect(ConfigValidator.validateConfig(config as never).errors).toEqual([
+          "common pass cannot define resolution"
+        ]);
+      });
     });
 
     describe("version validation", () => {
