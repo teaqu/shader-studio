@@ -274,6 +274,27 @@ suite('ErrorHandler Test Suite', () => {
     assert.ok(errorCalled, 'Should log error to output channel');
   });
 
+  test('places Slang compiler diagnostics on their reported source line', () => {
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        "Image: error[E20002]: syntax error",
+        "  --> /image.slang:14:49",
+        "   |",
+        "14 | float gridY = step(0.92, frac(uv.y * 10.0));>",
+        "   |                                             ^ syntax error.",
+      ].join("\n")],
+    });
+
+    assert.strictEqual(diagnostics?.length, 1);
+    assert.strictEqual(diagnostics?.[0].range.start.line, 13);
+  });
+
   test('should target the configured shader when no GLSL editor is focused', () => {
     const shaderUri = vscode.Uri.file('/test/config-shader.glsl');
     const otherEditor = {

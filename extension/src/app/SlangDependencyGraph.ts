@@ -31,6 +31,9 @@ export function collectSlangDependencies(
 
   const visit = (importerPath: string, source: string): void => {
     for (const dependency of findSlangImports(source)) {
+      if (isShaderStudioEditorModule(dependency.moduleName)) {
+        continue;
+      }
       const resolvedPath = path.normalize(path.resolve(path.dirname(importerPath), dependency.relativePath));
       if (visiting.has(resolvedPath) || visited.has(resolvedPath)) {
         continue;
@@ -63,6 +66,10 @@ export function collectSlangDependencies(
 
   visit(rootPath, options.rootSource);
   return { modules, errors };
+}
+
+function isShaderStudioEditorModule(moduleName: string): boolean {
+  return moduleName === "shader_studio" || moduleName === "shader-studio";
 }
 
 function findSlangImports(source: string): SlangImport[] {

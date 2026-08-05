@@ -87,6 +87,33 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
+  it("neutralizes the Shader Studio editor import without changing line numbers", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass([
+      "import shader_studio;",
+      "import palette;",
+      "float4 mainImage(float2 c) { return float4(0); }",
+    ].join("\n"));
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("import shader_studio;");
+    expect(wrapped).toContain("// Shader Studio editor support import");
+    expect(wrapped).toContain("import palette;");
+  });
+
+  it("neutralizes the editor import in common code", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass("float4 mainImage(float2 c) { return helper(); }", {
+      commonCode: "import \"shader-studio.slang\";\nfloat4 helper() { return 1; }",
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("import \"shader-studio.slang\";");
+    expect(wrapped).toContain("float4 helper() { return 1; }");
+  });
+
   it("wraps compute source and links only the compute entry point", () => {
     const onLoad = vi.fn();
     const onFindEntryPoint = vi.fn();

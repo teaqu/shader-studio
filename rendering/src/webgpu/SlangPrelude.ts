@@ -18,6 +18,15 @@ export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 export const SLANG_ENTRY_COMPUTE = "computeMainEntry";
 
+const SHADER_STUDIO_EDITOR_IMPORT = /^(\s*)(?:__exported\s+)?import\s+(?:shader_studio|"shader-studio(?:\.slang)?")\s*;[^\r\n]*$/gm;
+
+export function stripShaderStudioEditorImport(source: string): string {
+  return source.replace(
+    SHADER_STUDIO_EDITOR_IMPORT,
+    "$1// Shader Studio editor support import",
+  );
+}
+
 // Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Script fields are appended after
 // this prefix, and the total allocation is rounded to a multiple of 16.
@@ -377,7 +386,9 @@ ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const prelude = buildPrelude(options.customUniforms);
-  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
+  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
+  const strippedUserSource = stripShaderStudioEditorImport(userSource);
   const channelPrelude = buildChannelPrelude(options.channels);
   const storageDeclarations = buildStorageDeclarations(
     options.storage ?? [],
@@ -388,12 +399,12 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${ENTRY_POINTS}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number): string {
@@ -488,7 +499,9 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const prelude = buildPrelude(options.customUniforms);
   const channels = options.channels ?? [];
   const storage = options.storage ?? [];
-  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
+  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
+  const strippedUserSource = stripShaderStudioEditorImport(userSource);
   const channelPrelude = buildChannelPrelude(channels, "compute");
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
   const outputBinding = 1 + channels.length * 2 + storage.length;
@@ -497,7 +510,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
-  const entryPoint = getNativeComputeEntryPoint(userSource) ? "" : buildComputeEntryPoint(options.workgroupSize);
+  const entryPoint = getNativeComputeEntryPoint(strippedUserSource) ? "" : buildComputeEntryPoint(options.workgroupSize);
 
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${userSource}\n${entryPoint}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${strippedUserSource}\n${entryPoint}`;
 }

@@ -56,4 +56,25 @@ suite("SlangDependencyGraph", () => {
       message: "Cannot resolve Slang module 'missing_palette' imported by /shader/image.slang",
     }]);
   });
+
+  test("ignores only the reserved Shader Studio editor module", () => {
+    const readPaths: string[] = [];
+    const result = collectSlangDependencies({
+      rootPath: "/shader/image.slang",
+      rootSource: [
+        "import shader_studio;",
+        "import \"shader-studio.slang\";",
+        "import palette;",
+      ].join("\n"),
+      ownerPass: "Image",
+      readSource: (filePath) => {
+        readPaths.push(path.normalize(filePath));
+        return filePath.endsWith("palette.slang") ? "module palette;" : null;
+      },
+    });
+
+    assert.deepStrictEqual(result.errors, []);
+    assert.deepStrictEqual(result.modules.map((module) => module.moduleName), ["palette"]);
+    assert.deepStrictEqual(readPaths, [path.normalize("/shader/palette.slang")]);
+  });
 });
