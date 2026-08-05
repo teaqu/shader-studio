@@ -140,6 +140,9 @@ suite('Shader Validator preamble manager', () => {
     await manager.apply({ kind: 'valid', snapshot });
 
     sinon.assert.calledOnce(fs.writeFileSync);
+    sinon.assert.notCalled(vscode.workspace.getConfiguration as sinon.SinonStub);
+    sinon.assert.notCalled(configuration.get);
+    sinon.assert.notCalled(configuration.inspect);
     sinon.assert.notCalled(configuration.update);
     sinon.assert.notCalled(showInformationMessage);
   });
@@ -286,6 +289,22 @@ suite('Shader Validator preamble manager', () => {
     });
   }
 
+  test('destination existence probe failure logs, cleans only the known temp file, and does not replace', async () => {
+    fs.existsSync.withArgs(destination).throws(new Error('destination probe failed'));
+    fs.existsSync.withArgs(tempPath).returns(true);
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledOnce(logger.error);
+    sinon.assert.calledWith(fs.existsSync, destination);
+    sinon.assert.calledWith(fs.existsSync, tempPath);
+    sinon.assert.calledOnceWithExactly(fs.unlinkSync, tempPath);
+    sinon.assert.notCalled(fs.mkdirSync);
+    sinon.assert.notCalled(fs.writeFileSync);
+    sinon.assert.notCalled(fs.renameSync);
+  });
+
   for (const operation of ['write', 'rename'] as const) {
     test(`${operation} failure logs, cleans only the known temp file when present, and does not reject`, async () => {
       fs.existsSync.withArgs(tempPath).returns(true);
@@ -309,6 +328,19 @@ suite('Shader Validator preamble manager', () => {
 
     sinon.assert.calledOnce(logger.error);
     sinon.assert.notCalled(fs.unlinkSync);
+  });
+
+  test('cleanup existence probe failure logs without deleting or replacing any file', async () => {
+    fs.writeFileSync.throws(new Error('write failed'));
+    fs.existsSync.withArgs(tempPath).throws(new Error('cleanup probe failed'));
+    const manager = createManager();
+
+    await manager.apply({ kind: 'valid', snapshot });
+
+    sinon.assert.calledTwice(logger.error);
+    sinon.assert.calledWith(fs.existsSync, tempPath);
+    sinon.assert.notCalled(fs.unlinkSync);
+    sinon.assert.notCalled(fs.renameSync);
   });
 
   test('logs cleanup failure without rejecting file application', async () => {
