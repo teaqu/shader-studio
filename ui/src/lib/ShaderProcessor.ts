@@ -150,6 +150,9 @@ export class ShaderProcessor {
     if (slangPlan) {
       return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
     }
+    if (this.shaderDebugManager.getLanguage?.() === 'slang') {
+      return { code: imageShaderCode, config, passName: 'Image' };
+    }
 
     if (debugState.isActive && debugState.currentLine !== null) {
       const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(

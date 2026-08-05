@@ -75,6 +75,16 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 
+  it('never sends Slang through the GLSL debug modifier when native planning is unavailable', async () => {
+    (mockShaderDebugManager as any).getLanguage = vi.fn(() => 'slang');
+    (mockShaderDebugManager.getState as any).mockReturnValue({ isEnabled: true, isActive: true, currentLine: 1, lineContent: 'float value = 1.0;', activeBufferName: 'Image' });
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {} });
+
+    expect(mockShaderDebugManager.modifyShaderForDebugging).not.toHaveBeenCalled();
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(expect.stringContaining('mainImage'), null, '/main.slang', {}, undefined, undefined);
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);
