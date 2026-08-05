@@ -1,3 +1,4 @@
+import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as path from 'path';
@@ -8,6 +9,10 @@ import { ErrorHandler } from '../../app/ErrorHandler';
 import { Logger } from '../../app/services/Logger';
 
 suite('ConfigGenerator Test Suite', () => {
+  const originalActiveTextEditorDescriptor = Object.getOwnPropertyDescriptor(
+    vscode.window,
+    'activeTextEditor',
+  );
   let configGenerator: ConfigGenerator;
   let glslFileTracker: GlslFileTracker;
   let messenger: Messenger;
@@ -91,6 +96,15 @@ suite('ConfigGenerator Test Suite', () => {
 
   teardown(() => {
     sandbox.restore();
+    if (originalActiveTextEditorDescriptor) {
+      Object.defineProperty(
+        vscode.window,
+        'activeTextEditor',
+        originalActiveTextEditorDescriptor,
+      );
+    } else {
+      delete (vscode.window as { activeTextEditor?: vscode.TextEditor }).activeTextEditor;
+    }
   });
 
   test('should generate config using last viewed GLSL file when no active editor and preview is focused', async () => {
@@ -147,8 +161,6 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(showInfoStub);
     sinon.assert.calledWith(showInfoStub, 'Generated config file: last_viewed_shader.sha.json');
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should fall back to file dialog when no active preview and no active editor', async () => {
@@ -192,8 +204,6 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledOnce(showInfoStub);
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should fall back to file dialog when last viewed GLSL file does not exist even with active preview', async () => {
@@ -249,9 +259,12 @@ suite('ConfigGenerator Test Suite', () => {
       'shader-studio.refreshSpecificShaderByPath',
       selectedFile.fsPath,
     );
+    assert.strictEqual(
+      glslFileTracker.getLastViewedGlslFile(),
+      lastViewedFile,
+      'automatic config refresh must not replace the foreground shader selection',
+    );
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should use active GLSL editor when available', async () => {
@@ -295,8 +308,6 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(showInfoStub);
     sinon.assert.calledWith(showInfoStub, 'Generated config file: active_shader.sha.json');
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should use provided URI when available', async () => {
@@ -366,8 +377,6 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(writeFileSyncStub);
     sinon.assert.calledOnce(executeCommandStub);
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should refresh the shader by path after generating config when preview is active', async () => {
@@ -419,8 +428,6 @@ suite('ConfigGenerator Test Suite', () => {
       activeShaderPath,
     );
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should handle file dialog cancellation', async () => {
@@ -446,8 +453,6 @@ suite('ConfigGenerator Test Suite', () => {
     // Verify it showed the dialog and cancelled gracefully
     sinon.assert.calledOnce(showOpenDialogStub);
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 
   test('should handle errors gracefully', async () => {
@@ -477,7 +482,5 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledOnce(showErrorStub);
     sinon.assert.calledWith(showErrorStub, 'Failed to generate config: Error: File system error');
     
-    // Clean up
-    delete (vscode.window as any).activeTextEditor;
   });
 });

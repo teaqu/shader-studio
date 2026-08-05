@@ -3,6 +3,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
 import { WebSocketTransport } from '../../../app/transport/WebSocketTransport';
+import { ShaderProvider } from '../../../app/ShaderProvider';
 import { WorkspaceFileScanner } from '../../../app/WorkspaceFileScanner';
 import { Logger } from '../../../app/services/Logger';
 
@@ -147,6 +148,66 @@ suite('WebSocketTransport Test Suite', () => {
     transport.close();
 
     assert.strictEqual(transport.hasActiveClients(), false);
+  });
+
+  test('initial current shader claims ownership and emits preamble preparation', async () => {
+    Logger.initialize({
+      info: sandbox.stub(),
+      debug: sandbox.stub(),
+      warn: sandbox.stub(),
+      error: sandbox.stub(),
+    } as unknown as vscode.LogOutputChannel);
+    const shaderPath = '/workspace/websocket-current.glsl';
+    const code = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+    const editor = {
+      document: {
+        getText: sandbox.stub().returns(code),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+        fileName: shaderPath,
+        lineAt: sandbox.stub().returns({ text: code }),
+      },
+      selection: { active: { line: 0, character: 0 } },
+    } as unknown as vscode.TextEditor;
+    mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(editor);
+
+    const send = sandbox.stub();
+    const onPreamblePreparation = sandbox.stub();
+    const provider = new ShaderProvider(
+      {
+        send,
+        getErrorHandler: sandbox.stub().returns({
+          handleError: sandbox.stub(),
+          handlePersistentError: sandbox.stub(),
+          clearPersistentErrors: sandbox.stub(),
+        }),
+      } as any,
+      undefined,
+      undefined,
+      onPreamblePreparation,
+    );
+    transport = new WebSocketTransport(
+      51484,
+      provider,
+      mockGlslFileTracker,
+      mockContext,
+      '/mock/extension',
+    );
+
+    (transport as any).sendCurrentShaderToNewClient(mockWsClient);
+    await new Promise(resolve => setTimeout(resolve, 125));
+
+    sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
+      kind: 'valid',
+      snapshot: {
+        shaderPath,
+        configPath: null,
+        passName: 'Image',
+        inputs: undefined,
+        customUniformDeclarations: '',
+      },
+    });
+    sinon.assert.calledOnce(send);
   });
 
   suite('convertUriForClient', () => {

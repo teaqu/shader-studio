@@ -129,6 +129,7 @@ export class PanelManager {
     this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
 
     if (editor) {
+      this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
       void this.shaderProvider.sendShaderFromEditor(editor);
     }
 

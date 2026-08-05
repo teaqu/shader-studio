@@ -48,6 +48,7 @@ suite('CompileController Test Suite', () => {
     };
 
     mockShaderProvider = {
+      claimActiveAnalysisContext: sandbox.stub(),
       sendShaderFromEditor: sandbox.stub().resolves(),
       sendShaderFromDocument: sandbox.stub().resolves(),
       sendShaderFromPath: sandbox.stub().resolves(),
@@ -93,6 +94,14 @@ suite('CompileController Test Suite', () => {
     controller.handleActiveEditorChange(editor);
 
     assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/shader.glsl'));
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.claimActiveAnalysisContext,
+      '/mock/path/shader.glsl',
+    );
+    sinon.assert.callOrder(
+      mockShaderProvider.claimActiveAnalysisContext,
+      mockShaderProvider.sendShaderFromEditor,
+    );
     assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(editor));
   });
 
@@ -115,10 +124,53 @@ suite('CompileController Test Suite', () => {
     mockGlslFileTracker.isGlslEditor.returns(true);
     mockMessenger.hasActiveClients.returns(true);
     controller.setMode('save');
+    sandbox.stub(vscode.window, 'activeTextEditor').value(editor);
 
     controller.handleTextDocumentSave(document, [editor]);
 
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.claimActiveAnalysisContext,
+      '/mock/path/shader.glsl',
+    );
     assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(editor));
+  });
+
+  test('Save All keeps visible non-active editor sends in the background', () => {
+    const activeEditor = createMockGLSLEditor('/mock/path/active.glsl');
+    const backgroundEditor = createMockGLSLEditor('/mock/path/background.glsl');
+    mockGlslFileTracker.isGlslEditor.returns(true);
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('save');
+    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+
+    controller.handleTextDocumentSave(
+      backgroundEditor.document,
+      [activeEditor, backgroundEditor],
+    );
+
+    sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
+    sinon.assert.notCalled(mockGlslFileTracker.setLastViewedGlslFile);
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.sendShaderFromEditor,
+      backgroundEditor,
+    );
+  });
+
+  test('Save All keeps non-visible shader path refreshes in the background', () => {
+    const activeEditor = createMockGLSLEditor('/mock/path/active.glsl');
+    const backgroundDocument = createMockGLSLEditor('/mock/path/background.glsl').document;
+    mockMessenger.hasActiveClients.returns(true);
+    controller.setMode('save');
+    sandbox.stub(vscode.window, 'activeTextEditor').value(activeEditor);
+
+    controller.handleTextDocumentSave(backgroundDocument, [activeEditor]);
+
+    sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
+    sinon.assert.notCalled(mockGlslFileTracker.setLastViewedGlslFile);
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.sendShaderFromPath,
+      '/mock/path/background.glsl',
+    );
   });
 
   test('manualCompileCurrentShader falls back to last viewed shader path', async () => {
@@ -127,6 +179,10 @@ suite('CompileController Test Suite', () => {
 
     await controller.manualCompileCurrentShader(undefined);
 
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.claimActiveAnalysisContext,
+      '/mock/path/last-viewed.glsl',
+    );
     assert.ok(mockShaderProvider.sendShaderFromPath.calledOnceWith('/mock/path/last-viewed.glsl'));
   });
 
@@ -138,6 +194,10 @@ suite('CompileController Test Suite', () => {
 
     await controller.manualCompileCurrentShader(undefined);
 
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.claimActiveAnalysisContext,
+      '/mock/path/tracked.glsl',
+    );
     assert.ok(mockShaderProvider.sendShaderFromEditor.calledOnceWith(trackedEditor));
   });
 
@@ -204,7 +264,7 @@ suite('CompileController Test Suite', () => {
     );
   });
 
-  test('handleTextDocumentChange recompiles GLSL document in hot mode without relying on active editor focus', () => {
+  test('handleTextDocumentChange refreshes a background GLSL document without claiming it', () => {
     const document = {
       fileName: '/mock/path/shader.glsl',
       languageId: 'glsl',
@@ -214,12 +274,16 @@ suite('CompileController Test Suite', () => {
 
     mockMessenger.hasActiveClients.returns(true);
     controller.setMode('hot');
+    sandbox.stub(vscode.window, 'activeTextEditor').value(
+      createMockGLSLEditor('/mock/path/active.glsl'),
+    );
 
     controller.handleTextDocumentChange(
       { document } as vscode.TextDocumentChangeEvent,
     );
 
-    assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/shader.glsl'));
+    sinon.assert.notCalled(mockGlslFileTracker.setLastViewedGlslFile);
+    sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
     assert.ok(mockShaderProvider.sendShaderFromDocument.calledOnceWith(document));
   });
 });

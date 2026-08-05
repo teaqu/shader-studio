@@ -48,6 +48,7 @@ suite('PanelManager Test Suite', () => {
     } as any;
 
     mockShaderProvider = {
+      claimActiveAnalysisContext: sandbox.stub(),
       sendShaderFromEditor: sandbox.stub(),
     } as any;
 
@@ -196,6 +197,14 @@ suite('PanelManager Test Suite', () => {
 
     panelManager.createPanel();
 
+    sinon.assert.calledOnceWithExactly(
+      mockShaderProvider.claimActiveAnalysisContext as sinon.SinonStub,
+      '/mock/workspace/shader.glsl',
+    );
+    sinon.assert.callOrder(
+      mockShaderProvider.claimActiveAnalysisContext as sinon.SinonStub,
+      mockShaderProvider.sendShaderFromEditor as sinon.SinonStub,
+    );
     sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub);
     sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub, mockEditor);
   });

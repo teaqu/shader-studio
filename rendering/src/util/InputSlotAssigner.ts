@@ -1,10 +1,10 @@
+import { resolveGlslInputBindings, type GlslInputLike } from "@shader-studio/types";
+
 export interface SlotAssignment {
   slot: number;
   key: string;
   isCustomName: boolean;
 }
-
-const MAX_CHANNELS = 16;
 
 /**
  * Assigns texture unit slots to input channel keys.
@@ -19,18 +19,10 @@ const MAX_CHANNELS = 16;
  *
  * Max 16 total; excess keys are dropped.
  */
-export function assignInputSlots(inputs: Record<string, any>): SlotAssignment[] {
-  const keys = Object.keys(inputs);
-  const assignments: SlotAssignment[] = [];
-
-  for (let i = 0; i < keys.length && i < MAX_CHANNELS; i++) {
-    const key = keys[i];
-    assignments.push({
-      slot: i,
-      key,
-      isCustomName: key !== `iChannel${i}`,
-    });
-  }
-
-  return assignments;
+export function assignInputSlots(inputs: Readonly<Record<string, GlslInputLike>>): SlotAssignment[] {
+  return resolveGlslInputBindings(inputs).map(({ slot, key, isCustomName }) => ({
+    slot,
+    key,
+    isCustomName,
+  }));
 }

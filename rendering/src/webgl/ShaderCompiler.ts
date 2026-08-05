@@ -1,3 +1,8 @@
+import {
+  buildGlslCompatibilityUniformDeclarationLines,
+  GLSL_STABLE_DECLARATION_LINES,
+  glslSamplerType,
+} from "@shader-studio/types";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
 
@@ -15,15 +20,6 @@ export class ShaderCompiler {
     }
   }
 
-  private getSamplerType(type: ChannelSamplerType): string {
-    switch (type) {
-      case 'Cube': return 'samplerCube';
-      case '3D': return 'sampler3D';
-      case '2D':
-      default: return 'sampler2D';
-    }
-  }
-
   public wrapShaderToyCode(
     code: string,
     commonCode?: string,
@@ -33,47 +29,14 @@ export class ShaderCompiler {
   ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelDeclarations = this.buildChannelDeclarations(slotAssignments, types);
+    const compatibilityDeclarations = buildGlslCompatibilityUniformDeclarationLines(
+      Array.from({ length: 4 }, (_, slot) => glslSamplerType(types[slot] ?? '2D')),
+    ).join("\n");
 
     let header = `
-precision highp float;
-out vec4 fragColor;
-#define HW_PERFORMANCE 1
-uniform vec3 iResolution;
-uniform float iTime;
-uniform float iTimeDelta;
-uniform float iFrameRate;
+${GLSL_STABLE_DECLARATION_LINES.join("\n")}
 ${channelDeclarations}
-uniform vec4 iMouse;
-uniform int iFrame;
-uniform vec4 iDate;
-uniform float iChannelTime[4];
-uniform float iSampleRate;
-uniform vec3 iCameraPos;
-uniform vec3 iCameraDir;
-uniform struct {
-  ${this.getSamplerType(types[0])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh0;
-uniform struct {
-  ${this.getSamplerType(types[1])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh1;
-uniform struct {
-  ${this.getSamplerType(types[2])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh2;
-uniform struct {
-  ${this.getSamplerType(types[3])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh3;
+${compatibilityDeclarations}
 `;
 
     if (customUniformDeclarations) {
@@ -271,14 +234,14 @@ uniform struct {
     let decl = "";
     // Always declare iChannel0 through iChannel{N-1} — these are the slot uniforms
     for (let i = 0; i < channelCount; i++) {
-      const samplerType = this.getSamplerType(types[i] || '2D');
+      const samplerType = glslSamplerType(types[i] || '2D');
       decl += `uniform ${samplerType} iChannel${i};\n`;
     }
     // Declare custom name aliases for slots where the key differs from iChannel{N}
     if (slotAssignments) {
       for (const { slot, key, isCustomName } of slotAssignments) {
         if (isCustomName) {
-          const samplerType = this.getSamplerType(types[slot] || '2D');
+          const samplerType = glslSamplerType(types[slot] || '2D');
           decl += `uniform ${samplerType} ${key};\n`;
         }
       }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GLSL_STABLE_DECLARATION_LINES } from "@shader-studio/types";
 import { ShaderCompiler } from "../../webgl/ShaderCompiler";
 import type { PiRenderer, PiShader } from "../../types/piRenderer";
 
@@ -113,6 +114,70 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform vec3 iChannelResolution[4];"); // SetShaderConstant3FV
     });
 
+    it("uses the shared stable environment with cube channel and alias samplers", () => {
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        undefined,
+        [{ slot: 1, key: "environment", isCustomName: true }],
+        ["2D", "Cube", "2D", "2D"],
+      );
+
+      for (const declaration of GLSL_STABLE_DECLARATION_LINES) {
+        expect(wrappedCode).toContain(declaration);
+      }
+      expect(wrappedCode).toContain("uniform samplerCube iChannel1;");
+      expect(wrappedCode).toContain("uniform samplerCube environment;");
+    });
+
+    it("declares renderer compatibility values for every public field expression", () => {
+      const code = `
+        void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+          vec4 sampled = texture(iCh0.sampler, vec3(0.0));
+          vec3 channelSize = iCh1.size;
+          float channelTime = iCh2.time;
+          int channelLoaded = iCh3.loaded;
+          fragColor = sampled + vec4(channelSize, channelTime) + float(channelLoaded);
+        }
+      `;
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(
+        code,
+        undefined,
+        undefined,
+        ["Cube", "2D", "3D", "2D"],
+      );
+
+      expect(wrappedCode).toContain([
+        "uniform struct {",
+        "  samplerCube sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh0;",
+        "uniform struct {",
+        "  sampler2D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh1;",
+        "uniform struct {",
+        "  sampler3D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh2;",
+        "uniform struct {",
+        "  sampler2D sampler;",
+        "  vec3 size;",
+        "  float time;",
+        "  int loaded;",
+        "} iCh3;",
+      ].join("\n"));
+      expect(wrappedCode).toContain("texture(iCh0.sampler, vec3(0.0))");
+      expect(wrappedCode).toContain("vec3 channelSize = iCh1.size;");
+      expect(wrappedCode).toContain("float channelTime = iCh2.time;");
+      expect(wrappedCode).toContain("int channelLoaded = iCh3.loaded;");
+    });
+
     it("should always inject all uniforms regardless of user declarations (Like ShaderToy)", () => {
       const code = `
         uniform vec4 iMouse;
@@ -178,13 +243,17 @@ describe("ShaderCompiler", () => {
         "uniform float iTime;",
         "uniform float iTimeDelta;",
         "uniform float iFrameRate;",
+        "uniform vec4 iMouse;",
+        "uniform int iFrame;",
+        "uniform vec4 iDate;",
+        "uniform float iChannelTime[4];",
+        "uniform float iSampleRate;",
+        "uniform vec3 iCameraPos;",
+        "uniform vec3 iCameraDir;",
         "uniform sampler2D iChannel0;",
         "uniform sampler2D iChannel1;",
         "uniform sampler2D iChannel2;",
         "uniform sampler2D iChannel3;",
-        "uniform vec4 iMouse;",
-        "uniform int iFrame;",
-        "uniform vec4 iDate;",
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0, 0.0, 0.0, 1.0); }",
         "void main() {",
         " mainImage(fragColor, gl_FragCoord.xy);",
@@ -200,6 +269,10 @@ describe("ShaderCompiler", () => {
       expect(lines).toContain("precision highp float;");
       expect(lines).toContain("out vec4 fragColor;");
       expect(lines).toContain("#define HW_PERFORMANCE 1");
+      expect(wrappedCode.indexOf(GLSL_STABLE_DECLARATION_LINES.join("\n"))).toBe(1);
+      expect(wrappedCode.indexOf("uniform sampler2D iChannel0;")).toBeGreaterThan(
+        wrappedCode.indexOf("uniform vec3 iCameraDir;"),
+      );
       expect(lines[lines.length - 3]).toContain("void main() {");
       expect(lines[lines.length - 2]).toContain("mainImage(fragColor, gl_FragCoord.xy);");
       expect(lines[lines.length - 1]).toContain("}");
