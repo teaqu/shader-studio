@@ -9,6 +9,7 @@
     "debug",
     "rendering",
     "utils",
+    "slang-debug",
     "extension",
     "ui",
     "config-ui",
