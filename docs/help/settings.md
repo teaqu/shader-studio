@@ -13,6 +13,8 @@ For each workspace folder, Shader Studio generates one `.vscode/shader-studio-pr
 
 Within one extension host, all Shader Studio panels share the active GLSL selection. The active or focused shader context controls the preamble; background panels and refreshes cannot overwrite it. Separate workspace folders are independent.
 
+Dynamic declarations come from the active shader's `.sha.json` pass inputs and configuration, plus already-evaluated custom uniforms. If a shader or config update is invalid, Shader Studio retains the last-valid shader-specific preamble. Before any valid update, it generates a stable shader-local Image fallback.
+
 ## All Settings
 
 | Setting | Type | Default | Restart Required | Description |

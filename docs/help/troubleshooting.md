@@ -9,7 +9,9 @@
 
 ## Shader Validator Diagnostics Are Stale
 
-Shader Studio creates one preamble per workspace folder from the active shader, so diagnostics for a background shader can reflect the currently active Shader Studio pass. Check `.vscode/shader-studio-preamble.glsl`, then review Shader Studio output and the Shader Language Server or Shader Validator Output channel. Restart the companion server after confirming the generated preamble.
+Shader Studio creates one preamble per workspace folder from the active shader, so diagnostics for a background shader can reflect the currently active Shader Studio pass. Focus or select the intended active shader in VS Code, then focus its Shader Studio panel or refresh it to regenerate the preamble. Check `.vscode/shader-studio-preamble.glsl`, then review Shader Studio output and the Shader Language Server or Shader Validator Output channel. Restart the companion server after confirming the generated preamble.
+
+If an existing `shader-validator.glsl.preamble` points to another file, it is intentionally preserved by Shader Studio. Remove or change that setting yourself if you want Shader Studio's generated path to be used.
 
 ## Crashing or Halting
 

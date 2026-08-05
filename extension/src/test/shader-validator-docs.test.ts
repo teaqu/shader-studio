@@ -23,7 +23,17 @@ suite('Shader Validator documentation', () => {
     assert.match(settingsDoc, /shader-validator\.glsl\.preamble/);
     assert.match(settingsDoc, /\.vscode\/shader-studio-preamble\.glsl/);
     assert.match(settingsDoc, /existing.*unchanged/i);
+    assert.match(settingsDoc, /active shader.*\.sha\.json.*pass inputs/i);
+    assert.match(settingsDoc, /already-evaluated custom uniforms/i);
+    assert.match(settingsDoc, /invalid.*retain.*last-valid shader-specific preamble/i);
+    assert.match(settingsDoc, /before any valid update.*stable shader-local Image fallback/i);
     assert.match(troubleshootingDoc, /active shader/i);
     assert.match(troubleshootingDoc, /Shader Language Server|Shader Validator.*Output/i);
+    assert.match(troubleshootingDoc, /focus or select.*intended active shader/i);
+    assert.match(
+      troubleshootingDoc,
+      /existing.*shader-validator\.glsl\.preamble.*intentionally preserved/i
+    );
+    assert.match(troubleshootingDoc, /remove or change.*yourself/i);
   });
 });
