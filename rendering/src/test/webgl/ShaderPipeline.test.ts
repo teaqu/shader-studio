@@ -456,6 +456,54 @@ describe("ShaderPipeline", () => {
         shaderSrc: shaderCode,
         inputs: {},
         path: undefined,
+        geometry: "fullscreen",
+      });
+    });
+
+    it("resolves pass geometry without changing configured pass order or inputs", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config = {
+        passes: {
+          BufferA: {
+            path: "buffer-a.glsl",
+            geometry: { type: "fullscreen" },
+            inputs: {},
+          },
+          BufferB: {
+            path: "buffer-b.glsl",
+            geometry: { type: "sphere" },
+            inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+          },
+          Image: {
+            inputs: {
+              iChannel0: { type: "buffer", source: "BufferA" },
+              iChannel1: { type: "buffer", source: "BufferB" },
+            },
+          },
+        },
+      };
+      const buffers = {
+        BufferA: "void mainImage() { gl_FragColor = vec4(0.1); }",
+        BufferB: "void mainImage() { gl_FragColor = vec4(0.2); }",
+      };
+
+      const buildPasses = (shaderPipeline as any).buildPasses.bind(shaderPipeline);
+      const passes = buildPasses(shaderCode, config, buffers);
+
+      expect(passes.map((pass: { name: string; geometry: string }) => ({
+        name: pass.name,
+        geometry: pass.geometry,
+      }))).toEqual([
+        { name: "BufferA", geometry: "fullscreen" },
+        { name: "BufferB", geometry: "sphere" },
+        { name: "Image", geometry: "fullscreen" },
+      ]);
+      expect(passes[1].inputs).toEqual({
+        iChannel0: { type: "buffer", source: "BufferA" },
+      });
+      expect(passes[2].inputs).toEqual({
+        iChannel0: { type: "buffer", source: "BufferA" },
+        iChannel1: { type: "buffer", source: "BufferB" },
       });
     });
 
@@ -480,13 +528,17 @@ describe("ShaderPipeline", () => {
         name: "BufferA",
         shaderSrc: buffers.BufferA,
         inputs: {},
+        geometry: "fullscreen",
         path: undefined,
+        resolution: undefined,
       });
       expect(passes[1]).toEqual({
         name: "BufferB",
         shaderSrc: buffers.BufferB,
         inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+        geometry: "fullscreen",
         path: undefined,
+        resolution: undefined,
       });
     });
 
@@ -510,13 +562,17 @@ describe("ShaderPipeline", () => {
         name: "Image",
         shaderSrc: shaderCode,
         inputs: {},
+        geometry: "fullscreen",
         path: undefined,
+        resolution: undefined,
       });
       expect(passes[1]).toEqual({
         name: "BufferA",
         shaderSrc: buffers.BufferA,
         inputs: {},
+        geometry: "fullscreen",
         path: undefined,
+        resolution: undefined,
       });
     });
 

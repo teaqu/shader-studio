@@ -9,6 +9,7 @@ import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { resolveBufferPassSize } from "./BufferPassResolution";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
+import { resolvePassGeometry } from "../types/Geometry";
 
 const SLANG_FEATURE_WARNING =
   "compute passes and storage buffers require the Slang/WebGPU engine";
@@ -154,6 +155,7 @@ export class ShaderPipeline {
         name: "Image",
         shaderSrc: code,
         inputs: {},
+        geometry: resolvePassGeometry(undefined),
         path: undefined,
       }];
     }
@@ -184,6 +186,7 @@ export class ShaderPipeline {
           name: passName,
           shaderSrc,
           inputs: pass?.inputs ?? {},
+          geometry: resolvePassGeometry(pass),
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
           resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
         };

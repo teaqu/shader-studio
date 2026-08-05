@@ -26,11 +26,81 @@ describe("buildSlangPassGraph", () => {
     expect(graph.passes[0]).toMatchObject({
       name: "Image",
       source: imageCode,
+      geometry: "fullscreen",
       output: "canvas",
       width: 800,
       height: 600,
       channels: [],
     });
+  });
+
+  it("resolves mixed pass geometry without changing dependency order or channels", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: "buffer", source: "BufferA" },
+            iChannel1: { type: "buffer", source: "BufferB" },
+          },
+        },
+        BufferA: {
+          path: "buffer-a.slang",
+          geometry: { type: "fullscreen" },
+          inputs: {},
+        },
+        BufferB: {
+          path: "buffer-b.slang",
+          geometry: { type: "sphere" },
+          inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
+        },
+        common: { path: "common.slang" },
+      },
+    };
+
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config,
+      buffers: {
+        BufferA: "float4 mainImage(float2 c) { return float4(0.1); }",
+        BufferB: "float4 mainImage(float2 c) { return float4(0.2); }",
+        common: "float sharedValue() { return 1.0; }",
+      },
+      canvasWidth: 640,
+      canvasHeight: 360,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => ({ name: pass.name, geometry: pass.geometry }))).toEqual([
+      { name: "BufferA", geometry: "fullscreen" },
+      { name: "BufferB", geometry: "sphere" },
+      { name: "Image", geometry: "fullscreen" },
+    ]);
+    expect(graph.passes[1].channels).toEqual([
+      {
+        kind: "buffer",
+        slot: 0,
+        key: "iChannel0",
+        source: "BufferA",
+        readFrom: "previous-frame",
+      },
+    ]);
+    expect(graph.passes[2].channels).toEqual([
+      {
+        kind: "buffer",
+        slot: 0,
+        key: "iChannel0",
+        source: "BufferA",
+        readFrom: "current-frame",
+      },
+      {
+        kind: "buffer",
+        slot: 1,
+        key: "iChannel1",
+        source: "BufferB",
+        readFrom: "current-frame",
+      },
+    ]);
   });
 
   it("creates BufferA before Image and attaches common code to renderable passes", () => {

@@ -4236,6 +4236,50 @@ describe("WebGPURenderingEngine", () => {
       expect(bufferDispose).toHaveBeenCalledTimes(1);
     });
 
+    it("recompiles only the pass whose geometry changed", async () => {
+      const { engine, compiler } = cachedSetup();
+      const fullscreenConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: {
+            path: "a.slang",
+            geometry: { type: "fullscreen" },
+            inputs: {},
+          },
+        },
+      };
+      const sphereConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: {
+            path: "a.slang",
+            geometry: { type: "sphere" },
+            inputs: {},
+          },
+        },
+      };
+
+      await engine.compileShaderPipeline("img", fullscreenConfig, "/s.slang", { BufferA: "buf" });
+      const firstImage = (engine as any).passPipelines.get("Image");
+      const firstBufferA = (engine as any).passPipelines.get("BufferA");
+      const imageDispose = vi.spyOn(firstImage, "dispose");
+      const bufferDispose = vi.spyOn(firstBufferA, "dispose");
+
+      compiler.compile.mockClear();
+      await engine.compileShaderPipeline("img", sphereConfig, "/s.slang", { BufferA: "buf" });
+
+      expect(compiler.compile).toHaveBeenCalledTimes(1);
+      expect(compiler.compile).toHaveBeenCalledWith("buf", expect.objectContaining({
+        passName: "BufferA",
+      }));
+      expect((engine as any).passPipelines.get("Image")).toBe(firstImage);
+      expect(imageDispose).not.toHaveBeenCalled();
+      expect((engine as any).passPipelines.get("BufferA")).not.toBe(firstBufferA);
+      expect(bufferDispose).toHaveBeenCalledTimes(1);
+    });
+
     it("recompiles every pass when common code changes", async () => {
       const { engine, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", {

@@ -1014,7 +1014,12 @@ describe("FrameRenderer", () => {
 
   describe("renderSinglePass", () => {
     it("should render a single pass with null target", () => {
-      const testPass = { name: 'Test', shaderSrc: 'test shader', inputs: {} };
+      const testPass = {
+        name: 'Test',
+        shaderSrc: 'test shader',
+        inputs: {},
+        geometry: 'fullscreen' as const,
+      };
       mockShaderPipeline.getPassShader.mockReturnValue({ mProgram: {}, mResult: true });
 
       frameRenderer.renderSinglePass(testPass);
@@ -1029,7 +1034,12 @@ describe("FrameRenderer", () => {
 
     it("should handle null shader gracefully", () => {
       mockShaderPipeline.getPassShader.mockReturnValue(null);
-      const testPass = { name: 'Test', shaderSrc: 'test shader', inputs: {} };
+      const testPass = {
+        name: 'Test',
+        shaderSrc: 'test shader',
+        inputs: {},
+        geometry: 'fullscreen' as const,
+      };
 
       frameRenderer.renderSinglePass(testPass);
 

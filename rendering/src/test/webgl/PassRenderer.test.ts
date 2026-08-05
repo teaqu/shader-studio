@@ -104,6 +104,7 @@ describe("PassRenderer", () => {
   describe("renderPass", () => {
     it("should not render when shader is null", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -118,6 +119,7 @@ describe("PassRenderer", () => {
 
     it("should render pass with valid shader and no inputs", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -150,6 +152,7 @@ describe("PassRenderer", () => {
 
     it("should use canvas dimensions when no render target is provided", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -170,6 +173,7 @@ describe("PassRenderer", () => {
 
     it("should handle keyboard input correctly", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -190,6 +194,7 @@ describe("PassRenderer", () => {
 
     it("should skip keyboard texture update when skipInputUpdates is true", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -211,6 +216,7 @@ describe("PassRenderer", () => {
 
     it("should handle buffer input correctly", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -235,6 +241,7 @@ describe("PassRenderer", () => {
 
     it("should use default texture for invalid buffer sources (including 'common')", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -255,6 +262,7 @@ describe("PassRenderer", () => {
 
     it("should handle video input correctly", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -274,6 +282,7 @@ describe("PassRenderer", () => {
 
     it("should use default texture when video texture is not found", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -292,6 +301,7 @@ describe("PassRenderer", () => {
 
     it("should handle cubemap input correctly", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -312,6 +322,7 @@ describe("PassRenderer", () => {
 
     it("should use resolved_path for cubemap textures", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -336,6 +347,7 @@ describe("PassRenderer", () => {
 
     it("should handle multiple video inputs on different channels", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -361,6 +373,7 @@ describe("PassRenderer", () => {
 
     it("should handle mixed texture and video inputs", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -390,6 +403,7 @@ describe("PassRenderer", () => {
 
     it("should look up texture by resolved_path when available", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -413,6 +427,7 @@ describe("PassRenderer", () => {
 
     it("should fall back to path when resolved_path is not in cache", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -435,6 +450,7 @@ describe("PassRenderer", () => {
 
     it("should not call getVideoTexture when video input has no path", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -451,6 +467,7 @@ describe("PassRenderer", () => {
 
     it("should bind custom name aliases via SetShaderTextureUnit", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -476,6 +493,7 @@ describe("PassRenderer", () => {
 
     it("should handle more than 4 channels", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -510,6 +528,7 @@ describe("PassRenderer", () => {
 
     it("should handle self-referencing buffer (pass reads its own output)", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "BufferA",
         shaderSrc: "",
         inputs: {
@@ -550,6 +569,7 @@ describe("PassRenderer", () => {
       );
 
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -567,6 +587,7 @@ describe("PassRenderer", () => {
 
     it("should bind multiple custom name aliases correctly", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -601,6 +622,7 @@ describe("PassRenderer", () => {
 
     it("should use resolved_path for video textures", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -623,6 +645,7 @@ describe("PassRenderer", () => {
   describe("iChannelTime uniform", () => {
     it("should set iChannelTime uniform via SetShaderConstant1FV", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -645,6 +668,7 @@ describe("PassRenderer", () => {
   describe("iSampleRate uniform", () => {
     it("should set iSampleRate uniform via SetShaderConstant1F", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -665,6 +689,7 @@ describe("PassRenderer", () => {
 
     it("should set default iSampleRate of 44100", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -708,6 +733,7 @@ describe("PassRenderer", () => {
 
     it("should set iCh0-iCh3 time, size, and loaded uniforms", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -753,6 +779,7 @@ describe("PassRenderer", () => {
 
     it("should set iCh struct with keyboard resolution (256, 3, 1)", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -771,6 +798,7 @@ describe("PassRenderer", () => {
 
     it("should set iCh struct with audio resolution (512, 2, 1)", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -791,6 +819,7 @@ describe("PassRenderer", () => {
   describe("audio texture binding", () => {
     it("should bind audio texture when available", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -811,6 +840,7 @@ describe("PassRenderer", () => {
 
     it("should fall back to default texture when audio texture is not found", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -831,6 +861,7 @@ describe("PassRenderer", () => {
 
     it("should use resolved_path for audio texture lookup when available", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -851,6 +882,7 @@ describe("PassRenderer", () => {
 
     it("should not call getAudioTexture when audio input has no path", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -869,6 +901,7 @@ describe("PassRenderer", () => {
   describe("iChannelResolution", () => {
     it("should set iChannelResolution with default texture dimensions when no inputs", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {}
@@ -886,6 +919,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with texture dimensions", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -911,6 +945,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with keyboard dimensions (256x3)", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -932,6 +967,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with audio special case (512x2)", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -954,6 +990,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with video dimensions", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -975,6 +1012,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with buffer dimensions", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -1003,6 +1041,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution with multiple channel dimensions", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -1041,6 +1080,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution for more than 4 channels", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
@@ -1071,6 +1111,7 @@ describe("PassRenderer", () => {
 
     it("should set iChannelResolution correctly with custom-named inputs", () => {
       const passConfig: Pass = {
+        geometry: "fullscreen",
         name: "TestPass",
         shaderSrc: "",
         inputs: {
