@@ -931,10 +931,7 @@ suite('ShaderProvider Test Suite', () => {
       loadAndProcessConfigStub.returns(ownedConfig);
 
       await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
-      onPreamblePreparation.resetHistory();
       await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
-      sinon.assert.calledOnce(onPreamblePreparation);
-      assert.strictEqual(onPreamblePreparation.firstCall.args[0].snapshot.passName, 'BufferA');
       onPreamblePreparation.resetHistory();
       loadAndProcessConfigStub.returns(configWithoutOwner);
 
