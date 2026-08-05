@@ -7,6 +7,10 @@
 - Try **Refresh** from the options menu
 - Make sure the file extension is `.glsl`
 
+## Shader Validator Diagnostics Are Stale
+
+Shader Studio creates one preamble per workspace folder from the active shader, so diagnostics for a background shader can reflect the currently active Shader Studio pass. Check `.vscode/shader-studio-preamble.glsl`, then review Shader Studio output and the Shader Language Server or Shader Validator Output channel. Restart the companion server after confirming the generated preamble.
+
 ## Crashing or Halting
 
 If the shader freezes or crashes:
