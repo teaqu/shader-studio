@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderStudio } from '../../app/ShaderStudio';
-import { ShaderValidatorPreambleManager } from '../../app/ShaderValidatorPreambleManager';
+import { WebglGlslEditorManager } from '../../app/WebglGlslEditorManager';
 
 interface ExtensionManifest {
   extensionDependencies?: string[];
@@ -117,8 +117,8 @@ suite('Shader Studio Test Suite', () => {
       dispose: sandbox.stub(),
     });
     getExtensionStub = sandbox.stub(vscode.extensions, 'getExtension').returns(undefined);
-    preambleApplyStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'apply').resolves();
-    preambleDisposeStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'dispose');
+    preambleApplyStub = sandbox.stub(WebglGlslEditorManager.prototype, 'apply').resolves();
+    preambleDisposeStub = sandbox.stub(WebglGlslEditorManager.prototype, 'dispose');
     sandbox.stub(
       ShaderStudio.prototype as unknown as { startWebSocketTransport: () => void },
       'startWebSocketTransport',
@@ -256,10 +256,10 @@ suite('Shader Studio Test Suite', () => {
     }
   }
 
-  function getPreambleManager(studio: ShaderStudio): ShaderValidatorPreambleManager | undefined {
+  function getPreambleManager(studio: ShaderStudio): WebglGlslEditorManager | undefined {
     return (studio as unknown as {
-      shaderValidatorPreambleManager?: ShaderValidatorPreambleManager;
-    }).shaderValidatorPreambleManager;
+      webglGlslEditorManager?: WebglGlslEditorManager;
+    }).webglGlslEditorManager;
   }
 
   function createMockWebviewPanel(): vscode.WebviewPanel {
@@ -275,7 +275,7 @@ suite('Shader Studio Test Suite', () => {
     } as unknown as vscode.WebviewPanel;
   }
 
-  test('uses one Studio-owned preamble manager across repeated panel activity', async () => {
+  test('uses one Studio-owned WebGL GLSL Editor manager across repeated panel activity', async () => {
     const manager = getPreambleManager(shaderStudio);
     assert.ok(manager, 'ShaderStudio should own the preamble manager');
     const subscriptionCount = mockContext.subscriptions.length;
@@ -299,14 +299,14 @@ suite('Shader Studio Test Suite', () => {
     shaderStudio.dispose();
   });
 
-  test('keeps Shader Validator optional when the companion is absent', () => {
+  test('keeps WebGL GLSL Editor optional when the companion is absent', () => {
     assert.ok(shaderStudio);
     sinon.assert.notCalled(getExtensionStub);
-    assert.ok(!extensionManifest.extensionDependencies?.includes('antaalt.shader-validator'));
+    assert.ok(!extensionManifest.extensionDependencies?.includes('raczzalan.webgl-glsl-editor'));
     shaderStudio.dispose();
   });
 
-  test('disposes the Studio-owned preamble manager during shutdown', () => {
+  test('disposes the Studio-owned WebGL GLSL Editor manager during shutdown', () => {
     const manager = getPreambleManager(shaderStudio);
     assert.ok(manager, 'ShaderStudio should own the preamble manager');
 

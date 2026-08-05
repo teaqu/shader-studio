@@ -64,9 +64,11 @@ The editor writes a `.sha.json` file next to your shader and keeps it in sync; y
 
 See [Configure Buffers and Inputs](https://teaqu.github.io/shader-studio/features/config-buffers/) and [Channels](https://teaqu.github.io/shader-studio/features/channels/) for the full guides, and [my shaders repository](https://github.com/teaqu/shaders/tree/main/shadertoy) for examples.
 
-## Shader Validator (Optional)
+## WebGL GLSL Editor (Optional)
 
-For editor diagnostics that understand Shader Studio's Shadertoy-style uniforms, install the optional [Shader Validator](https://marketplace.visualstudio.com/items?itemName=antaalt.shader-validator) companion extension (`antaalt.shader-validator`) separately. Shader Studio works normally without it, and disabling or uninstalling Shader Validator does not affect rendering.
+For editor diagnostics, completion, and navigation that understand Shader Studio's WebGL-style uniforms, install the optional [WebGL GLSL Editor](https://marketplace.visualstudio.com/items?itemName=raczzalan.webgl-glsl-editor) companion extension (`raczzalan.webgl-glsl-editor`) separately. Shader Studio works normally without it, and disabling or uninstalling the companion does not affect rendering.
+
+Use it instead of Shader Validator for Shader Studio GLSL files; disable Shader Validator to avoid overlapping diagnostics.
 
 Shader Studio generates a `.vscode/shader-studio-preamble.glsl` file for the active GLSL pass. The file contains stable built-in uniforms, configured channels and aliases, and custom uniforms that Shader Studio successfully infers. See the [settings guide](https://teaqu.github.io/shader-studio/help/settings/) for setup and the active-shader limitation.
 

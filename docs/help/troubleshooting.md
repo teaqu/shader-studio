@@ -7,11 +7,11 @@
 - Try **Refresh** from the options menu
 - Make sure the file extension is `.glsl`
 
-## Shader Validator Diagnostics Are Stale
+## WebGL GLSL Editor Diagnostics Are Stale
 
-Shader Studio creates one preamble per workspace folder from the active shader, so diagnostics for a background shader can reflect the currently active Shader Studio pass. Focus or select the intended active shader in VS Code, then focus its Shader Studio panel or refresh it to regenerate the preamble. Check `.vscode/shader-studio-preamble.glsl`, then review Shader Studio output and the Shader Language Server or Shader Validator Output channel. Restart the companion server after confirming the generated preamble.
+WebGL GLSL Editor updates its diagnostics when Shader Studio changes its injected source. Focus or select the intended active shader in VS Code, then focus its Shader Studio panel or refresh it. Review the WebGL GLSL Editor Output channel if diagnostics do not refresh.
 
-If an existing `shader-validator.glsl.preamble` points to another file, it is intentionally preserved by Shader Studio. Remove or change that setting yourself if you want Shader Studio's generated path to be used.
+If you already configured `webgl-glsl-editor.codeInjection` or `webgl-glsl-editor.codeInjectionSource`, Shader Studio intentionally preserves it. Remove or change that setting yourself to let Shader Studio manage the injection source.
 
 ## Crashing or Halting
 

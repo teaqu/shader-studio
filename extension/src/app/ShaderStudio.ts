@@ -16,7 +16,7 @@ import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
 import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
 import { ConfigChangeClassifier, type ConfigChangeVerdict } from "./services/ConfigChangeClassifier";
-import { ShaderValidatorPreambleManager } from "./ShaderValidatorPreambleManager";
+import { WebglGlslEditorManager } from "./WebglGlslEditorManager";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -42,7 +42,7 @@ export class ShaderStudio {
   // ConfigUpdateHandler (classifies the disk-write fallback) so all three
   // agree on what was last sent for a given config path.
   private configChangeClassifier = new ConfigChangeClassifier();
-  private shaderValidatorPreambleManager: ShaderValidatorPreambleManager;
+  private webglGlslEditorManager: WebglGlslEditorManager;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -53,8 +53,8 @@ export class ShaderStudio {
 
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
-    this.shaderValidatorPreambleManager = new ShaderValidatorPreambleManager(context, this.logger);
-    void this.shaderValidatorPreambleManager.initializeWorkspaceFolders();
+    this.webglGlslEditorManager = new WebglGlslEditorManager(context, this.logger);
+    void this.webglGlslEditorManager.initializeWorkspaceFolders();
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
@@ -71,7 +71,7 @@ export class ShaderStudio {
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
-      (preparation) => this.shaderValidatorPreambleManager.apply(preparation),
+      (preparation) => this.webglGlslEditorManager.apply(preparation),
     );
     this.compileController = new CompileController(
       context,
@@ -117,7 +117,7 @@ export class ShaderStudio {
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
     this.errorHandler.dispose();
-    this.shaderValidatorPreambleManager.dispose();
+    this.webglGlslEditorManager.dispose();
     this.logger.info("Shader extension disposed");
   }
 

@@ -1659,7 +1659,7 @@ suite('ShaderProvider Test Suite', () => {
         sinon.assert.calledOnce(mockOutputChannel.warn);
         assert.match(
           mockOutputChannel.warn.firstCall.args[0],
-          /Failed to publish Shader Validator preamble context: Error: callback failed/,
+          /Failed to publish WebGL GLSL Editor injection context: Error: callback failed/,
         );
       });
     }

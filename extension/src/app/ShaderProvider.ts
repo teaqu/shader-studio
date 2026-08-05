@@ -12,7 +12,7 @@ import { ScriptEvaluator } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig, ShaderSourceMessage, ErrorMessage, CustomUniformValuesMessage } from "@shader-studio/types";
-import type { ShaderValidatorPreamblePreparation } from "./ShaderValidatorPreamble";
+import type { WebglGlslInjectionPreparation } from "./WebglGlslInjection";
 
 interface OwnedShaderPass {
   shaderPath: string;
@@ -52,7 +52,7 @@ export class ShaderProvider {
     getDebugModeEnabled?: () => boolean,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
     private readonly onPreamblePreparation?: (
-      preparation: ShaderValidatorPreamblePreparation,
+      preparation: WebglGlslInjectionPreparation,
     ) => void | Promise<void>,
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
@@ -812,7 +812,7 @@ export class ShaderProvider {
       return;
     }
     const configPath = getConfigPathForShaderPath(shaderPath);
-    const preparation: ShaderValidatorPreamblePreparation = invalid
+    const preparation: WebglGlslInjectionPreparation = invalid
       ? { kind: "invalid", shaderPath }
       : {
         kind: "valid",
@@ -828,10 +828,10 @@ export class ShaderProvider {
     try {
       const callbackResult = this.onPreamblePreparation(preparation);
       void Promise.resolve(callbackResult).catch((error) => {
-        this.logger.warn(`Failed to publish Shader Validator preamble context: ${error}`);
+        this.logger.warn(`Failed to publish WebGL GLSL Editor injection context: ${error}`);
       });
     } catch (error) {
-      this.logger.warn(`Failed to publish Shader Validator preamble context: ${error}`);
+      this.logger.warn(`Failed to publish WebGL GLSL Editor injection context: ${error}`);
     }
   }
 
