@@ -567,6 +567,12 @@ export class VariableCaptureManager {
     }
     captureCounters.issueCalls++;
 
+    if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
+      this.emitErrorState('Slang capture could not be planned at this location');
+      this.finishCollection([]);
+      return;
+    }
+
     if (!this.capturer) {
       try {
         this.capturer = this.renderingEngine.createVariableCapturer();

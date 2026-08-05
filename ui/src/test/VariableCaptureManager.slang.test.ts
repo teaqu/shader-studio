@@ -115,4 +115,14 @@ describe('VariableCaptureManager - Slang engine', () => {
     expect(captures).toEqual([expect.objectContaining({ varName: 'uv', selectorIndex: 1, slangPlan: plan })]);
     manager.dispose();
   });
+
+  it('does not fall back to the GLSL capture builder when a Slang plan is unavailable', async () => {
+    const { engine, capturer } = mockEngine('slang');
+    const manager = new VariableCaptureManager(engine, () => {});
+
+    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: null });
+    await vi.waitFor(() => expect(capturer.issueCaptureGrid).not.toHaveBeenCalled());
+
+    manager.dispose();
+  });
 });
