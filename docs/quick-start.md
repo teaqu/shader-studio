@@ -64,7 +64,7 @@ The preview updates in real time as you edit. The toolbar at the bottom gives qu
 - <i class="codicon codicon-gear"></i> [**Config**](features/config-buffers.md) — set up buffers, inputs, and uniforms
 - <i class="codicon codicon-device-camera"></i> [**Record**](features/recording.md) — take a screenshot or record video/GIF
 - <i class="codicon codicon-lock"></i> [**Lock**](features/locking.md) — keep the preview pinned to the current shader while you navigate other files
-- <i class="codicon codicon-menu"></i> **Menu** — access more options like shader explorer, snippet library, compile modes, browser preview, and settings
+- <i class="codicon codicon-menu"></i> **Menu** — access more options like shader explorer, compile modes, browser preview, and settings
 
 Try pausing time, changing the resolution, or opening the menu to explore more options and see their effects.
 

@@ -3,6 +3,37 @@ export class KeyboardManager {
   private keyPressed = new Uint8Array(256);
   private keyToggled = new Uint8Array(256);
   private enabled = true;
+  private listening = false;
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (!this.enabled) {
+      return;
+    }
+    const keyIndex = this.getKeyIndex(e);
+    if (keyIndex >= 256) {
+      return;
+    }
+    if (this.keyHeld[keyIndex] === 0) {
+      this.keyPressed[keyIndex] = 255;
+      this.keyToggled[keyIndex] = this.keyToggled[keyIndex] === 255 ? 0 : 255;
+    }
+    this.keyHeld[keyIndex] = 255;
+  };
+
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (!this.enabled) {
+      return;
+    }
+    const keyIndex = this.getKeyIndex(e);
+    if (keyIndex >= 256) {
+      return;
+    }
+    this.keyHeld[keyIndex] = 0;
+  };
+
+  private readonly onBlur = (): void => {
+    this.clearTransientState();
+  };
 
   public getKeyHeld(): Uint8Array {
     return this.keyHeld;
@@ -17,43 +48,22 @@ export class KeyboardManager {
   }
 
   public setupEventListeners(): void {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!this.enabled) {
-        return;
-      }
-      const keyIndex = this.getKeyIndex(e);
-      if (keyIndex >= 256) {
-        return;
-      }
-      // If key was not previously held, it's a "just pressed" event
-      if (this.keyHeld[keyIndex] === 0) {
-        this.keyPressed[keyIndex] = 255;
-        // Toggle state only changes on initial press
-        this.keyToggled[keyIndex] = this.keyToggled[keyIndex] === 255
-          ? 0
-          : 255;
-      }
-      // Set key as held
-      this.keyHeld[keyIndex] = 255;
-    };
+    this.dispose();
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("blur", this.onBlur);
+    this.listening = true;
+  }
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (!this.enabled) {
-        return;
-      }
-      const keyIndex = this.getKeyIndex(e);
-      if (keyIndex >= 256) {
-        return;
-      }
-      // Unset key as held
-      this.keyHeld[keyIndex] = 0;
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", () => {
-      this.clearTransientState();
-    });
+  public dispose(): void {
+    if (!this.listening) {
+      return;
+    }
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("blur", this.onBlur);
+    this.listening = false;
+    this.clearTransientState();
   }
 
   public clearPressed(): void {

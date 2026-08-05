@@ -6,7 +6,6 @@ import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
-import { SnippetLibraryProvider } from "./SnippetLibraryProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
@@ -28,7 +27,6 @@ export class ShaderStudio {
   private context: vscode.ExtensionContext;
   private logger!: Logger;
   private sShaderExplorerProvider: vscode.Disposable;
-  private snippetLibraryProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
   private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
@@ -36,6 +34,7 @@ export class ShaderStudio {
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
+  private lockedShaderPath: string | undefined;
   private compileController: CompileController;
   private configChangeDebounce = new Map<string, NodeJS.Timeout>();
   private static readonly CONFIG_CHANGE_DEBOUNCE_MS = 150;
@@ -63,12 +62,16 @@ export class ShaderStudio {
     this.messenger = new Messenger(
       outputChannel,
       errorHandler,
-      (enabled) => this.setDebugModeEnabled(enabled)
+      (enabled) => this.setDebugModeEnabled(enabled),
+      (lockedShaderPath) => {
+        this.lockedShaderPath = lockedShaderPath;
+      },
     );
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
+      () => this.lockedShaderPath,
     );
     this.compileController = new CompileController(
       context,
@@ -93,9 +96,6 @@ export class ShaderStudio {
     // Register shader explorer
     this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
 
-    // Register snippet browser
-    this.snippetLibraryProvider = SnippetLibraryProvider.register(context);
-
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();
 
@@ -116,7 +116,6 @@ export class ShaderStudio {
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
-    this.snippetLibraryProvider.dispose();
     this.errorHandler.dispose();
     this.logger.info("Shader extension disposed");
   }
@@ -543,7 +542,7 @@ export class ShaderStudio {
   private async openSettings(): Promise<void> {
     try {
       // Focus ViewColumn.One so settings opens in the left pane
-      // (consistent with Shader Explorer and Snippet Library)
+      // (consistent with Shader Explorer)
       await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',

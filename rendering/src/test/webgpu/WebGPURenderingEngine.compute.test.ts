@@ -12,6 +12,7 @@ import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { VideoTextureManager } from "../../resources/VideoTextureManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
+import { SHADERTOY_UNIFORM_SIZE } from "../../webgpu/SlangPrelude";
 
 interface FakeBuffer {
   descriptor: GPUBufferDescriptor;
@@ -292,7 +293,8 @@ function dispatchBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
 
 function uniformBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
   const usage = GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST;
-  return buffers.filter(({ descriptor }) => descriptor.size === 48 && descriptor.usage === usage);
+  return buffers.filter(({ descriptor }) =>
+    descriptor.size === SHADERTOY_UNIFORM_SIZE && descriptor.usage === usage);
 }
 
 function deferred<T>() {

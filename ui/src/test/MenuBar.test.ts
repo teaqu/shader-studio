@@ -1799,15 +1799,12 @@ describe('MenuBar Component', () => {
       expect(screen.getByLabelText('Reset default layout')).toBeDisabled();
     });
 
-    it('should keep New Shader, Shader Explorer, and Snippet Library enabled when hasShader is false', async () => {
+    it('should keep New Shader and Shader Explorer enabled without showing Snippet Library', async () => {
       renderMenuBar({ props: { ...defaultProps, hasShader: false } });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
       expect(screen.getByLabelText('New shader')).not.toBeDisabled();
       expect(screen.getByLabelText('Shader explorer')).not.toBeDisabled();
-      expect(screen.getByLabelText('Snippet library')).not.toBeDisabled();
+      expect(screen.queryByLabelText('Snippet library')).not.toBeInTheDocument();
     });
 
     it('should enable shader-affecting options menu items when hasShader is true', async () => {
@@ -1882,21 +1879,6 @@ describe('MenuBar Component', () => {
       await fireEvent.click(explorerButton);
 
       expect(onExtensionCommand).toHaveBeenCalledWith('openShaderExplorer');
-    });
-
-    it('should call onExtensionCommand with openSnippetLibrary', async () => {
-      const onExtensionCommand = vi.fn();
-      renderMenuBar({
-        props: { ...defaultProps, onExtensionCommand }
-      });
-
-      const optionsButton = screen.getByLabelText('Open options menu');
-      await fireEvent.click(optionsButton);
-
-      const snippetButton = screen.getByLabelText('Snippet library');
-      await fireEvent.click(snippetButton);
-
-      expect(onExtensionCommand).toHaveBeenCalledWith('openSnippetLibrary');
     });
 
     it('should close options menu after clicking extension command', async () => {

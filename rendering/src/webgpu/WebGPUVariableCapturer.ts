@@ -11,8 +11,8 @@ import type { ConfigInput } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
-import { DBG_CAPTURE_UNIFORM_SIZE, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
-import { packShaderToyUniforms } from "./uniforms";
+import { DBG_CAPTURE_UNIFORM_SIZE } from "./SlangPrelude";
+import { createSlangCustomUniformLayout, packShaderToyUniforms } from "./uniforms";
 import { captureCounters, captureDiagTick } from "../capture/captureDiagnostics";
 
 const SHADER_CACHE_MAX = 20;
@@ -57,13 +57,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private uniformBuffer: GPUBuffer | null = null;
   private captureUniformBuffer: GPUBuffer | null = null;
   private sampler: GPUSampler | null = null;
+  private customUniforms: CaptureCustomUniform[] = [];
   private disposed = false;
 
   constructor(
     private readonly device: GPUDevice,
     private readonly compiler: AsyncSlangCompiler,
     compileContext: CaptureCompileContext = {},
-    private readonly getChannelResources?: () => Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }> | null,
+    private readonly getChannelResources?: (
+      context: CaptureCompileContext,
+    ) => Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }> | null,
     private readonly getStorageBuffers?: () => Map<string, GPUBuffer>,
   ) {
     this.compileContext = compileContext;
@@ -81,8 +84,19 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     this.compileContext = context;
   }
 
-  setCustomUniforms(_declarations: string, _uniforms: CaptureCustomUniform[]): void {
-    // Custom (script) uniforms are not supported by the Slang pipeline yet.
+  setCustomUniforms(_declarations: string, uniforms: CaptureCustomUniform[]): void {
+    const previousShape = JSON.stringify(this.customUniforms.map(({ name, type }) => ({ name, type })));
+    const nextShape = JSON.stringify(uniforms.map(({ name, type }) => ({ name, type })));
+    this.customUniforms = uniforms.map((uniform) => ({
+      ...uniform,
+      value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
+    }));
+    if (previousShape !== nextShape) {
+      this.pipelineCache.clear();
+      this.pipelineCacheOrder = [];
+      this.uniformBuffer?.destroy?.();
+      this.uniformBuffer = null;
+    }
   }
 
   setInputBindings(_inputConfig: Record<string, ConfigInput>): void {
@@ -211,7 +225,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     const commonCode = this.compileContext.commonCode;
     const compileContextGeneration = this.compileContextGeneration;
     const compileContextKey = this.compileContextKey;
-    const channelResources = channels.length > 0 ? this.getChannelResources?.() ?? null : [];
+    const channelResources = channels.length > 0
+      ? this.getChannelResources?.(this.compileContext) ?? null
+      : [];
     if (channels.length > 0 && channelResources === null) {
       this.lastError = "Capture channels are not resolvable yet";
       return 0;
@@ -232,7 +248,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         frameRate: uniforms.frameRate,
         frame: uniforms.frame,
         mouse: uniforms.mouse,
-      }),
+        channelTime: uniforms.channelTime ?? [0, 0, 0, 0],
+        channelLoaded: uniforms.channelLoaded ?? [0, 0, 0, 0],
+        sampleRate: uniforms.sampleRate ?? 44100,
+        date: uniforms.date,
+        channelResolution: uniforms.channelResolution ?? new Array<number>(12).fill(0),
+        cameraPos: uniforms.cameraPos,
+        cameraDir: uniforms.cameraDir,
+      }, this.customUniforms, this.customUniforms),
     );
 
     const bytesPerRow = Math.ceil((gridWidth * RGBA_CHANNELS * FLOAT_BYTES) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
@@ -397,6 +420,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       storage,
       passKind: "render",
       captureMode: true,
+      customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
+      ...(this.compileContext.slangModules?.length
+        ? { modules: this.compileContext.slangModules }
+        : {}),
+      ...(this.compileContext.slangSourcePath
+        ? { sourcePath: this.compileContext.slangSourcePath }
+        : {}),
     });
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
@@ -456,6 +486,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       context.commonCode ?? "",
       context.slangChannels ?? [],
       context.slangStorage ?? [],
+      context.slangPassName ?? "",
+      context.slangModules ?? [],
+      context.slangSourcePath ?? "",
     ]);
   }
 
@@ -483,10 +516,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }];
     const sorted = [...channels].sort((a, b) => a.slot - b.slot);
     for (let index = 0; index < sorted.length; index++) {
+      const texture: GPUTextureBindingLayout = { sampleType: "float" };
+      if (sorted[index].kind === "cubemap") {
+        texture.viewDimension = "cube";
+      }
       entries.push({
         binding: 1 + index * 2,
         visibility: FRAGMENT,
-        texture: { sampleType: "float" },
+        texture,
       });
       entries.push({
         binding: 2 + index * 2,
@@ -561,7 +598,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     if (!this.uniformBuffer) {
       this.uniformBuffer = this.device.createBuffer({
-        size: SHADERTOY_UNIFORM_SIZE,
+        size: createSlangCustomUniformLayout(this.customUniforms).size,
         usage: UNIFORM | COPY_DST,
       });
       captureCounters.gpuBuffersCreated++;

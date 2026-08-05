@@ -580,9 +580,14 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
-    this.capturer.setCompileContext(
-      this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName),
-    );
+    const captureCompileContext = this.renderingEngine.getShaderLanguage?.() === 'slang'
+      ? this.renderingEngine.getVariableCaptureCompileContext(
+        params.code,
+        params.activeBufferName,
+        params.filePath,
+      )
+      : this.renderingEngine.getVariableCaptureCompileContext(params.code, params.activeBufferName);
+    this.capturer.setCompileContext(captureCompileContext);
     this.capturer.clearLastError();
     this.emitErrorState(null);
 

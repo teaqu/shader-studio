@@ -73,6 +73,7 @@ export class CameraManager {
   constructor(private keyboardManager: KeyboardManager) {}
 
   setupEventListeners(canvas: HTMLCanvasElement): void {
+    this.dispose();
     this.canvas = canvas;
 
     this.onMouseDown = (e: MouseEvent) => {
@@ -148,7 +149,6 @@ export class CameraManager {
 
     const forward = this.getForward();
     const right = this.getRight();
-    const up = new Float32Array([0, 1, 0]); // world up for Q/E
 
     const move = speed * deltaTime;
 
@@ -236,5 +236,9 @@ export class CameraManager {
       window.removeEventListener("mouseup", this.onMouseUp);
     }
     this.canvas = null;
+    this.onMouseDown = null;
+    this.onMouseMove = null;
+    this.onMouseUp = null;
+    this.isMouseDown = false;
   }
 }

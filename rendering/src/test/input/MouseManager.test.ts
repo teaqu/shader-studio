@@ -32,6 +32,7 @@ describe("MouseManager", () => {
   });
 
   afterEach(() => {
+    mouseManager.dispose();
     vi.restoreAllMocks();
   });
 
@@ -54,6 +55,36 @@ describe("MouseManager", () => {
       expect(addSpy).toHaveBeenCalledWith("mousedown", expect.any(Function));
       expect(addSpy).toHaveBeenCalledWith("mouseup", expect.any(Function));
       expect(addSpy).toHaveBeenCalledWith("mousemove", expect.any(Function));
+    });
+
+    it("removes the exact callbacks from the old canvas on re-entry", () => {
+      const firstCanvas = createMockCanvas();
+      const secondCanvas = createMockCanvas();
+      const addSpy = vi.spyOn(firstCanvas, "addEventListener");
+      const removeSpy = vi.spyOn(firstCanvas, "removeEventListener");
+
+      mouseManager.setupEventListeners(firstCanvas);
+      const callbacks = new Map(addSpy.mock.calls.map(([type, callback]) => [type, callback]));
+      mouseManager.setupEventListeners(secondCanvas);
+
+      expect(removeSpy).toHaveBeenCalledWith("mousedown", callbacks.get("mousedown"));
+      expect(removeSpy).toHaveBeenCalledWith("mouseup", callbacks.get("mouseup"));
+      expect(removeSpy).toHaveBeenCalledWith("mousemove", callbacks.get("mousemove"));
+    });
+  });
+
+  describe("dispose", () => {
+    it("removes listeners once and ignores later mouse events", () => {
+      const canvas = createMockCanvas();
+      const removeSpy = vi.spyOn(canvas, "removeEventListener");
+      mouseManager.setupEventListeners(canvas);
+      mouseManager.dispose();
+      mouseManager.dispose();
+
+      canvas.dispatchEvent(new MouseEvent("mousedown", { clientX: 20, clientY: 30 }));
+
+      expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
+      expect(removeSpy).toHaveBeenCalledTimes(3);
     });
   });
 

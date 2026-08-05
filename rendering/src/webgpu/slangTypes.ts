@@ -2,12 +2,13 @@
 // Keeping this narrow makes SlangCompiler trivially unit-testable with a fake
 // module and avoids depending on the full generated interface.d.ts.
 
+import type { SlangSourceModule } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
 
 export interface SlangCompileChannel {
   slot: number;
   key: string;
-  kind?: "texture" | "video" | "cubemap" | "buffer" | "keyboard";
+  kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
 }
 
 /** Structured-clone-safe options shared by main-thread and worker compilers. */
@@ -21,6 +22,9 @@ export interface SlangCompileOptions {
   workgroupSize?: [number, number, number];
   outputLayers?: number;
   hasOutput?: boolean;
+  customUniforms?: Array<{ name: string; type: string }>;
+  modules?: Array<Omit<SlangSourceModule, "ownerPass">>;
+  sourcePath?: string;
 }
 
 export interface SlangCompileTarget {

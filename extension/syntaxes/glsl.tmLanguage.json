@@ -343,7 +343,6 @@
       "patterns": [
         {
           "comment": "Shadertoy built-in uniforms",
-          "name": "variable.other.builtin.shadertoy.glsl",
           "match": "\\b(iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
         },
         {
@@ -550,11 +549,7 @@
       "patterns": [
         {
           "comment": "Vector swizzle (xyzw, rgba, stpq)",
-          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b",
-          "captures": {
-            "1": { "name": "punctuation.accessor.glsl" },
-            "2": { "name": "variable.other.property.swizzle.glsl" }
-          }
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b"
         }
       ]
     },

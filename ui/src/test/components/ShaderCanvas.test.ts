@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import ShaderCanvas from '../../lib/components/ShaderCanvas.svelte';
@@ -19,6 +19,66 @@ describe('ShaderCanvas Component', () => {
     onCanvasClick: vi.fn(),
     isInspectorActive: false,
   };
+
+  afterEach(() => {
+    resolutionStore.reset();
+    vi.unstubAllGlobals();
+  });
+
+  describe('resize scheduling', () => {
+    function stubAnimationFrames() {
+      let nextId = 1;
+      const callbacks = new Map<number, FrameRequestCallback>();
+      const request = vi.fn((callback: FrameRequestCallback) => {
+        const id = nextId++;
+        callbacks.set(id, callback);
+        return id;
+      });
+      const cancel = vi.fn((id: number) => callbacks.delete(id));
+      vi.stubGlobal('requestAnimationFrame', request);
+      vi.stubGlobal('cancelAnimationFrame', cancel);
+      return { callbacks, request, cancel };
+    }
+
+    function runFrame(callbacks: Map<number, FrameRequestCallback>) {
+      const [id, callback] = callbacks.entries().next().value as [number, FrameRequestCallback];
+      callbacks.delete(id);
+      callback(16);
+    }
+
+    it('coalesces a resize burst into one frame using the latest dimensions', () => {
+      const frames = stubAnimationFrames();
+      const onCanvasResize = vi.fn();
+      const onCanvasSizeChange = vi.fn();
+      const view = render(ShaderCanvas, { props: { ...defaultProps, onCanvasResize, onCanvasSizeChange } });
+      runFrame(frames.callbacks);
+      onCanvasResize.mockClear();
+      onCanvasSizeChange.mockClear();
+      frames.request.mockClear();
+
+      resolutionStore.setCustomResolution('320', '180');
+      resolutionStore.setCustomResolution('640', '360');
+
+      expect(frames.request).toHaveBeenCalledTimes(1);
+      expect(onCanvasResize).not.toHaveBeenCalled();
+      expect(onCanvasSizeChange).toHaveBeenLastCalledWith({ width: 640, height: 360 });
+      runFrame(frames.callbacks);
+      expect(onCanvasResize).toHaveBeenCalledOnce();
+      expect(onCanvasResize).toHaveBeenCalledWith({ width: 640, height: 360 });
+      view.unmount();
+    });
+
+    it('cancels a pending resize frame when the canvas unmounts', () => {
+      const frames = stubAnimationFrames();
+      const view = render(ShaderCanvas, { props: defaultProps });
+      const pendingId = [...frames.callbacks.keys()][0];
+
+      view.unmount();
+
+      expect(frames.cancel).toHaveBeenCalledWith(pendingId);
+      expect(frames.callbacks.size).toBe(0);
+    });
+  });
 
   describe('Focus behavior', () => {
     it('should not programmatically call focus() on the canvas', () => {
@@ -78,6 +138,27 @@ describe('ShaderCanvas Component', () => {
       const { container } = render(ShaderCanvas, { props: defaultProps });
       const canvas = container.querySelector('canvas') as HTMLCanvasElement;
       expect(canvas.style.imageRendering).toBe('pixelated');
+    });
+  });
+
+  describe('pixel inspector cursor', () => {
+    it('shows a crosshair whenever the pixel inspector is active', () => {
+      const { container } = render(ShaderCanvas, {
+        props: {
+          ...defaultProps,
+          isInspectorActive: true,
+        },
+      });
+
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      expect(canvas.style.cursor).toBe('crosshair');
+    });
+
+    it('does not force a crosshair when the pixel inspector is inactive', () => {
+      const { container } = render(ShaderCanvas, { props: defaultProps });
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+
+      expect(canvas.style.cursor).toBe('');
     });
   });
 

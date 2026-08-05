@@ -148,6 +148,15 @@ describe('BufferManager', () => {
       expect(mockRenderer.DrawUnitQuad_XY).toHaveBeenCalled();
     });
 
+    it('should keep the overlap anchored to the bottom-left when growing and shrinking', () => {
+      bufferManager.resizeBuffers(800, 600);
+      expect(mockRenderer.SetViewport).toHaveBeenCalledWith([0, 0, 400, 300]);
+
+      vi.mocked(mockRenderer.SetViewport).mockClear();
+      bufferManager.resizeBuffers(200, 150);
+      expect(mockRenderer.SetViewport).toHaveBeenCalledWith([0, 0, 200, 150]);
+    });
+
     it('should create new buffers with correct dimensions', () => {
       bufferManager.resizeBuffers(800, 600);
 

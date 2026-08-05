@@ -46,7 +46,6 @@ Useful targeted builds:
 npm run build:types
 npm run build:ui
 npm run build:shader-explorer
-npm run build:snippet-library
 npm run build:extension
 ```
 

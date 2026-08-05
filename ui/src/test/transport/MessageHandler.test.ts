@@ -374,6 +374,19 @@ describe("MessageHandler", () => {
         mockShaderLocker,
         shaderDebugManager,
       );
+      (messageHandler as any).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          path: 'c:\\path\\to\\main.glsl',
+          code: 'main shader code',
+          config: mockRenderingEngine.getCurrentConfig(),
+          buffers: { BufferA: 'original buffer code' },
+          bufferPathMap: {
+            Image: 'c:\\path\\to\\main.glsl',
+            BufferA: 'c:\\path\\to\\gol-buffer.glsl',
+          },
+        } as ShaderSourceMessage,
+      } as MessageEvent;
     });
 
     it('should handle buffer file update when shader is locked and buffer matches', async () => {
@@ -1163,27 +1176,53 @@ describe("MessageHandler", () => {
       expect(result).toBeUndefined();
     });
 
-    it('should refresh locked shader when common buffer file is updated and shader is locked with path', async () => {
-      mockShaderLocker.isLocked.mockReturnValue(true);
-      mockShaderLocker.getLockedShaderPath.mockReturnValue('/mock/path/to/locked.glsl');
+    it.each(['glsl', 'slang'])(
+      'should refresh locked .%s shader when its common buffer file is updated',
+      async (extension) => {
+        const lockedPath = `/mock/path/to/locked.${extension}`;
+        const commonPath = `/mock/project/common.${extension}`;
+        const currentConfig = {
+          version: '1',
+          passes: {
+            Image: { inputs: {} },
+            common: { path: `common.${extension}`, inputs: {} },
+          },
+        };
+        mockRenderingEngine.getCurrentConfig.mockReturnValue(currentConfig);
+        mockShaderLocker.isLocked.mockReturnValue(true);
+        mockShaderLocker.getLockedShaderPath.mockReturnValue(lockedPath);
+        (messageHandler as any).lastEvent = {
+          data: {
+            type: 'shaderSource',
+            path: lockedPath,
+            code: 'main shader code',
+            config: currentConfig,
+            buffers: { common: 'original common code' },
+            bufferPathMap: {
+              Image: lockedPath,
+              common: commonPath,
+            },
+          } as ShaderSourceMessage,
+        } as MessageEvent;
 
-      const shaderEvent = {
-        data: {
-          type: 'shaderSource',
-          path: '/mock/project/common.glsl',
-          code: 'float helper() { return 1.0; }',
-          config: null,
-          buffers: {},
-        } as ShaderSourceMessage,
-      } as MessageEvent;
+        const shaderEvent = {
+          data: {
+            type: 'shaderSource',
+            path: commonPath,
+            code: 'float helper() { return 1.0; }',
+            config: null,
+            buffers: {},
+          } as ShaderSourceMessage,
+        } as MessageEvent;
 
-      const result = await messageHandler.handleShaderMessage(shaderEvent);
+        const result = await messageHandler.handleShaderMessage(shaderEvent);
 
-      expect(result).toEqual({ success: true });
-      expect(mockTransport.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'refresh', payload: { path: '/mock/path/to/locked.glsl' } })
-      );
-    });
+        expect(result).toEqual({ success: true });
+        expect(mockTransport.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'refresh', payload: { path: lockedPath } })
+        );
+      },
+    );
 
   });
 

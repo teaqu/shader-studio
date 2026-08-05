@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, tick, untrack } from "svelte";
-  import { ConfigManager } from "../../ConfigManager";
+  import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
@@ -58,6 +59,17 @@
   let addMenuContainer = $state<HTMLDivElement>();
   let addMenuTrigger = $state<HTMLButtonElement>();
   let addMenu = $state<HTMLDivElement>();
+  let menuTab = $state<string | null>(null);
+  let menuX = $state(0);
+  let menuY = $state(0);
+  let menuElement = $state<HTMLDivElement | null>(null);
+  let menuButton = $state<HTMLButtonElement | null>(null);
+  let menuTrigger = $state<HTMLButtonElement | null>(null);
+  let renamingTab = $state<string | null>(null);
+  let renameDraft = $state("");
+  let renameError = $state<string | null>(null);
+  let renameInput = $state<HTMLInputElement | null>(null);
+  let tabNavigationElement = $state<HTMLDivElement | null>(null);
 
   // Sync activeTab when parent changes selectedBuffer
   // Don't override if user is on the Script tab (it has no corresponding buffer)
@@ -228,6 +240,9 @@
     if (addMenuOpen && target instanceof Node && !addMenuContainer?.contains(target)) {
       closeAddMenu();
     }
+    if (menuTab && (!(target instanceof Element) || !target.closest(".buffer-rename-menu"))) {
+      dismissRenameMenu();
+    }
   }
 
   function addScript() {
@@ -353,6 +368,183 @@
     }
   }
 
+  function isRenameableTab(tabName: string): boolean {
+    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script";
+  }
+
+  async function openRenameMenu(
+    tabName: string,
+    event: MouseEvent,
+    trigger: HTMLButtonElement,
+  ) {
+    if (!isRenameableTab(tabName)) {
+      return;
+    }
+    event.preventDefault();
+    menuTab = tabName;
+    menuX = event.clientX;
+    menuY = event.clientY;
+    menuTrigger = trigger;
+    await tick();
+    clampMenuPosition();
+    menuButton?.focus();
+  }
+
+  async function handleTabKeyDown(tabName: string, event: KeyboardEvent) {
+    if (!isRenameableTab(tabName) || (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey))) {
+      return;
+    }
+    event.preventDefault();
+    const trigger = event.currentTarget as HTMLButtonElement;
+    const bounds = trigger.getBoundingClientRect();
+    menuTab = tabName;
+    menuX = bounds.left;
+    menuY = bounds.bottom;
+    menuTrigger = trigger;
+    await tick();
+    clampMenuPosition();
+    menuButton?.focus();
+  }
+
+  function clampMenuPosition() {
+    if (!menuElement) {
+      return;
+    }
+    const bounds = menuElement.getBoundingClientRect();
+    menuX = Math.max(0, Math.min(menuX, window.innerWidth - bounds.width));
+    menuY = Math.max(0, Math.min(menuY, window.innerHeight - bounds.height));
+  }
+
+  function dismissRenameMenu(restoreTriggerFocus = false) {
+    menuTab = null;
+    if (restoreTriggerFocus) {
+      menuTrigger?.focus();
+    }
+  }
+
+  function handleWindowKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape" && menuTab) {
+      event.preventDefault();
+      dismissRenameMenu(true);
+    }
+  }
+
+  function handleWindowContextMenu() {
+    if (menuTab) {
+      dismissRenameMenu();
+    }
+  }
+
+  function handleWindowFocusOut(event: FocusEvent) {
+    const nextFocusTarget = event.relatedTarget as Node | null;
+    if (menuTab && !menuElement?.contains(nextFocusTarget)) {
+      dismissRenameMenu();
+    }
+  }
+
+  async function startRename() {
+    if (!menuTab) {
+      return;
+    }
+    renamingTab = menuTab;
+    renameDraft = menuTab;
+    renameError = null;
+    dismissRenameMenu();
+    await tick();
+    renameInput?.focus();
+    renameInput?.select();
+  }
+
+  async function focusTab(tabName: string) {
+    await tick();
+    Array.from(tabNavigationElement?.querySelectorAll<HTMLButtonElement>("button.tab-button") ?? []).find(
+      (tab) => tab.dataset.tabName === tabName,
+    )?.focus();
+  }
+
+  function cancelRename() {
+    renamingTab = null;
+    renameDraft = "";
+    renameError = null;
+  }
+
+  function getRenameErrorMessage(error: BufferRenameError): string {
+    const messages: Record<BufferRenameError, string> = {
+      "config-unavailable": "Configuration is unavailable",
+      "source-not-found": "This pass no longer exists",
+      "same-name": "Name is unchanged",
+      "reserved-name": "That pass name is reserved",
+      "invalid-identifier": "Enter a valid pass name",
+      "name-taken": "That pass name is already in use",
+    };
+    return messages[error];
+  }
+
+  function commitRename(restoreFocus = false) {
+    const oldName = renamingTab;
+    if (!oldName) {
+      return;
+    }
+
+    const newName = renameDraft.trim();
+    if (!newName || newName === oldName) {
+      cancelRename();
+      if (restoreFocus) {
+        void focusTab(oldName);
+      }
+      return;
+    }
+
+    const manager = configManager;
+    if (!manager) {
+      renameError = getRenameErrorMessage("config-unavailable");
+      return;
+    }
+
+    const validationError = manager.validateBufferRename(oldName, newName);
+    if (validationError) {
+      renameError = getRenameErrorMessage(validationError);
+      return;
+    }
+
+    if (!manager.renameBuffer(oldName, newName)) {
+      renameError = "Unable to rename this pass";
+      return;
+    }
+
+    const renamedActiveTab = activeTab === oldName;
+    cancelRename();
+    if (renamedActiveTab) {
+      activeTab = newName;
+      onFileSelect(newName);
+    }
+    if (restoreFocus) {
+      void focusTab(newName);
+    }
+  }
+
+  function handleRenameKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      const tabName = renamingTab;
+      cancelRename();
+      if (tabName) {
+        void focusTab(tabName);
+      }
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      void commitRename(true);
+    }
+  }
+
+  function handleRenameInput() {
+    renameError = null;
+  }
+
   function handleTabDblClick(tabName: string) {
     if (!isLocked) {
       return;
@@ -386,40 +578,75 @@
   });
 </script>
 
-<svelte:window onclick={handleWindowClick} />
+<svelte:window
+  onkeydown={handleWindowKeyDown}
+  onclick={handleWindowClick}
+  oncontextmenu={handleWindowContextMenu}
+  onfocusout={handleWindowFocusOut}
+/>
 
 <div class="config-panel" class:visible={isVisible}>
   <div class="config-content">
     <!-- Tab Navigation - Always visible -->
-    <div class="tab-navigation">
-      {#each allTabs as tabName}
-        <button
-          class="tab-button {activeTab === tabName ? 'active' : ''}"
-          onclick={() => switchTab(tabName)}
-          ondblclick={() => handleTabDblClick(tabName)}
-        >
-          <span class="tab-label">{tabName}</span>
-          {#if tabName !== "Image" && config}
-            <span
-              class="tab-close"
-              role="button"
-              tabindex="0"
-              onclick={(e) => {
-                e.stopPropagation(); removeBuffer(tabName); 
-              }}
-              onkeydown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
+    <div class="tab-navigation" bind:this={tabNavigationElement}>
+      {#each allTabs as tabName (tabName)}
+        {#if renamingTab === tabName}
+          <div class="tab-rename" class:active={activeTab === tabName}>
+            <input
+              class="tab-rename-input"
+              type="text"
+              aria-label="Rename {tabName}"
+              aria-invalid={renameError ? "true" : undefined}
+              aria-describedby={renameError ? "tab-rename-error" : undefined}
+              bind:this={renameInput}
+              bind:value={renameDraft}
+              oninput={handleRenameInput}
+              onkeydown={handleRenameKeyDown}
+              onblur={() => commitRename()}
+            />
+            {#if renameError}
+              <p id="tab-rename-error" class="tab-rename-error" role="alert">{renameError}</p>
+            {/if}
+          </div>
+        {:else}
+          <button
+            class="tab-button {activeTab === tabName ? 'active' : ''}"
+            data-tab-name={tabName}
+            onclick={() => switchTab(tabName)}
+            ondblclick={() => handleTabDblClick(tabName)}
+            oncontextmenu={(event) => {
+              if (isRenameableTab(tabName)) {
+                event.stopPropagation();
+                openRenameMenu(tabName, event, event.currentTarget);
+              }
+            }}
+            onkeydown={(event) => handleTabKeyDown(tabName, event)}
+          >
+            <span class="tab-label">{tabName}</span>
+            {#if tabName !== "Image" && config}
+              <span
+                class="tab-close"
+                role="button"
+                tabindex="0"
+                onclick={(event) => {
+                  event.stopPropagation();
                   removeBuffer(tabName);
-                }
-              }}
-              title="Remove {tabName}"
-              aria-label="Remove {tabName}"
-            >
-              ×
-            </span>
-          {/if}
-        </button>
+                }}
+                onkeydown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    removeBuffer(tabName);
+                  }
+                }}
+                title="Remove {tabName}"
+                aria-label="Remove {tabName}"
+              >
+                ×
+              </span>
+            {/if}
+          </button>
+        {/if}
       {/each}
 
       <div
@@ -532,6 +759,12 @@
   </div>
 </div>
 
+{#if menuTab}
+  <div use:portal bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
+    <button bind:this={menuButton} role="menuitem" onclick={startRename}>Rename</button>
+  </div>
+{/if}
+
 <style>
   .config-panel {
     display: flex;
@@ -579,5 +812,59 @@
     min-height: 0;
     overflow-y: auto;
     padding: 12px;
+  }
+
+  .buffer-rename-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 120px;
+    padding: 4px;
+    background: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border);
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  }
+
+  .buffer-rename-menu button {
+    width: 100%;
+    padding: 5px 20px;
+    color: var(--vscode-menu-foreground);
+    background: transparent;
+    border: 0;
+    text-align: left;
+  }
+
+  .buffer-rename-menu button:hover,
+  .buffer-rename-menu button:focus-visible {
+    color: var(--vscode-menu-selectionForeground);
+    background: var(--vscode-menu-selectionBackground);
+    outline: none;
+  }
+
+  .tab-rename {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 2px 8px;
+    color: var(--vscode-tab-inactiveForeground);
+    background: var(--vscode-tab-inactiveBackground);
+  }
+
+  .tab-rename.active {
+    color: var(--vscode-tab-activeForeground);
+    background: var(--vscode-tab-activeBackground);
+  }
+
+  .tab-rename-input {
+    width: 100px;
+    min-width: 0;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-focusBorder);
+  }
+
+  .tab-rename-error {
+    margin: 2px 0 0;
+    color: var(--vscode-inputValidation-errorForeground);
+    font-size: 11px;
   }
 </style>

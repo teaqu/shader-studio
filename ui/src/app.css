@@ -14,12 +14,19 @@
 }
 
 :root[data-theme="light"] {
+  --vscode-foreground: #1f1f1f;
+  --vscode-descriptionForeground: #616161;
   --vscode-editor-background: #ffffff;
   --vscode-editor-foreground: #000000;
   --vscode-sideBar-background: #f8f8f8;
   --vscode-sideBar-foreground: #1f1f1f;
   --vscode-panel-border: #e5e5e5;
   --vscode-list-hoverBackground: #e8e8e8;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #1f1f1f;
+  --vscode-input-border: #cecece;
+  --vscode-focusBorder: #005fb8;
+  --vscode-badge-background: #c4c4c4;
   --vscode-button-background: #005fb8;
   --vscode-button-foreground: #ffffff;
   --vscode-button-hoverBackground: #0258a8;
@@ -35,12 +42,19 @@
 }
 
 :root[data-theme="dark"] {
+  --vscode-foreground: #cccccc;
+  --vscode-descriptionForeground: #ccccccb3;
   --vscode-editor-background: #1e1e1e;
   --vscode-editor-foreground: #d4d4d4;
   --vscode-sideBar-background: #252526;
   --vscode-sideBar-foreground: #cccccc;
   --vscode-panel-border: #2b2b2b;
   --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-input-background: #313131;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-border: #3c3c3c;
+  --vscode-focusBorder: #007fd4;
+  --vscode-badge-background: #4d4d4d;
   --vscode-button-background: #0e639c;
   --vscode-button-foreground: #ffffff;
   --vscode-button-hoverBackground: #1177bb;

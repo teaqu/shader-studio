@@ -6,6 +6,30 @@ import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
+import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+
+const pixelRegionCapturerMock = vi.hoisted(() => ({ constructor: vi.fn() }));
+
+vi.mock("../../webgpu/WebGPUPixelRegionCapturer", () => ({
+  WebGPUPixelRegionCapturer: class {
+    constructor(device: GPUDevice, format: GPUTextureFormat) {
+      pixelRegionCapturerMock.constructor(device, format);
+    }
+
+    queue(): boolean {
+      return true;
+    }
+    collectResults() {
+      return [];
+    }
+    cancelPendingCaptures(): void {}
+    encodeAfterRender(): boolean {
+      return false;
+    }
+    beginMappings(): void {}
+    dispose(): void {}
+  },
+}));
 
 /** A canvas stub whose webgpu context is unavailable (as in jsdom / no-WebGPU). */
 function noWebGpuCanvas(): HTMLCanvasElement {
@@ -19,9 +43,58 @@ function noWebGpuCanvas(): HTMLCanvasElement {
 
 const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+interface EngineLifecycleInternals {
+  ready: Promise<void>;
+  device: GPUDevice | null;
+  compiler: unknown | null;
+  resourceManager: unknown | null;
+  compileGeneration: number;
+  bufferTextureFormat: GPUTextureFormat;
+}
+
+function lifecycleInternals(engine: WebGPURenderingEngine): EngineLifecycleInternals {
+  return engine as unknown as EngineLifecycleInternals;
+}
+
+function webGpuCanvas(context: Pick<GPUCanvasContext, "configure">): HTMLCanvasElement {
+  return {
+    width: 800,
+    height: 600,
+    getContext: vi.fn(() => context),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as HTMLCanvasElement;
+}
+
+function lifecycleDevice() {
+  const textures: Array<{ createView: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }> = [];
+  const device = {
+    createTexture: vi.fn(() => {
+      const texture = { createView: vi.fn(() => ({})), destroy: vi.fn() };
+      textures.push(texture);
+      return texture;
+    }),
+    createSampler: vi.fn(() => ({})),
+    queue: { writeTexture: vi.fn() },
+    destroy: vi.fn(),
+  };
+  return { device: device as unknown as GPUDevice, textures };
+}
+
 describe("WebGPURenderingEngine", () => {
   beforeEach(() => {
     sharedSlangWgslCache.clear();
+    pixelRegionCapturerMock.constructor.mockClear();
   });
 
   it("initializes without throwing when WebGPU is unavailable", () => {
@@ -76,6 +149,8 @@ describe("WebGPURenderingEngine", () => {
     } as unknown as HTMLCanvasElement;
     const engine = new WebGPURenderingEngine({ ...assets, debugTimings: true });
     const compiler = { compile: vi.fn(), dispose: vi.fn() };
+    const camera = { setupEventListeners: vi.fn() };
+    (engine as any).cameraManager = camera;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.stubGlobal("navigator", {
       gpu: {
@@ -89,6 +164,7 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
+      expect(camera.setupEventListeners).toHaveBeenCalledWith(canvas);
       expect(logSpy).toHaveBeenCalledWith("[SlangPerf] init start", {
         canvasWidth: 800,
         canvasHeight: 600,
@@ -209,6 +285,7 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
+
   it("render() is a safe no-op before a pipeline exists", () => {
     const engine = new WebGPURenderingEngine(assets);
     engine.initialize(noWebGpuCanvas());
@@ -273,7 +350,7 @@ describe("WebGPURenderingEngine", () => {
     });
   });
 
-  /** Engine with a BufferA→Image pass graph, stubbed device, and a controllable mouse. */
+  /** Engine with a BufferA→Image pass graph and controllable input managers. */
   function pausableEngine() {
     const engine = new WebGPURenderingEngine(assets);
     stubDeviceAndContext(engine);
@@ -303,7 +380,20 @@ describe("WebGPURenderingEngine", () => {
       setEnabled: vi.fn(),
     };
 
-    return { engine, bufferPipeline, imagePipeline, mouse };
+    const camera = {
+      pos: [0, 0, 0] as number[],
+      dir: [0, 0, -1] as number[],
+      update: vi.fn(),
+      getCameraPos: vi.fn(() => camera.pos),
+      getCameraDir: vi.fn(() => camera.dir),
+      setupEventListeners: vi.fn(),
+      setEnabled: vi.fn(),
+      reset: vi.fn(),
+      dispose: vi.fn(),
+    };
+    (engine as any).cameraManager = camera;
+
+    return { engine, bufferPipeline, imagePipeline, mouse, camera };
   }
 
   /** Uniform payloads written during the most recent render call. */
@@ -392,6 +482,46 @@ describe("WebGPURenderingEngine", () => {
       }
     });
 
+    it("updates camera motion using rendered-frame wall time and uploads its uniforms", () => {
+      const { engine, camera } = pausableEngine();
+      camera.pos = [1, 2, 3];
+      camera.dir = [0.25, 0.5, -0.75];
+
+      engine.render(1000);
+      engine.render(1016);
+
+      expect(camera.update).toHaveBeenNthCalledWith(1, 0);
+      expect(camera.update).toHaveBeenNthCalledWith(2, 0.016);
+      const writes = lastFrameUniformWrites(engine, 2);
+      for (const uniforms of writes) {
+        const cameraPos = UNIFORM_OFFSETS.iCameraPos / 4;
+        const cameraDir = UNIFORM_OFFSETS.iCameraDir / 4;
+        expect(Array.from(uniforms.slice(cameraPos, cameraPos + 3))).toEqual([1, 2, 3]);
+        expect(Array.from(uniforms.slice(cameraDir, cameraDir + 3))).toEqual([0.25, 0.5, -0.75]);
+      }
+    });
+
+    it("freezes camera uniforms at pause entry while camera controls keep updating", () => {
+      const { engine, camera } = pausableEngine();
+
+      engine.render(1000);
+      engine.togglePause();
+      camera.pos = [1, 2, 3];
+      camera.dir = [0.25, 0.5, -0.75];
+      engine.render(1016);
+
+      camera.pos = [9, 8, 7];
+      camera.dir = [1, 0, 0];
+      engine.render(1033);
+
+      expect(camera.update).toHaveBeenLastCalledWith(0.017);
+      const [uniforms] = lastFrameUniformWrites(engine, 1);
+      const cameraPos = UNIFORM_OFFSETS.iCameraPos / 4;
+      const cameraDir = UNIFORM_OFFSETS.iCameraDir / 4;
+      expect(Array.from(uniforms.slice(cameraPos, cameraPos + 3))).toEqual([1, 2, 3]);
+      expect(Array.from(uniforms.slice(cameraDir, cameraDir + 3))).toEqual([0.25, 0.5, -0.75]);
+    });
+
     it("renderForCapture preserves the frozen paused uniform snapshot", () => {
       const { engine, mouse } = pausableEngine();
 
@@ -406,6 +536,32 @@ describe("WebGPURenderingEngine", () => {
       const [imageUniforms] = lastFrameUniformWrites(engine, 1);
       expect([imageUniforms[4], imageUniforms[5]]).toEqual([50, 60]);
       expect((engine as any).pausedUniformInput).not.toBeNull();
+    });
+
+    it("synchronizes and pauses or resumes audio and video with shader time", () => {
+      const { engine } = pausableEngine();
+      vi.spyOn(engine.getTimeManager(), "getCurrentTime").mockReturnValue(2.25);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(),
+        syncAllAudioToTime: vi.fn(),
+        pauseAllVideos: vi.fn(),
+        pauseAllAudio: vi.fn(),
+        resumeAllVideos: vi.fn(),
+        resumeAllAudio: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      engine.togglePause();
+
+      expect(resourceManager.syncAllVideosToTime).toHaveBeenLastCalledWith(2.25);
+      expect(resourceManager.syncAllAudioToTime).toHaveBeenLastCalledWith(2.25);
+      expect(resourceManager.pauseAllVideos).toHaveBeenCalledTimes(1);
+      expect(resourceManager.pauseAllAudio).toHaveBeenCalledTimes(1);
+
+      engine.togglePause();
+
+      expect(resourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
+      expect(resourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -426,7 +582,8 @@ describe("WebGPURenderingEngine", () => {
     expect(engine.getPasses()).toEqual([]);
     expect(engine.getCustomUniformInfo()).toEqual([]);
     expect(engine.getCustomUniformDeclarations()).toBe("");
-    expect(engine.readPixel(0, 0)).toBeNull();
+    expect(engine.requestPixelRegion(1, 0, 0)).toBe(false);
+    expect(engine.collectPixelRegionResults()).toEqual([]);
     expect(engine.getAudioFFTData()).toBeNull();
   });
 
@@ -487,6 +644,12 @@ describe("WebGPURenderingEngine", () => {
       },
       "/image.slang",
       { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+      undefined,
+      undefined,
+      [
+        { moduleName: "buffer_helpers", path: "/buffer-helpers.slang", source: "module buffer_helpers;", ownerPass: "BufferA" },
+        { moduleName: "image_helpers", path: "/image-helpers.slang", source: "module image_helpers;", ownerPass: "Image" },
+      ],
     );
 
     expect(result?.success).toBe(true);
@@ -501,6 +664,11 @@ describe("WebGPURenderingEngine", () => {
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
       hasOutput: true,
+      modules: [{
+        moduleName: "buffer_helpers",
+        path: "/buffer-helpers.slang",
+        source: "module buffer_helpers;",
+      }],
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
@@ -511,7 +679,70 @@ describe("WebGPURenderingEngine", () => {
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
       hasOutput: false,
+      modules: [{
+        moduleName: "image_helpers",
+        path: "/image-helpers.slang",
+        source: "module image_helpers;",
+      }],
     });
+  });
+
+  it("clears feedback only after the reset recompile succeeds", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubEngineInternals(engine);
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+      },
+    };
+    const code = "float4 mainImage(float2 c) { return float4(0); }";
+    await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
+    const buffer = (engine as any).passPipelines.get("BufferA") as SlangPassPipeline;
+    const resetSpy = vi.spyOn(buffer, "resetOutputTextures");
+
+    engine.resetTime();
+    expect(resetSpy).not.toHaveBeenCalled();
+    const result = await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
+
+    expect(result?.success).toBe(true);
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("compiles arbitrary configured buffer names", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const { compiler } = stubEngineInternals(engine);
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "Bloom" } } },
+        SceneData: { path: "scene.slang", inputs: {} },
+        Bloom: { path: "bloom.slang", inputs: {} },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      config,
+      "/image.slang",
+      {
+        SceneData: "float4 mainImage(float2 c) { return float4(1); }",
+        Bloom: "float4 mainImage(float2 c) { return float4(2); }",
+      },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(engine.getPasses().map((pass) => pass.name)).toEqual([
+      "SceneData",
+      "Bloom",
+      "Image",
+    ]);
+    expect(compiler.compile.mock.calls.map((call) => call[1].passName)).toEqual([
+      "SceneData",
+      "Bloom",
+      "Image",
+    ]);
   });
 
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
@@ -713,7 +944,7 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
-  it("propagates pass graph warnings into a successful compile result", async () => {
+  it("compiles custom-named channel inputs without a warning", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
       createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
@@ -743,7 +974,7 @@ describe("WebGPURenderingEngine", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "audio", path: "foo.mp3" } } },
+          Image: { inputs: { ignoredInput: { type: "audio", path: "foo.mp3" } } },
         },
       },
       "/image.slang",
@@ -751,7 +982,13 @@ describe("WebGPURenderingEngine", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.warnings?.[0]).toMatch(/unsupported/i);
+    expect(result?.warnings).toBeUndefined();
+    expect(compiler.compile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        channels: [{ slot: 0, key: "ignoredInput", kind: "audio" }],
+      }),
+    );
   });
 
   it("renders buffer passes before Image and swaps buffer textures once per frame", () => {
@@ -836,6 +1073,7 @@ describe("WebGPURenderingEngine", () => {
     (engine as any).device = {
       queue: { writeBuffer: vi.fn(), submit: vi.fn() },
       createCommandEncoder: vi.fn(() => ({
+        copyTextureToTexture: vi.fn(),
         beginRenderPass: vi.fn(() => ({
           setPipeline: vi.fn(),
           setBindGroup: vi.fn(),
@@ -976,6 +1214,7 @@ describe("WebGPURenderingEngine", () => {
         copyExternalImageToTexture: vi.fn(),
       },
       createCommandEncoder: vi.fn(() => ({
+        copyTextureToTexture: vi.fn(),
         beginRenderPass: vi.fn(() => ({
           setPipeline: vi.fn(),
           setBindGroup: vi.fn(),
@@ -1001,6 +1240,252 @@ describe("WebGPURenderingEngine", () => {
     };
     return { device, compiler, canvas };
   }
+
+  describe("custom and remaining ShaderToy uniform parity", () => {
+    it("compiles, exposes, preserves, and partially updates script uniforms", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler, device } = stubEngineInternals(engine);
+      const declarations = "uniform float gain;\nuniform bool enabled;";
+      const info = [
+        { name: "gain", type: "float" },
+        { name: "enabled", type: "bool" },
+      ];
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(enabled ? gain : 0); }",
+        null,
+        "/image.slang",
+        {},
+        declarations,
+        info,
+      );
+
+      expect(result?.success).toBe(true);
+      expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+        customUniforms: info,
+      }));
+      expect(engine.getCustomUniformDeclarations()).toBe(declarations);
+      expect(engine.getCustomUniformInfo()).toEqual(info);
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 0 },
+        { name: "enabled", type: "bool", value: false },
+      ]);
+
+      engine.setCustomUniformValues([
+        { name: "gain", type: "float", value: 0.5 },
+        { name: "enabled", type: "bool", value: false },
+      ]);
+      engine.updateCustomUniformValues([
+        { name: "enabled", type: "bool", value: true },
+      ]);
+      device.queue.writeBuffer.mockClear();
+      engine.render(1000);
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 0.5 },
+        { name: "enabled", type: "bool", value: true },
+      ]);
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      expect(packed.byteLength).toBe(224);
+      const view = new DataView(packed);
+      expect(view.getFloat32(208, true)).toBeCloseTo(0.5);
+      expect(view.getInt32(212, true)).toBe(1);
+    });
+
+    it("preserves values that arrive before custom declarations compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      engine.setCustomUniformValues([{ name: "gain", type: "float", value: 2.5 }]);
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2.5 },
+      ]);
+    });
+
+    it("clears script uniforms when a later compile has no script", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(engine.getCustomUniformDeclarations()).toBe("");
+      expect(engine.getCustomUniformInfo()).toEqual([]);
+      expect(engine.getCurrentCustomUniforms()).toEqual([]);
+    });
+
+    it("recompiles unchanged shader source when the script uniform layout changes", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const source = "float4 mainImage(float2 c) { return float4(1); }";
+      await engine.compileShaderPipeline(
+        source, null, "/image.slang", {}, "uniform float gain;", [{ name: "gain", type: "float" }],
+      );
+
+      await engine.compileShaderPipeline(
+        source, null, "/image.slang", {}, "uniform vec4 tint;", [{ name: "tint", type: "vec4" }],
+      );
+
+      expect(compiler.compile).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the installed custom layout when a same-file recompile fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      const result = await engine.compileShaderPipeline(
+        "broken",
+        null,
+        "/image.slang",
+        {},
+        "uniform vec4 tint;",
+        [{ name: "tint", type: "vec4" }],
+      );
+
+      expect(result?.success).toBe(false);
+      expect(engine.getCustomUniformDeclarations()).toBe("uniform float gain;");
+      expect(engine.getCustomUniformInfo()).toEqual([{ name: "gain", type: "float" }]);
+    });
+
+    it("packs iDate and GLSL-compatible channel resolutions per pass", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubDeviceAndContext(engine);
+      const textureHandle = { width: 640, height: 360, view: {}, sampler: {} };
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({ "/tex.png": textureHandle }),
+        getDefaultTexture: () => textureHandle,
+        getAudioTexture: () => textureHandle,
+        getAudioState: () => null,
+        getAudioSampleRate: () => 44100,
+        updateAudioTextures: vi.fn(),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: () => textureHandle,
+      };
+      vi.spyOn(engine.getTimeManager(), "getCurrentDate").mockReturnValue(
+        Float32Array.from([2026, 7, 19, 12345]),
+      );
+      const imagePipeline = renderablePipeline({
+        getCurrentOutputView: () => null,
+        getPreviousOutputView: () => null,
+      });
+      (engine as any).passGraph = [{
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [
+          { kind: "texture", slot: 0, key: "iChannel0", path: "/tex.png" },
+          { kind: "audio", slot: 1, key: "iChannel1", path: "/audio.wav" },
+          { kind: "keyboard", slot: 3, key: "iChannel3" },
+        ],
+      }];
+      (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
+
+      engine.render(1000);
+
+      const write = (engine as any).device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const view = new DataView(write);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iDate, true)).toBe(2026);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(640);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 4, true)).toBe(360);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16, true)).toBe(512);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16 + 4, true)).toBe(2);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48, true)).toBe(256);
+      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48 + 4, true)).toBe(3);
+    });
+
+    it("uses the selected buffer pass resources, resolution, and channel uniforms for capture", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const bufferHandle = { width: 64, height: 32, view: { label: "buffer-input" }, sampler: {} };
+      const imageHandle = { width: 256, height: 128, view: { label: "image-input" }, sampler: {} };
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({
+          "/buffer.png": bufferHandle,
+          "/image.png": imageHandle,
+        }),
+        getDefaultTexture: () => imageHandle,
+        getAudioSampleRate: () => 44100,
+      };
+      (engine as any).passGraph = [
+        {
+          name: "BufferA",
+          width: 160,
+          height: 90,
+          output: "texture",
+          source: "buffer-source",
+          channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/buffer.png" }],
+        },
+        {
+          name: "Image",
+          width: 320,
+          height: 180,
+          output: "canvas",
+          source: "image-source",
+          channels: [{ kind: "texture", slot: 0, key: "iChannel0", path: "/image.png" }],
+        },
+      ];
+      (engine as any).lastCompile = {
+        code: 'image-source',
+        path: '/image.slang',
+        buffers: { BufferA: 'buffer-source', common: 'import palette;\nfloat helper() { return 1; }' },
+        slangModules: [
+          { moduleName: 'tone_map', path: '/tone-map.slang', source: 'module tone_map;', ownerPass: 'BufferA' },
+          { moduleName: 'palette', path: '/palette.slang', source: 'module palette;', ownerPass: 'BufferA' },
+          { moduleName: 'image_only', path: '/image-only.slang', source: 'module image_only;', ownerPass: 'Image' },
+        ],
+      };
+
+      const capturer = engine.createVariableCapturer();
+      const context = engine.getVariableCaptureCompileContext(undefined, "BufferA", "/palette.slang");
+      capturer.setCompileContext(context);
+
+      expect(context).toMatchObject({
+        slangPassName: "BufferA",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "texture" }],
+        slangSourcePath: '/palette.slang',
+        slangModules: [{ moduleName: 'tone_map', path: '/tone-map.slang', source: 'module tone_map;' }],
+      });
+      expect(context.commonCode).toBe('\nfloat helper() { return 1; }');
+      expect(engine.getVariableCaptureCompileContext(undefined, "BufferA", "/tone-map.slang").slangModules)
+        .toEqual([]);
+      expect((capturer as any).getChannelResources(context)).toEqual([
+        expect.objectContaining({ slot: 0, textureView: bufferHandle.view }),
+      ]);
+      const captureUniforms = engine.getCaptureUniforms();
+      expect(captureUniforms.res).toEqual([160, 90, 1]);
+      expect(captureUniforms.channelResolution?.slice(0, 3)).toEqual([64, 32, 1]);
+    });
+  });
 
   describe("video input parity", () => {
     const videoConfig: ShaderConfig = {
@@ -1206,6 +1691,203 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = null;
 
       expect(() => engine.setGlobalVolume(0.5, true)).not.toThrow();
+    });
+  });
+
+  describe("audio input parity", () => {
+    const audioConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: {
+          inputs: {
+            iChannel1: {
+              type: "audio",
+              path: "test.wav",
+              resolved_path: "/audio/test.wav",
+              muted: true,
+              startTime: 0.5,
+              endTime: 2.5,
+            },
+          },
+        },
+      },
+    };
+
+    it("delegates public audio controls and queries", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const state = { paused: false, muted: true, currentTime: 1.5, duration: 3 };
+      const fft = new Uint8Array([1, 2, 3]);
+      const resourceManager = {
+        resumeAudioContext: vi.fn(async () => undefined),
+        resumeAllAudio: vi.fn(),
+        updateAudioLoopRegion: vi.fn(),
+        controlAudio: vi.fn(),
+        getAudioState: vi.fn(() => state),
+        seekAudio: vi.fn(),
+        getAudioFFTData: vi.fn(() => fft),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      await engine.resumeAudioContext();
+      engine.resumeAllAudio();
+      engine.updateAudioLoopRegion("music.wav", 0.25, 2.75);
+      engine.controlAudio("music.wav", "play");
+      const actualState = engine.getAudioState("music.wav");
+      engine.seekAudio("music.wav", 1.25);
+
+      expect(resourceManager.resumeAudioContext).toHaveBeenCalledTimes(1);
+      expect(resourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
+      expect(resourceManager.updateAudioLoopRegion).toHaveBeenCalledWith("music.wav", 0.25, 2.75);
+      expect(resourceManager.controlAudio).toHaveBeenCalledWith("music.wav", "play");
+      expect(resourceManager.getAudioState).toHaveBeenCalledWith("music.wav");
+      expect(actualState).toBe(state);
+      expect(resourceManager.seekAudio).toHaveBeenCalledWith("music.wav", 1.25);
+      expect(engine.getAudioFFTData("audio", "music.wav")).toBe(fft);
+      expect(resourceManager.getAudioFFTData).toHaveBeenCalledWith("music.wav");
+      expect(engine.getAudioFFTData("video", "music.wav")).toBeNull();
+      expect(engine.getAudioFFTData("audio")).toBeNull();
+    });
+
+    it("loads audio with playback options and updates its loop without autoplaying", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => ({})),
+        updateAudioLoopRegion: vi.fn(),
+        controlAudio: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(resourceManager.loadAudioSource).toHaveBeenCalledWith("/audio/test.wav", {
+        muted: true,
+        startTime: 0.5,
+        endTime: 2.5,
+      });
+      expect(resourceManager.updateAudioLoopRegion).toHaveBeenCalledWith(
+        "/audio/test.wav", 0.5, 2.5,
+      );
+      expect(resourceManager.controlAudio).not.toHaveBeenCalled();
+      expect(compiler.compile).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          channels: [{ slot: 0, key: "iChannel1", kind: "audio" }],
+        }),
+      );
+    });
+
+    it("keeps shader compilation successful when audio loading fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      (engine as any).resourceManager = {
+        loadAudioSource: vi.fn(async () => {
+          throw new Error("decode failed");
+        }),
+        updateAudioLoopRegion: vi.fn(),
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings).toContain("Audio loading failed: /audio/test.wav");
+      expect((engine as any).resourceManager.updateAudioLoopRegion).not.toHaveBeenCalled();
+    });
+
+    it("updates and binds the audio texture with its timing uniforms", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const audioHandle = {
+        view: { label: "audio-view" },
+        sampler: { label: "audio-sampler" },
+      };
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => audioHandle),
+        updateAudioLoopRegion: vi.fn(),
+        updateAudioTextures: vi.fn(),
+        getAudioTexture: vi.fn(() => audioHandle),
+        getAudioState: vi.fn(() => ({
+          paused: false, muted: true, currentTime: 1.75, duration: 3,
+        })),
+        getAudioSampleRate: vi.fn(() => 48000),
+        getDefaultTexture: vi.fn(() => null),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+      device.createBindGroup.mockClear();
+      device.queue.writeBuffer.mockClear();
+
+      engine.render(1000);
+
+      expect(resourceManager.updateAudioTextures).toHaveBeenCalledTimes(1);
+      expect(resourceManager.getAudioTexture).toHaveBeenCalledWith("/audio/test.wav");
+      expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+        { binding: 0, resource: { buffer: expect.anything() } },
+        { binding: 1, resource: audioHandle.view },
+        { binding: 2, resource: audioHandle.sampler },
+      ]);
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const uniforms = new DataView(packed);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelTime, true)).toBeCloseTo(1.75);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelLoaded, true)).toBe(1);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(48000);
+    });
+
+    it("binds the default texture and reports unloaded when audio is missing", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const defaultHandle = {
+        view: { label: "default-view" },
+        sampler: { label: "default-sampler" },
+      };
+      const resourceManager = {
+        loadAudioSource: vi.fn(async () => defaultHandle),
+        updateAudioLoopRegion: vi.fn(),
+        updateAudioTextures: vi.fn(),
+        getAudioTexture: vi.fn(() => null),
+        getAudioState: vi.fn(() => null),
+        getAudioSampleRate: vi.fn(() => 0),
+        getDefaultTexture: vi.fn(() => defaultHandle),
+        updateKeyboardTexture: vi.fn(),
+        getKeyboardTexture: vi.fn(() => null),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        audioConfig,
+        "/image.slang",
+      );
+      device.createBindGroup.mockClear();
+      device.queue.writeBuffer.mockClear();
+
+      engine.render(1000);
+
+      expect(device.createBindGroup.mock.calls[0][0].entries).toContainEqual({
+        binding: 1, resource: defaultHandle.view,
+      });
+      const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
+      const uniforms = new DataView(packed);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBe(0);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(0);
+      expect(uniforms.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(44100);
     });
   });
 
@@ -1541,6 +2223,61 @@ describe("WebGPURenderingEngine", () => {
       }
     });
 
+    it("batches all resized buffer migrations into one command submission", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        {
+          version: "1",
+          passes: {
+            Image: { inputs: {} },
+            BufferA: { path: "buffer-a.slang", inputs: {}, resolution: { scale: 0.5 } },
+            BufferB: { path: "buffer-b.slang", inputs: {}, resolution: { scale: 0.25 } },
+          },
+        },
+        "/image.slang",
+        {
+          BufferA: "float4 mainImage(float2 c) { return float4(1); }",
+          BufferB: "float4 mainImage(float2 c) { return float4(2); }",
+        },
+      );
+      expect(result?.success).toBe(true);
+      const oldTextures = device.createTexture.mock.results.map((entry) => entry.value);
+      device.createCommandEncoder.mockClear();
+      device.queue.submit.mockClear();
+
+      engine.handleCanvasResize(640, 360);
+
+      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
+      const encoder = device.createCommandEncoder.mock.results[0].value;
+      expect(encoder.copyTextureToTexture).toHaveBeenCalledTimes(4);
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(device.queue.submit).toHaveBeenCalledWith([encoder.finish.mock.results[0].value]);
+      for (const texture of oldTextures) {
+        expect(texture.destroy).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("redraws Image immediately after resize while running without advancing feedback again", async () => {
+      const { engine, device } = await compiledEngine();
+      (engine as any).running = true;
+      const pipelines = (engine as any).passPipelines as Map<string, SlangPassPipeline>;
+      const swap = vi.spyOn(pipelines.get("BufferA")!, "swap");
+      device.createCommandEncoder.mockClear();
+      device.queue.submit.mockClear();
+
+      engine.handleCanvasResize(640, 360);
+
+      expect(device.createCommandEncoder).toHaveBeenCalledTimes(2);
+      const migrationEncoder = device.createCommandEncoder.mock.results[0].value;
+      const redrawEncoder = device.createCommandEncoder.mock.results[1].value;
+      expect(migrationEncoder.copyTextureToTexture).toHaveBeenCalledTimes(2);
+      expect(redrawEncoder.beginRenderPass).toHaveBeenCalledTimes(1);
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+      expect(swap).not.toHaveBeenCalled();
+    });
+
     it("does nothing to passes when the size is unchanged", async () => {
       const { engine, device } = await compiledEngine();
 
@@ -1788,8 +2525,8 @@ describe("WebGPURenderingEngine", () => {
     const bufferConfig: ShaderConfig = {
       version: "1",
       passes: {
-        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-        BufferA: { path: "buffer-a.slang", inputs: {} },
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BlurPass" } } },
+        BlurPass: { path: "blur.slang", inputs: {} },
       },
     };
 
@@ -1801,7 +2538,7 @@ describe("WebGPURenderingEngine", () => {
         "float4 mainImage(float2 c) { return float4(0); }",
         bufferConfig,
         "/image.slang",
-        { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+        { BlurPass: "float4 mainImage(float2 c) { return float4(1); }" },
       );
       expect(result?.success).toBe(true);
       return { engine, device, compiler };
@@ -1812,20 +2549,20 @@ describe("WebGPURenderingEngine", () => {
       compiler.compile.mockClear();
 
       const result = await engine.updateBufferAndRecompile(
-        "BufferA",
+        "BlurPass",
         "float4 mainImage(float2 c) { return float4(9); }",
       );
 
       expect(result?.success).toBe(true);
-      // Only BufferA's content changed; the per-pass compile cache reuses
+      // Only BlurPass's content changed; the per-pass compile cache reuses
       // Image's unchanged pipeline instead of recompiling it.
       expect(compiler.compile).toHaveBeenCalledTimes(1);
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(9)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ passName: "BlurPass" }),
       );
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
     });
 
     it("keeps the previous pipelines when the recompile fails", async () => {
@@ -1833,12 +2570,12 @@ describe("WebGPURenderingEngine", () => {
       const pipelinesBefore = new Map((engine as any).passPipelines as Map<string, unknown>);
       compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
 
-      const result = await engine.updateBufferAndRecompile("BufferA", "broken {");
+      const result = await engine.updateBufferAndRecompile("BlurPass", "broken {");
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
       expect((engine as any).passPipelines).toEqual(pipelinesBefore);
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
       expect(device.createCommandEncoder).not.toHaveBeenCalled();
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
@@ -1859,12 +2596,12 @@ describe("WebGPURenderingEngine", () => {
         "float4 mainImage(float2 c) { broken syntax }",
         bufferConfig,
         "/different.slang",
-        { BufferA: "broken {" },
+        { BlurPass: "broken {" },
       );
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
-      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BlurPass", "Image"]);
       expect((engine as any).passPipelines).toEqual(installedPipelineMap);
       for (const dispose of disposeSpies) {
         expect(dispose).not.toHaveBeenCalled();
@@ -1875,17 +2612,44 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
+    it("keeps presenting a black canvas after a different shader path fails", async () => {
+      const { engine, device, compiler } = await compiledEngine();
+      compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { broken syntax }",
+        null,
+        "/different.slang",
+      );
+      device.createCommandEncoder.mockClear();
+      device.queue.submit.mockClear();
+
+      engine.render(16);
+
+      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
+      const encoder = device.createCommandEncoder.mock.results[0].value;
+      expect(encoder.beginRenderPass).toHaveBeenCalledWith({
+        colorAttachments: [{
+          view: { label: "canvas" },
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        }],
+      });
+      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+    });
+
     it("uses the updated content on subsequent updates too", async () => {
       const { engine, compiler } = await compiledEngine();
 
-      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(7); }");
+      await engine.updateBufferAndRecompile("BlurPass", "float4 mainImage(float2 c) { return float4(7); }");
       compiler.compile.mockClear();
-      await engine.updateBufferAndRecompile("BufferA", "float4 mainImage(float2 c) { return float4(8); }");
+      await engine.updateBufferAndRecompile("BlurPass", "float4 mainImage(float2 c) { return float4(8); }");
 
       expect(compiler.compile).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("float4(8)"),
-        expect.objectContaining({ passName: "BufferA" }),
+        expect.objectContaining({ passName: "BlurPass" }),
       );
     });
 
@@ -1896,7 +2660,7 @@ describe("WebGPURenderingEngine", () => {
       const result = await engine.updateBufferAndRecompile("BufferZ", "float4 mainImage(float2 c) { return float4(0); }");
 
       expect(result?.success).toBe(true);
-      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses().map((pass: { name: string }) => pass.name)).toEqual(["BlurPass", "Image"]);
     });
 
     it("returns a clear failure when no shader has been compiled yet", async () => {
@@ -2465,9 +3229,11 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).passPipelines).not.toBe(predecessors);
       expect(engine.getVariableCaptureCompileContext()).toEqual({
         commonCode: "",
-        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
+        slangModules: [],
       });
     });
 
@@ -2800,18 +3566,22 @@ describe("WebGPURenderingEngine", () => {
 
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
-        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
+        slangModules: [],
       });
 
       rejectCandidate();
       expect((await pending)?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
-        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
+        slangModules: [],
       });
 
       compiler.compile.mockReturnValue({ success: false, errors: ["same-path edit failed"] });
@@ -2828,9 +3598,11 @@ describe("WebGPURenderingEngine", () => {
       expect(failedSamePath?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
-        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
+        slangModules: [],
       });
     });
 
@@ -2861,9 +3633,11 @@ describe("WebGPURenderingEngine", () => {
       expect(result?.success).toBe(true);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonB() { return 2.0; }",
-        slangChannels: [{ slot: 1, key: "iChannel1" }],
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
+        slangModules: [],
       });
     });
 
@@ -3332,7 +4106,7 @@ describe("WebGPURenderingEngine", () => {
       expect(second.compiler.compile).toHaveBeenCalledTimes(1);
       expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
         passName: "Image",
-        channels: [{ slot: 1, key: "iChannel1", kind: "buffer" }],
+        channels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
       }));
     });
 
@@ -3765,6 +4539,20 @@ describe("WebGPURenderingEngine", () => {
   });
 
   describe("dispose()", () => {
+    interface DisposableEngineInternals {
+      compiler: { dispose(): void } | null;
+      pixelRegionCapturer: { dispose(): void } | null;
+      passPipelines: Map<string, { dispose(): void }>;
+      passKeys: Map<string, string>;
+      passGraph: Array<{ name: string }>;
+      resourceManager: { cleanup(): void } | null;
+      device: { destroy(): void } | null;
+    }
+
+    const disposableInternals = (engine: WebGPURenderingEngine) => (
+      engine as unknown as DisposableEngineInternals
+    );
+
     it("returns 'Engine disposed' for any compile attempted after dispose()", async () => {
       const engine = new WebGPURenderingEngine(assets);
       stubEngineInternals(engine);
@@ -3810,6 +4598,218 @@ describe("WebGPURenderingEngine", () => {
       engine.dispose();
 
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposes keyboard and mouse listeners", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const keyboardDispose = vi.spyOn((engine as any).keyboardManager, "dispose");
+      const mouseDispose = vi.spyOn((engine as any).mouseManager, "dispose");
+
+      engine.dispose();
+
+      expect(keyboardDispose).toHaveBeenCalledOnce();
+      expect(mouseDispose).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+      ["texture", "loadImageTexture", {}],
+      ["video", "loadVideoTexture", { texture: {}, warning: undefined }],
+      ["cubemap", "loadCubemapTexture", {}],
+      ["audio", "loadAudioSource", {}],
+    ] as const)("cleans late %s resources and aborts compilation after dispose", async (type, loader, value) => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        [loader]: vi.fn(() => pending.promise),
+        updateAudioLoopRegion: vi.fn(),
+      };
+      (engine as any).resourceManager = resources;
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type, path: `input.${type}` } } } } } as ShaderConfig,
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources[loader]).toHaveBeenCalledOnce());
+
+      engine.dispose();
+      pending.resolve(value);
+
+      await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect((engine as any).passPipelines.size).toBe(0);
+    });
+
+    it("cleans late resources when a caught audio load rejects after dispose", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        loadAudioSource: vi.fn(() => pending.promise),
+        updateAudioLoopRegion: vi.fn(),
+      };
+      (engine as any).resourceManager = resources;
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type: "audio", path: "input.wav" } } } } },
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources.loadAudioSource).toHaveBeenCalledOnce());
+
+      engine.dispose();
+      pending.reject(new Error("late failure"));
+
+      await expect(compile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).toHaveBeenCalledTimes(2);
+      expect(resources.updateAudioLoopRegion).not.toHaveBeenCalled();
+    });
+
+    it("does not clean a still-current resource manager when only the compile generation is superseded", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const pending = deferred<unknown>();
+      const resources = {
+        cleanup: vi.fn(),
+        loadImageTexture: vi.fn(() => pending.promise),
+      };
+      (engine as any).resourceManager = resources;
+      const staleCompile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: { iChannel0: { type: "texture", path: "late.png" } } } } },
+        "/image.slang",
+        {},
+      );
+      await vi.waitFor(() => expect(resources.loadImageTexture).toHaveBeenCalledOnce());
+
+      const currentCompile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(1); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+      await expect(currentCompile).resolves.toMatchObject({ success: true });
+      pending.resolve({});
+
+      await expect(staleCompile).resolves.toMatchObject({ success: false, superseded: true });
+      expect(resources.cleanup).not.toHaveBeenCalled();
+    });
+
+    it("finishes teardown and clears retained state when compiler disposal throws", () => {
+      const compilerError = new Error("compiler cleanup failed");
+      const compiler = { dispose: vi.fn(() => {
+        throw compilerError;
+      }) };
+      const inspector = { dispose: vi.fn() };
+      const firstPipeline = { dispose: vi.fn() };
+      const secondPipeline = { dispose: vi.fn() };
+      const resources = { cleanup: vi.fn() };
+      const device = { destroy: vi.fn() };
+      const engine = new WebGPURenderingEngine(assets);
+      const internals = disposableInternals(engine);
+      internals.compiler = compiler;
+      internals.pixelRegionCapturer = inspector;
+      internals.passPipelines = new Map([
+        ["BufferA", firstPipeline],
+        ["Image", secondPipeline],
+      ]);
+      internals.passKeys = new Map([["Image", "key"]]);
+      internals.passGraph = [{ name: "Image" }];
+      internals.resourceManager = resources;
+      internals.device = device;
+
+      expect(() => engine.dispose()).toThrow(compilerError);
+
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(inspector.dispose).toHaveBeenCalledOnce();
+      expect(firstPipeline.dispose).toHaveBeenCalledOnce();
+      expect(secondPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(internals.compiler).toBeNull();
+      expect(internals.pixelRegionCapturer).toBeNull();
+      expect(internals.passPipelines.size).toBe(0);
+      expect(internals.passKeys.size).toBe(0);
+      expect(internals.passGraph).toEqual([]);
+      expect(internals.resourceManager).toBeNull();
+      expect(internals.device).toBeNull();
+
+      expect(() => engine.dispose()).not.toThrow();
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(firstPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+    });
+
+    it("continues every cleanup stage while preserving the first thrown error", () => {
+      const stopError = new Error("stop failed first");
+      const compilerError = new Error("compiler failed second");
+      const inspectorError = new Error("inspector failed third");
+      const pipelineError = new Error("pipeline failed fourth");
+      const resourceError = new Error("resources failed fifth");
+      const deviceError = new Error("device failed sixth");
+      const engine = new WebGPURenderingEngine(assets);
+      const stopSpy = vi.spyOn(engine, "stopRenderLoop").mockImplementation(() => {
+        throw stopError;
+      });
+      const compiler = { dispose: vi.fn(() => {
+        throw compilerError;
+      }) };
+      const inspector = { dispose: vi.fn(() => {
+        throw inspectorError;
+      }) };
+      const failedPipeline = { dispose: vi.fn(() => {
+        throw pipelineError;
+      }) };
+      const successfulPipeline = { dispose: vi.fn() };
+      const resources = { cleanup: vi.fn(() => {
+        throw resourceError;
+      }) };
+      const device = { destroy: vi.fn(() => {
+        throw deviceError;
+      }) };
+      const mouseManager = { dispose: vi.fn().mockImplementationOnce(() => {
+        throw new Error("mouse failed after stop");
+      }) };
+      const keyboardManager = { dispose: vi.fn() };
+      const internals = disposableInternals(engine);
+      Object.assign(engine as any, { mouseManager, keyboardManager });
+      internals.compiler = compiler;
+      internals.pixelRegionCapturer = inspector;
+      internals.passPipelines = new Map([
+        ["BufferA", failedPipeline],
+        ["Image", successfulPipeline],
+      ]);
+      internals.passKeys = new Map([["Image", "key"]]);
+      internals.passGraph = [{ name: "Image" }];
+      internals.resourceManager = resources;
+      internals.device = device;
+
+      expect(() => engine.dispose()).toThrow(stopError);
+
+      expect(compiler.dispose).toHaveBeenCalledOnce();
+      expect(mouseManager.dispose).toHaveBeenCalledOnce();
+      expect(keyboardManager.dispose).toHaveBeenCalledOnce();
+      expect(inspector.dispose).toHaveBeenCalledOnce();
+      expect(failedPipeline.dispose).toHaveBeenCalledOnce();
+      expect(successfulPipeline.dispose).toHaveBeenCalledOnce();
+      expect(resources.cleanup).toHaveBeenCalledOnce();
+      expect(device.destroy).toHaveBeenCalledOnce();
+      expect(internals).toMatchObject({
+        compiler: null,
+        pixelRegionCapturer: null,
+        resourceManager: null,
+        device: null,
+      });
+      expect(internals.passPipelines.size).toBe(0);
+      expect(internals.passKeys.size).toBe(0);
+      expect(internals.passGraph).toEqual([]);
+
+      stopSpy.mockRestore();
+      expect(() => engine.dispose()).not.toThrow();
     });
   });
 

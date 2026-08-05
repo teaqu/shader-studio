@@ -359,6 +359,26 @@ describe('ConfigManager', () => {
   });
 
   describe('renameBuffer', () => {
+    it('reports typed validation results for every rename outcome', () => {
+      expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBe('config-unavailable');
+
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      config.passes.BufferB = { path: 'b.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.validateBufferRename('Missing', 'BlurPass')).toBe('source-not-found');
+      expect(configManager.validateBufferRename('BufferA', 'BufferA')).toBe('same-name');
+      expect(configManager.validateBufferRename('Image', 'BlurPass')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Image')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'common')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Common')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', 'Script')).toBe('reserved-name');
+      expect(configManager.validateBufferRename('BufferA', '0invalid')).toBe('invalid-identifier');
+      expect(configManager.validateBufferRename('BufferA', 'BufferB')).toBe('name-taken');
+      expect(configManager.validateBufferRename('BufferA', 'BlurPass')).toBeNull();
+    });
+
     it('should rename a buffer pass', () => {
       const config = createTestConfig();
       config.passes.BufferA = { path: 'a.glsl', inputs: {} };
@@ -384,6 +404,15 @@ describe('ConfigManager', () => {
       expect(configManager.renameBuffer('Image', 'Foo')).toBe(false);
       expect(configManager.renameBuffer('BufferA', 'Image')).toBe(false);
       expect(configManager.renameBuffer('BufferA', 'common')).toBe(false);
+    });
+
+    it.each(['Common', 'Script'])('rejects %s as a UI-reserved rename target', (newName) => {
+      const config = createTestConfig();
+      config.passes.BufferA = { path: 'a.glsl', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.validateBufferRename('BufferA', newName)).toBe('reserved-name');
+      expect(configManager.renameBuffer('BufferA', newName)).toBe(false);
     });
 
     it('should reject invalid GLSL identifiers', () => {
@@ -413,6 +442,122 @@ describe('ConfigManager', () => {
       configManager.renameBuffer('BufferA', 'BlurPass');
       const keys = Object.keys(configManager.getConfig()!.passes);
       expect(keys).toEqual(['Image', 'BlurPass', 'BufferB']);
+    });
+
+    it('rewrites every matching buffer input without mutating the original config', () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'buffer', source: 'BufferA' },
+              iChannel1: { type: 'buffer', source: 'BufferB' },
+              iChannel2: { type: 'texture', path: 'image.png' },
+            },
+            resolution: { scale: 2 },
+          },
+          BufferA: {
+            path: 'a.glsl',
+            inputs: {
+              iChannel0: { type: 'buffer', source: 'BufferA' },
+              iChannel1: { type: 'buffer', source: 'BufferA' },
+            },
+            resolution: { width: 320, height: 180 },
+          },
+          BufferB: {
+            path: 'b.glsl',
+            inputs: {
+              iChannel0: { type: 'buffer', source: 'BufferA' },
+              iChannel1: { type: 'keyboard' },
+            },
+          },
+          common: {
+            path: 'common.glsl',
+            inputs: {
+              iChannel0: { type: 'buffer', source: 'BufferA' },
+              iChannel1: { type: 'buffer', source: 'BufferC' },
+            },
+          },
+        },
+      };
+      const originalImage = config.passes.Image;
+      const originalBufferA = config.passes.BufferA!;
+      const originalBufferB = config.passes.BufferB;
+      const originalBufferASelfFeedback = originalBufferA.inputs!.iChannel0;
+      const originalImageTexture = originalImage.inputs!.iChannel2;
+      const originalUnrelatedBuffer = originalImage.inputs!.iChannel1;
+      configManager.setConfig(config);
+
+      expect(configManager.renameBuffer('BufferA', 'Feedback')).toBe(true);
+
+      const updated = configManager.getConfig()!;
+      expect(Object.keys(updated.passes)).toEqual(['Image', 'Feedback', 'BufferB', 'common']);
+      expect(updated.passes.Image).toMatchObject({
+        resolution: { scale: 2 },
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'Feedback' },
+          iChannel1: { type: 'buffer', source: 'BufferB' },
+          iChannel2: { type: 'texture', path: 'image.png' },
+        },
+      });
+      expect(updated.passes.Feedback).toMatchObject({
+        path: 'a.glsl',
+        resolution: { width: 320, height: 180 },
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'Feedback' },
+          iChannel1: { type: 'buffer', source: 'Feedback' },
+        },
+      });
+      expect(updated.passes.BufferB).toMatchObject({
+        path: 'b.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'Feedback' },
+          iChannel1: { type: 'keyboard' },
+        },
+      });
+      expect(updated.passes.common).toMatchObject({
+        path: 'common.glsl',
+        inputs: {
+          iChannel0: { type: 'buffer', source: 'Feedback' },
+          iChannel1: { type: 'buffer', source: 'BufferC' },
+        },
+      });
+      expect(config.passes.Image).toBe(originalImage);
+      expect(config.passes.BufferB).toBe(originalBufferB);
+      expect(originalBufferA.inputs!.iChannel0).toBe(originalBufferASelfFeedback);
+      expect(originalBufferA.inputs!.iChannel0).toEqual({ type: 'buffer', source: 'BufferA' });
+      expect(updated.passes.Image).not.toBe(originalImage);
+      expect(updated.passes.BufferB).not.toBe(originalBufferB);
+      expect(updated.passes.Image.inputs!.iChannel2).toBe(originalImageTexture);
+      expect(updated.passes.Image.inputs!.iChannel1).toBe(originalUnrelatedBuffer);
+    });
+
+    it('persists one rewritten rename update without changing the GLSL path', () => {
+      const config = createTestConfig();
+      config.passes.BufferA = {
+        path: 'shaders/buffer-a.glsl',
+        inputs: { iChannel0: { type: 'buffer', source: 'BufferA' } },
+      };
+      configManager.setConfig(config);
+      configManager.setShaderPath('/workspace/main.glsl');
+
+      expect(configManager.renameBuffer('BufferA', 'Feedback')).toBe(true);
+
+      expect(onConfigChange).toHaveBeenCalledTimes(1);
+      expect(transport.postMessage).toHaveBeenCalledTimes(1);
+      const message = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(message.type).toBe('updateConfig');
+      expect(message.payload.shaderPath).toBe('/workspace/main.glsl');
+      expect(message.payload.config.passes.Feedback).toMatchObject({
+        path: 'shaders/buffer-a.glsl',
+        inputs: { iChannel0: { type: 'buffer', source: 'Feedback' } },
+      });
+      expect(message.payload.text).toContain('"Feedback"');
+      expect(message.payload.text).not.toContain('"source": "BufferA"');
+      expect(JSON.parse(message.payload.text).passes.Feedback).toMatchObject({
+        path: 'shaders/buffer-a.glsl',
+        inputs: { iChannel0: { type: 'buffer', source: 'Feedback' } },
+      });
     });
   });
 

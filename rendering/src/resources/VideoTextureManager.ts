@@ -229,7 +229,7 @@ export class VideoTextureManager<T> {
   }
 
   public pauseAll(): void {
-    for (const [path, video] of Object.entries(this.videoElements)) {
+    for (const video of Object.values(this.videoElements)) {
       if (!video.paused) {
         video.pause();
       }

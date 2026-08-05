@@ -1,0 +1,17 @@
+{
+  "Math PI": {
+    "prefix": "math-pi",
+    "body": "#define PI 3.14159265359",
+    "description": "PI constant",
+    "example": [
+      "#define PI 3.14159265359",
+      "",
+      "float4 mainImage(float2 fragCoord) {",
+      "    float2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    float d = length(uv) - PI / 4.0;",
+      "    float3 col = lerp(float3(0.4, 0.7, 0.3), float3(0.1), smoothstep(0.0, 0.01, d));",
+      "    return float4(col, 1.0);",
+      "}"
+    ]
+  }
+}

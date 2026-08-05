@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
+import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -130,6 +131,58 @@ const storageB: StorageBindingNode = {
 };
 
 describe("WebGPUVariableCapturer", () => {
+  it("packs date, channel resolutions, and custom values for capture shaders", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    capturer.setCustomUniforms("uniform vec3 tint;\nuniform bool enabled;", [
+      { name: "tint", type: "vec3", value: [0.25, 0.5, 0.75] },
+      { name: "enabled", type: "bool", value: true },
+    ]);
+
+    await capturer.issueCaptureGrid(captures.slice(0, 1), {
+      ...uniforms,
+      date: [2026, 7, 19, 123],
+      channelResolution: [512, 2, 1, 0, 0, 0, 0, 0, 0, 256, 3, 1],
+      cameraPos: [1, 2, 3],
+      cameraDir: [0.25, 0.5, -0.75],
+    } as CaptureUniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
+      customUniforms: [
+        { name: "tint", type: "vec3" },
+        { name: "enabled", type: "bool" },
+      ],
+    }));
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(packed.byteLength).toBeGreaterThan(UNIFORM_OFFSETS.iChannelResolution + 64);
+    const values = new DataView(packed);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iDate, true)).toBe(2026);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(512);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iCameraPos + 8, true)).toBe(3);
+    expect(values.getFloat32(UNIFORM_OFFSETS.iCameraDir + 8, true)).toBe(-0.75);
+    expect(values.getFloat32(208, true)).toBeCloseTo(0.25);
+    expect(values.getInt32(220, true)).toBe(1);
+  });
+
+  it("packs provided channel timing, loaded state, and sample rate", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+    const audioUniforms = {
+      ...uniforms,
+      channelTime: [0, 1.75, 0, 0],
+      channelLoaded: [0, 1, 0, 0],
+      sampleRate: 48000,
+    };
+
+    await capturer.issueCaptureGrid(captures, audioUniforms, 8, 4);
+
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    const view = new DataView(packed);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBeCloseTo(1.75);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(1);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(48000);
+  });
+
   it("compiles the capture shader once in captureMode and draws once per variable", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, { commonCode: "" });
@@ -146,9 +199,35 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(2);
   });
 
+  it("compiles captures with imported modules and the selected source path", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      commonCode: "",
+      slangSourcePath: "/shaders/palette.slang",
+      slangModules: [{
+        moduleName: "tone_map",
+        path: "/shaders/tone-map.slang",
+        source: "module tone_map;",
+      }],
+    });
+
+    await capturer.issueCaptureGrid([
+      { varName: "color", varType: "float3", captureShader: "capture shader" },
+    ], uniforms, 2, 2);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("capture shader", expect.objectContaining({
+      sourcePath: "/shaders/palette.slang",
+      modules: [{
+        moduleName: "tone_map",
+        path: "/shaders/tone-map.slang",
+        source: "module tone_map;",
+      }],
+    }));
+  });
+
   it("passes the pass channels into the capture compile", async () => {
     const gpu = mockGpu();
-    const channels = [{ slot: 0, key: "iChannel0" }];
+    const channels = [{ slot: 0, key: "iChannel0", kind: "cubemap" as const }];
     const capturer = new WebGPUVariableCapturer(
       gpu.device,
       gpu.compiler,
@@ -161,6 +240,25 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
       channels,
     }));
+  });
+
+  it("declares cubemap capture channels with a cube texture view dimension", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { slangChannels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }] },
+      () => [{ slot: 0, textureView: {} as GPUTextureView }],
+    );
+
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    const createLayout = gpu.device.createBindGroupLayout as ReturnType<typeof vi.fn>;
+    expect(createLayout.mock.calls[0][0].entries).toContainEqual({
+      binding: 1,
+      visibility: 2,
+      texture: { sampleType: "float", viewDimension: "cube" },
+    });
   });
 
   it("binds a channel resource's own sampler when provided", async () => {
@@ -567,7 +665,9 @@ describe("WebGPURenderingEngine capture wiring", () => {
       { name: "BufferA", source: "a", output: "texture", width: 1, height: 1, channels: [] },
       {
         name: "Image", source: "i", output: "canvas", width: 1, height: 1,
-        channels: [{ slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" }],
+        channels: [{
+          kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame",
+        }],
       },
     ];
     (engine as any).lastCompile = { code: "i", path: "/i.slang", buffers: { common: "float x;" } };
@@ -579,9 +679,28 @@ describe("WebGPURenderingEngine capture wiring", () => {
     const context = engine.getVariableCaptureCompileContext();
 
     expect(context.commonCode).toBe("float x;");
-    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0" }]);
+    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
     expect(context.slangStorage).toEqual([storageA]);
     expect(context.slangStorageBuffers).toBe(storageBuffers);
+    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
+  });
+
+  it("does not inject configured common code when that common source is itself being captured", async () => {
+    const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
+    const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
+    const commonCode = "float helper(float x) { return x * 2.0; }";
+    (engine as any).passGraph = [
+      { name: "Image", source: "image", output: "canvas", width: 1, height: 1, channels: [] },
+    ];
+    (engine as any).lastCompile = {
+      code: "image",
+      path: "/image.slang",
+      buffers: { common: commonCode },
+      slangModules: [],
+    };
+
+    expect(engine.getVariableCaptureCompileContext(commonCode, "common").commonCode).toBe("");
+    expect(engine.getVariableCaptureCompileContext(commonCode, "BufferA").commonCode).toBe("");
   });
 
   it("derives Image pass capture channels from compile inputs before the live pass graph is installed", async () => {
@@ -625,8 +744,8 @@ float4 mainImage(float2 fragCoord) {
     const context = engine.getVariableCaptureCompileContext(imageCode, "Image");
 
     expect(context.slangChannels).toEqual([
-      { slot: 0, key: "iChannel0" },
-      { slot: 1, key: "iChannel1" },
+      { slot: 0, key: "iChannel0", kind: "buffer" },
+      { slot: 1, key: "iChannel1", kind: "buffer" },
     ]);
     expect(context.slangStorage).toEqual([storageA]);
   });

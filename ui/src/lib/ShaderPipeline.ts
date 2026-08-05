@@ -17,6 +17,10 @@ import { getEditorOverlayVisible } from './state/editorOverlayState.svelte';
 import type { ShaderCompilationState } from './state/ShaderCompilationState.svelte';
 import type { ShaderConfig } from "@shader-studio/types";
 
+export type ShaderMessageTarget =
+  | { kind: 'main' }
+  | { kind: 'buffer'; passName: string };
+
 export class ShaderPipeline {
   private renderEngine: RenderingEngine;
   private shaderLocker: ShaderLocker;
@@ -66,6 +70,11 @@ export class ShaderPipeline {
         return undefined;
       }
 
+      const messageTarget = this.getShaderMessageTarget(message);
+      if (!messageTarget) {
+        return undefined;
+      }
+
       if (this.shaderProcessor.isCurrentlyProcessing()) {
         this.pendingShaderEvent?.resolve(undefined);
         return await new Promise<CompilationResult | undefined>((resolve) => {
@@ -85,33 +94,20 @@ export class ShaderPipeline {
         }
       }
 
-      if (this.shaderLocker.isLocked()) {
-        const currentBufferName =
-          path && this.bufferPathResolver.getBufferNameForFilePath(path);
-        const lockedPath = this.shaderLocker.getLockedShaderPath();
-
-        if (lockedPath === undefined || lockedPath !== path) {
-          if (!this.hasBufferContent(buffers, code)) {
-            // Skip processing entirely - shader is locked to a different path or path is undefined
-            return undefined;
-          }
-
-          // Check if this is a common buffer file update
-          if (currentBufferName === 'common') {
-            this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
-            // For common buffer files, we need special handling since they don't have mainImage
-            return await this.handleCommonBufferUpdate(path, buffers, code);
-          }
-
-          if (!currentBufferName) {
-            return undefined;
-          }
-
-          this.syncStoredShaderContextForBufferUpdate(currentBufferName, code);
-          this.bufferUpdater.updateBuffer(path, buffers, code);
-          // BufferUpdater returns void (fire-and-forget), so we're done here
+      if (messageTarget.kind === 'buffer') {
+        if (!path || !this.hasBufferContent(buffers, code)) {
           return undefined;
         }
+
+        const bufferName = messageTarget.passName;
+        if (bufferName === 'common') {
+          this.syncStoredShaderContextForBufferUpdate(bufferName, code);
+          return await this.handleCommonBufferUpdate(path, buffers, code);
+        }
+
+        this.syncStoredShaderContextForBufferUpdate(bufferName, code);
+        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName);
+        return undefined;
       }
 
       return await this.processMainShaderCompilation(message, event);
@@ -127,6 +123,46 @@ export class ShaderPipeline {
 
   private isValidShaderMessage(type: string): boolean {
     return type === "shaderSource";
+  }
+
+  public getShaderMessageTarget(
+    message: Pick<ShaderSourceMessage, "path">,
+  ): ShaderMessageTarget | null {
+    if (!this.shaderLocker.isLocked()) {
+      return { kind: 'main' };
+    }
+
+    const lockedPath = this.shaderLocker.getLockedShaderPath();
+    const messagePath = message.path;
+    if (!lockedPath || !messagePath) {
+      return null;
+    }
+
+    if (this.pathsEqual(messagePath, lockedPath)) {
+      return { kind: 'main' };
+    }
+
+    const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
+    const matchingBuffer = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
+      ([passName, passPath]) => passName !== 'Image'
+        && this.pathsEqual(passPath, messagePath),
+    );
+
+    return matchingBuffer
+      ? { kind: 'buffer', passName: matchingBuffer[0] }
+      : null;
+  }
+
+  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path">): boolean {
+    return this.getShaderMessageTarget(message) !== null;
+  }
+
+  private pathsEqual(firstPath: string, secondPath: string): boolean {
+    return this.normalizePath(firstPath) === this.normalizePath(secondPath);
+  }
+
+  private normalizePath(filePath: string): string {
+    return filePath.replace(/\\/g, "/");
   }
 
   private hasBufferContent(buffers: Record<string, string>, code: string): boolean {
@@ -146,11 +182,7 @@ export class ShaderPipeline {
   ): Promise<CompilationResult | undefined> {
     this.lastEvent = event;
 
-    this.shaderDebugManager.setShaderContext(
-      message.config ?? null,
-      message.path,
-      message.buffers ?? {},
-    );
+    this.setDebugShaderContext(message);
 
     const result = await this.shaderProcessor.processMainShaderCompilation(
       message,
@@ -217,11 +249,7 @@ export class ShaderPipeline {
       data: nextMessage,
     } as MessageEvent;
 
-    this.shaderDebugManager.setShaderContext(
-      nextMessage.config ?? null,
-      nextMessage.path,
-      nextMessage.buffers ?? {},
-    );
+    this.setDebugShaderContext(nextMessage);
   }
 
   private sendErrorMessage(errors: string[]): void {
@@ -365,11 +393,25 @@ export class ShaderPipeline {
       data: nextMessage,
     } as MessageEvent;
 
-    this.shaderDebugManager.setShaderContext(
-      config,
-      nextMessage.path,
-      nextMessage.buffers ?? {},
-    );
+    this.setDebugShaderContext(nextMessage);
+  }
+
+  private setDebugShaderContext(message: ShaderSourceMessage): void {
+    const args: Parameters<ShaderDebugManager['setShaderContext']> = [
+      message.config ?? null,
+      message.path,
+      message.buffers ?? {},
+    ];
+    if (message.slangModules) {
+      args.push(message.slangModules);
+    }
+    if (message.bufferPathMap) {
+      if (!message.slangModules) {
+        args.push([]);
+      }
+      args.push(message.bufferPathMap);
+    }
+    this.shaderDebugManager.setShaderContext(...args);
   }
 
   public triggerDebugRecompile(): void {
@@ -424,6 +466,7 @@ export class ShaderPipeline {
       return !lockedPath
         || filePath === lockedPath
         || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+        || this.messageContainsSlangModule(message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined), filePath)
         || this.messageContainsBufferFile(message, filePath);
     }
 
@@ -434,7 +477,14 @@ export class ShaderPipeline {
 
     return filePath === currentMessage.path
       || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
+      || this.messageContainsSlangModule(currentMessage, filePath)
       || this.messageContainsBufferFile(currentMessage, filePath);
+  }
+
+  private messageContainsSlangModule(message: ShaderSourceMessage | undefined, filePath: string): boolean {
+    const normalizedFilePath = this.normalizePath(filePath);
+    return message?.slangModules?.some((module) =>
+      this.normalizePath(module.path) === normalizedFilePath) ?? false;
   }
 
   private messageContainsBufferFile(message: ShaderSourceMessage | undefined, filePath: string): boolean {

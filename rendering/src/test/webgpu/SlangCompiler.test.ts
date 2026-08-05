@@ -217,6 +217,97 @@ describe("SlangCompiler", () => {
     );
   });
 
+  it("preloads imported modules before compiling the root module", () => {
+    const loads: Array<{ source: string; name?: string; path?: string }> = [];
+    const compiler = new SlangCompiler(makeFakeSlang({
+      onLoad: (source, name, path) => loads.push({ source, name, path }),
+    }));
+
+    compiler.compileImagePass("import palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }", {
+      sourcePath: "/shaders/image.slang",
+      modules: [{
+        moduleName: "palette",
+        path: "/shaders/palette.slang",
+        source: "module palette;\npublic float4 paletteColor() { return 1; }",
+      }],
+    });
+
+    expect(loads).toHaveLength(2);
+    expect(loads[0]).toEqual({
+      source: "module palette;\npublic float4 paletteColor() { return 1; }",
+      name: "palette",
+      path: "/shaders/palette.slang",
+    });
+    expect(loads[1].name).toBe("image");
+    expect(loads[1].path).toBe("/shaders/image.slang");
+  });
+
+  it("stops before the root compile when an imported module fails", () => {
+    let loadCount = 0;
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: "/shaders/palette.slang(4): error: broken dependency",
+      onLoad: () => {
+        loadCount += 1;
+      },
+    }));
+
+    const result = compiler.compileImagePass("float4 mainImage(float2 c) { return 1; }", {
+      modules: [{
+        moduleName: "palette",
+        path: "/shaders/palette.slang",
+        source: "broken",
+      }],
+    });
+
+    expect(loadCount).toBe(1);
+    expect(result).toEqual({
+      success: false,
+      errors: ["/shaders/palette.slang(4): error: broken dependency"],
+    });
+  });
+
+  it("reports a clean missing-mainImage diagnostic instead of a generated wrapper error", () => {
+    const compiler = new SlangCompiler(makeFakeSlang({
+      moduleNull: true,
+      lastError: `error[E30015]: undefined identifier
+  --> /debugmath.slang:34:12
+   |
+34 | return mainImage(coord);
+   |        ^^^^^^^^^ undefined identifier 'mainImage'.`,
+    }));
+
+    const result = compiler.compileImagePass(
+      "float debugValue(float2 coord) { return coord.x; }",
+      { sourcePath: "/debugmath.slang" },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errors: ["Missing mainImage function"],
+    });
+  });
+
+  it("lets a standalone shader sample all four standard channels without slot configuration", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(`
+      float4 mainImage(float2 c) {
+        return sampleIChannel0(c) + sampleIChannel1(c)
+          + sampleIChannel2(c) + sampleIChannel3(c);
+      }
+    `);
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    for (let slot = 0; slot < 4; slot++) {
+      expect(wrapped).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
+    }
+    expect(wrapped.match(/return float4\(0\.0, 0\.0, 0\.0, 1\.0\);/g)).toHaveLength(4);
+    expect(wrapped).not.toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).not.toContain("sampleIChannel4");
+  });
+
   it("caches the global session across compiles", () => {
     const slang = makeFakeSlang();
     const spy = vi.spyOn(slang, "createGlobalSession");
@@ -303,6 +394,136 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
   });
 
+  it("exposes a custom channel through its Slang name and canonical slot helper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleAlbedo(c); }", {
+      passName: "Image",
+      channels: [{ slot: 0, key: "albedo", kind: "texture" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("Texture2D<float4> albedo;");
+    expect(wrapped).toContain("SamplerState albedoSampler;");
+    expect(wrapped).toContain("float4 sampleAlbedo(float2 uv)");
+    expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
+  });
+
+  it("exposes configured 2D and cubemap channels through iCh objects", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      `float4 mainImage(float2 c) {
+        return iCh0.sampler.Sample(c) + iCh2.sampler.Sample(float3(c, 1));
+      }`,
+      {
+        channels: [
+          { slot: 0, key: "iChannel0", kind: "texture" },
+          { slot: 2, key: "iChannel2", kind: "cubemap" },
+        ],
+      },
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("struct ShaderToySampler2D");
+    expect(wrapped).toContain("struct ShaderToySamplerCube");
+    expect(wrapped).toContain("struct ShaderToyChannel2D");
+    expect(wrapped).toContain("struct ShaderToyChannelCube");
+    expect(wrapped).toContain("ShaderToyChannel2D _getICh0()");
+    expect(wrapped).toContain("channel.sampler.texture = iChannel0;");
+    expect(wrapped).toContain("channel.size = _st.channelResolution[0];");
+    expect(wrapped).toContain("channel.time = _st.channelTime[0];");
+    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[0] != 0.0 ? 1 : 0;");
+    expect(wrapped).toContain("#define iCh0 (_getICh0())");
+    expect(wrapped).toContain("ShaderToyChannelCube _getICh2()");
+    expect(wrapped).toContain("#define iCh2 (_getICh2())");
+  });
+
+  it("declares ShaderToy audio timing and loaded uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iChannelTime[1]); }");
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 channelTime;");
+    expect(wrapped).toContain("float4 channelLoaded;");
+    expect(wrapped).toContain("float sampleRate;");
+    expect(wrapped).toContain("#define iChannelTime (_st.channelTime)");
+    expect(wrapped).toContain("#define iChannelLoaded (_st.channelLoaded)");
+    expect(wrapped).toContain("#define iSampleRate (_st.sampleRate)");
+    expect(wrapped).not.toContain("_audioPad");
+  });
+
+  it("declares the remaining GLSL ShaderToy date and channel-resolution uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return iDate + float4(iChannelResolution[2], 0); }",
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 date;");
+    expect(wrapped).toContain("float3 channelResolution[4];");
+    expect(wrapped).toContain("#define iDate (_st.date)");
+    expect(wrapped).toContain("#define iChannelResolution (_st.channelResolution)");
+  });
+
+  it("declares the GLSL camera uniforms", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return float4(iCameraPos + iCameraDir, 1); }",
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float4 cameraPos;");
+    expect(wrapped).toContain("float4 cameraDir;");
+    expect(wrapped).toContain("#define iCameraPos (_st.cameraPos.xyz)");
+    expect(wrapped).toContain("#define iCameraDir (_st.cameraDir.xyz)");
+  });
+
+  it("declares every supported script uniform type in the shared uniform block", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return tint * gain + float4(offset, enabled ? 1 : 0); }",
+      {
+        customUniforms: [
+          { name: "gain", type: "float" },
+          { name: "offset", type: "vec2" },
+          { name: "normal", type: "vec3" },
+          { name: "tint", type: "vec4" },
+          { name: "enabled", type: "bool" },
+        ],
+      } as any,
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("float custom_gain;");
+    expect(wrapped).toContain("float2 custom_offset;");
+    expect(wrapped).toContain("float3 custom_normal;");
+    expect(wrapped).toContain("float4 custom_tint;");
+    expect(wrapped).toContain("int custom_enabled;");
+    expect(wrapped).toContain("#define gain (_st.custom_gain)");
+    expect(wrapped).toContain("#define enabled (_st.custom_enabled != 0)");
+  });
+
+  it("lets the uniform struct pad naturally to 96 bytes", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iSampleRate); }");
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).not.toContain("float3 _audioPad");
+  });
+
   it("wraps cubemap channels with cube texture bindings and float3 sampling helpers", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
@@ -319,6 +540,21 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("SamplerState iChannel0Sampler;");
     expect(wrapped).toContain("float4 sampleIChannel0(float3 dir)");
     expect(wrapped).toContain("return iChannel0.Sample(iChannel0Sampler, dir);");
+  });
+
+  it("wraps a sparse audio channel with a 2D sampling helper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+      { channels: [{ slot: 1, key: "iChannel1", kind: "audio" }] },
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel1;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel1Sampler;");
+    expect(wrapped).toContain("float4 sampleIChannel1(float2 uv)");
   });
 
   it("numbers bindings sequentially for multiple channels, sorted by slot", () => {
@@ -447,6 +683,22 @@ describe("SlangCompiler", () => {
     });
 
     expect(onLoad).toHaveBeenCalledWith(expect.any(String), "buffera", "/buffera.slang");
+  });
+
+  it("preserves an explicit module declaration when compiling an imported source as the root", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("#language slang 2026\nmodule palette;\nfloat4 mainImage(float2 c) { return 1; }", {
+      passName: "capture",
+      sourcePath: "/shaders/palette.slang",
+    });
+
+    expect(onLoad).toHaveBeenCalledWith(
+      expect.any(String),
+      "palette",
+      "/shaders/palette.slang",
+    );
   });
 
   it("defaults the module name to image when no pass name is given", () => {

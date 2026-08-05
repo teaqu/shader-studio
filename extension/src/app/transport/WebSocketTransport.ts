@@ -189,7 +189,9 @@ export class WebSocketTransport implements MessageTransport {
 
         // Resolve to absolute path
         let absolutePath: string;
-        if (input.path.startsWith('@/')) {
+        if (/^https?:\/\//i.test(input.path)) {
+          absolutePath = input.path;
+        } else if (input.path.startsWith('@/')) {
           const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
           absolutePath = workspaceFolder
             ? path.join(workspaceFolder.uri.fsPath, input.path.substring(2))
@@ -203,10 +205,6 @@ export class WebSocketTransport implements MessageTransport {
         }
 
         input.resolved_path = this.convertUriForClient(absolutePath);
-        if (input.type === 'video') {
-          // Browser clients need HTTP URLs for direct media playback.
-          input.path = this.convertUriForClient(absolutePath);
-        }
       }
     }
 

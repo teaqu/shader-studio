@@ -1,4 +1,9 @@
-import type { CubemapConfigInput, TextureConfigInput, VideoConfigInput } from "@shader-studio/types";
+import type {
+  AudioConfigInput,
+  CubemapConfigInput,
+  TextureConfigInput,
+  VideoConfigInput,
+} from "@shader-studio/types";
 
 export type RenderPassName = string;
 export type ChannelReadTiming = "previous-frame" | "current-frame";
@@ -26,6 +31,12 @@ export type RenderPassChannel =
       kind: "cubemap"; slot: number; key: string; path: string;
       filter?: CubemapConfigInput["filter"]; wrap?: CubemapConfigInput["wrap"];
       vflip?: boolean;
+    }
+  | {
+      kind: "audio"; slot: number; key: string; path: string;
+      muted?: AudioConfigInput["muted"];
+      startTime?: AudioConfigInput["startTime"];
+      endTime?: AudioConfigInput["endTime"];
     }
   | { kind: "keyboard"; slot: number; key: string };
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { ConfigValidator } from "../../util/ConfigValidator";
 import type { ShaderConfig } from "@shader-studio/types";
+import type { PixelRegionResult } from "../../types/PixelRegion";
 
 // Mock the ConfigValidator
 vi.mock("../../util/ConfigValidator", () => ({
@@ -828,6 +829,62 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("pixel region capture", () => {
+    it("returns safe fallbacks before initialization", () => {
+      expect(renderingEngine.requestPixelRegion(1, 20, 30)).toBe(false);
+      expect(renderingEngine.collectPixelRegionResults()).toEqual([]);
+      expect(() => renderingEngine.cancelPixelRegionRequests()).not.toThrow();
+    });
+
+    it("delegates region requests and collected results to the capturer", () => {
+      const result: PixelRegionResult = {
+        requestId: 3,
+        centerX: 20,
+        centerY: 30,
+        width: 60,
+        height: 60,
+        rgba: new Uint8ClampedArray(60 * 60 * 4),
+      };
+      const capturer = {
+        queue: vi.fn(() => true),
+        collectResults: vi.fn(() => [result]),
+        cancelPendingCaptures: vi.fn(),
+        dispose: vi.fn(),
+      };
+      Object.defineProperty(renderingEngine, "pixelRegionCapturer", {
+        value: capturer,
+        writable: true,
+        configurable: true,
+      });
+
+      expect(renderingEngine.requestPixelRegion(3, 20, 30)).toBe(true);
+      expect(renderingEngine.collectPixelRegionResults()).toEqual([result]);
+      renderingEngine.cancelPixelRegionRequests();
+
+      expect(capturer.queue).toHaveBeenCalledWith({ requestId: 3, centerX: 20, centerY: 30 });
+      expect(capturer.collectResults).toHaveBeenCalledOnce();
+      expect(capturer.cancelPendingCaptures).toHaveBeenCalledOnce();
+    });
+
+    it("cancels region requests during cleanup", () => {
+      const capturer = { cancelPendingCaptures: vi.fn() };
+      Object.defineProperty(renderingEngine, "pixelRegionCapturer", {
+        value: capturer,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: { cleanup: vi.fn() },
+        writable: true,
+        configurable: true,
+      });
+
+      renderingEngine.cleanup();
+
+      expect(capturer.cancelPendingCaptures).toHaveBeenCalledOnce();
+    });
+  });
+
   describe("resetTime", () => {
     it("should delegate to shaderPipeline.resetTime", () => {
       const mockPipeline = {
@@ -1471,6 +1528,58 @@ describe("RenderingEngine", () => {
       const calls = mockFrameRenderer.setRunning.mock.calls.map((c: [boolean]) => c[0]);
       // Should restore to false after the one-shot render
       expect(calls[calls.length - 1]).toBe(false);
+    });
+  });
+
+  describe("dispose()", () => {
+    it("continues input and pipeline teardown after an earlier stage throws", () => {
+      const stopError = new Error("stop failed");
+      const bufferManager = { dispose: vi.fn() };
+      const frameRenderer = { stopRenderLoop: vi.fn(() => {
+        throw stopError;
+      }) };
+      const cameraManager = { dispose: vi.fn() };
+      const mouseManager = { dispose: vi.fn() };
+      const keyboardManager = { dispose: vi.fn() };
+      const shaderPipeline = { dispose: vi.fn() };
+      Object.assign(renderingEngine as any, {
+        bufferManager,
+        frameRenderer,
+        cameraManager,
+        mouseManager,
+        keyboardManager,
+        shaderPipeline,
+      });
+
+      expect(() => renderingEngine.dispose()).toThrow(stopError);
+      expect(bufferManager.dispose).toHaveBeenCalledOnce();
+      expect(cameraManager.dispose).toHaveBeenCalledOnce();
+      expect(mouseManager.dispose).toHaveBeenCalledOnce();
+      expect(keyboardManager.dispose).toHaveBeenCalledOnce();
+      expect(shaderPipeline.dispose).toHaveBeenCalledOnce();
+    });
+
+    it("clears the post-image callback and disposes region capture before renderer resources", () => {
+      const calls: string[] = [];
+      const capturer = { dispose: vi.fn(() => calls.push("capturer")) };
+      const frameRenderer = {
+        setPostImageCallback: vi.fn(() => calls.push("callback")),
+        stopRenderLoop: vi.fn(() => calls.push("frame")),
+      };
+      Object.assign(renderingEngine as any, {
+        pixelRegionCapturer: capturer,
+        frameRenderer,
+        bufferManager: { dispose: vi.fn(() => calls.push("buffers")) },
+        cameraManager: { dispose: vi.fn() },
+        mouseManager: { dispose: vi.fn() },
+        keyboardManager: { dispose: vi.fn() },
+        shaderPipeline: { dispose: vi.fn() },
+      });
+
+      renderingEngine.dispose();
+
+      expect(frameRenderer.setPostImageCallback).toHaveBeenCalledWith(null);
+      expect(calls).toEqual(["callback", "capturer", "buffers", "frame"]);
     });
   });
 });

@@ -4,6 +4,7 @@ import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
 import type { ConfigInput } from '@shader-studio/types';
+import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 import type { StorageBindingNode } from '../types/PassGraph';
 
@@ -17,6 +18,10 @@ export interface CaptureUniforms {
   date: number[];
   cameraPos: number[];
   cameraDir: number[];
+  channelTime?: number[];
+  channelLoaded?: number[];
+  sampleRate?: number;
+  channelResolution?: number[];
 }
 
 export interface CaptureCustomUniform {
@@ -29,12 +34,21 @@ export interface CaptureCompileContext {
   commonCode?: string;
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
-  /** Slang/WebGPU path: channel bindings of the captured pass. */
-  slangChannels?: Array<{ slot: number; key: string }>;
   /** Slang/WebGPU path: ordered storage declarations shared by fragment passes. */
   slangStorage?: StorageBindingNode[];
   /** Slang/WebGPU path: currently installed storage buffer resources. */
   slangStorageBuffers?: Map<string, GPUBuffer>;
+  slangChannels?: Array<{
+    slot: number;
+    key: string;
+    kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
+  }>;
+  /** Slang/WebGPU path: pass whose resources and uniforms capture must use. */
+  slangPassName?: string;
+  /** Slang modules that must be preloaded before compiling the capture root. */
+  slangModules?: Array<Omit<SlangSourceModule, 'ownerPass'>>;
+  /** Original selected file path used for capture diagnostics. */
+  slangSourcePath?: string;
 }
 
 interface PendingCapture {

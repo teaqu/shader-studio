@@ -1,13 +1,15 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
 import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
-import type { ShaderConfig, ConfigInput } from "@shader-studio/types";
+import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
 
 export interface DebugTarget {
   passName: string;
   code: string;
   config: ShaderConfig | null;
   inputConfig?: Record<string, ConfigInput>;
+  sourcePath?: string;
+  slangModules?: SlangSourceModule[];
 }
 
 interface VariablePreviewState {
@@ -61,6 +63,7 @@ export class ShaderDebugManager {
   private imagePassPath: string | null = null;
   private bufferPathMap: Record<string, string> = {}; // bufferName → filePath
   private bufferCodes: Record<string, string> = {};
+  private slangModules: SlangSourceModule[] = [];
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
 
@@ -76,8 +79,11 @@ export class ShaderDebugManager {
     config: ShaderConfig | null,
     imagePath: string | null,
     buffers: Record<string, string>,
+    slangModules: SlangSourceModule[] = [],
+    resolvedBufferPathMap: Record<string, string> = {},
   ): void {
     this.bufferCodes = buffers;
+    this.slangModules = slangModules;
     this.bufferPathMap = {};
     const passes = config?.passes ?? {};
     for (const [name, pass] of Object.entries(passes)) {
@@ -85,23 +91,55 @@ export class ShaderDebugManager {
         this.bufferPathMap[name] = pass.path;
       }
     }
-    this.imagePassPath = imagePath && this.isBufferPath(imagePath) ? null : imagePath;
+    this.bufferPathMap = { ...this.bufferPathMap, ...resolvedBufferPathMap };
+    this.imagePassPath = resolvedBufferPathMap.Image
+      ?? (imagePath && this.isBufferPath(imagePath) ? null : imagePath);
   }
 
   public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
-    const passName = this.variablePreview?.activeBufferName ?? this.state.activeBufferName;
-    const code = passName === 'Image'
+    const selectedPath = this.variablePreview?.filePath ?? this.state.filePath;
+    const selectedModule = this.findSlangModule(selectedPath);
+    const passName = selectedModule?.ownerPass
+      ?? this.variablePreview?.activeBufferName
+      ?? this.state.activeBufferName;
+    const code = selectedModule?.source ?? (passName === 'Image'
       ? imageCode
-      : this.bufferCodes[passName] ?? imageCode;
+      : this.bufferCodes[passName] ?? imageCode);
     const passConfig = config?.passes[passName];
     const inputConfig = passConfig && 'inputs' in passConfig ? passConfig.inputs : undefined;
+    const debugDependencyOwner = passName === 'common' ? 'Image' : passName;
+    const ownerModules = this.slangModules.filter(
+      (module) => module.ownerPass === debugDependencyOwner,
+    );
+    const selectedModuleIndex = selectedModule
+      ? ownerModules.findIndex((module) => this.pathsEqual(module.path, selectedModule.path))
+      : -1;
+    const debugModules = selectedModuleIndex >= 0
+      ? ownerModules.slice(0, selectedModuleIndex)
+      : ownerModules;
+    const rootSourcePath = passName === 'Image'
+      ? this.imagePassPath
+      : this.bufferPathMap[passName];
+    const sourcePath = selectedModule?.path ?? rootSourcePath;
+    const temporaryImageModules = debugModules
+      .map((module) => ({ ...module, ownerPass: 'Image' }));
+    const unchangedPassModules = this.slangModules.filter(
+      (module) => module.ownerPass !== 'Image',
+    );
+    const compileModules = passName === 'Image'
+      ? [...temporaryImageModules, ...unchangedPassModules]
+      : [...unchangedPassModules, ...temporaryImageModules];
+    const sourceDetails = {
+      ...(sourcePath ? { sourcePath } : {}),
+      slangModules: compileModules,
+    };
 
     if (!config || passName === 'Image' || passName === 'common') {
-      return { passName, code, config, inputConfig };
+      return { passName, code, config, inputConfig, ...sourceDetails };
     }
 
     if (!passConfig || !('inputs' in passConfig)) {
-      return { passName, code, config, inputConfig };
+      return { passName, code, config, inputConfig, ...sourceDetails };
     }
 
     return {
@@ -115,12 +153,28 @@ export class ShaderDebugManager {
         },
       },
       inputConfig,
+      ...sourceDetails,
     };
+  }
+
+  private findSlangModule(filePath: string | null): SlangSourceModule | undefined {
+    if (!filePath) {
+      return undefined;
+    }
+    return this.slangModules.find((module) => this.pathsEqual(module.path, filePath));
+  }
+
+  private pathsEqual(firstPath: string, secondPath: string): boolean {
+    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
   }
 
   private resolveActiveBuffer(filePath: string | null): string {
     if (!filePath) {
       return 'Image';
+    }
+    const importedModule = this.findSlangModule(filePath);
+    if (importedModule) {
+      return importedModule.ownerPass;
     }
     if (this.imagePassPath && filePath === this.imagePassPath) {
       return 'Image';
@@ -517,6 +571,10 @@ export class ShaderDebugManager {
   }
 
   private getCodeForActiveBuffer(activeBufferName: string): string {
+    const selectedModule = this.findSlangModule(this.state.filePath);
+    if (selectedModule) {
+      return selectedModule.source;
+    }
     const imageCode = this.imageShaderCode ?? '';
     return activeBufferName === 'Image'
       ? imageCode

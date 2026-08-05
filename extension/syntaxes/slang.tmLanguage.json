@@ -1,0 +1,352 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Slang",
+  "scopeName": "source.slang",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#preprocessor" },
+    { "include": "#attributes" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtin-functions" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#numbers" },
+    { "include": "#builtins" },
+    { "include": "#constants" },
+    { "include": "#operators" },
+    { "include": "#swizzle" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.slang",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.slang" }
+          }
+        },
+        {
+          "name": "comment.block.slang",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.slang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.slang" }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.raw.slang",
+          "begin": "\\bR\"([^\"()\\s]*)\\(",
+          "end": "\\)\\1\""
+        },
+        {
+          "name": "string.quoted.double.slang",
+          "begin": "\"",
+          "end": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.slang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.slang" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.slang",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.slang",
+          "begin": "'",
+          "end": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.slang" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.slang" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.slang",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "preprocessor": {
+      "patterns": [
+        {
+          "name": "meta.preprocessor.language.slang",
+          "begin": "^\\s*(#)\\s*(language)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.directive.language.slang" },
+            "2": { "name": "keyword.control.directive.language.slang" }
+          },
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#operators" }
+          ]
+        },
+        {
+          "name": "meta.preprocessor.slang",
+          "begin": "^\\s*(#)\\s*(language|define|undef|if|ifdef|ifndef|elif|else|endif|include|line|pragma|error|warning)\\b",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.slang" },
+            "2": { "name": "keyword.control.directive.slang" }
+          },
+          "patterns": [
+            { "include": "#comments" },
+            { "include": "#strings" },
+            { "include": "#numbers" },
+            { "include": "#operators" }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "storage.modifier.attribute.slang",
+          "match": "\\[(?:shader|numthreads|entryPoint|earlydepthstencil|branch|flatten|loop|unroll|fastopt|forcecase|call|maximallyReconverges|quadDerivatives)\\b[^\\]]*\\]"
+        },
+        {
+          "name": "storage.modifier.attribute.slang",
+          "match": "\\[\\[\\s*[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)+(?:\\s*\\([^\\[\\]]*\\))?\\s*\\]\\]"
+        },
+        {
+          "name": "storage.modifier.attribute.slang",
+          "match": "\\b(__include|__generic|__intrinsic_op|__target_intrinsic)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "name": "keyword.control.flow.slang", "match": "\\b(if|else|switch|case|default|for|while|do|break|continue|return|discard)\\b" },
+        { "name": "keyword.declaration.slang", "match": "\\b(module|import|implementing|interface|extension|struct|class|enum|typedef|typealias|associatedtype|property|namespace|using|generic|where|each|expand|let|var|func|this|This|operator)\\b" },
+        { "name": "storage.modifier.slang", "match": "\\b(public|private|internal|static|const|uniform|in|out|inout|ref|groupshared|precise|nointerpolation|linear|centroid|sample|globallycoherent|volatile|extern|inline|mutating|nonmutating|differentiable|no_diff)\\b" }
+      ]
+    },
+    "builtin-functions": {
+      "patterns": [
+        {
+          "name": "support.function.trigonometric.slang",
+          "match": "\\b(?:radians|degrees|sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|asinh|acosh|atanh|sincos)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.exponential.slang",
+          "match": "\\b(?:pow|exp|log|exp2|log2|sqrt|rsqrt|inversesqrt)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.common.slang",
+          "match": "\\b(?:abs|sign|floor|trunc|round|roundEven|ceil|fract|frac|mod|fmod|modf|min|max|clamp|saturate|mix|lerp|step|smoothstep|isnan|isinf|fma|frexp|ldexp|mad|rcp)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.geometric.slang",
+          "match": "\\b(?:length|distance|dot|cross|normalize|faceforward|reflect|refract)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.matrix.slang",
+          "match": "\\b(?:mul|transpose|determinant|inverse)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.texture.slang",
+          "match": "\\b(?:Sample|SampleBias|SampleCmp|SampleCmpLevelZero|SampleGrad|SampleLevel|Load|Gather|GatherRed|GatherGreen|GatherBlue|GatherAlpha|GetDimensions|CalculateLevelOfDetail|CalculateLevelOfDetailUnclamped|textureSize|textureQueryLod|textureQueryLevels|textureSamples|texture|textureProj|textureLod|textureOffset|texelFetch|texelFetchOffset|textureProjOffset|textureLodOffset|textureGrad|textureGradOffset|textureGather|textureGatherOffset|textureGatherOffsets)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.fragment.slang",
+          "match": "\\b(?:ddx|ddx_coarse|ddx_fine|ddy|ddy_coarse|ddy_fine|fwidth)(?=\\s*\\()"
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_]\\w*)\\s+([A-Za-z_]\\w*)\\s*(?=\\([^)]*\\)\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*\\{)",
+          "captures": {
+            "1": { "name": "storage.type.slang" },
+            "2": { "name": "entity.name.function.slang" }
+          }
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.matrix.slang",
+          "match": "\\b(?:bool|half|float|double|float(?:16|32|64)_t|int|uint|(?:u?int)(?:8|16|32|64)_t)[2-4]x[2-4]\\b"
+        },
+        {
+          "name": "storage.type.vector.slang",
+          "match": "\\b(?:bool|half|float|double|int|uint)[2-4]\\b"
+        },
+        {
+          "name": "storage.type.slang",
+          "match": "\\b(?:void|bool|half|float|double|float16_t|float32_t|float64_t|int|uint|int8_t|uint8_t|int16_t|uint16_t|int32_t|uint32_t|int64_t|uint64_t|vector|matrix)\\b"
+        },
+        {
+          "name": "storage.type.sampler.slang",
+          "match": "\\b(?:Texture(?:1D|2D|3D|Cube)(?:Array)?|SamplerState|SamplerComparisonState)\\b"
+        },
+        {
+          "name": "storage.type.image.slang",
+          "match": "\\bRWTexture(?:1D|2D|3D)(?:Array)?\\b"
+        },
+        {
+          "name": "storage.type.resource.slang",
+          "match": "\\b(?:Buffer|RWBuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer|ParameterBlock|ConstantBuffer|RaytracingAccelerationStructure)\\b"
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "entity.name.function.call.slang",
+          "match": "\\b[A-Za-z_]\\w*(?=\\s*\\()"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "match": "\\b(?:iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.slang",
+          "match": "\\b(?:true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.slang",
+          "match": "\\b(?:null|none)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.numeric.leading-zero.slang",
+          "match": "(?<![\\w.])0(?=(?:'?\\d)*[89])(?:'?\\d)+(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.float.slang",
+          "match": "(?<![\\w.])0[xX](?:(?:[0-9a-fA-F](?:'?[0-9a-fA-F])*\\.(?:[0-9a-fA-F](?:'?[0-9a-fA-F])*)?|\\.[0-9a-fA-F](?:'?[0-9a-fA-F])*|[0-9a-fA-F](?:'?[0-9a-fA-F])*)(?:[pP][+-]?\\d(?:'?\\d)*|#INF))(?:hf|HF|fh|FH|lf|LF|fl|FL|h|H|f|F|l|L)?(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.float.slang",
+          "match": "(?<![\\w.])(?:(?:(?:\\d(?:'?\\d)*\\.(?:\\d(?:'?\\d)*)?|\\.\\d(?:'?\\d)*)(?:[eE][+-]?\\d(?:'?\\d)*|#INF)?|\\d(?:'?\\d)*(?:[eE][+-]?\\d(?:'?\\d)*|#INF))(?:hf|HF|fh|FH|lf|LF|fl|FL|h|H|f|F|l|L)?)(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.hex.slang",
+          "match": "(?<![\\w.])0[xX][0-9a-fA-F](?:'?[0-9a-fA-F])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.binary.slang",
+          "match": "(?<![\\w.])0[bB][01](?:'?[01])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.octal.slang",
+          "match": "(?<![\\w.])0[0-7](?:'?[0-7])*(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.#])"
+        },
+        {
+          "name": "constant.numeric.integer.slang",
+          "match": "(?<![\\w.])(?:0|[1-9](?:'?\\d)*)(?:[uU](?:(?:[lL]{1,2})|[zZ])?|(?:(?:[lL]{1,2})|[zZ])[uU]?)?(?![\\w.#])"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.slang",
+          "match": "[+\\-*/%&|^]?=(?!=)|<<=|>>="
+        },
+        {
+          "name": "keyword.operator.comparison.slang",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.slang",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.logical.slang",
+          "match": "&&|\\|\\||\\^\\^|!"
+        },
+        {
+          "name": "keyword.operator.bitwise.slang",
+          "match": "&|\\||\\^|~|<<|>>"
+        },
+        {
+          "name": "keyword.operator.increment-decrement.slang",
+          "match": "\\+\\+|--"
+        },
+        {
+          "name": "keyword.operator.ternary.slang",
+          "match": "\\?|:"
+        }
+      ]
+    },
+    "swizzle": {
+      "patterns": [
+        {
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\\b"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.terminator.statement.slang",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.comma.slang",
+          "match": ","
+        },
+        {
+          "name": "punctuation.section.block.begin.slang",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.block.end.slang",
+          "match": "\\}"
+        },
+        {
+          "name": "punctuation.section.parens.begin.slang",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.slang",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.slang",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.slang",
+          "match": "\\]"
+        }
+      ]
+    }
+  }
+}

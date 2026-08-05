@@ -60,4 +60,3 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | Webcam input | Live camera feed (planned) |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
-

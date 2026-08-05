@@ -235,6 +235,86 @@ describe('ShaderDebugManager — buffer debugging', () => {
       manager.setShaderContext(makeConfig(), '/shaders/image.glsl', { BufferA: newBufferACode });
       expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).code).toBe(newBufferACode);
     });
+
+    it('returns an imported Slang module while retaining its owning pass', () => {
+      const paletteSource = 'module palette;\npublic float3 color() { return float3(1); }';
+      manager.setShaderContext(
+        makeConfig(),
+        '/shaders/image.slang',
+        {},
+        [
+          { moduleName: 'tone_map', path: '/shaders/tone-map.slang', source: 'module tone_map;', ownerPass: 'Image' },
+          { moduleName: 'palette', path: '/shaders/palette.slang', source: paletteSource, ownerPass: 'Image' },
+        ],
+      );
+      manager.updateDebugLine(1, 'public float3 color() { return float3(1); }', '/shaders/palette.slang');
+
+      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      expect(target.passName).toBe('Image');
+      expect(target.code).toBe(paletteSource);
+      expect(target.sourcePath).toBe('/shaders/palette.slang');
+      expect(target.slangModules).toEqual([
+        { moduleName: 'tone_map', path: '/shaders/tone-map.slang', source: 'module tone_map;', ownerPass: 'Image' },
+      ]);
+
+      manager.updateDebugLine(0, 'module tone_map;', '/shaders/tone-map.slang');
+      expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).slangModules).toEqual([]);
+    });
+
+    it('preserves the owning buffer source path for relative Slang imports during debug compilation', () => {
+      const feedbackModule = {
+        moduleName: 'debugfeedback',
+        path: '/shaders/passes/debugfeedback.slang',
+        source: 'module debugfeedback;',
+        ownerPass: 'BufferA',
+      };
+      manager.setShaderContext(
+        makeConfig(),
+        '/shaders/image.slang',
+        { BufferA: BUFFER_A_CODE },
+        [feedbackModule],
+        {
+          Image: '/shaders/image.slang',
+          BufferA: '/shaders/passes/history.slang',
+        },
+      );
+      manager.updateDebugLine(1, 'float d = length(fragCoord);', '/shaders/passes/history.slang');
+
+      const target = manager.getDebugTarget(IMAGE_CODE, makeConfig());
+      expect(target.sourcePath).toBe('/shaders/passes/history.slang');
+      expect(target.slangModules).toEqual([
+        feedbackModule,
+        { ...feedbackModule, ownerPass: 'Image' },
+      ]);
+    });
+
+    it('retains dependencies for unchanged buffer passes while debugging the Slang Image pass', () => {
+      const imageModule = {
+        moduleName: 'debugpalette',
+        path: '/shaders/debugpalette.slang',
+        source: 'module debugpalette;',
+        ownerPass: 'Image',
+      };
+      const bufferModule = {
+        moduleName: 'debugfeedback',
+        path: '/shaders/passes/debugfeedback.slang',
+        source: 'module debugfeedback;',
+        ownerPass: 'BufferA',
+      };
+      manager.setShaderContext(
+        makeConfig(),
+        '/shaders/image.slang',
+        { BufferA: BUFFER_A_CODE },
+        [imageModule, bufferModule],
+        { Image: '/shaders/image.slang', BufferA: '/shaders/passes/history.slang' },
+      );
+      manager.updateDebugLine(1, 'float t = iTime;', '/shaders/image.slang');
+
+      expect(manager.getDebugTarget(IMAGE_CODE, makeConfig()).slangModules).toEqual([
+        imageModule,
+        bufferModule,
+      ]);
+    });
   });
 
   // -------------------------------------------------------------------------

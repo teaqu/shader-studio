@@ -20,10 +20,10 @@ export interface SlangComputePipelineDescriptor {
   dispatchCount: number;
   channels: Array<{ slot: number; key: string; kind?: string }>;
   storage: StorageBindingNode[];
+  uniformBufferSize?: number;
 }
 
 export class SlangComputePipeline {
-  private shaderModule: GPUShaderModule | null = null;
   private pipeline: GPUComputePipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private dispatchUniformBuffers: GPUBuffer[] = [];
@@ -76,11 +76,10 @@ export class SlangComputePipeline {
       return [];
     }
 
-    this.shaderModule = shaderModule;
     this.bindGroupLayout = bindGroupLayout;
     this.pipeline = pipeline;
     this.uniformBuffer = this.device.createBuffer({
-      size: SHADERTOY_UNIFORM_SIZE,
+      size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     for (let index = 0; index < this.descriptor.dispatchCount; index++) {
@@ -286,6 +285,29 @@ export class SlangComputePipeline {
     }
   }
 
+  /** Replace both ping-pong targets, clearing all accumulated compute output state. */
+  resetOutputTextures(): void {
+    if (!this.descriptor.hasOutput || this.textures.length === 0) {
+      return;
+    }
+    const nextTextures: GPUTexture[] = [];
+    let nextViews: { full: GPUTextureView[]; layers: GPUTextureView[][] };
+    try {
+      nextTextures.push(this.createOutputTexture(), this.createOutputTexture());
+      nextViews = this.createOutputViews(nextTextures);
+    } catch (error) {
+      SlangComputePipeline.destroyTextureList(nextTextures);
+      throw error;
+    }
+    const previousTextures = this.textures;
+    this.textures = nextTextures;
+    this.fullOutputViews = nextViews.full;
+    this.layerOutputViews = nextViews.layers;
+    this.textureIndex = 0;
+    this.invalidateBindGroups();
+    SlangComputePipeline.destroyTextureList(previousTextures);
+  }
+
   dispose(): void {
     this.rebuildGeneration++;
     this.resetResources();
@@ -388,7 +410,6 @@ export class SlangComputePipeline {
     this.destroyUniformBuffer();
     this.destroyDispatchUniformBuffers();
     this.destroyTextures();
-    this.shaderModule = null;
     this.pipeline = null;
     this.bindGroupLayout = null;
     this.invalidateBindGroups();

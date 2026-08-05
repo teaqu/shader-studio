@@ -38,6 +38,13 @@ export class ShaderProcessor {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
 
+    if (message.slangDependencyDiagnostics?.length) {
+      return {
+        success: false,
+        errors: message.slangDependencyDiagnostics.map((diagnostic) => diagnostic.message),
+      };
+    }
+
     this.isProcessing = true;
     this.imageShaderCode = code;
     this.shaderDebugManager.setImageShaderCode(code);
@@ -47,16 +54,23 @@ export class ShaderProcessor {
     }
 
     try {
-      const debugState = this.shaderDebugManager.getState();
-      const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(code, config ?? null);
-      const buffersToCompile = this.getCompileBuffers(buffers, debugState.activeBufferName, codeToCompile, code);
-      const result = await this.renderEngine.compileShaderPipeline(
+      const {
+        code: codeToCompile,
+        config: configToCompile,
+        passName: debugPassName,
+        slangModules: debugSlangModules,
+        sourcePath: debugSourcePath,
+      } = this.getDebugCompileArgs(code, config ?? null);
+      const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
+      const result = await this.compileWithSlangContext(
         codeToCompile,
         configToCompile,
         path,
         buffersToCompile,
         message.customUniformDeclarations,
         message.customUniformInfo,
+        debugSlangModules ?? message.slangModules,
+        debugSourcePath,
       );
 
       // Handle compilation failure
@@ -70,7 +84,15 @@ export class ShaderProcessor {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
-          const fallbackResult = await this.compile(code, config, path, buffers, message.customUniformDeclarations, message.customUniformInfo);
+          const fallbackResult = await this.compile(
+            code,
+            config,
+            path,
+            buffers,
+            message.customUniformDeclarations,
+            message.customUniformInfo,
+            message.slangModules,
+          );
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
@@ -107,7 +129,13 @@ export class ShaderProcessor {
   private getDebugCompileArgs(
     imageShaderCode: string,
     config: ShaderConfig | null,
-  ): { code: string; config: ShaderConfig | null } {
+  ): {
+    code: string;
+    config: ShaderConfig | null;
+    passName: string;
+    slangModules?: import("@shader-studio/types").SlangSourceModule[];
+    sourcePath?: string;
+  } {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
     const sourceCode = debugTarget.code;
@@ -119,7 +147,13 @@ export class ShaderProcessor {
         debugState.currentLine,
       );
       if (modifiedCode) {
-        return { code: modifiedCode, config: debugConfig };
+        return {
+          code: modifiedCode,
+          config: debugConfig,
+          passName: debugTarget.passName,
+          slangModules: debugTarget.slangModules,
+          sourcePath: debugTarget.sourcePath,
+        };
       }
     }
 
@@ -127,11 +161,17 @@ export class ShaderProcessor {
     if (debugState.isEnabled) {
       const postProcessed = this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode);
       if (postProcessed) {
-        return { code: postProcessed, config: debugConfig };
+        return {
+          code: postProcessed,
+          config: debugConfig,
+          passName: debugTarget.passName,
+          slangModules: debugTarget.slangModules,
+          sourcePath: debugTarget.sourcePath,
+        };
       }
     }
 
-    return { code: imageShaderCode, config };
+    return { code: imageShaderCode, config, passName: 'Image' };
   }
 
   private async compile(
@@ -141,14 +181,18 @@ export class ShaderProcessor {
     buffers: Record<string, string>,
     customUniformDeclarations?: string,
     customUniformInfo?: { name: string; type: string }[],
+    slangModules?: import("@shader-studio/types").SlangSourceModule[],
+    slangSourcePath?: string,
   ): Promise<CompilationResult> {
-    const result = await this.renderEngine.compileShaderPipeline(
+    const result = await this.compileWithSlangContext(
       code,
       config,
       path,
       buffers,
       customUniformDeclarations,
       customUniformInfo,
+      slangModules,
+      slangSourcePath,
     );
 
     if (result?.superseded) {
@@ -166,6 +210,33 @@ export class ShaderProcessor {
       success: true,
       warnings: result.warnings
     };
+  }
+
+  private compileWithSlangContext(
+    code: string,
+    config: ShaderConfig | null,
+    path: string,
+    buffers: Record<string, string>,
+    customUniformDeclarations?: string,
+    customUniformInfo?: { name: string; type: string }[],
+    slangModules?: import("@shader-studio/types").SlangSourceModule[],
+    slangSourcePath?: string,
+  ): ReturnType<RenderingEngine['compileShaderPipeline']> {
+    const args: Parameters<RenderingEngine['compileShaderPipeline']> = [
+      code,
+      config,
+      path,
+      buffers,
+      customUniformDeclarations,
+      customUniformInfo,
+    ];
+    if (slangModules !== undefined || slangSourcePath !== undefined) {
+      args.push(slangModules);
+    }
+    if (slangSourcePath !== undefined) {
+      args.push(slangSourcePath);
+    }
+    return this.renderEngine.compileShaderPipeline(...args);
   }
 
   private getCompileBuffers(
@@ -219,27 +290,49 @@ export class ShaderProcessor {
     const cuDecl = message.customUniformDeclarations;
     const cuInfo = message.customUniformInfo;
 
-    const debugState = this.shaderDebugManager.getState();
-    const { code: codeToCompile, config: configToCompile } = this.getDebugCompileArgs(
+    const {
+      code: codeToCompile,
+      config: configToCompile,
+      passName: debugPassName,
+      slangModules: debugSlangModules,
+      sourcePath: debugSourcePath,
+    } = this.getDebugCompileArgs(
       this.imageShaderCode,
       config ?? null,
     );
     const buffersToCompile = this.getCompileBuffers(
       buffers,
-      debugState.activeBufferName,
+      debugPassName,
       codeToCompile,
       this.imageShaderCode,
     );
 
     // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(codeToCompile, configToCompile, path, buffersToCompile, cuDecl, cuInfo);
+    let result = await this.compile(
+      codeToCompile,
+      configToCompile,
+      path,
+      buffersToCompile,
+      cuDecl,
+      cuInfo,
+      debugSlangModules ?? message.slangModules,
+      debugSourcePath,
+    );
 
     // If failed and modified code was used, try original
     if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );
-      result = await this.compile(this.imageShaderCode, config, path, buffers, cuDecl, cuInfo);
+      result = await this.compile(
+        this.imageShaderCode,
+        config,
+        path,
+        buffers,
+        cuDecl,
+        cuInfo,
+        message.slangModules,
+      );
     }
 
     // Start render loop if compilation succeeded

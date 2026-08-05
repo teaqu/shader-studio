@@ -15,6 +15,7 @@ import { setInspectorState } from '../../../lib/state/pixelInspectorState.svelte
 const DEFAULT_INSPECTOR_STATE = {
   isEnabled: false, isActive: false, isLocked: false,
   mouseX: 0, mouseY: 0, pixelRGB: null, fragCoord: null, canvasPosition: null,
+  region: null,
 };
 
 function makeDebugState(overrides: Partial<ShaderDebugState> = {}): ShaderDebugState {
@@ -125,6 +126,20 @@ describe('DebugPanel', () => {
 
     expect(inspectorBtn).toBeTruthy();
     expect(inlineBtn).toBeTruthy();
+  });
+
+  it('renders the pixel inspector section without a live canvas prop', () => {
+    setInspectorState({
+      ...DEFAULT_INSPECTOR_STATE,
+      isEnabled: true,
+    });
+
+    const { getByText } = render(DebugPanel, {
+      debugState: makeDebugState(),
+      getUniforms: mockGetUniforms,
+    });
+
+    expect(getByText('Pixel Inspector')).toBeTruthy();
   });
 
   it('uses explicit variable capture loading and error state', () => {

@@ -3,16 +3,17 @@
 <script lang="ts">
   import { getInspectorState, requestLockAt } from '../../state/pixelInspectorState.svelte';
   import { debugPanelStore } from '../../stores/debugPanelStore';
+  import type { PixelInspectorRegion } from '../../types/PixelInspectorState';
 
   interface Props {
-    canvasElement?: HTMLCanvasElement | null;
     canvasWidth?: number;
     canvasHeight?: number;
   }
 
-  let { canvasElement = null, canvasWidth = 0, canvasHeight = 0 }: Props = $props();
+  let { canvasWidth = 0, canvasHeight = 0 }: Props = $props();
 
   const SIZE = 120;
+  const REGION_SIZE = 60;
   // Only zoom levels that divide SIZE evenly — guarantees 1 source pixel = exactly zoomLevel canvas pixels
   const ZOOM_LEVELS = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 30];
   const DEFAULT_ZOOM = 8;
@@ -22,6 +23,11 @@
   const srcPixels = $derived(SIZE / zoomLevel);
 
   let zoomCanvas = $state<HTMLCanvasElement | null>(null);
+  let regionCanvas: HTMLCanvasElement | null = null;
+  let renderedRegion: PixelInspectorRegion | null = null;
+  let lastDrawnRegion: PixelInspectorRegion | null | undefined = undefined;
+  let lastDrawnZoom: number | null = null;
+  let lastDrawnCanvas: HTMLCanvasElement | null = null;
   let showZoomLabel = $state(false);
   let zoomLabelTimer: ReturnType<typeof setTimeout> | null = null;
   let showConfigMenu = $state(false);
@@ -38,6 +44,7 @@
   }
 
   const inspector = $derived(getInspectorState());
+  const region = $derived(inspector.region);
 
   let dragActive = false;
   let dragStartClientX = 0;
@@ -126,7 +133,7 @@
   }
 
   const hasPixel = $derived(
-    inspector.canvasPosition !== null && inspector.pixelRGB !== null && inspector.fragCoord !== null
+    region !== null && inspector.canvasPosition !== null && inspector.pixelRGB !== null && inspector.fragCoord !== null
   );
   const rgb = $derived(inspector.pixelRGB);
   const fragCoord = $derived(inspector.fragCoord);
@@ -154,19 +161,52 @@
       return;
     }
 
-    if (!canvasElement || !inspector.canvasPosition) {
+    if (
+      lastDrawnRegion === region &&
+      lastDrawnZoom === zoomLevel &&
+      lastDrawnCanvas === zoomCanvas
+    ) {
+      return;
+    }
+
+    lastDrawnRegion = region;
+    lastDrawnZoom = zoomLevel;
+    lastDrawnCanvas = zoomCanvas;
+
+    if (!region) {
       ctx.clearRect(0, 0, SIZE, SIZE);
       return;
+    }
+
+    if (!regionCanvas) {
+      regionCanvas = document.createElement('canvas');
+      regionCanvas.width = REGION_SIZE;
+      regionCanvas.height = REGION_SIZE;
+    }
+
+    if (renderedRegion !== region) {
+      const regionContext = regionCanvas.getContext('2d');
+      if (!regionContext) {
+        ctx.clearRect(0, 0, SIZE, SIZE);
+        return;
+      }
+      const imageData = new ImageData(
+        new Uint8ClampedArray(region.rgba),
+        region.width,
+        region.height
+      );
+      regionContext.putImageData(imageData, 0, 0);
+      renderedRegion = region;
     }
 
     ctx.clearRect(0, 0, SIZE, SIZE);
     ctx.imageSmoothingEnabled = false;
 
     const halfSrc = Math.floor(srcPixels / 2);
-    const srcX = Math.floor(inspector.canvasPosition.x) - halfSrc;
-    const srcY = Math.floor(inspector.canvasPosition.y) - halfSrc;
+    const srcX = REGION_SIZE / 2 - halfSrc;
+    const srcY = REGION_SIZE / 2 - halfSrc;
 
-    ctx.drawImage(canvasElement, srcX, srcY, srcPixels, srcPixels, 0, 0, SIZE, SIZE);
+    ctx.drawImage(regionCanvas, srcX, srcY, srcPixels, srcPixels, 0, 0, SIZE, SIZE);
 
     // Crosshair: highlight exactly the center source pixel.
     // Because ZOOM_LEVELS always divide SIZE, zoomLevel === SIZE / srcPixels exactly.

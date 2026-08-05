@@ -1,6 +1,5 @@
 import type { ComputePass, ConfigInput, ShaderConfig } from "@shader-studio/types";
 import type {
-  ChannelReadTiming,
   DispatchSpec,
   RenderPassChannel,
   RenderPassGraph,
@@ -8,6 +7,7 @@ import type {
   RenderPassNode,
   StorageBindingNode,
 } from "../types/PassGraph";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export type {
   ChannelReadTiming,
@@ -758,13 +758,19 @@ function resolveChannels(options: {
   errors: string[];
 }): RenderPassChannel[] {
   const channels: RenderPassChannel[] = [];
+  const validInputs: Record<string, ConfigInput> = {};
 
   for (const [key, input] of Object.entries(options.inputs)) {
-    const slot = channelSlotFromKey(key);
-    if (slot === null) {
-      options.warnings.push(`${options.passName}: ignoring non-iChannel input "${key}"`);
+    const numericName = /^iChannel(\d+)$/.exec(key);
+    if (numericName && Number.parseInt(numericName[1], 10) > 15) {
+      options.warnings.push(`${options.passName}: ignoring channel input "${key}" above slot 15`);
       continue;
     }
+    validInputs[key] = input;
+  }
+
+  for (const { slot, key } of assignInputSlots(validInputs)) {
+    const input = validInputs[key];
 
     if (input.type === "texture") {
       const path = input.resolved_path || input.path;
@@ -822,13 +828,32 @@ function resolveChannels(options: {
       continue;
     }
 
+    if (input.type === "audio") {
+      const path = input.resolved_path || input.path;
+      if (!path) {
+        options.errors.push(`${options.passName}: ${key} audio input is missing a path`);
+        continue;
+      }
+      channels.push({
+        kind: "audio",
+        slot,
+        key,
+        path,
+        muted: input.muted,
+        startTime: input.startTime,
+        endTime: input.endTime,
+      });
+      continue;
+    }
+
     if (input.type === "keyboard") {
       channels.push({ kind: "keyboard", slot, key });
       continue;
     }
 
     if (input.type !== "buffer") {
-      options.warnings.push(`${options.passName}: ${key} uses unsupported Slang/WebGPU input type "${input.type}"`);
+      const unsupportedType = (input as { type?: unknown }).type;
+      options.warnings.push(`${options.passName}: ${key} uses unsupported Slang/WebGPU input type "${String(unsupportedType)}"`);
       continue;
     }
 
@@ -861,15 +886,6 @@ function resolveChannels(options: {
   }
 
   return channels.sort((a, b) => a.slot - b.slot);
-}
-
-function channelSlotFromKey(key: string): number | null {
-  const match = /^iChannel(\d+)$/.exec(key);
-  if (!match) {
-    return null;
-  }
-  const slot = Number.parseInt(match[1], 10);
-  return Number.isInteger(slot) && slot >= 0 && slot <= 15 ? slot : null;
 }
 
 function isPositiveInteger(value: unknown): value is number {

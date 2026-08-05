@@ -1,7 +1,15 @@
-import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution } from '@shader-studio/types';
+import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution, ConfigInput } from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
 import type { ShaderLanguage } from './engineFactory';
+
+export type BufferRenameError =
+  | 'config-unavailable'
+  | 'source-not-found'
+  | 'same-name'
+  | 'reserved-name'
+  | 'invalid-identifier'
+  | 'name-taken';
 
 export class ConfigManager {
   private config: ShaderConfig | null = null;
@@ -244,49 +252,84 @@ export class ConfigManager {
   }
 
   /**
+     * Validate a buffer-pass rename without changing the configuration.
+     */
+  validateBufferRename(oldName: string, newName: string): BufferRenameError | null {
+    if (!this.config) {
+      return 'config-unavailable';
+    }
+
+    const sourcePass: BufferPass | ImagePass | undefined = this.config.passes[oldName];
+    if (!sourcePass) {
+      return 'source-not-found';
+    }
+    if (oldName === newName) {
+      return 'same-name';
+    }
+    if (oldName === 'Image' || oldName === 'common' || oldName === 'Common' || oldName === 'Script') {
+      return 'reserved-name';
+    }
+    if (newName === 'Image' || newName === 'common' || newName === 'Common' || newName === 'Script') {
+      return 'reserved-name';
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
+      return 'invalid-identifier';
+    }
+    if (this.config.passes[newName]) {
+      return 'name-taken';
+    }
+
+    return null;
+  }
+
+  /**
      * Rename a buffer pass
      */
   renameBuffer(oldName: string, newName: string): boolean {
-    if (!this.config) {
-      return false;
-    }
-    if (oldName === newName) {
-      return false;
-    }
-    if (oldName === 'Image' || oldName === 'common') {
-      return false;
-    }
-    if (newName === 'Image' || newName === 'common') {
-      return false;
-    }
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(newName)) {
-      return false;
-    }
-    if (this.config.passes[newName]) {
-      return false;
-    }
-
-    const pass = this.config.passes[oldName];
-    if (!pass) {
+    if (this.validateBufferRename(oldName, newName) !== null || !this.config) {
       return false;
     }
 
     // Build new passes object preserving key order
-    const newPasses: Record<string, any> = {};
-    for (const [key, value] of Object.entries(this.config.passes)) {
+    const newPasses = {} as ShaderConfig['passes'];
+    for (const key of Object.keys(this.config.passes)) {
+      const value: BufferPass | ImagePass | undefined = this.config.passes[key];
+      const rewrittenPass = value
+        ? this.rewriteBufferReferences(value, oldName, newName)
+        : value;
       if (key === oldName) {
-        newPasses[newName] = value;
+        newPasses[newName] = rewrittenPass;
       } else {
-        newPasses[key] = value;
+        newPasses[key] = rewrittenPass;
       }
     }
 
     const updatedConfig = {
       ...this.config,
-      passes: newPasses as typeof this.config.passes
+      passes: newPasses
     };
     this.updateConfig(updatedConfig);
     return true;
+  }
+
+  private rewriteBufferReferences(
+    pass: BufferPass | ImagePass,
+    oldName: string,
+    newName: string,
+  ): BufferPass | ImagePass {
+    if (!pass.inputs) {
+      return pass;
+    }
+
+    let rewrittenInputs: Record<string, ConfigInput> | null = null;
+    for (const [inputName, input] of Object.entries(pass.inputs)) {
+      if (input.type === 'buffer' && input.source === oldName) {
+        rewrittenInputs ??= { ...pass.inputs };
+        rewrittenInputs[inputName] = { ...input, source: newName };
+      }
+    }
+
+    return rewrittenInputs ? { ...pass, inputs: rewrittenInputs } : pass;
   }
 
   /**

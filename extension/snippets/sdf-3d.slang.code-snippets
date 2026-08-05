@@ -1,0 +1,185 @@
+{
+  "SDF 3D Sphere": {
+    "prefix": "sdf3d-sphere",
+    "body": [
+      "float sdSphere(float3 p, float r) {",
+      "\treturn length(p) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D sphere",
+    "call": "sdSphere(p, 1.0)"
+  },
+  "SDF 3D Box": {
+    "prefix": "sdf3d-box",
+    "body": [
+      "float sdBox(float3 p, float3 b) {",
+      "\tfloat3 q = abs(p) - b;",
+      "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D box",
+    "call": "sdBox(p, float3(0.8, 0.6, 0.5))"
+  },
+  "SDF 3D Rounded Box": {
+    "prefix": "sdf3d-rounded-box",
+    "body": [
+      "float sdRoundBox(float3 p, float3 b, float r) {",
+      "\tfloat3 q = abs(p) - b + r;",
+      "\treturn length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D rounded box",
+    "call": "sdRoundBox(p, float3(0.7, 0.5, 0.4), 0.1)"
+  },
+  "SDF 3D Torus": {
+    "prefix": "sdf3d-torus",
+    "body": [
+      "float sdTorus(float3 p, float2 t) {",
+      "\t// t.x = major radius, t.y = minor radius",
+      "\tfloat2 q = float2(length(p.xz) - t.x, p.y);",
+      "\treturn length(q) - t.y;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D torus",
+    "call": "sdTorus(p, float2(0.8, 0.3))"
+  },
+  "SDF 3D Cylinder": {
+    "prefix": "sdf3d-cylinder",
+    "body": [
+      "float sdCylinder(float3 p, float h, float r) {",
+      "\tfloat2 d = abs(float2(length(p.xz), p.y)) - float2(r, h);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cylinder",
+    "call": "sdCylinder(p, 1.0, 0.5)"
+  },
+  "SDF 3D Cone": {
+    "prefix": "sdf3d-cone",
+    "body": [
+      "float sdCone(float3 p, float2 c, float h) {",
+      "\t// c = float2(sin, cos) of the cone angle",
+      "\tfloat2 q = h * float2(c.x / c.y, -1.0);",
+      "\tfloat2 w = float2(length(p.xz), p.y);",
+      "\tfloat2 a = w - q * clamp(dot(w, q) / dot(q, q), 0.0, 1.0);",
+      "\tfloat2 b = w - q * float2(clamp(w.x / q.x, 0.0, 1.0), 1.0);",
+      "\tfloat k = sign(q.y);",
+      "\tfloat d = min(dot(a, a), dot(b, b));",
+      "\tfloat s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));",
+      "\treturn sqrt(d) * sign(s);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cone (IQ)",
+    "call": "sdCone(p - float3(0.0, 1.0, 0.0), float2(sin(0.5), cos(0.5)), 1.0)"
+  },
+  "SDF 3D Capsule": {
+    "prefix": "sdf3d-capsule",
+    "body": [
+      "float sdCapsule(float3 p, float3 a, float3 b, float r) {",
+      "\tfloat3 pa = p - a, ba = b - a;",
+      "\tfloat h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);",
+      "\treturn length(pa - ba * h) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D capsule (line segment with radius)",
+    "call": "sdCapsule(p, float3(0.0, -0.5, 0.0), float3(0.0, 0.5, 0.0), 0.3)"
+  },
+  "SDF 3D Plane": {
+    "prefix": "sdf3d-plane",
+    "body": [
+      "float sdPlane(float3 p, float3 n, float h) {",
+      "\t// n must be normalized",
+      "\treturn dot(p, n) + h;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D plane",
+    "call": "sdPlane(p, float3(0.0, 1.0, 0.0), 0.5)",
+    "example": [
+      "float sdPlane(float3 p, float3 n, float h) {",
+      "    return dot(p, n) + h;",
+      "}",
+      "",
+      "float map(float3 p) {",
+      "    return sdPlane(p, float3(0.0, 1.0, 0.0), 0.0);",
+      "}",
+      "",
+      "float rayMarch(float3 ro, float3 rd) {",
+      "    float t = 0.0;",
+      "    for (int i = 0; i < 128; i++) {",
+      "        float d = map(ro + rd * t);",
+      "        if (d < 0.001 || t > 100.0) break;",
+      "        t += d;",
+      "    }",
+      "    return t;",
+      "}",
+      "",
+      "float4 mainImage(float2 fragCoord) {",
+      "    float2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;",
+      "    float3 ro = float3(0.0, 1.5, -3.0);",
+      "    float3 rd = normalize(float3(uv.x, uv.y - 0.2, 1.5));",
+      "    float t = rayMarch(ro, rd);",
+      "    float3 sky = lerp(float3(0.15, 0.18, 0.30), float3(0.08, 0.08, 0.14), pow(max(uv.y + 0.2, 0.0), 0.8));",
+      "    float3 col = sky;",
+      "    if (t < 100.0) {",
+      "        float3 p = ro + rd * t;",
+      "        float3 lightDir = normalize(float3(0.6, 0.8, -0.5));",
+      "        float diff = max(dot(float3(0.0, 1.0, 0.0), lightDir), 0.0);",
+      "        float checkerCoord = floor(p.x) + floor(p.z);",
+      "        float checker = checkerCoord - 2.0 * floor(checkerCoord / 2.0);",
+      "        float3 base = lerp(float3(0.15, 0.30, 0.55), float3(0.25, 0.45, 0.75), checker);",
+      "        col = base * (diff * 0.7 + 0.3);",
+      "        float fog = exp(-0.03 * t * t);",
+      "        col = lerp(sky, col, fog);",
+      "    }",
+      "    col = pow(col, float3(1.0 / 2.2));",
+      "    return float4(col, 1.0);",
+      "}"
+    ]
+  },
+  "SDF 3D Ellipsoid": {
+    "prefix": "sdf3d-ellipsoid",
+    "body": [
+      "float sdEllipsoid(float3 p, float3 r) {",
+      "\tfloat k0 = length(p / r);",
+      "\tfloat k1 = length(p / (r * r));",
+      "\treturn k0 * (k0 - 1.0) / k1;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D ellipsoid (approximate)",
+    "call": "sdEllipsoid(p, float3(1.0, 0.6, 0.4))"
+  },
+  "SDF 3D Octahedron": {
+    "prefix": "sdf3d-octahedron",
+    "body": [
+      "float sdOctahedron(float3 p, float s) {",
+      "\tp = abs(p);",
+      "\tfloat m = p.x + p.y + p.z - s;",
+      "\tfloat3 q;",
+      "\tif (3.0 * p.x < m) q = p.xyz;",
+      "\telse if (3.0 * p.y < m) q = p.yzx;",
+      "\telse if (3.0 * p.z < m) q = p.zxy;",
+      "\telse return m * 0.57735027;",
+      "\tfloat k = clamp(0.5 * (q.z - q.y + s), 0.0, s);",
+      "\treturn length(float3(q.x, q.y - s + k, q.z - k));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D octahedron (IQ)",
+    "call": "sdOctahedron(p, 1.0)"
+  },
+  "SDF 3D Hex Prism": {
+    "prefix": "sdf3d-hexprism",
+    "body": [
+      "float sdHexPrism(float3 p, float2 h) {",
+      "\tconst float3 k = float3(-0.8660254, 0.5, 0.57735);",
+      "\tp = abs(p);",
+      "\tp.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;",
+      "\tfloat2 d = float2(",
+      "\t\tlength(p.xy - float2(clamp(p.x, -k.z * h.x, k.z * h.x), h.x)) * sign(p.y - h.x),",
+      "\t\tp.z - h.y);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, 0.0));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D hexagonal prism (IQ)",
+    "call": "sdHexPrism(p.xzy, float2(0.6, 0.4))"
+  }
+}

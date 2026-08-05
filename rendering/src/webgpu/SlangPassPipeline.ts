@@ -8,7 +8,8 @@ export interface SlangPassPipelineDescriptor {
   height: number;
   output: "texture" | "canvas";
   channels: Array<{ slot: number; key: string; kind?: string }>;
-  storage: StorageBindingNode[];
+  storage?: StorageBindingNode[];
+  uniformBufferSize?: number;
 }
 
 export interface SlangChannelResource {
@@ -22,13 +23,13 @@ export interface SlangChannelResource {
 }
 
 // Buffer (texture-output) passes render to float textures so feedback state
-// is not clamped to [0,1] or quantized to 8 bits by the canvas format —
-// matching the WebGL engine's float buffer textures. rgba16float is
-// filterable and renderable without any optional device features.
+// is not clamped to [0,1] or quantized to 8 bits by the canvas format. The
+// engine prefers rgba32float for WebGL parity when float32 filtering is
+// available; rgba16float remains the portable fallback.
 export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
+export const HIGH_PRECISION_BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba32float";
 
 export class SlangPassPipeline {
-  private shaderModule: GPUShaderModule | null = null;
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
@@ -44,6 +45,7 @@ export class SlangPassPipeline {
     private readonly device: GPUDevice,
     private readonly format: GPUTextureFormat,
     private descriptor: SlangPassPipelineDescriptor,
+    private readonly bufferTextureFormat: GPUTextureFormat = BUFFER_TEXTURE_FORMAT,
   ) {}
 
   async rebuild(wgsl: string): Promise<string[]> {
@@ -87,11 +89,10 @@ export class SlangPassPipeline {
     if (generation !== this.rebuildGeneration) {
       return [];
     }
-    this.shaderModule = shaderModule;
     this.bindGroupLayout = bindGroupLayout;
     this.pipeline = pipeline;
     this.uniformBuffer = this.device.createBuffer({
-      size: SHADERTOY_UNIFORM_SIZE,
+      size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
@@ -107,7 +108,7 @@ export class SlangPassPipeline {
         throw error;
       }
     }
-    if (this.descriptor.channels.length === 0 && this.descriptor.storage.length === 0) {
+    if (this.descriptor.channels.length === 0 && (this.descriptor.storage?.length ?? 0) === 0) {
       // Passes with channels or storage cannot build a valid bind group yet
       // (the explicit layout requires those resources); rebuildBindGroup
       // creates it each frame once live resources are resolved.
@@ -132,34 +133,83 @@ export class SlangPassPipeline {
 
   /**
    * Change the pass's output size without recompiling the shader module.
-   * Texture passes get fresh ping-pong textures at the new size (feedback
-   * state is necessarily reset); canvas passes only track the new size.
+   * Texture passes copy both ping-pong states into the overlapping region of
+   * the new targets so feedback survives a preview resize.
    */
   resize(width: number, height: number): void {
     if (this.descriptor.width === width && this.descriptor.height === height) {
       return;
     }
-    const nextDescriptor = { ...this.descriptor, width, height };
-    if (this.descriptor.output === "texture" && this.textures.length > 0) {
-      const nextTextures: GPUTexture[] = [];
-      let nextViews: GPUTextureView[];
-      try {
-        nextTextures.push(this.createOutputTexture(width, height));
-        nextTextures.push(this.createOutputTexture(width, height));
-        nextViews = nextTextures.map((texture) => texture.createView());
-      } catch (error) {
-        SlangPassPipeline.destroyTextureList(nextTextures);
-        throw error;
-      }
-      const previousTextures = this.textures;
-      this.descriptor = nextDescriptor;
-      this.textures = nextTextures;
-      this.outputViews = nextViews;
-      this.textureIndex = 0;
-      SlangPassPipeline.destroyTextureList(previousTextures);
+    if (this.descriptor.output !== "texture" || this.textures.length === 0) {
+      this.descriptor = { ...this.descriptor, width, height };
       return;
     }
-    this.descriptor = nextDescriptor;
+    const encoder = this.device.createCommandEncoder();
+    const finishResize = this.encodeResize(width, height, encoder);
+    if (finishResize) {
+      this.device.queue.submit([encoder.finish()]);
+      finishResize();
+    }
+  }
+
+  /**
+   * Record a texture resize into a caller-owned encoder. The returned callback
+   * releases the old textures and must run only after the commands are
+   * submitted, allowing an engine resize to batch several pass migrations.
+   */
+  encodeResize(width: number, height: number, encoder: GPUCommandEncoder): (() => void) | null {
+    if (this.descriptor.width === width && this.descriptor.height === height) {
+      return null;
+    }
+    const oldWidth = this.descriptor.width;
+    const oldHeight = this.descriptor.height;
+    if (this.descriptor.output === "texture" && this.textures.length > 0) {
+      const oldTextures = this.textures;
+      const oldTextureIndex = this.textureIndex;
+      const newTextures: GPUTexture[] = [];
+      let newViews: GPUTextureView[];
+      try {
+        newTextures.push(this.createOutputTexture(width, height));
+        newTextures.push(this.createOutputTexture(width, height));
+        newViews = newTextures.map((texture) => texture.createView());
+      } catch (error) {
+        SlangPassPipeline.destroyTextureList(newTextures);
+        throw error;
+      }
+      const copySize = {
+        width: Math.min(oldWidth, width),
+        height: Math.min(oldHeight, height),
+        depthOrArrayLayers: 1,
+      };
+      // WebGPU copy origins are top-left, while ShaderToy feedback content is
+      // authored in bottom-left coordinates. Offset the taller side so the
+      // overlapping logical bottom-left region stays anchored across resize.
+      const sourceOrigin = { x: 0, y: Math.max(0, oldHeight - height) };
+      const destinationOrigin = { x: 0, y: Math.max(0, height - oldHeight) };
+      try {
+        for (let index = 0; index < oldTextures.length; index++) {
+          encoder.copyTextureToTexture(
+            { texture: oldTextures[index], origin: sourceOrigin },
+            { texture: newTextures[index], origin: destinationOrigin },
+            copySize,
+          );
+        }
+      } catch (error) {
+        SlangPassPipeline.destroyTextureList(newTextures);
+        throw error;
+      }
+      this.descriptor = { ...this.descriptor, width, height };
+      this.textures = newTextures;
+      this.outputViews = newViews;
+      this.textureIndex = oldTextureIndex;
+      return () => {
+        for (const texture of oldTextures) {
+          texture.destroy?.();
+        }
+      };
+    }
+    this.descriptor = { ...this.descriptor, width, height };
+    return null;
   }
 
   rebuildBindGroup(
@@ -169,7 +219,7 @@ export class SlangPassPipeline {
     if (!this.pipeline || !this.uniformBuffer || !this.bindGroupLayout) {
       return;
     }
-    const resolvedStorage = this.descriptor.storage.map((node) => ({
+    const resolvedStorage = (this.descriptor.storage ?? []).map((node) => ({
       node,
       buffer: storageBuffers?.get(node.name),
     }));
@@ -252,6 +302,17 @@ export class SlangPassPipeline {
     }
   }
 
+  /** Replace both ping-pong targets, clearing all accumulated feedback state. */
+  resetOutputTextures(): void {
+    if (this.descriptor.output !== "texture" || this.textures.length === 0) {
+      return;
+    }
+    this.destroyTextures();
+    this.textures = [this.createOutputTexture(), this.createOutputTexture()];
+    this.outputViews = this.textures.map((texture) => texture.createView());
+    this.textureIndex = 0;
+  }
+
   dispose(): void {
     this.rebuildGeneration++;
     this.resetResources();
@@ -287,7 +348,7 @@ export class SlangPassPipeline {
       });
     }
     const storageBaseBinding = 1 + sorted.length * 2;
-    for (const node of this.descriptor.storage) {
+    for (const node of this.descriptor.storage ?? []) {
       entries.push({
         binding: storageBaseBinding + node.binding,
         visibility: GPUShaderStage.FRAGMENT,
@@ -299,7 +360,7 @@ export class SlangPassPipeline {
 
   /** Render target format: float for buffer feedback, canvas format otherwise. */
   private targetFormat(): GPUTextureFormat {
-    return this.descriptor.output === "texture" ? BUFFER_TEXTURE_FORMAT : this.format;
+    return this.descriptor.output === "texture" ? this.bufferTextureFormat : this.format;
   }
 
   private createOutputTexture(
@@ -309,14 +370,16 @@ export class SlangPassPipeline {
     return this.device.createTexture({
       size: { width, height },
       format: this.targetFormat(),
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT
+        | GPUTextureUsage.TEXTURE_BINDING
+        | GPUTextureUsage.COPY_SRC
+        | GPUTextureUsage.COPY_DST,
     });
   }
 
   private resetResources(): void {
     this.destroyTextures();
     this.destroyUniformBuffer();
-    this.shaderModule = null;
     this.pipeline = null;
     this.invalidateBindGroup();
     this.bindGroupLayout = null;

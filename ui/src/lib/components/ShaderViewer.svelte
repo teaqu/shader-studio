@@ -519,9 +519,13 @@
     return true;
   }
 
-  function handleCanvasResize(data: { width: number; height: number }) {
+  function handleCanvasSizeChange(data: { width: number; height: number }) {
     canvasWidth = Math.round(data.width);
     canvasHeight = Math.round(data.height);
+  }
+
+  function handleCanvasResize(data: { width: number; height: number }) {
+    handleCanvasSizeChange(data);
     if (!initialized) {
       return;
     }
@@ -602,6 +606,10 @@
     const currentShaderPath = pipeline.getLastEvent()?.data?.path;
     shaderLocker.toggleLock(currentShaderPath);
     isLocked = shaderLocker.isLocked();
+    transport.postMessage({
+      type: 'shaderLockState',
+      payload: { lockedShaderPath: shaderLocker.getLockedShaderPath() },
+    });
   }
 
   function handleOverlayBufferSelect(name: string) {
@@ -815,9 +823,6 @@
     if (!state.isEnabled || !state.isVariableInspectorEnabled) {
       return;
     }
-    const engineCanvas = renderingEngine?.getCanvas?.();
-    const effectiveCanvasWidth = engineCanvas?.width ?? canvasWidth;
-    const effectiveCanvasHeight = engineCanvas?.height ?? canvasHeight;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
@@ -827,8 +832,8 @@
       filePath: state.filePath,
       pixelX: capturePixelX,
       pixelY: capturePixelY,
-      canvasWidth: effectiveCanvasWidth,
-      canvasHeight: effectiveCanvasHeight,
+      canvasWidth,
+      canvasHeight,
       loopMaxIters: shaderDebugManager.getLoopMaxIterations(),
       customParams: shaderDebugManager.getCustomParameters(),
       sampleSize: variableCaptureManager.sampleSize,
@@ -844,17 +849,26 @@
     return renderingEngine.getUniforms();
   }
 
+  function shaderPathsEqual(firstPath: string, secondPath: string) {
+    return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
+  }
+
   function handleShaderSource(event: MessageEvent) {
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
-    if (!locked || lockedPath === event.data.path) {
+    if (!locked || (
+      lockedPath
+      && event.data.path
+      && shaderPathsEqual(lockedPath, event.data.path)
+    )) {
       const isFirstShader = !hasShader && event.data.path;
       if (isFirstShader) {
         restoreEditorOverlayFromStorage();
       }
       const prevShaderPath = shaderPath;
       const nextShaderPath = event.data.path || "";
-      const isSameShader = nextShaderPath !== "" && nextShaderPath === prevShaderPath;
+      const isSameShader = nextShaderPath !== ""
+        && shaderPathsEqual(nextShaderPath, prevShaderPath);
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
@@ -927,8 +941,13 @@
     }
 
     if (type === 'shaderSource') {
-      // If the shader's language doesn't match the active engine, remount the
-      // canvas with the right backend (WebGL vs WebGPU) and replay this message.
+      const messageTarget = pipeline.getShaderMessageTarget(event.data);
+      if (!messageTarget) {
+        return;
+      }
+
+      // Only a main shader can select the renderer backend. Configured pass
+      // updates often omit language and must stay on the locked main backend.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
       const shaderMessageStartedAt = performance.now();
       console.info('[ShaderSwitchTiming] shaderSource received', {
@@ -936,9 +955,16 @@
         language: msgLanguage,
         engineLanguage,
         appInitialized,
-        requiresBackendSwap: appInitialized && msgLanguage !== engineLanguage,
+        requiresBackendSwap:
+          messageTarget.kind === 'main'
+            && appInitialized
+            && msgLanguage !== engineLanguage,
       });
-      if (appInitialized && msgLanguage !== engineLanguage) {
+      if (
+        messageTarget.kind === 'main'
+        && appInitialized
+        && msgLanguage !== engineLanguage
+      ) {
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
@@ -951,7 +977,9 @@
         return;
       }
 
-      handleShaderSource(event);
+      if (messageTarget.kind === 'main') {
+        handleShaderSource(event);
+      }
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
         console.info('[ShaderSwitchTiming] shaderSource pipeline complete', {
@@ -1294,6 +1322,7 @@
         {zoomLevel}
         isInspectorActive={inspectorState.isActive}
         onCanvasReady={handleCanvasReady}
+        onCanvasSizeChange={handleCanvasSizeChange}
         onCanvasResize={handleCanvasResize}
         onCanvasClick={handleCanvasClick}
       />
@@ -1331,7 +1360,6 @@
         {getUniforms}
         {shaderDebugManager}
         {variableCaptureManager}
-        canvasElement={glCanvas}
         {canvasWidth}
         {canvasHeight}
         onExpandVarHistogram={handleExpandVarHistogram}

@@ -9,8 +9,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    pool: 'vmThreads',
-    poolOptions: { vmThreads: { maxThreads: 4 } },
+    // Svelte rune modules re-imported after vi.resetModules() must be transformed
+    // in a fresh process; vmThreads can return Svelte's raw rune stubs instead.
+    pool: 'forks',
+    poolOptions: { forks: { maxForks: 4 } },
     coverage: {
       exclude: [
         'vendor/**',

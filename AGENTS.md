@@ -47,6 +47,12 @@ Test structure mirrors `src/lib/`: unit tests in `src/test/`, component tests in
 
 For rendering pipeline bugs, keep WebGL and WebGPU/Slang coverage in sync when applicable. If an issue appears in one pipeline and the equivalent behavior exists in the other, add or verify tests for both paths rather than only testing the pipeline where the bug was first observed.
 
+## Extension Development Builds
+
+Do not run the full root `npm run build` merely to prepare changes for manual testing in the Extension Development Host. Both VS Code launch configurations use the default build task, which runs `extension`'s `compile` script and rebuilds/copies the UI bundle when the user launches or restarts the extension with the green debug button.
+
+Package-level builds and type checks are still required when they are relevant verification for the files changed. Only skip the redundant full extension build before manual testing.
+
 ## Linting
 
 ESLint is enforced. **Always run ESLint after making changes:**
@@ -71,6 +77,14 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 ## Conventions
 
+- Treat `.gitignore` as authoritative. Never force-add an ignored file with
+  `git add -f` (including generated artifacts and workflow planning/spec files)
+  unless the user explicitly asks for that exact ignored file to be tracked.
+  Skill or workflow instructions to commit a file do not override the
+  repository's ignore rules.
+- `docs/superpowers/` and `.superpowers/` are local-only locations. Files may
+  exist there locally, but they must remain ignored and must never be staged or
+  committed. Keep workflow plans and design notes out of Git history.
 - Optional method calls: `obj?.method?.()` not `typeof obj.method === 'function' && obj.method()`
 - No `any` without comment explaining why
 - Prefer pure functions over methods with side effects where possible
