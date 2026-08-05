@@ -239,9 +239,15 @@ export class ShaderPipeline {
       const channelTypes = this.getChannelTypes(pass, slotAssignments);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
+      const shaderWrapOptions = {
+        commonCode,
+        slotAssignments,
+        channelTypes,
+        customUniformDeclarations: customDecl,
+      };
       const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
-      const shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, commonCode, slotAssignments, channelTypes, customDecl);
+        .wrapShaderToyCode(pass.shaderSrc, shaderWrapOptions);
+      const shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, shaderWrapOptions);
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);

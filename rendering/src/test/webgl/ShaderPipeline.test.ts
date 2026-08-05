@@ -328,10 +328,12 @@ describe("ShaderPipeline", () => {
 
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         shaderCode,
-        "",
-        [{ slot: 0, key: "iChannel0", isCustomName: false }],
-        ["Cube", "2D", "2D", "2D"],
-        undefined,
+        {
+          commonCode: "",
+          slotAssignments: [{ slot: 0, key: "iChannel0", isCustomName: false }],
+          channelTypes: ["Cube", "2D", "2D", "2D"],
+          customUniformDeclarations: undefined,
+        },
       );
       expect(mockResourceManager.loadCubemapTexture).toHaveBeenCalledWith("env-cross.png", {
         filter: "linear",
@@ -757,10 +759,12 @@ describe("ShaderPipeline", () => {
       expect(result.success).toBe(true);
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         expect.stringContaining("void mainImage(out vec4 fragColor, in vec2 fragCoord)"),
-        expect.stringContaining("commonFunction"),
-        expect.any(Array),
-        expect.any(Array),
-        undefined,
+        expect.objectContaining({
+          commonCode: expect.stringContaining("commonFunction"),
+          slotAssignments: expect.any(Array),
+          channelTypes: expect.any(Array),
+          customUniformDeclarations: undefined,
+        }),
       );
     });
   });
@@ -1846,10 +1850,12 @@ describe("ShaderPipeline", () => {
 
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         expect.any(String),
-        "",
-        [{ slot: 0, key: "myTexture", isCustomName: true }],
-        expect.any(Array),
-        undefined,
+        {
+          commonCode: "",
+          slotAssignments: [{ slot: 0, key: "myTexture", isCustomName: true }],
+          channelTypes: expect.any(Array),
+          customUniformDeclarations: undefined,
+        },
       );
     });
   });

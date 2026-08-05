@@ -1,12 +1,24 @@
-import {
-  buildGlslCompatibilityUniformDeclarationLines,
-  GLSL_STABLE_DECLARATION_LINES,
-  glslSamplerType,
-} from "@shader-studio/types";
+import type { GeometryType } from "@shader-studio/types";
+import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
 
 export type ChannelSamplerType = '2D' | 'Cube' | '3D';
+
+export interface ShaderWrapOptions {
+  geometry?: GeometryType;
+  commonCode?: string;
+  slotAssignments?: SlotAssignment[];
+  channelTypes?: ChannelSamplerType[];
+  customUniformDeclarations?: string;
+}
+
+export interface WrappedShaderSource {
+  vertexSource: string;
+  wrappedCode: string;
+  headerLineCount: number;
+  commonCodeLineCount: number;
+}
 
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 
@@ -20,57 +32,149 @@ export class ShaderCompiler {
     }
   }
 
+  private getSamplerType(type: ChannelSamplerType): string {
+    switch (type) {
+      case 'Cube': return 'samplerCube';
+      case '3D': return 'sampler3D';
+      case '2D':
+      default: return 'sampler2D';
+    }
+  }
+
+  public wrapShaderToyCode(code: string, options?: ShaderWrapOptions): WrappedShaderSource;
   public wrapShaderToyCode(
     code: string,
     commonCode?: string,
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
     customUniformDeclarations?: string,
-  ): { wrappedCode: string; headerLineCount: number; commonCodeLineCount: number } {
-    const types = channelTypes || ['2D', '2D', '2D', '2D'];
-    const channelDeclarations = this.buildChannelDeclarations(slotAssignments, types);
-    const compatibilityDeclarations = buildGlslCompatibilityUniformDeclarationLines(
-      Array.from({ length: 4 }, (_, slot) => glslSamplerType(types[slot] ?? '2D')),
-    ).join("\n");
+  ): WrappedShaderSource;
+  public wrapShaderToyCode(
+    code: string,
+    optionsOrCommonCode?: ShaderWrapOptions | string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
+  ): WrappedShaderSource {
+    const options = this.normalizeWrapOptions(
+      optionsOrCommonCode,
+      slotAssignments,
+      channelTypes,
+      customUniformDeclarations,
+    );
+    const types = options.channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
+    const mesh = isMeshGeometry(options.geometry);
+    const fragmentContext = mesh
+      ? `in vec2 ${MESH_FRAGMENT_CONTEXT.uv};
+in vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
+in vec3 ${MESH_FRAGMENT_CONTEXT.normal};
+uniform vec3 ${MESH_FRAGMENT_CONTEXT.cameraPosition};`
+      : `const vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition} = vec3(0.0);
+const vec3 ${MESH_FRAGMENT_CONTEXT.normal} = vec3(0.0);
+const vec3 ${MESH_FRAGMENT_CONTEXT.cameraPosition} = vec3(0.0);`;
 
     let header = `
-${GLSL_STABLE_DECLARATION_LINES.join("\n")}
+precision highp float;
+out vec4 fragColor;
+#define HW_PERFORMANCE 1
+uniform vec3 iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform float iFrameRate;
 ${channelDeclarations}
-${compatibilityDeclarations}
+uniform vec4 iMouse;
+uniform int iFrame;
+uniform vec4 iDate;
+uniform float iChannelTime[4];
+uniform float iSampleRate;
+uniform vec3 iCameraPos;
+uniform vec3 iCameraDir;
+${fragmentContext}
+uniform struct {
+  ${this.getSamplerType(types[0])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh0;
+uniform struct {
+  ${this.getSamplerType(types[1])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh1;
+uniform struct {
+  ${this.getSamplerType(types[2])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh2;
+uniform struct {
+  ${this.getSamplerType(types[3])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh3;
 `;
 
-    if (customUniformDeclarations) {
-      header += customUniformDeclarations + "\n";
+    if (options.customUniformDeclarations) {
+      header += options.customUniformDeclarations + "\n";
     }
 
     let commonCodeLineCount = 0;
-    if (commonCode) {
-      commonCodeLineCount = (commonCode.match(/\n/g) || []).length + 1;
-      header += commonCode + "\n";
+    if (options.commonCode) {
+      commonCodeLineCount = (options.commonCode.match(/\n/g) || []).length + 1;
+      header += options.commonCode + "\n";
     }
 
-    const shaderCode = header + code + "\nvoid main() {\n mainImage(fragColor, gl_FragCoord.xy);\n}";
+    const coordinate = mesh
+      ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
+      : "gl_FragCoord.xy";
+    const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
     const headerLineCount = (header.match(/\n/g) || []).length;
-    return { wrappedCode: shaderCode, headerLineCount, commonCodeLineCount };
+    return {
+      vertexSource: this.buildVertexSource(mesh),
+      wrappedCode: shaderCode,
+      headerLineCount,
+      commonCodeLineCount,
+    };
   }
 
-  public async compileShaderAsync(
+  public compileShaderAsync(shaderSrc: string, options?: ShaderWrapOptions): Promise<PiShader | null>;
+  public compileShaderAsync(
     shaderSrc: string,
     commonCode?: string,
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
     customUniformDeclarations?: string,
+  ): Promise<PiShader | null>;
+  public async compileShaderAsync(
+    shaderSrc: string,
+    optionsOrCommonCode?: ShaderWrapOptions | string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
   ): Promise<PiShader | null> {
+    const options = this.normalizeWrapOptions(
+      optionsOrCommonCode,
+      slotAssignments,
+      channelTypes,
+      customUniformDeclarations,
+    );
     const gl = this.gl;
     const ext = this.khrParallelCompile;
     if (!gl || !ext) {
-      return this.compileShader(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
+      return this.compileShader(shaderSrc, options);
     }
 
     const glslPrefix = `#version 300 es\n#ifdef GL_ES\nprecision highp float;\nprecision highp int;\nprecision mediump sampler3D;\n#endif\n`;
     const glslPrefixLines = (glslPrefix.match(/\n/g) ?? []).length;
-    const vsSource = `${glslPrefix}in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const { wrappedCode: fsSource, headerLineCount } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
+    const {
+      vertexSource,
+      wrappedCode: fsSource,
+      headerLineCount,
+    } = this.wrapShaderToyCode(shaderSrc, options);
+    const vsSource = `${glslPrefix}${vertexSource}`;
     const fsPrefixed = `${glslPrefix}${fsSource}`;
     const mHeaderLines = glslPrefixLines + headerLineCount;
     const compileId = ShaderCompiler.nextAsyncCompileId++;
@@ -211,17 +315,69 @@ ${compatibilityDeclarations}
     }
   }
 
+  public compileShader(shaderSrc: string, options?: ShaderWrapOptions): PiShader | null;
   public compileShader(
     shaderSrc: string,
     commonCode?: string,
     slotAssignments?: SlotAssignment[],
     channelTypes?: ChannelSamplerType[],
     customUniformDeclarations?: string,
+  ): PiShader | null;
+  public compileShader(
+    shaderSrc: string,
+    optionsOrCommonCode?: ShaderWrapOptions | string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
   ): PiShader | null {
-    const vs =
-      `in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
-    const { wrappedCode: fs } = this.wrapShaderToyCode(shaderSrc, commonCode, slotAssignments, channelTypes, customUniformDeclarations);
-    return this.renderer.CreateShader(vs, fs);
+    const options = this.normalizeWrapOptions(
+      optionsOrCommonCode,
+      slotAssignments,
+      channelTypes,
+      customUniformDeclarations,
+    );
+    const { vertexSource, wrappedCode } = this.wrapShaderToyCode(shaderSrc, options);
+    return this.renderer.CreateShader(vertexSource, wrappedCode);
+  }
+
+  private normalizeWrapOptions(
+    optionsOrCommonCode?: ShaderWrapOptions | string,
+    slotAssignments?: SlotAssignment[],
+    channelTypes?: ChannelSamplerType[],
+    customUniformDeclarations?: string,
+  ): ShaderWrapOptions {
+    if (typeof optionsOrCommonCode === "object" && optionsOrCommonCode !== null) {
+      return optionsOrCommonCode;
+    }
+    return {
+      commonCode: optionsOrCommonCode,
+      slotAssignments,
+      channelTypes,
+      customUniformDeclarations,
+    };
+  }
+
+  private buildVertexSource(mesh: boolean): string {
+    if (!mesh) {
+      return "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
+    }
+    return `layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 uv;
+uniform mat4 _meshModel;
+uniform mat4 _meshView;
+uniform mat4 _meshProjection;
+uniform mat3 _meshNormalMatrix;
+out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
+out vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
+out vec3 ${MESH_FRAGMENT_CONTEXT.normal};
+void main() {
+ vec4 _meshWorldPosition = _meshModel * vec4(position, 1.0);
+ gl_Position = _meshProjection * _meshView * _meshWorldPosition;
+ ${MESH_FRAGMENT_CONTEXT.uv} = uv;
+ ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
+ ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * normal;
+}`;
   }
 
   private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
@@ -234,14 +390,14 @@ ${compatibilityDeclarations}
     let decl = "";
     // Always declare iChannel0 through iChannel{N-1} — these are the slot uniforms
     for (let i = 0; i < channelCount; i++) {
-      const samplerType = glslSamplerType(types[i] || '2D');
+      const samplerType = this.getSamplerType(types[i] || '2D');
       decl += `uniform ${samplerType} iChannel${i};\n`;
     }
     // Declare custom name aliases for slots where the key differs from iChannel{N}
     if (slotAssignments) {
       for (const { slot, key, isCustomName } of slotAssignments) {
         if (isCustomName) {
-          const samplerType = glslSamplerType(types[slot] || '2D');
+          const samplerType = this.getSamplerType(types[slot] || '2D');
           decl += `uniform ${samplerType} ${key};\n`;
         }
       }

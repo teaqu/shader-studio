@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { SlangCompiler } from "../../webgpu/SlangCompiler";
 import type {
@@ -10,6 +12,28 @@ import {
   SLANG_ENTRY_FRAGMENT,
   SLANG_ENTRY_COMPUTE,
 } from "../../webgpu/SlangPrelude";
+
+function findRealSlangAssets(): { script: string; wasm: string } | null {
+  const assetDirectory = resolve(__dirname, "../../../../ui/src/slang");
+  const script = resolve(assetDirectory, "slang-wasm.js");
+  const configuredWasm = process.env.SHADER_STUDIO_SLANG_WASM_PATH;
+  const wasm = configuredWasm
+    ? resolve(configuredWasm)
+    : resolve(assetDirectory, "slang-wasm.wasm");
+  if (existsSync(script) && existsSync(wasm)) {
+    return { script, wasm };
+  }
+  return null;
+}
+
+const realSlangAssets = findRealSlangAssets();
+
+async function loadRealSlang(script: string, wasm: string): Promise<SlangModuleApi> {
+  const runtime = await import(/* @vite-ignore */ script) as {
+    default: (options: { locateFile: () => string }) => Promise<SlangModuleApi>;
+  };
+  return runtime.default({ locateFile: () => wasm });
+}
 
 /** Build a fake slang module whose pieces can be selectively broken. */
 function makeFakeSlang(opts: {
@@ -70,6 +94,93 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it.each(["plane", "cube", "sphere"] as const)(
+    "generates a %s mesh entry point with fragment compatibility values",
+    (geometry) => {
+      const onLoad = vi.fn();
+      const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+      compiler.compileImagePass(
+        `float4 mainImage(float2 fragCoord) {
+          return float4(iWorldPosition + iNormal + iCameraPosition, 1);
+        }`,
+        { geometry },
+      );
+
+      const wrapped = onLoad.mock.calls[0][0] as string;
+      expect(wrapped).toContain("static float3 iWorldPosition;");
+      expect(wrapped).toContain("static float3 iNormal;");
+      expect(wrapped).toContain("static float3 iCameraPosition;");
+      expect(wrapped).toContain("float4 position : SV_Position;");
+      expect(wrapped).toContain("float2 uv : TEXCOORD0;");
+      expect(wrapped).toContain("float3 worldPosition : TEXCOORD1;");
+      expect(wrapped).toContain("float3 normal : TEXCOORD2;");
+      expect(wrapped).toContain("[[vk::location(0)]] float3 position : POSITION");
+      expect(wrapped).toContain("[[vk::location(1)]] float3 normal : NORMAL");
+      expect(wrapped).toContain("[[vk::location(2)]] float2 uv : TEXCOORD0");
+      expect(wrapped).toContain(`iWorldPosition = input.worldPosition;
+    iNormal = input.normal;
+    iCameraPosition = _mesh.cameraPosition.xyz;
+    float4 color = mainImage(input.uv * _st.resolution.xy);`);
+      expect(wrapped).toContain("return color;");
+      expect(wrapped).not.toContain("_previewWrap");
+      expect(wrapped).not.toContain("mapped * _st.resolution.xy");
+    },
+  );
+
+  it("keeps the fullscreen entry point and zero-initialized compatibility statics by default", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass(
+      "float4 mainImage(float2 c) { return float4(iWorldPosition + iNormal + iCameraPosition, 1); }",
+    );
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("static float3 iWorldPosition;");
+    expect(wrapped).toContain("static float3 iNormal;");
+    expect(wrapped).toContain("static float3 iCameraPosition;");
+    expect(wrapped).toContain("float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);");
+    expect(wrapped).toContain("return mainImage(coord);");
+    expect(wrapped).not.toContain("struct MeshVertexOut");
+  });
+
+  it("places mesh uniforms after existing channel bindings", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(c); }", {
+      geometry: "cube",
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    const wrapped = onLoad.mock.calls[0][0] as string;
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("[[vk::binding(3, 0)]]\nConstantBuffer<MeshUniforms> _mesh;");
+  });
+
+  it.runIf(realSlangAssets)(
+    "compiles the mesh adapter with real Slang (set SHADER_STUDIO_SLANG_WASM_PATH when the ignored asset is absent)",
+    async () => {
+      const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
+      const compiler = new SlangCompiler(slang);
+
+      const result = compiler.compileImagePass(
+        `float4 mainImage(float2 fragCoord) {
+          float3 context = iWorldPosition + normalize(iNormal) + iCameraPosition;
+          return float4(context + float3(fragCoord, 0), 1);
+        }`,
+        { geometry: "sphere" },
+      );
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.wgsl.trim().length).toBeGreaterThan(0);
+      }
+    },
+  );
+
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
     const result = compiler.compileImagePass("float4 mainImage(float2 c) { return float4(1); }");

@@ -201,10 +201,12 @@ describe("VariableCapturer", () => {
 
       expect(shaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         expect.any(String),
-        "float saturate(float x) { return clamp(x, 0.0, 1.0); }",
-        [{ slot: 0, key: "noiseTex", isCustomName: true }],
-        ['2D', '2D', '2D', '2D'],
-        undefined,
+        {
+          commonCode: "float saturate(float x) { return clamp(x, 0.0, 1.0); }",
+          slotAssignments: [{ slot: 0, key: "noiseTex", isCustomName: true }],
+          channelTypes: ['2D', '2D', '2D', '2D'],
+          customUniformDeclarations: undefined,
+        },
       );
     });
   });
@@ -1068,10 +1070,12 @@ describe("VariableCapturer", () => {
 
       expect(shaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         "capture_code",
-        undefined,
-        undefined,
-        undefined,
-        declarations,
+        {
+          commonCode: undefined,
+          slotAssignments: undefined,
+          channelTypes: undefined,
+          customUniformDeclarations: declarations,
+        },
       );
     });
 
@@ -1086,10 +1090,12 @@ describe("VariableCapturer", () => {
 
       expect(shaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         "code",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
+        {
+          commonCode: undefined,
+          slotAssignments: undefined,
+          channelTypes: undefined,
+          customUniformDeclarations: undefined,
+        },
       );
     });
 
@@ -1271,10 +1277,12 @@ describe("VariableCapturer", () => {
 
       expect(shaderCompiler.compileShaderAsync).toHaveBeenCalledWith(
         "grid_code",
-        undefined,
-        undefined,
-        undefined,
-        declarations,
+        {
+          commonCode: undefined,
+          slotAssignments: undefined,
+          channelTypes: undefined,
+          customUniformDeclarations: declarations,
+        },
       );
       expect(gl.uniform1f).toHaveBeenCalledWith(expect.anything(), 3.0);
     });

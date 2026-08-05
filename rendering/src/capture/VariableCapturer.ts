@@ -525,13 +525,12 @@ export class VariableCapturer implements IVariableCapturer {
 
     const startedAt = performance.now();
 
-    const piShader = await this.shaderCompiler.compileShaderAsync(
-      code,
-      this.compileContext.commonCode,
-      this.compileContext.slotAssignments,
-      this.compileContext.channelTypes,
-      this.customUniformDeclarations || undefined,
-    );
+    const piShader = await this.shaderCompiler.compileShaderAsync(code, {
+      commonCode: this.compileContext.commonCode,
+      slotAssignments: this.compileContext.slotAssignments,
+      channelTypes: this.compileContext.channelTypes,
+      customUniformDeclarations: this.customUniformDeclarations || undefined,
+    });
     if (!piShader || !piShader.mProgram) {
       if (piShader?.mInfo) {
         this.lastError = piShader.mInfo;
