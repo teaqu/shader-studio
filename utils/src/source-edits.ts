@@ -1,10 +1,12 @@
+import type { DebugSourceEdit } from "@shader-studio/types";
+
 export type ApplySourceEditsResult =
   | { ok: true; source: string }
   | { ok: false; code: "debug-overlapping-edits" };
 
 export function applySourceEdits(
   source: string,
-  edits: { start: number; end: number; text: string }[],
+  edits: readonly DebugSourceEdit[],
 ): ApplySourceEditsResult {
   const sortedEdits = [...edits].sort((left, right) =>
     left.start - right.start || left.end - right.end,

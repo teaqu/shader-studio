@@ -3,10 +3,23 @@ import { applySourceEdits } from "./source-edits";
 
 describe("applySourceEdits", () => {
   it("applies unordered non-overlapping edits", () => {
-    expect(applySourceEdits("abcdef", [
+    const edits = [
       { start: 4, end: 6, text: "XY" },
       { start: 1, end: 3, text: "!" },
-    ])).toEqual({ ok: true, source: "a!dXY" });
+    ];
+
+    expect(applySourceEdits("abcdef", edits)).toEqual({ ok: true, source: "a!dXY" });
+    expect(edits).toEqual([
+      { start: 4, end: 6, text: "XY" },
+      { start: 1, end: 3, text: "!" },
+    ]);
+  });
+
+  it("applies edits with touching boundaries", () => {
+    expect(applySourceEdits("abcdef", [
+      { start: 1, end: 3, text: "X" },
+      { start: 3, end: 5, text: "Y" },
+    ])).toEqual({ ok: true, source: "aXYf" });
   });
 
   it("rejects overlapping edits", () => {

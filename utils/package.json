@@ -13,6 +13,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@shader-studio/types": "*"
+  },
   "devDependencies": {
     "@types/node": "*",
     "typescript": "*",
