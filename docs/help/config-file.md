@@ -29,7 +29,7 @@ A single-pass shader with no inputs:
 
 ## Multi-Pass Example
 
-Image reads from BufferA, BufferA reads keyboard input:
+Image reads from an arbitrarily named `Simulation` pass, which reads keyboard input:
 
 ```json
 {
@@ -37,11 +37,11 @@ Image reads from BufferA, BufferA reads keyboard input:
   "passes": {
     "Image": {
       "inputs": {
-        "iChannel0": { "source": "BufferA", "type": "buffer" }
+        "iChannel0": { "source": "Simulation", "type": "buffer" }
       }
     },
-    "BufferA": {
-      "path": "bufferA.glsl",
+    "Simulation": {
+      "path": "simulation.glsl",
       "inputs": {
         "iChannel1": { "type": "keyboard" }
       }
@@ -209,8 +209,8 @@ This renders at `640 × 360`.
 Buffer passes use a simpler fixed-size resolution:
 
 ```json
-"BufferA": {
-  "path": "bufferA.glsl",
+"Flow": {
+  "path": "flow.glsl",
   "resolution": { "width": 512, "height": 512 }
 }
 ```
@@ -220,18 +220,19 @@ Buffer passes use a simpler fixed-size resolution:
 | Pass | Description |
 |------|-------------|
 | **Image** | Main output pass (required, always present) |
-| **Named buffer passes** | Intermediate render passes. `BufferA`–`BufferD` are conventional examples, but any valid identifier such as `BlurPass` is supported. Each renders to its own framebuffer and can be read by other passes. |
-| **Common** | Shared GLSL code included in all passes. Useful for shared functions and constants. |
+| **Any identifier** | An intermediate fragment pass. Names and pass counts are unrestricted; each renders to a texture other passes can read. |
+| **Compute\*** | A Slang/WebGPU compute pass. See [Compute Passes](../features/compute.md). |
+| **Common** | Shared GLSL or Slang code included in all passes. Useful for shared functions, types, and constants. |
 
-Each buffer pass needs a `path` field pointing to its `.glsl` or `.slang` file. If the file doesn't exist, the visual editor offers a button to create it.
+Each non-Image pass needs a `path` field pointing to its `.glsl` or `.slang` file. If the file doesn't exist, the visual editor offers a button to create it.
 
 ## Channel Types
 
-Each pass can bind up to 4 input channels (`iChannel0` through `iChannel3`):
+Each pass can bind up to 16 input channels (`iChannel0` through `iChannel15`):
 
 | Type | Fields | Description |
 |------|--------|-------------|
-| `buffer` | `source` | Read from another pass (e.g. `"source": "BufferA"`) |
+| `buffer` | `source`, optional `layer` | Read from an arbitrary fragment buffer pass or a compute pass (the reference allocates its output texture); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
 | `texture` | `path`, `filter`, `wrap`, `vflip`, `grayscale` | Image file |
 | `video` | `path`, `filter`, `wrap`, `vflip`, `muted` | Video file |
 | `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |
@@ -254,10 +255,10 @@ A buffer can read its own previous frame's output by binding itself as an input:
 
 ```json
 {
-  "BufferA": {
-    "path": "bufferA.glsl",
+  "Feedback": {
+    "path": "feedback.glsl",
     "inputs": {
-      "iChannel0": { "source": "BufferA", "type": "buffer" }
+      "iChannel0": { "source": "Feedback", "type": "buffer" }
     }
   }
 }

@@ -5,6 +5,13 @@
 // Values match the WebGPU spec (https://www.w3.org/TR/webgpu/#buffer-usage,
 // https://www.w3.org/TR/webgpu/#texture-usage).
 
+if (typeof globalThis.URL.createObjectURL !== 'function') {
+  globalThis.URL.createObjectURL = () => 'blob:test';
+}
+if (typeof globalThis.URL.revokeObjectURL !== 'function') {
+  globalThis.URL.revokeObjectURL = () => undefined;
+}
+
 if (typeof globalThis.GPUBufferUsage === 'undefined') {
   (globalThis as unknown as { GPUBufferUsage: typeof GPUBufferUsage }).GPUBufferUsage = {
     MAP_READ: 0x0001,

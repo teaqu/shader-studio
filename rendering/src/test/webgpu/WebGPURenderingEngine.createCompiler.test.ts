@@ -7,16 +7,24 @@ import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 // Worker global) can be driven directly.
 vi.mock("../../webgpu/AsyncSlangCompiler", () => ({
   WorkerSlangCompiler: { create: vi.fn() },
-  MainThreadSlangCompiler: vi.fn().mockImplementation(function (this: unknown, inner: unknown) {
-    return { kind: "main-thread", inner };
+  MainThreadSlangCompiler: vi.fn().mockImplementation(function (
+    this: { kind?: string; inner?: unknown },
+    inner: unknown,
+  ) {
+    this.kind = "main-thread";
+    this.inner = inner;
   }),
 }));
 vi.mock("../../webgpu/SlangModuleLoader", () => ({
   loadSlangModule: vi.fn(async () => ({ slangModule: true })),
 }));
 vi.mock("../../webgpu/SlangCompiler", () => ({
-  SlangCompiler: vi.fn().mockImplementation(function (this: unknown, slang: unknown) {
-    return { kind: "slang-compiler", slang };
+  SlangCompiler: vi.fn().mockImplementation(function (
+    this: { kind?: string; slang?: unknown },
+    slang: unknown,
+  ) {
+    this.kind = "slang-compiler";
+    this.slang = slang;
   }),
 }));
 
@@ -65,9 +73,21 @@ function assetResponse(url: string): Response {
 describe("WebGPURenderingEngine.createCompiler", () => {
   beforeEach(() => {
     workerCreate.mockReset();
-    mainThreadCtor.mockClear();
+    mainThreadCtor.mockReset().mockImplementation(function (
+      this: { kind?: string; inner?: unknown },
+      inner: unknown,
+    ) {
+      this.kind = "main-thread";
+      this.inner = inner;
+    });
     loadSlangModuleMock.mockClear();
-    slangCompilerCtor.mockClear();
+    slangCompilerCtor.mockReset().mockImplementation(function (
+      this: { kind?: string; slang?: unknown },
+      slang: unknown,
+    ) {
+      this.kind = "slang-compiler";
+      this.slang = slang;
+    });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
       ok: true,
       status: 200,

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
-
-  type FileType = 'script' | 'glsl-buffer' | 'glsl-common' | 'texture' | 'video' | 'audio' | 'cubemap';
+  import type { CreateFileMessage, FileDialogFileType, SelectFileMessage } from '@shader-studio/types';
 
   interface Props {
     value: string;
@@ -12,9 +11,9 @@
     note?: string;
     shaderPath?: string;
     suggestedPath?: string;
-    fileType?: FileType;
+    fileType?: FileDialogFileType;
     allowCreate?: boolean;
-    postMessage?: (msg: any) => void;
+    postMessage?: (msg: SelectFileMessage | CreateFileMessage) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;
   }
 

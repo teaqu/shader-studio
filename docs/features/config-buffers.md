@@ -1,4 +1,4 @@
-# Configure Buffers and Inputs
+# Configure Passes and Inputs
 
 The config panel is where you set up multi-pass pipelines and bind assets to shader inputs. Everything is stored in a `.sha.json` file that the visual editor writes for you.
 
@@ -19,8 +19,9 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | Tab | Description |
 |-----|-------------|
 | **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
-| **Named buffers** | Intermediate render passes, each backed by a separate shader file. `BufferA`–`BufferD` are conventional examples, but you can use any valid identifier such as `BlurPass`. |
-| **Common** | Shared shader code included verbatim at the top of every pass. Not a render pass — has no framebuffer. |
+| **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl` or `.slang` file. Names and pass counts are unrestricted. |
+| **Compute\*** | A Slang/WebGPU compute pass backed by a `.slang` file. Compute fields are edited in raw `.sha.json`. |
+| **Common** | Shared GLSL or Slang included at the top of every pass. Not a render pass — has no framebuffer. |
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
@@ -42,21 +43,21 @@ The Image pass can also have input channels (`iChannel0`–`iChannel15`). See [C
 
 See [Resolution](resolution.md) for how these settings interact with the toolbar.
 
-- `scale` and `customWidth` / `customHeight` are composable. For example, `customWidth: 320`, `customHeight: 180`, `scale: 2` renders as `640 × 360`.
+- `scale` and `width` / `height` are composable. For example, `width: 320`, `height: 180`, `scale: 2` renders as `640 × 360`.
 
 ---
 
 ## Buffer Passes
 
-Each buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer names follow the same identifier rules as shader variables, so names such as `BlurPass`, `GBuffer`, and `FeedbackState` work alongside the conventional `BufferA`–`BufferD` names. You can also configure input channels (`iChannel0`–`iChannel15`) for each buffer pass. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+Each fragment buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. You can also configure input channels (`iChannel0`–`iChannel15`) for each pass. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 **Path field** — points to the shader file for this buffer. Three path forms are supported:
 
 | Form | Example | Resolves relative to |
 |------|---------|----------------------|
-| Relative | `shader.blur.slang` | The main shader file |
-| Absolute | `/Users/me/project/blur.slang` | Filesystem root |
-| Workspace-root | `@/src/blur.slang` | VS Code workspace root |
+| Relative | `passes/flow.slang` | The main shader file |
+| Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
+| Workspace-root | `@/src/flow.glsl` | VS Code workspace root |
 
 If the file doesn't exist yet, the editor shows a **Create File** button that generates it with a `mainImage` stub.
 
@@ -67,7 +68,13 @@ If the file doesn't exist yet, the editor shows a **Create File** button that ge
 | **Fixed** | `512 × 512` | Exact pixel dimensions, independent of the canvas |
 | **Scale** | `0.5×` | Multiplier on the Image resolution — tracks canvas changes |
 
+---
 
+## Compute Passes
+
+For a Slang shader, a pass name beginning with `Compute` selects the WebGPU compute pipeline. The **+ Compute** action adds a pass entry; give it a `.slang` path and create that file with a `computeMain` function. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, `workgroupSize`, and `outputLayers` are currently edited in the raw `.sha.json` view.
+
+See [Compute Passes](compute.md) for the authoring convention, storage layout rules, and executable examples.
 
 ---
 
@@ -140,7 +147,7 @@ Because the script runs in Node.js, you can pull in values from anywhere — gam
 
 ## The Common Pass
 
-The Common pass points to a `.glsl` file whose contents are prepended verbatim to every other pass before compilation. Use it for shared utility functions, constants, and type definitions.
+The Common pass points to a `.glsl` or `.slang` file whose contents are prepended to every other pass before compilation. Use it for shared utility functions, constants, and type definitions.
 
 ```glsl
 // shader.common.glsl — available in Image, BufferA, etc.
@@ -162,7 +169,7 @@ float noise(vec2 p) {
 }
 ```
 
-You can then use `hash`, `noise`, or `PI` in any Image or Buffer pass.
+You can then use `hash`, `noise`, or `PI` in any Image or named buffer pass.
 
 !!! note
     Common is not rendered — it has no framebuffer. It is purely a code injection, equivalent to a `#include`.
@@ -171,7 +178,7 @@ You can then use `hash`, `noise`, or `PI` in any Image or Buffer pass.
 
 ## Other: Editing the Config File Directly
 
-The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code — the visual editor and the raw file stay in sync.
+The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl` or `myshader.slang` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code — the visual editor and the raw file stay in sync.
 
 !!! tip
     The config panel has a toggle to switch between the visual editor and raw JSON view.

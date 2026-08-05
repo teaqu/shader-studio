@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ResolutionSessionController } from '../../lib/resolution/ResolutionSessionController.svelte';
 import type { ControllerDeps } from '../../lib/resolution/ResolutionSessionController.svelte';
-import type { ShaderConfig } from '@shader-studio/types';
+import type { BaseMessage, ShaderConfig, UpdateConfigMessage } from '@shader-studio/types';
 import type { ShaderDebugState } from '../../lib/types/ShaderDebugState';
 
 const defaultDebugState: ShaderDebugState = {
@@ -72,11 +72,14 @@ function makeDeps(overrides: Partial<ControllerDeps> = {}): ControllerDeps {
   };
 }
 
-function postedPayloads(deps: ControllerDeps): Array<{ config: ShaderConfig; text: string; shaderPath: string; skipRefresh: boolean }> {
+function postedPayloads(
+  deps: ControllerDeps
+): Array<UpdateConfigMessage['payload'] & { shaderPath?: string; skipRefresh?: boolean }> {
   const post = vi.mocked(deps.transport.postMessage);
   return post.mock.calls
-    .filter((call) => call[0]?.type === 'updateConfig')
-    .map((call) => call[0].payload);
+    .map((call) => call[0])
+    .filter((message): message is BaseMessage & UpdateConfigMessage => message.type === 'updateConfig')
+    .map((message) => message.payload);
 }
 
 beforeEach(() => {

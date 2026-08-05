@@ -206,6 +206,16 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
     return { naturalWidth: w, naturalHeight: h, width: w, height: h } as HTMLImageElement;
   }
 
+  function fakeVideo(w: number, h: number): HTMLVideoElement & {
+    videoWidth: number;
+    videoHeight: number;
+  } {
+    return { videoWidth: w, videoHeight: h } as HTMLVideoElement & {
+      videoWidth: number;
+      videoHeight: number;
+    };
+  }
+
   it("vflip:true stores mirrored rows (flipY:false) so the prelude's v-flip yields GL orientation", () => {
     const handle = backend.createTextureFromImage(fakeImage(2, 1), { type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true });
     expect(handle).not.toBeNull();
@@ -322,5 +332,179 @@ describe("WebGPUTextureBackend.createTextureFromImage", () => {
       expect.objectContaining({ texture: handle.texture }),
       { width: 2, height: 2 },
     );
+  });
+
+  it("transactionally replaces a live video texture when its intrinsic dimensions change", () => {
+    const video = fakeVideo(2, 2);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    const originalView = handle.view;
+    video.videoWidth = 5;
+    video.videoHeight = 3;
+
+    backend.updateTextureFromImage(handle, video);
+
+    expect(handle.width).toBe(5);
+    expect(handle.height).toBe(3);
+    expect(handle.texture).not.toBe(originalTexture);
+    expect(handle.view).not.toBe(originalView);
+    expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(device.queue.copyExternalImageToTexture).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: expect.objectContaining({ width: 5, height: 3 }) }),
+      { texture: handle.texture },
+      { width: 5, height: 3 },
+    );
+  });
+
+  it("reuses a live video texture at the same size and ignores invalid intrinsic dimensions", () => {
+    const video = fakeVideo(4, 3);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture;
+    const originalView = handle.view;
+    device.createTexture.mockClear();
+    device.queue.copyExternalImageToTexture.mockClear();
+
+    backend.updateTextureFromImage(handle, video);
+    expect(device.createTexture).not.toHaveBeenCalled();
+    expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledTimes(1);
+
+    for (const [width, height] of [[0, 3], [-1, 3], [Number.NaN, 3], [4, 2.5]]) {
+      video.videoWidth = width;
+      video.videoHeight = height;
+      backend.updateTextureFromImage(handle, video);
+    }
+
+    expect(handle.texture).toBe(originalTexture);
+    expect(handle.view).toBe(originalView);
+    expect(handle.width).toBe(4);
+    expect(handle.height).toBe(3);
+    expect(device.createTexture).not.toHaveBeenCalled();
+    expect(device.queue.copyExternalImageToTexture).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the live video handle when resize allocation fails and retries later", () => {
+    const video = fakeVideo(2, 2);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    const originalView = handle.view;
+    const allocationFailure = new Error("video resize allocation failed");
+    video.videoWidth = 6;
+    video.videoHeight = 4;
+    device.createTexture.mockImplementationOnce(() => {
+      throw allocationFailure;
+    });
+
+    expect(() => backend.updateTextureFromImage(handle, video)).toThrow(allocationFailure);
+    expect(handle.texture).toBe(originalTexture);
+    expect(handle.view).toBe(originalView);
+    expect(handle.width).toBe(2);
+    expect(handle.height).toBe(2);
+    expect(originalTexture.destroy).not.toHaveBeenCalled();
+
+    backend.updateTextureFromImage(handle, video);
+    expect(handle.width).toBe(6);
+    expect(handle.height).toBe(4);
+    expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroys a failed resize upload candidate and preserves the original handle and error", () => {
+    const video = fakeVideo(2, 2);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    const originalView = handle.view;
+    const uploadFailure = new Error("video resize upload failed");
+    video.videoWidth = 7;
+    video.videoHeight = 5;
+    device.queue.copyExternalImageToTexture.mockImplementationOnce(() => {
+      throw uploadFailure;
+    });
+
+    expect(() => backend.updateTextureFromImage(handle, video)).toThrow(uploadFailure);
+
+    const candidate = device.createTexture.mock.results.at(-1)!.value as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    expect(candidate.destroy).toHaveBeenCalledTimes(1);
+    expect(handle.texture).toBe(originalTexture);
+    expect(handle.view).toBe(originalView);
+    expect(handle.width).toBe(2);
+    expect(handle.height).toBe(2);
+    expect(originalTexture.destroy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the resized video handle installed when retiring the old GPU texture throws", () => {
+    const video = fakeVideo(2, 2);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "linear", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    originalTexture.destroy.mockImplementationOnce(() => {
+      throw new Error("old video texture destroy failed");
+    });
+    video.videoWidth = 8;
+    video.videoHeight = 6;
+
+    expect(() => backend.updateTextureFromImage(handle, video)).not.toThrow();
+    expect(handle.texture).not.toBe(originalTexture);
+    expect(handle.width).toBe(8);
+    expect(handle.height).toBe(6);
+    expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries mipmap helper initialization after sampler creation fails during video resize", () => {
+    const video = fakeVideo(4, 4);
+    const handle = backend.createTextureFromImage(video, {
+      type: "2d", format: "rgba8", filter: "mipmap", wrap: "repeat", vflip: true,
+    })!;
+    const originalTexture = handle.texture as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    const mipState = backend as unknown as {
+      mipPipeline: GPURenderPipeline | null;
+      mipSampler: GPUSampler | null;
+    };
+    mipState.mipPipeline = null;
+    mipState.mipSampler = null;
+    device.createRenderPipeline.mockClear();
+    device.createSampler.mockClear();
+    const samplerFailure = new Error("mipmap sampler allocation failed");
+    device.createSampler.mockImplementationOnce(() => {
+      throw samplerFailure;
+    });
+    video.videoWidth = 8;
+    video.videoHeight = 8;
+
+    expect(() => backend.updateTextureFromImage(handle, video)).toThrow(samplerFailure);
+    const failedCandidate = device.createTexture.mock.results.at(-1)!.value as unknown as {
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    expect(failedCandidate.destroy).toHaveBeenCalledTimes(1);
+    expect(handle.texture).toBe(originalTexture);
+    expect(handle).toMatchObject({ width: 4, height: 4 });
+    expect(originalTexture.destroy).not.toHaveBeenCalled();
+
+    backend.updateTextureFromImage(handle, video);
+
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
+    expect(device.createSampler).toHaveBeenCalledTimes(2);
+    expect(handle).toMatchObject({ width: 8, height: 8 });
+    expect(handle.texture).not.toBe(originalTexture);
+    expect(originalTexture.destroy).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
+import type { ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -24,7 +24,14 @@ import {
 } from "./uniforms";
 import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
-import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
+import {
+  buildSlangPassGraph,
+  resolvePassResolution,
+  type ComputeWorkgroupLimits,
+  type RenderPassNode,
+} from "./SlangPassGraph";
+import type { StorageBindingNode } from "../types/PassGraph";
+import { SlangComputePipeline } from "./SlangComputePipeline";
 import {
   BUFFER_TEXTURE_FORMAT,
   HIGH_PRECISION_BUFFER_TEXTURE_FORMAT,
@@ -36,7 +43,6 @@ import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureB
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
-
 export interface SlangAssetUrls {
   scriptUrl: string;
   wasmUrl: string;
@@ -62,9 +68,111 @@ interface PassTiming {
   errorCount?: number;
 }
 
+interface PreparedStorageBuffers {
+  generation: number;
+  buffers: Map<string, GPUBuffer>;
+  keys: Map<string, string>;
+  layouts: Map<string, StorageBindingNode>;
+  stagedBuffers: GPUBuffer[];
+  settled: boolean;
+}
+
+interface PendingPipelineCandidates {
+  generation: number;
+  render: Set<SlangPassPipeline>;
+  compute: Set<SlangComputePipeline>;
+  resourceManager: ResourceManager<WebGPUTextureHandle> | null;
+  resourceLoadsPending: number;
+  resourceManagerDisposed: boolean;
+  installed: boolean;
+  settled: boolean;
+}
+
+interface ShaderCompileSnapshot {
+  code: string;
+  config: ShaderConfig | null;
+  path: string;
+  buffers: Record<string, string>;
+  customUniformDeclarations?: string;
+  customUniformInfo?: { name: string; type: string }[];
+  slangModules: SlangSourceModule[];
+  slangSourcePath?: string;
+}
+
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
-const SLANG_WGSL_CACHE_KEY_VERSION = 1;
+const SLANG_WGSL_CACHE_KEY_VERSION = 3;
+const SLANG_PIPELINE_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
+const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
+const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
+const DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = 65_535;
+const DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z = 64;
+
+type WorkgroupCounts = [number, number, number];
+
+function resolveWorkgroupCounts(
+  pass: RenderPassNode,
+  storageLayouts: Map<string, StorageBindingNode>,
+  channelResources: SlangChannelResource[],
+): WorkgroupCounts | null {
+  const dispatch = pass.dispatch ?? { mode: "texel" };
+  switch (dispatch.mode) {
+    case "texel":
+      return [
+        Math.ceil(pass.width / pass.workgroupSize[0]),
+        Math.ceil(pass.height / pass.workgroupSize[1]),
+        1,
+      ];
+    case "count":
+      return [Math.ceil(dispatch.count / pass.workgroupSize[0]), 1, 1];
+    case "workgroups":
+      return [dispatch.x, dispatch.y, dispatch.z];
+    case "cover-storage": {
+      const storage = storageLayouts.get(dispatch.name);
+      return storage
+        ? [Math.ceil(storage.count / pass.workgroupSize[0]), 1, 1]
+        : null;
+    }
+    case "cover-channel": {
+      const channel = pass.channels.find(({ key }) => key === dispatch.key);
+      const resource = channelResources.find(({ slot }) => slot === channel?.slot);
+      const width = resource?.width;
+      const height = resource?.height;
+      if (
+        typeof width !== "number" ||
+        typeof height !== "number" ||
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return null;
+      }
+      return [
+        Math.ceil(width / pass.workgroupSize[0]),
+        Math.ceil(height / pass.workgroupSize[1]),
+        1,
+      ];
+    }
+  }
+}
+
+function validateWorkgroupCounts(
+  passName: string,
+  counts: WorkgroupCounts,
+  limit: number,
+): string | null {
+  const axes = ["x", "y", "z"] as const;
+  for (let index = 0; index < counts.length; index += 1) {
+    if (counts[index] > limit) {
+      return `${passName}: dispatch ${axes[index]} count ${counts[index]} exceeds device limit ${limit}`;
+    }
+  }
+  return null;
+}
 
 class RevokingAsyncSlangCompiler implements AsyncSlangCompiler {
   constructor(
@@ -117,16 +225,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
   private passKeys = new Map<string, string>();
+  private computePipelines = new Map<string, SlangComputePipeline>();
+  private computeKeys = new Map<string, string>();
+  private storageBuffers = new Map<string, GPUBuffer>();
+  private storageKeys = new Map<string, string>();
+  private storageLayouts = new Map<string, StorageBindingNode>();
+  private dispatchOnceRan = new Set<string>();
+  private hasSubmittedFrameForInstalledGeneration = false;
+  private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
+  private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
+  private resetStorageOnNextSync = false;
   private shaderPath = "";
-  private lastCompile: {
-    code: string;
-    path: string;
-    buffers: Record<string, string>;
-    customUniformDeclarations?: string;
-    customUniformInfo?: { name: string; type: string }[];
-    slangModules?: SlangSourceModule[];
-    slangSourcePath?: string;
-  } | null = null;
+  private installedResourceKey: string | null = null;
+  private lastCompile: ShaderCompileSnapshot | null = null;
+  private installedCompile: ShaderCompileSnapshot | null = null;
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
   /**
@@ -141,6 +253,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private compileGeneration = 0;
   private disposed = false;
   private reloadOnNextApply = false;
+  private globalVolume = 1;
+  private globalMuted = false;
   private resetFeedbackOnNextApply = false;
 
   private pixelRegionCapturer: WebGPUPixelRegionCapturer | null = null;
@@ -239,6 +353,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
+      this.resourceManager.setGlobalAudioState(this.globalVolume, this.globalMuted);
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
       // COPY_SRC lets the pixel inspector read back from the canvas texture.
@@ -281,12 +396,49 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private buildDeviceDescriptor(adapter: GPUAdapter): GPUDeviceDescriptor | undefined {
-    const adapterLimit = adapter.limits?.maxTextureDimension2D;
+    const requiredLimits: Record<string, number> = {};
+    const adapterTextureLimit = adapter.limits?.maxTextureDimension2D;
+    if (
+      typeof adapterTextureLimit === "number" &&
+      Number.isFinite(adapterTextureLimit) &&
+      adapterTextureLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D
+    ) {
+      requiredLimits.maxTextureDimension2D = adapterTextureLimit;
+    }
+    const adapterStorageCountLimit = adapter.limits?.maxStorageBuffersPerShaderStage;
+    if (
+      typeof adapterStorageCountLimit === "number" &&
+      Number.isFinite(adapterStorageCountLimit) &&
+      adapterStorageCountLimit > DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE
+    ) {
+      requiredLimits.maxStorageBuffersPerShaderStage = adapterStorageCountLimit;
+    }
+    const adapterStorageSizeLimit = adapter.limits?.maxStorageBufferBindingSize;
+    if (
+      typeof adapterStorageSizeLimit === "number" &&
+      Number.isFinite(adapterStorageSizeLimit) &&
+      adapterStorageSizeLimit > DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE
+    ) {
+      requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
+    }
+    const computeLimits: Array<[keyof GPUSupportedLimits, number]> = [
+      ["maxComputeInvocationsPerWorkgroup", DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP],
+      ["maxComputeWorkgroupSizeX", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X],
+      ["maxComputeWorkgroupSizeY", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y],
+      ["maxComputeWorkgroupSizeZ", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z],
+    ];
+    for (const [name, portableLimit] of computeLimits) {
+      const adapterLimit = adapter.limits?.[name];
+      if (
+        typeof adapterLimit === "number" &&
+        Number.isFinite(adapterLimit) &&
+        adapterLimit > portableLimit
+      ) {
+        requiredLimits[name] = adapterLimit;
+      }
+    }
     const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
-    const hasHigherTextureLimit = typeof adapterLimit === "number"
-      && Number.isFinite(adapterLimit)
-      && adapterLimit > DEFAULT_MAX_TEXTURE_DIMENSION_2D;
-    if (!supportsFloat32Filtering && !hasHigherTextureLimit) {
+    if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
       return undefined;
     }
 
@@ -294,12 +446,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (supportsFloat32Filtering) {
       descriptor.requiredFeatures = ["float32-filterable"];
     }
-    if (
-      hasHigherTextureLimit
-    ) {
-      descriptor.requiredLimits = {
-        maxTextureDimension2D: adapterLimit,
-      };
+    if (Object.keys(requiredLimits).length > 0) {
+      descriptor.requiredLimits = requiredLimits;
     }
     return descriptor;
   }
@@ -488,12 +636,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
-    if (this.shaderPath !== "" && this.shaderPath !== path) {
-      this.beginShaderSession(path);
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      if (prepared.generation < generation) {
+        this.discardPreparedStorage(prepared);
+      }
     }
-    // WebGL parity: the config is remembered even when invalid, but an
-    // invalid one fails the compile before any Slang work starts.
-    this.currentConfig = config;
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      if (candidates.generation < generation) {
+        this.discardPipelineCandidates(candidates);
+      }
+    }
+    const sessionChanged = this.shaderPath !== "" && this.shaderPath !== path;
     if (config) {
       const validation = ConfigValidator.validateConfig(config);
       if (!validation.isValid) {
@@ -513,17 +666,37 @@ export class WebGPURenderingEngine implements RenderingEngine {
       hasDevice: Boolean(this.device),
       hasCompiler: Boolean(this.compiler),
     });
+    let attemptedCompile: ShaderCompileSnapshot;
+    let prospectiveInstalledCompile: ShaderCompileSnapshot;
+    try {
+      // Read caller-owned/proxy-backed input exactly once, before any live
+      // ownership transfer. The second snapshot clones only this plain object.
+      const bufferSnapshot = { ...buffers };
+      const snapshotMetadata = {
+        customUniformDeclarations,
+        customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
+        slangModules: slangModules.map((module) => ({ ...module })),
+        slangSourcePath,
+      };
+      attemptedCompile = { code, config, path, buffers: bufferSnapshot, ...snapshotMetadata };
+      prospectiveInstalledCompile = {
+        code,
+        config,
+        path,
+        buffers: { ...bufferSnapshot },
+        ...snapshotMetadata,
+      };
+    } catch (error) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: [`Failed to snapshot shader buffers: ${
+          error instanceof Error ? error.message : String(error)
+        }`],
+      });
+    }
     // Remember the inputs so updateBufferAndRecompile can re-run this compile
     // with a single buffer's content patched.
-    this.lastCompile = {
-      code,
-      path,
-      buffers: { ...buffers },
-      customUniformDeclarations,
-      customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
-      slangModules: slangModules.map((module) => ({ ...module })),
-      slangSourcePath,
-    };
+    this.lastCompile = attemptedCompile;
     const nextCustomUniformManager = new CustomUniformManager();
     if (customUniformDeclarations && customUniformInfo) {
       nextCustomUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
@@ -552,19 +725,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
     }
 
-    if (this.reloadOnNextApply) {
-      this.resourceManager?.cleanup();
-      this.reloadOnNextApply = false;
-    }
-
     this.clampCanvasToTextureLimit();
     const graphStartedAt = this.now();
     const graph = buildSlangPassGraph({
       imageCode: code,
       config,
-      buffers,
+      buffers: attemptedCompile.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
+      computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -590,235 +759,511 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.width = resolution.width;
       pass.height = resolution.height;
     }
-
-    // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
-    // loaded (and awaited) as part of the compile; render then only does cache
-    // lookups.
-    const resourceManager = this.resourceManager;
-    if (resourceManager) {
-      const interruptedResourceCompile = (): CompilationResult | null => {
-        if (this.disposed || this.resourceManager !== resourceManager) {
-          try {
-            resourceManager.cleanup();
-          } catch {
-            // Disposal already owns error reporting; keep the compile superseded.
-          }
-          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
-        }
-        if (generation !== this.compileGeneration) {
-          return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
-        }
-        return null;
-      };
-      for (const pass of graph.passes) {
-        for (const channel of pass.channels) {
-          if (channel.kind === "texture") {
-            try {
-              await resourceManager.loadImageTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-                grayscale: channel.grayscale,
-              });
-            } catch (error) {
-              const interrupted = interruptedResourceCompile();
-              if (interrupted) {
-                return interrupted;
-              }
-              throw error;
-            }
-            const interrupted = interruptedResourceCompile();
-            if (interrupted) {
-              return interrupted;
-            }
-          } else if (channel.kind === "video") {
-            let result;
-            try {
-              result = await resourceManager.loadVideoTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-                muted: channel.muted,
-              });
-            } catch (error) {
-              const interrupted = interruptedResourceCompile();
-              if (interrupted) {
-                return interrupted;
-              }
-              throw error;
-            }
-            const interrupted = interruptedResourceCompile();
-            if (interrupted) {
-              return interrupted;
-            }
-            if (result.warning) {
-              graph.warnings.push(result.warning);
-            }
-          } else if (channel.kind === "cubemap") {
-            try {
-              await resourceManager.loadCubemapTexture(channel.path, {
-                filter: channel.filter,
-                wrap: channel.wrap,
-                vflip: channel.vflip,
-              });
-            } catch (error) {
-              const interrupted = interruptedResourceCompile();
-              if (interrupted) {
-                return interrupted;
-              }
-              throw error;
-            }
-            const interrupted = interruptedResourceCompile();
-            if (interrupted) {
-              return interrupted;
-            }
-          } else if (channel.kind === "audio") {
-            try {
-              await resourceManager.loadAudioSource(channel.path, {
-                muted: channel.muted,
-                startTime: channel.startTime,
-                endTime: channel.endTime,
-              });
-              const interrupted = interruptedResourceCompile();
-              if (interrupted) {
-                return interrupted;
-              }
-              resourceManager.updateAudioLoopRegion(
-                channel.path,
-                channel.startTime,
-                channel.endTime,
-              );
-            } catch {
-              const interrupted = interruptedResourceCompile();
-              if (interrupted) {
-                return interrupted;
-              }
-              graph.warnings.push(`Audio loading failed: ${channel.path}`);
-            }
-          }
-        }
-      }
+    const storageErrors = this.validateStorageLimits(graph.storage);
+    if (storageErrors.length > 0) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: storageErrors,
+        warnings: graph.warnings,
+      });
     }
-
-    const nextPipelines = new Map<string, SlangPassPipeline>();
-    const nextKeys = new Map<string, string>();
+    const dispatchErrors = this.validateStaticComputeDispatchLimits(graph.passes, graph.storage);
+    if (dispatchErrors.length > 0) {
+      return this.failedCompilation(path, generation, {
+        success: false,
+        errors: dispatchErrors,
+        warnings: graph.warnings,
+      });
+    }
+    if (generation !== this.compileGeneration || this.disposed) {
+      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+    }
+    let preparedStorage: PreparedStorageBuffers | undefined;
+    let candidateResourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
+    let pipelineCandidates: PendingPipelineCandidates | undefined;
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
-    for (const pass of graph.passes) {
-      const passStartedAt = this.now();
-      const passModules = slangModules
-        .filter((module) => module.ownerPass === pass.name)
-        .map(({ ownerPass: _ownerPass, ...module }) => module);
-      const key = WebGPURenderingEngine.passCacheKey(
-        pass,
-        graph.commonCode,
-        nextCustomUniformManager.getUniformInfo(),
-        passModules,
-      );
-      const existing = this.passPipelines.get(pass.name);
-      if (existing && this.passKeys.get(pass.name) === key) {
-        // Unchanged pass: carry the live pipeline into the next generation.
-        // Resize (if the canvas changed) is deferred to the success block so
-        // this loop stays mutation-free while a later pass can still fail.
-        nextPipelines.set(pass.name, existing);
-        nextKeys.set(pass.name, key);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: true,
-          totalMs: this.ms(this.now() - passStartedAt),
-        });
-        continue;
-      }
-      let pipeline: SlangPassPipeline | undefined;
+    let published = false;
+    try {
       try {
-        let wgsl = sharedSlangWgslCache.get(key);
-        const wgslCacheHit = wgsl !== null;
-        let slangMs = 0;
-        if (!wgsl) {
-          const slangStartedAt = this.now();
-          const compiled = await this.compiler.compile(pass.source, {
-            passName: pass.name,
-            commonCode: graph.commonCode,
-            channels: pass.channels.map((channel) => ({
+        preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
+      } catch (error) {
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors: [`Storage allocation failed: ${error instanceof Error ? error.message : String(error)}`],
+          warnings: graph.warnings,
+        });
+      }
+      const resourceKey = WebGPURenderingEngine.resourceLayoutKey(graph.passes);
+      const hasFileResources = WebGPURenderingEngine.hasFileResources(graph.passes);
+      const requiresResourceCandidate = Boolean(this.resourceManager) && (
+        sessionChanged ||
+        this.reloadOnNextApply ||
+        hasFileResources && resourceKey !== this.installedResourceKey ||
+        this.installedResourceKey !== null && resourceKey !== this.installedResourceKey
+      );
+      candidateResourceManager = requiresResourceCandidate
+        ? this.resourceManager?.createIsolated?.() ?? (
+          sessionChanged ? new ResourceManager(new WebGPUTextureBackend(this.device)) : null
+        )
+        : null;
+      candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+      const compileResourceManager = candidateResourceManager ?? this.resourceManager;
+      pipelineCandidates = this.preparePipelineCandidates(generation, candidateResourceManager);
+
+      // WebGL parity (ShaderPipeline.updateResources): file-backed inputs are
+      // loaded (and awaited) as part of the compile; render then only does cache
+      // lookups.
+      if (compileResourceManager) {
+        for (const pass of graph.passes) {
+          for (const channel of pass.channels) {
+            if (channel.kind === "texture") {
+              await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadImageTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                  grayscale: channel.grayscale,
+                }), compileResourceManager);
+            } else if (channel.kind === "video") {
+              const result = await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadVideoTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                  muted: channel.muted,
+                }), compileResourceManager);
+              if (result.warning) {
+                graph.warnings.push(result.warning);
+              }
+            } else if (channel.kind === "cubemap") {
+              await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                compileResourceManager.loadCubemapTexture(channel.path, {
+                  filter: channel.filter,
+                  wrap: channel.wrap,
+                  vflip: channel.vflip,
+                }), compileResourceManager);
+            } else if (channel.kind === "audio") {
+              try {
+                await this.trackCandidateResourceLoad(pipelineCandidates, () =>
+                  compileResourceManager.loadAudioSource(channel.path, {
+                    muted: channel.muted,
+                    startTime: channel.startTime,
+                    endTime: channel.endTime,
+                  }), compileResourceManager);
+                compileResourceManager.updateAudioLoopRegion(
+                  channel.path,
+                  channel.startTime,
+                  channel.endTime,
+                );
+              } catch {
+                graph.warnings.push(`Audio loading failed: ${channel.path}`);
+              }
+            }
+            if (generation !== this.compileGeneration || this.disposed) {
+              return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+            }
+          }
+        }
+      }
+
+      if (generation !== this.compileGeneration || this.disposed) {
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+
+      const nextPipelines = new Map<string, SlangPassPipeline>();
+      const nextKeys = new Map<string, string>();
+      const nextComputePipelines = new Map<string, SlangComputePipeline>();
+      const nextComputeKeys = new Map<string, string>();
+      for (const pass of graph.passes) {
+        if (generation !== this.compileGeneration || this.disposed) {
+          break;
+        }
+        const passStartedAt = this.now();
+        const passModules = slangModules
+          .filter((module) => module.ownerPass === pass.name)
+          .map(({ ownerPass: _ownerPass, ...module }) => module);
+        const uniformInfo = nextCustomUniformManager.getUniformInfo();
+        const wgslKey = WebGPURenderingEngine.wgslCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+          uniformInfo,
+          passModules,
+        );
+        const pipelineKey = WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+          uniformInfo,
+          passModules,
+        );
+        const isCompute = pass.kind === "compute";
+        const existing = sessionChanged
+          ? undefined
+          : isCompute
+            ? this.computePipelines.get(pass.name)
+            : this.passPipelines.get(pass.name);
+        const existingKey = sessionChanged
+          ? undefined
+          : isCompute
+            ? this.computeKeys.get(pass.name)
+            : this.passKeys.get(pass.name);
+        if (existing && existingKey === pipelineKey) {
+          // Unchanged pass: carry the live pipeline into the next generation.
+          // Resize (if the canvas changed) is deferred to the success block so
+          // this loop stays mutation-free while a later pass can still fail.
+          if (isCompute) {
+            nextComputePipelines.set(pass.name, existing as SlangComputePipeline);
+            nextComputeKeys.set(pass.name, pipelineKey);
+          } else {
+            nextPipelines.set(pass.name, existing as SlangPassPipeline);
+            nextKeys.set(pass.name, pipelineKey);
+          }
+          passTimings.push({
+            name: pass.name,
+            cacheHit: true,
+            totalMs: this.ms(this.now() - passStartedAt),
+          });
+          continue;
+        }
+        let pipeline: SlangPassPipeline | SlangComputePipeline | undefined;
+        try {
+          let wgsl = sharedSlangWgslCache.get(wgslKey);
+          const wgslCacheHit = wgsl !== null;
+          let slangMs = 0;
+          const channels = [...pass.channels]
+            .sort((a, b) => a.slot - b.slot)
+            .map((channel) => ({
               slot: channel.slot,
               key: channel.key,
               kind: channel.kind,
-            })),
-            ...(passModules.length > 0 ? { modules: passModules } : {}),
-            ...(slangSourcePath ? { sourcePath: slangSourcePath } : {}),
-            ...(nextCustomUniformManager.hasUniforms()
-              ? { customUniforms: nextCustomUniformManager.getUniformInfo() }
-              : {}),
-          });
-          slangMs = this.now() - slangStartedAt;
-          if (!compiled.success) {
-            errors.push(...compiled.errors.map((error) => `${pass.name}: ${error}`));
-            passTimings.push({
-              name: pass.name,
-              cacheHit: false,
-              wgslCacheHit: false,
-              slangMs: this.ms(slangMs),
-              totalMs: this.ms(this.now() - passStartedAt),
-              errorCount: compiled.errors.length,
+            }));
+          if (!wgsl) {
+            const slangStartedAt = this.now();
+            const compiled = await this.compiler.compile(pass.source, {
+              passName: pass.name,
+              commonCode: graph.commonCode,
+              channels,
+              storage: graph.storage,
+              passKind: pass.kind,
+              workgroupSize: pass.workgroupSize,
+              outputLayers: pass.outputLayers,
+              hasOutput: pass.output === "texture",
+              ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
+              ...(passModules.length > 0 ? { modules: passModules } : {}),
+              ...(slangSourcePath ? { sourcePath: slangSourcePath } : {}),
+              ...(nextCustomUniformManager.hasUniforms()
+                ? { customUniforms: uniformInfo }
+                : {}),
             });
+            slangMs = this.now() - slangStartedAt;
+            if (generation !== this.compileGeneration || this.disposed) {
+              break;
+            }
+            if (!compiled.success) {
+              errors.push(...compiled.errors.map((error) =>
+                WebGPURenderingEngine.prefixPassError(pass.name, error)));
+              passTimings.push({
+                name: pass.name,
+                cacheHit: false,
+                wgslCacheHit: false,
+                slangMs: this.ms(slangMs),
+                totalMs: this.ms(this.now() - passStartedAt),
+                errorCount: compiled.errors.length,
+              });
+              continue;
+            }
+            wgsl = compiled.wgsl;
+            sharedSlangWgslCache.set(wgslKey, wgsl);
+          }
+          pipeline = this.createPassPipeline(
+            pass,
+            graph.storage,
+            createSlangCustomUniformLayout(uniformInfo).size,
+          );
+          if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
+            break;
+          }
+          const pipelineStartedAt = this.now();
+          const wgslErrors = await pipeline.rebuild(wgsl);
+          const pipelineMs = this.now() - pipelineStartedAt;
+          errors.push(...wgslErrors);
+          passTimings.push({
+            name: pass.name,
+            cacheHit: false,
+            wgslCacheHit,
+            slangMs: this.ms(slangMs),
+            pipelineMs: this.ms(pipelineMs),
+            totalMs: this.ms(this.now() - passStartedAt),
+            errorCount: wgslErrors.length,
+          });
+          if (isCompute) {
+            nextComputePipelines.set(pass.name, pipeline as SlangComputePipeline);
+            nextComputeKeys.set(pass.name, pipelineKey);
+          } else {
+            nextPipelines.set(pass.name, pipeline as SlangPassPipeline);
+            nextKeys.set(pass.name, pipelineKey);
+          }
+        } catch (error) {
+          errors.push(WebGPURenderingEngine.prefixPassError(
+            pass.name,
+            error instanceof Error ? error.message : String(error),
+          ));
+          passTimings.push({
+            name: pass.name,
+            cacheHit: false,
+            totalMs: this.ms(this.now() - passStartedAt),
+            errorCount: 1,
+          });
+        }
+
+      }
+
+      if (errors.length > 0) {
+        this.logCompileTiming("failed", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors,
+        });
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors,
+          warnings: graph.warnings,
+        });
+      }
+
+      if (generation !== this.compileGeneration || this.disposed) {
+        // A newer compileShaderPipeline call (or dispose()) already landed
+        // while this attempt was awaiting the compiler/worker. Installing now
+        // would clobber the newer, already-live pipelines with stale ones, so
+        // drop this attempt; its transaction owns only pipelines allocated by
+        // this generation, never reused installed predecessors.
+        this.logCompileTiming("superseded", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors: ["Superseded by a newer compile"],
+        });
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+
+      const resolutionErrors = await this.reconcileCandidateResolutions(
+        graph,
+        config,
+        nextPipelines,
+        nextKeys,
+        nextComputePipelines,
+        nextComputeKeys,
+        pipelineCandidates,
+        generation,
+        nextCustomUniformManager.getUniformInfo(),
+        slangModules,
+      );
+      if (generation !== this.compileGeneration || this.disposed) {
+        this.logCompileTiming("superseded", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors: ["Superseded by a newer compile"],
+        });
+        return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
+      }
+      if (resolutionErrors.length > 0) {
+        errors.push(...resolutionErrors);
+        this.logCompileTiming("failed", {
+          path,
+          generation,
+          startedAt,
+          readyMs,
+          graphMs,
+          passTimings,
+          graph,
+          errors,
+        });
+        return this.failedCompilation(path, generation, {
+          success: false,
+          errors,
+          warnings: graph.warnings,
+        });
+      }
+
+      // setGlobalVolume() and pause state may change while resource loading or
+      // Slang compilation awaits. Apply their latest values to the prospective
+      // manager before publication; any media failure is still transactional.
+      if (candidateResourceManager) {
+        try {
+          candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+          // A path switch resets shader time immediately after publication.
+          // Stage the media against that prospective time, not the retiring
+          // session's clock.
+          const shaderTime = sessionChanged && (
+            this.passPipelines.size > 0 || this.computePipelines.size > 0
+          )
+            ? 0
+            : this.timeManager.getCurrentTime(performance.now());
+          candidateResourceManager.syncAllVideosToTime?.(shaderTime);
+          if (this.timeManager.isPaused()) {
+            candidateResourceManager.pauseAllVideos?.();
+          } else {
+            candidateResourceManager.resumeAllVideos?.();
+          }
+        } catch (error) {
+          errors.push(`Media synchronization failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`);
+          this.logCompileTiming("failed", {
+            path,
+            generation,
+            startedAt,
+            readyMs,
+            graphMs,
+            passTimings,
+            graph,
+            errors,
+          });
+          return this.failedCompilation(path, generation, {
+            success: false,
+            errors,
+            warnings: graph.warnings,
+          });
+        }
+      }
+
+      // Enumerating the retiring map can invoke user-modified iterators and
+      // allocate. Finish that work while the installed generation is still
+      // untouched; publication below then contains ownership assignments only.
+      const retiredStorageBuffers = this.collectRetiredStorageBuffers(preparedStorage);
+
+      // All resolution-sensitive work above was staged in candidate-owned
+      // pipelines. Publication below is therefore a synchronous map swap: a
+      // failure can never leave a subset of the installed graph resized.
+      const previousPipelines = this.passPipelines;
+      const previousComputePipelines = this.computePipelines;
+      const previousResourceManager = this.resourceManager;
+      const hadInstalledPipeline = previousPipelines.size > 0 || previousComputePipelines.size > 0;
+      this.passGraph = graph.passes;
+      this.passPipelines = nextPipelines;
+      this.passKeys = nextKeys;
+      this.computePipelines = nextComputePipelines;
+      this.computeKeys = nextComputeKeys;
+      this.dispatchOnceRan.clear();
+      this.hasSubmittedFrameForInstalledGeneration = false;
+      if (candidateResourceManager) {
+        this.resourceManager = candidateResourceManager;
+      }
+      this.publishPreparedStorage(preparedStorage);
+      this.installPipelineCandidates(pipelineCandidates);
+      this.shaderPath = path;
+      this.installedResourceKey = resourceKey;
+      this.reloadOnNextApply = false;
+      this.currentConfig = config;
+      this.installedCompile = prospectiveInstalledCompile;
+      if (this.pendingCustomUniformValues) {
+        nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
+      }
+      this.customUniformManager = nextCustomUniformManager;
+      if (this.resetFeedbackOnNextApply) {
+        for (const pass of this.passGraph) {
+          if (pass.output !== "texture") {
             continue;
           }
-          wgsl = compiled.wgsl;
-          sharedSlangWgslCache.set(key, wgsl);
+          if (pass.kind === "compute") {
+            this.computePipelines.get(pass.name)?.resetOutputTextures();
+          } else {
+            this.passPipelines.get(pass.name)?.resetOutputTextures();
+          }
         }
-        pipeline = new SlangPassPipeline(this.device, this.format, {
-          name: pass.name,
-          width: pass.width,
-          height: pass.height,
-          output: pass.output,
-          channels: pass.channels.map((channel) => ({
-            slot: channel.slot,
-            key: channel.key,
-            kind: channel.kind,
-          })),
-          uniformBufferSize: createSlangCustomUniformLayout(
-            nextCustomUniformManager.getUniformInfo(),
-          ).size,
-        }, this.bufferTextureFormat);
-        const pipelineStartedAt = this.now();
-        const wgslErrors = await pipeline.rebuild(wgsl);
-        const pipelineMs = this.now() - pipelineStartedAt;
-        errors.push(...wgslErrors);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: false,
-          wgslCacheHit,
-          slangMs: this.ms(slangMs),
-          pipelineMs: this.ms(pipelineMs),
-          totalMs: this.ms(this.now() - passStartedAt),
-          errorCount: wgslErrors.length,
-        });
-        nextPipelines.set(pass.name, pipeline);
-        nextKeys.set(pass.name, key);
-      } catch (error) {
-        // rebuild() may throw mid-way through constructing GPU resources;
-        // dispose whatever this pipeline managed to create before re-throwing
-        // as a compile error.
-        pipeline?.dispose();
-        errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);
-        passTimings.push({
-          name: pass.name,
-          cacheHit: false,
-          totalMs: this.ms(this.now() - passStartedAt),
-          errorCount: 1,
-        });
+        this.resetFeedbackOnNextApply = false;
       }
-    }
+      published = true;
 
-    if (errors.length > 0) {
-      // Dispose only pipelines built THIS attempt; carried-over pipelines are
-      // still installed in this.passPipelines and actively rendering, so they
-      // must survive a failed recompile untouched.
-      for (const [name, pipeline] of nextPipelines) {
-        if (pipeline !== this.passPipelines.get(name)) {
-          pipeline.dispose();
+      // Publication has completed. Every remaining operation retires the old
+      // generation best-effort; failures are warnings and never roll back or
+      // invalidate the newly installed generation.
+      for (const [name, pipeline] of previousPipelines) {
+        if (nextPipelines.get(name) !== pipeline) {
+          this.retireAfterPublication(`render pipeline ${name}`, () => pipeline.dispose(), graph.warnings);
         }
       }
+      for (const [name, pipeline] of previousComputePipelines) {
+        if (nextComputePipelines.get(name) !== pipeline) {
+          this.retireAfterPublication(`compute pipeline ${name}`, () => pipeline.dispose(), graph.warnings);
+        }
+      }
+      if (candidateResourceManager && previousResourceManager !== candidateResourceManager) {
+        this.retireAfterPublication(
+          "resource manager",
+          () => previousResourceManager?.dispose(),
+          graph.warnings,
+        );
+      }
+      for (const [name, buffer] of retiredStorageBuffers) {
+        this.retireAfterPublication(`storage buffer ${name}`, () => buffer.destroy(), graph.warnings);
+      }
+      if (sessionChanged) {
+        if (hadInstalledPipeline) {
+          this.retireAfterPublication(
+            "previous shader time state",
+            () => this.timeManager.cleanup(),
+            graph.warnings,
+          );
+        }
+        this.retireAfterPublication("previous canvas contents", () => this.clearCanvas(), graph.warnings);
+      }
+      if (!candidateResourceManager && this.resourceManager) {
+        const shaderTime = this.timeManager.getCurrentTime(performance.now());
+        this.retireAfterPublication(
+          "installed video synchronization",
+          () => this.resourceManager?.syncAllVideosToTime?.(shaderTime),
+          graph.warnings,
+        );
+        if (this.timeManager.isPaused()) {
+          this.retireAfterPublication(
+            "installed video pause state",
+            () => this.resourceManager?.pauseAllVideos?.(),
+            graph.warnings,
+          );
+        } else {
+          this.retireAfterPublication(
+            "installed video playback state",
+            () => this.resourceManager?.resumeAllVideos?.(),
+            graph.warnings,
+          );
+        }
+      }
+
+      this.logCompileTiming("success", {
+        path,
+        generation,
+        startedAt,
+        readyMs,
+        graphMs,
+        passTimings,
+        graph,
+        errors,
+      });
+      return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (published) {
+        graph.warnings.push(`Post-publication cleanup failed: ${message}`);
+        return { success: true, warnings: graph.warnings };
+      }
+      errors.push(message);
       this.logCompileTiming("failed", {
         path,
         generation,
@@ -834,97 +1279,385 @@ export class WebGPURenderingEngine implements RenderingEngine {
         errors,
         warnings: graph.warnings,
       });
-    }
-
-    if (generation !== this.compileGeneration || this.disposed) {
-      // A newer compileShaderPipeline call (or dispose()) already landed
-      // while this attempt was awaiting the compiler/worker. Installing now
-      // would clobber the newer, already-live pipelines with stale ones, so
-      // drop this attempt: dispose only the pipelines built THIS attempt
-      // (carried-over ones are — or were — still installed and must survive
-      // untouched).
-      for (const [name, pipeline] of nextPipelines) {
-        if (pipeline !== this.passPipelines.get(name)) {
-          pipeline.dispose();
-        }
+    } finally {
+      if (preparedStorage) {
+        this.discardPreparedStorage(preparedStorage);
       }
-      this.logCompileTiming("superseded", {
-        path,
-        generation,
-        startedAt,
-        readyMs,
-        graphMs,
-        passTimings,
-        graph,
-        errors: ["Superseded by a newer compile"],
-      });
-      return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
-    }
-
-    // Success: resize carried-over pipelines to the new graph dimensions
-    // (width/height don't affect the cache key, so a canvas resize alone
-    // wouldn't have recompiled them), then dispose replaced/removed
-    // pipelines and swap in the new generation atomically.
-    for (const pass of graph.passes) {
-      const pipeline = nextPipelines.get(pass.name);
-      if (pipeline && pipeline === this.passPipelines.get(pass.name)) {
-        pipeline.resize(pass.width, pass.height);
-      }
-    }
-    for (const [name, pipeline] of this.passPipelines) {
-      if (nextPipelines.get(name) !== pipeline) {
-        pipeline.dispose();
-      }
-    }
-    if (this.pendingCustomUniformValues) {
-      nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
-    }
-    this.customUniformManager = nextCustomUniformManager;
-    this.passGraph = graph.passes;
-    this.passPipelines = nextPipelines;
-    this.passKeys = nextKeys;
-    this.shaderPath = path;
-    // Correct any canvas resize that landed mid-compile immediately, rather
-    // than leaving passes stale until the next resize/recompile.
-    this.applyPassResolutions();
-    if (this.resetFeedbackOnNextApply) {
-      for (const pass of this.passGraph) {
-        if (pass.output === "texture") {
-          this.passPipelines.get(pass.name)?.resetOutputTextures();
-        }
-      }
-      this.resetFeedbackOnNextApply = false;
-    }
-
-    // WebGL parity (RenderingEngine.compileShaderPipeline): newly loaded video
-    // textures load with autoplay disabled, so without this they'd sit frozen
-    // on their first frame until some other action resumed them. Sync to the
-    // current shader time and start/hold playback based on pause state.
-    if (this.resourceManager) {
-      const shaderTime = this.timeManager.getCurrentTime(performance.now());
-      this.resourceManager.syncAllVideosToTime?.(shaderTime);
-      if (this.timeManager.isPaused()) {
-        this.resourceManager.pauseAllVideos?.();
+      if (pipelineCandidates) {
+        this.discardPipelineCandidates(pipelineCandidates);
       } else {
-        this.resourceManager.resumeAllVideos?.();
+        try {
+          candidateResourceManager?.dispose();
+        } catch {
+          // Candidate construction/setup already failed; cleanup is best
+          // effort and must not replace the structured compilation result.
+        }
       }
     }
+  }
 
-    this.logCompileTiming("success", {
-      path,
+  private validateStorageLimits(storage: StorageBindingNode[]): string[] {
+    if (!this.device) {
+      return ["WebGPU device unavailable while validating storage buffers"];
+    }
+
+    const grantedCountLimit = this.device.limits?.maxStorageBuffersPerShaderStage;
+    const maxStorageBuffers = typeof grantedCountLimit === "number" &&
+      Number.isFinite(grantedCountLimit) && grantedCountLimit > 0
+      ? Math.floor(grantedCountLimit)
+      : DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE;
+    const grantedSizeLimit = this.device.limits?.maxStorageBufferBindingSize;
+    const maxStorageBufferSize = typeof grantedSizeLimit === "number" &&
+      Number.isFinite(grantedSizeLimit) && grantedSizeLimit > 0
+      ? Math.floor(grantedSizeLimit)
+      : DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE;
+    const errors: string[] = [];
+    if (storage.length > maxStorageBuffers) {
+      errors.push(
+        `Storage config declares ${storage.length} buffers, but the device ` +
+        `maxStorageBuffersPerShaderStage limit is ${maxStorageBuffers}; ` +
+        "pack related buffers into structs to reduce the buffer count",
+      );
+    }
+    for (const node of storage) {
+      const byteSize = node.count * node.stride;
+      if (byteSize % 4 !== 0) {
+        errors.push(
+          `Storage ${node.name} requires ${byteSize} bytes, but its byte size ` +
+          "must be a multiple of 4 for a WebGPU storage binding",
+        );
+      }
+      if (byteSize > maxStorageBufferSize) {
+        errors.push(
+          `Storage ${node.name} requires ${byteSize} bytes, but the device ` +
+          `maxStorageBufferBindingSize limit is ${maxStorageBufferSize} bytes; ` +
+          "reduce its size or pack related data into structs",
+        );
+      }
+    }
+    if (errors.length > 0) {
+      return errors;
+    }
+
+    return [];
+  }
+
+  private resolveComputeWorkgroupLimit(): number {
+    const grantedLimit = this.device?.limits?.maxComputeWorkgroupsPerDimension;
+    return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
+      ? Math.floor(grantedLimit)
+      : DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION;
+  }
+
+  private resolveComputeWorkgroupLimits(): ComputeWorkgroupLimits {
+    const limits = this.device?.limits;
+    const resolve = (value: number | undefined, fallback: number): number => (
+      typeof value === "number" && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : fallback
+    );
+    return {
+      maxInvocations: resolve(
+        limits?.maxComputeInvocationsPerWorkgroup,
+        DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP,
+      ),
+      maxSizeX: resolve(limits?.maxComputeWorkgroupSizeX, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X),
+      maxSizeY: resolve(limits?.maxComputeWorkgroupSizeY, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y),
+      maxSizeZ: resolve(limits?.maxComputeWorkgroupSizeZ, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z),
+    };
+  }
+
+  private validateStaticComputeDispatchLimits(
+    passes: RenderPassNode[],
+    storage: StorageBindingNode[],
+  ): string[] {
+    const storageLayouts = new Map(storage.map((node) => [node.name, node]));
+    const limit = this.resolveComputeWorkgroupLimit();
+    const errors: string[] = [];
+    for (const pass of passes) {
+      if (pass.kind !== "compute" || pass.dispatch?.mode === "cover-channel") {
+        continue;
+      }
+      const counts = resolveWorkgroupCounts(pass, storageLayouts, []);
+      if (counts) {
+        const error = validateWorkgroupCounts(pass.name, counts, limit);
+        if (error) {
+          errors.push(error);
+        }
+      }
+    }
+    return errors;
+  }
+
+  private prepareStorageBuffers(
+    storage: StorageBindingNode[],
+    generation: number,
+    forceFresh = false,
+  ): PreparedStorageBuffers {
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while allocating storage buffers");
+    }
+    const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_SRC = globalThis.GPUBufferUsage?.COPY_SRC ?? 0x0004;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const nextBuffers = new Map<string, GPUBuffer>();
+    const nextKeys = new Map<string, string>();
+    const nextLayouts = new Map<string, StorageBindingNode>();
+    const stagedBuffers: GPUBuffer[] = [];
+    try {
+      for (const node of storage) {
+        const key = WebGPURenderingEngine.storageCacheKey(node);
+        const existing = this.storageBuffers.get(node.name);
+        let buffer: GPUBuffer;
+        if (
+          !forceFresh &&
+          !this.resetStorageOnNextSync &&
+          existing &&
+          this.storageKeys.get(node.name) === key
+        ) {
+          buffer = existing;
+        } else {
+          buffer = this.device.createBuffer({
+            size: node.count * node.stride,
+            usage: STORAGE | COPY_SRC | COPY_DST,
+          });
+          stagedBuffers.push(buffer);
+        }
+        nextBuffers.set(node.name, buffer);
+        nextKeys.set(node.name, key);
+        nextLayouts.set(node.name, { ...node });
+      }
+    } catch (error) {
+      for (const buffer of stagedBuffers) {
+        buffer.destroy();
+      }
+      throw error;
+    }
+
+    const prepared: PreparedStorageBuffers = {
       generation,
-      startedAt,
-      readyMs,
-      graphMs,
-      passTimings,
-      graph,
-      errors,
-    });
-    return { success: true, warnings: graph.warnings.length > 0 ? graph.warnings : undefined };
+      buffers: nextBuffers,
+      keys: nextKeys,
+      layouts: nextLayouts,
+      stagedBuffers,
+      settled: false,
+    };
+    this.pendingStoragePreparations.add(prepared);
+    return prepared;
+  }
+
+  private collectRetiredStorageBuffers(
+    prepared: PreparedStorageBuffers,
+  ): Array<[string, GPUBuffer]> {
+    return [...this.storageBuffers].filter(([name, buffer]) =>
+      prepared.buffers.get(name) !== buffer);
+  }
+
+  private resolveStorageRange(
+    name: string,
+    start: number,
+    count: number,
+  ): { buffer: GPUBuffer; layout: StorageBindingNode; offset: number; size: number } {
+    const layout = this.storageLayouts.get(name);
+    const buffer = this.storageBuffers.get(name);
+    if (!layout || !buffer) {
+      throw new Error(`Storage buffer "${name}" is not available`);
+    }
+    if (!Number.isInteger(start) || !Number.isInteger(count) || start < 0 || count <= 0 || start + count > layout.count) {
+      throw new Error(`Storage buffer "${name}" has an invalid element range`);
+    }
+    const offset = start * layout.stride;
+    const size = count * layout.stride;
+    if (offset % 4 !== 0 || size % 4 !== 0) {
+      throw new Error(`Storage buffer "${name}" inspection requires a 4-byte-aligned stride`);
+    }
+    return { buffer, layout, offset, size };
+  }
+
+  private publishPreparedStorage(prepared: PreparedStorageBuffers): void {
+    this.storageBuffers = prepared.buffers;
+    this.storageKeys = prepared.keys;
+    this.storageLayouts = prepared.layouts;
+    this.resetStorageOnNextSync = false;
+    prepared.settled = true;
+    this.pendingStoragePreparations.delete(prepared);
+  }
+
+  private retireAfterPublication(
+    resource: string,
+    retire: () => void,
+    warnings: string[],
+  ): void {
+    try {
+      retire();
+    } catch (error) {
+      warnings.push(`Failed to retire ${resource}: ${
+        error instanceof Error ? error.message : String(error)
+      }`);
+    }
+  }
+
+  private discardPreparedStorage(prepared: PreparedStorageBuffers): void {
+    if (prepared.settled) {
+      return;
+    }
+    prepared.settled = true;
+    this.pendingStoragePreparations.delete(prepared);
+    for (const buffer of prepared.stagedBuffers) {
+      try {
+        buffer.destroy();
+      } catch {
+        // A failed candidate owns no live state. Continue releasing its other
+        // resources even if one driver-backed destroy call fails.
+      }
+    }
+  }
+
+  private preparePipelineCandidates(
+    generation: number,
+    resourceManager: ResourceManager<WebGPUTextureHandle> | null,
+  ): PendingPipelineCandidates {
+    const candidates: PendingPipelineCandidates = {
+      generation,
+      render: new Set(),
+      compute: new Set(),
+      resourceManager,
+      resourceLoadsPending: 0,
+      resourceManagerDisposed: false,
+      installed: false,
+      settled: false,
+    };
+    this.pendingPipelineCandidates.add(candidates);
+    return candidates;
+  }
+
+  private async trackCandidateResourceLoad<T>(
+    candidates: PendingPipelineCandidates,
+    load: () => Promise<T>,
+    resourceManager?: ResourceManager<WebGPUTextureHandle>,
+  ): Promise<T> {
+    candidates.resourceLoadsPending++;
+    try {
+      return await load();
+    } finally {
+      candidates.resourceLoadsPending--;
+      if (
+        this.disposed &&
+        candidates.resourceLoadsPending === 0 &&
+        resourceManager &&
+        candidates.resourceManager !== resourceManager
+      ) {
+        resourceManager.cleanup();
+      }
+    }
+  }
+
+  private registerPipelineCandidate(
+    candidates: PendingPipelineCandidates,
+    pipeline: SlangPassPipeline | SlangComputePipeline,
+  ): boolean {
+    if (candidates.settled) {
+      try {
+        pipeline.dispose();
+      } catch {
+        // The transaction was already cancelled; disposal is best effort and
+        // must not let a late async rebuild reject its superseded compile.
+      }
+      return false;
+    }
+    if (pipeline instanceof SlangComputePipeline) {
+      candidates.compute.add(pipeline);
+    } else {
+      candidates.render.add(pipeline);
+    }
+    return true;
+  }
+
+  private installPipelineCandidates(candidates: PendingPipelineCandidates): void {
+    candidates.installed = true;
+    candidates.settled = true;
+    candidates.render.clear();
+    candidates.compute.clear();
+    this.pendingPipelineCandidates.delete(candidates);
+  }
+
+  private discardPipelineCandidates(candidates: PendingPipelineCandidates): void {
+    if (candidates.installed) {
+      return;
+    }
+    if (!candidates.settled) {
+      candidates.settled = true;
+      this.pendingPipelineCandidates.delete(candidates);
+      for (const pipeline of candidates.render) {
+        try {
+          pipeline.dispose();
+        } catch {
+          // Best-effort candidate teardown must not mask the compile result or
+          // prevent the remaining candidate resources from being released.
+        }
+      }
+      for (const pipeline of candidates.compute) {
+        try {
+          pipeline.dispose();
+        } catch {
+          // See render candidate teardown above.
+        }
+      }
+      candidates.render.clear();
+      candidates.compute.clear();
+    }
+    const resourceManager = candidates.resourceManager;
+    const shouldDisposeResourceManager = resourceManager && (
+      !candidates.resourceManagerDisposed || candidates.resourceLoadsPending === 0
+    );
+    if (shouldDisposeResourceManager) {
+      candidates.resourceManagerDisposed = true;
+      try {
+        resourceManager.dispose();
+      } catch {
+        // Candidate cleanup remains best effort for the same reason as pipeline
+        // teardown: publication never transferred ownership of this manager.
+      }
+    }
+    if (candidates.resourceLoadsPending === 0) {
+      candidates.resourceManager = null;
+    }
+  }
+
+  private prepareResetStorageBuffers(): Map<string, GPUBuffer> | null {
+    if (!this.device || this.storageLayouts.size === 0) {
+      return null;
+    }
+    const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_SRC = globalThis.GPUBufferUsage?.COPY_SRC ?? 0x0004;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const nextBuffers = new Map<string, GPUBuffer>();
+    const stagedBuffers: GPUBuffer[] = [];
+    try {
+      for (const node of this.storageLayouts.values()) {
+        const buffer = this.device.createBuffer({
+          size: node.count * node.stride,
+          usage: STORAGE | COPY_SRC | COPY_DST,
+        });
+        stagedBuffers.push(buffer);
+        nextBuffers.set(node.name, buffer);
+      }
+    } catch (error) {
+      for (const buffer of stagedBuffers) {
+        try {
+          buffer.destroy();
+        } catch {
+          // Preserve the allocation failure and keep releasing the rest of
+          // this unpublished reset candidate.
+        }
+      }
+      throw error;
+    }
+    return nextBuffers;
   }
 
   private failedCompilation(
-    path: string,
+    _path: string,
     generation: number,
     result: CompilationResult,
   ): CompilationResult {
@@ -932,31 +1665,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
-    // Editing the currently installed shader is atomic: a failed edit keeps
-    // its last good pipelines. A different path represents a shader switch,
-    // so retaining those pipelines would show output from the wrong file.
-    if (this.shaderPath === path) {
-      return result;
-    }
-
-    this.beginShaderSession(path);
     return result;
-  }
-
-  private beginShaderSession(path: string): void {
-    const hadInstalledPipeline = this.passPipelines.size > 0;
-    for (const pipeline of this.passPipelines.values()) {
-      pipeline.dispose();
-    }
-    this.passPipelines.clear();
-    this.passKeys.clear();
-    this.passGraph = [];
-    if (hadInstalledPipeline) {
-      this.resourceManager?.cleanup();
-      this.timeManager.cleanup();
-    }
-    this.shaderPath = path;
-    this.clearCanvas();
   }
 
   private clearCanvas(): void {
@@ -1073,28 +1782,313 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ].join(" ");
   }
 
-  /**
-   * A pass's compiled WGSL depends on its compile options: pass name, source,
-   * common code, cache key version, and channel layout (slot + key + kind).
-   * Width/height are texture concerns handled by resize() without recompiling,
-   * so they're deliberately excluded from the key.
-   */
-  private static passCacheKey(
+  /** Inputs that can change generated WGSL. Runtime buffer sizes, dispatch
+   * counts and texture dimensions deliberately stay out of this key. */
+  private static wgslCacheKey(
     pass: RenderPassNode,
     commonCode: string,
+    storage: StorageBindingNode[],
     customUniforms: { name: string; type: string }[] = [],
     modules: Array<{ moduleName: string; path: string; source: string }> = [],
   ): string {
-    const channels = pass.channels.map((channel) => `${channel.slot}:${channel.key}:${channel.kind}`).join(",");
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const storageLayout = storage.map((node) => [
+      node.name,
+      node.elementType,
+      node.builtin,
+    ]);
+    const hasOutput = pass.output === "texture";
     return JSON.stringify([
       SLANG_WGSL_CACHE_KEY_VERSION,
-      pass.name,
+      pass.kind,
+      pass.entryPoint,
       pass.source,
       commonCode,
       channels,
+      storageLayout,
+      pass.workgroupSize,
+      hasOutput,
+      hasOutput ? pass.outputLayers : null,
       customUniforms,
       modules,
     ]);
+  }
+
+  /** GPU object/resource compatibility for reusing an installed pipeline. */
+  private static pipelineCacheKey(
+    pass: RenderPassNode,
+    commonCode: string,
+    storage: StorageBindingNode[],
+    customUniforms: { name: string; type: string }[] = [],
+    modules: Array<{ moduleName: string; path: string; source: string }> = [],
+  ): string {
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const storageLayout = storage.map((node) => [
+      node.name,
+      node.binding,
+      node.elementType,
+      node.builtin,
+      node.count,
+      node.stride,
+    ]);
+    return JSON.stringify([
+      SLANG_PIPELINE_CACHE_KEY_VERSION,
+      WebGPURenderingEngine.wgslCacheKey(
+        pass,
+        commonCode,
+        storage,
+        customUniforms,
+        modules,
+      ),
+      pass.name,
+      pass.kind,
+      pass.width,
+      pass.height,
+      channels,
+      storageLayout,
+      pass.workgroupSize,
+      pass.dispatch,
+      pass.dispatchCount,
+      pass.dispatchOnce,
+      pass.output,
+      pass.outputLayers,
+    ]);
+  }
+
+  private static hasFileResources(passes: RenderPassNode[]): boolean {
+    return passes.some((pass) => pass.channels.some((channel) =>
+      channel.kind === "texture" || channel.kind === "video" ||
+      channel.kind === "cubemap" || channel.kind === "audio"));
+  }
+
+  private static resourceLayoutKey(passes: RenderPassNode[]): string {
+    return JSON.stringify(passes.flatMap((pass) => pass.channels.flatMap((channel) => {
+      if (channel.kind === "texture") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+          channel.grayscale,
+        ]];
+      }
+      if (channel.kind === "video") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+          channel.muted,
+        ]];
+      }
+      if (channel.kind === "cubemap") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.filter,
+          channel.wrap,
+          channel.vflip,
+        ]];
+      }
+      if (channel.kind === "audio") {
+        return [[
+          pass.name,
+          channel.slot,
+          channel.kind,
+          channel.path,
+          channel.muted,
+          channel.startTime,
+          channel.endTime,
+        ]];
+      }
+      return [];
+    })));
+  }
+
+  private static prefixPassError(passName: string, error: string): string {
+    return error.startsWith(`${passName}:`) ? error : `${passName}: ${error}`;
+  }
+
+  private static storageCacheKey(node: StorageBindingNode): string {
+    return JSON.stringify([node.elementType, node.count, node.stride]);
+  }
+
+  private createPassPipeline(
+    pass: RenderPassNode,
+    storage: StorageBindingNode[],
+    uniformBufferSize = createSlangCustomUniformLayout([]).size,
+  ): SlangPassPipeline | SlangComputePipeline {
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while creating pass pipeline");
+    }
+    const channels = [...pass.channels]
+      .sort((a, b) => a.slot - b.slot)
+      .map((channel) => ({
+        slot: channel.slot,
+        key: channel.key,
+        kind: channel.kind,
+      }));
+    return pass.kind === "compute"
+      ? new SlangComputePipeline(this.device, {
+        name: pass.name,
+        width: pass.width,
+        height: pass.height,
+        hasOutput: pass.output === "texture",
+        outputLayers: pass.outputLayers,
+        workgroupSize: pass.workgroupSize,
+        entryPoint: pass.entryPoint,
+        dispatchCount: pass.dispatchCount,
+        channels,
+        storage,
+        uniformBufferSize,
+      })
+      : new SlangPassPipeline(this.device, this.format, {
+        name: pass.name,
+        width: pass.width,
+        height: pass.height,
+        output: pass.output === "canvas" ? "canvas" : "texture",
+        channels,
+        storage,
+        uniformBufferSize,
+      });
+  }
+
+  /**
+   * Re-read the live canvas immediately before publication. Pipelines already
+   * owned by this transaction can resize in place; carried-over installed
+   * pipelines are replaced with candidates so an allocation failure cannot
+   * partially mutate the live graph.
+   */
+  private async reconcileCandidateResolutions(
+    graph: ReturnType<typeof buildSlangPassGraph>,
+    config: ShaderConfig | null,
+    nextPipelines: Map<string, SlangPassPipeline>,
+    nextKeys: Map<string, string>,
+    nextComputePipelines: Map<string, SlangComputePipeline>,
+    nextComputeKeys: Map<string, string>,
+    candidates: PendingPipelineCandidates,
+    generation: number,
+    customUniforms: { name: string; type: string }[],
+    slangModules: SlangSourceModule[],
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    while (generation === this.compileGeneration && !this.disposed) {
+      this.updatePassGraphResolutions(graph.passes, config);
+      for (const pass of graph.passes) {
+        const passModules = slangModules
+          .filter((module) => module.ownerPass === pass.name)
+          .map(({ ownerPass: _ownerPass, ...module }) => module);
+        const isCompute = pass.kind === "compute";
+        const pipelines = isCompute ? nextComputePipelines : nextPipelines;
+        const keys = isCompute ? nextComputeKeys : nextKeys;
+        const pipeline = pipelines.get(pass.name);
+        const finalKey = WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+          customUniforms,
+          passModules,
+        );
+        if (!pipeline || keys.get(pass.name) === finalKey) {
+          continue;
+        }
+
+        const candidateOwned = isCompute
+          ? candidates.compute.has(pipeline as SlangComputePipeline)
+          : candidates.render.has(pipeline as SlangPassPipeline);
+        if (candidateOwned) {
+          try {
+            pipeline.resize(pass.width, pass.height);
+            keys.set(pass.name, finalKey);
+          } catch (error) {
+            errors.push(WebGPURenderingEngine.prefixPassError(
+              pass.name,
+              error instanceof Error ? error.message : String(error),
+            ));
+          }
+          continue;
+        }
+
+        const wgslKey = WebGPURenderingEngine.wgslCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+          customUniforms,
+          passModules,
+        );
+        const wgsl = sharedSlangWgslCache.get(wgslKey);
+        if (!wgsl) {
+          errors.push(`${pass.name}: compiled WGSL unavailable during resolution reconciliation`);
+          continue;
+        }
+
+        let replacement: SlangPassPipeline | SlangComputePipeline | undefined;
+        try {
+          replacement = this.createPassPipeline(
+            pass,
+            graph.storage,
+            createSlangCustomUniformLayout(customUniforms).size,
+          );
+          if (!this.registerPipelineCandidate(candidates, replacement)) {
+            return errors;
+          }
+          const wgslErrors = await replacement.rebuild(wgsl);
+          errors.push(...wgslErrors.map((error) =>
+            WebGPURenderingEngine.prefixPassError(pass.name, error)));
+          if (wgslErrors.length === 0 &&
+            generation === this.compileGeneration && !this.disposed) {
+            if (isCompute) {
+              nextComputePipelines.set(pass.name, replacement as SlangComputePipeline);
+              nextComputeKeys.set(pass.name, finalKey);
+            } else {
+              nextPipelines.set(pass.name, replacement as SlangPassPipeline);
+              nextKeys.set(pass.name, finalKey);
+            }
+          }
+        } catch (error) {
+          errors.push(WebGPURenderingEngine.prefixPassError(
+            pass.name,
+            error instanceof Error ? error.message : String(error),
+          ));
+        }
+      }
+
+      if (errors.length > 0 || generation !== this.compileGeneration || this.disposed) {
+        return errors;
+      }
+
+      // A replacement rebuild awaited GPU work. If another resize landed in
+      // that interval, loop once more and reconcile the candidate to it.
+      this.updatePassGraphResolutions(graph.passes, config);
+      const stable = graph.passes.every((pass) => {
+        const keys = pass.kind === "compute" ? nextComputeKeys : nextKeys;
+        return keys.get(pass.name) === WebGPURenderingEngine.pipelineCacheKey(
+          pass,
+          graph.commonCode,
+          graph.storage,
+          customUniforms,
+          slangModules
+            .filter((module) => module.ownerPass === pass.name)
+            .map(({ ownerPass: _ownerPass, ...module }) => module),
+        );
+      });
+      if (stable) {
+        return errors;
+      }
+    }
+    return errors;
   }
 
   render(time: number = performance.now()): void {
@@ -1172,15 +2166,89 @@ export class WebGPURenderingEngine implements RenderingEngine {
       cameraDir: this.cameraManager.getCameraDir(),
     };
 
-    // While paused, buffer passes stop advancing. Frame 0 is the exception:
-    // a shader loaded while paused still renders its first buffer state.
-    const skipBufferPasses = isPaused && this.timeManager.getFrame() > 0;
+    // A shader installed while paused still submits one complete initial
+    // frame. TimeManager's frame stays at zero while paused, so the engine
+    // owns this submission state instead of inferring it from iFrame.
+    const skipBufferPasses = isPaused && this.hasSubmittedFrameForInstalledGeneration;
 
     const encoder = this.device.createCommandEncoder();
     let canvasTexture: GPUTexture | null = null;
+    const encodedComputePasses = new Set<string>();
+    const pendingDispatchOnce = new Set<string>();
 
     for (const pass of this.passGraph) {
-      if (imageOnly && pass.output !== "canvas") {
+      if (imageOnly || pass.kind !== "compute" || skipBufferPasses) {
+        continue;
+      }
+      if (pass.dispatchOnce && this.dispatchOnceRan.has(pass.name)) {
+        continue;
+      }
+      const pipeline = this.computePipelines.get(pass.name);
+      const gpuPipeline = pipeline?.getPipeline();
+      const uniformBuffer = pipeline?.getUniformBuffer();
+      if (!pipeline || !gpuPipeline || !uniformBuffer) {
+        continue;
+      }
+
+      const channelResources = this.getChannelResources(pass, isPaused, encodedComputePasses);
+      const workgroupCounts = resolveWorkgroupCounts(
+        pass,
+        this.storageLayouts,
+        channelResources ?? [],
+      );
+      if (channelResources === null || workgroupCounts === null) {
+        continue;
+      }
+      if (validateWorkgroupCounts(
+        pass.name,
+        workgroupCounts,
+        this.resolveComputeWorkgroupLimit(),
+      )) {
+        continue;
+      }
+      pipeline.rebuildBindGroups(channelResources, this.storageBuffers);
+      const bindGroups = Array.from({ length: pass.dispatchCount }, (_, index) =>
+        pipeline.getBindGroup(index));
+      if (bindGroups.some((bindGroup) => bindGroup === null)) {
+        continue;
+      }
+
+      const data = packShaderToyUniforms({
+        width: pass.width,
+        height: pass.height,
+        ...frameInput,
+        ...this.getChannelUniforms(pass),
+      }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
+      this.device.queue.writeBuffer(uniformBuffer, 0, data);
+
+      const computePass = encoder.beginComputePass();
+      let operationFailed = false;
+      try {
+        computePass.setPipeline(gpuPipeline);
+        for (const bindGroup of bindGroups) {
+          computePass.setBindGroup(0, bindGroup!);
+          computePass.dispatchWorkgroups(...workgroupCounts);
+        }
+      } catch (error) {
+        operationFailed = true;
+        throw error;
+      } finally {
+        try {
+          computePass.end();
+        } catch (endError) {
+          if (!operationFailed) {
+            throw endError;
+          }
+        }
+      }
+      if (pass.dispatchOnce) {
+        pendingDispatchOnce.add(pass.name);
+      }
+      encodedComputePasses.add(pass.name);
+    }
+
+    for (const pass of this.passGraph) {
+      if (pass.kind === "compute" || (imageOnly && pass.output !== "canvas")) {
         continue;
       }
       if (skipBufferPasses && pass.output === "texture") {
@@ -1194,16 +2262,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
       // All-or-nothing: the pass's WGSL was compiled against its full channel
       // list, so if any channel source is unresolvable this frame, binding the
       // survivors positionally would mis-bind them. Skip the pass entirely.
-      const channelResources = this.getChannelResources(pass, isPaused);
+      const channelResources = this.getChannelResources(pass, isPaused, encodedComputePasses);
       if (channelResources === null) {
         continue;
       }
 
-      // Channel passes have no bind group until the first rebuildBindGroup:
-      // their explicit layout requires the channel texture/sampler entries,
-      // so it must be (re)built before the bind-group presence check.
-      if (channelResources.length > 0) {
-        pipeline.rebuildBindGroup(channelResources);
+      // Passes with channels or storage have no eager bind group: their
+      // explicit layout requires live resources, so it must be (re)built
+      // before the bind-group presence check.
+      if (channelResources.length > 0 || this.storageLayouts.size > 0) {
+        pipeline.rebuildBindGroup(channelResources, this.storageBuffers);
       }
       const bindGroup = pipeline.getBindGroup();
       if (!bindGroup) {
@@ -1243,7 +2311,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.canvas.width, this.canvas.height);
     }
     this.device.queue.submit([encoder.finish()]);
+    this.hasSubmittedFrameForInstalledGeneration = true;
     this.pixelRegionCapturer?.beginMappings();
+
+    for (const passName of pendingDispatchOnce) {
+      this.dispatchOnceRan.add(passName);
+    }
+    for (const passName of encodedComputePasses) {
+      this.computePipelines.get(passName)?.swap();
+    }
 
     if (!skipBufferPasses && !imageOnly) {
       for (const pass of this.passGraph) {
@@ -1310,51 +2386,89 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private getChannelResources(
     pass: RenderPassNode,
     skipInputUpdates = false,
+    encodedComputePasses: ReadonlySet<string> = new Set(),
   ): SlangChannelResource[] | null {
     const resources: SlangChannelResource[] = [];
     for (const channel of pass.channels) {
       if (channel.kind === "buffer") {
-        const source = this.passPipelines.get(channel.source);
-        const textureView = channel.readFrom === "previous-frame"
-          ? source?.getPreviousOutputView()
-          : source?.getCurrentOutputView();
+        const renderSource = this.passPipelines.get(channel.source);
+        const computeSource = this.computePipelines.get(channel.source);
+        const layer = channel.layer ?? 0;
+        const textureView = computeSource
+          ? channel.readFrom === "previous-frame" || !encodedComputePasses.has(channel.source)
+            ? computeSource.getPreviousLayerOutputView(layer)
+            : computeSource.getLayerOutputView(layer)
+          : channel.readFrom === "previous-frame"
+            ? renderSource?.getPreviousOutputView()
+            : renderSource?.getCurrentOutputView();
         if (!textureView) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView });
+        const size = computeSource?.getOutputSize?.() ?? renderSource?.getOutputSize?.();
+        resources.push({ slot: channel.slot, textureView, ...size });
       } else if (channel.kind === "texture") {
         const handle = this.resourceManager?.getImageTextureCache()[channel.path]
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else if (channel.kind === "video") {
         const handle = this.resourceManager?.getVideoTexture(channel.path)
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else if (channel.kind === "cubemap") {
         const handle = this.resourceManager?.getCubemapTexture(channel.path);
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else if (channel.kind === "audio") {
         const handle = this.resourceManager?.getAudioTexture(channel.path)
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       } else {
         const handle = this.resolveKeyboardHandle(skipInputUpdates);
         if (!handle) {
           return null;
         }
-        resources.push({ slot: channel.slot, textureView: handle.view, sampler: handle.sampler });
+        resources.push({
+          slot: channel.slot,
+          textureView: handle.view,
+          sampler: handle.sampler,
+          width: handle.width,
+          height: handle.height,
+        });
       }
     }
     return resources;
@@ -1505,36 +2619,50 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.canvas || this.passGraph.length === 0) {
       return;
     }
-    const canvasWidth = Math.max(1, this.canvas.width);
-    const canvasHeight = Math.max(1, this.canvas.height);
+    const resizedPasses = this.passGraph.map((pass) => ({ ...pass }));
+    this.updatePassGraphResolutions(resizedPasses, this.currentConfig);
     let resizeEncoder: GPUCommandEncoder | null = null;
     const finishResizes: Array<() => void> = [];
-    for (const pass of this.passGraph) {
-      const unclampedResolution = pass.output === "canvas"
-        ? { width: canvasWidth, height: canvasHeight }
-        : resolvePassResolution({
-          passName: pass.name,
-          passConfig: this.currentConfig?.passes?.[pass.name],
-          canvasWidth,
-          canvasHeight,
-          // Resolution settings were already validated at compile time; a
-          // resize cannot introduce new config errors.
-          errors: [],
-        });
-      const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
-      const sizeChanged = pass.width !== resolution.width || pass.height !== resolution.height;
-      const pipeline = this.passPipelines.get(pass.name);
-      if (sizeChanged && pass.output === "texture" && pipeline && this.device) {
-        resizeEncoder ??= this.device.createCommandEncoder();
-        const finishResize = pipeline.encodeResize(resolution.width, resolution.height, resizeEncoder);
-        if (finishResize) {
-          finishResizes.push(finishResize);
+    for (let index = 0; index < this.passGraph.length; index += 1) {
+      const pass = this.passGraph[index];
+      const resizedPass = resizedPasses[index];
+      const sizeChanged = pass.width !== resizedPass.width || pass.height !== resizedPass.height;
+      if (pass.kind === "compute") {
+        const pipeline = this.computePipelines.get(pass.name);
+        if (!pipeline) {
+          pass.width = resizedPass.width;
+          pass.height = resizedPass.height;
+          continue;
+        }
+        pipeline.resize(resizedPass.width, resizedPass.height);
+        pass.width = resizedPass.width;
+        pass.height = resizedPass.height;
+        const dispatchMode = pass.dispatch?.mode ?? "texel";
+        if (
+          pass.dispatchOnce &&
+          sizeChanged &&
+          (dispatchMode === "texel" || pass.output === "texture")
+        ) {
+          this.dispatchOnceRan.delete(pass.name);
         }
       } else {
-        pipeline?.resize(resolution.width, resolution.height);
+        const pipeline = this.passPipelines.get(pass.name);
+        if (sizeChanged && pass.output === "texture" && pipeline && this.device) {
+          resizeEncoder ??= this.device.createCommandEncoder();
+          const finishResize = pipeline.encodeResize(
+            resizedPass.width,
+            resizedPass.height,
+            resizeEncoder,
+          );
+          if (finishResize) {
+            finishResizes.push(finishResize);
+          }
+        } else {
+          pipeline?.resize(resizedPass.width, resizedPass.height);
+        }
+        pass.width = resizedPass.width;
+        pass.height = resizedPass.height;
       }
-      pass.width = resolution.width;
-      pass.height = resolution.height;
     }
     if (resizeEncoder && finishResizes.length > 0 && this.device) {
       this.device.queue.submit([resizeEncoder.finish()]);
@@ -1544,12 +2672,80 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  private updatePassGraphResolutions(
+    passes: RenderPassNode[],
+    config: ShaderConfig | null,
+  ): void {
+    if (!this.canvas) {
+      return;
+    }
+    const canvasWidth = Math.max(1, this.canvas.width);
+    const canvasHeight = Math.max(1, this.canvas.height);
+    for (const pass of passes) {
+      const unclampedResolution = pass.output === "canvas"
+        ? { width: canvasWidth, height: canvasHeight }
+        : resolvePassResolution({
+          passName: pass.name,
+          passConfig: config?.passes?.[pass.name],
+          canvasWidth,
+          canvasHeight,
+          // Resolution settings were already validated at compile time; a
+          // resize cannot introduce new config errors.
+          errors: [],
+        });
+      const resolution = this.clampResolutionToTextureLimit(unclampedResolution);
+      pass.width = resolution.width;
+      pass.height = resolution.height;
+    }
+  }
+
   getResourceManager(): ResourceManager<WebGPUTextureHandle> | null {
     return this.resourceManager;
   }
 
   getCurrentConfig(): ShaderConfig | null {
     return this.currentConfig;
+  }
+
+  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
+    const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while reading storage buffer");
+    }
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
+    const readback = this.device.createBuffer({ size, usage: COPY_DST | MAP_READ });
+    try {
+      const encoder = this.device.createCommandEncoder({ label: `storage-readback-${name}` });
+      encoder.copyBufferToBuffer(buffer, offset, readback, 0, size);
+      this.device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(globalThis.GPUMapMode?.READ ?? 0x0001);
+      const data = readback.getMappedRange().slice(0);
+      readback.unmap();
+      return { name, elementType: layout.elementType, stride: layout.stride, start, count, data };
+    } finally {
+      readback.destroy();
+    }
+  }
+
+  async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {
+    const layout = this.storageLayouts.get(name);
+    const buffer = this.storageBuffers.get(name);
+    if (!layout || !buffer) {
+      throw new Error(`Storage buffer "${name}" is not available`);
+    }
+    if (!Number.isInteger(start) || start < 0 || start >= layout.count) {
+      throw new Error(`Storage buffer "${name}" has an invalid element range`);
+    }
+    if (data.byteLength === 0 || data.byteLength % layout.stride !== 0) {
+      throw new Error(`Storage buffer "${name}" write data does not match its stride`);
+    }
+    const count = data.byteLength / layout.stride;
+    const { offset, size } = this.resolveStorageRange(name, start, count);
+    if (size !== data.byteLength || !this.device) {
+      throw new Error("WebGPU device unavailable while writing storage buffer");
+    }
+    this.device.queue.writeBuffer(buffer, offset, data);
   }
 
   getCanvas(): HTMLCanvasElement | null {
@@ -1578,7 +2774,32 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
+    // Allocate the complete replacement before invalidating any live reset or
+    // compile state. A failed allocation leaves the installed generation
+    // usable and makes resetTime safe to retry.
+    const resetStorageBuffers = this.prepareResetStorageBuffers();
     this.timeManager.cleanup();
+    this.dispatchOnceRan.clear();
+    this.hasSubmittedFrameForInstalledGeneration = false;
+    this.compileGeneration++;
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      this.discardPreparedStorage(prepared);
+    }
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      this.discardPipelineCandidates(candidates);
+    }
+    if (resetStorageBuffers) {
+      const retiredStorageBuffers = this.storageBuffers;
+      this.storageBuffers = resetStorageBuffers;
+      for (const buffer of retiredStorageBuffers.values()) {
+        try {
+          buffer.destroy();
+        } catch {
+          // Reset has already published the complete replacement. Retirement
+          // is best effort and must not invalidate the new reset generation.
+        }
+      }
+    }
     this.cameraManager.reset();
     this.resetFeedbackOnNextApply = true;
   }
@@ -1651,16 +2872,41 @@ export class WebGPURenderingEngine implements RenderingEngine {
     attempt(() => pixelRegionCapturer?.dispose());
 
     const passPipelines = [...this.passPipelines.values()];
+    const computePipelines = [...this.computePipelines.values()];
     this.passPipelines.clear();
     this.passKeys.clear();
+    this.computePipelines.clear();
+    this.computeKeys.clear();
+    this.dispatchOnceRan.clear();
+    this.hasSubmittedFrameForInstalledGeneration = false;
     this.passGraph = [];
+    this.installedCompile = null;
+    this.installedResourceKey = null;
+    for (const prepared of [...this.pendingStoragePreparations]) {
+      attempt(() => this.discardPreparedStorage(prepared));
+    }
+    for (const candidates of [...this.pendingPipelineCandidates]) {
+      attempt(() => this.discardPipelineCandidates(candidates));
+    }
+    for (const buffer of this.storageBuffers.values()) {
+      attempt(() => buffer.destroy());
+    }
+    this.storageBuffers.clear();
+    this.storageKeys.clear();
+    this.storageLayouts.clear();
+    this.resetStorageOnNextSync = false;
     for (const pipeline of passPipelines) {
+      attempt(() => pipeline.dispose());
+    }
+    for (const pipeline of computePipelines) {
       attempt(() => pipeline.dispose());
     }
 
     const resourceManager = this.resourceManager;
     this.resourceManager = null;
-    attempt(() => resourceManager?.cleanup());
+    const disposeResources = resourceManager?.dispose?.bind(resourceManager)
+      ?? resourceManager?.cleanup?.bind(resourceManager);
+    attempt(() => disposeResources?.());
 
     const device = this.device;
     this.device = null;
@@ -1686,7 +2932,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.lastCompile.buffers = { ...this.lastCompile.buffers, [bufferName]: bufferContent };
     return this.compileShaderPipeline(
       this.lastCompile.code,
-      this.currentConfig,
+      this.lastCompile.config,
       this.lastCompile.path,
       this.lastCompile.buffers,
       this.lastCompile.customUniformDeclarations,
@@ -1758,20 +3004,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
           ?? this.passGraph[0];
         return pass ? this.getChannelResources(pass) : [];
       },
+      () => this.storageBuffers,
     );
   }
 
-  getVariableCaptureCompileContext(code?: string, passName?: string, sourcePath?: string | null): CaptureCompileContext {
-    const graph = this.getVariableCapturePassGraph();
-    const configuredCommonCode = this.lastCompile?.buffers?.common ?? "";
+  getVariableCaptureCompileContext(
+    code?: string,
+    passName?: string,
+    sourcePath?: string | null,
+  ): CaptureCompileContext {
+    const snapshot = this.installedCompile ?? (this.disposed ? null : this.lastCompile);
+    const graph = this.getVariableCapturePassGraph(snapshot);
+    const configuredCommonCode = snapshot?.buffers.common ?? "";
     const isCapturingCommon = passName === "common"
       || (code !== undefined && code === configuredCommonCode);
     const targetPass = (passName
-      ? graph.find((pass) => pass.name === passName)
+      ? graph.passes.find((pass) => pass.name === passName)
       : undefined) ?? (code
-      ? graph.find((pass) => pass.source === code)
-      : undefined) ?? graph.find((pass) => pass.name === "Image") ?? graph[0];
-    const ownerModules = (this.lastCompile?.slangModules ?? [])
+      ? graph.passes.find((pass) => pass.source === code)
+      : undefined) ?? graph.passes.find((pass) => pass.name === "Image") ?? graph.passes[0];
+    const ownerModules = (snapshot?.slangModules ?? [])
       .filter((module) => module.ownerPass === targetPass?.name);
     const selectedModuleIndex = sourcePath
       ? ownerModules.findIndex((module) => module.path === sourcePath)
@@ -1790,8 +3042,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       commonCode,
       slangPassName: targetPass?.name,
       slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      slangStorage: graph.storage,
+      slangStorageBuffers: this.storageBuffers,
       slangModules,
-      slangSourcePath: sourcePath ?? undefined,
+      ...(sourcePath ? { slangSourcePath: sourcePath } : {}),
     };
   }
 
@@ -1806,20 +3060,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
     );
   }
 
-  private getVariableCapturePassGraph(): RenderPassNode[] {
-    if (this.passGraph.length > 0 || !this.lastCompile) {
-      return this.passGraph;
+  private getVariableCapturePassGraph(
+    snapshot: ShaderCompileSnapshot | null,
+  ): { passes: RenderPassNode[]; storage: StorageBindingNode[] } {
+    if (this.passGraph.length > 0 || !snapshot) {
+      return {
+        passes: this.passGraph,
+        storage: [...this.storageLayouts.values()],
+      };
     }
 
-    return buildSlangPassGraph({
-      imageCode: this.lastCompile.code,
-      config: this.currentConfig,
-      buffers: this.lastCompile.buffers,
+    const graph = buildSlangPassGraph({
+      imageCode: snapshot.code,
+      config: snapshot.config,
+      buffers: snapshot.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
-    }).passes;
+      computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
+    });
+    return { passes: graph.passes, storage: graph.storage };
   }
-
   getShaderLanguage(): "glsl" | "slang" {
     return "slang";
   }
@@ -1871,7 +3131,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.resourceManager?.updateAudioLoopRegion(path, startTime, endTime);
   }
   setGlobalVolume(volume: number, muted: boolean): void {
-    this.resourceManager?.setGlobalAudioState(volume, muted);
+    this.globalVolume = Math.max(0, Math.min(1, volume));
+    this.globalMuted = muted;
+    this.resourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
   }
   controlVideo(path: string, action: "play" | "pause" | "mute" | "unmute" | "reset"): void {
     this.resourceManager?.controlVideo(path, action);

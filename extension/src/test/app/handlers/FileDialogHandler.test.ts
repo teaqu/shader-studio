@@ -116,6 +116,18 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(opts.filters, { 'Script files': ['ts', 'js'] });
     });
 
+    test('passes Slang filters when fileType is slang-compute', async () => {
+      const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.slang', fileType: 'slang-compute', requestId: 'req-compute-select' },
+        respondFn,
+      );
+
+      assert.ok(showOpenStub.calledOnce);
+      assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'Slang files': ['slang'] });
+    });
+
     test('calls writeWorkspaceTypeDefs when a .ts script file is selected', async () => {
       const WorkspaceTypeDefs = require('../../../app/WorkspaceTypeDefs');
       const writeStub = sandbox.stub(WorkspaceTypeDefs, 'writeWorkspaceTypeDefs');
@@ -314,6 +326,68 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(writeStub.calledOnce);
       const content: string = writeStub.firstCall.args[1];
       assert.ok(content.includes('mainImage'));
+    });
+
+    test('creates a Slang compute source with the suggested path and computeMain template', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const savedUri = vscode.Uri.file('/test/image.computea.slang');
+      const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(savedUri);
+
+      await handler.handleCreateFile(
+        {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: 'req-compute-create',
+        },
+        respondFn,
+      );
+
+      assert.deepStrictEqual(showSaveStub.firstCall.args[0]!.filters, { 'Slang files': ['slang'] });
+      assert.strictEqual(showSaveStub.firstCall.args[0]!.defaultUri!.fsPath, savedUri.fsPath);
+      assert.ok(writeStub.calledOnce);
+      const content: string = writeStub.firstCall.args[1];
+      assert.ok(content.includes('void computeMain(uint3 dispatchThreadID)'));
+      assert.ok(!content.includes('mainImage'));
+      assert.strictEqual(respondFn.firstCall.args[0].payload.path, './image.computea.slang');
+    });
+
+    test('does not overwrite an existing Slang compute source', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/existing.slang'));
+
+      await handler.handleCreateFile(
+        {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'existing.slang',
+          fileType: 'slang-compute',
+          requestId: 'req-compute-existing',
+        },
+        respondFn,
+      );
+
+      assert.ok(writeStub.notCalled);
+      assert.ok(respondFn.calledOnce);
+    });
+
+    test('does not respond when Slang compute creation is cancelled', async () => {
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await handler.handleCreateFile(
+        {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: 'req-compute-cancel',
+        },
+        respondFn,
+      );
+
+      assert.ok(respondFn.notCalled);
     });
 
     test('writes JS template for script .js fileType', async () => {

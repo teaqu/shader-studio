@@ -28,6 +28,15 @@ export class ResourceManager<T> {
     this.keyboardInput = new ShaderKeyboardInput(backend);
   }
 
+  /**
+   * Create an empty manager backed by the same GPU texture backend. Compile
+   * attempts use this as an isolated resource transaction: none of the live
+   * manager's caches or media elements are touched until the attempt wins.
+   */
+  public createIsolated(): ResourceManager<T> {
+    return new ResourceManager(this.backend);
+  }
+
   public getImageTextureCache(): Record<string, T> {
     return this.textureCache.getImageTextureCache();
   }
@@ -202,6 +211,11 @@ export class ResourceManager<T> {
     this.cubemapTextureManager.cleanup();
     this.audioTextureManager.cleanup();
     this.keyboardInput.cleanup();
+  }
+
+  public dispose(): void {
+    this.cleanup();
+    this.textureCache.dispose();
   }
 
   public cleanupAllExceptMedia(): void {

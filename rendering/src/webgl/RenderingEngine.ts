@@ -14,7 +14,7 @@ import { FrameRenderer } from "./FrameRenderer";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { ConfigValidator } from "../util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "../types";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderConfig, StorageBufferSnapshot } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import { CustomUniformManager } from "./CustomUniformManager";
@@ -301,6 +301,14 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getCurrentConfig(): ShaderConfig | null {
     return this.currentConfig;
+  }
+
+  public async readStorageBuffer(_name: string, _start: number, _count: number): Promise<StorageBufferSnapshot> {
+    throw new Error("Storage inspection requires the Slang/WebGPU renderer");
+  }
+
+  public async writeStorageBuffer(_name: string, _start: number, _data: ArrayBuffer): Promise<void> {
+    throw new Error("Storage inspection requires the Slang/WebGPU renderer");
   }
 
   public setInputEnabled(enabled: boolean): void {

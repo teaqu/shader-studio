@@ -2,7 +2,7 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
-import type { BufferPass, ImagePass } from '@shader-studio/types';
+import type { BufferPass, ComputePass, ImagePass } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
   let mockOnUpdate: ReturnType<typeof vi.fn>;
@@ -13,6 +13,32 @@ describe('BufferConfig', () => {
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
     mockPostMessage = vi.fn();
+  });
+
+  describe('compute settings', () => {
+    it('shows Slang compute controls and commits dispatch changes through the compute handler', async () => {
+      const onComputeCommit = vi.fn(() => ({}));
+      const config: ComputePass = { path: 'sim.slang', inputs: {} };
+      const { getByLabelText, getByRole } = render(BufferConfig, {
+        bufferName: 'ComputeSim',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        language: 'slang',
+        passKind: 'compute',
+        storageNames: ['particles'],
+        onComputeCommit,
+      });
+
+      expect(getByRole('heading', { name: 'Dispatch' })).toBeInTheDocument();
+      await fireEvent.change(getByLabelText('Dispatch mode'), { target: { value: 'storage' } });
+
+      expect(onComputeCommit).toHaveBeenCalledWith({
+        path: 'sim.slang',
+        inputs: {},
+        dispatch: { cover: 'particles' },
+      });
+    });
   });
 
   describe('Create File Button', () => {
@@ -139,6 +165,81 @@ describe('BufferConfig', () => {
       await fireEvent.click(getByText('Select'));
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
+    });
+
+    it('should request Slang compute files when selecting a compute pass source', async () => {
+      const config: BufferPass = { path: 'existing.slang', inputs: {} };
+
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'ComputeA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language: 'slang',
+        passKind: 'compute',
+        shaderPath: '/shaders/image.slang',
+      });
+
+      await fireEvent.click(getByText('Select'));
+
+      expect(mockPostMessage).toHaveBeenCalledWith({
+        type: 'selectFile',
+        payload: {
+          shaderPath: '/shaders/image.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
+    it('should request the suggested Slang path when creating a compute pass source', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+
+      const { getByText, getByLabelText } = render(BufferConfig, {
+        bufferName: 'ComputeA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language: 'slang',
+        passKind: 'compute',
+        shaderPath: '/shaders/image.slang',
+        suggestedPath: 'image.computea.slang',
+      });
+
+      expect(getByLabelText('Path:')).toHaveAttribute('placeholder', 'image.computea.slang');
+      await fireEvent.click(getByText('Create'));
+
+      expect(mockPostMessage).toHaveBeenCalledWith({
+        type: 'createFile',
+        payload: {
+          shaderPath: '/shaders/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
+    it.each([
+      { language: 'glsl' as const, passKind: 'compute' as const },
+      { language: 'slang' as const, passKind: 'render' as const },
+    ])('should preserve GLSL buffer selection for $language $passKind passes', async ({ language, passKind }) => {
+      const config: BufferPass = { path: 'existing.glsl', inputs: {} };
+      const { getByText } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage,
+        language,
+        passKind,
+      });
+
+      await fireEvent.click(getByText('Select'));
+
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 

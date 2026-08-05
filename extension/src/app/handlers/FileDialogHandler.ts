@@ -7,12 +7,19 @@ import { WorkspaceFileScanner } from "../WorkspaceFileScanner";
 import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
-import type { ErrorMessage } from "@shader-studio/types";
+import type {
+  CreateFileMessage,
+  ErrorMessage,
+  FileDialogFileType,
+  FileSelectedMessage,
+  SelectFileMessage,
+} from "@shader-studio/types";
 import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS } from "@shader-studio/types";
 
-function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
+function fileTypeToFilters(fileType: FileDialogFileType): { [name: string]: string[] } {
   switch (fileType) {
     case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
+    case 'slang-compute': return { 'Slang files': ['slang'] };
     case 'texture':  return { 'Texture files': TEXTURE_EXTENSIONS };
     case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
@@ -32,8 +39,8 @@ export class FileDialogHandler {
   ) {}
 
   async handleSelectFile(
-    payload: { shaderPath: string; fileType: string; requestId: string },
-    respondFn: (msg: any) => void,
+    payload: SelectFileMessage['payload'],
+    respondFn: (msg: FileSelectedMessage) => void,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -65,8 +72,8 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string },
-    respondFn: (msg: any) => void,
+    payload: CreateFileMessage['payload'],
+    respondFn: (msg: FileSelectedMessage) => void,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -76,9 +83,12 @@ export class FileDialogHandler {
           return e ? path.dirname(e.document.uri.fsPath) : null;
         })();
       const isScript = payload.fileType === 'script';
+      const isSlangCompute = payload.fileType === 'slang-compute';
       const filters: { [name: string]: string[] } = isScript
         ? { 'Script files': ['ts', 'js'] }
-        : { 'GLSL files': ['glsl', 'frag', 'vert'] };
+        : isSlangCompute
+          ? { 'Slang files': ['slang'] }
+          : { 'GLSL files': ['glsl', 'frag', 'vert'] };
       const defaultPath = shaderDir && payload.suggestedPath
         ? path.resolve(shaderDir, payload.suggestedPath)
         : shaderDir
@@ -100,6 +110,8 @@ export class FileDialogHandler {
           template = filePath.endsWith('.ts')
             ? this.buildTsTemplate(filePath, shaderDir || path.dirname(filePath))
             : `export function uniforms(ctx) {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
+        } else if (isSlangCompute) {
+          template = `void computeMain(uint3 dispatchThreadID) {\n    // Compute shader logic\n}\n`;
         } else if (payload.fileType === 'glsl-common') {
           template = `// Common functions shared across all passes\n`;
         } else {

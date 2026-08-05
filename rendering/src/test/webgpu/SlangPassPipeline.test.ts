@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { StorageBindingNode } from "../../types/PassGraph";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
@@ -40,6 +41,24 @@ function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; 
   };
 }
 
+const storageA: StorageBindingNode = {
+  name: "positions",
+  binding: 0,
+  elementType: "float4",
+  builtin: true,
+  count: 64,
+  stride: 16,
+};
+
+const storageB: StorageBindingNode = {
+  name: "particles",
+  binding: 1,
+  elementType: "Particle",
+  builtin: false,
+  count: 32,
+  stride: 32,
+};
+
 describe("SlangPassPipeline", () => {
   it("creates a canvas pipeline without ping-pong textures", async () => {
     const device = fakeDevice();
@@ -48,10 +67,12 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
     await pass.rebuild("// wgsl");
+    expect(pass.getOutputSize()).toEqual({ width: 800, height: 600 });
 
     expect(device.createRenderPipeline).toHaveBeenCalled();
     expect(device.createTexture).not.toHaveBeenCalled();
@@ -65,6 +86,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -75,6 +97,54 @@ describe("SlangPassPipeline", () => {
 
     expect(device.createTexture).toHaveBeenCalledTimes(2);
     expect(before).not.toBe(pass.getCurrentOutputView());
+  });
+
+  it("precreates stable current and previous buffer views across reads and swaps", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const textures = device.createTexture.mock.results.map((result) => result.value);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+    const current = pass.getCurrentOutputView();
+    const previous = pass.getPreviousOutputView();
+    expect(pass.getCurrentOutputView()).toBe(current);
+    expect(pass.getPreviousOutputView()).toBe(previous);
+
+    pass.swap();
+
+    expect(pass.getCurrentOutputView()).toBe(previous);
+    expect(pass.getPreviousOutputView()).toBe(current);
+    expect(textures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+  });
+
+  it("replaces cached buffer views only after a successful resize", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalCurrent = pass.getCurrentOutputView();
+
+    pass.resize(640, 360);
+
+    const nextTextures = device.createTexture.mock.results.slice(2).map((result) => result.value);
+    expect(pass.getCurrentOutputView()).not.toBe(originalCurrent);
+    expect(nextTextures.map((texture) => texture.createView.mock.calls.length)).toEqual([1, 1]);
+    expect(pass.getCurrentOutputView()).toBe(pass.getCurrentOutputView());
   });
 
   it("uses a negotiated rgba32float format for buffer targets", async () => {
@@ -104,6 +174,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -121,6 +192,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -154,6 +226,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -173,6 +246,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -200,6 +274,213 @@ describe("SlangPassPipeline", () => {
     });
   });
 
+  it("places read-only fragment storage at its exact binding after slot-sorted channel pairs", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 3, key: "iChannel3" }],
+      storage: [storageA, storageB],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const entries = device.createBindGroupLayout.mock.calls[0][0].entries;
+    expect(entries.map((entry: GPUBindGroupLayoutEntry) => entry.binding)).toEqual([0, 1, 2, 3, 4]);
+    expect(entries.slice(3)).toEqual([
+      {
+        binding: 3,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: 4,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+    ]);
+  });
+
+  it("keeps direct atomic storage bindings read-only in fragment pipelines", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [{
+        ...storageA,
+        name: "counters",
+        elementType: "Atomic<uint>",
+        stride: 4,
+      }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)).toEqual({
+      binding: 1,
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: "read-only-storage" },
+    });
+  });
+
+  it("uses each storage node binding instead of its descriptor-array index", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [{ slot: 0, key: "iChannel0" }],
+      storage: [{ ...storageA, binding: 2 }],
+    });
+
+    await pass.rebuild("// wgsl");
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    pass.rebuildBindGroup(
+      [{ slot: 0, textureView: { label: "view" } as unknown as GPUTextureView }],
+      new Map([[storageA.name, positions]]),
+    );
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)!.binding).toBe(5);
+    expect(device.createBindGroup.mock.calls[0][0].entries.at(-1)).toEqual({
+      binding: 5,
+      resource: { buffer: positions },
+    });
+  });
+
+  it("defers a storage-only bind group until storage buffers are provided", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.map(
+      (entry: GPUBindGroupLayoutEntry) => entry.binding,
+    )).toEqual([0, 1]);
+    expect(device.createBindGroup).not.toHaveBeenCalled();
+    expect(pass.getBindGroup()).toBeNull();
+  });
+
+  it("binds slot-sorted channels before storage buffers resolved by node name", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [
+        { slot: 3, key: "iChannel3" },
+        { slot: 0, key: "iChannel0" },
+      ],
+      storage: [storageA, storageB],
+    });
+    await pass.rebuild("// wgsl");
+    const view0 = { label: "view-0" } as unknown as GPUTextureView;
+    const view3 = { label: "view-3" } as unknown as GPUTextureView;
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const particles = { label: "particles" } as unknown as GPUBuffer;
+
+    pass.rebuildBindGroup(
+      [
+        { slot: 3, textureView: view3 },
+        { slot: 0, textureView: view0 },
+      ],
+      new Map([
+        [storageB.name, particles],
+        [storageA.name, positions],
+      ]),
+    );
+
+    const sampler = device.createSampler.mock.results[0].value;
+    expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
+      { binding: 0, resource: { buffer: pass.getUniformBuffer() } },
+      { binding: 1, resource: view0 },
+      { binding: 2, resource: sampler },
+      { binding: 3, resource: view3 },
+      { binding: 4, resource: sampler },
+      { binding: 5, resource: { buffer: positions } },
+      { binding: 6, resource: { buffer: particles } },
+    ]);
+  });
+
+  it("clears a prior bind group when storage is absent and recovers without partial creation", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA, storageB],
+    });
+    await pass.rebuild("// wgsl");
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const particles = { label: "particles" } as unknown as GPUBuffer;
+    const complete = new Map([
+      [storageA.name, positions],
+      [storageB.name, particles],
+    ]);
+    pass.rebuildBindGroup([], complete);
+    expect(pass.getBindGroup()).not.toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], new Map([[storageA.name, positions]]));
+    expect(pass.getBindGroup()).toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], undefined);
+    expect(pass.getBindGroup()).toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    pass.rebuildBindGroup([], complete);
+    expect(pass.getBindGroup()).not.toBeNull();
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it("reuses an unchanged bind group and rebuilds when a storage buffer identity changes", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [storageA],
+    });
+    await pass.rebuild("// wgsl");
+    const firstBuffer = { label: "positions-1" } as unknown as GPUBuffer;
+    const firstResources = new Map([[storageA.name, firstBuffer]]);
+
+    pass.rebuildBindGroup([], firstResources);
+    const firstBindGroup = pass.getBindGroup();
+    pass.rebuildBindGroup([], firstResources);
+
+    expect(pass.getBindGroup()).toBe(firstBindGroup);
+    expect(device.createBindGroup).toHaveBeenCalledTimes(1);
+
+    const replacement = { label: "positions-2" } as unknown as GPUBuffer;
+    pass.rebuildBindGroup([], new Map([[storageA.name, replacement]]));
+
+    expect(pass.getBindGroup()).not.toBe(firstBindGroup);
+    expect(device.createBindGroup).toHaveBeenCalledTimes(2);
+    expect(device.createBindGroup.mock.calls.at(-1)![0].entries).toContainEqual({
+      binding: 1,
+      resource: { buffer: replacement },
+    });
+  });
+
   it("uses cube texture layout entries for cubemap channels", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -207,6 +488,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0", kind: "cubemap" },
         { slot: 1, key: "iChannel1" },
@@ -237,6 +519,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -257,6 +540,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -276,6 +560,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -295,6 +580,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -315,6 +601,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -331,6 +618,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -346,6 +634,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -363,6 +652,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -375,8 +665,10 @@ describe("SlangPassPipeline", () => {
 
     pass.swap();
 
-    expect(pass.getCurrentOutputView()).toBe(textureB.createView.mock.results[1].value);
-    expect(pass.getPreviousOutputView()).toBe(textureA.createView.mock.results[1].value);
+    expect(pass.getCurrentOutputView()).toBe(textureB.createView.mock.results[0].value);
+    expect(pass.getPreviousOutputView()).toBe(textureA.createView.mock.results[0].value);
+    expect(textureA.createView).toHaveBeenCalledTimes(1);
+    expect(textureB.createView).toHaveBeenCalledTimes(1);
   });
 
   it("destroys the previous ping-pong textures when rebuild runs again", async () => {
@@ -386,6 +678,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -400,6 +693,33 @@ describe("SlangPassPipeline", () => {
     expect(device.createTexture).toHaveBeenCalledTimes(4);
   });
 
+  it("destroys a partial output allocation when the second rebuild texture throws", async () => {
+    const device = fakeDevice();
+    const partialTexture = {
+      createView: vi.fn(() => ({ label: "partial-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second render rebuild allocation failed");
+      });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+
+    await expect(pass.rebuild("// wgsl"))
+      .rejects.toThrow("second render rebuild allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(pass.getCurrentOutputView()).toBeNull();
+  });
+
   it("dispose() destroys ping-pong textures and clears the output view", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -407,6 +727,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -451,6 +772,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -466,6 +788,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -475,6 +798,7 @@ describe("SlangPassPipeline", () => {
       width: 640,
       height: 360,
       output: "texture",
+      storage: [],
       channels: [],
     });
     await pass.rebuild("// wgsl v2");
@@ -490,6 +814,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -497,6 +822,7 @@ describe("SlangPassPipeline", () => {
     const firstTextures = device.createTexture.mock.results.map((r) => r.value);
 
     pass.resize(640, 360);
+    expect(pass.getOutputSize()).toEqual({ width: 640, height: 360 });
 
     for (const texture of firstTextures) {
       expect(texture.destroy).toHaveBeenCalledTimes(1);
@@ -589,6 +915,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -609,6 +936,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -625,6 +953,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "texture",
+      storage: [],
       channels: [],
     });
 
@@ -637,6 +966,104 @@ describe("SlangPassPipeline", () => {
     }
   });
 
+  it("preserves the old descriptor, views, and textures when the first resize allocation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const stableView = { label: "stable-original-view" };
+    originalTextures[0].createView.mockReturnValue(stableView);
+    const originalCurrentView = pass.getCurrentOutputView();
+    device.createTexture.mockImplementationOnce(() => {
+      throw new Error("first resize allocation failed");
+    });
+
+    expect(() => pass.resize(640, 360)).toThrow("first resize allocation failed");
+
+    expect(pass.getCurrentOutputView()).toBe(originalCurrentView);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    pass.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
+  it("destroys a partial resize allocation while preserving old resources when the second allocation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const stableView = { label: "stable-original-view" };
+    originalTextures[0].createView.mockReturnValue(stableView);
+    const originalCurrentView = pass.getCurrentOutputView();
+    const partialTexture = {
+      createView: vi.fn(() => ({ label: "partial-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => partialTexture)
+      .mockImplementationOnce(() => {
+        throw new Error("second resize allocation failed");
+      });
+
+    expect(() => pass.resize(640, 360)).toThrow("second resize allocation failed");
+
+    expect(partialTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(pass.getCurrentOutputView()).toBe(originalCurrentView);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    const callsAfterFailure = device.createTexture.mock.calls.length;
+    pass.resize(320, 180);
+    expect(device.createTexture).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
+  it("preserves cached render views when resized output view creation throws", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      storage: [],
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const originalView = pass.getCurrentOutputView();
+    const originalTextures = device.createTexture.mock.results.map((result) => result.value);
+    const failingTexture = {
+      createView: vi.fn(() => {
+        throw new Error("render resize view failed");
+      }),
+      destroy: vi.fn(),
+    };
+    const siblingTexture = {
+      createView: vi.fn(() => ({ label: "sibling-view" })),
+      destroy: vi.fn(),
+    };
+    device.createTexture
+      .mockImplementationOnce(() => failingTexture)
+      .mockImplementationOnce(() => siblingTexture);
+
+    expect(() => pass.resize(640, 360)).toThrow("render resize view failed");
+
+    expect(failingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(siblingTexture.destroy).toHaveBeenCalledTimes(1);
+    expect(originalTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+    expect(pass.getCurrentOutputView()).toBe(originalView);
+  });
+
   it("destroys the uniform buffer on dispose()", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
@@ -644,6 +1071,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -654,6 +1082,8 @@ describe("SlangPassPipeline", () => {
 
     expect(uniformBuffer.destroy).toHaveBeenCalledTimes(1);
     expect(pass.getUniformBuffer()).toBeNull();
+    expect(pass.getPipeline()).toBeNull();
+    expect(pass.getBindGroup()).toBeNull();
   });
 
   it("destroys the old uniform buffer when rebuild replaces it", async () => {
@@ -663,6 +1093,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -684,6 +1115,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -697,6 +1129,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -713,6 +1146,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -738,12 +1172,34 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
     const errors = await pass.rebuild("// wgsl");
 
     expect(errors).toEqual(["Image: WGSL L10:5 undeclared identifier 'foo'"]);
+  });
+
+  it("returns WGSL diagnostics when asynchronous pipeline creation rejects an invalid module", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 42, linePos: 7, message: "invalid texture sample" },
+    ]);
+    device.createRenderPipelineAsync = vi.fn(async () => {
+      throw new Error("[Invalid ShaderModule (unlabeled)] is invalid.");
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      storage: [],
+      channels: [],
+    });
+
+    await expect(pass.rebuild("// invalid wgsl")).resolves.toEqual([
+      "Image: WGSL L42:7 invalid texture sample",
+    ]);
   });
 
   it("returns an empty error list when compilation has no messages", async () => {
@@ -753,6 +1209,7 @@ describe("SlangPassPipeline", () => {
       width: 800,
       height: 600,
       output: "canvas",
+      storage: [],
       channels: [],
     });
 
@@ -768,6 +1225,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -785,6 +1243,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 2, key: "iChannel2" }],
     });
 
@@ -807,6 +1266,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -821,6 +1281,7 @@ describe("SlangPassPipeline", () => {
       width: 320,
       height: 180,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -859,6 +1320,7 @@ describe("SlangPassPipeline", () => {
       width: 8,
       height: 8,
       output: "canvas",
+      storage: [],
       channels: [
         { slot: 0, key: "iChannel0" },
         { slot: 1, key: "iChannel1" },
@@ -894,6 +1356,7 @@ describe("SlangPassPipeline", () => {
         width: 800,
         height: 600,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");
@@ -915,6 +1378,7 @@ describe("SlangPassPipeline", () => {
         width: 320,
         height: 180,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");
@@ -931,6 +1395,7 @@ describe("SlangPassPipeline", () => {
         width: 800,
         height: 600,
         output: "canvas",
+        storage: [],
         channels: [],
       });
       const errors = await pass.rebuild("// wgsl");

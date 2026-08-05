@@ -1,13 +1,13 @@
-import type { BufferPass, ImagePass, ConfigInput } from '@shader-studio/types';
+import type { BufferPass, ComputePass, ImagePass, ConfigInput } from '@shader-studio/types';
 
 export class BufferConfig {
   private bufferName: string;
-  private config: BufferPass | ImagePass;
-  private onUpdate?: (bufferName: string, config: BufferPass | ImagePass) => void;
+  private config: BufferPass | ImagePass | ComputePass;
+  private onUpdate?: (bufferName: string, config: BufferPass | ImagePass | ComputePass) => void;
   constructor(
     bufferName: string,
-    config: BufferPass | ImagePass,
-    onUpdate?: (bufferName: string, config: BufferPass | ImagePass) => void
+    config: BufferPass | ImagePass | ComputePass,
+    onUpdate?: (bufferName: string, config: BufferPass | ImagePass | ComputePass) => void
   ) {
     this.bufferName = bufferName;
     this.config = config;
@@ -17,7 +17,7 @@ export class BufferConfig {
   /**
    * Get the current configuration
    */
-  getConfig(): BufferPass | ImagePass {
+  getConfig(): BufferPass | ImagePass | ComputePass {
     return this.config;
   }
 

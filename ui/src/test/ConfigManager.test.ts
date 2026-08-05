@@ -250,6 +250,77 @@ describe('ConfigManager', () => {
     });
   });
 
+  describe('addComputePass', () => {
+    it('should create and publish a valid default config when no config is loaded', () => {
+      const name = configManager.addComputePass();
+      const config = configManager.getConfig();
+
+      expect(name).toBe('ComputeA');
+      expect(config).toEqual({
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      });
+      expect(onConfigChange).toHaveBeenCalledOnce();
+      expect(onConfigChange).toHaveBeenCalledWith(config);
+      expect(transport.postMessage).toHaveBeenCalledWith({
+        type: 'updateConfig',
+        payload: expect.objectContaining({
+          config,
+          text: JSON.stringify(config, null, 2),
+        }),
+      });
+    });
+
+    it('should auto-name compute passes from ComputeA to ComputeB', () => {
+      configManager.setConfig(createTestConfig());
+
+      expect(configManager.addComputePass()).toBe('ComputeA');
+      expect(configManager.addComputePass()).toBe('ComputeB');
+      expect(configManager.getConfig()!.passes.ComputeA).toEqual({ path: '', inputs: {} });
+      expect(configManager.getConfig()!.passes.ComputeB).toEqual({ path: '', inputs: {} });
+    });
+
+    it('should fill an unoccupied alphabetic gap', () => {
+      const config = createTestConfig();
+      config.passes.ComputeA = { path: 'a.slang', inputs: {} };
+      config.passes.ComputeC = { path: 'c.slang', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('ComputeB');
+    });
+
+    it('should continue with Compute1 after ComputeZ', () => {
+      const config = createTestConfig();
+      for (let i = 0; i < 26; i++) {
+        config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          path: `${String.fromCharCode(97 + i)}.slang`,
+          inputs: {},
+        };
+      }
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('Compute1');
+    });
+
+    it('should skip occupied numeric compute names', () => {
+      const config = createTestConfig();
+      for (let i = 0; i < 26; i++) {
+        config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          path: `${String.fromCharCode(97 + i)}.slang`,
+          inputs: {},
+        };
+      }
+      config.passes.Compute1 = { path: 'one.slang', inputs: {} };
+      config.passes.Compute2 = { path: 'two.slang', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.addComputePass()).toBe('Compute3');
+    });
+  });
+
   describe('addSpecificBuffer', () => {
     it('should create config when adding buffer with no existing config', () => {
       const result = configManager.addSpecificBuffer('BufferA');
@@ -582,6 +653,21 @@ describe('ConfigManager', () => {
     it('should handle shader name without .glsl extension', () => {
       configManager.setShaderPath('/path/to/shader');
       expect(configManager.generateBufferPath('BufferA')).toBe('shader.buffera.glsl');
+    });
+
+    it('should generate a Slang compute path without retaining the main shader suffix', () => {
+      configManager.setShaderPath('/path/to/image.slang');
+      expect(configManager.generateBufferPath('ComputeA', 'slang')).toBe('image.computea.slang');
+    });
+
+    it('should replace a GLSL main shader suffix when generating a Slang compute path', () => {
+      configManager.setShaderPath('/path/to/image.glsl');
+      expect(configManager.generateBufferPath('ComputeB', 'slang')).toBe('image.computeb.slang');
+    });
+
+    it('should generate a Slang compute path for extensionless Windows shader paths', () => {
+      configManager.setShaderPath('C:\\Shaders\\image');
+      expect(configManager.generateBufferPath('ComputeSim', 'slang')).toBe('image.computesim.slang');
     });
   });
 
@@ -975,6 +1061,81 @@ describe('ConfigManager', () => {
     it('generateScriptPath should handle shader path with backslashes', () => {
       configManager.setShaderPath('C:\\shaders\\cool.glsl');
       expect(configManager.generateScriptPath()).toBe('./cool.uniforms.ts');
+    });
+  });
+
+  describe('compute and storage configuration', () => {
+    it('publishes a valid compute pass update once', () => {
+      configManager.setConfig(createTestConfig());
+
+      const result = configManager.updateComputePass('ComputeSim', {
+        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(configManager.getConfig()?.passes.ComputeSim).toEqual({
+        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+      });
+      expect(onConfigChange).toHaveBeenCalledTimes(1);
+      expect(transport.postMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not publish an invalid compute pass update', () => {
+      configManager.setConfig(createTestConfig());
+
+      const result = configManager.updateComputePass('ComputeSim', {
+        path: 'sim.slang', dispatchCount: 0,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        errors: { dispatchCount: 'Repeats must be an integer from 1 through 1024' },
+      });
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('adds storage defaults and applies a renamed declaration', () => {
+      configManager.setConfig({
+        version: '1.0',
+        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+        },
+      });
+
+      expect(configManager.addStorageBuffer().name).toBe('storageA');
+      const result = configManager.applyStorageBuffer('particles', 'positions', {
+        count: 8, stride: 16, elementType: 'float4',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(configManager.getConfig()?.storage?.positions).toEqual({
+        count: 8, stride: 16, elementType: 'float4',
+      });
+      expect((configManager.getConfig()?.passes.ComputeSim as { dispatch?: unknown }).dispatch)
+        .toEqual({ cover: 'positions' });
+      expect(onConfigChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not publish a blocked storage deletion', () => {
+      configManager.setConfig({
+        version: '1.0',
+        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+        },
+      });
+
+      expect(configManager.getStorageCoverReferences('particles')).toEqual(['ComputeSim']);
+      expect(configManager.removeStorageBuffer('particles')).toEqual({
+        ok: false,
+        errors: { name: 'Used as a dispatch target by ComputeSim' },
+      });
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(transport.postMessage).not.toHaveBeenCalled();
     });
   });
 });

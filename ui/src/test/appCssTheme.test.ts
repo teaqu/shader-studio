@@ -1,8 +1,12 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
+const workspaceCssPath = resolve(process.cwd(), 'ui/src/app.css');
+const appCssPath = existsSync(workspaceCssPath)
+  ? workspaceCssPath
+  : resolve(process.cwd(), 'src/app.css');
+const appCss = readFileSync(appCssPath, 'utf8');
 
 const channelControlThemeProperties = [
   '--vscode-foreground',

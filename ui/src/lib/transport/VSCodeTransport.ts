@@ -1,4 +1,5 @@
-import type { Transport } from './MessageTransport';
+import type { BaseMessage } from '@shader-studio/types';
+import type { Transport, TransportMessage } from './MessageTransport';
 
 export class VSCodeTransport implements Transport {
   private vscode: any;
@@ -8,7 +9,7 @@ export class VSCodeTransport implements Transport {
     this.vscode = acquireVsCodeApi();
   }
 
-  postMessage(message: any): void {
+  postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
     this.vscode.postMessage(message);
   }
 

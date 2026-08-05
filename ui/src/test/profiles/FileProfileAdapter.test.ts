@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { FileProfileAdapter } from '../../lib/profiles/FileProfileAdapter';
-import type { ProfileIndex, ProfileData } from '@shader-studio/types';
+import type { BaseMessage, ProfileIndex, ProfileData } from '@shader-studio/types';
+import type { TransportMessage } from '../../lib/transport/MessageTransport';
 
 // Mock transport matching the real Transport interface.
 // Responses are dispatched via adapter.handleMessage() since the adapter no longer
@@ -8,19 +9,25 @@ import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 function makeTransport() {
   let _adapter: { handleMessage: (e: MessageEvent) => void } | null = null;
 
-  const postMessage = vi.fn((msg: Record<string, unknown>) => {
+  const postMessage = vi.fn((msg: BaseMessage) => {
     // Simulate async extension response for read messages via adapter.handleMessage
     setTimeout(() => {
       if (!_adapter) {
         return;
       }
       if (msg.type === 'profile:readIndex') {
+        if (!('requestId' in msg)) {
+          return;
+        }
         _adapter.handleMessage(
           new MessageEvent('message', {
             data: { type: 'profile:indexData', requestId: msg.requestId, index: null },
           })
         );
       } else if (msg.type === 'profile:readProfile') {
+        if (!('requestId' in msg)) {
+          return;
+        }
         _adapter.handleMessage(
           new MessageEvent('message', {
             data: { type: 'profile:profileData', requestId: msg.requestId, data: null },
@@ -30,8 +37,12 @@ function makeTransport() {
     }, 0);
   });
 
+  function send<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
+    postMessage(message);
+  }
+
   const transport = {
-    postMessage,
+    postMessage: send,
     onMessage: vi.fn(),
     dispose: vi.fn(),
     getType: vi.fn(() => 'vscode' as const),
@@ -47,29 +58,29 @@ function makeTransport() {
 
 describe('FileProfileAdapter', () => {
   it('readIndex resolves with index from response', async () => {
-    const { transport, registerAdapter } = makeTransport();
+    const { transport, postMessage, registerAdapter } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
     registerAdapter(adapter);
     const result = await adapter.readIndex();
-    expect(transport.postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:readIndex' })
     );
     expect(result).toBeNull();
   });
 
   it('readProfile sends id and resolves with data', async () => {
-    const { transport, registerAdapter } = makeTransport();
+    const { transport, postMessage, registerAdapter } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
     registerAdapter(adapter);
     const result = await adapter.readProfile('default');
-    expect(transport.postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:readProfile', id: 'default' })
     );
     expect(result).toBeNull();
   });
 
   it('writeProfile sends fire-and-forget', async () => {
-    const { transport } = makeTransport();
+    const { transport, postMessage } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
     const data = {
       theme: 'dark',
@@ -85,37 +96,39 @@ describe('FileProfileAdapter', () => {
       performancePanel: { isVisible: false },
     } as ProfileData;
     await adapter.writeProfile('default', data);
-    expect(transport.postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:writeProfile', id: 'default', data })
     );
   });
 
   it('writeIndex sends index', async () => {
-    const { transport } = makeTransport();
+    const { transport, postMessage } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
     const index: ProfileIndex = { active: 'default', order: [] };
     await adapter.writeIndex(index);
-    expect(transport.postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:writeIndex', index })
     );
   });
 
   it('deleteProfile sends id', async () => {
-    const { transport } = makeTransport();
+    const { transport, postMessage } = makeTransport();
     const adapter = new FileProfileAdapter(transport);
     await adapter.deleteProfile('wide-editor');
-    expect(transport.postMessage).toHaveBeenCalledWith(
+    expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'profile:deleteProfile', id: 'wide-editor' })
     );
   });
 
   it('concurrent reads resolve independently by requestId', async () => {
-    const sentMessages: Record<string, unknown>[] = [];
+    const sentMessages: BaseMessage[] = [];
+
+    function postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
+      sentMessages.push(message);
+    }
 
     const transport = {
-      postMessage: vi.fn((msg: Record<string, unknown>) => {
-        sentMessages.push(msg);
-      }),
+      postMessage,
       onMessage: vi.fn(),
       dispose: vi.fn(),
       getType: vi.fn(() => 'vscode' as const),

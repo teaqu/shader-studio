@@ -62,6 +62,14 @@ export class TextureCache<T> {
     // that should persist across recompilations. Only destroy on full dispose.
   }
 
+  public dispose(): void {
+    this.cleanupImageTextures();
+    if (this.defaultTexture) {
+      this.backend.destroyTexture(this.defaultTexture);
+      this.defaultTexture = null;
+    }
+  }
+
   private initializeDefaultTexture(): void {
     this.defaultTexture = this.backend.createTexture({
       type: "2d",

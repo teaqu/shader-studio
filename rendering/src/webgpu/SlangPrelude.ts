@@ -12,13 +12,17 @@
 // that calls mainImage). A `#line 1` directive sits just before the user code
 // so Slang's diagnostics report the user's real line numbers.
 
+import type { StorageBindingNode } from "../types/PassGraph";
+
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
+export const SLANG_ENTRY_COMPUTE = "computeMainEntry";
 
 // Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Script fields are appended after
 // this prefix, and the total allocation is rounded to a multiple of 16.
 export const SHADERTOY_UNIFORM_SIZE = 208;
+export const DISPATCH_UNIFORM_SIZE = 16;
 export const UNIFORM_OFFSETS = {
   iResolution: 0, // float4 (xyz used)
   iMouse: 16, // float4
@@ -135,6 +139,8 @@ export interface SlangWrapOptions {
   passName?: string;
   commonCode?: string;
   channels?: SlangChannelBinding[];
+  storage?: StorageBindingNode[];
+  passKind?: "render" | "compute";
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
@@ -143,6 +149,17 @@ export interface SlangWrapOptions {
    * immutable, so the remap cannot be injected into the user body like GLSL.
    */
   captureMode?: boolean;
+}
+
+export interface SlangComputeWrapOptions {
+  passName?: string;
+  commonCode?: string;
+  channels?: SlangChannelBinding[];
+  storage?: StorageBindingNode[];
+  workgroupSize: [number, number, number];
+  outputLayers: number;
+  hasOutput: boolean;
+  customUniforms?: SlangCustomUniformInfo[];
 }
 
 // Capture uniform block layout (bytes): coordGrid float4 @0
@@ -196,11 +213,16 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 }
 `;
 
-function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
+function buildChannelPrelude(
+  channels: SlangChannelBinding[] = [],
+  stage: "fragment" | "compute" = "fragment",
+): string {
   const sortedChannels = [...channels].sort((a, b) => a.slot - b.slot);
   const objectChannels = sortedChannels.filter(({ slot }) => slot < 4);
   const has2DObject = objectChannels.some(({ kind }) => kind !== "cubemap");
   const hasCubeObject = objectChannels.some(({ kind }) => kind === "cubemap");
+  const objectSampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
+  const objectExplicitLod = stage === "compute" ? ", 0.0" : "";
   const objectTypes = `${has2DObject ? `struct ShaderToySampler2D
 {
     Texture2D<float4> texture;
@@ -208,7 +230,7 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
 
     float4 Sample(float2 uv)
     {
-        return texture.Sample(state, float2(uv.x, 1.0 - uv.y));
+        return texture.${objectSampleMethod}(state, float2(uv.x, 1.0 - uv.y)${objectExplicitLod});
     }
 };
 
@@ -226,7 +248,7 @@ struct ShaderToyChannel2D
 
     float4 Sample(float3 dir)
     {
-        return texture.Sample(state, dir);
+        return texture.${objectSampleMethod}(state, dir${objectExplicitLod});
     }
 };
 
@@ -248,6 +270,8 @@ struct ShaderToyChannelCube
       const textureBinding = 1 + index * 2;
       const samplerBinding = textureBinding + 1;
       const helperName = `sampleIChannel${channel.slot}`;
+      const sampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
+      const explicitLod = stage === "compute" ? ", 0.0" : "";
       const customHelperName = channel.key === `iChannel${channel.slot}`
         ? null
         : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
@@ -273,7 +297,7 @@ TextureCube<float4> ${channel.key};
 SamplerState ${channel.key}Sampler;
 float4 ${helperName}(float3 dir)
 {
-    return ${channel.key}.Sample(${channel.key}Sampler, dir);
+    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, dir${explicitLod});
 }
 ${customHelperName ? `float4 ${customHelperName}(float3 dir)
 {
@@ -291,7 +315,7 @@ float4 ${helperName}(float2 uv)
     // uv comes from the Y-flipped fragCoord (bottom-left origin, GL-style),
     // but WebGPU textures put v=0 at the top row, so flip v back to sample
     // the texel the caller expects.
-    return ${channel.key}.Sample(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y));
+    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y)${explicitLod});
 }
 ${customHelperName ? `float4 ${customHelperName}(float2 uv)
 {
@@ -321,19 +345,159 @@ ${customHelperName ? `float4 ${customHelperName}(float2 uv)
   return objectTypes + bindings + fallbackHelpers;
 }
 
+/** Build storage declarations split around common code by their type dependency. */
+export function buildStorageDeclarations(
+  storage: StorageBindingNode[],
+  channelCount: number,
+  passKind: "render" | "compute",
+): { beforeCommon: string; afterCommon: string } {
+  const bufferType = passKind === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
+  const renderElementType = (elementType: string): string => {
+    if (passKind === "compute") {
+      return elementType;
+    }
+    if (elementType === "Atomic<uint>") {
+      return "uint";
+    }
+    if (elementType === "Atomic<int>") {
+      return "int";
+    }
+    return elementType;
+  };
+  const declaration = (node: StorageBindingNode) => `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
+${bufferType}<${renderElementType(node.elementType)}> ${node.name};
+`;
+
+  return {
+    beforeCommon: storage.filter((node) => node.builtin).map(declaration).join(""),
+    afterCommon: storage.filter((node) => !node.builtin).map(declaration).join(""),
+  };
+}
+
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const prelude = buildPrelude(options.customUniforms);
   const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
+  const storageDeclarations = buildStorageDeclarations(
+    options.storage ?? [],
+    options.channels?.length ?? 0,
+    options.passKind ?? "render",
+  );
   if (options.captureMode) {
-    // Capture uniforms bind right after the channel texture/sampler pairs.
-    const captureBinding = 1 + (options.channels?.length ?? 0) * 2;
+    // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
+    const captureBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${capturePrelude}\n${commonCode}#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
-  // above the user source (after commonCode) to keep user diagnostics on the
-  // user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${commonCode}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+  // above the user source (after commonCode and custom storage declarations)
+  // to keep user diagnostics on the user's real line numbers.
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${ENTRY_POINTS}`;
+}
+
+function buildOutputPrelude(binding: number, outputLayers: number): string {
+  if (outputLayers > 1) {
+    return `// ---- shader-studio Slang compute output (generated) ----
+[[vk::binding(${binding}, 0)]]
+[[vk::image_format("rgba16f")]]
+WTexture2DArray<float4> _outTex;
+
+void writeOutput(uint2 coord, uint layer, float4 color)
+{
+    uint w;
+    uint h;
+    uint layers;
+    _outTex.GetDimensions(w, h, layers);
+    if (coord.x >= w || coord.y >= h || layer >= layers)
+    {
+        return;
+    }
+    _outTex.Store(uint3(coord.x, h - 1 - coord.y, layer), color);
+}
+`;
+  }
+
+  return `// ---- shader-studio Slang compute output (generated) ----
+[[vk::binding(${binding}, 0)]]
+[[vk::image_format("rgba16f")]]
+WTexture2D<float4> _outTex;
+
+void writeOutput(uint2 coord, float4 color)
+{
+    uint w;
+    uint h;
+    _outTex.GetDimensions(w, h);
+    if (coord.x >= w || coord.y >= h)
+    {
+        return;
+    }
+    _outTex.Store(uint2(coord.x, h - 1 - coord.y), color);
+}
+`;
+}
+
+function buildDispatchPrelude(binding: number): string {
+  return `struct DispatchUniforms
+{
+    int4 dispatch;
+};
+
+[[vk::binding(${binding}, 0)]]
+ConstantBuffer<DispatchUniforms> _dsp;
+
+#define iDispatch (_dsp.dispatch.x)
+`;
+}
+
+function buildComputeEntryPoint(workgroupSize: [number, number, number]): string {
+  const [x, y, z] = workgroupSize;
+  return `[shader("compute")]
+[numthreads(${x}, ${y}, ${z})]
+void ${SLANG_ENTRY_COMPUTE}(uint3 tid : SV_DispatchThreadID)
+{
+    computeMain(tid);
+}
+`;
+}
+
+/** Returns a shader-owned compute entrypoint annotated with stage and workgroup metadata. */
+export function getNativeComputeEntryPoint(source: string): { name: string; workgroupSize: [number, number, number] } | null {
+  return getNativeComputeEntryPoints(source)[0] ?? null;
+}
+
+export function getNativeComputeEntryPoints(source: string): Array<{ name: string; workgroupSize: [number, number, number] }> {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const entries: Array<{ name: string; workgroupSize: [number, number, number] }> = [];
+  const pattern = /\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi;
+  for (const match of withoutComments.matchAll(pattern)) {
+    const values = match.slice(1, 4).map(Number);
+    if (values.every((value) => Number.isInteger(value) && value > 0)) {
+      entries.push({ name: match[4]!, workgroupSize: [values[0]!, values[1]!, values[2]!] });
+    }
+  }
+  return entries;
+}
+
+export function getNativeComputeWorkgroupSize(source: string): [number, number, number] | null {
+  return getNativeComputeEntryPoint(source)?.workgroupSize ?? null;
+}
+
+/** Wrap a user compute-shader source into a full, compilable Slang module. */
+export function wrapSlangComputeSource(userSource: string, options: SlangComputeWrapOptions): string {
+  const prelude = buildPrelude(options.customUniforms);
+  const channels = options.channels ?? [];
+  const storage = options.storage ?? [];
+  const commonCode = options.commonCode?.trim() ? `${options.commonCode.trim()}\n` : "";
+  const channelPrelude = buildChannelPrelude(channels, "compute");
+  const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
+  const outputBinding = 1 + channels.length * 2 + storage.length;
+  const outputPrelude = options.hasOutput
+    ? buildOutputPrelude(outputBinding, options.outputLayers)
+    : "";
+  const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
+  const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
+  const entryPoint = getNativeComputeEntryPoint(userSource) ? "" : buildComputeEntryPoint(options.workgroupSize);
+
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${userSource}\n${entryPoint}`;
 }

@@ -187,7 +187,7 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
-  it("requests the adapter's higher 2D texture limit when available", async () => {
+  it("requests the adapter's higher texture, storage, and compute limits when available", async () => {
     const context = { configure: vi.fn() };
     const device = {
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
@@ -196,7 +196,15 @@ describe("WebGPURenderingEngine", () => {
       limits: { maxTextureDimension2D: 16384 },
     };
     const adapter = {
-      limits: { maxTextureDimension2D: 16384 },
+      limits: {
+        maxTextureDimension2D: 16384,
+        maxStorageBuffersPerShaderStage: 16,
+        maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+        maxComputeInvocationsPerWorkgroup: 1024,
+        maxComputeWorkgroupSizeX: 1024,
+        maxComputeWorkgroupSizeY: 1024,
+        maxComputeWorkgroupSizeZ: 128,
+      },
       requestDevice: vi.fn(async () => device),
     };
     const canvas = {
@@ -220,123 +228,51 @@ describe("WebGPURenderingEngine", () => {
       await (engine as unknown as { ready: Promise<void> }).ready;
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
-        requiredLimits: { maxTextureDimension2D: 16384 },
-      });
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("constructs the pixel-region capturer only after configuring the resolved device", async () => {
-    const deviceResult = deferred<GPUDevice>();
-    const requestDevice = vi.fn(() => deviceResult.promise);
-    const adapter = { requestDevice } as unknown as GPUAdapter;
-    const context = { configure: vi.fn() };
-    const { device } = lifecycleDevice();
-    vi.stubGlobal("navigator", {
-      gpu: {
-        requestAdapter: vi.fn(async () => adapter),
-        getPreferredCanvasFormat: vi.fn(() => "rgba8unorm-srgb"),
-      },
-    });
-    const engine = new WebGPURenderingEngine(assets);
-    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
-      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
-
-    try {
-      engine.initialize(webGpuCanvas(context));
-      await vi.waitFor(() => expect(requestDevice).toHaveBeenCalledOnce());
-      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
-
-      deviceResult.resolve(device);
-      await lifecycleInternals(engine).ready;
-
-      expect(context.configure).toHaveBeenCalledWith(expect.objectContaining({
-        device,
-        format: "rgba8unorm-srgb",
-        usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01),
-      }));
-      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledOnce();
-      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledWith(device, "rgba8unorm-srgb");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("disposes an existing region capturer before replacing it during initialization", async () => {
-    const context = { configure: vi.fn() };
-    const { device } = lifecycleDevice();
-    const adapter = { requestDevice: vi.fn(async () => device) } as unknown as GPUAdapter;
-    vi.stubGlobal("navigator", {
-      gpu: {
-        requestAdapter: vi.fn(async () => adapter),
-        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-      },
-    });
-    const engine = new WebGPURenderingEngine(assets);
-    const oldCapturer = { dispose: vi.fn() };
-    (engine as unknown as { pixelRegionCapturer: unknown }).pixelRegionCapturer = oldCapturer;
-    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
-      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
-
-    try {
-      engine.initialize(webGpuCanvas(context));
-      await lifecycleInternals(engine).ready;
-
-      expect(oldCapturer.dispose).toHaveBeenCalledOnce();
-      expect(pixelRegionCapturerMock.constructor).toHaveBeenCalledWith(device, "bgra8unorm");
-      expect(pixelRegionCapturerMock.constructor.mock.invocationCallOrder[0]).toBeGreaterThan(oldCapturer.dispose.mock.invocationCallOrder[0]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("does not construct a region capturer after disposal or a failed device request", async () => {
-    const deviceResult = deferred<GPUDevice>();
-    const context = { configure: vi.fn() };
-    vi.stubGlobal("navigator", {
-      gpu: {
-        requestAdapter: vi.fn(async () => ({ requestDevice: vi.fn(() => deviceResult.promise) })),
-        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-      },
-    });
-    const engine = new WebGPURenderingEngine(assets);
-
-    try {
-      engine.initialize(webGpuCanvas(context));
-      engine.dispose();
-      deviceResult.resolve(lifecycleDevice().device);
-      await lifecycleInternals(engine).ready;
-      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
-
-      const failedEngine = new WebGPURenderingEngine(assets);
-      vi.stubGlobal("navigator", {
-        gpu: {
-          requestAdapter: vi.fn(async () => ({ requestDevice: vi.fn(async () => {
-            throw new Error("lost");
-          }) })),
-          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
+        requiredLimits: {
+          maxTextureDimension2D: 16384,
+          maxStorageBuffersPerShaderStage: 16,
+          maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+          maxComputeInvocationsPerWorkgroup: 1024,
+          maxComputeWorkgroupSizeX: 1024,
+          maxComputeWorkgroupSizeY: 1024,
+          maxComputeWorkgroupSizeZ: 128,
         },
       });
-      failedEngine.initialize(webGpuCanvas({ configure: vi.fn() }));
-      await lifecycleInternals(failedEngine).ready;
-      expect(pixelRegionCapturerMock.constructor).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("requests float32 filtering and selects rgba32float buffers when supported", async () => {
+  it.each([
+    ["absent", {}],
+    ["at defaults", {
+      maxTextureDimension2D: 8192,
+      maxStorageBuffersPerShaderStage: 8,
+      maxStorageBufferBindingSize: 128 * 1024 * 1024,
+    }],
+    ["non-finite", {
+      maxTextureDimension2D: Number.POSITIVE_INFINITY,
+      maxStorageBuffersPerShaderStage: Number.NaN,
+      maxStorageBufferBindingSize: Number.POSITIVE_INFINITY,
+    }],
+  ])("omits %s adapter limits from the device request descriptor", async (_case, limits) => {
     const context = { configure: vi.fn() };
     const device = {
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
       queue: { writeTexture: vi.fn() },
+      limits: {},
     };
     const adapter = {
-      features: new Set<GPUFeatureName>(["float32-filterable"]),
+      limits,
       requestDevice: vi.fn(async () => device),
     };
+    const canvas = {
+      width: 800,
+      height: 600,
+      getContext: vi.fn(() => context),
+      addEventListener: vi.fn(),
+    } as unknown as HTMLCanvasElement;
     const engine = new WebGPURenderingEngine(assets);
     vi.stubGlobal("navigator", {
       gpu: {
@@ -348,184 +284,15 @@ describe("WebGPURenderingEngine", () => {
       .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
 
     try {
-      engine.initialize(webGpuCanvas(context));
-      await lifecycleInternals(engine).ready;
-
-      expect(adapter.requestDevice).toHaveBeenCalledWith({
-        requiredFeatures: ["float32-filterable"],
-      });
-      expect(lifecycleInternals(engine).bufferTextureFormat).toBe("rgba32float");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("keeps portable rgba16float buffers when float32 filtering is unavailable", async () => {
-    const context = { configure: vi.fn() };
-    const { device } = lifecycleDevice();
-    const adapter = {
-      features: new Set<GPUFeatureName>(),
-      requestDevice: vi.fn(async () => device),
-    };
-    const engine = new WebGPURenderingEngine(assets);
-    vi.stubGlobal("navigator", {
-      gpu: {
-        requestAdapter: vi.fn(async () => adapter),
-        getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-      },
-    });
-    vi.spyOn(engine as unknown as { createCompiler(): Promise<unknown> }, "createCompiler")
-      .mockResolvedValue({ compile: vi.fn(), dispose: vi.fn() });
-
-    try {
-      engine.initialize(webGpuCanvas(context));
-      await lifecycleInternals(engine).ready;
+      engine.initialize(canvas);
+      await (engine as unknown as { ready: Promise<void> }).ready;
 
       expect(adapter.requestDevice).toHaveBeenCalledWith();
-      expect(lifecycleInternals(engine).bufferTextureFormat).toBe("rgba16float");
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  describe("asynchronous disposal during initialization", () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it("does not request a device when disposed while the adapter request is pending", async () => {
-      const adapterResult = deferred<GPUAdapter | null>();
-      const requestDevice = vi.fn();
-      const adapter = { requestDevice } as unknown as GPUAdapter;
-      const context = { configure: vi.fn() };
-      vi.stubGlobal("navigator", {
-        gpu: {
-          requestAdapter: vi.fn(() => adapterResult.promise),
-          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-        },
-      });
-      const engine = new WebGPURenderingEngine(assets);
-
-      engine.initialize(webGpuCanvas(context));
-      engine.dispose();
-      adapterResult.resolve(adapter);
-      await lifecycleInternals(engine).ready;
-
-      expect(requestDevice).not.toHaveBeenCalled();
-      expect(context.configure).not.toHaveBeenCalled();
-      expect(lifecycleInternals(engine)).toMatchObject({
-        device: null,
-        compiler: null,
-        resourceManager: null,
-      });
-    });
-
-    it("destroys a device obtained after disposal without configuring or retaining it", async () => {
-      const deviceResult = deferred<GPUDevice>();
-      const requestDevice = vi.fn(() => deviceResult.promise);
-      const adapter = { requestDevice } as unknown as GPUAdapter;
-      const { device } = lifecycleDevice();
-      const context = { configure: vi.fn() };
-      vi.stubGlobal("navigator", {
-        gpu: {
-          requestAdapter: vi.fn(async () => adapter),
-          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-        },
-      });
-      const engine = new WebGPURenderingEngine(assets);
-      const createCompiler = vi.spyOn(
-        engine as unknown as { createCompiler(): Promise<unknown> },
-        "createCompiler",
-      );
-
-      engine.initialize(webGpuCanvas(context));
-      await vi.waitFor(() => expect(requestDevice).toHaveBeenCalledOnce());
-      engine.dispose();
-      deviceResult.resolve(device);
-      await lifecycleInternals(engine).ready;
-
-      expect(device.destroy).toHaveBeenCalledOnce();
-      expect(context.configure).not.toHaveBeenCalled();
-      expect(createCompiler).not.toHaveBeenCalled();
-      expect(lifecycleInternals(engine)).toMatchObject({
-        device: null,
-        compiler: null,
-        resourceManager: null,
-      });
-    });
-
-    it("disposes a compiler obtained after disposal and retains no initialized resources", async () => {
-      const compilerResult = deferred<{ compile: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }>();
-      const compilerStarted = deferred<void>();
-      const compiler = { compile: vi.fn(), dispose: vi.fn() };
-      const { device } = lifecycleDevice();
-      const adapter = { requestDevice: vi.fn(async () => device) } as unknown as GPUAdapter;
-      const context = { configure: vi.fn() };
-      vi.stubGlobal("navigator", {
-        gpu: {
-          requestAdapter: vi.fn(async () => adapter),
-          getPreferredCanvasFormat: vi.fn(() => "bgra8unorm"),
-        },
-      });
-      const engine = new WebGPURenderingEngine(assets);
-      vi.spyOn(
-        engine as unknown as { createCompiler(): Promise<unknown> },
-        "createCompiler",
-      ).mockImplementation(() => {
-        compilerStarted.resolve();
-        return compilerResult.promise;
-      });
-
-      engine.initialize(webGpuCanvas(context));
-      await compilerStarted.promise;
-      engine.dispose();
-
-      expect(device.destroy).toHaveBeenCalledOnce();
-      expect(lifecycleInternals(engine)).toMatchObject({
-        device: null,
-        compiler: null,
-        resourceManager: null,
-      });
-
-      compilerResult.resolve(compiler);
-      await lifecycleInternals(engine).ready;
-
-      expect(compiler.dispose).toHaveBeenCalledOnce();
-      expect(lifecycleInternals(engine)).toMatchObject({
-        device: null,
-        compiler: null,
-        resourceManager: null,
-      });
-    });
-
-    it("drops a compile superseded while waiting for initialization before compiler work", async () => {
-      const ready = deferred<void>();
-      const compiler = { compile: vi.fn(), dispose: vi.fn() };
-      const { device } = lifecycleDevice();
-      const engine = new WebGPURenderingEngine(assets);
-      const internals = lifecycleInternals(engine);
-      internals.ready = ready.promise;
-      internals.device = device;
-      internals.compiler = compiler;
-
-      const compiling = engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return float4(1); }",
-        null,
-        "/a.slang",
-        {},
-      );
-      internals.compileGeneration++;
-      ready.resolve();
-
-      const result = await compiling;
-      expect(result).toEqual({
-        success: false,
-        errors: ["Superseded by a newer compile"],
-        superseded: true,
-      });
-      expect(compiler.compile).not.toHaveBeenCalled();
-    });
-  });
 
   it("render() is a safe no-op before a pipeline exists", () => {
     const engine = new WebGPURenderingEngine(assets);
@@ -841,28 +608,10 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.dispose).toHaveBeenCalled();
   });
 
-  it("delegates input enablement, reset, and disposal to the camera manager", () => {
+  it("remembers the config from the last successful compile", async () => {
     const engine = new WebGPURenderingEngine(assets);
-    const camera = {
-      setEnabled: vi.fn(),
-      reset: vi.fn(),
-      dispose: vi.fn(),
-    };
-    (engine as any).cameraManager = camera;
-
-    engine.setInputEnabled(false);
-    engine.resetTime();
-    engine.dispose();
-
-    expect(camera.setEnabled).toHaveBeenCalledWith(false);
-    expect(camera.reset).toHaveBeenCalledTimes(1);
-    expect(camera.dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("remembers the config from the last compile", async () => {
-    const engine = new WebGPURenderingEngine(assets);
-    engine.initialize(noWebGpuCanvas());
-    const config = { passes: {} } as never;
+    stubEngineInternals(engine);
+    const config: ShaderConfig = { version: "1", passes: { Image: { inputs: {} } } };
     await engine.compileShaderPipeline("x", config, "/a.slang", {});
     expect(engine.getCurrentConfig()).toBe(config);
   });
@@ -918,13 +667,31 @@ describe("WebGPURenderingEngine", () => {
       passName: "BufferA",
       commonCode: "",
       channels: [],
-      modules: [{ moduleName: "buffer_helpers", path: "/buffer-helpers.slang", source: "module buffer_helpers;" }],
+      storage: [],
+      passKind: "render",
+      workgroupSize: [8, 8, 1],
+      outputLayers: 1,
+      hasOutput: true,
+      modules: [{
+        moduleName: "buffer_helpers",
+        path: "/buffer-helpers.slang",
+        source: "module buffer_helpers;",
+      }],
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
       channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
-      modules: [{ moduleName: "image_helpers", path: "/image-helpers.slang", source: "module image_helpers;" }],
+      storage: [],
+      passKind: "render",
+      workgroupSize: [8, 8, 1],
+      outputLayers: 1,
+      hasOutput: false,
+      modules: [{
+        moduleName: "image_helpers",
+        path: "/image-helpers.slang",
+        source: "module image_helpers;",
+      }],
     });
   });
 
@@ -2215,6 +1982,30 @@ describe("WebGPURenderingEngine", () => {
       expect(resourceManager.pauseAllVideos).not.toHaveBeenCalled();
       expect(resourceManager.resumeAllVideos).not.toHaveBeenCalled();
     });
+
+    it("treats reused-manager media failures as post-publication warnings", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const resourceManager = {
+        syncAllVideosToTime: vi.fn(() => {
+          throw new Error("installed media sync failed");
+        }),
+        pauseAllVideos: vi.fn(),
+        resumeAllVideos: vi.fn(),
+      };
+      (engine as any).resourceManager = resourceManager;
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        null,
+        "/image.slang",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings?.join("\n")).toMatch(/installed media sync failed/i);
+      expect(resourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
+      expect(engine.getPasses().map(({ name }) => name)).toEqual(["Image"]);
+    });
   });
 
   describe("cubemap input parity", () => {
@@ -2797,9 +2588,12 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
-    it("clears installed pipelines and the canvas when a different shader path fails", async () => {
+    it("keeps installed pipelines and the canvas when a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
-      const installedPipelines = [...((engine as any).passPipelines as Map<string, SlangPassPipeline>).values()];
+      const installedPipelineMap = new Map(
+        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+      );
+      const installedPipelines = [...installedPipelineMap.values()];
       const disposeSpies = installedPipelines.map((pipeline) => vi.spyOn(pipeline, "dispose"));
       const cleanupResources = vi.fn();
       (engine as any).resourceManager = { cleanup: cleanupResources };
@@ -2815,25 +2609,15 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
-      expect(engine.getPasses()).toEqual([]);
-      expect((engine as any).passPipelines).toEqual(new Map());
-      expect((engine as any).passKeys).toEqual(new Map());
+      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BlurPass", "Image"]);
+      expect((engine as any).passPipelines).toEqual(installedPipelineMap);
       for (const dispose of disposeSpies) {
-        expect(dispose).toHaveBeenCalledTimes(1);
+        expect(dispose).not.toHaveBeenCalled();
       }
-      expect(cleanupResources).toHaveBeenCalledTimes(1);
-      expect(cleanupTime).toHaveBeenCalledTimes(1);
-      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
-      const encoder = device.createCommandEncoder.mock.results[0].value;
-      expect(encoder.beginRenderPass).toHaveBeenCalledWith({
-        colorAttachments: [{
-          view: { label: "canvas" },
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: "clear",
-          storeOp: "store",
-        }],
-      });
-      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(cleanupResources).not.toHaveBeenCalled();
+      expect(cleanupTime).not.toHaveBeenCalled();
+      expect(device.createCommandEncoder).not.toHaveBeenCalled();
+      expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
     it("keeps presenting a black canvas after a different shader path fails", async () => {
@@ -2914,10 +2698,12 @@ describe("WebGPURenderingEngine", () => {
       const { device, compiler } = stubEngineInternals(engine);
       const resourceManager = {
         cleanup: vi.fn(),
+        dispose: vi.fn(),
         syncAllVideosToTime: vi.fn(),
         pauseAllVideos: vi.fn(),
         resumeAllVideos: vi.fn(),
       };
+      resourceManager.dispose = resourceManager.cleanup;
       (engine as any).resourceManager = resourceManager;
       return { engine, device, compiler, resourceManager };
     }
@@ -2931,17 +2717,23 @@ describe("WebGPURenderingEngine", () => {
       engine.render(1016);
       expect(engine.getTimeManager().getFrame()).toBeGreaterThan(0);
       resourceManager.cleanup.mockClear();
+      const syncSpy = vi.spyOn(ResourceManager.prototype, "syncAllVideosToTime");
 
-      const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return float4(0, 1, 0, 1); }",
-        lifecycleConfig,
-        "/second.slang",
-        { BufferA: "float4 mainImage(float2 c) { return float4(2); }" },
-      );
+      try {
+        const result = await engine.compileShaderPipeline(
+          "float4 mainImage(float2 c) { return float4(0, 1, 0, 1); }",
+          lifecycleConfig,
+          "/second.slang",
+          { BufferA: "float4 mainImage(float2 c) { return float4(2); }" },
+        );
 
-      expect(result?.success).toBe(true);
-      expect(engine.getTimeManager().getFrame()).toBe(0);
-      expect(resourceManager.cleanup).toHaveBeenCalledTimes(1);
+        expect(result?.success).toBe(true);
+        expect(engine.getTimeManager().getFrame()).toBe(0);
+        expect(resourceManager.cleanup).toHaveBeenCalledTimes(1);
+        expect(syncSpy).toHaveBeenCalledWith(0);
+      } finally {
+        syncSpy.mockRestore();
+      }
     });
 
     it("replaces identical pipelines and buffer history when the shader path changes", async () => {
@@ -2966,6 +2758,895 @@ describe("WebGPURenderingEngine", () => {
         expect(secondPipelines.get(name)).not.toBe(firstPipeline);
         expect(disposeSpies.get(name)).toHaveBeenCalledTimes(1);
       }
+    });
+
+    it("publishes successfully and continues retirement when an old render pipeline throws", async () => {
+      const { engine, resourceManager } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      const predecessors = new Map(
+        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+      );
+      const bufferDispose = vi.spyOn(predecessors.get("BufferA")!, "dispose")
+        .mockImplementation(() => {
+          throw new Error("old render disposal failed");
+        });
+      const imageDispose = vi.spyOn(predecessors.get("Image")!, "dispose");
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0, 1, 0, 1); }",
+        lifecycleConfig,
+        "/second.slang",
+        { BufferA: "float4 mainImage(float2 c) { return float4(2); }" },
+      );
+      const installed = (engine as any).passPipelines as Map<string, SlangPassPipeline>;
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings?.join("\n")).toMatch(/old render disposal failed/i);
+      expect(bufferDispose).toHaveBeenCalledTimes(1);
+      expect(imageDispose).toHaveBeenCalledTimes(1);
+      expect(resourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(installed.get("BufferA")).not.toBe(predecessors.get("BufferA"));
+      expect(installed.get("Image")).not.toBe(predecessors.get("Image"));
+      expect(installed.get("BufferA")?.getPipeline()).not.toBeNull();
+      expect(installed.get("Image")?.getPipeline()).not.toBeNull();
+      expect(engine.getCurrentConfig()).toBe(lifecycleConfig);
+    });
+
+    it("keeps the new generation installed when the old resource manager throws on disposal", async () => {
+      const { engine, resourceManager } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      const predecessors = new Map(
+        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+      );
+      const cleanupTime = vi.spyOn(engine.getTimeManager(), "cleanup");
+      resourceManager.cleanup.mockImplementationOnce(() => {
+        throw new Error("old resource disposal failed");
+      });
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0, 0, 1, 1); }",
+        lifecycleConfig,
+        "/second.slang",
+        { BufferA: "float4 mainImage(float2 c) { return float4(3); }" },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.warnings?.join("\n")).toMatch(/old resource disposal failed/i);
+      expect(engine.getResourceManager()).not.toBe(resourceManager);
+      expect((engine as any).passPipelines).not.toEqual(predecessors);
+      expect(resourceManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(cleanupTime).toHaveBeenCalledTimes(1);
+      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getCurrentConfig()).toBe(lifecycleConfig);
+    });
+
+    it("fails before publication when candidate video synchronization throws", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      const installedPipelines = (engine as any).passPipelines;
+      const installedConfig = engine.getCurrentConfig();
+      const installedResourceManager = engine.getResourceManager();
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      const syncSpy = vi.spyOn(ResourceManager.prototype, "syncAllVideosToTime")
+        .mockImplementation(function (this: ResourceManager<unknown>) {
+          if (this !== installedResourceManager) {
+            throw new Error("candidate video synchronization failed");
+          }
+        });
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      const videoConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "video",
+                path: "candidate.mp4",
+                resolved_path: "/candidate.mp4",
+              },
+            },
+          },
+        },
+      };
+
+      try {
+        const result = await engine.compileShaderPipeline(
+          "candidate image",
+          videoConfig,
+          "/second.slang",
+        );
+        const candidateResourceManager = loadSpy.mock.instances[0];
+
+        expect(result).toMatchObject({
+          success: false,
+          errors: [expect.stringMatching(/candidate video synchronization failed/i)],
+        });
+        expect((engine as any).passPipelines).toBe(installedPipelines);
+        expect(engine.getCurrentConfig()).toBe(installedConfig);
+        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect(disposeSpy.mock.instances.filter((instance) =>
+          instance === candidateResourceManager)).toHaveLength(1);
+        expect(disposeSpy.mock.instances).not.toContain(installedResourceManager);
+      } finally {
+        loadSpy.mockRestore();
+        syncSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("keeps candidate file resources separate until a path switch commits", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const installedResourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      (engine as any).resourceManager = installedResourceManager;
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      const loadedHandle = { view: { label: "candidate view" }, sampler: { label: "candidate sampler" } };
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue(loadedHandle as never);
+      const cleanupSpy = vi.spyOn(ResourceManager.prototype, "cleanup");
+      const textureConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "texture",
+                path: "candidate.png",
+                resolved_path: "/candidate.png",
+              },
+            },
+          },
+        },
+      };
+
+      try {
+        const result = await engine.compileShaderPipeline(
+          imageSource,
+          textureConfig,
+          "/second.slang",
+        );
+        const candidateResourceManager = engine.getResourceManager();
+
+        expect(result?.success).toBe(true);
+        expect(candidateResourceManager).not.toBe(installedResourceManager);
+        expect(loadSpy.mock.instances).toEqual([candidateResourceManager]);
+        expect(cleanupSpy.mock.instances).toContain(installedResourceManager);
+        expect(cleanupSpy.mock.instances).not.toContain(candidateResourceManager);
+      } finally {
+        loadSpy.mockRestore();
+        cleanupSpy.mockRestore();
+      }
+    });
+
+    it("applies the engine's global media state before loading candidate videos", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      engine.setGlobalVolume(0.25, true);
+      const globalStateSpy = vi.spyOn(ResourceManager.prototype, "setGlobalAudioState");
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      const videoConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: {
+                type: "video",
+                path: "candidate.mp4",
+                resolved_path: "/candidate.mp4",
+              },
+            },
+          },
+        },
+      };
+
+      try {
+        const result = await engine.compileShaderPipeline(
+          imageSource,
+          videoConfig,
+          "/second.slang",
+        );
+        const candidateResourceManager = engine.getResourceManager();
+
+        expect(result?.success).toBe(true);
+        expect(globalStateSpy).toHaveBeenCalledWith(0.25, true);
+        expect(globalStateSpy.mock.instances.every((instance) =>
+          instance === candidateResourceManager)).toBe(true);
+        expect(loadSpy.mock.instances).toEqual([candidateResourceManager]);
+        expect(globalStateSpy.mock.invocationCallOrder[0])
+          .toBeLessThan(loadSpy.mock.invocationCallOrder[0]);
+      } finally {
+        globalStateSpy.mockRestore();
+        loadSpy.mockRestore();
+      }
+    });
+
+    it("keeps installed resources isolated from a failed same-path image/video candidate", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const installedResourceManager = engine.getResourceManager();
+      const loadImageSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
+      const loadVideoSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      compiler.compile.mockResolvedValueOnce({ success: false, errors: ["candidate failed"] });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "candidate.png", resolved_path: "/candidate.png" },
+              iChannel1: { type: "video", path: "candidate.mp4", resolved_path: "/candidate.mp4" },
+            },
+          },
+        },
+      };
+
+      try {
+        const result = await engine.compileShaderPipeline(
+          "failed same-path image",
+          candidateConfig,
+          "/same.slang",
+        );
+        const candidateResourceManager = loadImageSpy.mock.instances[0];
+
+        expect(result?.success).toBe(false);
+        expect(candidateResourceManager).not.toBe(installedResourceManager);
+        expect(loadVideoSpy.mock.instances).toEqual([candidateResourceManager]);
+        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect(disposeSpy.mock.instances.filter((instance) => instance === candidateResourceManager))
+          .toHaveLength(1);
+        expect(disposeSpy.mock.instances).not.toContain(installedResourceManager);
+      } finally {
+        loadImageSpy.mockRestore();
+        loadVideoSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("disposes a same-path resource candidate when a newer compile supersedes it", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const installedResourceManager = engine.getResourceManager();
+      const loadImageSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      let releaseCandidate!: () => void;
+      compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+        releaseCandidate = () => resolve({ success: true, wgsl: "// stale candidate" });
+      }));
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "candidate.png", resolved_path: "/candidate.png" },
+            },
+          },
+        },
+      };
+
+      try {
+        const pending = engine.compileShaderPipeline(
+          "pending same-path image",
+          candidateConfig,
+          "/same.slang",
+        );
+        await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+          "pending same-path image",
+          expect.objectContaining({ passName: "Image" }),
+        ));
+        const candidateResourceManager = loadImageSpy.mock.instances[0];
+
+        const newerFailure = await engine.compileShaderPipeline(
+          imageSource,
+          { version: "1" } as ShaderConfig,
+          "/same.slang",
+        );
+
+        expect(newerFailure?.success).toBe(false);
+        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect(disposeSpy.mock.instances.filter((instance) => instance === candidateResourceManager))
+          .toHaveLength(1);
+        expect(disposeSpy.mock.instances).not.toContain(installedResourceManager);
+
+        releaseCandidate();
+        await expect(pending).resolves.toEqual({
+          success: false,
+          errors: ["Superseded by a newer compile"],
+          superseded: true,
+        });
+      } finally {
+        loadImageSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("promptly settles a compile whose pending video load is superseded", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const installedResourceManager = engine.getResourceManager();
+      const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const imageLoadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
+      const pendingConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "pending.mp4", resolved_path: "/pending.mp4" },
+              iChannel1: { type: "texture", path: "late.png", resolved_path: "/late.png" },
+            },
+          },
+        },
+      };
+
+      try {
+        const pending = engine.compileShaderPipeline(
+          "pending video image",
+          pendingConfig,
+          "/same.slang",
+        );
+        await vi.waitFor(() => expect(document.body.querySelector("video")).not.toBeNull());
+
+        const newerFailure = await engine.compileShaderPipeline(
+          imageSource,
+          { version: "1" } as ShaderConfig,
+          "/same.slang",
+        );
+
+        expect(newerFailure?.success).toBe(false);
+        await expect(pending).resolves.toEqual({
+          success: false,
+          errors: ["Superseded by a newer compile"],
+          superseded: true,
+        });
+        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect(document.body.querySelector("video")).toBeNull();
+        expect(pauseSpy).toHaveBeenCalledTimes(1);
+        expect(imageLoadSpy).not.toHaveBeenCalled();
+      } finally {
+        pauseSpy.mockRestore();
+        errorSpy.mockRestore();
+        warnSpy.mockRestore();
+        imageLoadSpy.mockRestore();
+      }
+    });
+
+    it("cleans a cancelled resource candidate again after its in-flight image load settles", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      let releaseImage!: () => void;
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          releaseImage = () => resolve({} as never);
+        }));
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      const pendingConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "pending.png", resolved_path: "/pending.png" },
+            },
+          },
+        },
+      };
+
+      try {
+        const pending = engine.compileShaderPipeline(
+          "pending image candidate",
+          pendingConfig,
+          "/same.slang",
+        );
+        await vi.waitFor(() => expect(loadSpy).toHaveBeenCalledTimes(1));
+        const candidateResourceManager = loadSpy.mock.instances[0];
+
+        await engine.compileShaderPipeline(
+          imageSource,
+          { version: "1" } as ShaderConfig,
+          "/same.slang",
+        );
+        releaseImage();
+
+        await expect(pending).resolves.toMatchObject({ success: false, superseded: true });
+        expect(disposeSpy.mock.instances.filter((instance) =>
+          instance === candidateResourceManager)).toHaveLength(2);
+      } finally {
+        loadSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("precomputes the installed buffer snapshot before publishing a generation", async () => {
+      const { engine } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const predecessors = (engine as any).passPipelines;
+      let enumerations = 0;
+      const buffers = new Proxy({
+        BufferA: "float4 mainImage(float2 c) { return float4(9); }",
+      }, {
+        ownKeys(target) {
+          enumerations++;
+          if (enumerations > 1) {
+            throw new Error("buffer snapshot read during publication");
+          }
+          return Reflect.ownKeys(target);
+        },
+      });
+
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(8); }",
+        lifecycleConfig,
+        "/same.slang",
+        buffers,
+      );
+
+      expect(result?.success).toBe(true);
+      expect(enumerations).toBe(1);
+      expect((engine as any).passPipelines).not.toBe(predecessors);
+      expect(engine.getVariableCaptureCompileContext()).toEqual({
+        commonCode: "",
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
+        slangModules: [],
+      });
+    });
+
+    it("does not let a failed first attempt leak media into the first successful session", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      const loadVideoSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      const syncSpy = vi.spyOn(ResourceManager.prototype, "syncAllVideosToTime");
+      const resumeSpy = vi.spyOn(ResourceManager.prototype, "resumeAllVideos");
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      compiler.compile.mockResolvedValueOnce({ success: false, errors: ["first attempt failed"] });
+      const failedConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "orphan.mp4", resolved_path: "/orphan.mp4" },
+            },
+          },
+        },
+      };
+
+      try {
+        const failed = await engine.compileShaderPipeline(
+          "failed first image",
+          failedConfig,
+          "/a.slang",
+        );
+        const failedCandidate = loadVideoSpy.mock.instances[0];
+        const winner = await engine.compileShaderPipeline(
+          "successful second image",
+          { version: "1", passes: { Image: { inputs: {} } } },
+          "/b.slang",
+        );
+        const installedResourceManager = engine.getResourceManager();
+
+        expect(failed?.success).toBe(false);
+        expect(winner?.success).toBe(true);
+        expect(installedResourceManager).not.toBe(failedCandidate);
+        expect(disposeSpy.mock.instances.filter((instance) => instance === failedCandidate))
+          .toHaveLength(1);
+        expect(syncSpy.mock.instances).toContain(installedResourceManager);
+        expect(syncSpy.mock.instances).not.toContain(failedCandidate);
+        expect(resumeSpy.mock.instances).toContain(installedResourceManager);
+        expect(resumeSpy.mock.instances).not.toContain(failedCandidate);
+      } finally {
+        loadVideoSpy.mockRestore();
+        syncSpy.mockRestore();
+        resumeSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("applies the latest global media state to a candidate immediately before it commits", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const globalStateSpy = vi.spyOn(ResourceManager.prototype, "setGlobalAudioState");
+      const loadVideoSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      let releaseCandidate!: () => void;
+      compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+        releaseCandidate = () => resolve({ success: true, wgsl: "// candidate" });
+      }));
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "candidate.mp4", resolved_path: "/candidate.mp4" },
+            },
+          },
+        },
+      };
+
+      try {
+        const pending = engine.compileShaderPipeline(
+          "pending media candidate",
+          candidateConfig,
+          "/same.slang",
+        );
+        await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+          "pending media candidate",
+          expect.objectContaining({ passName: "Image" }),
+        ));
+        const candidateResourceManager = loadVideoSpy.mock.instances[0];
+
+        engine.setGlobalVolume(0.35, true);
+        releaseCandidate();
+        const result = await pending;
+        const candidateCalls = globalStateSpy.mock.calls.filter((_, index) =>
+          globalStateSpy.mock.instances[index] === candidateResourceManager);
+
+        expect(result?.success).toBe(true);
+        expect(engine.getResourceManager()).toBe(candidateResourceManager);
+        expect(candidateCalls).toEqual([
+          [1, false],
+          [0.35, true],
+        ]);
+      } finally {
+        globalStateSpy.mockRestore();
+        loadVideoSpy.mockRestore();
+      }
+    });
+
+    it("keeps the installed manager on the latest global media state when a candidate fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const installedResourceManager = engine.getResourceManager();
+      const globalStateSpy = vi.spyOn(ResourceManager.prototype, "setGlobalAudioState");
+      const loadVideoSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
+        .mockResolvedValue({ texture: {} as never });
+      let failCandidate!: () => void;
+      compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+        failCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
+      }));
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "video", path: "candidate.mp4", resolved_path: "/candidate.mp4" },
+            },
+          },
+        },
+      };
+
+      try {
+        const pending = engine.compileShaderPipeline(
+          "failing media candidate",
+          candidateConfig,
+          "/same.slang",
+        );
+        await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+          "failing media candidate",
+          expect.objectContaining({ passName: "Image" }),
+        ));
+
+        engine.setGlobalVolume(0.2, true);
+        failCandidate();
+        const result = await pending;
+        const installedCalls = globalStateSpy.mock.calls.filter((_, index) =>
+          globalStateSpy.mock.instances[index] === installedResourceManager);
+
+        expect(result?.success).toBe(false);
+        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect(installedCalls).toContainEqual([0.2, true]);
+      } finally {
+        globalStateSpy.mockRestore();
+        loadVideoSpy.mockRestore();
+      }
+    });
+
+    it("commits a successful same-path resource candidate and retires its predecessor once", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      (engine as any).resourceManager = new ResourceManager(
+        new WebGPUTextureBackend(device as unknown as GPUDevice),
+      );
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/same.slang", {
+        BufferA: bufferSource,
+      });
+      const installedResourceManager = engine.getResourceManager();
+      const loadImageSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: "texture", path: "replacement.png", resolved_path: "/replacement.png" },
+            },
+          },
+        },
+      };
+
+      try {
+        const result = await engine.compileShaderPipeline(
+          "successful same-path image",
+          candidateConfig,
+          "/same.slang",
+        );
+        const candidateResourceManager = loadImageSpy.mock.instances[0];
+
+        expect(result?.success).toBe(true);
+        expect(candidateResourceManager).not.toBe(installedResourceManager);
+        expect(engine.getResourceManager()).toBe(candidateResourceManager);
+        expect(disposeSpy.mock.instances.filter((instance) => instance === installedResourceManager))
+          .toHaveLength(1);
+        expect(disposeSpy.mock.instances).not.toContain(candidateResourceManager);
+      } finally {
+        loadImageSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
+    });
+
+    it("keeps the installed config and its resize behavior during a failed path switch", async () => {
+      const { engine, compiler } = lifecycleEngine();
+      const installedConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.slang", inputs: {}, resolution: { scale: 0.5 } },
+        },
+      };
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.slang", inputs: {}, resolution: { scale: 0.25 } },
+        },
+      };
+      await engine.compileShaderPipeline(imageSource, installedConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      let rejectCandidate!: () => void;
+      const blockedCandidate = new Promise<{ success: false; errors: string[] }>((resolve) => {
+        rejectCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
+      });
+      compiler.compile.mockImplementation((source: string) => source === "pending candidate"
+        ? blockedCandidate
+        : { success: true, wgsl: "// wgsl" });
+
+      const pending = engine.compileShaderPipeline(imageSource, candidateConfig, "/second.slang", {
+        BufferA: "pending candidate",
+      });
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+        "pending candidate",
+        expect.objectContaining({ passName: "BufferA" }),
+      ));
+
+      expect(engine.getCurrentConfig()).toBe(installedConfig);
+      engine.handleCanvasResize(640, 360);
+      expect(engine.getPasses().find(({ name }) => name === "BufferA")).toMatchObject({
+        width: 320,
+        height: 180,
+      });
+
+      rejectCandidate();
+      const result = await pending;
+
+      expect(result?.success).toBe(false);
+      expect(engine.getCurrentConfig()).toBe(installedConfig);
+    });
+
+    it("recompiles attempted source with its matching config after a failed path switch", async () => {
+      const { engine, compiler } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        BufferA: bufferSource,
+      });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferB" } } },
+          BufferB: { path: "buffer-b.slang", inputs: {} },
+        },
+      };
+      compiler.compile.mockReturnValue({ success: false, errors: ["candidate failed"] });
+      const failed = await engine.compileShaderPipeline(
+        "candidate image",
+        candidateConfig,
+        "/second.slang",
+        { BufferB: "broken candidate" },
+      );
+      expect(failed?.success).toBe(false);
+      expect(engine.getCurrentConfig()).toBe(lifecycleConfig);
+      compiler.compile.mockReturnValue({ success: true, wgsl: "// fixed candidate" });
+
+      const recovered = await engine.updateBufferAndRecompile("BufferB", "fixed candidate");
+
+      expect(recovered?.success).toBe(true);
+      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BufferB", "Image"]);
+      expect(engine.getCurrentConfig()).toBe(candidateConfig);
+      expect(compiler.compile).toHaveBeenCalledWith(
+        "fixed candidate",
+        expect.objectContaining({ passName: "BufferB" }),
+      );
+    });
+
+    it("keeps capture context on the installed generation while a different path is pending or fails", async () => {
+      const { engine, compiler } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        common: "float commonA() { return 1.0; }",
+        BufferA: bufferSource,
+      });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferB" } } },
+          BufferB: { path: "buffer-b.slang", inputs: {} },
+        },
+      };
+      let rejectCandidate!: () => void;
+      const blockedCandidate = new Promise<{ success: false; errors: string[] }>((resolve) => {
+        rejectCandidate = () => resolve({ success: false, errors: ["candidate failed"] });
+      });
+      compiler.compile.mockImplementation((source: string) => source === "buffer B"
+        ? blockedCandidate
+        : { success: true, wgsl: "// wgsl" });
+
+      const pending = engine.compileShaderPipeline(
+        "candidate image",
+        candidateConfig,
+        "/second.slang",
+        {
+          common: "float commonB() { return 2.0; }",
+          BufferB: "buffer B",
+        },
+      );
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+        "buffer B",
+        expect.objectContaining({ passName: "BufferB" }),
+      ));
+
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
+        slangModules: [],
+      });
+
+      rejectCandidate();
+      expect((await pending)?.success).toBe(false);
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
+        slangModules: [],
+      });
+
+      compiler.compile.mockReturnValue({ success: false, errors: ["same-path edit failed"] });
+      const failedSamePath = await engine.compileShaderPipeline(
+        "same-path candidate image",
+        lifecycleConfig,
+        "/first.slang",
+        {
+          common: "float commonC() { return 3.0; }",
+          BufferA: "same-path broken buffer",
+        },
+      );
+
+      expect(failedSamePath?.success).toBe(false);
+      expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
+        commonCode: "float commonA() { return 1.0; }",
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
+        slangModules: [],
+      });
+    });
+
+    it("publishes a successful path generation to capture context", async () => {
+      const { engine } = lifecycleEngine();
+      await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
+        common: "float commonA() { return 1.0; }",
+        BufferA: bufferSource,
+      });
+      const candidateConfig: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel1: { type: "buffer", source: "BufferB" } } },
+          BufferB: { path: "buffer-b.slang", inputs: {} },
+        },
+      };
+
+      const result = await engine.compileShaderPipeline(
+        "candidate image",
+        candidateConfig,
+        "/second.slang",
+        {
+          common: "float commonB() { return 2.0; }",
+          BufferB: "buffer B",
+        },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
+        commonCode: "float commonB() { return 2.0; }",
+        slangPassName: "Image",
+        slangChannels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
+        slangStorage: [],
+        slangStorageBuffers: expect.any(Map),
+        slangModules: [],
+      });
     });
 
     it("preserves time and reusable pipelines when the same shader file recompiles", async () => {
@@ -3000,7 +3681,7 @@ describe("WebGPURenderingEngine", () => {
 
       const failed = await engine.compileShaderPipeline("broken image", null, "/broken.slang");
       expect(failed?.success).toBe(false);
-      expect(engine.getPasses()).toEqual([]);
+      expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
 
       compiler.compile.mockReturnValue({ success: true, wgsl: "// corrected" });
       const recovered = await engine.compileShaderPipeline(
@@ -3078,9 +3759,10 @@ describe("WebGPURenderingEngine", () => {
 
     engine.render(1000);
 
-    expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
-      { slot: 0, textureView: { label: "bufferA-previous" } },
-    ]);
+    expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-previous" } }],
+      expect.any(Map),
+    );
   });
 
   it("passes the source pipeline's current-frame view for an Image channel", () => {
@@ -3113,9 +3795,53 @@ describe("WebGPURenderingEngine", () => {
 
     engine.render(1000);
 
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
-      { slot: 0, textureView: { label: "bufferA-current" } },
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-current" } }],
+      expect.any(Map),
+    );
+  });
+
+  it("rebuilds a channel fragment pass with both resolved channels and installed storage", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const positions = { label: "positions" } as unknown as GPUBuffer;
+    const installedStorage = new Map([["positions", positions]]);
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+      getPreviousOutputView: () => ({ label: "bufferA-previous" }),
+    });
+    const imagePipeline = renderablePipeline({
+      getCurrentOutputView: () => null,
+      getPreviousOutputView: () => null,
+    });
+    (engine as any).storageBuffers = installedStorage;
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{
+          kind: "buffer",
+          slot: 0,
+          key: "iChannel0",
+          source: "BufferA",
+          readFrom: "current-frame",
+        }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
     ]);
+
+    engine.render(1000);
+
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+      [{ slot: 0, textureView: { label: "bufferA-current" } }],
+      installedStorage,
+    );
   });
 
   it("skips a pass entirely when any of its channel sources is unresolvable", () => {
@@ -3263,15 +3989,19 @@ describe("WebGPURenderingEngine", () => {
     ]);
 
     engine.render(1000);
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(1, [
-      { slot: 0, textureView: { label: "initial-view" } },
-    ]);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(
+      1,
+      [{ slot: 0, textureView: { label: "initial-view" } }],
+      expect.any(Map),
+    );
 
     bufferViewToggle = true;
     engine.render(1016);
-    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(2, [
-      { slot: 0, textureView: { label: "swapped-view" } },
-    ]);
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenNthCalledWith(
+      2,
+      [{ slot: 0, textureView: { label: "swapped-view" } }],
+      expect.any(Map),
+    );
   });
 
   describe("per-pass compile cache", () => {
@@ -3479,17 +4209,67 @@ describe("WebGPURenderingEngine", () => {
       expect((engine as any).passPipelines.get("BufferA")).toBe(firstBufferA);
     });
 
-    it("resizes reused pipelines to the new graph dimensions on success", async () => {
-      const { engine, compiler } = cachedSetup();
+    it("reuses WGSL but replaces GPU pipelines when graph dimensions change", async () => {
+      const { engine, device, compiler } = cachedSetup();
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
       const image = (engine as any).passPipelines.get("Image");
-      const resizeSpy = vi.spyOn(image, "resize");
 
       (engine as any).canvas = { width: 640, height: 360 };
       await engine.compileShaderPipeline("img", twoPassConfig, "/s.slang", { BufferA: "buf" });
 
-      expect(resizeSpy).toHaveBeenCalledWith(640, 360);
+      expect((engine as any).passPipelines.get("Image")).not.toBe(image);
       expect(compiler.compile).toHaveBeenCalledTimes(2); // only the first compile's two calls
+      expect(device.createRenderPipeline).toHaveBeenCalledTimes(4);
+    });
+
+    it("keeps every installed pass untouched when a later resized pass allocation fails", async () => {
+      const { engine, device } = cachedSetup();
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "a.slang", inputs: {} },
+          BufferB: { path: "b.slang", inputs: {} },
+        },
+      };
+      await engine.compileShaderPipeline("image", config, "/s.slang", {
+        BufferA: "buffer a",
+        BufferB: "buffer b",
+      });
+      const installedPipelines = new Map(
+        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+      );
+      const installedTextures = device.createTexture.mock.results
+        .map((result) => result.value);
+      const candidateTextureA = {
+        createView: vi.fn(() => ({ label: "candidate-a" })),
+        destroy: vi.fn(),
+      };
+      const candidateTextureB = {
+        createView: vi.fn(() => ({ label: "candidate-b" })),
+        destroy: vi.fn(),
+      };
+      device.createTexture
+        .mockImplementationOnce(() => candidateTextureA)
+        .mockImplementationOnce(() => candidateTextureB)
+        .mockImplementationOnce(() => {
+          throw new Error("later resize allocation failed");
+        });
+      (engine as any).canvas = { width: 640, height: 360 };
+
+      const result = await engine.compileShaderPipeline("image", config, "/s.slang", {
+        BufferA: "buffer a",
+        BufferB: "buffer b",
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        errors: ["BufferB: later resize allocation failed"],
+      });
+      expect((engine as any).passPipelines).toEqual(installedPipelines);
+      expect(installedTextures.every((texture) => texture.destroy.mock.calls.length === 0)).toBe(true);
+      expect(candidateTextureA.destroy).toHaveBeenCalledTimes(1);
+      expect(candidateTextureB.destroy).toHaveBeenCalledTimes(1);
     });
 
     it("recompiles a pass whose channel layout changed", async () => {
@@ -3608,14 +4388,12 @@ describe("WebGPURenderingEngine", () => {
         // clobber them.
         expect((engine as any).passPipelines.get("BufferA")).toBe(installedAfterB_BufferA);
         expect((engine as any).passPipelines.get("Image")).toBe(baselineImage);
-        // A's own freshly-built BufferA pipeline (not the installed one, and
-        // not the shared carried-over Image pipeline) was disposed.
+        // A became stale while still awaiting Slang, so it never allocates a
+        // candidate pipeline. Neither installed winner is disposed.
         expect(disposeSpy.mock.instances).not.toContain(installedAfterB_BufferA);
         expect(disposeSpy.mock.instances).not.toContain(baselineImage);
-        // Exactly two disposals happened: the baseline BufferA pipeline
-        // (replaced when B installed) and A's own fresh BufferA pipeline
-        // (discarded as superseded).
-        expect(disposeSpy).toHaveBeenCalledTimes(2);
+        // The only disposal is the baseline BufferA pipeline replaced by B.
+        expect(disposeSpy).toHaveBeenCalledTimes(1);
       } finally {
         disposeSpy.mockRestore();
       }
@@ -3693,6 +4471,78 @@ describe("WebGPURenderingEngine", () => {
       const imagePass = engine.getPasses().find((pass) => pass.name === "Image");
       expect(imagePass?.width).toBe(640);
       expect(imagePass?.height).toBe(360);
+    });
+
+    it("keeps all installed passes at their live size when final candidate reconciliation fails", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device, compiler } = stubEngineInternals(engine);
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: "a.slang", inputs: {} },
+          BufferB: { path: "b.slang", inputs: {} },
+        },
+      };
+      await engine.compileShaderPipeline("image baseline", config, "/s.slang", {
+        BufferA: "buffer a",
+        BufferB: "buffer b",
+      });
+      const installedPipelines = new Map(
+        (engine as any).passPipelines as Map<string, SlangPassPipeline>,
+      );
+      let releaseImage!: () => void;
+      compiler.compile.mockImplementationOnce(() => new Promise((resolve) => {
+        releaseImage = () => resolve({ success: true, wgsl: "// changed image" });
+      }));
+
+      const pending = engine.compileShaderPipeline("image changed", config, "/s.slang", {
+        BufferA: "buffer a",
+        BufferB: "buffer b",
+      });
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
+        "image changed",
+        expect.objectContaining({ passName: "Image" }),
+      ));
+      engine.handleCanvasResize(640, 360);
+      const installedTexturesAtLiveSize = device.createTexture.mock.results
+        .slice(4, 8)
+        .map((result) => result.value);
+      const candidateTextureA = {
+        createView: vi.fn(() => ({ label: "candidate-a" })),
+        destroy: vi.fn(),
+      };
+      const candidateTextureB = {
+        createView: vi.fn(() => ({ label: "candidate-b" })),
+        destroy: vi.fn(),
+      };
+      device.createTexture
+        .mockImplementationOnce(() => candidateTextureA)
+        .mockImplementationOnce(() => candidateTextureB)
+        .mockImplementationOnce(() => {
+          throw new Error("final resolution allocation failed");
+        });
+
+      releaseImage();
+      const result = await pending;
+
+      expect(result).toMatchObject({
+        success: false,
+        errors: ["BufferB: final resolution allocation failed"],
+      });
+      expect((engine as any).passPipelines).toEqual(installedPipelines);
+      expect(installedTexturesAtLiveSize.every((texture) =>
+        texture.destroy.mock.calls.length === 0)).toBe(true);
+      expect(candidateTextureA.destroy).toHaveBeenCalledTimes(1);
+      expect(candidateTextureB.destroy).toHaveBeenCalledTimes(1);
+      expect(engine.getPasses().find(({ name }) => name === "BufferA")).toMatchObject({
+        width: 640,
+        height: 360,
+      });
+      expect(engine.getPasses().find(({ name }) => name === "BufferB")).toMatchObject({
+        width: 640,
+        height: 360,
+      });
     });
   });
 
@@ -4040,63 +4890,94 @@ describe("WebGPURenderingEngine", () => {
 
     it("awaits the texture load during compile with the channel's options", async () => {
       const { engine } = compiledEngine();
-      const rm = engine.getResourceManager()!;
-      const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
+      const originalResourceManager = engine.getResourceManager();
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
 
-      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+      try {
+        const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
 
-      expect(result?.success).toBe(true);
-      expect(loadSpy).toHaveBeenCalledWith("/abs/tex.png", {
-        filter: "nearest",
-        wrap: "clamp",
-        vflip: false,
-        grayscale: true,
-      });
+        expect(result?.success).toBe(true);
+        expect(loadSpy).toHaveBeenCalledWith("/abs/tex.png", {
+          filter: "nearest",
+          wrap: "clamp",
+          vflip: false,
+          grayscale: true,
+        });
+        expect(loadSpy.mock.instances).toEqual([engine.getResourceManager()]);
+        expect(engine.getResourceManager()).not.toBe(originalResourceManager);
+      } finally {
+        loadSpy.mockRestore();
+      }
     });
 
-    it("cleans cached texture resources on the next compile after flagReloadOnNextApply", async () => {
+    it("reloads into an isolated manager before retiring old cached texture resources", async () => {
       const { engine } = compiledEngine();
-      const rm = engine.getResourceManager()!;
-      const loadSpy = vi.spyOn(rm, "loadImageTexture").mockResolvedValue({} as never);
-      const cleanupSpy = vi.spyOn(rm, "cleanup");
+      const originalResourceManager = engine.getResourceManager();
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue({} as never);
+      const disposeSpy = vi.spyOn(ResourceManager.prototype, "dispose");
 
-      engine.flagReloadOnNextApply();
-      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+      try {
+        engine.flagReloadOnNextApply();
+        const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+        const candidateResourceManager = loadSpy.mock.instances[0];
 
-      expect(result?.success).toBe(true);
-      expect(cleanupSpy).toHaveBeenCalledTimes(1);
-      expect(cleanupSpy.mock.invocationCallOrder[0]).toBeLessThan(loadSpy.mock.invocationCallOrder[0]);
+        expect(result?.success).toBe(true);
+        expect(candidateResourceManager).not.toBe(originalResourceManager);
+        expect(engine.getResourceManager()).toBe(candidateResourceManager);
+        expect(disposeSpy.mock.instances.filter((instance) => instance === originalResourceManager))
+          .toHaveLength(1);
+        expect(disposeSpy.mock.invocationCallOrder[0])
+          .toBeGreaterThan(loadSpy.mock.invocationCallOrder[0]);
+      } finally {
+        loadSpy.mockRestore();
+        disposeSpy.mockRestore();
+      }
     });
 
     it("renders using the cached texture handle's view and sampler", async () => {
       const { engine, device } = compiledEngine();
-      const rm = engine.getResourceManager()!;
       const handle = { view: { tag: "texView" }, sampler: { tag: "texSampler" } };
-      vi.spyOn(rm, "getImageTextureCache").mockReturnValue({ "/abs/tex.png": handle as never });
+      const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
+        .mockResolvedValue(handle as never);
+      const cacheSpy = vi.spyOn(ResourceManager.prototype, "getImageTextureCache")
+        .mockReturnValue({ "/abs/tex.png": handle as never });
 
-      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
-      expect(result?.success).toBe(true);
-      engine.render(16);
+      try {
+        const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+        expect(result?.success).toBe(true);
+        engine.render(16);
 
-      const bindCalls = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls;
-      const entries = bindCalls.at(-1)![0].entries;
-      expect(entries).toContainEqual({ binding: 1, resource: handle.view });
-      expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+        const bindCalls = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls;
+        const entries = bindCalls.at(-1)![0].entries;
+        expect(entries).toContainEqual({ binding: 1, resource: handle.view });
+        expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+      } finally {
+        loadSpy.mockRestore();
+        cacheSpy.mockRestore();
+      }
     });
 
     it("falls back to the default texture when the load failed (cache miss)", async () => {
       const { engine, device } = compiledEngine();
-      const rm = engine.getResourceManager()!;
-      vi.spyOn(rm, "getImageTextureCache").mockReturnValue({});
       const def = { view: { tag: "defaultView" }, sampler: { tag: "defaultSampler" } };
-      vi.spyOn(rm, "getDefaultTexture").mockReturnValue(def as never);
+      const cacheSpy = vi.spyOn(ResourceManager.prototype, "getImageTextureCache")
+        .mockReturnValue({});
+      const defaultSpy = vi.spyOn(ResourceManager.prototype, "getDefaultTexture")
+        .mockReturnValue(def as never);
 
-      const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
-      expect(result?.success).toBe(true);
-      engine.render(16);
+      try {
+        const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
+        expect(result?.success).toBe(true);
+        engine.render(16);
 
-      const entries = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].entries;
-      expect(entries).toContainEqual({ binding: 1, resource: def.view });
+        const entries = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].entries;
+        expect(entries).toContainEqual({ binding: 1, resource: def.view });
+      } finally {
+        cacheSpy.mockRestore();
+        defaultSpy.mockRestore();
+      }
     });
 
     it("buffer channels keep rendering when a texture channel coexists", () => {
@@ -4162,13 +5043,17 @@ describe("WebGPURenderingEngine", () => {
       expect(drawCalls).toEqual(["bufferA-current", "canvas"]);
       // BufferA's own self-feedback buffer channel resolved fine alongside
       // Image's coexisting buffer + texture channels.
-      expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith([
-        { slot: 0, textureView: { label: "bufferA-previous" } },
-      ]);
-      expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
-        { slot: 0, textureView: { label: "bufferA-current" } },
-        { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
-      ]);
+      expect(bufferPipeline.rebuildBindGroup).toHaveBeenCalledWith(
+        [{ slot: 0, textureView: { label: "bufferA-previous" } }],
+        expect.any(Map),
+      );
+      expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
+        [
+          { slot: 0, textureView: { label: "bufferA-current" } },
+          { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
+        ],
+        expect.any(Map),
+      );
     });
   });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
+import type { StorageBindingNode } from "../../types/PassGraph";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
 const uniforms: CaptureUniforms = {
@@ -23,6 +24,7 @@ interface MockGpu {
   copyTextureToBuffer: ReturnType<typeof vi.fn>;
   beginRenderPass: ReturnType<typeof vi.fn>;
   createBindGroup: ReturnType<typeof vi.fn>;
+  createBindGroupLayout: ReturnType<typeof vi.fn>;
   createdBuffers: Array<{ size: number; mapAsync: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }>;
   flushMaps: () => Promise<void>;
 }
@@ -32,6 +34,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   const submit = vi.fn();
   const copyTextureToBuffer = vi.fn();
   const createBindGroup = vi.fn(() => ({}));
+  const createBindGroupLayout = vi.fn(() => ({}));
   const beginRenderPass = vi.fn(() => ({
     setPipeline: vi.fn(),
     setBindGroup: vi.fn(),
@@ -59,7 +62,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     }),
     createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
     createShaderModule: vi.fn(() => ({})),
-    createBindGroupLayout: vi.fn(() => ({})),
+    createBindGroupLayout,
     createPipelineLayout: vi.fn(() => ({})),
     createRenderPipeline: vi.fn(() => ({})),
     createBindGroup,
@@ -84,6 +87,7 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
     copyTextureToBuffer,
     beginRenderPass,
     createBindGroup,
+    createBindGroupLayout,
     createdBuffers,
     flushMaps: async () => {
       for (const resolve of mapResolvers.splice(0)) {
@@ -95,10 +99,36 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
   };
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 const captures = [
   { varName: "uv", varType: "float2", captureShader: "shader-a", selectorIndex: 0 },
   { varName: "col", varType: "float3", captureShader: "shader-a", selectorIndex: 1 },
 ];
+
+const storageA: StorageBindingNode = {
+  name: "positions",
+  binding: 0,
+  elementType: "float4",
+  builtin: true,
+  count: 4,
+  stride: 16,
+};
+
+const storageB: StorageBindingNode = {
+  name: "particles",
+  binding: 1,
+  elementType: "Particle",
+  builtin: false,
+  count: 4,
+  stride: 32,
+};
 
 describe("WebGPUVariableCapturer", () => {
   it("packs date, channel resolutions, and custom values for capture shaders", async () => {
@@ -249,6 +279,117 @@ describe("WebGPUVariableCapturer", () => {
     expect(entries).toContainEqual({ binding: 2, resource: sampler });
   });
 
+  it("compiles and binds read-only storage after channels and before capture uniforms", async () => {
+    const gpu = mockGpu();
+    const textureView = { tag: "texture-view" } as unknown as GPUTextureView;
+    const sampler = { tag: "sampler" } as unknown as GPUSampler;
+    const positions = { tag: "positions" } as unknown as GPUBuffer;
+    const particles = { tag: "particles" } as unknown as GPUBuffer;
+    const storageBuffers = new Map([
+      [storageA.name, positions],
+      [storageB.name, particles],
+    ]);
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      {
+        commonCode: "struct Particle { float4 position; };",
+        slangChannels: [{ slot: 2, key: "iChannel2" }],
+        slangStorage: [storageA, storageB],
+        slangStorageBuffers: storageBuffers,
+      },
+      () => [{ slot: 2, textureView, sampler }],
+    );
+
+    const issued = await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(issued).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({
+      passKind: "render",
+      storage: [storageA, storageB],
+      captureMode: true,
+    }));
+    const layoutEntries = gpu.createBindGroupLayout.mock.calls[0][0].entries;
+    expect(layoutEntries.map((entry: GPUBindGroupLayoutEntry) => entry.binding))
+      .toEqual([0, 1, 2, 3, 4, 5]);
+    expect(layoutEntries.slice(3, 5)).toEqual([
+      { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+    ]);
+    expect(layoutEntries[5]).toEqual({
+      binding: 5,
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: "uniform" },
+    });
+    expect(gpu.createBindGroup.mock.calls[0][0].entries).toEqual([
+      { binding: 0, resource: { buffer: expect.anything() } },
+      { binding: 1, resource: textureView },
+      { binding: 2, resource: sampler },
+      { binding: 3, resource: { buffer: positions } },
+      { binding: 4, resource: { buffer: particles } },
+      { binding: 5, resource: { buffer: expect.anything() } },
+    ]);
+  });
+
+  it("skips safely when capture storage is absent and recovers when it appears", async () => {
+    const gpu = mockGpu();
+    const storageBuffers = new Map<string, GPUBuffer>();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangStorage: [storageA],
+      slangStorageBuffers: storageBuffers,
+    });
+
+    const missing = await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(missing).toBe(0);
+    expect(capturer.getLastError()).toMatch(/storage.*positions/i);
+    expect(gpu.compiler.compile).not.toHaveBeenCalled();
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+
+    const positions = { tag: "positions" } as unknown as GPUBuffer;
+    storageBuffers.set(storageA.name, positions);
+    const recovered = await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(recovered).toBe(1);
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: positions } });
+  });
+
+  it("reuses capture layout for replacement buffers and invalidates it for storage declarations", async () => {
+    const gpu = mockGpu();
+    const firstBuffer = { tag: "positions-1" } as unknown as GPUBuffer;
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangStorage: [storageA],
+      slangStorageBuffers: new Map([[storageA.name, firstBuffer]]),
+    });
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    const replacement = { tag: "positions-2" } as unknown as GPUBuffer;
+    capturer.setCompileContext({
+      slangStorage: [storageA],
+      slangStorageBuffers: new Map([[storageA.name, replacement]]),
+    });
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
+    expect(gpu.createBindGroupLayout).toHaveBeenCalledTimes(1);
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: replacement } });
+
+    const particles = { tag: "particles" } as unknown as GPUBuffer;
+    capturer.setCompileContext({
+      slangStorage: [storageA, storageB],
+      slangStorageBuffers: new Map([
+        [storageA.name, replacement],
+        [storageB.name, particles],
+      ]),
+    });
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect(gpu.createBindGroupLayout).toHaveBeenCalledTimes(2);
+  });
+
   it("reports an error and issues nothing when channels cannot resolve", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(
@@ -369,6 +510,130 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
   });
 
+  it("abandons a deferred compile when its declaration context becomes stale", async () => {
+    const gpu = mockGpu();
+    const oldCompile = deferred<{ success: true; wgsl: string }>();
+    gpu.compiler.compile.mockImplementationOnce(() => oldCompile.promise);
+    const oldBuffer = { tag: "old-positions" } as unknown as GPUBuffer;
+    const newBuffer = { tag: "new-positions" } as unknown as GPUBuffer;
+    const newStorage: StorageBindingNode = {
+      ...storageA,
+      elementType: "uint4",
+    };
+    let channelSlot = 0;
+    const textureView = { tag: "texture-view" } as unknown as GPUTextureView;
+    const sampler = { tag: "sampler" } as unknown as GPUSampler;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      {
+        commonCode: "struct OldContext {};",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [storageA],
+        slangStorageBuffers: new Map([[storageA.name, oldBuffer]]),
+      },
+      () => [{ slot: channelSlot, textureView, sampler }],
+    );
+
+    const staleIssue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(gpu.compiler.compile).toHaveBeenCalledTimes(1));
+
+    channelSlot = 1;
+    capturer.setCompileContext({
+      commonCode: "struct NewContext {};",
+      slangChannels: [{ slot: 1, key: "iChannel1" }],
+      slangStorage: [newStorage],
+      slangStorageBuffers: new Map([[newStorage.name, newBuffer]]),
+    });
+    oldCompile.resolve({ success: true, wgsl: "// old context" });
+
+    expect(await staleIssue).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+    expect(gpu.device.createRenderPipeline).not.toHaveBeenCalled();
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect(gpu.compiler.compile).toHaveBeenLastCalledWith("shader-a", expect.objectContaining({
+      commonCode: "struct NewContext {};",
+      channels: [{ slot: 1, key: "iChannel1" }],
+      storage: [newStorage],
+    }));
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+  });
+
+  it("abandons a deferred pipeline when its declaration context becomes stale", async () => {
+    const gpu = mockGpu();
+    const oldPipeline = deferred<GPURenderPipeline>();
+    const createRenderPipelineAsync = vi.fn()
+      .mockImplementationOnce(() => oldPipeline.promise)
+      .mockResolvedValue({ tag: "new-pipeline" } as unknown as GPURenderPipeline);
+    Object.assign(gpu.device, { createRenderPipelineAsync });
+    const oldBuffer = { tag: "old-positions" } as unknown as GPUBuffer;
+    const newBuffer = { tag: "new-positions" } as unknown as GPUBuffer;
+    const newStorage: StorageBindingNode = {
+      ...storageA,
+      elementType: "uint4",
+    };
+    let channelSlot = 0;
+    const textureView = { tag: "texture-view" } as unknown as GPUTextureView;
+    const sampler = { tag: "sampler" } as unknown as GPUSampler;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      {
+        commonCode: "struct OldContext {};",
+        slangChannels: [{ slot: 0, key: "iChannel0" }],
+        slangStorage: [storageA],
+        slangStorageBuffers: new Map([[storageA.name, oldBuffer]]),
+      },
+      () => [{ slot: channelSlot, textureView, sampler }],
+    );
+
+    const staleIssue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(createRenderPipelineAsync).toHaveBeenCalledTimes(1));
+
+    channelSlot = 1;
+    capturer.setCompileContext({
+      commonCode: "struct NewContext {};",
+      slangChannels: [{ slot: 1, key: "iChannel1" }],
+      slangStorage: [newStorage],
+      slangStorageBuffers: new Map([[newStorage.name, newBuffer]]),
+    });
+    oldPipeline.resolve({ tag: "old-pipeline" } as unknown as GPURenderPipeline);
+
+    expect(await staleIssue).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(2);
+    expect(createRenderPipelineAsync).toHaveBeenCalledTimes(2);
+    expect(gpu.compiler.compile).toHaveBeenLastCalledWith("shader-a", expect.objectContaining({
+      commonCode: "struct NewContext {};",
+      channels: [{ slot: 1, key: "iChannel1" }],
+      storage: [newStorage],
+    }));
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 3, resource: { buffer: newBuffer } });
+  });
+
+  it("does not publish a deferred pipeline after disposal", async () => {
+    const gpu = mockGpu();
+    const deferredPipeline = deferred<GPURenderPipeline>();
+    const createRenderPipelineAsync = vi.fn(() => deferredPipeline.promise);
+    Object.assign(gpu.device, { createRenderPipelineAsync });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
+
+    const issue = capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    await vi.waitFor(() => expect(createRenderPipelineAsync).toHaveBeenCalledTimes(1));
+    capturer.dispose();
+    deferredPipeline.resolve({ tag: "disposed-pipeline" } as unknown as GPURenderPipeline);
+
+    expect(await issue).toBe(0);
+    expect((capturer as unknown as { pipelineCache: Map<string, unknown> }).pipelineCache.size).toBe(0);
+    expect(gpu.createBindGroup).not.toHaveBeenCalled();
+  });
+
   it("stops issuing when shouldContinue flips false", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
@@ -406,10 +671,17 @@ describe("WebGPURenderingEngine capture wiring", () => {
       },
     ];
     (engine as any).lastCompile = { code: "i", path: "/i.slang", buffers: { common: "float x;" } };
+    const positions = { tag: "positions" } as unknown as GPUBuffer;
+    const storageBuffers = new Map([[storageA.name, positions]]);
+    (engine as any).storageLayouts = new Map([[storageA.name, storageA]]);
+    (engine as any).storageBuffers = storageBuffers;
 
     const context = engine.getVariableCaptureCompileContext();
 
     expect(context.commonCode).toBe("float x;");
+    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
+    expect(context.slangStorage).toEqual([storageA]);
+    expect(context.slangStorageBuffers).toBe(storageBuffers);
     expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
   });
 
@@ -442,7 +714,10 @@ float4 mainImage(float2 fragCoord) {
   return float4(sharp + glow, 1.0);
 }`;
     (engine as any).canvas = { width: 1340, height: 753 };
-    (engine as any).currentConfig = {
+    const config = {
+      storage: {
+        positions: { count: 4, stride: 16, elementType: "float4" },
+      },
       passes: {
         BufferA: {},
         BufferB: {},
@@ -454,9 +729,11 @@ float4 mainImage(float2 fragCoord) {
         },
       },
     };
+    (engine as any).currentConfig = config;
     (engine as any).lastCompile = {
       code: imageCode,
-      path: "/shaders/flow.slang",
+      config,
+      path: "/slang-multipass-test/flow.slang",
       buffers: {
         BufferA: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",
         BufferB: "float4 mainImage(float2 fragCoord) { return float4(0.0); }",
@@ -470,5 +747,38 @@ float4 mainImage(float2 fragCoord) {
       { slot: 0, key: "iChannel0", kind: "buffer" },
       { slot: 1, key: "iChannel1", kind: "buffer" },
     ]);
+    expect(context.slangStorage).toEqual([storageA]);
+  });
+
+  it("binds reset-created storage through an already-created capture instance", async () => {
+    const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
+    const gpu = mockGpu();
+    const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
+    const firstBuffer = { tag: "positions-1", destroy: vi.fn() } as unknown as GPUBuffer;
+    (engine as any).device = gpu.device;
+    (engine as any).compiler = gpu.compiler;
+    (engine as any).passGraph = [
+      { name: "Image", source: "i", output: "canvas", width: 1, height: 1, channels: [] },
+    ];
+    (engine as any).storageLayouts = new Map([[storageA.name, storageA]]);
+    (engine as any).storageBuffers = new Map([[storageA.name, firstBuffer]]);
+    const capturer = engine.createVariableCapturer();
+
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+
+    engine.resetTime();
+    const resetBuffer = (engine as any).storageBuffers.get(storageA.name) as GPUBuffer;
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(resetBuffer).not.toBe(firstBuffer);
+    expect((firstBuffer as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy)
+      .toHaveBeenCalledTimes(1);
+    expect(gpu.compiler.compile).toHaveBeenCalledTimes(1);
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: resetBuffer } });
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .not.toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
   });
 });

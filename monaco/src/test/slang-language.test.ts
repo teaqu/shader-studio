@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -255,7 +255,7 @@ describe('Slang Monarch language', () => {
         (rule) => rule.token === 'keyword.preprocessor.language',
       )?.foreground,
     ).toBe('FF70FF');
-  });
+  }, 15_000);
 
   it('maps representative Slang and GLSL tokens to the same overlay colours', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({

@@ -1,6 +1,24 @@
-import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution, ConfigInput } from '@shader-studio/types';
+import type {
+  ShaderConfig,
+  BufferPass,
+  ImagePass,
+  ResolutionSettings,
+  BufferResolution,
+  ConfigInput,
+  ComputePass,
+  StorageBufferConfig,
+} from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
+import {
+  addStorageBuffer as addStorageBufferMutation,
+  applyStorageBuffer as applyStorageBufferMutation,
+  getStorageCoverReferences as getStorageCoverReferencesMutation,
+  removeStorageBuffer as removeStorageBufferMutation,
+  validateComputePass,
+  type ConfigMutationResult,
+} from './config/ComputeConfigMutations';
+import type { ShaderLanguage } from './engineFactory';
 
 export type BufferRenameError =
   | 'config-unavailable'
@@ -73,7 +91,7 @@ export class ConfigManager {
      * Generate a buffer file path based on the current shader name
      * e.g., myshader.glsl → myshader.buffera.glsl
      */
-  public generateBufferPath(bufferName: string): string {
+  public generateBufferPath(bufferName: string, language: ShaderLanguage = 'glsl'): string {
     if (!this.shaderPath) {
       return '';
     }
@@ -81,10 +99,10 @@ export class ConfigManager {
     // Extract just the filename without path
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.glsl$/, '');
+    const baseName = filename.replace(/\.(?:glsl|slang)$/i, '');
 
     const suffix = bufferName.toLowerCase();
-    return `${baseName}.${suffix}.glsl`;
+    return `${baseName}.${suffix}.${language}`;
   }
 
   /**
@@ -125,6 +143,29 @@ export class ConfigManager {
   }
 
   /**
+     * Get the next available compute pass name (ComputeA, ComputeB, etc.)
+     */
+  private getNextComputePassName(): string {
+    if (!this.config) {
+      return 'ComputeA';
+    }
+
+    const existingNames = new Set(Object.keys(this.config.passes));
+    for (let i = 0; i < 26; i++) {
+      const name = `Compute${String.fromCharCode(65 + i)}`;
+      if (!existingNames.has(name)) {
+        return name;
+      }
+    }
+    // Fallback beyond Z
+    let n = 1;
+    while (existingNames.has(`Compute${n}`)) {
+      n++;
+    }
+    return `Compute${n}`;
+  }
+
+  /**
      * Add a new buffer to the configuration
      */
   addBuffer(): string | null {
@@ -143,6 +184,27 @@ export class ConfigManager {
     };
     this.updateConfig(updatedConfig);
     return bufferName;
+  }
+
+  /**
+     * Add a new compute pass to the configuration
+     */
+  addComputePass(): string | null {
+    this.ensureConfig();
+
+    const computePassName = this.getNextComputePassName();
+    const updatedConfig = {
+      ...this.config!,
+      passes: {
+        ...this.config!.passes,
+        [computePassName]: {
+          path: '',
+          inputs: {}
+        }
+      }
+    };
+    this.updateConfig(updatedConfig);
+    return computePassName;
   }
 
   /**
@@ -329,6 +391,62 @@ export class ConfigManager {
     };
     this.updateConfig(updatedConfig);
     return true;
+  }
+
+  /** Update a compute pass only when its graph-level values are valid. */
+  updateComputePass(passName: string, pass: ComputePass): ConfigMutationResult {
+    this.ensureConfig();
+    const errors = validateComputePass(this.config!, passName, pass);
+    if (Object.keys(errors).length > 0) {
+      return { ok: false, errors };
+    }
+    const updatedConfig: ShaderConfig = {
+      ...this.config!,
+      passes: {
+        ...this.config!.passes,
+        [passName]: pass,
+      },
+    };
+    this.updateConfig(updatedConfig);
+    return { ok: true, config: updatedConfig };
+  }
+
+  /** Add a storage declaration using the standard safe defaults. */
+  addStorageBuffer(): { config: ShaderConfig; name: string } {
+    this.ensureConfig();
+    const result = addStorageBufferMutation(this.config!);
+    this.updateConfig(result.config);
+    return result;
+  }
+
+  /** Apply a validated storage declaration and persist only successful changes. */
+  applyStorageBuffer(
+    originalName: string | null,
+    name: string,
+    declaration: StorageBufferConfig,
+  ): ConfigMutationResult {
+    this.ensureConfig();
+    const result = applyStorageBufferMutation(this.config!, originalName, name, declaration);
+    if (result.ok) {
+      this.updateConfig(result.config);
+    }
+    return result;
+  }
+
+  getStorageCoverReferences(name: string): string[] {
+    return this.config ? getStorageCoverReferencesMutation(this.config, name) : [];
+  }
+
+  /** Remove a storage declaration unless a compute dispatch still covers it. */
+  removeStorageBuffer(name: string): ConfigMutationResult {
+    if (!this.config) {
+      return { ok: false, errors: { name: 'Storage buffer was not found' } };
+    }
+    const result = removeStorageBufferMutation(this.config, name);
+    if (result.ok) {
+      this.updateConfig(result.config);
+    }
+    return result;
   }
 
   /**

@@ -1,6 +1,8 @@
 export interface BufferConfigInput {
     type: 'buffer';
     source: string;
+    /** Layer of a multi-layer compute output to sample (default 0). */
+    layer?: number;
 }
 
 export interface TextureConfigInput {
@@ -85,6 +87,33 @@ export interface BufferPass {
     resolution?: BufferResolution;
 }
 
+/** Describes the layout of a named GPU storage buffer. */
+export interface StorageBufferConfig {
+    count: number;
+    stride: number;
+    elementType: string;
+}
+
+/** Exactly one compute dispatch mode: a 1D count, explicit dimensions, or a named output to cover. */
+export type ComputeDispatch =
+    | { count: number; x?: never; y?: never; z?: never; cover?: never }
+    | { x: number; y: number; z: number; count?: never; cover?: never }
+    | { cover: string; count?: never; x?: never; y?: never; z?: never };
+
+/** A Slang compute pass with optional inputs, output dimensions, and dispatch configuration. */
+export interface ComputePass {
+    path: string;
+    inputs?: Record<string, ConfigInput>;
+    resolution?: BufferResolution;
+    outputLayers?: number;
+    dispatch?: ComputeDispatch;
+    dispatchCount?: number;
+    dispatchOnce?: boolean;
+    workgroupSize?: [number, number, number];
+    /** Named native `[shader("compute")]` entrypoint in this pass source. */
+    entryPoint?: string;
+}
+
 export interface ShaderPasses {
     Image: ImagePass;
     BufferA?: BufferPass;
@@ -92,12 +121,13 @@ export interface ShaderPasses {
     BufferC?: BufferPass;
     BufferD?: BufferPass;
     common?: BufferPass;
-    [name: string]: BufferPass | ImagePass | undefined;
+    [name: string]: BufferPass | ImagePass | ComputePass | undefined;
 }
 
 export interface ShaderConfig {
     version: string;
     script?: string;
     scriptMaxPollingFps?: number;
+    storage?: Record<string, StorageBufferConfig>;
     passes: ShaderPasses;
 }

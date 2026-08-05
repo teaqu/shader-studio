@@ -3,18 +3,25 @@
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { portal } from "../../actions/portal";
-  import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
+  import StoragePanel from "./StoragePanel.svelte";
+  import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
+  import type { ShaderLanguage } from "../../engineFactory";
 
   type ScriptInfoProp = { filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null;
 
   interface Props {
     config?: ShaderConfig | null;
+    language?: ShaderLanguage;
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
+    bufferSources?: Record<string, string>;
+    onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
+    onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
     transport: Transport;
     shaderPath?: string;
     isVisible?: boolean;
@@ -32,8 +39,12 @@
 
   let {
     config = $bindable(null),
+    language = "glsl",
     pathMap = {},
     bufferPathMap = {},
+    bufferSources = {},
+    onReadStorage,
+    onWriteStorage,
     transport,
     shaderPath = "",
     isVisible = true,
@@ -51,6 +62,11 @@
 
   let configManager = $state<ConfigManager | undefined>(undefined);
   let activeTab: string = $state("Image");
+  let addMenuOpen = $state(false);
+  let addMenuPinned = $state(false);
+  let addMenuContainer = $state<HTMLDivElement>();
+  let addMenuTrigger = $state<HTMLButtonElement>();
+  let addMenu = $state<HTMLDivElement>();
   let menuTab = $state<string | null>(null);
   let menuX = $state(0);
   let menuY = $state(0);
@@ -68,7 +84,7 @@
   $effect(() => {
     const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
     untrack(() => {
-      if (displayName !== activeTab && activeTab !== "Script") {
+      if (displayName !== activeTab && activeTab !== "Script" && activeTab !== "Storage") {
         activeTab = displayName;
       }
     });
@@ -140,6 +156,122 @@
         onConfigChange(config);
       }
       switchTab(bufferName);
+    }
+  }
+
+  function addComputePass() {
+    if (!configManager) {
+      return;
+    }
+    const computePassName = configManager.addComputePass();
+    if (computePassName) {
+      config = configManager.getConfig();
+      switchTab(computePassName);
+    }
+  }
+
+  function addStorageBuffer(): string | null {
+    return configManager?.addStorageBuffer().name ?? null;
+  }
+
+  function applyStorageBuffer(
+    originalName: string,
+    name: string,
+    declaration: StorageBufferConfig,
+  ): ConfigFieldErrors {
+    const result = configManager?.applyStorageBuffer(originalName, name, declaration);
+    return result && !result.ok ? result.errors : {};
+  }
+
+  function removeStorageBuffer(name: string): ConfigFieldErrors {
+    const result = configManager?.removeStorageBuffer(name);
+    return result && !result.ok ? result.errors : {};
+  }
+
+  function getStorageReferences(name: string): string[] {
+    return configManager?.getStorageCoverReferences(name) ?? [];
+  }
+
+  function closeAddMenu() {
+    addMenuOpen = false;
+    addMenuPinned = false;
+  }
+
+  async function closeAddMenuAndRestoreFocus() {
+    closeAddMenu();
+    await tick();
+    addMenuTrigger?.focus();
+  }
+
+  async function runAddMenuAction(action: () => void) {
+    action();
+    await closeAddMenuAndRestoreFocus();
+  }
+
+  async function handleAddMenuTriggerClick() {
+    if (addMenuPinned) {
+      await closeAddMenuAndRestoreFocus();
+      return;
+    }
+
+    addMenuPinned = true;
+    addMenuOpen = true;
+  }
+
+  async function handleAddMenuKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && addMenuOpen) {
+      event.preventDefault();
+      await closeAddMenuAndRestoreFocus();
+      return;
+    }
+
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+
+    event.preventDefault();
+    if (!addMenuOpen) {
+      addMenuOpen = true;
+      await tick();
+    }
+
+    const items = Array.from(addMenu?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? []);
+    if (items.length === 0) {
+      return;
+    }
+
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = currentIndex === -1
+      ? (direction === 1 ? 0 : items.length - 1)
+      : (currentIndex + direction + items.length) % items.length;
+    items[nextIndex].focus();
+  }
+
+  function handleAddMenuMouseLeave() {
+    const activeElement = document.activeElement;
+    const menuItemHasFocus = activeElement instanceof HTMLElement
+      && activeElement.matches("[role='menuitem']")
+      && addMenu?.contains(activeElement);
+    if (!addMenuPinned && !menuItemHasFocus) {
+      closeAddMenu();
+    }
+  }
+
+  function handleAddMenuFocusOut(event: FocusEvent) {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node) || !addMenuContainer?.contains(nextTarget)) {
+      closeAddMenu();
+    }
+  }
+
+  function handleWindowClick(event: MouseEvent) {
+    const target = event.target;
+    if (addMenuOpen && target instanceof Node && !addMenuContainer?.contains(target)) {
+      closeAddMenu();
+    }
+    if (menuTab && (!(target instanceof Element) || !target.closest(".buffer-rename-menu"))) {
+      dismissRenameMenu();
     }
   }
 
@@ -215,6 +347,15 @@
     return tabName === "Common" ? "common" : tabName;
   }
 
+  function isComputeTab(tabName: string): boolean {
+    return tabName.startsWith("Compute");
+  }
+
+  function computeEntryPoints(passName: string): string[] {
+    const source = bufferSources[passName] ?? '';
+    return Array.from(source.matchAll(/\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\([^)]*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi), (match) => match[1]!);
+  }
+
   function getWebviewUri(path: string): string | undefined {
     return configManager?.getWebviewUri(path);
   }
@@ -248,6 +389,9 @@
       tabs.push("Common");
     }
     tabs.push(...bufferTabs);
+    if (language === "slang") {
+      tabs.push("Storage");
+    }
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -256,14 +400,14 @@
 
   function switchTab(tabName: string) {
     activeTab = tabName;
-    if (tabName !== "Script") {
+    if (tabName !== "Script" && tabName !== "Storage") {
       const actualName = getActualBufferName(tabName);
       onFileSelect(actualName);
     }
   }
 
   function isRenameableTab(tabName: string): boolean {
-    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script";
+    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
   }
 
   async function openRenameMenu(
@@ -320,12 +464,6 @@
     if (event.key === "Escape" && menuTab) {
       event.preventDefault();
       dismissRenameMenu(true);
-    }
-  }
-
-  function handleWindowClick(event: MouseEvent) {
-    if (menuTab && !(event.target as HTMLElement).closest(".buffer-rename-menu")) {
-      dismissRenameMenu();
     }
   }
 
@@ -523,7 +661,7 @@
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
             <span class="tab-label">{tabName}</span>
-            {#if tabName !== "Image" && config}
+            {#if tabName !== "Image" && tabName !== "Storage" && config}
               <span
                 class="tab-close"
                 role="button"
@@ -549,17 +687,50 @@
         {/if}
       {/each}
 
-      <div class="add-tab-dropdown">
-        <button class="add-tab-btn" title="Add new pass">+ New</button>
-        <div class="dropdown-content">
-          <button class="dropdown-item" onclick={() => addBuffer()}>Buffer</button>
-          {#if !config?.passes?.common}
-            <button class="dropdown-item" onclick={() => addCommonBuffer()}>Common</button>
-          {/if}
-          {#if !(config && config.script !== undefined)}
-            <button class="dropdown-item" onclick={() => addScript()}>Script</button>
-          {/if}
-        </div>
+      <div
+        class="add-tab-dropdown"
+        role="toolbar"
+        aria-label="Add pass"
+        tabindex="-1"
+        bind:this={addMenuContainer}
+        onmouseenter={() => addMenuOpen = true}
+        onmouseleave={handleAddMenuMouseLeave}
+        onfocusout={handleAddMenuFocusOut}
+        onkeydown={handleAddMenuKeydown}
+      >
+        <button
+          class="add-tab-btn"
+          title="Add new pass"
+          aria-haspopup="menu"
+          aria-expanded={addMenuOpen}
+          aria-controls="add-pass-menu"
+          bind:this={addMenuTrigger}
+          onclick={handleAddMenuTriggerClick}
+        >+ New</button>
+        {#if addMenuOpen}
+          <div
+            class="dropdown-content"
+            id="add-pass-menu"
+            role="menu"
+            bind:this={addMenu}
+          >
+            <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
+            {#if language === "slang"}
+              <button
+                class="dropdown-item"
+                role="menuitem"
+                aria-label="Add compute pass"
+                onclick={() => runAddMenuAction(addComputePass)}
+              >+ Compute</button>
+            {/if}
+            {#if !config?.passes?.common}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCommonBuffer)}>Common</button>
+            {/if}
+            {#if !(config && config.script !== undefined)}
+              <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addScript)}>Script</button>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
 
@@ -581,6 +752,16 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
         />
+      {:else if activeTab === "Storage"}
+        <StoragePanel
+          storage={config?.storage ?? {}}
+          referencesFor={getStorageReferences}
+          onAdd={addStorageBuffer}
+          onApply={applyStorageBuffer}
+          onDelete={removeStorageBuffer}
+          onRead={onReadStorage}
+          onWrite={onWriteStorage}
+        />
       {:else if activeTab === "Image"}
         <BufferConfig
           bufferName={activeTab}
@@ -601,20 +782,32 @@
         <BufferConfig
           bufferName={getActualBufferName(activeTab)}
           config={activeTabConfig}
+          {language}
+          passKind={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
-            configManager?.updateBuffer(
-              bufferName,
-              updatedConfig as BufferPass,
-            );
+            if (isComputeTab(activeTab)) {
+              configManager?.updateComputePass(bufferName, updatedConfig as ComputePass);
+            } else {
+              configManager?.updateBuffer(bufferName, updatedConfig as BufferPass);
+            }
           }}
           {getWebviewUri}
-          suggestedPath={configManager?.generateBufferPath(getActualBufferName(activeTab)) || ''}
+          suggestedPath={configManager?.generateBufferPath(
+            getActualBufferName(activeTab),
+            isComputeTab(activeTab) && language === 'slang' ? 'slang' : 'glsl',
+          ) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
           {shaderPath}
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          storageNames={Object.keys(config?.storage ?? {})}
+          entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
+          onComputeCommit={(nextConfig) => {
+            const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
+            return result && !result.ok ? result.errors : {};
+          }}
         />
       {/if}
     </div>

@@ -47,6 +47,7 @@ vi.mock("../../resources/TextureCache", () => ({
       cacheTexture: vi.fn(),
       loadTextureFromUrl: vi.fn(),
       cleanup: vi.fn(),
+      dispose: vi.fn(),
     };
   }),
 }));
@@ -152,6 +153,25 @@ describe("ResourceManager", () => {
     vi.clearAllMocks();
     mockBackend = createMockBackend();
     resourceManager = new ResourceManager(mockBackend);
+  });
+
+  describe("createIsolated", () => {
+    it("creates fresh resource state backed by the same texture backend", () => {
+      const isolated = resourceManager.createIsolated();
+      type ResourceInternals = {
+        backend: TextureBackend<PiTexture>;
+        textureCache: unknown;
+        videoTextureManager: unknown;
+      };
+      const originalInternals = resourceManager as unknown as ResourceInternals;
+      const isolatedInternals = isolated as unknown as ResourceInternals;
+
+      expect(isolated).not.toBe(resourceManager);
+      expect(isolatedInternals.backend).toBe(mockBackend);
+      expect(isolatedInternals.textureCache).not.toBe(originalInternals.textureCache);
+      expect(isolatedInternals.videoTextureManager)
+        .not.toBe(originalInternals.videoTextureManager);
+    });
   });
 
   describe("loadImageTexture", () => {
@@ -537,6 +557,18 @@ describe("ResourceManager", () => {
       expect(textureCache.cleanup).toHaveBeenCalled();
       expect(keyboardInput.cleanup).toHaveBeenCalled();
       expect(cubemapManager.cleanup).toHaveBeenCalled();
+    });
+  });
+
+  describe("dispose", () => {
+    it("cleans all managers and fully disposes the texture cache", () => {
+      const textureCache = (resourceManager as any).textureCache;
+      const videoManager = (resourceManager as any).videoTextureManager;
+
+      (resourceManager as ResourceManager<PiTexture> & { dispose(): void }).dispose();
+
+      expect(videoManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(textureCache.dispose).toHaveBeenCalledTimes(1);
     });
   });
 

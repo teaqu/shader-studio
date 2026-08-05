@@ -1604,15 +1604,17 @@ canvas {
   border-right-color: var(--vscode-tab-border, var(--vscode-panel-border));
 }
 
-.add-tab-btn:focus,
-.add-tab-btn:focus-visible,
 .add-tab-btn:active {
   outline: none;
   box-shadow: none;
 }
 
+.add-tab-btn:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
 .dropdown-content {
-  display: none;
   position: absolute;
   top: 100%;
   left: 0;
@@ -1622,10 +1624,6 @@ canvas {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   min-width: 100px;
-}
-
-.add-tab-dropdown:hover .dropdown-content {
-  display: block;
 }
 
 .dropdown-item {

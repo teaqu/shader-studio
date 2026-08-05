@@ -1,4 +1,6 @@
 import { render, fireEvent } from '@testing-library/svelte';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { tick } from 'svelte';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
@@ -13,12 +15,18 @@ vi.mock('../../../lib/ConfigManager', () => ({
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue([]),
     addBuffer: vi.fn().mockReturnValue(null),
+    addComputePass: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
     getConfig: vi.fn().mockReturnValue(null),
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
+    updateComputePass: vi.fn().mockReturnValue({ ok: true }),
+    addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
+    applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    getStorageCoverReferences: vi.fn().mockReturnValue([]),
     updateBufferPath: vi.fn(),
     setScript: vi.fn(),
     removeScript: vi.fn(),
@@ -39,12 +47,18 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     setShaderPath: vi.fn(),
     getBufferList: vi.fn().mockReturnValue(getBufferListReturn),
     addBuffer: vi.fn().mockReturnValue(null),
+    addComputePass: vi.fn().mockReturnValue(null),
     addCommonBuffer: vi.fn().mockReturnValue(true),
     addSpecificBuffer: vi.fn().mockReturnValue(true),
     getConfig: vi.fn().mockReturnValue(null),
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
+    updateComputePass: vi.fn().mockReturnValue({ ok: true }),
+    addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
+    applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    getStorageCoverReferences: vi.fn().mockReturnValue([]),
     updateBufferPath: vi.fn(),
     setScript: vi.fn(),
     removeScript: vi.fn(),
@@ -158,6 +172,92 @@ describe('ConfigPanel', () => {
   });
 
   describe('tab navigation', () => {
+    it('renders configured compute passes as tabs', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', inputs: {} },
+        },
+      };
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+
+      expect(getByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
+    });
+
+    it('renders the Storage tab for Slang configurations', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        storage: { particles: { count: 1024, stride: 16, elementType: 'float4' } },
+        passes: { Image: { inputs: {} } },
+      };
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+
+      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+    });
+
+    it('reacts when a compute pass is added to the config prop', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+      };
+      const props = {
+        config,
+        language: 'glsl' as const,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      };
+      const { queryByRole, rerender } = render(ConfigPanel, props);
+
+      await tick();
+      expect(queryByRole('button', { name: /^ComputeSim/ })).not.toBeInTheDocument();
+
+      await rerender({
+        ...props,
+        config: {
+          ...config,
+          passes: {
+            ...config.passes,
+            ComputeSim: { path: 'sim.slang', inputs: {} },
+          },
+        },
+      });
+      await tick();
+
+      expect(queryByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+    });
+
     it('should render tabs for buffers returned by getBufferList', async () => {
       const config: ShaderConfig = {
         version: '1.0',
@@ -572,6 +672,376 @@ describe('ConfigPanel', () => {
 
       expect(mockManager.addCommonBuffer).toHaveBeenCalled();
       expect(mockOnFileSelect).toHaveBeenCalledWith('common');
+    });
+  });
+
+  describe('add compute pass', () => {
+    const config: ShaderConfig = {
+      version: '1.0',
+      passes: { Image: { inputs: {} } },
+    };
+
+    function renderPanel(language: 'glsl' | 'slang') {
+      return render(ConfigPanel, {
+        config,
+        language,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: `/test/image.${language}`,
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+    }
+
+    it('shows the add-compute affordance for Slang', async () => {
+      const { getByRole } = renderPanel('slang');
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+
+      expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
+    });
+
+    it('hides the add-compute affordance for GLSL', async () => {
+      const { getByRole, queryByRole } = renderPanel('glsl');
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+
+      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+    });
+
+    it('reacts to active language changes without altering existing add options', async () => {
+      const props = {
+        config,
+        language: 'glsl' as 'glsl' | 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      };
+      const { getByRole, queryByRole, rerender } = render(ConfigPanel, props);
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+
+      await rerender({ ...props, language: 'slang' });
+      await tick();
+      expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+
+      await rerender(props);
+      await tick();
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
+    });
+
+    it('adds, publishes, and selects a compute pass', async () => {
+      const updatedConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      };
+      const mockManager = createMockConfigManager([]);
+      mockManager.getConfig.mockReturnValue(updatedConfig);
+      (ConfigManager as unknown as Mock).mockImplementation(
+        (_transport: Transport, handleConfigChange: (config: ShaderConfig) => void) => {
+          mockManager.addComputePass.mockImplementation(() => {
+            handleConfigChange(updatedConfig);
+            return 'ComputeA';
+          });
+          return mockManager;
+        },
+      );
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(onConfigChange).toHaveBeenCalledWith(updatedConfig);
+      expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
+      expect(getByRole('button', { name: /^ComputeA/ })).toHaveClass('active');
+    });
+
+    it('routes Compute tab source creation through the Slang compute file workflow', async () => {
+      const computeConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          ComputeA: { path: '', inputs: {} },
+        },
+      };
+      const mockManager = createMockConfigManager([]);
+      mockManager.generateBufferPath.mockReturnValue('image.computea.slang');
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getByText } = render(ConfigPanel, {
+        config: computeConfig,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'ComputeA',
+      });
+      await tick();
+
+      await fireEvent.click(getByText('Create'));
+
+      expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'createFile',
+        payload: {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'image.computea.slang',
+          fileType: 'slang-compute',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
+    it('does nothing when the manager cannot add a compute pass', async () => {
+      const mockManager = createMockConfigManager([]);
+      mockManager.addComputePass.mockReturnValue(null);
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(mockManager.getConfig).not.toHaveBeenCalled();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+      expect(getByRole('button', { name: 'Image' })).toHaveClass('active');
+    });
+
+    it('selects the returned pass without publishing when the manager has no config', async () => {
+      const mockManager = createMockConfigManager([]);
+      mockManager.addComputePass.mockReturnValue('ComputeA');
+      mockManager.getConfig.mockReturnValue(null);
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      const onConfigChange = vi.fn();
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onConfigChange,
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+      await fireEvent.click(getByRole('menuitem', { name: /add compute/i }));
+      await tick();
+
+      expect(mockManager.addComputePass).toHaveBeenCalledOnce();
+      expect(mockManager.getConfig).toHaveBeenCalledOnce();
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(mockOnFileSelect).toHaveBeenCalledOnce();
+      expect(mockOnFileSelect).toHaveBeenCalledWith('ComputeA');
+      expect(getByRole('button', { name: 'Image' })).not.toHaveClass('active');
+    });
+  });
+
+  describe('add pass menu accessibility', () => {
+    function renderSlangPanel() {
+      return render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+        },
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+    }
+
+    it('opens with ArrowDown, navigates to Compute, and closes with Escape', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveAttribute('aria-controls', 'add-pass-menu');
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+
+      trigger.focus();
+      await fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(getByRole('menu')).toBeInTheDocument();
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      const computeItem = getByRole('menuitem', { name: /add compute/i });
+      expect(bufferItem).toHaveFocus();
+
+      await fireEvent.keyDown(bufferItem, { key: 'ArrowDown' });
+      expect(computeItem).toHaveFocus();
+
+      await fireEvent.keyDown(computeItem, { key: 'Escape' });
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
+
+    it('opens on hover and closes when the pointer leaves', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      await fireEvent.mouseEnter(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('closes an unpinned hover menu on mouseleave when the trigger was already focused', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      trigger.focus();
+      await fireEvent.mouseEnter(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('keeps a click-pinned menu open on mouseleave without relying on trigger focus', async () => {
+      const { getByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      expect(trigger).not.toHaveFocus();
+      await fireEvent.click(trigger);
+      expect(trigger).not.toHaveFocus();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('keeps an unpinned hover menu usable when a menuitem has keyboard focus', async () => {
+      const { getByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+      const dropdown = trigger.closest('.add-tab-dropdown')!;
+
+      await fireEvent.mouseEnter(dropdown);
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      bufferItem.focus();
+
+      await fireEvent.mouseLeave(dropdown);
+      expect(getByRole('menu')).toBeInTheDocument();
+      expect(bufferItem).toHaveFocus();
+    });
+
+    it('closes when clicking outside', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.click(document.body);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('toggles closed when the trigger is clicked again', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      expect(getByRole('menu')).toBeInTheDocument();
+
+      await fireEvent.click(trigger);
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    });
+
+    it('restores focus to the trigger after activating a menu item', async () => {
+      const { getByRole, queryByRole } = renderSlangPanel();
+      await tick();
+      const trigger = getByRole('button', { name: '+ New' });
+
+      await fireEvent.click(trigger);
+      const bufferItem = getByRole('menuitem', { name: 'Buffer' });
+      bufferItem.focus();
+      expect(bufferItem).toHaveFocus();
+
+      await fireEvent.click(bufferItem);
+      await tick();
+
+      expect(queryByRole('menu')).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+    });
+
+    it('uses the theme focus border for a visible keyboard focus indicator', () => {
+      const workspaceCssPath = resolve(process.cwd(), 'ui/src/app.css');
+      const appCssPath = existsSync(workspaceCssPath)
+        ? workspaceCssPath
+        : resolve(process.cwd(), 'src/app.css');
+      const appStyles = readFileSync(appCssPath, 'utf8');
+      const focusVisibleRule = appStyles.match(/\.add-tab-btn:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+
+      expect(focusVisibleRule).toMatch(/outline:\s*(?!none)/);
+      expect(focusVisibleRule).toContain('var(--vscode-focusBorder)');
     });
   });
 
