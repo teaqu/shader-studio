@@ -1,5 +1,7 @@
 import type { PreviewMesh, PreviewMeshKind } from './types';
 
+const UINT16_VERTEX_CAPACITY = 65_536;
+
 export function createPreviewMesh(kind: PreviewMeshKind): PreviewMesh {
   switch (kind) {
     case 'plane': return createPlaneMesh(); case 'cube': return createCubeMesh(); case 'sphere': return createSphereMesh(); 
@@ -22,6 +24,11 @@ export function createCubeMesh(): PreviewMesh {
 }
 
 export function createSphereMesh(latitudeSegments = 16, longitudeSegments = 32): PreviewMesh {
+  assertValidSegmentCount(latitudeSegments, 'latitudeSegments');
+  assertValidSegmentCount(longitudeSegments, 'longitudeSegments');
+  if ((latitudeSegments + 1) * (longitudeSegments + 1) > UINT16_VERTEX_CAPACITY) {
+    throw new RangeError('sphere mesh vertex count exceeds Uint16Array index capacity');
+  }
   const positions: number[] = []; const normals: number[] = []; const uvs: number[] = []; const indices: number[] = [];
   for (let latitude = 0; latitude <= latitudeSegments; latitude += 1) {
     const v = latitude / latitudeSegments; const theta = v * Math.PI; const sinTheta = Math.sin(theta); const cosTheta = Math.cos(theta); for (let longitude = 0; longitude <= longitudeSegments; longitude += 1) {
@@ -35,4 +42,10 @@ export function createSphereMesh(latitudeSegments = 16, longitudeSegments = 32):
     }
   }
   return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint16Array(indices) };
+}
+
+function assertValidSegmentCount(segmentCount: number, name: string): void {
+  if (!Number.isFinite(segmentCount) || !Number.isInteger(segmentCount) || segmentCount <= 0) {
+    throw new RangeError(`${name} must be a finite positive integer`);
+  }
 }
