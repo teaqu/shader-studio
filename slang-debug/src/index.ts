@@ -6,3 +6,5 @@ export * from "./SlangStructuralParser";
 export * from "./SlangWorkspace";
 export * from "./SlangDebugAnalyzer";
 export * from "./SlangEmitter";
+export * from "./SlangInstrumentationPlanner";
+export * from "./SlangDebugEngine";
