@@ -3,7 +3,7 @@ import type { IVariableCapturer } from '../../../rendering/src/capture/VariableC
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
-import type { ConfigInput } from '@shader-studio/types';
+import type { ConfigInput, DebugInstrumentationPlan, DebugVisibleValue } from '@shader-studio/types';
 
 const CAPTURABLE_TYPES = new Set([
   'float', 'int', 'bool',
@@ -201,6 +201,7 @@ interface CaptureParams {
   sampleSize: number;
   refreshMode: RefreshMode;
   pollingMs: number;
+  slangCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
 }
 
 /**
@@ -595,7 +596,9 @@ export class VariableCaptureManager {
 
     let vars: Array<{ varName: string; varType: string; declarationLine: number }>;
     try {
-      vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
+      vars = params.slangCapture
+        ? params.slangCapture.values.map((value) => ({ varName: value.name, varType: value.typeName, declarationLine: value.declarationRange.start.line }))
+        : VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
     } catch {
       if (!this.isCurrentRequest(requestId)) {
         return;
@@ -610,10 +613,12 @@ export class VariableCaptureManager {
     }
 
     // Append custom uniforms (declared in compiler header, not in user code)
-    const customUniforms = this.renderingEngine.getCustomUniformInfo();
-    for (const { name, type } of customUniforms) {
-      if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
-        vars.push({ varName: name, varType: type, declarationLine: -1 });
+    if (!params.slangCapture) {
+      const customUniforms = this.renderingEngine.getCustomUniformInfo();
+      for (const { name, type } of customUniforms) {
+        if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
+          vars.push({ varName: name, varType: type, declarationLine: -1 });
+        }
       }
     }
 
@@ -648,7 +653,7 @@ export class VariableCaptureManager {
       this.varDeclarationLines.set(v.varName, v.declarationLine);
     }
 
-    const selectorShader = VariableCaptureBuilder.generateMultiCaptureShader(
+    const selectorShader = params.slangCapture ? params.slangCapture.plan.files.find((file) => file.uri === params.slangCapture!.plan.rootUri)?.source : VariableCaptureBuilder.generateMultiCaptureShader(
       params.code,
       resolvedLine,
       vars,
@@ -667,7 +672,8 @@ export class VariableCaptureManager {
           varName: v.varName,
           varType: v.varType,
           captureShader: selectorShader,
-          selectorIndex: index,
+          selectorIndex: params.slangCapture ? index + 1 : index,
+          ...(params.slangCapture ? { slangPlan: params.slangCapture.plan } : {}),
         });
       }
     }

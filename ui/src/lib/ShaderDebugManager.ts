@@ -2,7 +2,7 @@ import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./ty
 import { ShaderDebugger, type ShaderDialect } from "@shader-studio/glsl-debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
-import type { DebugInstrumentationPlan } from "@shader-studio/types";
+import type { DebugAnalysisRequest, DebugInstrumentationPlan, DebugVisibleValue } from "@shader-studio/types";
 import { SlangDebugEngine } from "@shader-studio/slang-debug";
 
 export interface DebugTarget {
@@ -194,6 +194,32 @@ export class ShaderDebugManager {
       return null;
     }
     return result.plan;
+  }
+
+  public getSlangCapturePlan(imageCode: string, config: ShaderConfig | null): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null {
+    const request = this.createSlangDebugRequest(imageCode, config);
+    if (!request) return null;
+    const analysis = this.slangDebugEngine.analyze(request);
+    if (!analysis.ok) return null;
+    const result = this.slangDebugEngine.planCapture(request, analysis.analysis.visibleValues.map((value) => value.id));
+    return result.ok ? { plan: result.plan, values: analysis.analysis.visibleValues } : null;
+  }
+
+  private createSlangDebugRequest(imageCode: string, config: ShaderConfig | null): DebugAnalysisRequest | null {
+    if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) return null;
+    const target = this.getDebugTarget(imageCode, config);
+    const rootPath = target.passName === 'Image' ? this.imagePassPath : this.bufferPathMap[target.passName];
+    if (!rootPath) return null;
+    const rootSource = target.passName === 'Image' ? imageCode : this.bufferCodes[target.passName] ?? imageCode;
+    const files = [
+      { uri: rootPath, path: rootPath, source: rootSource, version: 1, moduleName: '', ownerPass: target.passName },
+      ...this.slangModules.filter((module) => module.ownerPass === target.passName).map((module) => ({ ...module, uri: module.path, version: 1 })),
+    ];
+    return {
+      workspace: { rootUri: rootPath, rootPath, passName: target.passName, files, contentHash: this.slangWorkspaceHash(files) },
+      sourceUri: this.variablePreview?.filePath ?? this.state.filePath ?? rootPath,
+      position: { line: this.variablePreview?.debugLine ?? this.state.currentLine, character: Math.max(0, (this.state.lineContent ?? '').search(/\S/)) },
+    };
   }
 
   private slangWorkspaceHash(files: Array<{ path: string; source: string; version: number }>): string {

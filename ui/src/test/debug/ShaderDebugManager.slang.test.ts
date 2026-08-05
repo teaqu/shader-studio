@@ -38,6 +38,17 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(plan?.files[0].source).toContain('_ssdbg_');
   });
 
+  it('builds a native Slang capture plan with user slots after the hidden marker', () => {
+    manager.setShaderContext(null, '/flow.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
+
+    const capture = manager.getSlangCapturePlan(slangShader, null);
+
+    expect(capture?.plan.captureSlots[0]).toMatchObject({ index: 0, hidden: true });
+    expect(capture?.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'uv' });
+  });
+
   it('generates Slang debug output for line debugging', () => {
     manager.toggleEnabled();
     manager.updateDebugLine(3, '    float3 col = float3(uv, 0.5);', 'flow.slang');

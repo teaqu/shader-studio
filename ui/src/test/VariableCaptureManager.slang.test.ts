@@ -98,4 +98,21 @@ describe('VariableCaptureManager - Slang engine', () => {
     );
     manager.dispose();
   });
+
+  it('submits native Slang plan slots after its hidden execution marker', async () => {
+    const { engine, capturer } = mockEngine('slang');
+    const manager = new VariableCaptureManager(engine, () => {});
+    const plan = {
+      workspaceHash: 'hash', rootUri: 'file:///shaders/image.slang', selectedSourceUri: 'file:///shaders/image.slang', executionMarkerSlot: 0,
+      captureSlots: [{ index: 0, valueId: 'marker', name: '_marker', typeName: 'bool', hidden: true }, { index: 1, valueId: 'uv', name: 'uv', typeName: 'float2', hidden: false }],
+      files: [{ uri: 'file:///shaders/image.slang', path: '/shaders/image.slang', source: 'native capture source', version: 1, moduleName: '', ownerPass: 'Image' }],
+    };
+
+    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: { plan, values: [{ id: 'uv', name: 'uv', typeName: 'float2', sourceUri: plan.rootUri, declarationRange: { start: { line: 2, character: 4 }, end: { line: 2, character: 6 } }, access: 'readwrite' }] } });
+    await vi.waitFor(() => expect(capturer.issueCaptureGrid).toHaveBeenCalled());
+
+    const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; selectorIndex?: number; slangPlan?: unknown }>;
+    expect(captures).toEqual([expect.objectContaining({ varName: 'uv', selectorIndex: 1, slangPlan: plan })]);
+    manager.dispose();
+  });
 });
