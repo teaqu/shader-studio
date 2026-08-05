@@ -903,6 +903,43 @@ suite('ShaderProvider Test Suite', () => {
       );
     });
 
+    test('does not send an obsolete foreground shader after a newer selection', async () => {
+      const olderPath = '/workspace/older.glsl';
+      const newerPath = '/workspace/newer.glsl';
+      const config = {
+        version: '1.0',
+        script: './uniforms.ts',
+        passes: { Image: {} },
+      };
+      const olderBundle = deferred<{ success: boolean; code: string }>();
+      const newerBundle = deferred<{ success: boolean; code: string }>();
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('{}');
+      loadAndProcessConfigStub.returns(config);
+      const bundle = sandbox.stub((provider as any).scriptBundler, 'bundle');
+      bundle.onFirstCall().returns(olderBundle.promise);
+      bundle.onSecondCall().returns(newerBundle.promise);
+      sandbox.stub((provider as any).scriptEvaluator, 'loadScript').returns({
+        declarations: '',
+        uniforms: [],
+      });
+
+      provider.claimActiveAnalysisContext(olderPath);
+      const olderSend = provider.sendShaderFromEditor(editorFor(olderPath, `${mainImageCode}\n// old`));
+      provider.claimActiveAnalysisContext(newerPath);
+      const newerSend = provider.sendShaderFromEditor(editorFor(newerPath, `${mainImageCode}\n// new`));
+
+      newerBundle.resolve({ success: true, code: 'new bundle' });
+      await newerSend;
+      olderBundle.resolve({ success: true, code: 'old bundle' });
+      await olderSend;
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, newerPath);
+      assert.match(sendSpy.firstCall.args[0].code, /\/\/ new/);
+    });
+
     test('emits the active Image inputs, paths, and evaluated custom declarations', async () => {
       const shaderPath = '/workspace/shader.glsl';
       const configPath = '/workspace/shader.sha.json';

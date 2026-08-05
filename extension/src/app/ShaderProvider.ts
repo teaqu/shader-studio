@@ -91,6 +91,7 @@ export class ShaderProvider {
 
     const code = editor.document.getText();
     const shaderPath = editor.document.uri.fsPath;
+    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
 
     // Clear stale persistent errors before re-evaluating the shader.
     // This ensures "file not found" errors from a previous load don't survive
@@ -117,6 +118,7 @@ export class ShaderProvider {
         }
         : undefined,
       true,
+      contextGeneration,
     );
   }
 
@@ -127,6 +129,7 @@ export class ShaderProvider {
     if (!this.messenger) {
       return;
     }
+    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
 
     try {
       if (!fs.existsSync(shaderPath)) {
@@ -144,7 +147,14 @@ export class ShaderProvider {
         return;
       }
 
-      await this.sendMainImageShader(shaderPath, code, options, undefined, false);
+      await this.sendMainImageShader(
+        shaderPath,
+        code,
+        options,
+        undefined,
+        false,
+        contextGeneration,
+      );
     } catch {
       return;
     }
@@ -161,6 +171,7 @@ export class ShaderProvider {
 
     const shaderPath = document.uri.fsPath;
     const code = document.getText();
+    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
 
     this.messenger.getErrorHandler().clearPersistentErrors();
 
@@ -186,7 +197,14 @@ export class ShaderProvider {
       }
     }
 
-    await this.sendMainImageShader(shaderPath, code, options, cursorPosition, true);
+    await this.sendMainImageShader(
+      shaderPath,
+      code,
+      options,
+      cursorPosition,
+      true,
+      contextGeneration,
+    );
   }
 
   /**
@@ -239,7 +257,11 @@ export class ShaderProvider {
         scriptContent,
         isCurrentPreparation,
       );
-      if (!prepared || !isCurrentPreparation()) {
+      if (
+        !prepared
+        || !isCurrentPreparation()
+        || !this.isCurrentAnalysisContext(shaderPath, contextGeneration)
+      ) {
         return;
       }
       this.emitActiveRootPreamble(shaderPath, config, message, contextGeneration);
@@ -432,6 +454,13 @@ export class ShaderProvider {
     return this.getActiveAnalysisContext(filePath)?.generation ?? null;
   }
 
+  private isCurrentAnalysisContext(
+    filePath: string,
+    generation: number | null,
+  ): boolean {
+    return generation === null || this.getActiveAnalysisContext(filePath)?.generation === generation;
+  }
+
   private beginPreparation(shaderPath: string): number {
     const generation = (this.preparationGenerations.get(shaderPath) ?? 0) + 1;
     this.preparationGenerations.set(shaderPath, generation);
@@ -512,9 +541,9 @@ export class ShaderProvider {
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
     trackActiveShader: boolean = false,
+    expectedContextGeneration: number | null = this.captureAnalysisContextGeneration(shaderPath),
   ): Promise<void> {
     const preparationGeneration = this.beginPreparation(shaderPath);
-    const contextGeneration = this.captureAnalysisContextGeneration(shaderPath);
     const isCurrentPreparation = () => (
       this.isCurrentPreparation(shaderPath, preparationGeneration)
     );
@@ -554,10 +583,14 @@ export class ShaderProvider {
       undefined,
       isCurrentPreparation,
     );
-    if (!prepared || !isCurrentPreparation()) {
+    if (
+      !prepared
+      || !isCurrentPreparation()
+      || !this.isCurrentAnalysisContext(shaderPath, expectedContextGeneration)
+    ) {
       return;
     }
-    this.emitActiveRootPreamble(shaderPath, config, message, contextGeneration);
+    this.emitActiveRootPreamble(shaderPath, config, message, expectedContextGeneration);
     this.messenger.send(message);
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
