@@ -1,7 +1,5 @@
 import typescriptEslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-import sveltePlugin from "eslint-plugin-svelte";
-import svelteParser from "svelte-eslint-parser";
 
 const typescriptRules = {
   "@typescript-eslint/naming-convention": ["warn", {
@@ -28,7 +26,7 @@ export default [{
     ".worktrees/**",
   ],
 }, {
-  files: ["**/*.ts"],
+  files: ["extension/**/*.ts"],
   plugins: {
     "@typescript-eslint": typescriptEslint,
   },
@@ -38,28 +36,4 @@ export default [{
     sourceType: "module",
   },
   rules: typescriptRules,
-}, {
-  files: ["{ui,shader-explorer}/**/*.svelte"],
-  plugins: {
-    svelte: sveltePlugin,
-    "@typescript-eslint": typescriptEslint,
-  },
-  languageOptions: {
-    parser: svelteParser,
-    parserOptions: {
-      parser: tsParser,
-      ecmaVersion: 2022,
-      sourceType: "module",
-      extraFileExtensions: [".svelte"],
-    },
-  },
-  rules: {
-    "brace-style": ["warn", "1tbs", { allowSingleLine: false }],
-    curly: "warn",
-    eqeqeq: "warn",
-    indent: "off",
-    "svelte/indent": ["warn", { indent: 2, switchCase: 1 }],
-    "no-throw-literal": "warn",
-    semi: "warn",
-  },
 }];
