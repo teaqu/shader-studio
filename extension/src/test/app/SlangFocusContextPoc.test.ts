@@ -25,6 +25,22 @@ suite("SlangFocusContextPoc", () => {
     )));
   });
 
+  test("contributes a setting for the optional Slang editor integration", () => {
+    const manifestPath = path.resolve(__dirname, "../../../package.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+      contributes: { configuration: { properties: Record<string, unknown> } };
+    };
+
+    assert.deepStrictEqual(
+      manifest.contributes.configuration.properties["shader-studio.slangEditorIntegration"],
+      {
+        type: "boolean",
+        default: true,
+        description: "Enable automatic Slang editor context integration for Shader Studio uniforms.",
+      },
+    );
+  });
+
   test("sanitizes focused filenames into valid Slang identifier suffixes", () => {
     assert.strictEqual(sanitizeSlangIdentifier("buffer-a"), "buffer_a");
     assert.strictEqual(sanitizeSlangIdentifier("9 pass"), "_9_pass");
@@ -75,6 +91,7 @@ suite("SlangFocusContextPoc", () => {
     let commandHandler: (() => Promise<void>) | undefined;
     let editorListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
     let documentListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
+    let configurationListener: ((event: vscode.ConfigurationChangeEvent) => void) | undefined;
     let configurationUpdate: sinon.SinonStub;
     let applyEdit: sinon.SinonStub;
     let saveDocument: sinon.SinonStub;
@@ -85,6 +102,7 @@ suite("SlangFocusContextPoc", () => {
     let outputChannel: vscode.LogOutputChannel;
     let fileSystem: Pick<vscode.FileSystem, "createDirectory" | "writeFile">;
     let sourceProvider: SlangFocusContextSourceProvider;
+    let slangEditorIntegrationEnabled: boolean;
     const workspaceFolder = {
       uri: vscode.Uri.file("/workspace/project"),
       name: "project",
@@ -104,9 +122,11 @@ suite("SlangFocusContextPoc", () => {
     setup(() => {
       sandbox = sinon.createSandbox();
       generatedText = "";
+      slangEditorIntegrationEnabled = true;
       commandHandler = undefined;
       editorListener = undefined;
       documentListener = undefined;
+      configurationListener = undefined;
       configurationUpdate = sandbox.stub().resolves();
       applyEdit = sandbox.stub(vscode.workspace, "applyEdit").resolves(true);
       saveDocument = sandbox.stub().resolves(true);
@@ -128,10 +148,19 @@ suite("SlangFocusContextPoc", () => {
       officialSlangExtensionLookup = sandbox.stub(vscode.extensions, "getExtension").returns(undefined);
       sandbox.stub(vscode.window, "showInformationMessage").resolves(undefined);
       showErrorMessage = sandbox.stub(vscode.window, "showErrorMessage").resolves(undefined);
-      sandbox.stub(vscode.workspace, "getConfiguration").returns({
-        get: sandbox.stub().returns(["/existing/slang"]),
-        update: configurationUpdate,
-      } as unknown as vscode.WorkspaceConfiguration);
+      sandbox.stub(vscode.workspace, "getConfiguration").callsFake((section?: string) => {
+        if (section === "shader-studio") {
+          return {
+            get: sandbox.stub().callsFake((key: string, fallback: unknown) => (
+              key === "slangEditorIntegration" ? slangEditorIntegrationEnabled : fallback
+            )),
+          } as unknown as vscode.WorkspaceConfiguration;
+        }
+        return {
+          get: sandbox.stub().returns(["/existing/slang"]),
+          update: configurationUpdate,
+        } as unknown as vscode.WorkspaceConfiguration;
+      });
       fileSystem = {
         createDirectory: sandbox.stub().resolves(),
         writeFile: sandbox.stub().callsFake(async (_uri, content) => {
@@ -164,6 +193,10 @@ suite("SlangFocusContextPoc", () => {
       });
       sandbox.stub(vscode.workspace, "onDidChangeTextDocument").callsFake((listener) => {
         documentListener = listener;
+        return { dispose: sandbox.stub() };
+      });
+      sandbox.stub(vscode.workspace, "onDidChangeConfiguration").callsFake((listener) => {
+        configurationListener = listener;
         return { dispose: sandbox.stub() };
       });
     });
@@ -214,6 +247,42 @@ suite("SlangFocusContextPoc", () => {
 
       assert.ok(configurationUpdate.calledOnce);
       assert.strictEqual(generatedText, buildSlangFocusModule("image.slang"));
+      service.dispose();
+    });
+
+    test("does not configure or run the command while Slang editor integration is disabled", async () => {
+      slangEditorIntegrationEnabled = false;
+      installOfficialSlangExtension();
+
+      const service = createService();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.ok(configurationUpdate.notCalled);
+      assert.ok(commandHandler);
+      await commandHandler();
+      assert.ok(configurationUpdate.notCalled);
+      service.dispose();
+    });
+
+    test("stops updating the generated module when Slang editor integration is disabled", async () => {
+      const clock = sandbox.useFakeTimers();
+      installOfficialSlangExtension();
+      const service = createService();
+      assert.ok(commandHandler);
+      await commandHandler();
+      assert.ok(configurationUpdate.called);
+      configurationUpdate.resetHistory();
+
+      slangEditorIntegrationEnabled = false;
+      assert.ok(configurationListener);
+      configurationListener({
+        affectsConfiguration: (section: string) => section === "shader-studio.slangEditorIntegration",
+      } as vscode.ConfigurationChangeEvent);
+
+      assert.ok(editorListener);
+      editorListener(slangEditor("/workspace/project/buffer-a.slang"));
+      await clock.tickAsync(25);
+      assert.ok(applyEdit.notCalled);
       service.dispose();
     });
 

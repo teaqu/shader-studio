@@ -17,6 +17,12 @@ Within one extension host, all Shader Studio panels share the active GLSL select
 
 Dynamic declarations come from the active shader's `.sha.json` pass inputs and configuration, plus already-evaluated custom uniforms. If a shader or config update is invalid, Shader Studio retains the last-valid shader-specific preamble. Before any valid update, it generates a stable shader-local Image fallback.
 
+## Optional Slang editor companion
+
+Shader Studio can also provide the official Slang extension with an importable, generated `shader_studio` module. It includes Shader Studio built-ins, configured channels, and inferred custom uniforms. Install `shader-slang.slang-language-extension`, then run **Shader Studio: Configure Slang Editor Support** and add `import shader_studio;` to a `.slang` shader.
+
+Use `shader-studio.slangEditorIntegration` to enable or disable this automatic context integration. When disabled, Shader Studio stops configuring and updating the generated module; rendering remains unaffected.
+
 ## All Settings
 
 | Setting | Type | Default | Restart Required | Description |
@@ -27,6 +33,7 @@ Dynamic declarations come from the active shader's `.sha.json` pass inputs and c
 | `shader-studio.navigateOnBufferSwitch` | boolean | `true` | No | When enabled, switching buffers in the config panel or editor overlay syncs the active file in the VS Code editor. Works in combination with shader lock. |
 | `shader-studio.lockEditorGroup` | boolean | `true` | No | Lock the editor group when opening a shader panel, preventing other editors from opening in it. |
 | `shader-studio.webglGlslEditorIntegration` | boolean | `true` | No | Automatically configure WebGL GLSL Editor code injection with Shader Studio uniforms. Disabling it turns off only Shader Studio-managed injection. |
+| `shader-studio.slangEditorIntegration` | boolean | `true` | No | Automatically configure the official Slang extension's generated Shader Studio context module. |
 
 ## Port Configuration
 

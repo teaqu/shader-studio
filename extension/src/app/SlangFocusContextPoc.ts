@@ -83,6 +83,16 @@ export class SlangFocusContextPoc implements vscode.Disposable {
   ) {
     this.disposables.push(
       vscode.commands.registerCommand(CONFIGURE_COMMAND, () => this.configure()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration("shader-studio.slangEditorIntegration")) {
+          return;
+        }
+        if (this.isIntegrationEnabled()) {
+          void this.configure(false);
+        } else {
+          this.disable();
+        }
+      }),
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         this.handleEditorFocus(editor);
       }),
@@ -104,6 +114,15 @@ export class SlangFocusContextPoc implements vscode.Disposable {
   }
 
   private async configure(showMissingExtensionMessage = true): Promise<void> {
+    if (!this.isIntegrationEnabled()) {
+      if (showMissingExtensionMessage) {
+        await vscode.window.showInformationMessage(
+          "Enable Shader Studio's Slang editor integration in Settings before configuring it.",
+        );
+      }
+      return;
+    }
+
     if (!vscode.extensions.getExtension(OFFICIAL_SLANG_EXTENSION_ID)) {
       if (!showMissingExtensionMessage) {
         return;
@@ -185,6 +204,23 @@ export class SlangFocusContextPoc implements vscode.Disposable {
         `Failed to configure Slang focus context: ${String(error)}`,
       );
     }
+  }
+
+  private isIntegrationEnabled(): boolean {
+    return vscode.workspace.getConfiguration("shader-studio").get<boolean>(
+      "slangEditorIntegration",
+      true,
+    );
+  }
+
+  private disable(): void {
+    if (this.focusTimer) {
+      clearTimeout(this.focusTimer);
+      this.focusTimer = undefined;
+    }
+    this.focusedDocument = undefined;
+    this.configured = false;
+    this.logger.info("Slang editor context integration disabled by settings.");
   }
 
   private handleEditorFocus(editor: vscode.TextEditor | undefined): void {
