@@ -1181,6 +1181,27 @@ describe("SlangPassPipeline", () => {
     expect(errors).toEqual(["Image: WGSL L10:5 undeclared identifier 'foo'"]);
   });
 
+  it("returns WGSL diagnostics when asynchronous pipeline creation rejects an invalid module", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 42, linePos: 7, message: "invalid texture sample" },
+    ]);
+    device.createRenderPipelineAsync = vi.fn(async () => {
+      throw new Error("[Invalid ShaderModule (unlabeled)] is invalid.");
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      storage: [],
+      channels: [],
+    });
+
+    await expect(pass.rebuild("// invalid wgsl")).resolves.toEqual([
+      "Image: WGSL L42:7 invalid texture sample",
+    ]);
+  });
+
   it("returns an empty error list when compilation has no messages", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

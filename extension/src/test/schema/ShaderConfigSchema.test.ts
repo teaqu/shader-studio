@@ -125,7 +125,8 @@ suite('Shader config JSON schema', () => {
           dispatch: { x: 4, y: 2, z: 1 },
           dispatchCount: 6,
           dispatchOnce: false,
-          workgroupSize: [8, 8, 1]
+          workgroupSize: [8, 8, 1],
+          entryPoint: 'simulateKernel'
         },
         ComputePresent: {
           path: 'present.slang',

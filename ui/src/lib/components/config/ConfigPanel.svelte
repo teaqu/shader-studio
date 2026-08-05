@@ -3,10 +3,12 @@
   import { ConfigManager, type BufferRenameError } from "../../ConfigManager";
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { portal } from "../../actions/portal";
-  import type { ShaderConfig, BufferPass, ImagePass } from "@shader-studio/types";
+  import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
+  import StoragePanel from "./StoragePanel.svelte";
+  import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
   import type { ShaderLanguage } from "../../engineFactory";
 
@@ -17,6 +19,9 @@
     language?: ShaderLanguage;
     pathMap?: Record<string, string>;
     bufferPathMap?: Record<string, string>;
+    bufferSources?: Record<string, string>;
+    onReadStorage?: (name: string, start: number, count: number) => Promise<StorageBufferSnapshot>;
+    onWriteStorage?: (name: string, start: number, data: ArrayBuffer) => Promise<void>;
     transport: Transport;
     shaderPath?: string;
     isVisible?: boolean;
@@ -37,6 +42,9 @@
     language = "glsl",
     pathMap = {},
     bufferPathMap = {},
+    bufferSources = {},
+    onReadStorage,
+    onWriteStorage,
     transport,
     shaderPath = "",
     isVisible = true,
@@ -76,7 +84,7 @@
   $effect(() => {
     const displayName = selectedBuffer === "common" ? "Common" : selectedBuffer;
     untrack(() => {
-      if (displayName !== activeTab && activeTab !== "Script") {
+      if (displayName !== activeTab && activeTab !== "Script" && activeTab !== "Storage") {
         activeTab = displayName;
       }
     });
@@ -160,6 +168,28 @@
       config = configManager.getConfig();
       switchTab(computePassName);
     }
+  }
+
+  function addStorageBuffer(): string | null {
+    return configManager?.addStorageBuffer().name ?? null;
+  }
+
+  function applyStorageBuffer(
+    originalName: string,
+    name: string,
+    declaration: StorageBufferConfig,
+  ): ConfigFieldErrors {
+    const result = configManager?.applyStorageBuffer(originalName, name, declaration);
+    return result && !result.ok ? result.errors : {};
+  }
+
+  function removeStorageBuffer(name: string): ConfigFieldErrors {
+    const result = configManager?.removeStorageBuffer(name);
+    return result && !result.ok ? result.errors : {};
+  }
+
+  function getStorageReferences(name: string): string[] {
+    return configManager?.getStorageCoverReferences(name) ?? [];
   }
 
   function closeAddMenu() {
@@ -321,6 +351,11 @@
     return tabName.startsWith("Compute");
   }
 
+  function computeEntryPoints(passName: string): string[] {
+    const source = bufferSources[passName] ?? '';
+    return Array.from(source.matchAll(/\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\([^)]*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi), (match) => match[1]!);
+  }
+
   function getWebviewUri(path: string): string | undefined {
     return configManager?.getWebviewUri(path);
   }
@@ -354,6 +389,9 @@
       tabs.push("Common");
     }
     tabs.push(...bufferTabs);
+    if (language === "slang") {
+      tabs.push("Storage");
+    }
     if (config && config.script !== undefined) {
       tabs.push("Script");
     }
@@ -362,14 +400,14 @@
 
   function switchTab(tabName: string) {
     activeTab = tabName;
-    if (tabName !== "Script") {
+    if (tabName !== "Script" && tabName !== "Storage") {
       const actualName = getActualBufferName(tabName);
       onFileSelect(actualName);
     }
   }
 
   function isRenameableTab(tabName: string): boolean {
-    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script";
+    return tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
   }
 
   async function openRenameMenu(
@@ -623,7 +661,7 @@
             onkeydown={(event) => handleTabKeyDown(tabName, event)}
           >
             <span class="tab-label">{tabName}</span>
-            {#if tabName !== "Image" && config}
+            {#if tabName !== "Image" && tabName !== "Storage" && config}
               <span
                 class="tab-close"
                 role="button"
@@ -714,6 +752,16 @@
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}
         />
+      {:else if activeTab === "Storage"}
+        <StoragePanel
+          storage={config?.storage ?? {}}
+          referencesFor={getStorageReferences}
+          onAdd={addStorageBuffer}
+          onApply={applyStorageBuffer}
+          onDelete={removeStorageBuffer}
+          onRead={onReadStorage}
+          onWrite={onWriteStorage}
+        />
       {:else if activeTab === "Image"}
         <BufferConfig
           bufferName={activeTab}
@@ -737,10 +785,11 @@
           {language}
           passKind={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
-            configManager?.updateBuffer(
-              bufferName,
-              updatedConfig as BufferPass,
-            );
+            if (isComputeTab(activeTab)) {
+              configManager?.updateComputePass(bufferName, updatedConfig as ComputePass);
+            } else {
+              configManager?.updateBuffer(bufferName, updatedConfig as BufferPass);
+            }
           }}
           {getWebviewUri}
           suggestedPath={configManager?.generateBufferPath(
@@ -753,6 +802,12 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          storageNames={Object.keys(config?.storage ?? {})}
+          entryPointNames={computeEntryPoints(getActualBufferName(activeTab))}
+          onComputeCommit={(nextConfig) => {
+            const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
+            return result && !result.ok ? result.errors : {};
+          }}
         />
       {/if}
     </div>

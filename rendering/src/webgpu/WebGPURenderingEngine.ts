@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
+import type { ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -24,7 +24,12 @@ import {
 } from "./uniforms";
 import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
-import { buildSlangPassGraph, resolvePassResolution, type RenderPassNode } from "./SlangPassGraph";
+import {
+  buildSlangPassGraph,
+  resolvePassResolution,
+  type ComputeWorkgroupLimits,
+  type RenderPassNode,
+} from "./SlangPassGraph";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { SlangComputePipeline } from "./SlangComputePipeline";
 import {
@@ -101,6 +106,10 @@ const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
 const DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = 65_535;
+const DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y = 256;
+const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z = 64;
 
 type WorkgroupCounts = [number, number, number];
 
@@ -412,6 +421,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ) {
       requiredLimits.maxStorageBufferBindingSize = adapterStorageSizeLimit;
     }
+    const computeLimits: Array<[keyof GPUSupportedLimits, number]> = [
+      ["maxComputeInvocationsPerWorkgroup", DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP],
+      ["maxComputeWorkgroupSizeX", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X],
+      ["maxComputeWorkgroupSizeY", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y],
+      ["maxComputeWorkgroupSizeZ", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z],
+    ];
+    for (const [name, portableLimit] of computeLimits) {
+      const adapterLimit = adapter.limits?.[name];
+      if (
+        typeof adapterLimit === "number" &&
+        Number.isFinite(adapterLimit) &&
+        adapterLimit > portableLimit
+      ) {
+        requiredLimits[name] = adapterLimit;
+      }
+    }
     const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
     if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
       return undefined;
@@ -708,6 +733,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: attemptedCompile.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
+      computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -924,6 +950,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
+              ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
               ...(passModules.length > 0 ? { modules: passModules } : {}),
               ...(slangSourcePath ? { sourcePath: slangSourcePath } : {}),
               ...(nextCustomUniformManager.hasUniforms()
@@ -1322,6 +1349,24 @@ export class WebGPURenderingEngine implements RenderingEngine {
       : DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION;
   }
 
+  private resolveComputeWorkgroupLimits(): ComputeWorkgroupLimits {
+    const limits = this.device?.limits;
+    const resolve = (value: number | undefined, fallback: number): number => (
+      typeof value === "number" && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : fallback
+    );
+    return {
+      maxInvocations: resolve(
+        limits?.maxComputeInvocationsPerWorkgroup,
+        DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP,
+      ),
+      maxSizeX: resolve(limits?.maxComputeWorkgroupSizeX, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X),
+      maxSizeY: resolve(limits?.maxComputeWorkgroupSizeY, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y),
+      maxSizeZ: resolve(limits?.maxComputeWorkgroupSizeZ, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z),
+    };
+  }
+
   private validateStaticComputeDispatchLimits(
     passes: RenderPassNode[],
     storage: StorageBindingNode[],
@@ -1353,6 +1398,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       throw new Error("WebGPU device unavailable while allocating storage buffers");
     }
     const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_SRC = globalThis.GPUBufferUsage?.COPY_SRC ?? 0x0004;
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     const nextBuffers = new Map<string, GPUBuffer>();
     const nextKeys = new Map<string, string>();
@@ -1373,7 +1419,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         } else {
           buffer = this.device.createBuffer({
             size: node.count * node.stride,
-            usage: STORAGE | COPY_DST,
+            usage: STORAGE | COPY_SRC | COPY_DST,
           });
           stagedBuffers.push(buffer);
         }
@@ -1405,6 +1451,27 @@ export class WebGPURenderingEngine implements RenderingEngine {
   ): Array<[string, GPUBuffer]> {
     return [...this.storageBuffers].filter(([name, buffer]) =>
       prepared.buffers.get(name) !== buffer);
+  }
+
+  private resolveStorageRange(
+    name: string,
+    start: number,
+    count: number,
+  ): { buffer: GPUBuffer; layout: StorageBindingNode; offset: number; size: number } {
+    const layout = this.storageLayouts.get(name);
+    const buffer = this.storageBuffers.get(name);
+    if (!layout || !buffer) {
+      throw new Error(`Storage buffer "${name}" is not available`);
+    }
+    if (!Number.isInteger(start) || !Number.isInteger(count) || start < 0 || count <= 0 || start + count > layout.count) {
+      throw new Error(`Storage buffer "${name}" has an invalid element range`);
+    }
+    const offset = start * layout.stride;
+    const size = count * layout.stride;
+    if (offset % 4 !== 0 || size % 4 !== 0) {
+      throw new Error(`Storage buffer "${name}" inspection requires a 4-byte-aligned stride`);
+    }
+    return { buffer, layout, offset, size };
   }
 
   private publishPreparedStorage(prepared: PreparedStorageBuffers): void {
@@ -1562,6 +1629,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return null;
     }
     const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
+    const COPY_SRC = globalThis.GPUBufferUsage?.COPY_SRC ?? 0x0004;
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     const nextBuffers = new Map<string, GPUBuffer>();
     const stagedBuffers: GPUBuffer[] = [];
@@ -1569,7 +1637,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       for (const node of this.storageLayouts.values()) {
         const buffer = this.device.createBuffer({
           size: node.count * node.stride,
-          usage: STORAGE | COPY_DST,
+          usage: STORAGE | COPY_SRC | COPY_DST,
         });
         stagedBuffers.push(buffer);
         nextBuffers.set(node.name, buffer);
@@ -1735,6 +1803,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return JSON.stringify([
       SLANG_WGSL_CACHE_KEY_VERSION,
       pass.kind,
+      pass.entryPoint,
       pass.source,
       commonCode,
       channels,
@@ -1879,6 +1948,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         hasOutput: pass.output === "texture",
         outputLayers: pass.outputLayers,
         workgroupSize: pass.workgroupSize,
+        entryPoint: pass.entryPoint,
         dispatchCount: pass.dispatchCount,
         channels,
         storage,
@@ -2637,6 +2707,47 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.currentConfig;
   }
 
+  async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
+    const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    if (!this.device) {
+      throw new Error("WebGPU device unavailable while reading storage buffer");
+    }
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
+    const readback = this.device.createBuffer({ size, usage: COPY_DST | MAP_READ });
+    try {
+      const encoder = this.device.createCommandEncoder({ label: `storage-readback-${name}` });
+      encoder.copyBufferToBuffer(buffer, offset, readback, 0, size);
+      this.device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(globalThis.GPUMapMode?.READ ?? 0x0001);
+      const data = readback.getMappedRange().slice(0);
+      readback.unmap();
+      return { name, elementType: layout.elementType, stride: layout.stride, start, count, data };
+    } finally {
+      readback.destroy();
+    }
+  }
+
+  async writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void> {
+    const layout = this.storageLayouts.get(name);
+    const buffer = this.storageBuffers.get(name);
+    if (!layout || !buffer) {
+      throw new Error(`Storage buffer "${name}" is not available`);
+    }
+    if (!Number.isInteger(start) || start < 0 || start >= layout.count) {
+      throw new Error(`Storage buffer "${name}" has an invalid element range`);
+    }
+    if (data.byteLength === 0 || data.byteLength % layout.stride !== 0) {
+      throw new Error(`Storage buffer "${name}" write data does not match its stride`);
+    }
+    const count = data.byteLength / layout.stride;
+    const { offset, size } = this.resolveStorageRange(name, start, count);
+    if (size !== data.byteLength || !this.device) {
+      throw new Error("WebGPU device unavailable while writing storage buffer");
+    }
+    this.device.queue.writeBuffer(buffer, offset, data);
+  }
+
   getCanvas(): HTMLCanvasElement | null {
     return this.canvas;
   }
@@ -2965,6 +3076,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: snapshot.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
+      computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
     });
     return { passes: graph.passes, storage: graph.storage };
   }

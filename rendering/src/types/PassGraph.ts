@@ -69,6 +69,7 @@ export interface RenderPassNode {
   dispatchCount: number;
   dispatchOnce: boolean;
   workgroupSize: [number, number, number];
+  entryPoint?: string;
   width: number;
   height: number;
   channels: RenderPassChannel[];

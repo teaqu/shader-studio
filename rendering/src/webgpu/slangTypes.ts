@@ -22,6 +22,7 @@ export interface SlangCompileOptions {
   workgroupSize?: [number, number, number];
   outputLayers?: number;
   hasOutput?: boolean;
+  entryPoint?: string;
   customUniforms?: Array<{ name: string; type: string }>;
   modules?: Array<Omit<SlangSourceModule, "ownerPass">>;
   sourcePath?: string;

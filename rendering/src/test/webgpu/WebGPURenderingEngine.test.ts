@@ -187,7 +187,7 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
-  it("requests the adapter's higher texture and storage limits when available", async () => {
+  it("requests the adapter's higher texture, storage, and compute limits when available", async () => {
     const context = { configure: vi.fn() };
     const device = {
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
@@ -200,6 +200,10 @@ describe("WebGPURenderingEngine", () => {
         maxTextureDimension2D: 16384,
         maxStorageBuffersPerShaderStage: 16,
         maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+        maxComputeInvocationsPerWorkgroup: 1024,
+        maxComputeWorkgroupSizeX: 1024,
+        maxComputeWorkgroupSizeY: 1024,
+        maxComputeWorkgroupSizeZ: 128,
       },
       requestDevice: vi.fn(async () => device),
     };
@@ -228,6 +232,10 @@ describe("WebGPURenderingEngine", () => {
           maxTextureDimension2D: 16384,
           maxStorageBuffersPerShaderStage: 16,
           maxStorageBufferBindingSize: 1024 * 1024 * 1024,
+          maxComputeInvocationsPerWorkgroup: 1024,
+          maxComputeWorkgroupSizeX: 1024,
+          maxComputeWorkgroupSizeY: 1024,
+          maxComputeWorkgroupSizeZ: 128,
         },
       });
     } finally {

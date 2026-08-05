@@ -127,6 +127,11 @@
           },
           "minItems": 3,
           "maxItems": 3
+        },
+        "entryPoint": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Named [shader(\"compute\")] entry point in the compute source"
         }
       },
       "additionalProperties": false

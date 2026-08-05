@@ -72,14 +72,14 @@ function engineHarness(limits: Partial<GPUSupportedLimits> = {}) {
 }
 
 function storageCreateCalls(device: ReturnType<typeof engineHarness>["device"]): GPUBufferDescriptor[] {
-  const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+  const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
   return device.createBuffer.mock.calls
     .map(([descriptor]) => descriptor)
     .filter((descriptor) => descriptor.usage === storageUsage);
 }
 
 function createdStorageBuffers(device: ReturnType<typeof engineHarness>["device"]): FakeBuffer[] {
-  const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+  const storageUsage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
   return device.createBuffer.mock.results
     .map((result) => result.value as FakeBuffer)
     .filter((buffer) => buffer.descriptor.usage === storageUsage);
@@ -130,7 +130,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(result?.success).toBe(true);
     expect(storageCreateCalls(device)).toEqual([{
       size: 64,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     }]);
     expect(device.createBuffer.mock.invocationCallOrder[0]).toBeLessThan(
       compiler.compile.mock.invocationCallOrder[0],
@@ -396,7 +396,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(result?.success).toBe(true);
     expect(storageCreateCalls(device)).toEqual([{
       size: 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     }]);
     expect(compiler.compile).toHaveBeenCalledTimes(1);
   });
@@ -559,7 +559,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       id: 100,
       descriptor: {
         size: 64,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       },
       destroy: vi.fn(),
     };
@@ -603,7 +603,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       id: 100,
       descriptor: {
         size: 4,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       },
       destroy: vi.fn(() => {
         throw firstDestroyFailure;
@@ -613,7 +613,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       id: 101,
       descriptor: {
         size: 4,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       },
       destroy: vi.fn(),
     };

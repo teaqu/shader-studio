@@ -1,4 +1,4 @@
-import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
+import type { ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import type { TimeManager } from "../util/TimeManager";
 import type { IVariableCapturer, CaptureUniforms, CaptureCustomUniform, CaptureCompileContext } from "../capture/VariableCapturer";
@@ -18,6 +18,8 @@ export interface RenderingEngine {
     slangSourcePath?: string,
   ): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
+  readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot>;
+  writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;
   setInputEnabled(enabled: boolean): void;
   updateBufferAndRecompile(bufferName: string, bufferContent: string): Promise<CompilationResult | undefined>;
   getPasses(): any[];

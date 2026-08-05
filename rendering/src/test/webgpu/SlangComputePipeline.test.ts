@@ -226,6 +226,20 @@ describe("SlangComputePipeline", () => {
     ]);
   });
 
+  it("returns WGSL diagnostics when asynchronous pipeline creation rejects an invalid module", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 31, linePos: 4, message: "invalid storage access" },
+    ]);
+    device.createComputePipelineAsync = vi.fn(async () => {
+      throw new Error("[Invalid ShaderModule (unlabeled)] is invalid.");
+    });
+    const compute = new SlangComputePipeline(device, descriptor({ name: "Compute" }));
+
+    await expect(compute.rebuild("// invalid wgsl")).resolves.toEqual([
+      "Compute: WGSL L31:4 invalid storage access",
+    ]);
+  });
+
   it("creates and initializes one exact-size dispatch uniform per sub-dispatch", async () => {
     const device = fakeDevice();
     const compute = new SlangComputePipeline(device, descriptor({

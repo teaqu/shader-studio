@@ -110,6 +110,8 @@ export interface ComputePass {
     dispatchCount?: number;
     dispatchOnce?: boolean;
     workgroupSize?: [number, number, number];
+    /** Named native `[shader("compute")]` entrypoint in this pass source. */
+    entryPoint?: string;
 }
 
 export interface ShaderPasses {

@@ -461,6 +461,28 @@ void ${SLANG_ENTRY_COMPUTE}(uint3 tid : SV_DispatchThreadID)
 `;
 }
 
+/** Returns a shader-owned compute entrypoint annotated with stage and workgroup metadata. */
+export function getNativeComputeEntryPoint(source: string): { name: string; workgroupSize: [number, number, number] } | null {
+  return getNativeComputeEntryPoints(source)[0] ?? null;
+}
+
+export function getNativeComputeEntryPoints(source: string): Array<{ name: string; workgroupSize: [number, number, number] }> {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const entries: Array<{ name: string; workgroupSize: [number, number, number] }> = [];
+  const pattern = /\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi;
+  for (const match of withoutComments.matchAll(pattern)) {
+    const values = match.slice(1, 4).map(Number);
+    if (values.every((value) => Number.isInteger(value) && value > 0)) {
+      entries.push({ name: match[4]!, workgroupSize: [values[0]!, values[1]!, values[2]!] });
+    }
+  }
+  return entries;
+}
+
+export function getNativeComputeWorkgroupSize(source: string): [number, number, number] | null {
+  return getNativeComputeEntryPoint(source)?.workgroupSize ?? null;
+}
+
 /** Wrap a user compute-shader source into a full, compilable Slang module. */
 export function wrapSlangComputeSource(userSource: string, options: SlangComputeWrapOptions): string {
   const prelude = buildPrelude(options.customUniforms);
@@ -475,7 +497,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
-  const entryPoint = buildComputeEntryPoint(options.workgroupSize);
+  const entryPoint = getNativeComputeEntryPoint(userSource) ? "" : buildComputeEntryPoint(options.workgroupSize);
 
   return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${userSource}\n${entryPoint}`;
 }

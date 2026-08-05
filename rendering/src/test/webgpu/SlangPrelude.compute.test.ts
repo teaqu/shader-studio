@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import {
   DISPATCH_UNIFORM_SIZE,
+  getNativeComputeWorkgroupSize,
+  getNativeComputeEntryPoint,
+  getNativeComputeEntryPoints,
   SLANG_ENTRY_COMPUTE,
   wrapSlangComputeSource,
   wrapSlangImageSource,
@@ -26,6 +29,28 @@ const customStorage: StorageBindingNode = {
 };
 
 describe("wrapSlangComputeSource", () => {
+  it("detects an author-owned numthreads compute entry point", () => {
+    const source = `
+      [shader("compute")]
+      [numthreads(16, 8, 1)]
+      void blurKernel(uint3 id : SV_DispatchThreadID) {}
+    `;
+    expect(getNativeComputeWorkgroupSize(source)).toEqual([16, 8, 1]);
+    expect(getNativeComputeEntryPoint(source)).toEqual({ name: 'blurKernel', workgroupSize: [16, 8, 1] });
+    expect(wrapSlangComputeSource(source, {
+      workgroupSize: [8, 8, 1], outputLayers: 1, hasOutput: false,
+    })).not.toContain("computeMainEntry");
+  });
+
+  it("discovers every annotated compute function in one source file", () => {
+    expect(getNativeComputeEntryPoints(`
+      [shader("compute")] [numthreads(64, 1, 1)] void clear(uint3 id : SV_DispatchThreadID) {}
+      [shader("compute")] [numthreads(8, 8, 1)] void draw(uint3 id : SV_DispatchThreadID) {}
+    `)).toEqual([
+      { name: 'clear', workgroupSize: [64, 1, 1] },
+      { name: 'draw', workgroupSize: [8, 8, 1] },
+    ]);
+  });
   it("generates the configured compute entry point", () => {
     const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
       workgroupSize: [8, 4, 2],

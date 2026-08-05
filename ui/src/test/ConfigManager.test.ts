@@ -1063,4 +1063,79 @@ describe('ConfigManager', () => {
       expect(configManager.generateScriptPath()).toBe('./cool.uniforms.ts');
     });
   });
+
+  describe('compute and storage configuration', () => {
+    it('publishes a valid compute pass update once', () => {
+      configManager.setConfig(createTestConfig());
+
+      const result = configManager.updateComputePass('ComputeSim', {
+        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(configManager.getConfig()?.passes.ComputeSim).toEqual({
+        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+      });
+      expect(onConfigChange).toHaveBeenCalledTimes(1);
+      expect(transport.postMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not publish an invalid compute pass update', () => {
+      configManager.setConfig(createTestConfig());
+
+      const result = configManager.updateComputePass('ComputeSim', {
+        path: 'sim.slang', dispatchCount: 0,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        errors: { dispatchCount: 'Repeats must be an integer from 1 through 1024' },
+      });
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('adds storage defaults and applies a renamed declaration', () => {
+      configManager.setConfig({
+        version: '1.0',
+        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+        },
+      });
+
+      expect(configManager.addStorageBuffer().name).toBe('storageA');
+      const result = configManager.applyStorageBuffer('particles', 'positions', {
+        count: 8, stride: 16, elementType: 'float4',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(configManager.getConfig()?.storage?.positions).toEqual({
+        count: 8, stride: 16, elementType: 'float4',
+      });
+      expect((configManager.getConfig()?.passes.ComputeSim as { dispatch?: unknown }).dispatch)
+        .toEqual({ cover: 'positions' });
+      expect(onConfigChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not publish a blocked storage deletion', () => {
+      configManager.setConfig({
+        version: '1.0',
+        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        passes: {
+          Image: { inputs: {} },
+          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+        },
+      });
+
+      expect(configManager.getStorageCoverReferences('particles')).toEqual(['ComputeSim']);
+      expect(configManager.removeStorageBuffer('particles')).toEqual({
+        ok: false,
+        errors: { name: 'Used as a dispatch target by ComputeSim' },
+      });
+      expect(onConfigChange).not.toHaveBeenCalled();
+      expect(transport.postMessage).not.toHaveBeenCalled();
+    });
+  });
 });

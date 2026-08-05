@@ -199,6 +199,7 @@
   let currentConfig = $state<ShaderConfig | null>(null);
   let pathMap = $state<Record<string, string>>({});
   let bufferPathMap = $state<Record<string, string>>({});
+  let bufferSources = $state<Record<string, string>>({});
   let shaderPath = $state('');
 
   // Script info for config panel
@@ -872,6 +873,7 @@
       currentConfig = event.data.config || null;
       pathMap = event.data.pathMap || {};
       bufferPathMap = event.data.bufferPathMap || {};
+      bufferSources = event.data.buffers || {};
       shaderPath = nextShaderPath;
       hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
@@ -1259,6 +1261,14 @@
     await tick();
   }
 
+  async function readStorageBuffer(name: string, start: number, count: number) {
+    return renderingEngine.readStorageBuffer(name, start, count);
+  }
+
+  async function writeStorageBuffer(name: string, start: number, data: ArrayBuffer) {
+    await renderingEngine.writeStorageBuffer(name, start, data);
+  }
+
   // DOM teleport refs
   let previewEl: HTMLElement;
   let debugEl: HTMLElement;
@@ -1377,6 +1387,9 @@
         language={engineLanguage}
         {pathMap}
         {bufferPathMap}
+        {bufferSources}
+        onReadStorage={engineLanguage === 'slang' ? readStorageBuffer : undefined}
+        onWriteStorage={engineLanguage === 'slang' ? writeStorageBuffer : undefined}
         {transport}
         {shaderPath}
         isVisible={$configPanelStore.isVisible}

@@ -898,7 +898,7 @@ describe("Slang compute passes", () => {
     });
   });
 
-  it("uses a valid workgroup override and propagates dispatch repeat settings", () => {
+  it("uses the dispatch default instead of the legacy config workgroup size", () => {
     const graph = build({
       version: "1",
       passes: {
@@ -918,8 +918,58 @@ describe("Slang compute passes", () => {
       dispatch: { mode: "count", count: 8 },
       dispatchCount: 3,
       dispatchOnce: false,
-      workgroupSize: [16, 4, 2],
+      workgroupSize: [64, 1, 1],
     });
+  });
+
+  it("accepts a larger workgroup when the active device reports sufficient limits", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: {
+          Image: { inputs: {} },
+          ComputeMain: { path: "compute.slang", workgroupSize: [32, 32, 1] },
+        },
+      },
+      buffers: { ComputeMain: `[shader("compute")] [numthreads(32, 32, 1)] void largeKernel(uint3 id : SV_DispatchThreadID) {}` },
+      canvasWidth: 320,
+      canvasHeight: 180,
+      computeWorkgroupLimits: { maxInvocations: 1024, maxSizeX: 1024, maxSizeY: 1024, maxSizeZ: 64 },
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0].workgroupSize).toEqual([32, 32, 1]);
+  });
+
+  it("uses the config-selected entrypoint from a multi-entry compute source", () => {
+    const graph = build({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        ComputeMain: { path: "kernels.slang", entryPoint: "draw" },
+      },
+    }, {
+      ComputeMain: `
+        [shader("compute")] [numthreads(64, 1, 1)] void clear(uint3 id : SV_DispatchThreadID) {}
+        [shader("compute")] [numthreads(8, 8, 1)] void draw(uint3 id : SV_DispatchThreadID) {}
+      `,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0]).toMatchObject({ entryPoint: "draw", workgroupSize: [8, 8, 1] });
+  });
+
+  it("selects a configured native entrypoint from a multi-entry compute source", () => {
+    const source = `[shader("compute")] [numthreads(1, 1, 1)] void clearKernel(uint3 id : SV_DispatchThreadID) {}
+[shader("compute")] [numthreads(64, 1, 1)] void simulateKernel(uint3 id : SV_DispatchThreadID) {}`;
+    const graph = build({
+      version: "1",
+      passes: { Image: { inputs: {} }, ComputeMain: { path: "kernels.slang", entryPoint: "simulateKernel" } },
+    }, { ComputeMain: source });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0]).toMatchObject({ entryPoint: "simulateKernel", workgroupSize: [64, 1, 1] });
   });
 
   it.each([
@@ -983,26 +1033,22 @@ describe("Slang compute passes", () => {
     expect(rejected.passes[0].dispatchCount).toBe(1);
   });
 
-  it.each([
-    [[8, 8], "exactly 3"],
-    [[8, 8, 1, 1], "exactly 3"],
-    [[8, 0, 1], "positive integers"],
-    [[8, 1.5, 1], "positive integers"],
-    [[16, 16, 2], "product must be at most 256"],
-  ])("reports invalid workgroupSize %j and uses the dispatch-mode default", (workgroupSize, expectedError) => {
-    const config = {
-      version: "1",
-      passes: {
-        Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatch: { count: 16 }, workgroupSize },
-      },
-    } as unknown as ShaderConfig;
+  it.each([[8, 8], [8, 8, 1, 1], [8, 0, 1], [8, 1.5, 1], [16, 16, 2]])(
+    "ignores legacy workgroupSize %j and uses the dispatch-mode default", (workgroupSize) => {
+      const config = {
+        version: "1",
+        passes: {
+          Image: { inputs: {} },
+          ComputeMain: { path: "compute.slang", dispatch: { count: 16 }, workgroupSize },
+        },
+      } as unknown as ShaderConfig;
 
-    const graph = build(config, { ComputeMain: imageCode });
+      const graph = build(config, { ComputeMain: imageCode });
 
-    expect(graph.errors.some((error) => error.includes(expectedError))).toBe(true);
-    expect(graph.passes[0].workgroupSize).toEqual([64, 1, 1]);
-  });
+      expect(graph.errors).toEqual([]);
+      expect(graph.passes[0].workgroupSize).toEqual([64, 1, 1]);
+    },
+  );
 
   it("reports dispatchOnce combined with repeated dispatches", () => {
     const graph = build({

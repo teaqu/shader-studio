@@ -8,6 +8,7 @@ import {
   wrapSlangComputeSource,
   wrapSlangImageSource,
   SLANG_ENTRY_COMPUTE,
+  getNativeComputeEntryPoint,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
@@ -105,7 +106,7 @@ export class SlangCompiler {
     }
 
     const entryPointNames = isCompute
-      ? [SLANG_ENTRY_COMPUTE]
+      ? [options.entryPoint ?? getNativeComputeEntryPoint(userSource)?.name ?? SLANG_ENTRY_COMPUTE]
       : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
     const entryPoints = entryPointNames.map((name) => module.findEntryPointByName(name));
     if (entryPoints.some((entryPoint) => !entryPoint)) {

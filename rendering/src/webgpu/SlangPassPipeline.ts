@@ -29,6 +29,13 @@ export interface SlangChannelResource {
 export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
 export const HIGH_PRECISION_BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba32float";
 
+async function shaderModuleErrors(shaderModule: GPUShaderModule, passName: string): Promise<string[]> {
+  const info = await shaderModule.getCompilationInfo?.();
+  return (info?.messages ?? [])
+    .filter((message) => message.type === "error")
+    .map((message) => `${passName}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
+}
+
 export class SlangPassPipeline {
   private pipeline: GPURenderPipeline | null = null;
   private uniformBuffer: GPUBuffer | null = null;
@@ -81,6 +88,10 @@ export class SlangPassPipeline {
         if (generation !== this.rebuildGeneration) {
           return [];
         }
+        const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+        if (diagnostics.length > 0) {
+          return diagnostics;
+        }
         return [`${this.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`];
       }
     } else {
@@ -118,13 +129,11 @@ export class SlangPassPipeline {
       });
     }
 
-    const info = await shaderModule.getCompilationInfo?.();
+    const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
     if (generation !== this.rebuildGeneration) {
       return [];
     }
-    return (info?.messages ?? [])
-      .filter((message) => message.type === "error")
-      .map((message) => `${this.descriptor.name}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
+    return diagnostics;
   }
 
   updateDescriptor(descriptor: SlangPassPipelineDescriptor): void {

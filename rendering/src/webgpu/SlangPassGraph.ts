@@ -8,6 +8,7 @@ import type {
   StorageBindingNode,
 } from "../types/PassGraph";
 import { assignInputSlots } from "../util/InputSlotAssigner";
+import { getNativeComputeEntryPoints, SLANG_ENTRY_COMPUTE } from "./SlangPrelude";
 
 export type {
   ChannelReadTiming,
@@ -23,6 +24,15 @@ export interface BuildSlangPassGraphOptions {
   buffers: Record<string, string>;
   canvasWidth: number;
   canvasHeight: number;
+  /** Limits granted by the active WebGPU device; omitted means portable WebGPU defaults. */
+  computeWorkgroupLimits?: ComputeWorkgroupLimits;
+}
+
+export interface ComputeWorkgroupLimits {
+  maxInvocations: number;
+  maxSizeX: number;
+  maxSizeY: number;
+  maxSizeZ: number;
 }
 
 export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
@@ -36,7 +46,12 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
 const SPECIAL_PASS_NAMES = new Set(["common", "Image"]);
 const MAX_TOTAL_STORAGE_BYTES = 256 * 1024 * 1024;
 const BASELINE_STORAGE_BUFFER_COUNT = 8;
-const MAX_WORKGROUP_INVOCATIONS = 256;
+const PORTABLE_COMPUTE_WORKGROUP_LIMITS: ComputeWorkgroupLimits = {
+  maxInvocations: 256,
+  maxSizeX: 256,
+  maxSizeY: 256,
+  maxSizeZ: 64,
+};
 const TEXEL_WORKGROUP_SIZE: [number, number, number] = [8, 8, 1];
 const COUNT_WORKGROUP_SIZE: [number, number, number] = [64, 1, 1];
 /** Bounds synchronous iDispatch allocation and per-frame command encoding work. */
@@ -120,6 +135,16 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       const computeConfig = passConfig as ComputePass;
       const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
+      const nativeEntries = getNativeComputeEntryPoints(source);
+      const requestedEntryPoint = computeConfig.entryPoint;
+      const nativeEntryPoint = requestedEntryPoint
+        ? nativeEntries.find(({ name }) => name === requestedEntryPoint)
+        : nativeEntries.length === 1 ? nativeEntries[0] : undefined;
+      if (requestedEntryPoint && !nativeEntryPoint) {
+        errors.push(`${name}: entry point "${requestedEntryPoint}" was not found in its compute source`);
+      } else if (!requestedEntryPoint && nativeEntries.length > 1) {
+        errors.push(`${name}: compute source has multiple entry points; select one in the config UI`);
+      }
       const dispatchCount = resolveDispatchCount(name, computeConfig.dispatchCount, errors);
       const dispatchOnce = resolveDispatchOnce(name, computeConfig.dispatchOnce, errors);
       if (dispatchOnce && dispatchCount > 1) {
@@ -136,7 +161,14 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         dispatch,
         dispatchCount,
         dispatchOnce,
-        workgroupSize: resolveWorkgroupSize(name, computeConfig.workgroupSize, defaultWorkgroupSize, errors),
+        workgroupSize: resolveWorkgroupSize(
+          name,
+          nativeEntryPoint?.workgroupSize,
+          defaultWorkgroupSize,
+          options.computeWorkgroupLimits ?? PORTABLE_COMPUTE_WORKGROUP_LIMITS,
+          errors,
+        ),
+        entryPoint: nativeEntryPoint?.name ?? SLANG_ENTRY_COMPUTE,
         width: resolution.width,
         height: resolution.height,
         channels,
@@ -678,6 +710,7 @@ function resolveWorkgroupSize(
   passName: string,
   workgroupSize: unknown,
   fallback: [number, number, number],
+  limits: ComputeWorkgroupLimits,
   errors: string[],
 ): [number, number, number] {
   if (workgroupSize === undefined) {
@@ -691,11 +724,19 @@ function resolveWorkgroupSize(
     errors.push(`${passName}: workgroupSize dimensions must be positive integers`);
     return [...fallback];
   }
-  if (workgroupSize[0] * workgroupSize[1] * workgroupSize[2] > MAX_WORKGROUP_INVOCATIONS) {
-    errors.push(`${passName}: workgroupSize product must be at most 256`);
+  const [x, y, z] = workgroupSize;
+  if (x > limits.maxSizeX || y > limits.maxSizeY || z > limits.maxSizeZ) {
+    errors.push(
+      `${passName}: workgroupSize dimensions exceed device limits ` +
+      `[${limits.maxSizeX}, ${limits.maxSizeY}, ${limits.maxSizeZ}]`,
+    );
     return [...fallback];
   }
-  return [workgroupSize[0], workgroupSize[1], workgroupSize[2]];
+  if (x * y * z > limits.maxInvocations) {
+    errors.push(`${passName}: workgroupSize product must be at most ${limits.maxInvocations}`);
+    return [...fallback];
+  }
+  return [x, y, z];
 }
 
 function assignChannelReadTiming(passes: RenderPassNode[]): void {

@@ -2,7 +2,7 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
-import type { BufferPass, ImagePass } from '@shader-studio/types';
+import type { BufferPass, ComputePass, ImagePass } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
   let mockOnUpdate: ReturnType<typeof vi.fn>;
@@ -13,6 +13,32 @@ describe('BufferConfig', () => {
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
     mockPostMessage = vi.fn();
+  });
+
+  describe('compute settings', () => {
+    it('shows Slang compute controls and commits dispatch changes through the compute handler', async () => {
+      const onComputeCommit = vi.fn(() => ({}));
+      const config: ComputePass = { path: 'sim.slang', inputs: {} };
+      const { getByLabelText, getByRole } = render(BufferConfig, {
+        bufferName: 'ComputeSim',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        language: 'slang',
+        passKind: 'compute',
+        storageNames: ['particles'],
+        onComputeCommit,
+      });
+
+      expect(getByRole('heading', { name: 'Dispatch' })).toBeInTheDocument();
+      await fireEvent.change(getByLabelText('Dispatch mode'), { target: { value: 'storage' } });
+
+      expect(onComputeCommit).toHaveBeenCalledWith({
+        path: 'sim.slang',
+        inputs: {},
+        dispatch: { cover: 'particles' },
+      });
+    });
   });
 
   describe('Create File Button', () => {

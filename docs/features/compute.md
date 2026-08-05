@@ -163,7 +163,7 @@ void computeMain(uint3 id)
 | `{ "cover": "bufferName" }` | The named storage buffer's `count` | `[8, 8, 1]` |
 | `{ "cover": "iChannel0" }` | The configured channel's current texture dimensions | `[8, 8, 1]` |
 
-`workgroupSize: [x, y, z]` overrides the default for every mode. Each dimension must be a positive integer and their product cannot exceed 256. Per-texel, count, and cover modes ceil-divide their logical size by the workgroup size. The raw xyz mode does not: its values already are workgroup counts.
+For a shader-owned workgroup shape, declare a native entrypoint: `[shader("compute")]`, `[numthreads(x, y, z)]`, then `void yourEntryPoint(uint3 id : SV_DispatchThreadID)`. Without a native entrypoint, Shader Studio uses the legacy `computeMain` wrapper with `[8, 8, 1]` for texel/cover dispatch and `[64, 1, 1]` for count dispatch. Each dimension must be positive and the product must not exceed the active device's `maxComputeInvocationsPerWorkgroup` limit (256 is the portable WebGPU baseline). Per-texel, count, and cover modes ceil-divide their logical size by the workgroup size. The raw xyz mode does not: its values already are workgroup counts.
 
 Channel-cover dispatch is resolved from the texture at bind time, so it follows image loads and video size changes. Invalid static workgroup settings and static dispatch counts above the device's per-axis limit are compilation errors. A `cover: "iChannelN"` size is dynamic and cannot be checked during compilation; if its live texture would exceed an axis limit, Shader Studio safely skips that dispatch at runtime. That runtime skip is currently silent.
 
@@ -260,12 +260,12 @@ One `StructuredBuffer<ParticleData>` consumes one storage binding while keeping 
 ## Current Limitations
 
 - Compute shaders require Slang and WebGPU; there is no GLSL fallback.
-- Compute variable capture/debugging, storage readback/inspection, indirect dispatch, and in-source multi-entry attributes are not implemented.
+- Compute variable capture/debugging and indirect dispatch are not implemented.
 - `count`, `stride`, and `elementType` are config-authored; stride is not reflection-validated.
 - Every storage buffer is bound to every pass. There is no per-pass storage binding list.
 - Custom-typed buffers cannot be accessed from `common`; only their type definitions belong there.
 - Compute output is `rgba16float`, is created only when sampled, and supports at most 8 layers.
-- Dedicated controls for storage and most compute fields are not yet available in the visual config form. Edit `.sha.json` with schema completion.
+- The Slang visual config form includes a **Storage** tab and per-compute-pass controls for dispatch mode, repeats, and output layers. Workgroup size belongs in a shader `[numthreads]` annotation; normal unannotated shaders use engine defaults. Valid compute control edits apply immediately. Storage edits are applied explicitly because they recreate and clear that GPU buffer; renaming a declaration updates `cover` dispatch references but does not rewrite Slang source files. The **Inspect** control captures an explicit GPU snapshot of a selected element range and supports editing `float`, `int`, `uint`, and their 2–4 component vector forms before writing the range back. `dispatchOnce` remains available in JSON configuration. Multiple native compute entrypoints are supported; select one in the pass controls when a source has more than one.
 
 ## Examples
 

@@ -17,10 +17,18 @@ export interface SlangComputePipelineDescriptor {
   hasOutput: boolean;
   outputLayers: number;
   workgroupSize: [number, number, number];
+  entryPoint?: string;
   dispatchCount: number;
   channels: Array<{ slot: number; key: string; kind?: string }>;
   storage: StorageBindingNode[];
   uniformBufferSize?: number;
+}
+
+async function shaderModuleErrors(shaderModule: GPUShaderModule, passName: string): Promise<string[]> {
+  const info = await shaderModule.getCompilationInfo?.();
+  return (info?.messages ?? [])
+    .filter((message) => message.type === "error")
+    .map((message) => `${passName}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
 }
 
 export class SlangComputePipeline {
@@ -55,7 +63,7 @@ export class SlangComputePipeline {
       }),
       compute: {
         module: shaderModule,
-        entryPoint: SLANG_ENTRY_COMPUTE,
+        entryPoint: this.descriptor.entryPoint ?? SLANG_ENTRY_COMPUTE,
       },
     };
 
@@ -66,6 +74,10 @@ export class SlangComputePipeline {
       } catch (error) {
         if (generation !== this.rebuildGeneration) {
           return [];
+        }
+        const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+        if (diagnostics.length > 0) {
+          return diagnostics;
         }
         return [`${this.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`];
       }
@@ -106,13 +118,11 @@ export class SlangComputePipeline {
       }
     }
 
-    const info = await shaderModule.getCompilationInfo?.();
+    const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
     if (generation !== this.rebuildGeneration) {
       return [];
     }
-    return (info?.messages ?? [])
-      .filter((message) => message.type === "error")
-      .map((message) => `${this.descriptor.name}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
+    return diagnostics;
   }
 
   resize(width: number, height: number): void {

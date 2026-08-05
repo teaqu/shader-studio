@@ -283,7 +283,7 @@ function enableRendering(testHarness: ReturnType<typeof harness>): void {
 }
 
 function storageBuffers(buffers: FakeBuffer[]): FakeBuffer[] {
-  const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+  const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
   return buffers.filter(({ descriptor }) => descriptor.usage === usage);
 }
 
@@ -336,6 +336,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
       hasOutput: false,
+      entryPoint: "computeMainEntry",
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, IMAGE_SOURCE, {
       passName: "Image",
@@ -347,6 +348,65 @@ describe("WebGPURenderingEngine compute compilation", () => {
       outputLayers: 1,
       hasOutput: false,
     });
+  });
+
+  it("compiles a shared multi-entry source separately for each selected entry point", async () => {
+    const { engine, compiler } = harness();
+    const source = `
+      [shader("compute")] [numthreads(8, 8, 1)]
+      void clearSamples(uint3 id : SV_DispatchThreadID) {}
+      [shader("compute")] [numthreads(8, 8, 1)]
+      void animateSamples(uint3 id : SV_DispatchThreadID) {}
+    `;
+    const config: ShaderConfig = {
+      version: "1",
+      passes: {
+        ComputeClear: { path: "kernels.slang", entryPoint: "clearSamples" },
+        ComputeAnimate: { path: "kernels.slang", entryPoint: "animateSamples" },
+        Image: { inputs: {} },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
+      ComputeClear: source,
+      ComputeAnimate: source,
+    });
+
+    expect(result?.success).toBe(true);
+    expect(compiler.compile.mock.calls
+      .filter(([, options]) => options.passKind === "compute")
+      .map(([, options]) => options.entryPoint))
+      .toEqual(["clearSamples", "animateSamples"]);
+  });
+
+  it("uses the active device workgroup limits for a larger compute pipeline", async () => {
+    const { engine, device, compiler } = harness();
+    device.limits = {
+      maxComputeWorkgroupsPerDimension: 65_535,
+      maxComputeInvocationsPerWorkgroup: 1024,
+      maxComputeWorkgroupSizeX: 1024,
+      maxComputeWorkgroupSizeY: 1024,
+      maxComputeWorkgroupSizeZ: 64,
+    };
+
+    const result = await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      {
+        ComputeSim: `
+          [shader("compute")]
+          [numthreads(32, 32, 1)]
+          void largeKernel(uint3 id : SV_DispatchThreadID) {}
+        `,
+      },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(compiler.compile).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      workgroupSize: [32, 32, 1],
+      entryPoint: "largeKernel",
+    }));
   });
 
   it("passes sampled layered output through compiler options and GPU texture layout", async () => {
@@ -362,7 +422,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(result?.success).toBe(true);
     expect(compiler.compile).toHaveBeenCalledWith(COMPUTE_SOURCE, expect.objectContaining({
       passKind: "compute",
-      workgroupSize: [4, 2, 1],
+      workgroupSize: [8, 8, 1],
       outputLayers: 3,
       hasOutput: true,
     }));
@@ -474,7 +534,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.render(1000);
 
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
-      .toEqual([{ type: "dispatchWorkgroups", value: [2, 1, 1] }]);
+      .toEqual([{ type: "dispatchWorkgroups", value: [13, 1, 1] }]);
   });
 
   it.each([
@@ -485,7 +545,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     },
     {
       label: "count x",
-      options: { dispatch: { count: 41 }, workgroupSize: [8, 1, 1] },
+      options: { dispatch: { count: 321 } },
       axis: "x",
     },
     {
@@ -1791,14 +1851,15 @@ describe("WebGPURenderingEngine compute compilation", () => {
   });
 
   it.each([
-    ["workgroup size", computeConfig({ workgroupSize: [4, 4, 1] }), 2],
-    ["output layers without an output", computeConfig({ outputLayers: 2 }), 1],
-    ["dispatch count", computeConfig({ dispatchCount: 2 }), 1],
-    ["output state", computeConfig({ sampled: true }), 2],
-  ])("rebuilds the compute pipeline when %s changes while compiling WGSL only when required", async (
+    ["legacy workgroup size", computeConfig({ workgroupSize: [4, 4, 1] }), 1, 1],
+    ["output layers without an output", computeConfig({ outputLayers: 2 }), 1, 2],
+    ["dispatch count", computeConfig({ dispatchCount: 2 }), 1, 2],
+    ["output state", computeConfig({ sampled: true }), 2, 2],
+  ])("updates the compute pipeline only when %s changes its effective configuration", async (
     _label,
     changedConfig,
     expectedComputeCompiles,
+    expectedPipelineBuilds,
   ) => {
     const { engine, device, compiler } = harness();
     await engine.compileShaderPipeline(
@@ -1816,7 +1877,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
+    expect(device.createComputePipeline).toHaveBeenCalledTimes(expectedPipelineBuilds);
     expect(compiler.compile.mock.calls.filter(([, options]) =>
       options.passName === "ComputeSim")).toHaveLength(expectedComputeCompiles);
   });

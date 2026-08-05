@@ -22,6 +22,11 @@ vi.mock('../../../lib/ConfigManager', () => ({
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
+    updateComputePass: vi.fn().mockReturnValue({ ok: true }),
+    addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
+    applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    getStorageCoverReferences: vi.fn().mockReturnValue([]),
     updateBufferPath: vi.fn(),
     setScript: vi.fn(),
     removeScript: vi.fn(),
@@ -49,6 +54,11 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
     removeBuffer: vi.fn(),
     updateImagePass: vi.fn(),
     updateBuffer: vi.fn(),
+    updateComputePass: vi.fn().mockReturnValue({ ok: true }),
+    addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
+    applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+    getStorageCoverReferences: vi.fn().mockReturnValue([]),
     updateBufferPath: vi.fn(),
     setScript: vi.fn(),
     removeScript: vi.fn(),
@@ -185,6 +195,31 @@ describe('ConfigPanel', () => {
       await tick();
 
       expect(getByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
+    });
+
+    it('renders the Storage tab for Slang configurations', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        storage: { particles: { count: 1024, stride: 16, elementType: 'float4' } },
+        passes: { Image: { inputs: {} } },
+      };
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+
+      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
     it('reacts when a compute pass is added to the config prop', async () => {

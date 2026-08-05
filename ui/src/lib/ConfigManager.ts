@@ -1,6 +1,23 @@
-import type { ShaderConfig, BufferPass, ImagePass, ResolutionSettings, BufferResolution, ConfigInput } from '@shader-studio/types';
+import type {
+  ShaderConfig,
+  BufferPass,
+  ImagePass,
+  ResolutionSettings,
+  BufferResolution,
+  ConfigInput,
+  ComputePass,
+  StorageBufferConfig,
+} from '@shader-studio/types';
 import type { Transport } from './transport/MessageTransport';
 import { persistConfig } from './config/ConfigPersistence';
+import {
+  addStorageBuffer as addStorageBufferMutation,
+  applyStorageBuffer as applyStorageBufferMutation,
+  getStorageCoverReferences as getStorageCoverReferencesMutation,
+  removeStorageBuffer as removeStorageBufferMutation,
+  validateComputePass,
+  type ConfigMutationResult,
+} from './config/ComputeConfigMutations';
 import type { ShaderLanguage } from './engineFactory';
 
 export type BufferRenameError =
@@ -374,6 +391,62 @@ export class ConfigManager {
     };
     this.updateConfig(updatedConfig);
     return true;
+  }
+
+  /** Update a compute pass only when its graph-level values are valid. */
+  updateComputePass(passName: string, pass: ComputePass): ConfigMutationResult {
+    this.ensureConfig();
+    const errors = validateComputePass(this.config!, passName, pass);
+    if (Object.keys(errors).length > 0) {
+      return { ok: false, errors };
+    }
+    const updatedConfig: ShaderConfig = {
+      ...this.config!,
+      passes: {
+        ...this.config!.passes,
+        [passName]: pass,
+      },
+    };
+    this.updateConfig(updatedConfig);
+    return { ok: true, config: updatedConfig };
+  }
+
+  /** Add a storage declaration using the standard safe defaults. */
+  addStorageBuffer(): { config: ShaderConfig; name: string } {
+    this.ensureConfig();
+    const result = addStorageBufferMutation(this.config!);
+    this.updateConfig(result.config);
+    return result;
+  }
+
+  /** Apply a validated storage declaration and persist only successful changes. */
+  applyStorageBuffer(
+    originalName: string | null,
+    name: string,
+    declaration: StorageBufferConfig,
+  ): ConfigMutationResult {
+    this.ensureConfig();
+    const result = applyStorageBufferMutation(this.config!, originalName, name, declaration);
+    if (result.ok) {
+      this.updateConfig(result.config);
+    }
+    return result;
+  }
+
+  getStorageCoverReferences(name: string): string[] {
+    return this.config ? getStorageCoverReferencesMutation(this.config, name) : [];
+  }
+
+  /** Remove a storage declaration unless a compute dispatch still covers it. */
+  removeStorageBuffer(name: string): ConfigMutationResult {
+    if (!this.config) {
+      return { ok: false, errors: { name: 'Storage buffer was not found' } };
+    }
+    const result = removeStorageBufferMutation(this.config, name);
+    if (result.ok) {
+      this.updateConfig(result.config);
+    }
+    return result;
   }
 
   /**

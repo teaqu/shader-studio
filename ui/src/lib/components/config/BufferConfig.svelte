@@ -4,6 +4,7 @@
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
     BufferPass,
+    ComputePass,
     ImagePass,
     ConfigInput,
     ResolutionSettings,
@@ -17,8 +18,10 @@
   import PathInput from "./PathInput.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import type { ShaderLanguage } from "../../engineFactory";
+  import ComputePassControls from './ComputePassControls.svelte';
+  import type { ConfigFieldErrors } from '../../config/ComputeConfigMutations';
 
-  type EditableConfig = BufferPass | ImagePass;
+  type EditableConfig = BufferPass | ImagePass | ComputePass;
 
   type BufferConfigProps = {
     bufferName: string;
@@ -35,6 +38,9 @@
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
     availableBufferNames?: string[];
+    storageNames?: string[];
+    entryPointNames?: string[];
+    onComputeCommit?: (config: ComputePass) => ConfigFieldErrors;
   };
 
   let {
@@ -52,6 +58,9 @@
     audioVideoController = undefined,
     globalMuted = false,
     availableBufferNames = [],
+    storageNames = [],
+    entryPointNames = [],
+    onComputeCommit = () => ({}),
   }: BufferConfigProps = $props();
 
   const IMAGE_SCALES = [0.25, 0.5, 1, 2, 4] as const;
@@ -59,7 +68,7 @@
   const ASPECT_MODES: AspectRatioMode[] = ['16:9', '4:3', '1:1', 'fill', 'auto'];
 
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
-  const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
+  const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass | ComputePass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
   const fileType = $derived(
     bufferName === 'common'
@@ -116,6 +125,14 @@
   function updateConfig(nextConfig: EditableConfig) {
     config = nextConfig;
     onUpdate(bufferName, config);
+  }
+
+  function handleComputeCommit(nextConfig: ComputePass): ConfigFieldErrors {
+    const errors = onComputeCommit(nextConfig);
+    if (Object.keys(errors).length === 0) {
+      config = nextConfig;
+    }
+    return errors;
   }
 
   function updateImageResolution(patch: Partial<ResolutionSettings>) {
@@ -308,6 +325,17 @@
     {/if}
 
     {#if bufferName !== "common"}
+      {#if passKind === 'compute' && language === 'slang'}
+        <div class="config-item">
+          <ComputePassControls
+            pass={config as ComputePass}
+            {storageNames}
+            {entryPointNames}
+            channelNames={configuredChannelNames}
+            onCommit={handleComputeCommit}
+          />
+        </div>
+      {/if}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
         {#if configuredChannelNames.length > 0}
