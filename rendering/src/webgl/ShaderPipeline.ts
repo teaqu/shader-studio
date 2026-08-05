@@ -239,21 +239,33 @@ export class ShaderPipeline {
       const channelTypes = this.getChannelTypes(pass, slotAssignments);
 
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
-      const { headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
-        .wrapShaderToyCode(pass.shaderSrc, {
+      let svelteHeaderLines: number;
+      let commonCodeLineCount: number;
+      let shader: PiShader | null;
+      try {
+        ({ headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
+          .wrapShaderToyCode(pass.shaderSrc, {
+            geometry: pass.geometry,
+            commonCode,
+            slotAssignments,
+            channelTypes,
+            customUniformDeclarations: customDecl,
+          }));
+        shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
           commonCode,
           slotAssignments,
           channelTypes,
           customUniformDeclarations: customDecl,
         });
-      const shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
-        geometry: pass.geometry,
-        commonCode,
-        slotAssignments,
-        channelTypes,
-        customUniformDeclarations: customDecl,
-      });
+      } catch (error) {
+        this.cleanupPartialShaders(newPassShaders);
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          errors: [`${pass.name}: ${message}`],
+        };
+      }
 
       if (!shader || !shader.mResult) {
         this.cleanupPartialShaders(newPassShaders);

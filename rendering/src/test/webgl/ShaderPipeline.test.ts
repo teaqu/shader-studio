@@ -596,6 +596,53 @@ describe("ShaderPipeline", () => {
         customUniformDeclarations: undefined,
       });
     });
+
+    it.each([
+      { rejection: new Error("compiler exploded"), message: "compiler exploded" },
+      { rejection: "compiler rejected without Error", message: "compiler rejected without Error" },
+    ])("rolls back and attributes BufferB when compilation rejects with $message", async ({ rejection, message }) => {
+      const previousImageShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(previousImageShader);
+      await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
+        null,
+        "mixed.glsl",
+      );
+      const previousShaders = shaderPipeline.getPassShaders();
+      const nextBufferAShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockClear();
+      mockRenderer.DestroyShader.mockClear();
+      mockShaderCompiler.compileShaderAsync
+        .mockResolvedValueOnce(nextBufferAShader)
+        .mockRejectedValueOnce(rejection);
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.3); }",
+        {
+          version: "1",
+          passes: {
+            BufferA: { path: "buffer-a.glsl", geometry: { type: "fullscreen" }, inputs: {} },
+            BufferB: { path: "buffer-b.glsl", geometry: { type: "sphere" }, inputs: {} },
+            Image: { geometry: { type: "fullscreen" }, inputs: {} },
+          },
+        },
+        "mixed.glsl",
+        {
+          BufferA: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.1); }",
+          BufferB: "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0.2); }",
+        },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: [`BufferB: ${message}`],
+      });
+      expect(shaderPipeline.getPassShaders()).toBe(previousShaders);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.DestroyShader.mock.calls[0][0]).toBe(nextBufferAShader);
+      expect(mockRenderer.DestroyShader.mock.calls[0][0]).not.toBe(previousImageShader);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("buildPasses", () => {

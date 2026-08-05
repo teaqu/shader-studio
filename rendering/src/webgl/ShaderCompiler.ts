@@ -163,20 +163,18 @@ uniform struct {
     );
     const gl = this.gl;
     const ext = this.khrParallelCompile;
-    if (!gl || !ext) {
+    if (!gl) {
       return this.compileShader(shaderSrc, options);
     }
+    if (!ext) {
+      return this.compileShaderSynchronously(shaderSrc, options, gl);
+    }
 
-    const glslPrefix = `#version 300 es\n#ifdef GL_ES\nprecision highp float;\nprecision highp int;\nprecision mediump sampler3D;\n#endif\n`;
-    const glslPrefixLines = (glslPrefix.match(/\n/g) ?? []).length;
     const {
-      vertexSource,
-      wrappedCode: fsSource,
-      headerLineCount,
-    } = this.wrapShaderToyCode(shaderSrc, options);
-    const vsSource = `${glslPrefix}${vertexSource}`;
-    const fsPrefixed = `${glslPrefix}${fsSource}`;
-    const mHeaderLines = glslPrefixLines + headerLineCount;
+      vsSource,
+      fsSource,
+      mHeaderLines,
+    } = this.buildWebGLSources(shaderSrc, options);
     const compileId = ShaderCompiler.nextAsyncCompileId++;
     const startedAt = performance.now();
     let pollCount = 0;
@@ -201,7 +199,7 @@ uniform struct {
       }
 
       gl.shaderSource(vs, vsSource);
-      gl.shaderSource(fs, fsPrefixed);
+      gl.shaderSource(fs, fsSource);
       gl.compileShader(vs);
       gl.compileShader(fs);
 
@@ -313,6 +311,122 @@ uniform struct {
       }
       throw error;
     }
+  }
+
+  private compileShaderSynchronously(
+    shaderSrc: string,
+    options: ShaderWrapOptions,
+    gl: WebGL2RenderingContext,
+  ): PiShader {
+    const { vsSource, fsSource, mHeaderLines } = this.buildWebGLSources(shaderSrc, options);
+    const compileId = ShaderCompiler.nextAsyncCompileId++;
+    const startedAt = performance.now();
+    const pollCount = 0;
+    let vs: WebGLShader | null = null;
+    let fs: WebGLShader | null = null;
+    let program: WebGLProgram | null = null;
+
+    try {
+      vs = gl.createShader(gl.VERTEX_SHADER);
+      if (!vs) {
+        const info = 'Failed to create vertex shader';
+        this.logAsyncCompileFailure(compileId, 'vertex-allocation', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 0 };
+      }
+
+      fs = gl.createShader(gl.FRAGMENT_SHADER);
+      if (!fs) {
+        const info = 'Failed to create fragment shader';
+        gl.deleteShader(vs);
+        this.logAsyncCompileFailure(compileId, 'fragment-allocation', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 1 };
+      }
+
+      gl.shaderSource(vs, vsSource);
+      gl.shaderSource(fs, fsSource);
+      gl.compileShader(vs);
+      gl.compileShader(fs);
+
+      const vsOk = gl.getShaderParameter(vs, gl.COMPILE_STATUS);
+      if (!vsOk) {
+        const info = gl.getShaderInfoLog(vs) ?? 'Unknown vertex shader error';
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        this.logAsyncCompileFailure(compileId, 'vertex', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 0 };
+      }
+
+      const fsOk = gl.getShaderParameter(fs, gl.COMPILE_STATUS);
+      if (!fsOk) {
+        const info = gl.getShaderInfoLog(fs) ?? 'Unknown fragment shader error';
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        this.logAsyncCompileFailure(compileId, 'fragment', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 1 };
+      }
+
+      program = gl.createProgram();
+      if (!program) {
+        const info = 'Failed to create shader program';
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        this.logAsyncCompileFailure(compileId, 'program-allocation', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 2 };
+      }
+
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+
+      const linkOk = gl.getProgramParameter(program, gl.LINK_STATUS);
+      if (!linkOk) {
+        const info = gl.getProgramInfoLog(program) ?? 'Unknown link error';
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        gl.deleteProgram(program);
+        this.logAsyncCompileFailure(compileId, 'link', info, startedAt, pollCount, gl);
+        return { mProgram: null, mResult: false, mInfo: info, mHeaderLines, mErrorType: 2 };
+      }
+
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      return { mProgram: program, mResult: true, mInfo: 'Shader compiled successfully', mHeaderLines, mErrorType: 0 };
+    } catch (error) {
+      console.error('[ShaderCompiler] synchronous compile exception', {
+        compileId,
+        elapsedMs: this.roundElapsed(performance.now() - startedAt),
+        message: error instanceof Error ? error.message : String(error),
+        glError: this.readGlError(gl),
+      });
+      if (vs) {
+        gl.deleteShader(vs);
+      }
+      if (fs) {
+        gl.deleteShader(fs);
+      }
+      if (program) {
+        gl.deleteProgram(program);
+      }
+      throw error;
+    }
+  }
+
+  private buildWebGLSources(
+    shaderSrc: string,
+    options: ShaderWrapOptions,
+  ): { vsSource: string; fsSource: string; mHeaderLines: number } {
+    const glslPrefix = `#version 300 es\n#ifdef GL_ES\nprecision highp float;\nprecision highp int;\nprecision mediump sampler3D;\n#endif\n`;
+    const glslPrefixLines = (glslPrefix.match(/\n/g) ?? []).length;
+    const {
+      vertexSource,
+      wrappedCode,
+      headerLineCount,
+    } = this.wrapShaderToyCode(shaderSrc, options);
+    return {
+      vsSource: `${glslPrefix}${vertexSource}`,
+      fsSource: `${glslPrefix}${wrappedCode}`,
+      mHeaderLines: glslPrefixLines + headerLineCount,
+    };
   }
 
   public compileShader(shaderSrc: string, options?: ShaderWrapOptions): PiShader | null;

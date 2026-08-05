@@ -644,17 +644,164 @@ describe("ShaderCompiler", () => {
       expect(fs).toContain("uniform float exposure;");
     });
 
-    it("falls back to renderer CreateShader when KHR_parallel_shader_compile is unavailable", async () => {
+    it("synchronously compiles owned mesh resources when KHR_parallel_shader_compile is unavailable", async () => {
       const gl = createMockGl(null);
       const compiler = new ShaderCompiler(mockRenderer, gl);
-      const mockShader = createMockShader();
-      (mockRenderer.CreateShader as any).mockReturnValue(mockShader);
 
-      const result = await compiler.compileShaderAsync("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}");
+      const result = await compiler.compileShaderAsync(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        { geometry: "sphere" },
+      );
 
-      expect(result).toBe(mockShader);
-      expect(mockRenderer.CreateShader).toHaveBeenCalledOnce();
-      expect(gl.createShader).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        mProgram: gl.__program,
+        mResult: true,
+        mInfo: "Shader compiled successfully",
+      });
+      expect(mockRenderer.CreateShader).not.toHaveBeenCalled();
+      expect(gl.__shaderSources[0]).toContain("layout(location = 0) in vec3 position;");
+      expect(gl.__shaderSources[1]).toContain("in vec3 iNormal;");
+      expect(vi.mocked(gl.deleteShader).mock.calls.map(([shader]) => shader)).toEqual([
+        gl.__vertexShader,
+        gl.__fragmentShader,
+      ]);
+      expect(gl.deleteProgram).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {
+        name: "vertex allocation",
+        stage: "vertex-allocation",
+        info: "Failed to create vertex shader",
+        mErrorType: 0,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.createShader).mockImplementation((type: number) => (
+            type === gl.VERTEX_SHADER ? null : gl.__fragmentShader
+          ));
+        },
+        createShaderCount: 1,
+        createProgramCount: 0,
+        deletedShaders: [] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 0,
+      },
+      {
+        name: "fragment allocation",
+        stage: "fragment-allocation",
+        info: "Failed to create fragment shader",
+        mErrorType: 1,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.createShader).mockImplementation((type: number) => (
+            type === gl.FRAGMENT_SHADER ? null : gl.__vertexShader
+          ));
+        },
+        createShaderCount: 2,
+        createProgramCount: 0,
+        deletedShaders: ["vertex"] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 0,
+      },
+      {
+        name: "vertex compile",
+        stage: "vertex",
+        info: "mesh vertex failed",
+        mErrorType: 0,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.getShaderParameter).mockImplementation((shader: WebGLShader) => shader !== gl.__vertexShader);
+          vi.mocked(gl.getShaderInfoLog).mockImplementation((shader: WebGLShader) => (
+            shader === gl.__vertexShader ? "mesh vertex failed" : null
+          ));
+        },
+        createShaderCount: 2,
+        createProgramCount: 0,
+        deletedShaders: ["vertex", "fragment"] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 0,
+      },
+      {
+        name: "fragment compile",
+        stage: "fragment",
+        info: "mesh fragment failed",
+        mErrorType: 1,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.getShaderParameter).mockImplementation((shader: WebGLShader) => shader === gl.__vertexShader);
+          vi.mocked(gl.getShaderInfoLog).mockImplementation((shader: WebGLShader) => (
+            shader === gl.__fragmentShader ? "mesh fragment failed" : null
+          ));
+        },
+        createShaderCount: 2,
+        createProgramCount: 0,
+        deletedShaders: ["vertex", "fragment"] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 0,
+      },
+      {
+        name: "program allocation",
+        stage: "program-allocation",
+        info: "Failed to create shader program",
+        mErrorType: 2,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.createProgram).mockReturnValue(null);
+        },
+        createShaderCount: 2,
+        createProgramCount: 1,
+        deletedShaders: ["vertex", "fragment"] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 0,
+      },
+      {
+        name: "link",
+        stage: "link",
+        info: "mesh link failed",
+        mErrorType: 2,
+        setup: (gl: ReturnType<typeof createMockGl>) => {
+          vi.mocked(gl.getProgramParameter).mockReturnValue(false);
+          vi.mocked(gl.getProgramInfoLog).mockReturnValue("mesh link failed");
+        },
+        createShaderCount: 2,
+        createProgramCount: 1,
+        deletedShaders: ["vertex", "fragment"] as Array<"vertex" | "fragment">,
+        deleteProgramCount: 1,
+      },
+    ])("returns a $name error and deletes every owned synchronous resource", async ({
+      stage,
+      info,
+      mErrorType,
+      setup,
+      createShaderCount,
+      createProgramCount,
+      deletedShaders,
+      deleteProgramCount,
+    }) => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const gl = createMockGl(null);
+      setup(gl);
+      const compiler = new ShaderCompiler(mockRenderer, gl);
+
+      try {
+        const result = await compiler.compileShaderAsync(
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+          { geometry: "sphere" },
+        );
+
+        expect(result).toMatchObject({
+          mProgram: null,
+          mResult: false,
+          mInfo: info,
+          mErrorType,
+        });
+        expect(errorSpy).toHaveBeenCalledWith(
+          "[ShaderCompiler] async compile failure",
+          expect.objectContaining({ stage, info }),
+        );
+      } finally {
+        errorSpy.mockRestore();
+      }
+      expect(mockRenderer.CreateShader).not.toHaveBeenCalled();
+      expect(gl.createShader).toHaveBeenCalledTimes(createShaderCount);
+      expect(gl.createProgram).toHaveBeenCalledTimes(createProgramCount);
+      expect(vi.mocked(gl.deleteShader).mock.calls.map(([shader]) => shader)).toEqual(
+        deletedShaders.map(kind => kind === "vertex" ? gl.__vertexShader : gl.__fragmentShader),
+      );
+      expect(gl.deleteProgram).toHaveBeenCalledTimes(deleteProgramCount);
+      if (deleteProgramCount > 0) {
+        expect(gl.deleteProgram).toHaveBeenCalledWith(gl.__program);
+      }
     });
 
     it("polls KHR completion and returns a linked WebGL program", async () => {
