@@ -279,12 +279,14 @@ suite('Shader Studio Test Suite', () => {
   test('uses one Studio-owned preamble manager across repeated panel activity', async () => {
     const manager = getPreambleManager(shaderStudio);
     assert.ok(manager, 'ShaderStudio should own the preamble manager');
+    const subscriptionCount = mockContext.subscriptions.length;
 
     sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(createMockWebviewPanel);
     shaderStudio['panelManager'].createPanel();
     shaderStudio['panelManager'].createPanel();
 
     assert.strictEqual(getPreambleManager(shaderStudio), manager);
+    assert.strictEqual(mockContext.subscriptions.length, subscriptionCount);
 
     const editor = createMockGLSLEditor();
     (editor.document.getText as sinon.SinonStub).returns(
