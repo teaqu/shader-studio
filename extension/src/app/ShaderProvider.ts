@@ -224,6 +224,9 @@ export class ShaderProvider {
     const isCurrentPreparation = () => (
       this.isCurrentPreparation(shaderPath, preparationGeneration)
     );
+    const isCurrentAnalysisContext = () => (
+      this.isCurrentAnalysisContext(shaderPath, contextGeneration)
+    );
 
     try {
       if (!fs.existsSync(shaderPath)) {
@@ -256,6 +259,7 @@ export class ShaderProvider {
         message,
         scriptContent,
         isCurrentPreparation,
+        isCurrentAnalysisContext,
       );
       if (
         !prepared
@@ -296,22 +300,29 @@ export class ShaderProvider {
     message: ShaderSourceMessage,
     scriptContent?: string,
     isCurrentPreparation: () => boolean = () => true,
+    isCurrentAnalysisContext: () => boolean = () => true,
   ): Promise<boolean> {
     const scriptPath = this.getScriptPath(config, shaderPath);
     if (!scriptPath) {
+      if (!isCurrentAnalysisContext()) {
+        return false;
+      }
       this.scriptEvaluator.dispose();
       return isCurrentPreparation();
     }
 
     // When bundling from editor content, skip the file existence check
     if (scriptContent === undefined && !fs.existsSync(scriptPath)) {
+      if (!isCurrentAnalysisContext()) {
+        return false;
+      }
       message.scriptBundleError = `Script file not found: ${config!.script}`;
       this.scriptEvaluator.dispose();
       return isCurrentPreparation();
     }
 
     const result = await this.scriptBundler.bundle(scriptPath, scriptContent);
-    if (!isCurrentPreparation()) {
+    if (!isCurrentPreparation() || !isCurrentAnalysisContext()) {
       return false;
     }
     if (!result.success || !result.code) {
@@ -547,6 +558,9 @@ export class ShaderProvider {
     const isCurrentPreparation = () => (
       this.isCurrentPreparation(shaderPath, preparationGeneration)
     );
+    const isCurrentAnalysisContext = () => (
+      this.isCurrentAnalysisContext(shaderPath, expectedContextGeneration)
+    );
     const buffers: Record<string, string> = {};
     const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
 
@@ -582,6 +596,7 @@ export class ShaderProvider {
       message,
       undefined,
       isCurrentPreparation,
+      isCurrentAnalysisContext,
     );
     if (
       !prepared

@@ -920,7 +920,7 @@ suite('ShaderProvider Test Suite', () => {
       const bundle = sandbox.stub((provider as any).scriptBundler, 'bundle');
       bundle.onFirstCall().returns(olderBundle.promise);
       bundle.onSecondCall().returns(newerBundle.promise);
-      sandbox.stub((provider as any).scriptEvaluator, 'loadScript').returns({
+      const loadScript = sandbox.stub((provider as any).scriptEvaluator, 'loadScript').returns({
         declarations: '',
         uniforms: [],
       });
@@ -938,6 +938,7 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(sendSpy);
       assert.strictEqual(sendSpy.firstCall.args[0].path, newerPath);
       assert.match(sendSpy.firstCall.args[0].code, /\/\/ new/);
+      sinon.assert.calledOnceWithExactly(loadScript, 'new bundle', '/workspace/uniforms.ts');
     });
 
     test('emits the active Image inputs, paths, and evaluated custom declarations', async () => {
