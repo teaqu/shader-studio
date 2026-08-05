@@ -909,6 +909,42 @@ suite('ShaderProvider Test Suite', () => {
       });
     });
 
+    test('clears retained ownership when a valid config removes the active Buffer pass', async () => {
+      const shaderPath = '/workspace/removed-owner.glsl';
+      const bufferPath = '/workspace/removed-owner-buffer.glsl';
+      const ownedConfig = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: './removed-owner-buffer.glsl' },
+        },
+      };
+      const configWithoutOwner = {
+        version: '1.0',
+        passes: { Image: {} },
+      };
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readFile = sandbox.stub(fs, 'readFileSync');
+      readFile.withArgs(shaderPath, 'utf-8').returns(mainImageCode);
+      readFile.returns('{}');
+      loadAndProcessConfigStub.returns(ownedConfig);
+
+      await provider.sendShaderFromEditor(editorFor(shaderPath, mainImageCode));
+      await provider.sendShaderFromEditor(editorFor(bufferPath, 'void renderBuffer() {}'));
+      onPreamblePreparation.resetHistory();
+      loadAndProcessConfigStub.returns(configWithoutOwner);
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      sinon.assert.notCalled(onPreamblePreparation);
+      loadAndProcessConfigStub.returns(null);
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      sinon.assert.notCalled(onPreamblePreparation);
+    });
+
     test('retains successful declarations when the active Buffer owning config becomes malformed', async () => {
       const shaderPath = '/workspace/malformed-cache.glsl';
       const bufferPath = '/workspace/malformed-cache-buffer.glsl';

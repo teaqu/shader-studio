@@ -589,6 +589,9 @@ export class ShaderProvider {
       ? this.resolveRetainedActivePassName(shaderPath)
       : this.resolveActivePassName(shaderPath, config);
     if (!passName) {
+      if (config && this.activePreamblePass?.shaderPath === shaderPath) {
+        this.activePreamblePass = null;
+      }
       return;
     }
 
