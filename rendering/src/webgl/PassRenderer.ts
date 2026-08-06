@@ -160,7 +160,12 @@ export class PassRenderer {
     this.renderer.SetShaderConstant3FV("iCameraPosition", this.meshCamera.getPosition());
     this.gl.enable(this.gl.DEPTH_TEST);
     this.gl.depthFunc(this.gl.LEQUAL);
-    this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
+    this.renderer.Clear(
+      this.renderer.CLEAR.Color | this.renderer.CLEAR.Zbuffer,
+      [0, 0, 0, 1],
+      1,
+      0,
+    );
     try {
       this.gl.bindVertexArray(mesh.vao);
       this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, this.gl.UNSIGNED_SHORT, 0);

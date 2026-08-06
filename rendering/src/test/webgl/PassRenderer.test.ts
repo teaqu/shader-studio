@@ -4,6 +4,7 @@ import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
 import type { Pass } from "../../models";
 
 const createMockRenderer = () => ({
+  CLEAR: { Color: 1, Zbuffer: 2 },
   CreateTexture: vi.fn(),
   SetShader: vi.fn(),
   SetShaderConstant1F: vi.fn(),
@@ -21,6 +22,7 @@ const createMockRenderer = () => ({
   AttachTextures: vi.fn(),
   GetAttribLocation: vi.fn(),
   DrawUnitQuad_XY: vi.fn(),
+  Clear: vi.fn(),
 }) as unknown as PiRenderer;
 
 const createMockTexture = (xres = 0, yres = 0) => ({
@@ -133,7 +135,12 @@ describe("PassRenderer", () => {
       expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
       expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
       expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LEQUAL);
-      expect(mockGl.clear).toHaveBeenCalledWith(mockGl.DEPTH_BUFFER_BIT);
+      expect(mockRenderer.Clear).toHaveBeenCalledWith(
+        mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer,
+        [0, 0, 0, 1],
+        1,
+        0,
+      );
       expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
       expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
