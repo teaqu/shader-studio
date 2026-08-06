@@ -33,11 +33,11 @@ type ComputeFailureMethod = "setPipeline" | "setBindGroup" | "dispatchWorkgroups
 
 const IMAGE_SOURCE = "float4 mainImage(float2 c) { return float4(0); }";
 const COMPUTE_SOURCE = "void computeMain(uint3 tid) {}";
+const NATIVE_COMPUTE_SOURCE = '[shader("compute")] [numthreads(8, 8, 1)] void computeMain(uint3 tid : SV_DispatchThreadID) {}';
 
 function computeConfig(options: {
   sampled?: boolean;
   outputLayers?: number;
-  workgroupSize?: [number, number, number];
   dispatch?: ComputeDispatch;
   dispatchCount?: number;
   dispatchOnce?: boolean;
@@ -54,7 +54,6 @@ function computeConfig(options: {
       ComputeSim: {
         path: "compute.slang",
         outputLayers,
-        workgroupSize: options.workgroupSize,
         dispatch: options.dispatch,
         dispatchCount: options.dispatchCount,
         dispatchOnce: options.dispatchOnce,
@@ -414,13 +413,13 @@ describe("WebGPURenderingEngine compute compilation", () => {
 
     const result = await engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      computeConfig({ sampled: true, outputLayers: 3, workgroupSize: [4, 2, 1] }),
+      computeConfig({ sampled: true, outputLayers: 3 }),
       "/shader.slang",
-      { ComputeSim: COMPUTE_SOURCE },
+      { ComputeSim: NATIVE_COMPUTE_SOURCE },
     );
 
     expect(result?.success).toBe(true);
-    expect(compiler.compile).toHaveBeenCalledWith(COMPUTE_SOURCE, expect.objectContaining({
+    expect(compiler.compile).toHaveBeenCalledWith(NATIVE_COMPUTE_SOURCE, expect.objectContaining({
       passKind: "compute",
       workgroupSize: [8, 8, 1],
       outputLayers: 3,
@@ -488,24 +487,22 @@ describe("WebGPURenderingEngine compute compilation", () => {
 
   it.each([
     {
-      label: "rounds a one-dimensional count up by the x workgroup size",
+      label: "rounds a one-dimensional count up by the shader workgroup size",
       dispatch: { count: 100 } as ComputeDispatch,
-      workgroupSize: [64, 1, 1] as [number, number, number],
-      expected: [2, 1, 1],
+      expected: [13, 1, 1],
     },
     {
-      label: "uses explicit workgroup dimensions literally despite a workgroup-size override",
+      label: "uses explicit workgroup dimensions literally",
       dispatch: { x: 2, y: 3, z: 4 } as ComputeDispatch,
-      workgroupSize: [7, 5, 3] as [number, number, number],
       expected: [2, 3, 4],
     },
-  ])("$label", async ({ dispatch, workgroupSize, expected }) => {
+  ])("$label", async ({ dispatch, expected }) => {
     const testHarness = harness();
     const result = await testHarness.engine.compileShaderPipeline(
       IMAGE_SOURCE,
-      computeConfig({ dispatch, workgroupSize }),
+      computeConfig({ dispatch }),
       "/shader.slang",
-      { ComputeSim: COMPUTE_SOURCE },
+      { ComputeSim: NATIVE_COMPUTE_SOURCE },
     );
     expect(result?.success).toBe(true);
     enableRendering(testHarness);
@@ -522,11 +519,10 @@ describe("WebGPURenderingEngine compute compilation", () => {
       IMAGE_SOURCE,
       computeConfig({
         dispatch: { cover: "particles" },
-        workgroupSize: [64, 1, 1],
         storage: { particles: { count: 100, stride: 4, elementType: "float" } },
       }),
       "/shader.slang",
-      { ComputeSim: COMPUTE_SOURCE },
+      { ComputeSim: NATIVE_COMPUTE_SOURCE },
     );
     expect(result?.success).toBe(true);
     enableRendering(testHarness);
@@ -540,7 +536,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
   it.each([
     {
       label: "texel x",
-      options: { resolution: { width: 41, height: 8 }, workgroupSize: [8, 8, 1] },
+      options: { resolution: { width: 41, height: 8 } },
       axis: "x",
     },
     {
@@ -552,7 +548,6 @@ describe("WebGPURenderingEngine compute compilation", () => {
       label: "storage x",
       options: {
         dispatch: { cover: "particles" },
-        workgroupSize: [8, 1, 1],
         storage: { particles: { count: 41, stride: 4, elementType: "float" } },
       },
       axis: "x",
@@ -1851,7 +1846,6 @@ describe("WebGPURenderingEngine compute compilation", () => {
   });
 
   it.each([
-    ["legacy workgroup size", computeConfig({ workgroupSize: [4, 4, 1] }), 1, 1],
     ["output layers without an output", computeConfig({ outputLayers: 2 }), 1, 2],
     ["dispatch count", computeConfig({ dispatchCount: 2 }), 1, 2],
     ["output state", computeConfig({ sampled: true }), 2, 2],

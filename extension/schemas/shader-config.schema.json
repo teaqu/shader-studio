@@ -155,15 +155,6 @@
           "type": "boolean",
           "description": "Encode only on the first frame after compile or reset"
         },
-        "workgroupSize": {
-          "type": "array",
-          "description": "Deprecated: define workgroup dimensions with [numthreads(...)] in the shader",
-          "items": {
-            "$ref": "#/definitions/PositiveInteger"
-          },
-          "minItems": 3,
-          "maxItems": 3
-        },
         "entryPoint": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",

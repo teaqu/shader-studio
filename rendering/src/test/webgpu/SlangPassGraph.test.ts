@@ -999,7 +999,7 @@ describe("Slang compute passes", () => {
     });
   });
 
-  it("uses the native entry point workgroup size instead of the legacy config workgroup size", () => {
+  it("uses the native entry point workgroup size", () => {
     const graph = build({
       version: "1",
       passes: {
@@ -1009,7 +1009,6 @@ describe("Slang compute passes", () => {
           dispatch: { count: 8 },
           dispatchCount: 3,
           dispatchOnce: false,
-          workgroupSize: [16, 4, 2],
         },
       },
     }, { ComputeMain: imageCode });
@@ -1030,7 +1029,7 @@ describe("Slang compute passes", () => {
         version: "1",
         passes: {
           Image: { inputs: {} },
-          ComputeMain: { path: "compute.slang", workgroupSize: [32, 32, 1] },
+          ComputeMain: { path: "compute.slang" },
         },
       },
       buffers: { ComputeMain: `[shader("compute")] [numthreads(32, 32, 1)] void largeKernel(uint3 id : SV_DispatchThreadID) {}` },
@@ -1145,23 +1144,6 @@ describe("Slang compute passes", () => {
     );
     expect(rejected.passes[0].dispatchCount).toBe(1);
   });
-
-  it.each([[8, 8], [8, 8, 1, 1], [8, 0, 1], [8, 1.5, 1], [16, 16, 2]])(
-    "ignores legacy workgroupSize %j and uses the native entry point size", (workgroupSize) => {
-      const config = {
-        version: "1",
-        passes: {
-          Image: { inputs: {} },
-          ComputeMain: { path: "compute.slang", dispatch: { count: 16 }, workgroupSize },
-        },
-      } as unknown as ShaderConfig;
-
-      const graph = build(config, { ComputeMain: imageCode });
-
-      expect(graph.errors).toEqual([]);
-      expect(graph.passes[0].workgroupSize).toEqual([8, 8, 1]);
-    },
-  );
 
   it("reports dispatchOnce combined with repeated dispatches", () => {
     const graph = build({

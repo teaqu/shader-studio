@@ -1061,12 +1061,12 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
 
       const result = configManager.updateComputePass('ComputeSim', {
-        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+        path: 'sim.slang', dispatch: { count: 64 },
       });
 
       expect(result.ok).toBe(true);
       expect(configManager.getConfig()?.passes.ComputeSim).toEqual({
-        path: 'sim.slang', dispatch: { count: 64 }, workgroupSize: [64, 1, 1],
+        path: 'sim.slang', dispatch: { count: 64 },
       });
       expect(onConfigChange).toHaveBeenCalledTimes(1);
       expect(transport.postMessage).toHaveBeenCalledTimes(1);

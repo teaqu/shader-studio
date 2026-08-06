@@ -294,16 +294,14 @@ suite('Shader config JSON schema', () => {
     }
   });
 
-  test('rejects malformed compute workgroup sizes', () => {
-    for (const workgroupSize of [[8, 8], [8, 8, 1, 1], [8, 0, 1], [-1, 8, 1]]) {
-      assertInvalid({
-        version: '1.0',
-        passes: {
-          Image: {},
-          ComputeSim: { path: 'sim.slang', workgroupSize }
-        }
-      }, workgroupSize.length === 3 ? 'should be >= 1' : 'should NOT have');
-    }
+  test('rejects deprecated compute workgroupSize', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeSim: { path: 'sim.slang', workgroupSize: [8, 8, 1] }
+      }
+    }, 'should NOT have additional properties');
   });
 
   test('rejects malformed compute dispatch variants and additional fields', () => {

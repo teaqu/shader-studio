@@ -30,15 +30,6 @@ describe('compute config mutations', () => {
       }), 'ComputeSim', pass)).toEqual({});
     });
 
-    it('leaves deprecated workgroup capacity to the rendering engine', () => {
-      expect(validateComputePass(config(), 'ComputeSim', {
-        path: 'sim.slang', workgroupSize: [16, 16, 2],
-      })).toEqual({});
-      expect(validateComputePass(config(), 'ComputeSim', {
-        path: 'sim.slang', workgroupSize: [0, 1, 1],
-      })).toEqual({ workgroupSize: 'Workgroup dimensions must be positive integers' });
-    });
-
     it('validates repeats, one-shot, and layers', () => {
       expect(validateComputePass(config(), 'ComputeSim', {
         path: 'sim.slang', dispatchCount: 2, dispatchOnce: true, outputLayers: 9,
