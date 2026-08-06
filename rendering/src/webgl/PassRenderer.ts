@@ -150,9 +150,9 @@ export class PassRenderer {
     const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
     const view = this.meshCamera.getViewMatrix();
-    this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), false);
-    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), false);
-    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(this.meshCamera.getProjectionMatrix(aspect)), false);
+    this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), true);
+    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), true);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(this.meshCamera.getProjectionMatrix(aspect)), true);
     const normalLocation = shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
       this.gl.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));

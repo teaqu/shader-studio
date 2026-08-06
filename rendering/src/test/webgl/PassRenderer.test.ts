@@ -141,6 +141,11 @@ describe("PassRenderer", () => {
         1,
         0,
       );
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith(
+        "_meshProjection",
+        expect.any(Array),
+        true,
+      );
       expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
       expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
