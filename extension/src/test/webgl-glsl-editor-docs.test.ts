@@ -16,6 +16,8 @@ suite('WebGL GLSL Editor documentation', () => {
     assert.match(settings, /webgl-glsl-editor\.codeInjection/);
     assert.match(settings, /webgl-glsl-editor\.codeInjectionSource/);
     assert.match(settings, /webglGlslEditorIntegration/);
-    assert.match(settings, /replaces any existing injection configuration/i);
+    assert.match(settings, /slangEditorIntegration/);
+    assert.match(settings, /import shader_studio;/);
+    assert.match(settings, /user-owned injection configuration unchanged/i);
   });
 });

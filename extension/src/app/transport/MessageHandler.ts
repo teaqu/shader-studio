@@ -1,19 +1,22 @@
 import * as vscode from "vscode";
-import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, WarningMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage, DebugModeStateMessage } from "@shader-studio/types";
+import { MessageEvent, LogMessage, DebugMessage, ErrorMessage, WarningMessage, RefreshMessage, GenerateConfigMessage, ShowConfigMessage, ShaderSourceMessage, DebugModeStateMessage, ShaderLockStateMessage } from "@shader-studio/types";
 import { PathResolver } from "../PathResolver";
 import { ErrorHandler } from "../ErrorHandler";
 
 export class MessageHandler {
   private errorHandler: ErrorHandler;
   private onDebugModeChanged?: (enabled: boolean) => void;
+  private onShaderLockChanged?: (lockedShaderPath?: string) => void;
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
     errorHandler: ErrorHandler,
     onDebugModeChanged?: (enabled: boolean) => void,
+    onShaderLockChanged?: (lockedShaderPath?: string) => void,
   ) {
     this.errorHandler = errorHandler;
     this.onDebugModeChanged = onDebugModeChanged;
+    this.onShaderLockChanged = onShaderLockChanged;
   }
 
   public handleMessage(message: MessageEvent): void {
@@ -54,6 +57,9 @@ export class MessageHandler {
         case "debugModeState":
           this.handleDebugModeStateMessage(message);
           break;
+        case "shaderLockState":
+          this.handleShaderLockStateMessage(message);
+          break;
         default:
           this.outputChannel.debug(`Unknown message type: ${message.type}`);
       }
@@ -78,7 +84,7 @@ export class MessageHandler {
       logText.includes("Shader compiled and linked") ||
       logText.includes("updated and pipeline recompiled")
     ) {
-      this.errorHandler.handleCompileSuccess(message.diagnostics ?? [], message.compileScope);
+      this.errorHandler.clearErrors();
     }
   }
 
@@ -148,5 +154,13 @@ export class MessageHandler {
     if (this.onDebugModeChanged) {
       this.onDebugModeChanged(enabled);
     }
+  }
+
+  private handleShaderLockStateMessage(message: ShaderLockStateMessage): void {
+    const lockedShaderPath = message.payload.lockedShaderPath;
+    this.outputChannel.info(
+      lockedShaderPath ? `Shader locked: ${lockedShaderPath}` : "Shader unlocked",
+    );
+    this.onShaderLockChanged?.(lockedShaderPath);
   }
 }

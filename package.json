@@ -13,8 +13,7 @@
     "ui",
     "config-ui",
     "shader-explorer",
-    "monaco",
-    "slang-language-service"
+    "monaco"
   ],
   "scripts": {
     "build": "npm run compile",

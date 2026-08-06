@@ -1,2 +1,0 @@
-export const PINNED_SLANG_COMPILER_VERSION = "2026.10.2";
-export const NEW_SLANG_FILE_LANGUAGE_VERSION = "2026" as const;

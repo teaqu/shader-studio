@@ -17,20 +17,6 @@ const slangShader = `float4 mainImage(float2 fragCoord)
 }`;
 
 describe('ShaderDebugger - Slang line debug in mainImage', () => {
-  it('preserves BOM, language/module headers, imports, and their line positions', () => {
-    const source = `\uFEFF#language slang 2026\nmodule image;\nimport palette;\n#include "common.slang"\n${slangShader}`;
-    const result = ShaderDebugger.modifyShaderForLineDebug(
-      source, 7, '    float3 col = palette(uv.x * 0.2 + iTime * 0.02) * 0.06;',
-      new Map(), new Map(), 'off', null, 'slang',
-    );
-
-    expect(result?.split('\n').slice(0, 4)).toEqual([
-      '\uFEFF#language slang 2026',
-      'module image;',
-      'import palette;',
-      '#include "common.slang"',
-    ]);
-  });
   it('visualizes a float3 declaration with a return statement', () => {
     const result = ShaderDebugger.modifyShaderForLineDebug(
       slangShader,

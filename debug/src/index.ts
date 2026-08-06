@@ -5,4 +5,4 @@ export { ShaderDebugger } from './ShaderDebugger';
 export { VariableCaptureBuilder } from './VariableCaptureBuilder';
 export { getDebugDialect } from './dialects';
 export type { DebugDialectAdapter } from './dialects';
-export type { ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext, CaptureVarInfo, ShaderDialect, ShaderDebugDiagnostic } from './types';
+export type { ParameterMode, DebugParameterInfo, DebugLoopInfo, DebugFunctionContext, CaptureVarInfo, ShaderDialect } from './types';

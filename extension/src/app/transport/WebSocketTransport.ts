@@ -124,7 +124,8 @@ export class WebSocketTransport implements MessageTransport {
 
       if (activeEditor) {
         setTimeout(() => {
-          this.shaderProvider!.sendShaderFromEditor(activeEditor);
+          this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
+          void this.shaderProvider.sendShaderFromEditor(activeEditor);
         }, 100);
         console.log('WebSocket: Requested current shader to be sent to new client');
       }
@@ -189,7 +190,9 @@ export class WebSocketTransport implements MessageTransport {
 
         // Resolve to absolute path
         let absolutePath: string;
-        if (input.path.startsWith('@/')) {
+        if (/^https?:\/\//i.test(input.path)) {
+          absolutePath = input.path;
+        } else if (input.path.startsWith('@/')) {
           const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
           absolutePath = workspaceFolder
             ? path.join(workspaceFolder.uri.fsPath, input.path.substring(2))
@@ -203,10 +206,6 @@ export class WebSocketTransport implements MessageTransport {
         }
 
         input.resolved_path = this.convertUriForClient(absolutePath);
-        if (input.type === 'video') {
-          // Browser clients need HTTP URLs for direct media playback.
-          input.path = this.convertUriForClient(absolutePath);
-        }
       }
     }
 

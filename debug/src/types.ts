@@ -7,19 +7,6 @@ export type ParameterMode = 'expression';
  */
 export type ShaderDialect = 'glsl' | 'slang';
 
-export interface ShaderDebugDiagnostic {
-  code: 'slang-cross-file-debug-unsupported';
-  severity: 'error';
-  message: string;
-  source: 'slang-compile';
-  sourceUri: string;
-  passName: string;
-  range: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
-}
-
 export interface CaptureVarInfo {
   varName: string;
   varType: string;

@@ -3,6 +3,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { WebSocket, WebSocketServer } from 'ws';
 import { WebSocketTransport } from '../../../app/transport/WebSocketTransport';
+import { ShaderProvider } from '../../../app/ShaderProvider';
 import { WorkspaceFileScanner } from '../../../app/WorkspaceFileScanner';
 import { Logger } from '../../../app/services/Logger';
 
@@ -149,6 +150,66 @@ suite('WebSocketTransport Test Suite', () => {
     assert.strictEqual(transport.hasActiveClients(), false);
   });
 
+  test('initial current shader claims ownership and emits preamble preparation', async () => {
+    Logger.initialize({
+      info: sandbox.stub(),
+      debug: sandbox.stub(),
+      warn: sandbox.stub(),
+      error: sandbox.stub(),
+    } as unknown as vscode.LogOutputChannel);
+    const shaderPath = '/workspace/websocket-current.glsl';
+    const code = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+    const editor = {
+      document: {
+        getText: sandbox.stub().returns(code),
+        uri: vscode.Uri.file(shaderPath),
+        languageId: 'glsl',
+        fileName: shaderPath,
+        lineAt: sandbox.stub().returns({ text: code }),
+      },
+      selection: { active: { line: 0, character: 0 } },
+    } as unknown as vscode.TextEditor;
+    mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(editor);
+
+    const send = sandbox.stub();
+    const onPreamblePreparation = sandbox.stub();
+    const provider = new ShaderProvider(
+      {
+        send,
+        getErrorHandler: sandbox.stub().returns({
+          handleError: sandbox.stub(),
+          handlePersistentError: sandbox.stub(),
+          clearPersistentErrors: sandbox.stub(),
+        }),
+      } as any,
+      undefined,
+      undefined,
+      onPreamblePreparation,
+    );
+    transport = new WebSocketTransport(
+      51484,
+      provider,
+      mockGlslFileTracker,
+      mockContext,
+      '/mock/extension',
+    );
+
+    (transport as any).sendCurrentShaderToNewClient(mockWsClient);
+    await new Promise(resolve => setTimeout(resolve, 125));
+
+    sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
+      kind: 'valid',
+      snapshot: {
+        shaderPath,
+        configPath: null,
+        passName: 'Image',
+        inputs: undefined,
+        customUniformDeclarations: '',
+      },
+    });
+    sinon.assert.calledOnce(send);
+  });
+
   suite('convertUriForClient', () => {
     let vscodeConfigStub: sinon.SinonStub;
     let mockConfig: any;
@@ -256,7 +317,7 @@ suite('WebSocketTransport Test Suite', () => {
       }
     });
 
-    test('converts video path to HTTP URL', () => {
+    test('adds an HTTP URL to resolved_path for video inputs', () => {
       const wsClients = (transport as any).wsClients as Set<WebSocket>;
       wsClients.add(mockWsClient as any);
 
@@ -275,11 +336,61 @@ suite('WebSocketTransport Test Suite', () => {
       });
 
       const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
       assert.strictEqual(
-        sentData.config.passes.Image.inputs.iChannel0.path,
+        sentData.config.passes.Image.inputs.iChannel0.resolved_path,
         `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`
       );
-      assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
+    });
+
+    test('preserves the authored video path when adding a browser URL', () => {
+      const wsClients = (transport as any).wsClients as Set<WebSocket>;
+      wsClients.add(mockWsClient as any);
+
+      transport.send({
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        config: {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { type: 'video', path: 'assets/video.mp4' }
+              }
+            }
+          }
+        }
+      });
+
+      const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, 'assets/video.mp4');
+      assert.strictEqual(
+        sentData.config.passes.Image.inputs.iChannel0.resolved_path,
+        `http://localhost:3000/textures/${encodeURIComponent('/test/assets/video.mp4')}`
+      );
+    });
+
+    test('passes existing HTTP video URLs through unchanged', () => {
+      const wsClients = (transport as any).wsClients as Set<WebSocket>;
+      wsClients.add(mockWsClient as any);
+      const videoUrl = 'https://cdn.example.com/video.mp4';
+
+      transport.send({
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        config: {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { type: 'video', path: videoUrl }
+              }
+            }
+          }
+        }
+      });
+
+      const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, videoUrl);
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.resolved_path, videoUrl);
     });
 
     test('converts texture path to HTTP URL in resolved_path', () => {
@@ -331,10 +442,7 @@ suite('WebSocketTransport Test Suite', () => {
       const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
       assert.ok(sentData.config.passes.BufferA.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
       assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
-      assert.strictEqual(
-        sentData.config.passes.Image.inputs.iChannel0.path,
-        `http://localhost:3000/textures/${encodeURIComponent('/path/to/video.mp4')}`
-      );
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
     });
 
     test('converts audio input path to HTTP URL', () => {
@@ -380,11 +488,11 @@ suite('WebSocketTransport Test Suite', () => {
       });
 
       const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/video.mp4');
       assert.strictEqual(
-        sentData.config.passes.Image.inputs.iChannel0.path,
+        sentData.config.passes.Image.inputs.iChannel0.resolved_path,
         `http://localhost:8080/textures/${encodeURIComponent('/path/to/video.mp4')}`
       );
-      assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:8080/textures/'));
     });
   });
 });

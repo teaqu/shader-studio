@@ -2,6 +2,14 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderStudio } from '../../app/ShaderStudio';
+import { WebglGlslEditorManager } from '../../app/WebglGlslEditorManager';
+import { ShaderValidatorPreambleManager } from '../../app/ShaderValidatorPreambleManager';
+
+interface ExtensionManifest {
+  extensionDependencies?: string[];
+}
+
+const extensionManifest = require('../../../package.json') as ExtensionManifest;
 
 suite('Shader Studio Test Suite', () => {
   let shaderStudio: ShaderStudio;
@@ -10,6 +18,11 @@ suite('Shader Studio Test Suite', () => {
   let mockDiagnosticCollection: vscode.DiagnosticCollection;
   let sandbox: sinon.SinonSandbox;
   let sendShaderSpy: sinon.SinonSpy;
+  let preambleApplyStub: sinon.SinonStub;
+  let preambleDisposeStub: sinon.SinonStub;
+  let shaderValidatorApplyStub: sinon.SinonStub;
+  let shaderValidatorDisposeStub: sinon.SinonStub;
+  let getExtensionStub: sinon.SinonStub;
   let activeEditorChangeListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
 
@@ -103,12 +116,27 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.commands, 'registerCommand').returns({
       dispose: sandbox.stub()
     } as any);
+    sandbox.stub(vscode.extensions, 'onDidChange').returns({
+      dispose: sandbox.stub(),
+    });
+    getExtensionStub = sandbox.stub(vscode.extensions, 'getExtension').returns(undefined);
+    preambleApplyStub = sandbox.stub(WebglGlslEditorManager.prototype, 'apply').resolves();
+    preambleDisposeStub = sandbox.stub(WebglGlslEditorManager.prototype, 'dispose');
+    shaderValidatorApplyStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'apply').resolves();
+    shaderValidatorDisposeStub = sandbox.stub(ShaderValidatorPreambleManager.prototype, 'dispose');
+    sandbox.stub(
+      ShaderStudio.prototype as unknown as { startWebSocketTransport: () => void },
+      'startWebSocketTransport',
+    );
 
     shaderStudio = new ShaderStudio(mockContext, mockOutputChannel, mockDiagnosticCollection);
     sendShaderSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromEditor');
   });
 
   teardown(() => {
+    if (!preambleDisposeStub.called || !shaderValidatorDisposeStub.called) {
+      shaderStudio.dispose();
+    }
     sandbox.restore();
   });
 
@@ -232,6 +260,83 @@ suite('Shader Studio Test Suite', () => {
       activeEditorChangeListener(editor);
     }
   }
+
+  function getPreambleManager(studio: ShaderStudio): WebglGlslEditorManager | undefined {
+    return (studio as unknown as {
+      webglGlslEditorManager?: WebglGlslEditorManager;
+    }).webglGlslEditorManager;
+  }
+
+  function getShaderValidatorPreambleManager(
+    studio: ShaderStudio,
+  ): ShaderValidatorPreambleManager | undefined {
+    return (studio as unknown as {
+      shaderValidatorPreambleManager?: ShaderValidatorPreambleManager;
+    }).shaderValidatorPreambleManager;
+  }
+
+  function createMockWebviewPanel(): vscode.WebviewPanel {
+    return {
+      reveal: sandbox.stub(),
+      webview: {
+        html: '',
+        asWebviewUri: sandbox.stub().returns(vscode.Uri.file('/mock/uri')),
+        onDidReceiveMessage: sandbox.stub().returns({ dispose: sandbox.stub() }),
+        postMessage: sandbox.stub(),
+      },
+      onDidDispose: sandbox.stub().returns({ dispose: sandbox.stub() }),
+    } as unknown as vscode.WebviewPanel;
+  }
+
+  test('uses one Studio-owned GLSL companion manager of each kind across repeated panel activity', async () => {
+    const manager = getPreambleManager(shaderStudio);
+    const shaderValidatorManager = getShaderValidatorPreambleManager(shaderStudio);
+    assert.ok(manager, 'ShaderStudio should own the preamble manager');
+    assert.ok(shaderValidatorManager, 'ShaderStudio should own the Shader Validator preamble manager');
+    const subscriptionCount = mockContext.subscriptions.length;
+
+    sandbox.stub(vscode.window, 'createWebviewPanel').callsFake(createMockWebviewPanel);
+    shaderStudio['panelManager'].createPanel();
+    shaderStudio['panelManager'].createPanel();
+
+    assert.strictEqual(getPreambleManager(shaderStudio), manager);
+    assert.strictEqual(getShaderValidatorPreambleManager(shaderStudio), shaderValidatorManager);
+    assert.strictEqual(mockContext.subscriptions.length, subscriptionCount);
+
+    const editor = createMockGLSLEditor();
+    (editor.document.getText as sinon.SinonStub).returns(
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}',
+    );
+    shaderStudio['shaderProvider'].claimActiveAnalysisContext(editor.document.uri.fsPath);
+    await shaderStudio['shaderProvider'].sendShaderFromEditor(editor);
+
+    sinon.assert.calledOnce(preambleApplyStub);
+    assert.strictEqual(preambleApplyStub.thisValues[0], manager);
+    sinon.assert.calledOnce(shaderValidatorApplyStub);
+    assert.strictEqual(shaderValidatorApplyStub.thisValues[0], shaderValidatorManager);
+    shaderStudio.dispose();
+  });
+
+  test('keeps WebGL GLSL Editor optional when the companion is absent', () => {
+    assert.ok(shaderStudio);
+    sinon.assert.notCalled(getExtensionStub);
+    assert.ok(!extensionManifest.extensionDependencies?.includes('raczzalan.webgl-glsl-editor'));
+    shaderStudio.dispose();
+  });
+
+  test('disposes both Studio-owned GLSL companion managers during shutdown', () => {
+    const manager = getPreambleManager(shaderStudio);
+    const shaderValidatorManager = getShaderValidatorPreambleManager(shaderStudio);
+    assert.ok(manager, 'ShaderStudio should own the preamble manager');
+    assert.ok(shaderValidatorManager, 'ShaderStudio should own the Shader Validator preamble manager');
+
+    shaderStudio.dispose();
+
+    sinon.assert.calledOnce(preambleDisposeStub);
+    assert.strictEqual(preambleDisposeStub.thisValues[0], manager);
+    sinon.assert.calledOnce(shaderValidatorDisposeStub);
+    assert.strictEqual(shaderValidatorDisposeStub.thisValues[0], shaderValidatorManager);
+  });
 
   test('should not process shader updates when no clients are connected', () => {
     const mockEditor = createMockGLSLEditor();
@@ -519,6 +624,34 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
     sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { reload: true });
+  });
+
+  test('foreground path activation claims analysis ownership before refreshing', async () => {
+    const shaderPath = '/mock/path/foreground.glsl';
+    const claim = sandbox.spy(shaderStudio['shaderProvider'], 'claimActiveAnalysisContext');
+    const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath, {
+      claimActiveAnalysisContext: true,
+    });
+
+    sinon.assert.calledOnceWithExactly(claim, shaderPath);
+    sinon.assert.callOrder(claim, send);
+  });
+
+  test('background specific-path refresh preserves active shader tracking and analysis ownership', async () => {
+    const shaderPath = '/mock/path/background.glsl';
+    const activeShaderPath = '/mock/path/active.glsl';
+    const claim = sandbox.spy(shaderStudio['shaderProvider'], 'claimActiveAnalysisContext');
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(activeShaderPath);
+
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath);
+
+    sinon.assert.notCalled(claim);
+    assert.strictEqual(
+      shaderStudio['glslFileTracker'].getLastViewedGlslFile(),
+      activeShaderPath,
+    );
   });
 
   test('refreshCurrentShader should call sendShaderFromPath when last viewed file is currently open', async () => {
