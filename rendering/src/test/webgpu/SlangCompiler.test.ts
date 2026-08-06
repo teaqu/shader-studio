@@ -230,7 +230,10 @@ describe("SlangCompiler", () => {
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).not.toContain("import shader_studio;");
     expect(wrapped).toContain("// Shader Studio editor support import");
-    expect(wrapped).toContain("import palette;");
+    // import palette; is stripped — all imports are removed because
+    // the WASM runtime has no filesystem to resolve them.
+    expect(wrapped).not.toContain("import palette;");
+    expect(wrapped).toContain("float4 mainImage");
   });
 
   it("neutralizes the editor import in common code", () => {
@@ -443,6 +446,115 @@ describe("SlangCompiler", () => {
     expect(result).toEqual({
       success: false,
       errors: ["Missing mainImage function"],
+    });
+  });
+
+  describe("import stripping", () => {
+    const depModule = {
+      moduleName: "palette",
+      path: "/shaders/lib/palette.slang",
+      source: "module palette;\npublic float4 paletteColor() { return 1; }",
+    };
+
+    it("strips a quoted path import from the source", () => {
+      const loads: Array<{ source: string }> = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onLoad: (source) => loads.push({ source }),
+      }));
+
+      compiler.compileImagePass(
+        'import "../lib/palette.slang";\nfloat4 mainImage(float2 c) { return paletteColor(); }',
+        { sourcePath: "/shaders/passes/glow.slang", modules: [depModule] },
+      );
+
+      const rootSource = loads[loads.length - 1]!.source;
+      expect(rootSource).not.toContain("import");
+    });
+
+    it("strips an identifier-path import from the source", () => {
+      const loads: Array<{ source: string }> = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onLoad: (source) => loads.push({ source }),
+      }));
+
+      compiler.compileImagePass(
+        "import lib.palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }",
+        { sourcePath: "/shaders/image.slang", modules: [depModule] },
+      );
+
+      const rootSource = loads[loads.length - 1]!.source;
+      expect(rootSource).not.toContain("import");
+    });
+
+    it("preserves source lines after the import", () => {
+      const loads: Array<{ source: string }> = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onLoad: (source) => loads.push({ source }),
+      }));
+
+      compiler.compileImagePass(
+        "import lib.palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }",
+        { sourcePath: "/shaders/image.slang", modules: [depModule] },
+      );
+
+      const rootSource = loads[loads.length - 1]!.source;
+      expect(rootSource).toContain("float4 mainImage");
+    });
+
+    it("leaves source without imports unchanged", () => {
+      const loads: Array<{ source: string }> = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onLoad: (source) => loads.push({ source }),
+      }));
+
+      compiler.compileImagePass(
+        "float4 mainImage(float2 c) { return 1; }",
+        { sourcePath: "/shaders/image.slang" },
+      );
+
+      const rootSource = loads[loads.length - 1]!.source;
+      expect(rootSource).toContain("float4 mainImage");
+    });
+  });
+
+  describe("dependency composite", () => {
+    it("includes dependency modules in createCompositeComponentType", () => {
+      const components: unknown[][] = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onComposite: (c) => components.push([...c]),
+      }));
+
+      compiler.compileImagePass(
+        "import palette;\nfloat4 mainImage(float2 c) { return paletteColor(); }",
+        {
+          sourcePath: "/shaders/image.slang",
+          modules: [{
+            moduleName: "palette",
+            path: "/shaders/palette.slang",
+            source: "module palette;\npublic float4 paletteColor() { return 1; }",
+          }],
+        },
+      );
+
+      // The composite should have at least 3 items: dependency, root module, and entry points
+      expect(components[0]!.length).toBeGreaterThanOrEqual(3);
+      // The first items should be the dependency modules
+      expect(components[0]![0]).toBe(components[0]![1]); // both are the same fake module object
+    });
+
+    it("composite with no dependencies has only root module and entry points", () => {
+      const components: unknown[][] = [];
+      const compiler = new SlangCompiler(makeFakeSlang({
+        onComposite: (c) => components.push([...c]),
+      }));
+
+      compiler.compileImagePass(
+        "float4 mainImage(float2 c) { return 1; }",
+        { sourcePath: "/shaders/image.slang" },
+      );
+
+      // Root module + vertex entry + fragment entry = 3
+      expect(components[0]!.length).toBe(3);
     });
   });
 

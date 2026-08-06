@@ -11,7 +11,7 @@ import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
-import { collectSlangDependencies } from "./SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
 import type {
   ShaderConfig,
   ShaderSourceMessage,
@@ -525,6 +525,7 @@ export class ShaderProvider {
         }
       }
       for (const root of roots) {
+        // Check import dependencies
         const result = collectSlangDependencies({
           rootPath: root.rootPath,
           rootSource: root.rootSource,
@@ -532,6 +533,13 @@ export class ShaderProvider {
           readSource: (dependencyPath) => this.readShaderSource(dependencyPath),
         });
         if (result.modules.some((module) => path.normalize(module.path) === normalizedFilePath)) {
+          return shaderPath;
+        }
+        // Check include dependencies
+        const { includedPaths } = resolveSlangIncludes(
+          root.rootSource, root.rootPath, (p) => this.readShaderSource(p),
+        );
+        if (includedPaths.some((p) => path.normalize(p) === normalizedFilePath)) {
           return shaderPath;
         }
       }
@@ -721,6 +729,9 @@ export class ShaderProvider {
 
   private attachSlangDependencies(message: ShaderSourceMessage): void {
     const bufferPathMap = message.bufferPathMap ?? this.buildBufferPathMap(message.config ?? null, message.path);
+
+    // Build roots from the ORIGINAL sources — before inlining
+    // includes/imports — so dependency tracking sees the directives.
     const roots: Array<{ passName: string; filePath: string; source: string }> = [{
       passName: "Image", filePath: message.path, source: message.code,
     }];
@@ -730,6 +741,8 @@ export class ShaderProvider {
         roots.push({ passName, filePath, source });
       }
     }
+
+    // Step 1: Collect import dependencies BEFORE inlining (for hot reload).
     const modules: SlangSourceModule[] = [];
     const errors: SlangDependencyDiagnostic[] = [];
     const renderPassNames = roots.map((root) => root.passName).filter((passName) => passName !== "common");
@@ -746,6 +759,28 @@ export class ShaderProvider {
         errors.push(...result.errors);
       }
     }
+
+    // Step 2: Resolve #include / __include directives. Hot reload of
+    // include files is handled by resolveOwningSlangDependency which also
+    // checks resolveSlangIncludes for dependency matching.
+    const imageResult = resolveSlangIncludes(message.code, message.path, (p) => this.readShaderSource(p));
+    message.code = imageResult.source;
+    for (const [passName, source] of Object.entries(message.buffers ?? {})) {
+      const filePath = bufferPathMap[passName];
+      if (filePath) {
+        message.buffers[passName] = resolveSlangIncludes(source, filePath, (p) => this.readShaderSource(p)).source;
+      }
+    }
+
+    // Step 3: Resolve import declarations by inlining the imported source.
+    message.code = resolveSlangImports(message.code, message.path, (p) => this.readShaderSource(p));
+    for (const [passName, source] of Object.entries(message.buffers ?? {})) {
+      const filePath = bufferPathMap[passName];
+      if (filePath) {
+        message.buffers[passName] = resolveSlangImports(source, filePath, (p) => this.readShaderSource(p));
+      }
+    }
+
     message.slangModules = Array.from(new Map(
       modules.map((module) => [`${module.ownerPass}\0${module.moduleName}\0${module.path}`, module]),
     ).values());

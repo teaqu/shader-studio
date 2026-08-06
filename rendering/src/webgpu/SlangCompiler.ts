@@ -1,6 +1,7 @@
 import {
   type SlangModuleApi,
   type SlangGlobalSession,
+  type SlangModule,
   type SlangCompileOptions,
   slangVectorToArray,
 } from "./slangTypes";
@@ -50,6 +51,7 @@ export class SlangCompiler {
       return { success: false, errors: [this.lastError("Slang: failed to create session")] };
     }
 
+    const dependencyModules: SlangModule[] = [];
     for (const dependency of options.modules ?? []) {
       const dependencyModule = session.loadModuleFromSource(
         stripShaderStudioEditorImport(dependency.source),
@@ -61,10 +63,17 @@ export class SlangCompiler {
           `Slang: failed to compile imported module ${dependency.moduleName} (${dependency.path})`,
         )] };
       }
+      dependencyModules.push(dependencyModule);
     }
 
+    // Strip import statements before passing source to the Slang WASM
+    // runtime. The WASM has no filesystem, so any form of `import` (quoted
+    // path or dotted identifier) triggers "cannot open file". Dependencies
+    // are pre-loaded above and linked via the composite below.
+    const resolvedSource = stripImports(userSource);
+
     const isCompute = options.passKind === "compute";
-    const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(userSource) : [];
+    const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(resolvedSource) : [];
     const computeEntryPoint = options.entryPoint
       ? nativeComputeEntryPoints.find(({ name }) => name === options.entryPoint)?.name
       : nativeComputeEntryPoints.length === 1 ? nativeComputeEntryPoints[0]!.name : undefined;
@@ -75,7 +84,7 @@ export class SlangCompiler {
       };
     }
     const wrapped = isCompute
-      ? wrapSlangComputeSource(userSource, {
+      ? wrapSlangComputeSource(resolvedSource, {
         passName: options.passName,
         commonCode: options.commonCode,
         channels: options.channels,
@@ -85,7 +94,7 @@ export class SlangCompiler {
         hasOutput: options.hasOutput === true,
         customUniforms: options.customUniforms,
       })
-      : wrapSlangImageSource(userSource, {
+      : wrapSlangImageSource(resolvedSource, {
         passName: options.passName,
         commonCode: options.commonCode,
         channels: options.channels,
@@ -98,7 +107,7 @@ export class SlangCompiler {
       });
     // Name the module after the pass so Slang diagnostics cite the right
     // file (e.g. /buffera.slang) rather than always claiming /image.slang.
-    const sourceWithoutComments = userSource
+    const sourceWithoutComments = resolvedSource
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/.*$/gm, "");
     const declaredModuleName = sourceWithoutComments.match(
@@ -130,7 +139,7 @@ export class SlangCompiler {
       };
     }
 
-    const composite = session.createCompositeComponentType([module, ...entryPoints]);
+    const composite = session.createCompositeComponentType([...dependencyModules, module, ...entryPoints]);
     if (!composite) {
       return { success: false, errors: [this.lastError("Slang: failed to compose program")] };
     }
@@ -175,6 +184,27 @@ export class SlangCompiler {
     const msg = this.slang.getLastError?.()?.message?.trim();
     return msg && msg.length > 0 ? msg : fallback;
   }
+}
+
+const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"[^"]+")[ \t]*;?[ \t]*$/gm;
+
+/**
+ * Strip import declarations from Slang source before passing it to the WASM
+ * runtime. The WASM has no filesystem, so any form of `import` triggers
+ * "cannot open file". Dependencies are pre-loaded as separate modules and
+ * linked via the composite.
+ *
+ * The `shader_studio` editor import is left intact — it is handled separately
+ * by `stripShaderStudioEditorImport` which replaces it with a line-preserving
+ * comment inside the wrap functions.
+ */
+function stripImports(source: string): string {
+  return source.replace(IMPORT_STRIP_PATTERN, (_match, target: string) => {
+    if (target === "shader_studio" || target === '"shader-studio.slang"') {
+      return _match; // leave for stripShaderStudioEditorImport
+    }
+    return "";
+  });
 }
 
 function errMessage(e: unknown): string {
