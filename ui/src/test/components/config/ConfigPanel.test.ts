@@ -7,6 +7,11 @@ import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
 import type { Transport } from '../../../lib/transport/MessageTransport';
 import type { ShaderConfig } from '@shader-studio/types';
 import { ConfigManager } from '../../../lib/ConfigManager';
+import {
+  getOverlayActiveFile,
+  setEditorOverlayVisible,
+  setOverlayActiveFile,
+} from '../../../lib/state/editorOverlayState.svelte';
 // Mock ConfigManager to avoid real transport interactions
 vi.mock('../../../lib/ConfigManager', () => ({
   ConfigManager: vi.fn().mockImplementation(() => ({
@@ -78,6 +83,8 @@ describe('ConfigPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    setEditorOverlayVisible(false);
+    setOverlayActiveFile('Image');
 
     // Reset ConfigManager mock to default (empty buffer list)
     (ConfigManager as unknown as Mock).mockImplementation(() => createMockConfigManager([]));
@@ -1510,6 +1517,42 @@ describe('ConfigPanel', () => {
   });
 
   describe('double-click sends navigateToBuffer', () => {
+    it('switches the visible overlay to the double-clicked buffer when unlocked', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+      setEditorOverlayVisible(true);
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap: { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' },
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: false,
+      });
+
+      await tick();
+
+      const bufferATab = getAllByRole('button').find((tab) => tab.textContent?.includes('BufferA'));
+      expect(bufferATab).toBeTruthy();
+      await fireEvent.dblClick(bufferATab!);
+
+      expect(getOverlayActiveFile()).toBe('BufferA');
+      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+
     it('should send navigateToBuffer on double-click when locked and buffer has path', async () => {
       const config: ShaderConfig = {
         version: '1.0',

@@ -160,6 +160,22 @@ describe("WebGPURenderingEngine", () => {
     expect(() => engine.initialize(noWebGpuCanvas())).not.toThrow();
   });
 
+  it("connects mesh camera controls to the Slang canvas and input state", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const canvas = webGpuCanvas({ configure: vi.fn() });
+    const meshCamera = {
+      attach: vi.fn(),
+      setInputEnabled: vi.fn(),
+    };
+    (engine as unknown as { meshCamera: typeof meshCamera }).meshCamera = meshCamera;
+
+    engine.initialize(canvas);
+    engine.setInputEnabled(false);
+
+    expect(meshCamera.attach).toHaveBeenCalledWith(canvas);
+    expect(meshCamera.setInputEnabled).toHaveBeenCalledWith(false);
+  });
+
   it("does not throw if getContext itself throws", () => {
     const canvas = {
       width: 1,
@@ -716,6 +732,8 @@ describe("WebGPURenderingEngine", () => {
         { moduleName: "buffer_helpers", path: "/buffer-helpers.slang", source: "module buffer_helpers;", ownerPass: "BufferA" },
         { moduleName: "image_helpers", path: "/image-helpers.slang", source: "module image_helpers;", ownerPass: "Image" },
       ],
+      undefined,
+      { Image: "/image.slang", BufferA: "/passes/buffer-a.slang" },
     );
 
     expect(result?.success).toBe(true);
@@ -735,6 +753,7 @@ describe("WebGPURenderingEngine", () => {
         path: "/buffer-helpers.slang",
         source: "module buffer_helpers;",
       }],
+      sourcePath: "/passes/buffer-a.slang",
     });
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
@@ -750,6 +769,7 @@ describe("WebGPURenderingEngine", () => {
         path: "/image-helpers.slang",
         source: "module image_helpers;",
       }],
+      sourcePath: "/image.slang",
     });
   });
 

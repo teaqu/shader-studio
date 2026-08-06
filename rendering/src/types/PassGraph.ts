@@ -1,6 +1,7 @@
 import type {
   AudioConfigInput,
   CubemapConfigInput,
+  GeometryType,
   TextureConfigInput,
   VideoConfigInput,
 } from "@shader-studio/types";
@@ -61,6 +62,8 @@ export type DispatchSpec =
 export interface RenderPassNode {
   name: RenderPassName;
   source: string;
+  geometry: GeometryType;
+  vertexSrc?: string;
   path?: string;
   kind: "render" | "compute";
   output: "texture" | "canvas" | "none";

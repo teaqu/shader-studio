@@ -284,6 +284,18 @@ describe('BufferConfig', () => {
   });
 
   describe('Geometry', () => {
+    it('renders geometry controls after the pass resolution controls', () => {
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config: { path: 'a.glsl', inputs: {}, geometry: { type: 'cube' } },
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
+      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Vertex shader']);
+    });
+
     it('defaults renderable passes to fullscreen and serializes a selected sphere', async () => {
       const config: BufferPass = { path: 'a.glsl', inputs: {} };
       const { getByLabelText } = render(BufferConfig, {

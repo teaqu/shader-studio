@@ -4,6 +4,7 @@
 
 import type { SlangSourceModule } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
+import type { GeometryType } from "@shader-studio/types";
 
 export interface SlangCompileChannel {
   slot: number;
@@ -18,6 +19,8 @@ export interface SlangCompileOptions {
   channels?: SlangCompileChannel[];
   captureMode?: boolean;
   passKind?: "render" | "compute";
+  geometry?: GeometryType;
+  vertexCode?: string;
   storage?: StorageBindingNode[];
   workgroupSize?: [number, number, number];
   outputLayers?: number;

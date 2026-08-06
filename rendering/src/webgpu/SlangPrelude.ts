@@ -13,6 +13,8 @@
 // so Slang's diagnostics report the user's real line numbers.
 
 import type { StorageBindingNode } from "../types/PassGraph";
+import type { GeometryType } from "@shader-studio/types";
+import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
@@ -117,6 +119,49 @@ ConstantBuffer<ShaderToyUniforms> _st;
 #define iCameraPos (_st.cameraPos.xyz)
 #define iCameraDir (_st.cameraDir.xyz)
 ${aliases}
+static float3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
+static float3 ${MESH_FRAGMENT_CONTEXT.normal};
+static float3 ${MESH_FRAGMENT_CONTEXT.cameraPosition};
+`;
+}
+
+function buildMeshPrelude(binding: number): string {
+  return `struct MeshUniforms
+{
+    column_major float4x4 model;
+    column_major float4x4 viewProjection;
+    column_major float4x4 normalMatrix;
+    float4 cameraPosition;
+};
+
+[[vk::binding(${binding}, 0)]]
+ConstantBuffer<MeshUniforms> _mesh;
+`;
+}
+
+function buildMeshEntryPoints(vertexCode: string): string {
+  return `${vertexCode}
+struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+[shader("vertex")]
+MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0) { mainVertex(position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
+    ${MESH_FRAGMENT_CONTEXT.worldPosition} = input.worldPosition;
+    ${MESH_FRAGMENT_CONTEXT.normal} = input.normal;
+    ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _mesh.cameraPosition.xyz;
+    float4 color = mainImage(input.uv * _st.resolution.xy);
+    return color;
+}
+`;
+}
+
+function buildFullscreenEntryPoints(vertexCode: string): string {
+  if (!vertexCode.trim()) return ENTRY_POINTS;
+  return `${vertexCode}
+[shader("vertex")]
+float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(position, normal, uv); return float4(position, 1); }
+[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target { return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y)); }
 `;
 }
 
@@ -150,6 +195,8 @@ export interface SlangWrapOptions {
   channels?: SlangChannelBinding[];
   storage?: StorageBindingNode[];
   passKind?: "render" | "compute";
+  geometry?: GeometryType;
+  vertexCode?: string;
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
@@ -404,7 +451,12 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${ENTRY_POINTS}`;
+  const vertexCode = options.vertexCode?.trim() ?? "";
+  if (isMeshGeometry(options.geometry)) {
+    const meshBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
+  }
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number): string {

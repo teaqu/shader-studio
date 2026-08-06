@@ -324,34 +324,6 @@
     {/if}
 
     {#if bufferName !== "common"}
-      <div class="config-item geometry-section">
-        <h3 class="section-title">Geometry</h3>
-        <select
-          aria-label="Geometry"
-          value={config.geometry?.type ?? "fullscreen"}
-          onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
-        >
-          <option value="fullscreen">Fullscreen</option>
-          <option value="plane">Plane</option>
-          <option value="cube">Cube</option>
-          <option value="sphere">Sphere</option>
-        </select>
-      </div>
-      {#if config.geometry?.type && config.geometry.type !== 'fullscreen'}
-        <div class="config-item">
-          <h3 class="section-title">Vertex shader</h3>
-          <PathInput
-            value={config.vertex ?? ""}
-            onPathChange={handleVertexPathChange}
-            fileType={vertexFileType}
-            note="Optional mainVertex hook"
-            suggestedPath={vertexSuggestedPath}
-            {shaderPath}
-            {postMessage}
-            {onMessage}
-          />
-        </div>
-      {/if}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
         {#if configuredChannelNames.length > 0}
@@ -489,6 +461,37 @@
           </div>
         {/if}
       </div>
+    {/if}
+
+    {#if bufferName !== "common"}
+      <div class="config-item geometry-section">
+        <h3 class="section-title">Geometry</h3>
+        <select
+          aria-label="Geometry"
+          value={config.geometry?.type ?? "fullscreen"}
+          onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
+        >
+          <option value="fullscreen">Fullscreen</option>
+          <option value="plane">Plane</option>
+          <option value="cube">Cube</option>
+          <option value="sphere">Sphere</option>
+        </select>
+      </div>
+      {#if config.geometry?.type && config.geometry.type !== 'fullscreen'}
+        <div class="config-item">
+          <h3 class="section-title">Vertex shader</h3>
+          <PathInput
+            value={config.vertex ?? ""}
+            onPathChange={handleVertexPathChange}
+            fileType={vertexFileType}
+            note="Optional mainVertex hook"
+            suggestedPath={vertexSuggestedPath}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

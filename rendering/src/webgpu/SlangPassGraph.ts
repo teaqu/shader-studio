@@ -9,6 +9,7 @@ import type {
 } from "../types/PassGraph";
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints, SLANG_ENTRY_COMPUTE } from "./SlangPrelude";
+import { resolvePassGeometry } from "../types/Geometry";
 
 export type {
   ChannelReadTiming,
@@ -70,7 +71,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
 
   if (!config?.passes) {
     return {
-      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [])],
+      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [], resolvePassGeometry(undefined), options.buffers["__shader_studio_vertex__:Image"])],
       storage: [],
       commonCode: "",
       warnings,
@@ -156,6 +157,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         source,
         path,
         kind: "compute",
+        geometry: "fullscreen",
         output: "none",
         outputLayers: outputLayersByPass.get(name) ?? 1,
         dispatch,
@@ -179,6 +181,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     renderPasses.push({
       name,
       source,
+      geometry: resolvePassGeometry(passConfig),
+      vertexSrc: options.buffers[`__shader_studio_vertex__:${name}`],
       path,
       kind: "render",
       output: "texture",
@@ -201,7 +205,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"]);
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -219,10 +223,14 @@ function createImagePass(
   width: number,
   height: number,
   channels: RenderPassChannel[],
+  geometry: ReturnType<typeof resolvePassGeometry>,
+  vertexSrc?: string,
 ): RenderPassNode {
   return {
     name: "Image",
     source,
+    geometry,
+    vertexSrc,
     kind: "render",
     output: "canvas",
     outputLayers: 1,

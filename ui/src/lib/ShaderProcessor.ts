@@ -75,6 +75,7 @@ export class ShaderProcessor {
           message.customUniformInfo,
           debugSlangModules ?? message.slangModules,
           debugSourcePath,
+          message.bufferPathMap,
         );
 
       // Handle compilation failure
@@ -96,6 +97,8 @@ export class ShaderProcessor {
             message.customUniformDeclarations,
             message.customUniformInfo,
             message.slangModules,
+            undefined,
+            message.bufferPathMap,
           );
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
@@ -196,6 +199,7 @@ export class ShaderProcessor {
     customUniformInfo?: { name: string; type: string }[],
     slangModules?: import("@shader-studio/types").SlangSourceModule[],
     slangSourcePath?: string,
+    slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult> {
     const result = await this.compileWithSlangContext(
       code,
@@ -206,6 +210,7 @@ export class ShaderProcessor {
       customUniformInfo,
       slangModules,
       slangSourcePath,
+      slangSourcePaths,
     );
 
     if (result?.superseded) {
@@ -234,6 +239,7 @@ export class ShaderProcessor {
     customUniformInfo?: { name: string; type: string }[],
     slangModules?: import("@shader-studio/types").SlangSourceModule[],
     slangSourcePath?: string,
+    slangSourcePaths?: Record<string, string>,
   ): ReturnType<RenderingEngine['compileShaderPipeline']> {
     const args: Parameters<RenderingEngine['compileShaderPipeline']> = [
       code,
@@ -243,11 +249,14 @@ export class ShaderProcessor {
       customUniformDeclarations,
       customUniformInfo,
     ];
-    if (slangModules !== undefined || slangSourcePath !== undefined) {
+    if (slangModules !== undefined || slangSourcePath !== undefined || slangSourcePaths !== undefined) {
       args.push(slangModules);
     }
-    if (slangSourcePath !== undefined) {
+    if (slangSourcePath !== undefined || slangSourcePaths !== undefined) {
       args.push(slangSourcePath);
+    }
+    if (slangSourcePaths !== undefined) {
+      args.push(slangSourcePaths);
     }
     return this.renderEngine.compileShaderPipeline(...args);
   }
@@ -337,6 +346,7 @@ export class ShaderProcessor {
         cuInfo,
         debugSlangModules ?? message.slangModules,
         debugSourcePath,
+        message.bufferPathMap,
       ));
 
     // If failed and modified code was used, try original
@@ -352,6 +362,8 @@ export class ShaderProcessor {
         cuDecl,
         cuInfo,
         message.slangModules,
+        undefined,
+        message.bufferPathMap,
       );
     }
 

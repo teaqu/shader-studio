@@ -211,6 +211,34 @@ describe('ShaderProcessor', () => {
       expect(result.success).toBe(true);
     });
 
+    it('passes resolved Slang paths for every pass to the rendering engine', async () => {
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'float4 mainImage(float2 c) { return 1; }',
+        config: { passes: { ComputeLife: { path: 'passes/life-step.slang' } } },
+        path: '/shaders/image.slang',
+        buffers: { ComputeLife: 'void computeMain(uint3 id) {}' },
+        bufferPathMap: {
+          Image: '/shaders/image.slang',
+          ComputeLife: '/shaders/passes/life-step.slang',
+        },
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        message.bufferPathMap,
+      );
+    });
+
     it('should flag deferred cleanup (not immediate) when reload is true', async () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',

@@ -82,6 +82,8 @@ export class SlangCompiler {
         channels: options.channels,
         storage: options.storage,
         passKind: options.passKind ?? "render",
+        geometry: options.geometry,
+        vertexCode: options.vertexCode,
         captureMode: options.captureMode,
         customUniforms: options.customUniforms,
       });

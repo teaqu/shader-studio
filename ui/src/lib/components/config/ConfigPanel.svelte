@@ -584,12 +584,12 @@
   }
 
   function handleTabDblClick(tabName: string) {
-    if (!isLocked) {
-      return;
-    }
     const actualName = getActualBufferName(tabName);
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);
+      return;
+    }
+    if (!isLocked) {
       return;
     }
     const bufferPath = bufferPathMap[actualName];

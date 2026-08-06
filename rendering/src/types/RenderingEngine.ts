@@ -16,6 +16,7 @@ export interface RenderingEngine {
     customUniformInfo?: { name: string; type: string }[],
     slangModules?: SlangSourceModule[],
     slangSourcePath?: string,
+    slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult | undefined>;
   /** Compile a complete, in-place Slang debug workspace when the backend supports Slang. */
   compileSlangDebugPlan?(plan: DebugInstrumentationPlan): Promise<CompilationResult | undefined>;

@@ -43,6 +43,9 @@ import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureB
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
+import { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { OrbitCamera } from "../preview3d/OrbitCamera";
+import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
 export interface SlangAssetUrls {
   scriptUrl: string;
   wasmUrl: string;
@@ -97,6 +100,7 @@ interface ShaderCompileSnapshot {
   customUniformInfo?: { name: string; type: string }[];
   slangModules: SlangSourceModule[];
   slangSourcePath?: string;
+  slangSourcePaths?: Record<string, string>;
 }
 
 const SLANG_WORKER_INIT_TIMEOUT_MS = 1500;
@@ -221,6 +225,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private compiler: AsyncSlangCompiler | null = null;
   private compilerAbortController: AbortController | null = null;
   private resourceManager: ResourceManager<WebGPUTextureHandle> | null = null;
+  private meshResources: WebGPUMeshResources | null = null;
+  private meshCamera = new OrbitCamera();
 
   private passGraph: RenderPassNode[] = [];
   private passPipelines = new Map<string, SlangPassPipeline>();
@@ -314,6 +320,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return;
     }
     this.context = ctx;
+    this.meshCamera.attach(glCanvas);
     this.mouseManager.setupEventListeners(glCanvas);
     this.keyboardManager.setupEventListeners();
     this.cameraManager.setupEventListeners(glCanvas);
@@ -347,6 +354,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return;
       }
       this.device = device;
+      this.meshResources = new WebGPUMeshResources(device);
       this.bufferTextureFormat = adapter.features?.has?.("float32-filterable")
         ? HIGH_PRECISION_BUFFER_TEXTURE_FORMAT
         : BUFFER_TEXTURE_FORMAT;
@@ -629,6 +637,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     customUniformInfo?: { name: string; type: string }[],
     slangModules: SlangSourceModule[] = [],
     slangSourcePath?: string,
+    slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult | undefined> {
     if (this.disposed) {
       return { success: false, errors: ["Engine disposed"], superseded: true };
@@ -677,6 +686,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         customUniformInfo: customUniformInfo?.map((uniform) => ({ ...uniform })),
         slangModules: slangModules.map((module) => ({ ...module })),
         slangSourcePath,
+        slangSourcePaths: slangSourcePaths ? { ...slangSourcePaths } : undefined,
       };
       attemptedCompile = { code, config, path, buffers: bufferSnapshot, ...snapshotMetadata };
       prospectiveInstalledCompile = {
@@ -748,6 +758,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors: graph.errors,
       });
+      console.info("[Shader Studio][Slang 3D] graph", graph.passes.map((pass) => ({
+        name: pass.name,
+        geometry: pass.geometry,
+        kind: pass.kind,
+      })));
       return this.failedCompilation(path, generation, {
         success: false,
         errors: graph.errors,
@@ -940,6 +955,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
               kind: channel.kind,
             }));
           if (!wgsl) {
+            console.info("[Shader Studio][Slang 3D] compiling pass", {
+              name: pass.name,
+              geometry: pass.geometry,
+              vertexHook: Boolean(pass.vertexSrc),
+            });
             const slangStartedAt = this.now();
             const compiled = await this.compiler.compile(pass.source, {
               passName: pass.name,
@@ -947,12 +967,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
               channels,
               storage: graph.storage,
               passKind: pass.kind,
+              ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
+              ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
               ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
               ...(passModules.length > 0 ? { modules: passModules } : {}),
-              ...(slangSourcePath ? { sourcePath: slangSourcePath } : {}),
+              ...(slangSourcePaths?.[pass.name]
+                ? { sourcePath: slangSourcePaths[pass.name] }
+                : slangSourcePath ? { sourcePath: slangSourcePath } : {}),
               ...(nextCustomUniformManager.hasUniforms()
                 ? { customUniforms: uniformInfo }
                 : {}),
@@ -1805,6 +1829,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.kind,
       pass.entryPoint,
       pass.source,
+      pass.geometry,
+      pass.vertexSrc,
       commonCode,
       channels,
       storageLayout,
@@ -1959,6 +1985,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         width: pass.width,
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
+        geometry: pass.geometry,
         channels,
         storage,
         uniformBufferSize,
@@ -2285,6 +2312,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
+      if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
+        const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+        const viewProjection = multiplyMatrices(
+          this.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
+          this.meshCamera.getViewMatrix(),
+        );
+        const normal = createNormalMatrix3(model);
+        const meshData = new Float32Array(64);
+        meshData.set(model, 0);
+        meshData.set(viewProjection, 16);
+        meshData.set([normal[0], normal[1], normal[2], 0, normal[3], normal[4], normal[5], 0, normal[6], normal[7], normal[8], 0, 0, 0, 0, 1], 32);
+        meshData.set([...this.meshCamera.getPosition(), 1], 48);
+        this.device.queue.writeBuffer(pipeline.getMeshUniformBuffer()!, 0, meshData);
+      }
 
       const targetView = pass.output === "canvas"
         ? (canvasTexture = this.context.getCurrentTexture()).createView()
@@ -2300,10 +2341,27 @@ export class WebGPURenderingEngine implements RenderingEngine {
           loadOp: "clear",
           storeOp: "store",
         }],
+        ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
+          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
+        } : {}),
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
       renderPass.setBindGroup(0, bindGroup);
-      renderPass.draw(3);
+      if (!pass.geometry || pass.geometry === "fullscreen") {
+        renderPass.draw(3);
+      } else {
+        const mesh = this.meshResources?.get(pass.geometry);
+        console.info("[Shader Studio][Slang 3D] drawing mesh", {
+          name: pass.name,
+          geometry: pass.geometry,
+          meshAvailable: Boolean(mesh),
+        });
+        if (mesh) {
+          renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+          renderPass.setIndexBuffer(mesh.indexBuffer, "uint16");
+          renderPass.drawIndexed(mesh.indexCount);
+        }
+      }
       renderPass.end();
     }
 
@@ -2728,6 +2786,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       previous?.customUniformInfo ?? this.customUniformManager.getUniformInfo(),
       modules,
       previous?.slangSourcePath ?? root.path,
+      previous?.slangSourcePaths,
     );
     if (!result || result.success || result.superseded) {
       return result;
@@ -2849,6 +2908,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.mouseManager.setEnabled(enabled);
     this.keyboardManager.setEnabled(enabled);
     this.cameraManager.setEnabled(enabled);
+    this.meshCamera.setInputEnabled(enabled);
   }
 
   getCurrentFPS(): number {
@@ -2903,6 +2963,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     attempt(() => this.mouseManager.dispose());
     attempt(() => this.keyboardManager.dispose());
     attempt(() => this.cameraManager.dispose());
+    attempt(() => this.meshCamera.detach());
 
     const compiler = this.compiler;
     this.compiler = null;
@@ -2980,6 +3041,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.lastCompile.customUniformInfo,
       this.lastCompile.slangModules,
       this.lastCompile.slangSourcePath,
+      this.lastCompile.slangSourcePaths,
     );
   }
 
