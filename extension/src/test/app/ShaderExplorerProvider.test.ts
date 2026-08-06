@@ -1002,6 +1002,65 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(postMessageSpy.firstCall.args[0].converted, true);
     });
 
+    test('includes imported Slang modules so explorer previews compile with their dependencies', async () => {
+      const mockDocument = {
+        getText: () => 'import substep;\nfloat4 mainImage(float2 fragCoord) { return float4(substepValue()); }',
+      };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+      readFileSyncStub.withArgs('/test/substep.slang', 'utf-8').returns(
+        'module substep;\npublic float substepValue() { return 1.0; }',
+      );
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/image.slang' });
+
+      assert.deepStrictEqual(postMessageSpy.firstCall.args[0].slangModules, [{
+        moduleName: 'substep',
+        path: '/test/substep.slang',
+        source: 'module substep;\npublic float substepValue() { return 1.0; }',
+        ownerPass: 'Image',
+      }]);
+    });
+
+    test('uses the owning Slang workspace when previewing a configured compute pass', async () => {
+      const rootPath = '/test/repeated-substeps.slang';
+      const passPath = '/test/passes/substep.slang';
+      const configPath = '/test/repeated-substeps.sha.json';
+      const config = {
+        passes: { ComputeSubsteps: { path: './passes/substep.slang' } },
+        storage: { laneA: { count: 128, stride: 16, elementType: 'float4' } },
+      } as any;
+      existsSyncStub.callsFake((filePath: string) => ![
+        '/test/passes/substep.sha.json',
+        '/test/repeated-substeps.glsl',
+        '/test/repeated-substeps.frag',
+      ].includes(filePath));
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([vscode.Uri.file(configPath)]);
+      sandbox.stub(vscode.workspace, 'openTextDocument').callsFake((async (filePath: string | vscode.Uri) => ({
+        getText: () => (typeof filePath === 'string' ? filePath : filePath.fsPath) === rootPath
+          ? 'float4 mainImage(float2 fragCoord) { return laneA[0]; }'
+          : 'void computeMain(uint3 tid) { laneA[tid.x] = 0.0; }',
+      })) as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').callsFake((_path: string, buffers: Record<string, string>) => {
+        buffers.ComputeSubsteps = 'void computeMain(uint3 tid) { laneA[tid.x] = 0.0; }';
+        return config;
+      });
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: passPath });
+
+      const message = postMessageSpy.firstCall.args[0];
+      assert.strictEqual(message.path, passPath);
+      assert.strictEqual(message.previewPath, rootPath);
+      assert.strictEqual(message.code, 'float4 mainImage(float2 fragCoord) { return laneA[0]; }');
+      assert.strictEqual(message.buffers.ComputeSubsteps, 'void computeMain(uint3 tid) { laneA[tid.x] = 0.0; }');
+    });
+
     test('should include config and buffers in shader code response', async () => {
       const mockDocument = {
         getText: () => 'void main() {}'

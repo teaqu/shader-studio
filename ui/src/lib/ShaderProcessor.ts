@@ -1,6 +1,7 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
 import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
+import type { DebugInstrumentationPlan } from "@shader-studio/types";
 
 export interface CompilationResult {
   success: boolean;
@@ -60,18 +61,21 @@ export class ShaderProcessor {
         passName: debugPassName,
         slangModules: debugSlangModules,
         sourcePath: debugSourcePath,
+        debugPlan,
       } = this.getDebugCompileArgs(code, config ?? null);
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
-      const result = await this.compileWithSlangContext(
-        codeToCompile,
-        configToCompile,
-        path,
-        buffersToCompile,
-        message.customUniformDeclarations,
-        message.customUniformInfo,
-        debugSlangModules ?? message.slangModules,
-        debugSourcePath,
-      );
+      const result = debugPlan && this.renderEngine.compileSlangDebugPlan
+        ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+        : await this.compileWithSlangContext(
+          codeToCompile,
+          configToCompile,
+          path,
+          buffersToCompile,
+          message.customUniformDeclarations,
+          message.customUniformInfo,
+          debugSlangModules ?? message.slangModules,
+          debugSourcePath,
+        );
 
       // Handle compilation failure
       if (result?.superseded) {
@@ -80,7 +84,7 @@ export class ShaderProcessor {
 
       if (!result?.success) {
         // If debug mode compilation failed, try original code
-        if (codeToCompile !== code) {
+        if (debugPlan || codeToCompile !== code) {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
@@ -135,11 +139,20 @@ export class ShaderProcessor {
     passName: string;
     slangModules?: import("@shader-studio/types").SlangSourceModule[];
     sourcePath?: string;
+    debugPlan?: DebugInstrumentationPlan;
   } {
     const debugState = this.shaderDebugManager.getState();
     const debugTarget = this.shaderDebugManager.getDebugTarget(imageShaderCode, config);
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
+
+    const slangPlan = this.shaderDebugManager.getSlangPreviewPlan?.(imageShaderCode, config);
+    if (slangPlan) {
+      return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
+    }
+    if (this.shaderDebugManager.getLanguage?.() === 'slang') {
+      return { code: imageShaderCode, config, passName: 'Image' };
+    }
 
     if (debugState.isActive && debugState.currentLine !== null) {
       const modifiedCode = this.shaderDebugManager.modifyShaderForDebugging(
@@ -296,6 +309,7 @@ export class ShaderProcessor {
       passName: debugPassName,
       slangModules: debugSlangModules,
       sourcePath: debugSourcePath,
+      debugPlan,
     } = this.getDebugCompileArgs(
       this.imageShaderCode,
       config ?? null,
@@ -307,20 +321,26 @@ export class ShaderProcessor {
       this.imageShaderCode,
     );
 
-    // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(
-      codeToCompile,
-      configToCompile,
-      path,
-      buffersToCompile,
-      cuDecl,
-      cuInfo,
-      debugSlangModules ?? message.slangModules,
-      debugSourcePath,
-    );
+    // Cursor movement uses this path, so native Slang preview plans must be
+    // routed here as well as through the initial shader-source compilation.
+    const structuredResult = debugPlan && this.renderEngine.compileSlangDebugPlan
+      ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+      : undefined;
+    let result: CompilationResult = structuredResult ?? (debugPlan
+      ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }
+      : await this.compile(
+        codeToCompile,
+        configToCompile,
+        path,
+        buffersToCompile,
+        cuDecl,
+        cuInfo,
+        debugSlangModules ?? message.slangModules,
+        debugSourcePath,
+      ));
 
     // If failed and modified code was used, try original
-    if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
+    if (!result?.superseded && !result?.success && (debugPlan || codeToCompile !== this.imageShaderCode)) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );

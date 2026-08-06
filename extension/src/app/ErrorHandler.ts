@@ -87,17 +87,32 @@ export class ErrorHandler {
 
       this.outputChannel.error(errorText);
 
-      const reportedLine = getReportedDiagnosticLine(errorText);
+      const reportedLocation = getReportedDiagnosticLocation(errorText);
+      const reportedLine = reportedLocation?.line;
       if (reportedLine !== undefined) {
         const lineNum = reportedLine - 1; // VS Code is 0-based
 
         // Parse pass name from error message (format: "PassName: ERROR: ...")
-        const passNameMatch = errorText.match(/^([^:]+):\s*ERROR:/);
+        const passNameMatch = errorText.match(/^([^:\n]+):\s*(?:ERROR:\s*|error(?:\[[^\]]+\])?:)/i);
         let targetUri: vscode.Uri | null = null;
 
         if (passNameMatch && this.currentShaderConfig) {
           const passName = passNameMatch[1].trim();
           targetUri = this.getUriForPass(passName, this.currentShaderConfig);
+        }
+
+        // Native Slang emits the source path on a separate `-->` line. Prefer
+        // it when it identifies an open/configured module (not its synthetic
+        // `/passname.slang` path), so imported-module diagnostics land on the
+        // exact file that failed.
+        if (reportedLocation?.sourcePath) {
+          targetUri = this.getUriForReportedSlangSource(reportedLocation.sourcePath) ?? targetUri;
+        }
+
+        // If Slang supplied a real path but it isn't open or in the active
+        // shader configuration, still create a diagnostic for that file.
+        if (!targetUri && reportedLocation?.sourcePath) {
+          targetUri = vscode.Uri.file(reportedLocation.sourcePath);
         }
 
         // Fallback to active editor if we can't determine the target file
@@ -341,16 +356,37 @@ export class ErrorHandler {
       return null;
     }
   }
+
+  private getUriForReportedSlangSource(sourcePath: string): vscode.Uri | null {
+    const sourceUri = vscode.Uri.file(sourcePath);
+    if (vscode.workspace.textDocuments.some((document) => document.uri.fsPath === sourceUri.fsPath)) {
+      return sourceUri;
+    }
+
+    const config = this.currentShaderConfig;
+    if (!config) {
+      return null;
+    }
+    if (config.shaderPath === sourceUri.fsPath) {
+      return sourceUri;
+    }
+    if (Object.values(config.bufferPathMap ?? {}).some((path) => path === sourceUri.fsPath)) {
+      return sourceUri;
+    }
+    return null;
+  }
 }
 
-function getReportedDiagnosticLine(errorText: string): number | undefined {
+function getReportedDiagnosticLocation(errorText: string): { line: number; sourcePath?: string } | undefined {
   const glslLine = errorText.match(/ERROR:\s*\d+:(\d+):/);
   if (glslLine) {
-    return Number.parseInt(glslLine[1], 10);
+    return { line: Number.parseInt(glslLine[1], 10) };
   }
 
   // Slang reports locations on a separate source-map-style line, for example:
   //   --> /image.slang:14:49
-  const slangLine = errorText.match(/^\s*-->\s+.+?:(\d+)(?::\d+)?\s*$/m);
-  return slangLine ? Number.parseInt(slangLine[1], 10) : undefined;
+  const slangLine = errorText.match(/^\s*-->\s+(.+?):(\d+)(?::\d+)?\s*$/m);
+  return slangLine
+    ? { sourcePath: slangLine[1], line: Number.parseInt(slangLine[2], 10) }
+    : undefined;
 }

@@ -63,6 +63,77 @@ describe('ShaderProcessor', () => {
     });
   });
 
+  it('routes a Slang debug plan to the structured rendering entry point', async () => {
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue({
+      workspaceHash: 'hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang', executionMarkerSlot: 0, captureSlots: [], files: [],
+    });
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: true });
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {} });
+
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledTimes(1);
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
+  it('routes a cursor-triggered Slang inline preview through the structured rendering entry point', async () => {
+    const plan = {
+      workspaceHash: 'cursor-hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang', executionMarkerSlot: 0, captureSlots: [], files: [],
+    };
+    (shaderProcessor as unknown as { imageShaderCode: string }).imageShaderCode = 'float4 mainImage(float2 c) { return 1; }';
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue(plan);
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: true });
+
+    const result = await shaderProcessor.debugCompile({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {}, language: 'slang' });
+
+    expect(result).toMatchObject({ success: true });
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledWith(plan);
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
+  it('keeps the last-good Slang render when an imported-module preview fails', async () => {
+    const plan = {
+      workspaceHash: 'hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///helper.slang', executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: 'file:///main.slang', path: '/main.slang', source: 'import helper;', version: 1, moduleName: '', ownerPass: 'Image' },
+        { uri: 'file:///helper.slang', path: '/helper.slang', source: 'module helper;', version: 2, moduleName: 'helper', ownerPass: 'Image' },
+      ],
+    };
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue(plan);
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: false, errors: ['/helper.slang: unexpected token'] });
+    (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({ success: true });
+
+    const result = await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {}, language: 'slang' });
+
+    expect(mockShaderDebugManager.setDebugError).toHaveBeenCalledWith('Debug shader compilation failed: /helper.slang: unexpected token');
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(1);
+    expect(mockRenderEngine.startRenderLoop).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ success: true, warnings: undefined });
+  });
+
+  it('does not fallback or restart rendering for a superseded Slang preview request', async () => {
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue({
+      workspaceHash: 'old-hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang', executionMarkerSlot: 0, captureSlots: [], files: [],
+    });
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: false, errors: ['Superseded by a newer compile'], superseded: true });
+
+    const result = await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {}, language: 'slang' });
+
+    expect(result).toEqual({ success: false, errors: ['Superseded by a newer compile'], superseded: true });
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+    expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
+    expect(mockShaderDebugManager.setDebugError).not.toHaveBeenCalled();
+  });
+
+  it('never sends Slang through the GLSL debug modifier when native planning is unavailable', async () => {
+    (mockShaderDebugManager as any).getLanguage = vi.fn(() => 'slang');
+    (mockShaderDebugManager.getState as any).mockReturnValue({ isEnabled: true, isActive: true, currentLine: 1, lineContent: 'float value = 1.0;', activeBufferName: 'Image' });
+
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {} });
+
+    expect(mockShaderDebugManager.modifyShaderForDebugging).not.toHaveBeenCalled();
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(expect.stringContaining('mainImage'), null, '/main.slang', {}, undefined, undefined);
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);

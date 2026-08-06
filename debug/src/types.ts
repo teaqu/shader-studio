@@ -1,12 +1,5 @@
 export type ParameterMode = 'expression';
 
-/**
- * Shader source dialect. 'glsl' is the ShaderToy WebGL convention
- * (void mainImage(out vec4 fragColor, in vec2 fragCoord)); 'slang' is the
- * WebGPU convention (float4 mainImage(float2 fragCoord) returning the color).
- */
-export type ShaderDialect = 'glsl' | 'slang';
-
 export interface CaptureVarInfo {
   varName: string;
   varType: string;

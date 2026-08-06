@@ -97,6 +97,64 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+
+    await engine.compileSlangDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: "file:///main.slang", path: "/main.slang", source: "float4 mainImage(float2 c) { return 1; }", version: 1, moduleName: "", ownerPass: "ComputeUpdate" },
+        { uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 1, moduleName: "helper", ownerPass: "ComputeUpdate" },
+      ],
+    });
+
+    expect(compile).toHaveBeenCalledWith(expect.any(String), null, "/main.slang", {}, "", [], [{
+      uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 1, moduleName: "helper", ownerPass: "Image",
+    }], "/main.slang");
+  });
+
+  it("attributes structured Slang debug failures to the selected imported module", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
+
+    const result = await engine.compileSlangDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///helper.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: "file:///main.slang", path: "/main.slang", source: "import helper;", version: 1, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 2, moduleName: "helper", ownerPass: "Image" },
+      ],
+    });
+
+    expect(result).toEqual({ success: false, errors: ["/helper.slang: unexpected token"] });
+  });
+
+  it("preserves the installed compute workspace while compiling an image debug wrapper", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const previous = {
+      code: "float4 mainImage(float2 coord) { return 0; }",
+      config: { version: "1.0", passes: { Image: { inputs: {} }, ComputeUpdate: { path: "update.slang" } } },
+      path: "/image.slang",
+      buffers: { common: "StructuredBuffer<float> samples;", ComputeUpdate: "void computeMain(uint3 id) {}" },
+      customUniformDeclarations: "",
+      customUniformInfo: [],
+      slangModules: [{ moduleName: "support", path: "/support.slang", source: "module support;", ownerPass: "ComputeUpdate" }],
+      slangSourcePath: "/image.slang",
+    };
+    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+
+    await engine.compileSlangDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///update.slang", selectedSourceUri: "file:///update.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [{ uri: "file:///update.slang", path: "/update.slang", source: "float4 mainImage(float2 coord) { return 0; }", version: 1, moduleName: "", ownerPass: "ComputeUpdate" }],
+    });
+
+    expect(compile).toHaveBeenCalledWith(
+      expect.any(String), previous.config, "/image.slang", previous.buffers,
+      "", [], previous.slangModules, "/image.slang",
+    );
+  });
+
   it("initializes without throwing when WebGPU is unavailable", () => {
     const engine = new WebGPURenderingEngine(assets);
     expect(() => engine.initialize(noWebGpuCanvas())).not.toThrow();

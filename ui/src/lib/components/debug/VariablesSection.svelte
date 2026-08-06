@@ -5,6 +5,7 @@
   interface Props {
     capturedVariables?: CapturedVariable[];
     isPixelMode?: boolean;
+    enableRowPreview?: boolean;
     isLoading?: boolean;
     captureError?: string | null;
     onExpandToggle?: (varName: string) => void;
@@ -20,6 +21,7 @@
   let {
     capturedVariables = [],
     isPixelMode = false,
+    enableRowPreview = false,
     isLoading = false,
     captureError = null,
     onExpandToggle = (_varName: string) => {},
@@ -147,6 +149,7 @@
       <VariableRow
         {variable}
         {isPixelMode}
+        {enableRowPreview}
         onExpandToggle={() => onExpandToggle(variable.varName)}
         onLineClick={() => onVarClick(variable.varName, variable.declarationLine)}
       />

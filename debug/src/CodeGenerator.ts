@@ -1,31 +1,21 @@
 import { GlslParser } from './GlslParser';
 import type { FunctionInfo, VarInfo } from './GlslParser';
-import type { ShaderDialect } from './types';
-import { canonicalShaderType, getDebugDialect } from './dialects';
 
 export class CodeGenerator {
-  /** Maps Slang type names onto their GLSL equivalents for switch dispatch. */
-  static canonicalType(type: string): string {
-    return canonicalShaderType(type);
-  }
-
-  /** Vector constructor name for the dialect (vec3 vs float3). */
-  private static vec(dialect: ShaderDialect, n: 2 | 3 | 4): string {
-    return getDebugDialect(dialect).vectorCtor(n);
-  }
-
-  /** Regex matching the user's mainImage signature for the dialect. */
-  static mainImagePattern(dialect: ShaderDialect): RegExp {
-    return getDebugDialect(dialect).mainImagePattern;
-  }
-
-  /** Opening line of a generated mainImage wrapper for the dialect. */
-  private static mainImageWrapperOpen(dialect: ShaderDialect): string {
-    return getDebugDialect(dialect).mainImageWrapperOpen();
-  }
-
-  private static defaultParameterValue(type: string, dialect: ShaderDialect = 'glsl'): string | null {
-    return getDebugDialect(dialect).defaultParameterValue(CodeGenerator.canonicalType(type));
+  private static defaultParameterValue(type: string): string | null {
+    switch (type) {
+      case 'vec2': return 'uv';
+      case 'vec3': return 'vec3(0.5)';
+      case 'vec4': return 'vec4(0.5)';
+      case 'float': return '0.5';
+      case 'int': return '1';
+      case 'bool': return 'true';
+      case 'mat2': return 'mat2(1.0)';
+      case 'mat3': return 'mat3(1.0)';
+      case 'mat4': return 'mat4(1.0)';
+      case 'sampler2D': return 'iChannel0';
+      default: return null;
+    }
   }
 
   /**
@@ -45,22 +35,19 @@ export class CodeGenerator {
   }
 
   /**
-   * Builds the color expression and comment visualizing a variable, using the
-   * dialect's vector constructor names. varType may be a GLSL or Slang type.
+   * Builds the color expression and comment visualizing a GLSL variable.
    */
   private static buildVisualizationExpr(
     varType: string,
     varName: string,
     normalizeMode: string,
-    dialect: ShaderDialect,
   ): { expr: string; comment: string } {
-    const v2 = CodeGenerator.vec(dialect, 2);
-    const v3 = CodeGenerator.vec(dialect, 3);
-    const v4 = CodeGenerator.vec(dialect, 4);
-    const canonical = CodeGenerator.canonicalType(varType);
+    const v2 = 'vec2';
+    const v3 = 'vec3';
+    const v4 = 'vec4';
 
     if (normalizeMode === 'soft') {
-      switch (canonical) {
+      switch (varType) {
         case 'float': {
           const n = CodeGenerator.softNormExpr(varName);
           return { expr: `${v4}(${v3}(${n}), 1.0)`, comment: `soft normalized ${varType}` };
@@ -78,12 +65,12 @@ export class CodeGenerator {
           return { expr: `${v4}(${rgb}, 1.0)`, comment: `soft normalized ${varType}` };
         }
         default:
-          return CodeGenerator.buildVisualizationExpr(varType, varName, 'off', dialect);
+          return CodeGenerator.buildVisualizationExpr(varType, varName, 'off');
       }
     }
 
     if (normalizeMode === 'abs') {
-      switch (canonical) {
+      switch (varType) {
         case 'float': {
           const n = CodeGenerator.absNormExpr(varName);
           return { expr: `${v4}(${v3}(${n}), 1.0)`, comment: `abs normalized ${varType}` };
@@ -101,11 +88,11 @@ export class CodeGenerator {
           return { expr: `${v4}(${rgb}, 1.0)`, comment: `abs normalized ${varType}` };
         }
         default:
-          return CodeGenerator.buildVisualizationExpr(varType, varName, 'off', dialect);
+          return CodeGenerator.buildVisualizationExpr(varType, varName, 'off');
       }
     }
 
-    switch (canonical) {
+    switch (varType) {
       case 'float':
         return { expr: `${v4}(${v3}(${varName}), 1.0)`, comment: `visualize ${varType} as grayscale` };
       case 'int':
@@ -134,19 +121,32 @@ export class CodeGenerator {
     varName: string,
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
-    const { expr, comment } = CodeGenerator.buildVisualizationExpr(varType, varName, normalizeMode, dialect);
-    return getDebugDialect(dialect).visualOutputStatement(expr, comment, stepEdge);
+    const { expr, comment } = CodeGenerator.buildVisualizationExpr(varType, varName, normalizeMode);
+    let line = `  fragColor = ${expr}; // Debug: ${comment}`;
+    if (stepEdge !== null) {
+      const edge = stepEdge.toFixed(4);
+      line += `\n  fragColor = vec4(step(vec3(${edge}), fragColor.rgb), 1.0); // Debug: step threshold`;
+    }
+    return line;
   }
 
   /**
    * Generates the capture-mode output statement (raw float output, no
    * normalization). Used by VariableCaptureBuilder for off-canvas float
-   * FBO capture. GLSL assigns fragColor; Slang returns the value.
+   * FBO capture. GLSL assigns fragColor.
    */
-  static generateCaptureOutputForVar(varType: string, varName: string, dialect: ShaderDialect = 'glsl'): string {
-    return getDebugDialect(dialect).captureOutputStatement(varType, varName);
+  static generateCaptureOutputForVar(varType: string, varName: string): string {
+    switch (varType) {
+      case 'float': return `  fragColor = vec4(${varName}, 0.0, 0.0, 0.0);`;
+      case 'vec2': return `  fragColor = vec4(${varName}, 0.0, 0.0);`;
+      case 'vec3': return `  fragColor = vec4(${varName}, 0.0);`;
+      case 'vec4': return `  fragColor = ${varName};`;
+      case 'int': return `  fragColor = vec4(float(${varName}), 0.0, 0.0, 0.0);`;
+      case 'bool': return `  fragColor = vec4(${varName} ? 1.0 : 0.0, 0.0, 0.0, 0.0);`;
+      case 'mat2': return `  fragColor = vec4(${varName}[0], ${varName}[1]);`;
+      default: return '  fragColor = vec4(0.0);';
+    }
   }
 
   /**
@@ -297,7 +297,6 @@ export class CodeGenerator {
   static generateDefaultParameters(
     lines: string[],
     functionInfo: FunctionInfo,
-    dialect: ShaderDialect = 'glsl',
   ): { args: string; setup: string[] } {
     const setup: string[] = [];
     const args: string[] = [];
@@ -309,7 +308,7 @@ export class CodeGenerator {
       return { args: '', setup: [] };
     }
 
-    const v2 = CodeGenerator.vec(dialect, 2);
+    const v2 = 'vec2';
     const paramsStr = paramsMatch[1];
     const paramPairs = paramsStr.split(',').map(p => p.trim());
 
@@ -319,11 +318,11 @@ export class CodeGenerator {
       if (match) {
         const qualifier = match[1];
         const type = match[2];
-        const defaultValue = CodeGenerator.defaultParameterValue(type, dialect);
+        const defaultValue = CodeGenerator.defaultParameterValue(type);
         const tempName = `_dbgArg${args.length}`;
         const needsTemp = qualifier === 'out' || qualifier === 'inout' || defaultValue === null;
 
-        switch (CodeGenerator.canonicalType(type)) {
+        switch (type) {
           case 'vec2':
             if (!setup.some(s => s.includes(`${v2} uv`))) {
               setup.push(`  ${v2} uv = fragCoord / iResolution.xy;`);
@@ -369,9 +368,8 @@ export class CodeGenerator {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
-    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo, dialect);
+    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
     const defaultArgs = params.args ? params.args.split(', ') : [];
 
     // Apply custom parameter overrides
@@ -387,7 +385,7 @@ export class CodeGenerator {
       setup = setup.filter(s => !s.includes(' uv = '));
     }
 
-    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result', normalizeMode, stepEdge, dialect);
+    const visualization = CodeGenerator.generateReturnStatementForVar(varInfo.type, 'result', normalizeMode, stepEdge);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
     return `${setupCode}  ${varInfo.type} result = ${functionName}(${args.join(', ')});\n${visualization}`;
   }
@@ -401,9 +399,8 @@ export class CodeGenerator {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
-    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo, dialect);
+    const params = CodeGenerator.generateDefaultParameters(lines, functionInfo);
     const defaultArgs = params.args ? params.args.split(', ') : [];
 
     const args = defaultArgs.map((arg, index) => {
@@ -417,7 +414,7 @@ export class CodeGenerator {
       setup = setup.filter(s => !s.includes(' uv = '));
     }
 
-    const visualization = CodeGenerator.generateReturnStatementForVar(targetVarType, targetVarName, normalizeMode, stepEdge, dialect);
+    const visualization = CodeGenerator.generateReturnStatementForVar(targetVarType, targetVarName, normalizeMode, stepEdge);
     const setupCode = setup.length > 0 ? setup.join('\n') + '\n' : '';
     return `${setupCode}  ${functionName}(${args.join(', ')});\n${visualization}`;
   }
@@ -598,11 +595,10 @@ export class CodeGenerator {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
     const captureVarName = '_dbgCaptured';
     const debugFunctionName = `_dbg_${functionInfo.name}`;
-    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines, dialect);
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
 
     // Determine truncation end: outermost loop endLine or debug line
     let truncationEnd: number;
@@ -703,14 +699,14 @@ export class CodeGenerator {
     wrapper.push(...preservedSource);
     wrapper.push('');
     if (useCaptureSideChannel) {
-      wrapper.push(getDebugDialect(dialect).moduleCaptureDeclaration(varInfo.type, captureVarName));
+      wrapper.push(`${varInfo.type} ${captureVarName};`);
     }
     wrapper.push(...result);
     wrapper.push('');
-    wrapper.push(CodeGenerator.mainImageWrapperOpen(dialect));
+    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     const call = useCaptureSideChannel
-      ? CodeGenerator.generateProcedureCall(lines, debugFunctionName, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge, dialect)
-      : CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge, dialect);
+      ? CodeGenerator.generateProcedureCall(lines, debugFunctionName, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge)
+      : CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -730,9 +726,8 @@ export class CodeGenerator {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
-    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines, dialect);
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
     const debugFunctionName = `_dbg_${functionInfo.name}`;
 
     // The full function body, unmodified
@@ -757,8 +752,8 @@ export class CodeGenerator {
     wrapper.push('');
     wrapper.push(...cappedLines);
     wrapper.push('');
-    wrapper.push(CodeGenerator.mainImageWrapperOpen(dialect));
-    const call = CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge, dialect);
+    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    const call = CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);
     wrapper.push(call);
     wrapper.push('}');
 
@@ -773,14 +768,13 @@ export class CodeGenerator {
     originalCode: string,
     normalizeMode: string,
     stepEdge: number | null,
-    dialect: ShaderDialect = 'glsl',
   ): string | null {
     if (normalizeMode === 'off' && stepEdge === null) {
       return null;
     }
 
     const lines = originalCode.split('\n');
-    const mainImagePattern = CodeGenerator.mainImagePattern(dialect);
+    const mainImagePattern = /void\s+mainImage\s*\(/;
 
     // Find the mainImage function signature
     let mainImageLine = -1;
@@ -793,29 +787,6 @@ export class CodeGenerator {
 
     if (mainImageLine === -1) {
       return null;
-    }
-
-    const dialectAdapter = getDebugDialect(dialect);
-    if (dialectAdapter.mainImageReturnsValue) {
-      // Slang mainImage returns its color (possibly from several return
-      // statements), so post-processing cannot be injected before a closing
-      // brace. Rename the user's mainImage and wrap it instead.
-      const postLines = CodeGenerator.buildPostProcessingLines(normalizeMode, stepEdge, dialect);
-      const result = [...lines];
-      result[mainImageLine] = CodeGenerator.renameFunctionSignature(
-        result[mainImageLine],
-        'mainImage',
-        '_dbgUserMain',
-      );
-      result.push(
-        '',
-        dialectAdapter.mainImageWrapperOpen(),
-        `  ${dialectAdapter.vectorCtor(4)} fragColor = _dbgUserMain(fragCoord);`,
-        ...postLines,
-        '  return fragColor;',
-        '}',
-      );
-      return result.join('\n');
     }
 
     // Find the closing brace by tracking brace depth
@@ -839,7 +810,7 @@ export class CodeGenerator {
     }
 
     // Insert before closing brace
-    const postLines = CodeGenerator.buildPostProcessingLines(normalizeMode, stepEdge, dialect);
+    const postLines = CodeGenerator.buildPostProcessingLines(normalizeMode, stepEdge);
     const result = [...lines];
     result.splice(closingBraceLine, 0, ...postLines);
     return result.join('\n');
@@ -848,10 +819,9 @@ export class CodeGenerator {
   private static buildPostProcessingLines(
     normalizeMode: string,
     stepEdge: number | null,
-    dialect: ShaderDialect,
   ): string[] {
-    const v3 = CodeGenerator.vec(dialect, 3);
-    const v4 = CodeGenerator.vec(dialect, 4);
+    const v3 = 'vec3';
+    const v4 = 'vec4';
     const postLines: string[] = [];
 
     if (normalizeMode === 'soft') {
@@ -873,12 +843,11 @@ export class CodeGenerator {
     varInfo: VarInfo,
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
     const wrapper = [];
-    wrapper.push(CodeGenerator.mainImageWrapperOpen(dialect));
+    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
     wrapper.push(`  ${lineContent.trim()}`);
-    wrapper.push(`  ${CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge, dialect)}`);
+    wrapper.push(`  ${CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge)}`);
     wrapper.push('}');
     return wrapper.join('\n');
   }
@@ -888,24 +857,20 @@ export class CodeGenerator {
     varInfo: VarInfo,
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
-    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines, dialect);
+    const preservedSource = CodeGenerator.splitSourceForHelperWrapper(lines);
 
     return [
       ...preservedSource,
       '',
-      CodeGenerator.mainImageWrapperOpen(dialect),
-      CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge, dialect),
+      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+      CodeGenerator.generateReturnStatementForVar(varInfo.type, varInfo.name, normalizeMode, stepEdge),
       '}',
     ].join('\n');
   }
 
-  private static splitSourceForHelperWrapper(
-    lines: string[],
-    dialect: ShaderDialect = 'glsl',
-  ): string[] {
-    const mainImageRange = CodeGenerator.findMainImageRange(lines, dialect);
+  private static splitSourceForHelperWrapper(lines: string[]): string[] {
+    const mainImageRange = CodeGenerator.findMainImageRange(lines);
     if (mainImageRange === null) {
       return [...lines];
     }
@@ -916,8 +881,8 @@ export class CodeGenerator {
     ];
   }
 
-  private static findMainImageRange(lines: string[], dialect: ShaderDialect = 'glsl'): { start: number; end: number } | null {
-    const mainImagePattern = CodeGenerator.mainImagePattern(dialect);
+  private static findMainImageRange(lines: string[]): { start: number; end: number } | null {
+    const mainImagePattern = /void\s+mainImage\s*\(/;
     let start = -1;
     for (let i = 0; i < lines.length; i++) {
       if (mainImagePattern.test(lines[i])) {

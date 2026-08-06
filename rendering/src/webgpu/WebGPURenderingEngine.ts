@@ -1,5 +1,5 @@
 /// <reference types="@webgpu/types" />
-import type { ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
+import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -2701,6 +2701,47 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getResourceManager(): ResourceManager<WebGPUTextureHandle> | null {
     return this.resourceManager;
+  }
+
+  async compileSlangDebugPlan(plan: DebugInstrumentationPlan): Promise<CompilationResult | undefined> {
+    const root = plan.files.find((file) => file.uri === plan.rootUri);
+    if (!root) {
+      return { success: false, errors: ["Slang debug plan root is missing"] };
+    }
+    const planModules: SlangSourceModule[] = plan.files
+      .filter((file) => file.uri !== root.uri)
+      // A debug plan always compiles its generated wrapper as Image, even
+      // when the selected source belongs to a compute pass.
+      .map((file) => ({ ...file, ownerPass: "Image" }));
+    const previous = this.lastCompile;
+    const planModulePaths = new Set(planModules.map((module) => module.path));
+    const modules = [
+      ...(previous?.slangModules.filter((module) => !planModulePaths.has(module.path)) ?? []),
+      ...planModules,
+    ];
+    const result = await this.compileShaderPipeline(
+      root.source,
+      previous?.config ?? this.currentConfig,
+      previous?.path ?? root.path,
+      previous?.buffers ?? {},
+      previous?.customUniformDeclarations ?? this.customUniformManager.getDeclarations(),
+      previous?.customUniformInfo ?? this.customUniformManager.getUniformInfo(),
+      modules,
+      previous?.slangSourcePath ?? root.path,
+    );
+    if (!result || result.success || result.superseded) {
+      return result;
+    }
+
+    const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
+    const selectedLabel = selectedSource?.path ?? plan.selectedSourceUri;
+    return {
+      ...result,
+      errors: (result.errors?.length ? result.errors : ["Unknown Slang debug compilation error"])
+        .map((error) => error.includes(selectedLabel) || error.includes(plan.selectedSourceUri)
+          ? error
+          : `${selectedLabel}: ${error}`),
+    };
   }
 
   getCurrentConfig(): ShaderConfig | null {

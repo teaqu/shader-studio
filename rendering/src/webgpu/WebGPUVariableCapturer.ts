@@ -7,7 +7,7 @@ import type {
   CaptureResult,
   CaptureUniforms,
 } from "../capture/VariableCapturer";
-import type { ConfigInput } from "@shader-studio/types";
+import type { ConfigInput, DebugInstrumentationPlan } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
@@ -36,6 +36,7 @@ interface PendingCapture {
   resolved: boolean;
   discarded: boolean;
   rgba: Float32Array | null;
+  hidden?: boolean;
 }
 
 /**
@@ -157,7 +158,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         continue;
       }
       if (pending.resolved && pending.rgba) {
-        results.push({ varName: pending.varName, varType: pending.varType, rgba: pending.rgba });
+        results.push({ varName: pending.varName, varType: pending.varType, rgba: pending.rgba, hidden: pending.hidden });
       } else {
         remaining.push(pending);
       }
@@ -281,9 +282,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           storage,
           compileContextGeneration,
           compileContextKey,
+          capture.slangPlan,
         );
         if (
           !shouldContinue() ||
+          this.disposed ||
           !this.isCompileContextCurrent(compileContextGeneration, compileContextKey)
         ) {
           break;
@@ -344,6 +347,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           resolved: false,
           discarded: false,
           rgba: null,
+          hidden: capture.hidden,
         };
         this.pendingCaptures.push(pending);
         this.beginReadback(pending);
@@ -401,11 +405,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     storage: StorageBindingNode[],
     compileContextGeneration: number,
     compileContextKey: string,
+    slangPlan?: DebugInstrumentationPlan,
   ): Promise<CachedPipeline | null> {
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
-    const pipelineCacheKey = JSON.stringify([compileContextKey, captureShader]);
+    const pipelineCacheKey = JSON.stringify([
+      compileContextKey,
+      slangPlan?.workspaceHash ?? "",
+      captureShader,
+    ]);
     const existing = this.pipelineCache.get(pipelineCacheKey);
     if (existing) {
       existing.lastUsed = performance.now();
@@ -421,18 +430,28 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       passKind: "render",
       captureMode: true,
       customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
-      ...(this.compileContext.slangModules?.length
-        ? { modules: this.compileContext.slangModules }
-        : {}),
-      ...(this.compileContext.slangSourcePath
-        ? { sourcePath: this.compileContext.slangSourcePath }
-        : {}),
+      ...(slangPlan
+        ? { modules: slangPlan.files.filter((file) => file.uri !== slangPlan.rootUri).map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
+        : this.compileContext.slangModules?.length
+          ? { modules: this.compileContext.slangModules }
+          : {}),
+      ...(slangPlan
+        ? { sourcePath: slangPlan.files.find((file) => file.uri === slangPlan.rootUri)?.path }
+        : this.compileContext.slangSourcePath
+          ? { sourcePath: this.compileContext.slangSourcePath }
+          : {}),
     });
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
     if (!compileResult.success) {
-      this.lastError = compileResult.errors.join("\n");
+      const selectedSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
+      const selectedLabel = selectedSource?.path ?? slangPlan?.selectedSourceUri;
+      this.lastError = compileResult.errors
+        .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(slangPlan!.selectedSourceUri)
+          ? `${selectedLabel}: ${error}`
+          : error)
+        .join("\n");
       return null;
     }
 

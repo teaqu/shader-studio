@@ -3,7 +3,7 @@ import type { IVariableCapturer } from '../../../rendering/src/capture/VariableC
 import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
-import type { ConfigInput } from '@shader-studio/types';
+import type { ConfigInput, DebugInstrumentationPlan, DebugVisibleValue } from '@shader-studio/types';
 
 const CAPTURABLE_TYPES = new Set([
   'float', 'int', 'bool',
@@ -201,6 +201,7 @@ interface CaptureParams {
   sampleSize: number;
   refreshMode: RefreshMode;
   pollingMs: number;
+  slangCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
 }
 
 /**
@@ -257,7 +258,7 @@ export class VariableCaptureManager {
   private collectionRequestId = 0;
   private disposed = false;
   // Accumulate partial PBO results until all fences have signaled
-  private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array }> = [];
+  private pendingResults: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }> = [];
   private expectedCount = 0;
   private emptyCollectFrames = 0;
   private declaredOrder: string[] = [];
@@ -566,6 +567,14 @@ export class VariableCaptureManager {
     }
     captureCounters.issueCalls++;
 
+    if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
+      this.emitErrorState(params.activeBufferName?.startsWith('Compute')
+        ? 'Compute variable inspection is not available yet. Your shader will continue running normally.'
+        : 'Slang capture could not be planned at this location');
+      this.finishCollection([]);
+      return;
+    }
+
     if (!this.capturer) {
       try {
         this.capturer = this.renderingEngine.createVariableCapturer();
@@ -595,7 +604,9 @@ export class VariableCaptureManager {
 
     let vars: Array<{ varName: string; varType: string; declarationLine: number }>;
     try {
-      vars = VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
+      vars = params.slangCapture
+        ? params.slangCapture.values.map((value) => ({ varName: value.name, varType: value.typeName, declarationLine: value.declarationRange.start.line }))
+        : VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
     } catch {
       if (!this.isCurrentRequest(requestId)) {
         return;
@@ -610,10 +621,12 @@ export class VariableCaptureManager {
     }
 
     // Append custom uniforms (declared in compiler header, not in user code)
-    const customUniforms = this.renderingEngine.getCustomUniformInfo();
-    for (const { name, type } of customUniforms) {
-      if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
-        vars.push({ varName: name, varType: type, declarationLine: -1 });
+    if (!params.slangCapture) {
+      const customUniforms = this.renderingEngine.getCustomUniformInfo();
+      for (const { name, type } of customUniforms) {
+        if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
+          vars.push({ varName: name, varType: type, declarationLine: -1 });
+        }
       }
     }
 
@@ -640,7 +653,7 @@ export class VariableCaptureManager {
       params.canvasHeight,
     );
 
-    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number }> = [];
+    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number; hidden?: boolean; slangPlan?: DebugInstrumentationPlan }> = [];
 
     // Store declaration lines for each variable
     this.varDeclarationLines.clear();
@@ -648,7 +661,7 @@ export class VariableCaptureManager {
       this.varDeclarationLines.set(v.varName, v.declarationLine);
     }
 
-    const selectorShader = VariableCaptureBuilder.generateMultiCaptureShader(
+    const selectorShader = params.slangCapture ? params.slangCapture.plan.files.find((file) => file.uri === params.slangCapture!.plan.rootUri)?.source : VariableCaptureBuilder.generateMultiCaptureShader(
       params.code,
       resolvedLine,
       vars,
@@ -657,17 +670,20 @@ export class VariableCaptureManager {
       isPixelMode,
       gridWidth,
       gridHeight,
-      this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
     );
 
     if (selectorShader) {
+      if (params.slangCapture) {
+        captures.push({ varName: params.slangCapture.plan.captureSlots[0].name, varType: 'bool', captureShader: selectorShader, selectorIndex: 0, hidden: true, slangPlan: params.slangCapture.plan });
+      }
       for (let index = 0; index < vars.length; index++) {
         const v = vars[index];
         captures.push({
           varName: v.varName,
           varType: v.varType,
           captureShader: selectorShader,
-          selectorIndex: index,
+          selectorIndex: params.slangCapture ? index + 1 : index,
+          ...(params.slangCapture ? { slangPlan: params.slangCapture.plan } : {}),
         });
       }
     }
@@ -702,7 +718,7 @@ export class VariableCaptureManager {
     }
 
     this.pendingResults = [];
-    this.declaredOrder = captures.map(c => c.varName);
+    this.declaredOrder = captures.filter((capture) => !capture.hidden).map((capture) => capture.varName);
     this.lastGridWidth = gridWidth;
     this.lastGridHeight = gridHeight;
     this.emptyCollectFrames = 0;
@@ -766,7 +782,7 @@ export class VariableCaptureManager {
   }
 
   private decodeAndUpdate(
-    results: Array<{ varName: string; varType: string; rgba: Float32Array }>
+    results: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }>
   ): void {
     captureCounters.decodeCalls++;
     const decodeStartedAt = performance.now();
@@ -780,7 +796,14 @@ export class VariableCaptureManager {
       captureBufferName: this.lastCaptureBufferName,
     };
 
-    for (const result of results) {
+    const marker = results.find((result) => result.hidden);
+    if (marker && !marker.rgba.some((value, index) => index % 4 === 0 && value >= 0.5)) {
+      this.emitErrorState('Selected Slang statement was not executed for this capture');
+      this.finishCollection([]);
+      return;
+    }
+
+    for (const result of results.filter((result) => !result.hidden)) {
       if (isPixelMode) {
         // 1×1 capture: exact component values
         const value = CaptureDecoder.decodePixel(result.rgba, result.varType);

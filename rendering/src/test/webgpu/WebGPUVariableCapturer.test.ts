@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import type { DebugInstrumentationPlan } from "@shader-studio/types";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
@@ -414,6 +415,28 @@ describe("WebGPUVariableCapturer", () => {
 
     expect(issued).toBe(0);
     expect(capturer.getLastError()).toBe("boom");
+  });
+
+  it("attributes native capture compiler failures to the selected imported module", async () => {
+    const gpu = mockGpu();
+    gpu.compiler.compile.mockResolvedValue({ success: false, errors: ["unexpected token"] });
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "hash",
+      rootUri: "file:///shaders/image.slang",
+      selectedSourceUri: "file:///shaders/helper.slang",
+      executionMarkerSlot: 0,
+      captureSlots: [],
+      files: [
+        { uri: "file:///shaders/image.slang", path: "/shaders/image.slang", source: "root", version: 1, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///shaders/helper.slang", path: "/shaders/helper.slang", source: "module Helper;", version: 2, moduleName: "Helper", ownerPass: "Image" },
+      ],
+    };
+
+    const issued = await capturer.issueCaptureGrid([{ ...captures[0], slangPlan: plan }], uniforms, 8, 4);
+
+    expect(issued).toBe(0);
+    expect(capturer.getLastError()).toBe("/shaders/helper.slang: unexpected token");
   });
 
   it("collectResults returns only captures whose mapping resolved, with tight rows", async () => {

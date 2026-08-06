@@ -177,10 +177,21 @@ describe('VariableRow', () => {
     expect(content).toContain('0.800');
   });
 
+  it.each(['float2', 'float3', 'float4', 'float2x2'])('shows per-component means for native Slang %s grid captures', (varType) => {
+    const v = { ...makeGridVecVar(), varName: 'slangValue', varType };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+
+    const content = document.body.textContent ?? '';
+    expect(content).toContain('≈');
+    expect(content).toContain('0.210');
+    expect(content).toContain('0.450');
+    expect(content).toContain('0.800');
+  });
+
   it('shows thumbnail canvas for vec3 in grid mode when thumbnail data is present', () => {
     const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
     const v = { ...makeGridVecVar(), thumbnail: thumb };
-    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    render(VariableRow, { props: { variable: v, isPixelMode: false, enableRowPreview: true } });
     const canvas = document.querySelector('canvas') as HTMLElement;
     expect(canvas).toBeInTheDocument();
   });
@@ -189,7 +200,7 @@ describe('VariableRow', () => {
     // 43×24 = ~16:9
     const thumb = new Uint8ClampedArray(43 * 24 * 4).fill(128);
     const v = { ...makeGridVecVar(), thumbnail: thumb, gridWidth: 43, gridHeight: 24 };
-    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+    render(VariableRow, { props: { variable: v, isPixelMode: false, enableRowPreview: true } });
     const canvas = document.querySelector('canvas') as HTMLCanvasElement;
     expect(canvas).toBeInTheDocument();
     // Width should be maxSize (32), height proportionally shorter
@@ -456,6 +467,31 @@ describe('VariableRow', () => {
     expectStyleRule('.thumb-col.expanded', ['align-self: flex-start']);
   });
 
+  it('activates a preview when hovering any captured row, even without a thumbnail', async () => {
+    const v = {
+      ...makeGridScalarVar(),
+      captureLine: 14,
+      captureBufferName: 'BufferA',
+      captureFilePath: '/shaders/buffer-a.glsl',
+    };
+    render(VariableRow, { props: { variable: v, isPixelMode: false, enableRowPreview: true } });
+
+    const row = document.querySelector('.var-row') as HTMLElement;
+    expect(row.querySelector('.thumb-wrap')).not.toBeInTheDocument();
+
+    await fireEvent.mouseEnter(row);
+    expect(getVariablePreview()).toMatchObject({
+      varName: 'gridVar',
+      varType: 'float',
+      debugLine: 14,
+      activeBufferName: 'BufferA',
+      filePath: '/shaders/buffer-a.glsl',
+    });
+
+    await fireEvent.mouseLeave(row);
+    expect(getVariablePreview().varName).toBeNull();
+  });
+
   it('updates shared variable preview state when the mini preview is hovered and focused', async () => {
     const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
     const v = {
@@ -469,13 +505,15 @@ describe('VariableRow', () => {
       props: {
         variable: v,
         isPixelMode: false,
+        enableRowPreview: true,
       },
     });
 
     const preview = document.querySelector('.thumb-wrap') as HTMLElement;
+    const row = document.querySelector('.var-row') as HTMLElement;
     expect(preview).toBeInTheDocument();
 
-    await fireEvent.mouseEnter(preview);
+    await fireEvent.mouseEnter(row);
     expect(getVariablePreview()).toMatchObject({
       varName: 'gridVec',
       varType: 'vec3',
@@ -484,7 +522,7 @@ describe('VariableRow', () => {
       filePath: '/shaders/buffer-a.glsl',
     });
 
-    await fireEvent.mouseLeave(preview);
+    await fireEvent.mouseLeave(row);
     expect(getVariablePreview()).toMatchObject({
       varName: null,
       varType: null,
@@ -493,7 +531,7 @@ describe('VariableRow', () => {
       filePath: null,
     });
 
-    await fireEvent.focus(preview);
+    await fireEvent.focusIn(preview);
     expect(getVariablePreview()).toMatchObject({
       varName: 'gridVec',
       varType: 'vec3',
@@ -502,7 +540,7 @@ describe('VariableRow', () => {
       filePath: '/shaders/buffer-a.glsl',
     });
 
-    await fireEvent.blur(preview);
+    await fireEvent.focusOut(preview);
     expect(getVariablePreview()).toMatchObject({
       varName: null,
       varType: null,

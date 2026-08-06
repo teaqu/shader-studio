@@ -13,7 +13,9 @@ import { getShaderLanguage } from "./GlslFileTracker";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
-import type { ShaderConfig } from "@shader-studio/types";
+import { collectSlangDependencies } from "./SlangDependencyGraph";
+import { getConfigPathForShaderPath, getShaderPathFromConfigPath } from "./ShaderConfigPaths";
+import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
   name: string;
@@ -52,6 +54,7 @@ export class ShaderExplorerProvider {
   private shaderSearchTextCache = new Map<string, ShaderSearchCacheEntry>();
   private latestSearchRequestId = 0;
   private readonly shaderSearchConcurrency = 16;
+  private slangPreviewRoots = new Map<string, string>();
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -210,22 +213,24 @@ export class ShaderExplorerProvider {
     }
 
     try {
-      const doc = await vscode.workspace.openTextDocument(shaderPath);
+      const previewPath = await this.resolvePreviewPath(shaderPath);
+      const doc = await vscode.workspace.openTextDocument(previewPath);
       const code = doc.getText();
             
       // Collect buffer contents
       const buffers: Record<string, string> = {};
             
       // Load and process config
-      const config = this.configProcessor.loadAndProcessConfig(shaderPath, buffers);
+      const config = this.configProcessor.loadAndProcessConfig(previewPath, buffers);
 
-      this.logger.debug(`Sending shader code for ${shaderPath} with ${Object.keys(buffers).length} buffer(s)`);
+      this.logger.debug(`Sending shader code for ${previewPath} with ${Object.keys(buffers).length} buffer(s)`);
 
       // Process config paths to convert texture paths to webview URIs
       const message: {
         type: "shaderCode";
         requestId?: number;
         path: string;
+        previewPath: string;
         language: "glsl" | "slang";
         code: string;
         config: ShaderConfig | null;
@@ -233,17 +238,23 @@ export class ShaderExplorerProvider {
         scriptBundleError?: string;
         customUniformDeclarations?: string;
         customUniformInfo?: { name: string; type: string }[];
+        slangModules?: SlangSourceModule[];
       } = {
         type: "shaderCode",
         requestId,
         path: shaderPath,
+        previewPath,
         language: getShaderLanguage(shaderPath),
         code: code,
         config: config,
         buffers: buffers,
       };
 
-      await this.addCustomUniformMetadata(config, shaderPath, message);
+      if (message.language === "slang") {
+        message.slangModules = this.collectSlangModules(previewPath, code, config, buffers);
+      }
+
+      await this.addCustomUniformMetadata(config, previewPath, message);
 
       const processedMessage = await ConfigPathConverter.processConfigPaths(
                 message as any,
@@ -253,6 +264,79 @@ export class ShaderExplorerProvider {
       this.panel.webview.postMessage(processedMessage);
     } catch (error) {
       this.logger.error(`Failed to load shader code: ${error}`);
+    }
+  }
+
+  private async resolvePreviewPath(shaderPath: string): Promise<string> {
+    if (getShaderLanguage(shaderPath) !== "slang" || fs.existsSync(getConfigPathForShaderPath(shaderPath))) {
+      return shaderPath;
+    }
+    const cached = this.slangPreviewRoots.get(shaderPath);
+    if (cached) {
+      return cached;
+    }
+
+    const normalizedShaderPath = path.normalize(shaderPath);
+    const configFiles = await vscode.workspace.findFiles("**/*.sha.json", "**/node_modules/**");
+    for (const configFile of configFiles) {
+      const rootPath = getShaderPathFromConfigPath(configFile.fsPath);
+      if (!rootPath || getShaderLanguage(rootPath) !== "slang") {
+        continue;
+      }
+      const config = this.configProcessor.loadAndProcessConfig(rootPath, {});
+      const ownsPass = Object.values(config?.passes ?? {}).some((pass) =>
+        pass && typeof pass === "object" && "path" in pass && typeof pass.path === "string"
+        && path.normalize(PathResolver.resolvePath(rootPath, pass.path)) === normalizedShaderPath,
+      );
+      if (ownsPass) {
+        this.slangPreviewRoots.set(shaderPath, rootPath);
+        return rootPath;
+      }
+    }
+    return shaderPath;
+  }
+
+  private collectSlangModules(
+    shaderPath: string,
+    code: string,
+    config: ShaderConfig | null,
+    buffers: Record<string, string>,
+  ): SlangSourceModule[] {
+    const roots: Array<{ ownerPass: string; path: string; source: string }> = [
+      { ownerPass: "Image", path: shaderPath, source: code },
+    ];
+    for (const [passName, source] of Object.entries(buffers)) {
+      const configuredPass = config?.passes?.[passName];
+      const configuredPath = configuredPass && "path" in configuredPass
+        ? configuredPass.path
+        : undefined;
+      if (typeof configuredPath === "string") {
+        roots.push({ ownerPass: passName, path: PathResolver.resolvePath(shaderPath, configuredPath), source });
+      }
+    }
+
+    const modules = roots.flatMap((root) => collectSlangDependencies({
+      rootPath: root.path,
+      rootSource: root.source,
+      ownerPass: root.ownerPass,
+      readSource: (filePath) => this.readShaderSource(filePath),
+    }).modules);
+    return Array.from(new Map(
+      modules.map((module) => [`${module.ownerPass}\0${module.moduleName}\0${module.path}`, module]),
+    ).values());
+  }
+
+  private readShaderSource(filePath: string): string | null {
+    const openDocument = vscode.workspace.textDocuments.find(
+      (document) => path.normalize(document.uri.fsPath) === path.normalize(filePath),
+    );
+    if (openDocument) {
+      return openDocument.getText();
+    }
+    try {
+      return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : null;
+    } catch {
+      return null;
     }
   }
 

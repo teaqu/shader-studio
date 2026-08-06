@@ -840,6 +840,9 @@
       sampleSize: variableCaptureManager.sampleSize,
       refreshMode: variableCaptureManager.getActiveRefreshMode(hasPixelCapture),
       pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
+      slangCapture: engineLanguage === 'slang'
+        ? shaderDebugManager.getSlangCapturePlan(currentShaderCode, currentConfig)
+        : null,
     });
   }
 

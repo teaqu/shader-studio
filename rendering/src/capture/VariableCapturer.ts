@@ -3,7 +3,7 @@ import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
-import type { ConfigInput } from '@shader-studio/types';
+import type { ConfigInput, DebugInstrumentationPlan } from '@shader-studio/types';
 import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 import type { StorageBindingNode } from '../types/PassGraph';
@@ -64,12 +64,16 @@ export interface CaptureRequest {
   varType: string;
   captureShader: string;
   selectorIndex?: number;
+  /** Complete Slang workspace for native capture; ignored by the WebGL capturer. */
+  slangPlan?: DebugInstrumentationPlan;
+  hidden?: boolean;
 }
 
 export interface CaptureResult {
   varName: string;
   varType: string;
   rgba: Float32Array;
+  hidden?: boolean;
 }
 
 /**

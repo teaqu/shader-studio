@@ -245,7 +245,41 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
             {},
             undefined,
             undefined,
+            undefined,
         );
+    });
+
+    it('passes imported Slang modules to the preview compiler', async () => {
+        const shader = makeShader({ path: '/test/image.slang', name: 'image.slang' });
+        const vscodeApi = {
+            postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
+                if (msg.type !== 'requestShaderCode') return;
+                setTimeout(() => {
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: {
+                            type: 'shaderCode', path: msg.path, requestId: msg.requestId,
+                            code: 'import substep;\nfloat4 mainImage(float2 c) { return float4(substepValue()); }',
+                            previewPath: '/test/workspace.slang',
+                            config: null, buffers: {}, language: 'slang',
+                            slangModules: [{
+                                moduleName: 'substep', path: '/test/substep.slang', ownerPass: 'Image',
+                                source: 'module substep; public float substepValue() { return 1.0; }',
+                            }],
+                        },
+                    }));
+                }, 0);
+            }),
+        };
+
+        render(ShaderPreview, { props: { shader, vscodeApi } });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledWith(
+            expect.stringContaining('import substep'), null, '/test/workspace.slang', {}, undefined, undefined,
+            [{
+                moduleName: 'substep', path: '/test/substep.slang', ownerPass: 'Image',
+                source: 'module substep; public float substepValue() { return 1.0; }',
+            }],
+        ));
     });
 
     it('passes custom uniform declarations and type metadata to the selected engine', async () => {
@@ -281,6 +315,7 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
             {},
             'uniform float uFloat;',
             [{ name: 'uFloat', type: 'float' }],
+            undefined,
         ));
     });
 
@@ -316,6 +351,7 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
             {},
             'uniform vec4 uColor;',
             [{ name: 'uColor', type: 'vec4' }],
+            undefined,
         ));
         expect(createEngineForLanguage).toHaveBeenCalledWith('slang');
     });

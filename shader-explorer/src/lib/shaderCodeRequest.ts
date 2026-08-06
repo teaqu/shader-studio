@@ -1,13 +1,17 @@
+import type { SlangSourceModule } from '@shader-studio/types';
+
 export type ShaderLanguage = 'glsl' | 'slang';
 
 export interface ShaderCodeResponse {
   code: string;
   config: unknown;
+  previewPath?: string;
   buffers: Record<string, string>;
   language: ShaderLanguage;
   scriptBundleError?: string;
   customUniformDeclarations?: string;
   customUniformInfo?: { name: string; type: string }[];
+  slangModules?: SlangSourceModule[];
 }
 
 interface ShaderCodeRequestApi {
@@ -74,11 +78,13 @@ export function requestShaderCode({
       const response: ShaderCodeResponse = {
         code: message.code,
         config: message.config || null,
+        previewPath: message.previewPath,
         buffers: message.buffers || {},
         language: message.language === 'slang' ? 'slang' : 'glsl',
         scriptBundleError: message.scriptBundleError,
         customUniformDeclarations: message.customUniformDeclarations,
         customUniformInfo: message.customUniformInfo,
+        slangModules: message.slangModules,
       };
       cleanup();
       onReceived?.(response, now() - startedAt);

@@ -1,7 +1,7 @@
 import { GlslParser } from './GlslParser';
 import type { VarInfo } from './GlslParser';
 import { CodeGenerator } from './CodeGenerator';
-import type { DebugFunctionContext, DebugParameterInfo, DebugLoopInfo, ShaderDialect } from './types';
+import type { DebugFunctionContext, DebugParameterInfo, DebugLoopInfo } from './types';
 
 /**
  * Orchestrates shader modification for line-by-line debugging.
@@ -21,7 +21,6 @@ export class ShaderDebugger {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string | null {
     const ctx = this.prepareDebugContext(originalCode, debugLine, lineContent);
     const { lines, resolvedLine, resolvedLineContent, functionInfo, isFunctionEntryLine, varTypes, functionReturnType } = ctx;
@@ -38,7 +37,6 @@ export class ShaderDebugger {
           customParameters,
           normalizeMode,
           stepEdge,
-          dialect,
         );
       }
 
@@ -60,7 +58,7 @@ export class ShaderDebugger {
         varInfo = this.detectVariableAndRewrite(fallbackLineContent, fallbackVarTypes, functionReturnType, lines, fallbackLine);
 
         if (varInfo) {
-          return this.buildDebugShader(lines, fallbackLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge, dialect);
+          return this.buildDebugShader(lines, fallbackLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
         }
       }
     }
@@ -69,7 +67,7 @@ export class ShaderDebugger {
       return null;
     }
 
-    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge, dialect);
+    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
   }
 
   /**
@@ -84,7 +82,6 @@ export class ShaderDebugger {
     customParameters: Map<number, string> = new Map(),
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
-    dialect: ShaderDialect = 'glsl',
   ): string | null {
     const ctx = this.prepareDebugContext(originalCode, debugLine, '');
     const { lines, resolvedLine, functionInfo, varTypes, functionReturnType } = ctx;
@@ -93,7 +90,7 @@ export class ShaderDebugger {
       return null;
     }
 
-    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge, dialect);
+    return this.buildDebugShader(lines, resolvedLine, functionInfo, varInfo, loopMaxIterations, customParameters, normalizeMode, stepEdge);
   }
 
   /**
@@ -232,17 +229,16 @@ export class ShaderDebugger {
     customParameters: Map<number, string>,
     normalizeMode: string,
     stepEdge: number | null,
-    dialect: ShaderDialect = 'glsl',
   ): string {
     let result: string;
 
     if (functionInfo.name === 'mainImage') {
-      result = this.truncateMainImage(lines, debugLine, functionInfo.start, varInfo, loopMaxIterations, normalizeMode, stepEdge, false, dialect);
+      result = this.truncateMainImage(lines, debugLine, functionInfo.start, varInfo, loopMaxIterations, normalizeMode, stepEdge, false);
     } else if (functionInfo.name) {
       const containingLoops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
-      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge, dialect);
+      result = CodeGenerator.wrapFunctionForDebugging(lines, functionInfo, debugLine, varInfo, containingLoops, loopMaxIterations, customParameters, normalizeMode, stepEdge);
     } else {
-      result = CodeGenerator.wrapGlobalScopeForDebugging(lines, varInfo, normalizeMode, stepEdge, dialect);
+      result = CodeGenerator.wrapGlobalScopeForDebugging(lines, varInfo, normalizeMode, stepEdge);
     }
 
     return result;
@@ -369,7 +365,6 @@ export class ShaderDebugger {
   public static extractFunctionContext(
     originalCode: string,
     debugLine: number,
-    dialect: ShaderDialect = 'glsl',
   ): DebugFunctionContext | null {
     const lines = originalCode.split('\n');
     const functionInfo = GlslParser.findEnclosingFunction(lines, debugLine);
@@ -381,12 +376,12 @@ export class ShaderDebugger {
     // Parse return type
     const funcLine = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
     const returnTypeMatch = funcLine.match(
-      /^\s*(?:(?:public|private|internal|static|inline|extern|export|__exported)\s+)*(void|float2x2|float3x3|float4x4|float[234]|float|vec[234]|mat[234]|int|bool)\s+\w+\s*\(/,
+      /^\s*(void|float|vec[234]|mat[234]|int|bool)\s+\w+\s*\(/,
     );
     const returnType = returnTypeMatch ? returnTypeMatch[1] : 'void';
 
     // Parse parameters
-    const parameters = ShaderDebugger.extractParameters(lines, functionInfo.start, dialect);
+    const parameters = ShaderDebugger.extractParameters(lines, functionInfo.start);
 
     // Find loops between function start and debug line
     const loops = ShaderDebugger.extractLoops(lines, functionInfo.start, debugLine);
@@ -408,12 +403,11 @@ export class ShaderDebugger {
     originalCode: string,
     normalizeMode: string,
     stepEdge: number | null,
-    dialect: ShaderDialect = 'glsl',
   ): string | null {
-    return CodeGenerator.applyOutputPostProcessing(originalCode, normalizeMode, stepEdge, dialect);
+    return CodeGenerator.applyOutputPostProcessing(originalCode, normalizeMode, stepEdge);
   }
 
-  private static extractParameters(lines: string[], startLine: number, dialect: ShaderDialect = 'glsl'): DebugParameterInfo[] {
+  private static extractParameters(lines: string[], startLine: number): DebugParameterInfo[] {
     const parameters: DebugParameterInfo[] = [];
     const funcLine = GlslParser.getFullFunctionSignature(lines, startLine);
     const paramsMatch = funcLine.match(/\(([^)]*)\)/);
@@ -425,7 +419,7 @@ export class ShaderDebugger {
     const paramPairs = paramsMatch[1].split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
-      const match = pair.match(/(?:(in|out|inout)\s+)?(float2x2|float3x3|float4x4|float[234]|vec[234]|float|int|bool|mat[234]|sampler2D)\s+(\w+)/);
+      const match = pair.match(/(?:(in|out|inout)\s+)?(vec[234]|float|int|bool|mat[234]|sampler2D)\s+(\w+)/);
       if (!match) continue;
 
       const qualifier = match[1];
@@ -434,11 +428,11 @@ export class ShaderDebugger {
 
       const type = match[2];
       const name = match[3];
-      const uvValue = ShaderDebugger.getUvValue(type, dialect);
-      const defaultCustomValue = ShaderDebugger.getDefaultCustomValue(type, dialect);
+      const uvValue = ShaderDebugger.getUvValue(type);
+      const defaultCustomValue = ShaderDebugger.getDefaultCustomValue(type);
 
-      const centeredUvValue = ShaderDebugger.getCenteredUvValue(type, dialect);
-      const isUvSeeded = CodeGenerator.canonicalType(type) === 'vec2';
+      const centeredUvValue = ShaderDebugger.getCenteredUvValue(type);
+      const isUvSeeded = type === 'vec2';
 
       parameters.push({
         name,
@@ -453,18 +447,17 @@ export class ShaderDebugger {
     return parameters;
   }
 
-  private static getUvValue(type: string, dialect: ShaderDialect = 'glsl'): string {
-    const s = dialect === 'slang';
-    switch (CodeGenerator.canonicalType(type)) {
+  private static getUvValue(type: string): string {
+    switch (type) {
       case 'vec2': return 'uv';
       case 'float': return 'uv.x';
-      case 'vec3': return s ? 'float3(uv, 0.0)' : 'vec3(uv, 0.0)';
-      case 'vec4': return s ? 'float4(uv, 0.0, 1.0)' : 'vec4(uv, 0.0, 1.0)';
+      case 'vec3': return 'vec3(uv, 0.0)';
+      case 'vec4': return 'vec4(uv, 0.0, 1.0)';
       case 'int': return 'int(uv.x * 10.0)';
       case 'bool': return 'uv.x > 0.5';
-      case 'mat2': return s ? 'float2x2(uv.x, 0.0, 0.0, uv.x)' : 'mat2(uv.x)';
-      case 'mat3': return s ? '' : 'mat3(uv.x)';
-      case 'mat4': return s ? '' : 'mat4(uv.x)';
+      case 'mat2': return 'mat2(uv.x)';
+      case 'mat3': return 'mat3(uv.x)';
+      case 'mat4': return 'mat4(uv.x)';
       default: return '';
     }
   }
@@ -474,35 +467,33 @@ export class ShaderDebugger {
    * Aspect-ratio-corrected, ranges roughly -1 to 1 in Y, -aspect to aspect in X.
    * Uses fragCoord/iResolution directly (available in the mainImage wrapper scope).
    */
-  private static getCenteredUvValue(type: string, dialect: ShaderDialect = 'glsl'): string {
-    const s = dialect === 'slang';
+  private static getCenteredUvValue(type: string): string {
     const cuv = '((fragCoord * 2.0 - iResolution.xy) / iResolution.y)';
-    switch (CodeGenerator.canonicalType(type)) {
+    switch (type) {
       case 'vec2': return cuv;
       case 'float': return `${cuv}.x`;
-      case 'vec3': return s ? `float3(${cuv}, 0.0)` : `vec3(${cuv}, 0.0)`;
-      case 'vec4': return s ? `float4(${cuv}, 0.0, 1.0)` : `vec4(${cuv}, 0.0, 1.0)`;
+      case 'vec3': return `vec3(${cuv}, 0.0)`;
+      case 'vec4': return `vec4(${cuv}, 0.0, 1.0)`;
       case 'int': return `int(${cuv}.x * 10.0)`;
       case 'bool': return 'fragCoord.x > iResolution.x * 0.5';
-      case 'mat2': return s ? `float2x2(${cuv}.x, 0.0, 0.0, ${cuv}.x)` : `mat2(${cuv}.x)`;
-      case 'mat3': return s ? '' : `mat3(${cuv}.x)`;
-      case 'mat4': return s ? '' : `mat4(${cuv}.x)`;
+      case 'mat2': return `mat2(${cuv}.x)`;
+      case 'mat3': return `mat3(${cuv}.x)`;
+      case 'mat4': return `mat4(${cuv}.x)`;
       default: return '';
     }
   }
 
-  private static getDefaultCustomValue(type: string, dialect: ShaderDialect = 'glsl'): string {
-    const s = dialect === 'slang';
-    switch (CodeGenerator.canonicalType(type)) {
-      case 'vec2': return s ? 'float2(0.5)' : 'vec2(0.5)';
+  private static getDefaultCustomValue(type: string): string {
+    switch (type) {
+      case 'vec2': return 'vec2(0.5)';
       case 'float': return '0.5';
-      case 'vec3': return s ? 'float3(0.5)' : 'vec3(0.5)';
-      case 'vec4': return s ? 'float4(0.5)' : 'vec4(0.5)';
+      case 'vec3': return 'vec3(0.5)';
+      case 'vec4': return 'vec4(0.5)';
       case 'int': return '1';
       case 'bool': return 'true';
-      case 'mat2': return s ? 'float2x2(1.0, 0.0, 0.0, 1.0)' : 'mat2(1.0)';
-      case 'mat3': return s ? '' : 'mat3(1.0)';
-      case 'mat4': return s ? '' : 'mat4(1.0)';
+      case 'mat2': return 'mat2(1.0)';
+      case 'mat3': return 'mat3(1.0)';
+      case 'mat4': return 'mat4(1.0)';
       case 'sampler2D': return 'iChannel0';
       default: return '0.0';
     }
@@ -631,7 +622,6 @@ export class ShaderDebugger {
     normalizeMode: string = 'off',
     stepEdge: number | null = null,
     captureMode: boolean = false,
-    dialect: ShaderDialect = 'glsl',
   ): string {
     const stripComments = (line: string): string => {
       const commentIndex = line.indexOf('//');
@@ -691,27 +681,6 @@ export class ShaderDebugger {
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
 
-    // Slang mainImage returns its color. The generated visualization is appended
-    // after the selected statement, so an original return on that statement
-    // must be rewritten or it would make the debug output unreachable.
-    if (dialect === 'slang') {
-      const returnRange = CodeGenerator.findReturnRange(truncatedLines, debugLine, truncationEnd);
-      if (returnRange) {
-        if (varInfo.name === '_dbgReturn') {
-          truncatedLines[returnRange.start] = truncatedLines[returnRange.start].replace(
-            /\breturn\b/,
-            `${varInfo.type} ${varInfo.name} =`,
-          );
-        } else {
-          const indent = truncatedLines[returnRange.start].match(/^\s*/)?.[0] ?? '';
-          truncatedLines[returnRange.start] = `${indent}// Debug: replaced original return`;
-          for (let line = returnRange.start + 1; line <= returnRange.end; line++) {
-            truncatedLines[line] = `${indent}// Debug: replaced return continuation`;
-          }
-        }
-      }
-    }
-
     // Insert shadow variable if debug line is inside a loop
     const debugLineIndex = debugLine; // index within truncatedLines = same as absolute line number
     const { lines: withShadow, shadowVarName } = CodeGenerator.insertShadowVariable(
@@ -726,8 +695,8 @@ export class ShaderDebugger {
     const result = closedLines.slice(0, originalLength);
     const outputVar = shadowVarName || varInfo.name;
     const outputLine = captureMode
-      ? CodeGenerator.generateCaptureOutputForVar(varInfo.type, outputVar, dialect)
-      : CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar, normalizeMode, stepEdge, dialect);
+      ? CodeGenerator.generateCaptureOutputForVar(varInfo.type, outputVar)
+      : CodeGenerator.generateReturnStatementForVar(varInfo.type, outputVar, normalizeMode, stepEdge);
     result.push(outputLine);
     result.push(...closedLines.slice(originalLength));
     return result.join('\n');
