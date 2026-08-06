@@ -180,8 +180,8 @@
         },
         "shader-studio.webglGlslEditorIntegration": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable automatic WebGL GLSL Editor code injection for Shader Studio uniforms."
+          "default": false,
+          "description": "Enable Shader Studio integration with the WebGL GLSL Editor extension. When enabled, Shader Studio overwrites the extension's code injection with its generated uniforms."
         }
       }
     },

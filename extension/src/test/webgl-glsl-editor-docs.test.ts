@@ -18,4 +18,15 @@ suite('WebGL GLSL Editor documentation', () => {
     assert.match(settings, /webglGlslEditorIntegration/);
     assert.match(settings, /replaces any existing injection configuration/i);
   });
+
+  test('keeps the companion integration opt-in and warns that it takes ownership', () => {
+    const manifest = JSON.parse(read('extension', 'package.json')) as {
+      contributes: { configuration: { properties: Record<string, { default: boolean; description: string }> } };
+    };
+    const setting = manifest.contributes.configuration.properties['shader-studio.webglGlslEditorIntegration'];
+
+    assert.strictEqual(setting.default, false);
+    assert.match(setting.description, /WebGL GLSL Editor extension/i);
+    assert.match(setting.description, /overwrite/i);
+  });
 });

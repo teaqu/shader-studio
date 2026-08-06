@@ -45,7 +45,7 @@ export class WebglGlslEditorManager implements vscode.Disposable {
       getWorkspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
       isIntegrationEnabled: (folder) => (
         vscode.workspace.getConfiguration('shader-studio', folder.uri)
-          .get<boolean>('webglGlslEditorIntegration', true) !== false
+          .get<boolean>('webglGlslEditorIntegration', false) === true
       ),
       onDidChangeExtensions: (listener) => vscode.extensions.onDidChange(listener),
       ...deps,

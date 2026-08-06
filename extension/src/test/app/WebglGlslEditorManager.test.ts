@@ -19,6 +19,7 @@ suite('WebGL GLSL Editor manager', () => {
     }, {
       getExtension: sandbox.stub().returns({ id: WEBGL_GLSL_EDITOR_EXTENSION_ID }),
       getWorkspaceFolders: () => [folder],
+      isIntegrationEnabled: () => true,
       onDidChangeExtensions: () => ({ dispose: sandbox.stub() }),
     });
   }
