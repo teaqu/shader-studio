@@ -134,7 +134,7 @@ describe("WebGPURenderingEngine", () => {
     const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
     const previous = {
       code: "float4 mainImage(float2 coord) { return 0; }",
-      config: { version: "1.0", passes: { Image: { inputs: {} }, ComputeUpdate: { path: "update.slang" } } },
+      config: { version: "1.0", passes: { Image: { inputs: {} }, ComputeUpdate: { type: 'compute', path: "update.slang" } } },
       path: "/image.slang",
       buffers: { common: "StructuredBuffer<float> samples;", ComputeUpdate: "void computeMain(uint3 id) {}" },
       customUniformDeclarations: "",

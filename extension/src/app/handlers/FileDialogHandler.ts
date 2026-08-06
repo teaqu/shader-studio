@@ -17,7 +17,8 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
     case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
-    case 'slang-vertex': return { 'Slang files': ['slang'] };
+    case 'slang-vertex':
+    case 'slang-compute': return { 'Slang files': ['slang'] };
     case 'model': return { 'GLB models': ['glb'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
@@ -103,9 +104,9 @@ export class FileDialogHandler {
         } else if (payload.fileType === 'glsl-common') {
           template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'glsl-vertex') {
-          template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
+          template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
-          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
+          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n    // Guard dispatchThreadID before indexing storage or writing output.\n}\n`;
         } else {

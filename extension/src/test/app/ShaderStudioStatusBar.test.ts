@@ -130,11 +130,13 @@ suite('ShaderStudioStatusBar Test Suite', () => {
   test('showShaderStudioMenu should execute new-shader', async () => {
     statusBar = new ShaderStudioStatusBar(mockContext);
 
-    const choice = { label: '$(new-file) New Shader', description: 'Create a new shadertoy.glsl file', action: 'new-shader' } as any;
+    const choice = { label: '$(new-file) New Shader', description: 'Create a new shader', action: 'new-shader' } as any;
     (vscode.window.showQuickPick as sinon.SinonStub).resolves(choice);
 
     await statusBar.showShaderStudioMenu();
 
+    const items = (vscode.window.showQuickPick as sinon.SinonStub).firstCall.args[0] as Array<{ action: string; description: string }>;
+    assert.strictEqual(items.find(item => item.action === 'new-shader')?.description, 'Create a new shader');
     assert.ok((vscode.commands.executeCommand as sinon.SinonStub).calledWith('shader-studio.newShader'));
   });
 

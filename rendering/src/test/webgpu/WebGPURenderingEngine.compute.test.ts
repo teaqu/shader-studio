@@ -51,7 +51,7 @@ function computeConfig(options: {
     version: "1",
     storage: options.storage,
     passes: {
-      ComputeSim: {
+      ComputeSim: { type: 'compute',
         path: "compute.slang",
         outputLayers,
         dispatch: options.dispatch,
@@ -360,8 +360,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeClear: { path: "kernels.slang", entryPoint: "clearSamples" },
-        ComputeAnimate: { path: "kernels.slang", entryPoint: "animateSamples" },
+        ComputeClear: { type: 'compute', path: "kernels.slang", entryPoint: "clearSamples" },
+        ComputeAnimate: { type: 'compute', path: "kernels.slang", entryPoint: "animateSamples" },
         Image: { inputs: {} },
       },
     };
@@ -1216,7 +1216,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     ["render", {
       version: "1",
       passes: {
-        ComputeSim: {
+        ComputeSim: { type: 'compute',
           path: "compute.slang",
           inputs: { iChannel0: { type: "buffer", source: "BufferA" } },
           dispatch: { cover: "iChannel0" },
@@ -1228,8 +1228,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     ["compute", {
       version: "1",
       passes: {
-        ComputeProducer: { path: "producer.slang", resolution: { width: 65, height: 33 } },
-        ComputeSim: {
+        ComputeProducer: { type: 'compute', path: "producer.slang", resolution: { width: 65, height: 33 } },
+        ComputeSim: { type: 'compute',
           path: "compute.slang",
           inputs: { iChannel0: { type: "buffer", source: "ComputeProducer" } },
           dispatch: { cover: "iChannel0" },
@@ -1429,8 +1429,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeFirst: { path: "first.slang" },
-        ComputeSecond: { path: "second.slang" },
+        ComputeFirst: { type: 'compute', path: "first.slang" },
+        ComputeSecond: { type: 'compute', path: "second.slang" },
         BufferA: { path: "buffer.slang" },
         Image: { inputs: {} },
       },
@@ -1489,8 +1489,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const earlierConfig: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeFirst: { path: "first.slang", outputLayers: 2 },
-        ComputeSecond: {
+        ComputeFirst: { type: 'compute', path: "first.slang", outputLayers: 2 },
+        ComputeSecond: { type: 'compute',
           path: "second.slang",
           inputs: { iChannel0: { type: "buffer", source: "ComputeFirst", layer: 1 } },
           outputLayers: 2,
@@ -1520,11 +1520,11 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const laterConfig: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeFirst: {
+        ComputeFirst: { type: 'compute',
           path: "first.slang",
           inputs: { iChannel0: { type: "buffer", source: "ComputeSecond", layer: 1 } },
         },
-        ComputeSecond: { path: "second.slang", outputLayers: 2 },
+        ComputeSecond: { type: 'compute', path: "second.slang", outputLayers: 2 },
         Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeFirst" } } },
       },
     };
@@ -1600,8 +1600,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeSource: { path: "source.slang", dispatchOnce: true },
-        ComputeConsumer: {
+        ComputeSource: { type: 'compute', path: "source.slang", dispatchOnce: true },
+        ComputeConsumer: { type: 'compute',
           path: "consumer.slang",
           inputs: { iChannel0: { type: "buffer", source: "ComputeSource" } },
         },
@@ -1725,9 +1725,9 @@ describe("WebGPURenderingEngine compute compilation", () => {
       const config: ShaderConfig = {
         version: "1",
         passes: {
-          ComputeOnce: { path: "once.slang", dispatchOnce: true },
+          ComputeOnce: { type: 'compute', path: "once.slang", dispatchOnce: true },
           ...(failurePoint === "later-compute"
-            ? { ComputeLater: { path: "later.slang" } }
+            ? { ComputeLater: { type: 'compute', path: "later.slang" } }
             : {}),
           Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeOnce" } } },
         },
@@ -2355,8 +2355,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeFirst: { path: "first.slang" },
-        ComputeSecond: { path: "second.slang" },
+        ComputeFirst: { type: 'compute', path: "first.slang" },
+        ComputeSecond: { type: 'compute', path: "second.slang" },
         Image: { inputs: {} },
       },
     };
@@ -2469,8 +2469,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
-        ComputeStable: { path: "stable.slang" },
-        ComputeBlocked: { path: "blocked.slang" },
+        ComputeStable: { type: 'compute', path: "stable.slang" },
+        ComputeBlocked: { type: 'compute', path: "blocked.slang" },
         Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeStable" } } },
       },
     };

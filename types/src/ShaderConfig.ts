@@ -126,6 +126,8 @@ export type ComputeDispatch =
 
 /** A Slang compute pass with optional inputs, output dimensions, and dispatch configuration. */
 export interface ComputePass {
+    /** Identifies this pass as a Slang compute pass, independent of its name. */
+    type: "compute";
     path: string;
     inputs?: Record<string, ConfigInput>;
     resolution?: BufferResolution;

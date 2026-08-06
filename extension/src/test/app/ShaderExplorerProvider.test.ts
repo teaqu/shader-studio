@@ -1030,7 +1030,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const passPath = '/test/passes/substep.slang';
       const configPath = '/test/repeated-substeps.sha.json';
       const config = {
-        passes: { ComputeSubsteps: { path: './passes/substep.slang' } },
+        passes: { ComputeSubsteps: { type: 'compute', path: './passes/substep.slang' } },
         storage: { laneA: { count: 128, stride: 16, elementType: 'float4' } },
       } as any;
       existsSyncStub.callsFake((filePath: string) => ![

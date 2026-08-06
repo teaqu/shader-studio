@@ -260,7 +260,7 @@ describe('ConfigManager', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          ComputeA: { path: '', inputs: {} },
+          ComputeA: { type: 'compute', path: '', inputs: {} },
         },
       });
       expect(onConfigChange).toHaveBeenCalledOnce();
@@ -279,14 +279,14 @@ describe('ConfigManager', () => {
 
       expect(configManager.addComputePass()).toBe('ComputeA');
       expect(configManager.addComputePass()).toBe('ComputeB');
-      expect(configManager.getConfig()!.passes.ComputeA).toEqual({ path: '', inputs: {} });
-      expect(configManager.getConfig()!.passes.ComputeB).toEqual({ path: '', inputs: {} });
+      expect(configManager.getConfig()!.passes.ComputeA).toEqual({ type: 'compute', path: '', inputs: {} });
+      expect(configManager.getConfig()!.passes.ComputeB).toEqual({ type: 'compute', path: '', inputs: {} });
     });
 
     it('should fill an unoccupied alphabetic gap', () => {
       const config = createTestConfig();
-      config.passes.ComputeA = { path: 'a.slang', inputs: {} };
-      config.passes.ComputeC = { path: 'c.slang', inputs: {} };
+      config.passes.ComputeA = { type: 'compute', path: 'a.slang', inputs: {} };
+      config.passes.ComputeC = { type: 'compute', path: 'c.slang', inputs: {} };
       configManager.setConfig(config);
 
       expect(configManager.addComputePass()).toBe('ComputeB');
@@ -296,6 +296,7 @@ describe('ConfigManager', () => {
       const config = createTestConfig();
       for (let i = 0; i < 26; i++) {
         config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          type: 'compute',
           path: `${String.fromCharCode(97 + i)}.slang`,
           inputs: {},
         };
@@ -309,12 +310,13 @@ describe('ConfigManager', () => {
       const config = createTestConfig();
       for (let i = 0; i < 26; i++) {
         config.passes[`Compute${String.fromCharCode(65 + i)}`] = {
+          type: 'compute',
           path: `${String.fromCharCode(97 + i)}.slang`,
           inputs: {},
         };
       }
-      config.passes.Compute1 = { path: 'one.slang', inputs: {} };
-      config.passes.Compute2 = { path: 'two.slang', inputs: {} };
+      config.passes.Compute1 = { type: 'compute', path: 'one.slang', inputs: {} };
+      config.passes.Compute2 = { type: 'compute', path: 'two.slang', inputs: {} };
       configManager.setConfig(config);
 
       expect(configManager.addComputePass()).toBe('Compute3');
@@ -389,6 +391,16 @@ describe('ConfigManager', () => {
       const updated = configManager.getConfig();
       expect(updated!.passes.BlurPass).toEqual({ path: 'a.glsl', inputs: {} });
       expect(updated!.passes.BufferA).toBeUndefined();
+    });
+
+    it('keeps compute pass identity when renaming it', () => {
+      const config = createTestConfig();
+      config.passes.ComputeA = { type: 'compute', path: 'sim.slang', inputs: {} };
+      configManager.setConfig(config);
+
+      expect(configManager.validateBufferRename('ComputeA', 'CompA')).toBeNull();
+      expect(configManager.renameBuffer('ComputeA', 'CompA')).toBe(true);
+      expect(configManager.getConfig()!.passes.CompA).toEqual({ type: 'compute', path: 'sim.slang', inputs: {} });
     });
 
     it('should reject renaming to same name', () => {
@@ -1061,11 +1073,13 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
 
       const result = configManager.updateComputePass('ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatch: { count: 64 },
       });
 
       expect(result.ok).toBe(true);
       expect(configManager.getConfig()?.passes.ComputeSim).toEqual({
+        type: 'compute',
         path: 'sim.slang', dispatch: { count: 64 },
       });
       expect(onConfigChange).toHaveBeenCalledTimes(1);
@@ -1076,6 +1090,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
 
       const result = configManager.updateComputePass('ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatchCount: 0,
       });
 
@@ -1093,7 +1108,7 @@ describe('ConfigManager', () => {
         storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
         passes: {
           Image: { inputs: {} },
-          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+          ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
         },
       });
 
@@ -1117,7 +1132,7 @@ describe('ConfigManager', () => {
         storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
         passes: {
           Image: { inputs: {} },
-          ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+          ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
         },
       });
 

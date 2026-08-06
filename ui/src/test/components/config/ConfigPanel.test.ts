@@ -184,7 +184,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          ComputeSim: { path: 'sim.slang', inputs: {} },
+          ComputeSim: { type: 'compute', path: 'sim.slang', inputs: {} },
         },
       };
 
@@ -255,7 +255,7 @@ describe('ConfigPanel', () => {
           ...config,
           passes: {
             ...config.passes,
-            ComputeSim: { path: 'sim.slang', inputs: {} },
+            ComputeSim: { type: 'compute', path: 'sim.slang', inputs: {} },
           },
         },
       });
@@ -755,7 +755,7 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          ComputeA: { path: '', inputs: {} },
+          ComputeA: { type: 'compute', path: '', inputs: {} },
         },
       };
       const mockManager = createMockConfigManager([]);
@@ -799,14 +799,14 @@ describe('ConfigPanel', () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          ComputeA: { path: '', inputs: {} },
+          ComputeA: { type: 'compute', path: '', inputs: {} },
         },
       };
       const mockManager = createMockConfigManager([]);
       mockManager.generateBufferPath.mockReturnValue('image.computea.slang');
       (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
 
-      const { getByText } = render(ConfigPanel, {
+      const { getAllByText } = render(ConfigPanel, {
         config: computeConfig,
         language: 'slang',
         pathMap: {},
@@ -818,7 +818,7 @@ describe('ConfigPanel', () => {
       });
       await tick();
 
-      await fireEvent.click(getByText('Create'));
+      await fireEvent.click(getAllByText('Create')[0]);
 
       expect(mockManager.generateBufferPath).toHaveBeenCalledWith('ComputeA', 'slang');
       expect(mockTransport.postMessage).toHaveBeenCalledWith({
@@ -1919,7 +1919,7 @@ describe('ConfigPanel', () => {
 
   describe('Image pass fallback config', () => {
     it('should not include path property in Image pass fallback when config is null', async () => {
-      const { queryByText, queryByLabelText } = render(ConfigPanel, {
+      const { container, queryByText } = render(ConfigPanel, {
         config: null,
         pathMap: {},
         transport: mockTransport,
@@ -1932,7 +1932,7 @@ describe('ConfigPanel', () => {
       await tick();
 
       expect(queryByText('Image')).toBeTruthy();
-      expect(queryByLabelText('Path:')).not.toBeInTheDocument();
+      expect(container.querySelector('.buffer-details > .config-item:first-child #path-input')).toBeNull();
     });
 
     it('should not include path property in Image pass fallback when config has no Image pass', async () => {
@@ -1945,7 +1945,7 @@ describe('ConfigPanel', () => {
       // Remove Image pass after creation to bypass type check
       delete (config.passes as any).Image;
 
-      const { queryByText, queryByLabelText } = render(ConfigPanel, {
+      const { container, queryByText } = render(ConfigPanel, {
         config,
         pathMap: {},
         transport: mockTransport,
@@ -1958,7 +1958,7 @@ describe('ConfigPanel', () => {
       await tick();
 
       expect(queryByText('Image')).toBeTruthy();
-      expect(queryByLabelText('Path:')).not.toBeInTheDocument();
+      expect(container.querySelector('.buffer-details > .config-item:first-child #path-input')).toBeNull();
     });
   });
 

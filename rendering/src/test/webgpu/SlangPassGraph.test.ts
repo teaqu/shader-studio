@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { BufferPass, ShaderConfig } from "@shader-studio/types";
+import type { BufferPass, ComputePass, ShaderConfig } from "@shader-studio/types";
 import {
   BUILTIN_STORAGE_TYPES,
   MAX_COMPUTE_DISPATCH_COUNT,
   buildSlangPassGraph,
-  isComputePassName,
+  isComputePass,
 } from "../../webgpu/SlangPassGraph";
 
 const imageCode = "float4 mainImage(float2 fragCoord) { return float4(0, 0, 0, 1); }";
@@ -108,7 +108,7 @@ describe("buildSlangPassGraph", () => {
         slot: 0,
         key: "iChannel0",
         source: "BufferA",
-        readFrom: "previous-frame",
+        readFrom: "current-frame",
       },
     ]);
     expect(graph.passes[2].channels).toEqual([
@@ -871,7 +871,7 @@ describe("Slang compute passes", () => {
   function build(config: ShaderConfig, buffers: Record<string, string> = {}) {
     const computeBuffers = Object.fromEntries(
       Object.entries(config.passes)
-        .filter(([name]) => name.startsWith("Compute"))
+        .filter(([, pass]) => isComputePass(pass))
         .map(([name]) => [name, buffers[name] === imageCode ? computeCode : buffers[name] ?? computeCode]),
     );
     return buildSlangPassGraph({
@@ -883,29 +883,29 @@ describe("Slang compute passes", () => {
     });
   }
 
-  it("classifies Compute-prefixed names and groups compute passes before render passes", () => {
+  it("classifies explicitly typed compute passes and groups them before render passes", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
         Image: { inputs: {} },
         Flow: { path: "flow.slang", inputs: {} },
-        ComputeNormals: { path: "normals.slang", inputs: {} },
+        Normals: { type: 'compute', path: "normals.slang", inputs: {} },
         BufferZ: { path: "z.slang", inputs: {} },
-        ComputeParticles: { path: "particles.slang", inputs: {} },
+        Particles: { type: 'compute', path: "particles.slang", inputs: {} },
       },
     };
 
     const graph = build(config, {
       Flow: imageCode,
-      ComputeNormals: imageCode,
+      Normals: imageCode,
       BufferZ: imageCode,
-      ComputeParticles: imageCode,
+      Particles: imageCode,
     });
 
     expect(graph.errors).toEqual([]);
     expect(graph.passes.map(({ name, kind }) => [name, kind])).toEqual([
-      ["ComputeNormals", "compute"],
-      ["ComputeParticles", "compute"],
+      ["Normals", "compute"],
+      ["Particles", "compute"],
       ["Flow", "render"],
       ["BufferZ", "render"],
       ["Image", "render"],
@@ -917,8 +917,8 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeSampled", layer: 2 } } },
-        ComputeUnused: { path: "unused.slang", outputLayers: 2 },
-        ComputeSampled: { path: "sampled.slang", outputLayers: 3 },
+        ComputeUnused: { type: 'compute', path: "unused.slang", outputLayers: 2 },
+        ComputeSampled: { type: 'compute', path: "sampled.slang", outputLayers: 3 },
       },
     };
 
@@ -951,7 +951,7 @@ describe("Slang compute passes", () => {
       passes: {
         Image: { inputs: {} },
         Flow: { path: "flow.slang", inputs: { iChannel0: { type: "buffer", source: "ComputeLate" } } },
-        ComputeLate: { path: "late.slang" },
+        ComputeLate: { type: 'compute', path: "late.slang" },
       },
     };
 
@@ -965,7 +965,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: { ignored: { type: "buffer", source: "ComputeSim" } } },
-        ComputeSim: { path: "compute.slang" },
+        ComputeSim: { type: 'compute', path: "compute.slang" },
       },
     };
 
@@ -994,7 +994,7 @@ describe("Slang compute passes", () => {
       storage: { particles: { count: 16, stride: 16, elementType: "float4" } },
       passes: {
         Image: { inputs: {} },
-        ComputeMain: {
+        ComputeMain: { type: 'compute',
           path: "compute.slang",
           inputs: { iChannel3: { type: "texture", path: "input.png" } },
           dispatch,
@@ -1014,7 +1014,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: {
+        ComputeMain: { type: 'compute',
           path: "compute.slang",
           inputs: { foo: { type: "texture", path: "input.png" } },
           dispatch: { cover: "foo" },
@@ -1035,7 +1035,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: {
+        ComputeMain: { type: 'compute',
           path: "compute.slang",
           dispatch: { count: 8 },
           dispatchCount: 3,
@@ -1060,7 +1060,7 @@ describe("Slang compute passes", () => {
         version: "1",
         passes: {
           Image: { inputs: {} },
-          ComputeMain: { path: "compute.slang" },
+          ComputeMain: { type: 'compute', path: "compute.slang" },
         },
       },
       buffers: { ComputeMain: `[shader("compute")] [numthreads(32, 32, 1)] void largeKernel(uint3 id : SV_DispatchThreadID) {}` },
@@ -1078,7 +1078,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "kernels.slang", entryPoint: "draw" },
+        ComputeMain: { type: 'compute', path: "kernels.slang", entryPoint: "draw" },
       },
     }, {
       ComputeMain: `
@@ -1096,7 +1096,7 @@ describe("Slang compute passes", () => {
 [shader("compute")] [numthreads(64, 1, 1)] void simulateKernel(uint3 id : SV_DispatchThreadID) {}`;
     const graph = build({
       version: "1",
-      passes: { Image: { inputs: {} }, ComputeMain: { path: "kernels.slang", entryPoint: "simulateKernel" } },
+      passes: { Image: { inputs: {} }, ComputeMain: { type: 'compute', path: "kernels.slang", entryPoint: "simulateKernel" } },
     }, { ComputeMain: source });
 
     expect(graph.errors).toEqual([]);
@@ -1106,7 +1106,7 @@ describe("Slang compute passes", () => {
   it("rejects a compute source without a native annotated entry point", () => {
     const graph = build({
       version: "1",
-      passes: { Image: { inputs: {} }, ComputeMain: { path: "legacy.slang" } },
+      passes: { Image: { inputs: {} }, ComputeMain: { type: 'compute', path: "legacy.slang" } },
     }, { ComputeMain: "void computeMain(uint3 id) {}" });
 
     expect(graph.errors).toContain(
@@ -1128,7 +1128,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatch },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatch },
       },
     } as unknown as ShaderConfig;
 
@@ -1144,7 +1144,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatchCount },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatchCount },
       },
     } as ShaderConfig, { ComputeMain: imageCode });
 
@@ -1157,14 +1157,14 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT },
       },
     }, { ComputeMain: imageCode });
     const rejected = build({
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT + 1 },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatchCount: MAX_COMPUTE_DISPATCH_COUNT + 1 },
       },
     }, { ComputeMain: imageCode });
 
@@ -1181,7 +1181,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatchOnce: true, dispatchCount: 2 },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatchOnce: true, dispatchCount: 2 },
       },
     }, { ComputeMain: imageCode });
 
@@ -1194,7 +1194,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", dispatchOnce },
+        ComputeMain: { type: 'compute', path: "compute.slang", dispatchOnce },
       },
     } as unknown as ShaderConfig;
 
@@ -1209,7 +1209,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang", outputLayers },
+        ComputeMain: { type: 'compute', path: "compute.slang", outputLayers },
       },
     }, { ComputeMain: imageCode });
 
@@ -1222,7 +1222,7 @@ describe("Slang compute passes", () => {
       version: "1",
       passes: {
         Image: { inputs: {} },
-        ComputeMain: { path: "compute.slang" },
+        ComputeMain: { type: 'compute', path: "compute.slang" },
       },
     }, { ComputeMain: "" });
 
@@ -1616,7 +1616,7 @@ describe("Slang pass references", () => {
       version: "1",
       passes: {
         Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeMain", layer } } },
-        ComputeMain: { path: "compute.slang", outputLayers: 3 },
+        ComputeMain: { type: 'compute', path: "compute.slang", outputLayers: 3 },
       },
     };
     const graph = build(config, { ComputeMain: imageCode });
@@ -1630,7 +1630,7 @@ describe("Slang pass references", () => {
       version: "1",
       passes: {
         Image: { inputs: { iChannel0: { type: "buffer", source: "ComputeMain", layer: null } } },
-        ComputeMain: { path: "compute.slang", outputLayers: 2 },
+        ComputeMain: { type: 'compute', path: "compute.slang", outputLayers: 2 },
       },
     } as unknown as ShaderConfig;
     const graph = build(config, { ComputeMain: imageCode });
@@ -1666,7 +1666,7 @@ describe("Slang pass references", () => {
             iChannel2: { type: "buffer", source: "RenderEarly" },
           },
         },
-        ComputeEarly: {
+        ComputeEarly: { type: 'compute',
           path: "compute-early.slang",
           inputs: {
             iChannel0: { type: "buffer", source: "RenderEarly" },
@@ -1678,7 +1678,7 @@ describe("Slang pass references", () => {
           path: "late.slang",
           inputs: { iChannel0: { type: "buffer", source: "RenderEarly" } },
         },
-        ComputeLate: {
+        ComputeLate: { type: 'compute',
           path: "compute-late.slang",
           inputs: { iChannel0: { type: "buffer", source: "ComputeEarly" } },
         },
@@ -1712,11 +1712,10 @@ describe("Slang pass references", () => {
 });
 
 describe("SlangPassGraph public helpers", () => {
-  it("recognizes only names starting with Compute", () => {
-    expect(isComputePassName("Compute")).toBe(true);
-    expect(isComputePassName("ComputeParticles")).toBe(true);
-    expect(isComputePassName("PreCompute")).toBe(false);
-    expect(isComputePassName("computeParticles")).toBe(false);
+  it("recognizes only passes explicitly typed as compute", () => {
+    expect(isComputePass({ type: "compute", path: "sim.slang" } satisfies ComputePass)).toBe(true);
+    expect(isComputePass({ path: "buffer.slang" } satisfies BufferPass)).toBe(false);
+    expect(isComputePass("ComputeParticles")).toBe(false);
   });
 
   it("exports the exact built-in storage type whitelist", () => {

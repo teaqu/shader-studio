@@ -19,11 +19,11 @@ function config(overrides: Partial<ShaderConfig> = {}): ShaderConfig {
 describe('compute config mutations', () => {
   describe('validateComputePass', () => {
     it.each<ComputePass>([
-      { path: 'sim.slang' },
-      { path: 'sim.slang', dispatch: { count: 4096 } },
-      { path: 'sim.slang', dispatch: { x: 8, y: 4, z: 1 } },
-      { path: 'sim.slang', dispatch: { cover: 'particles' } },
-      { path: 'sim.slang', inputs: { source: { type: 'texture', path: 'x.png' } }, dispatch: { cover: 'source' } },
+      { type: 'compute', path: 'sim.slang' },
+      { type: 'compute', path: 'sim.slang', dispatch: { count: 4096 } },
+      { type: 'compute', path: 'sim.slang', dispatch: { x: 8, y: 4, z: 1 } },
+      { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
+      { type: 'compute', path: 'sim.slang', inputs: { source: { type: 'texture', path: 'x.png' } }, dispatch: { cover: 'source' } },
     ])('accepts valid compute config %#', (pass) => {
       expect(validateComputePass(config({
         storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
@@ -32,24 +32,29 @@ describe('compute config mutations', () => {
 
     it('validates repeats, one-shot, and layers', () => {
       expect(validateComputePass(config(), 'ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatchCount: 2, dispatchOnce: true, outputLayers: 9,
       })).toEqual({
         dispatchOnce: 'Run once cannot be combined with repeats greater than 1',
         outputLayers: 'Output layers must be an integer from 1 through 8',
       });
       expect(validateComputePass(config(), 'ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatchCount: 0,
       })).toEqual({ dispatchCount: 'Repeats must be an integer from 1 through 1024' });
     });
 
     it('validates every dispatch variant', () => {
       expect(validateComputePass(config(), 'ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatch: { count: 0 },
       })).toEqual({ dispatch: 'Element count must be a positive integer' });
       expect(validateComputePass(config(), 'ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatch: { x: 1, y: 0, z: 1 },
       })).toEqual({ dispatch: 'Raw workgroup axes must be positive integers' });
       expect(validateComputePass(config(), 'ComputeSim', {
+        type: 'compute',
         path: 'sim.slang', dispatch: { cover: 'missing' },
       })).toEqual({ dispatch: 'Cover target "missing" is not a storage buffer or input on ComputeSim' });
     });
@@ -68,7 +73,7 @@ describe('compute config mutations', () => {
       storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
       passes: {
         Image: { inputs: {} },
-        ComputeSim: { path: 'sim.slang', dispatch: { cover: 'particles' } },
+        ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
       },
     });
     const result = applyStorageBuffer(original, 'particles', 'positions', {
@@ -115,8 +120,8 @@ describe('compute config mutations', () => {
       storage: { particles: { count: 1, stride: 4, elementType: 'uint' } },
       passes: {
         Image: { inputs: {} },
-        ComputeA: { path: 'a.slang', dispatch: { cover: 'particles' } },
-        ComputeB: { path: 'b.slang', dispatch: { cover: 'particles' } },
+        ComputeA: { type: 'compute', path: 'a.slang', dispatch: { cover: 'particles' } },
+        ComputeB: { type: 'compute', path: 'b.slang', dispatch: { cover: 'particles' } },
       },
     });
     expect(getStorageCoverReferences(source, 'particles')).toEqual(['ComputeA', 'ComputeB']);

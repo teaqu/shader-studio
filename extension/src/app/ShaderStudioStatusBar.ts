@@ -65,7 +65,7 @@ export class ShaderStudioStatusBar {
     }
     items.push({
       label: '$(new-file) New Shader',
-      description: 'Create a new shadertoy.glsl file',
+      description: 'Create a new shader',
       action: 'new-shader'
     });
     items.push({

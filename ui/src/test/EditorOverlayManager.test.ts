@@ -92,7 +92,7 @@ describe('EditorOverlayManager', () => {
     renderingEngine.updateBufferAndRecompile.mockResolvedValue({ success: true });
     manager.setConfig({
       version: '1',
-      passes: { Image: {}, ComputeParticles: { path: 'particles.slang', inputs: {} } },
+      passes: { Image: {}, ComputeParticles: { type: 'compute', path: 'particles.slang', inputs: {} } },
     });
 
     manager.handleConfigFileSelect('ComputeParticles', '/test/shader.slang');

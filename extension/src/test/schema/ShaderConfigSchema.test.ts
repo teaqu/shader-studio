@@ -191,12 +191,12 @@ suite('Shader config JSON schema', () => {
             iChannel0: { type: 'buffer', source: 'ComputeSim', layer: 2 }
           }
         },
-        ComputeInit: {
+        ComputeInit: { type: 'compute',
           path: 'init.slang',
           dispatch: { count: 4096 },
           dispatchOnce: true
         },
-        ComputeSim: {
+        ComputeSim: { type: 'compute',
           path: 'sim.slang',
           inputs: {
             iChannel0: { type: 'texture', path: 'noise.png' }
@@ -208,7 +208,7 @@ suite('Shader config JSON schema', () => {
           dispatchOnce: false,
           entryPoint: 'simulateKernel'
         },
-        ComputePresent: {
+        ComputePresent: { type: 'compute',
           path: 'present.slang',
           inputs: {
             iChannel0: { type: 'buffer', source: 'ComputeSim', layer: 1 }
@@ -218,6 +218,16 @@ suite('Shader config JSON schema', () => {
           dispatch: { cover: 'iChannel0' }
         }
       }
+    });
+  });
+
+  test('accepts a compute pass with an arbitrary name when type is compute', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        CompA: { type: 'compute', path: 'sim.slang', dispatch: { count: 64 } },
+      },
     });
   });
 
@@ -271,7 +281,7 @@ suite('Shader config JSON schema', () => {
       version: '1.0',
       passes: {
         Image: {},
-        ComputeInit: {
+        ComputeInit: { type: 'compute',
           path: 'init.slang',
           dispatchOnce: true,
           dispatchCount: 6
@@ -285,7 +295,7 @@ suite('Shader config JSON schema', () => {
       version: '1.0',
       passes: {
         Image: {},
-        ComputeSim: {
+        ComputeSim: { type: 'compute',
           path: 'sim.slang',
           dispatchCount: 1024
         }
@@ -299,7 +309,7 @@ suite('Shader config JSON schema', () => {
         version: '1.0',
         passes: {
           Image: {},
-          ComputeSim: { path: 'sim.slang', outputLayers }
+          ComputeSim: { type: 'compute', path: 'sim.slang', outputLayers }
         }
       }, outputLayers === 0 ? 'should be >= 1' : 'should be <= 8');
     }
@@ -310,7 +320,7 @@ suite('Shader config JSON schema', () => {
       version: '1.0',
       passes: {
         Image: {},
-        ComputeSim: { path: 'sim.slang', workgroupSize: [8, 8, 1] }
+        ComputeSim: { type: 'compute', path: 'sim.slang', workgroupSize: [8, 8, 1] }
       }
     }, 'should NOT have additional properties');
   });
@@ -334,7 +344,7 @@ suite('Shader config JSON schema', () => {
         version: '1.0',
         passes: {
           Image: {},
-          ComputeSim: { path: 'sim.slang', dispatch }
+          ComputeSim: { type: 'compute', path: 'sim.slang', dispatch }
         }
       }, 'should');
     }
@@ -345,7 +355,15 @@ suite('Shader config JSON schema', () => {
       version: '1.0',
       passes: {
         Image: {},
-        ComputeSim: { dispatch: { count: 1 } }
+        CompA: { path: 'sim.slang', dispatch: { count: 1 } },
+      },
+    }, 'should match exactly one schema in oneOf');
+
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {},
+        ComputeSim: { type: 'compute', dispatch: { count: 1 } }
       }
     }, "should have required property 'path'");
 
@@ -354,7 +372,7 @@ suite('Shader config JSON schema', () => {
         version: '1.0',
         passes: {
           Image: {},
-          ComputeSim: { path: 'sim.slang', dispatchCount }
+          ComputeSim: { type: 'compute', path: 'sim.slang', dispatchCount }
         }
       }, dispatchCount === 0
         ? 'should be >= 1'
@@ -367,7 +385,7 @@ suite('Shader config JSON schema', () => {
       version: '1.0',
       passes: {
         Image: {},
-        ComputeSim: { path: 'sim.slang', unexpected: true }
+        ComputeSim: { type: 'compute', path: 'sim.slang', unexpected: true }
       }
     }, 'should NOT have additional properties');
   });
@@ -425,7 +443,7 @@ suite('Shader config JSON schema', () => {
             iChannel0: { type: 'buffer', source: 'ComputeSim', layer: -1 }
           }
         },
-        ComputeSim: { path: 'sim.slang' }
+        ComputeSim: { type: 'compute', path: 'sim.slang' }
       }
     }, 'should be >= 0');
   });

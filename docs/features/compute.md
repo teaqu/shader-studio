@@ -19,16 +19,19 @@ JSON does not allow comments; the annotations below use JSONC for explanation. R
   },
   "passes": {
     "ComputeInit": {
+      "type": "compute",
       "path": "init.slang",
       "dispatch": { "cover": "particles" },
       "dispatchOnce": true
     },
     "ComputeSim": {
+      "type": "compute",
       "path": "sim.slang",
       "dispatch": { "count": 4096 },
       "dispatchCount": 6
     },
     "ComputePresent": {
+      "type": "compute",
       "path": "present.slang",
       "resolution": { "scale": 0.5 },
       "outputLayers": 2
@@ -48,7 +51,7 @@ JSON does not allow comments; the annotations below use JSONC for explanation. R
 }
 ```
 
-Pass names must be valid shader identifiers: the first character is a letter or underscore, and the remaining characters are letters, digits, or underscores. Any pass whose name starts with `Compute` is a compute pass, so its suffix may contain only letters, digits, or underscores (or be empty). `Compute`, `ComputeSim`, `ComputeBlurHorizontal`, and `Compute_2` are valid; `Compute-Blur` and `Compute Sim` are not. Non-compute fragment passes follow the same identifier rule, but they are not limited to a fixed `BufferA`–`BufferD` name set or to four passes.
+Pass names must be valid shader identifiers: the first character is a letter or underscore, and the remaining characters are letters, digits, or underscores. A pass is compute only when its configuration includes `"type": "compute"`; its name is otherwise arbitrary. Fragment passes follow the same identifier rule, and neither pass kind is limited to a fixed `BufferA`–`BufferD` name set or to four passes.
 
 ## Writing a Compute Shader
 
@@ -263,7 +266,7 @@ struct ParticleData
 One `StructuredBuffer<ParticleData>` consumes one storage binding while keeping those fields together. Packing does not remove the need to calculate the struct stride correctly.
 
 !!! warning
-    GLSL/WebGL cannot run compute passes or bind storage buffers. If a GLSL project contains `Compute*` passes or `storage`, Shader Studio warns that they require the Slang/WebGPU engine and skips the compute passes instead of silently rendering black.
+    GLSL/WebGL cannot run compute passes or bind storage buffers. If a GLSL project contains passes with `"type": "compute"` or `storage`, Shader Studio warns that they require the Slang/WebGPU engine and skips the compute passes instead of silently rendering black.
 
 ## Current Limitations
 

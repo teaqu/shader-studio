@@ -975,7 +975,7 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
-          ComputeSim: { path: "sim.slang" },
+          ComputeSim: { type: 'compute', path: "sim.slang" },
           Image: { inputs: {} },
         },
       };
@@ -1019,7 +1019,7 @@ describe("ShaderPipeline", () => {
           particles: { count: 4, stride: 16, elementType: "float4" },
         },
         passes: {
-          ComputeSim: { path: "sim.slang" },
+          ComputeSim: { type: 'compute', path: "sim.slang" },
           Image: { inputs: {} },
         },
       };
@@ -1054,11 +1054,11 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
-          Compute: { path: "compute.slang" },
+          Compute: { type: 'compute', path: "compute.slang" },
           Flow: { path: "flow.glsl" },
-          Compute_splat: { path: "splat.slang" },
+          Compute_splat: { type: 'compute', path: "splat.slang" },
           Image: { inputs: {} },
-          ComputeLater: { path: "later.slang" },
+          ComputeLater: { type: 'compute', path: "later.slang" },
         },
       };
 
@@ -1110,7 +1110,7 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
-          ComputeSim: { path: "sim.slang" },
+          ComputeSim: { type: 'compute', path: "sim.slang" },
           BufferA: { path: "buffer-a.glsl" },
           Image: { inputs: {} },
         },
@@ -1175,7 +1175,7 @@ describe("ShaderPipeline", () => {
           particles: { count: 4, stride: 16, elementType: "float4" },
         },
         passes: {
-          ComputeSim: { path: "sim.slang" },
+          ComputeSim: { type: 'compute', path: "sim.slang" },
           Image: { inputs: {} },
         },
       };
@@ -1208,7 +1208,7 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         passes: {
-          ComputeSim: { path: "sim.slang" },
+          ComputeSim: { type: 'compute', path: "sim.slang" },
           Image: { inputs: {} },
         },
       };

@@ -14,6 +14,7 @@
   } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
+  import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
@@ -68,7 +69,13 @@
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
-  const fileType = $derived(bufferName === 'common' ? 'glsl-common' as const : 'glsl-buffer' as const);
+  const fileType = $derived(
+    language === 'slang' && passKind === 'compute'
+      ? 'slang-compute' as const
+      : bufferName === 'common'
+      ? 'glsl-common' as const
+      : 'glsl-buffer' as const,
+  );
   const validation = $derived(configModel.validate() || { isValid: true, errors: [] });
   const configuredInputs = $derived(config.inputs || {});
   const imageResolution = $derived(imageConfig?.resolution);
@@ -397,6 +404,16 @@
           {postMessage}
           {onMessage}
         />
+
+        {#if passKind === 'compute' && onComputeCommit}
+          <ComputePassControls
+            pass={config as ComputePass}
+            {storageNames}
+            channelNames={configuredChannelNames}
+            {entryPointNames}
+            onCommit={onComputeCommit}
+          />
+        {/if}
 
         {#if !validation.isValid}
           <div class="validation-errors">

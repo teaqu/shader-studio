@@ -568,9 +568,7 @@ export class VariableCaptureManager {
     captureCounters.issueCalls++;
 
     if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
-      this.emitErrorState(params.activeBufferName?.startsWith('Compute')
-        ? 'Compute variable inspection is not available yet. Your shader will continue running normally.'
-        : 'Slang capture could not be planned at this location');
+      this.emitErrorState('Slang capture could not be planned at this location');
       this.finishCollection([]);
       return;
     }

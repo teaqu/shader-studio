@@ -96,7 +96,7 @@ suite('ShaderProvider Test Suite', () => {
         version: '1.0',
         passes: {
           Image: {},
-          ComputeSim: { path: 'sim.slang', inputs: {} },
+          ComputeSim: { type: 'compute', path: 'sim.slang', inputs: {} },
         },
       } as any);
       sandbox.stub(PathResolver, 'resolvePath').callsFake((_shaderPath: string, targetPath: string) => {
@@ -728,7 +728,7 @@ suite('ShaderProvider Test Suite', () => {
           Image: { inputs: {} },
           BufferA: { path: 'bufferA.glsl', inputs: {} },
           BufferB: { path: 'bufferB.glsl', inputs: {} },
-          ComputeSim: { path: 'sim.slang', inputs: {} },
+          ComputeSim: { type: 'compute', path: 'sim.slang', inputs: {} },
           BlurPass: { path: 'blur.glsl', inputs: {} },
         }
       };

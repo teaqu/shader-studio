@@ -58,8 +58,8 @@ const COUNT_WORKGROUP_SIZE: [number, number, number] = [64, 1, 1];
 /** Bounds synchronous iDispatch allocation and per-frame command encoding work. */
 export const MAX_COMPUTE_DISPATCH_COUNT = 1024;
 
-export function isComputePassName(name: string): boolean {
-  return name.startsWith("Compute");
+export function isComputePass(pass: unknown): pass is ComputePass {
+  return isRecord(pass) && pass.type === "compute";
 }
 
 export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): RenderPassGraph {
@@ -132,7 +132,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       errors,
     });
 
-    if (isComputePassName(name)) {
+    if (isComputePass(passConfig)) {
       const computeConfig = passConfig as ComputePass;
       const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
@@ -267,7 +267,7 @@ function resolveOutputLayersByPass(
     if (SPECIAL_PASS_NAMES.has(name) || passConfig === undefined) {
       continue;
     }
-    if (!isComputePassName(name)) {
+    if (!isComputePass(passConfig)) {
       outputLayers.set(name, 1);
       continue;
     }

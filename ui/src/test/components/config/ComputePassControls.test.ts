@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ComputePass } from '@shader-studio/types';
 import ComputePassControls from '../../../lib/components/config/ComputePassControls.svelte';
 
-function renderControls(pass: ComputePass = { path: 'sim.slang' }) {
+function renderControls(pass: ComputePass = { type: 'compute', path: 'sim.slang' }) {
   const onCommit = vi.fn(() => ({}));
   return {
     onCommit,
@@ -26,7 +26,7 @@ describe('ComputePassControls', () => {
   });
 
   it('switches dispatch modes without stale keys', async () => {
-    const { getByLabelText, queryByRole, onCommit } = renderControls({ path: 'sim.slang', dispatch: { count: 8 } });
+    const { getByLabelText, queryByRole, onCommit } = renderControls({ type: 'compute', path: 'sim.slang', dispatch: { count: 8 } });
     expect(queryByRole('heading', { name: 'Workgroup size' })).toBeNull();
     await fireEvent.change(getByLabelText('Dispatch mode'), { target: { value: 'workgroups' } });
 
@@ -37,7 +37,7 @@ describe('ComputePassControls', () => {
   });
 
   it('keeps invalid numeric drafts local and exposes an accessible error', async () => {
-    const { getByLabelText, getByRole, onCommit } = renderControls({ path: 'sim.slang', dispatch: { count: 8 } });
+    const { getByLabelText, getByRole, onCommit } = renderControls({ type: 'compute', path: 'sim.slang', dispatch: { count: 8 } });
     const count = getByLabelText('Element count');
     await fireEvent.input(count, { target: { value: '0' } });
 
@@ -47,7 +47,7 @@ describe('ComputePassControls', () => {
   });
 
   it('commits repeat changes immediately', async () => {
-    const { getByLabelText, onCommit } = renderControls({ path: 'sim.slang', dispatchCount: 3 });
+    const { getByLabelText, onCommit } = renderControls({ type: 'compute', path: 'sim.slang', dispatchCount: 3 });
     const repeats = getByLabelText('Repeats') as HTMLInputElement;
     await fireEvent.input(repeats, { target: { value: '8' } });
 
@@ -55,13 +55,13 @@ describe('ComputePassControls', () => {
   });
 
   it('shows and commits one-shot execution, resetting repeats to one', async () => {
-    const { getByLabelText, onCommit } = renderControls({ path: 'sim.slang', dispatchCount: 3 });
+    const { getByLabelText, onCommit } = renderControls({ type: 'compute', path: 'sim.slang', dispatchCount: 3 });
     expect(getByLabelText('Run once')).toHaveClass('themed-checkbox');
 
     await fireEvent.click(getByLabelText('Run once'));
 
     expect(onCommit).toHaveBeenLastCalledWith({
-      path: 'sim.slang', dispatchOnce: true, dispatchCount: 1,
+      type: 'compute', path: 'sim.slang', dispatchOnce: true, dispatchCount: 1,
     });
     expect(getByLabelText('Repeats')).toBeDisabled();
   });
@@ -69,23 +69,23 @@ describe('ComputePassControls', () => {
   it('commits a selected native entrypoint', async () => {
     const onCommit = vi.fn(() => ({}));
     const { getByLabelText } = render(ComputePassControls, {
-      pass: { path: 'kernels.slang' }, storageNames: [], channelNames: [],
+      pass: { type: 'compute', path: 'kernels.slang' }, storageNames: [], channelNames: [],
       entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
     await fireEvent.change(getByLabelText('Entrypoint'), { target: { value: 'animateSamples' } });
 
-    expect(onCommit).toHaveBeenCalledWith({ path: 'kernels.slang', entryPoint: 'animateSamples' });
+    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoint: 'animateSamples' });
   });
 
   it('shows and commits a selected native entrypoint when a source has multiple entries', async () => {
     const onCommit = vi.fn(() => ({}));
     const { getByLabelText } = render(ComputePassControls, {
-      pass: { path: 'kernels.slang', entryPoint: 'clearSamples' },
+      pass: { type: 'compute', path: 'kernels.slang', entryPoint: 'clearSamples' },
       storageNames: [], channelNames: [], entryPointNames: ['clearSamples', 'animateSamples'], onCommit,
     });
 
     await fireEvent.change(getByLabelText('Entrypoint'), { target: { value: 'animateSamples' } });
-    expect(onCommit).toHaveBeenCalledWith({ path: 'kernels.slang', entryPoint: 'animateSamples' });
+    expect(onCommit).toHaveBeenCalledWith({ type: 'compute', path: 'kernels.slang', entryPoint: 'animateSamples' });
   });
 });

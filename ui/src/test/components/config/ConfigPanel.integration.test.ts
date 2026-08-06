@@ -45,7 +45,7 @@ describe('ConfigPanel with ConfigManager', () => {
       version: '1.0',
       passes: {
         Image: { inputs: {} },
-        ComputeA: { path: '', inputs: {} },
+        ComputeA: { type: 'compute', path: '', inputs: {} },
       },
     });
     expect(onFileSelect).toHaveBeenCalledWith('ComputeA');

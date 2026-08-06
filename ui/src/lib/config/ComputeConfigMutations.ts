@@ -158,7 +158,7 @@ export function applyStorageBuffer(
   const nextPasses = { ...config.passes };
   if (originalName && originalName !== name) {
     for (const [passName, passConfig] of Object.entries(nextPasses)) {
-      if (!passName.startsWith('Compute') || !passConfig) {
+      if (!passConfig || !('type' in passConfig) || passConfig.type !== 'compute') {
         continue;
       }
       const computePass = passConfig as ComputePass;
@@ -177,7 +177,7 @@ export function applyStorageBuffer(
 export function getStorageCoverReferences(config: ShaderConfig, name: string): string[] {
   return Object.entries(config.passes)
     .filter(([passName, passConfig]) => {
-      if (!passName.startsWith('Compute') || !passConfig) {
+      if (!passConfig || !('type' in passConfig) || passConfig.type !== 'compute') {
         return false;
       }
       const dispatch = (passConfig as ComputePass).dispatch;

@@ -20,7 +20,7 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 |-----|-------------|
 | **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
 | **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl` or `.slang` file. Names and pass counts are unrestricted. |
-| **Compute\*** | A Slang/WebGPU compute pass backed by a `.slang` file. Compute fields are edited in raw `.sha.json`. |
+| **Compute pass** | A Slang/WebGPU compute pass declared with `"type": "compute"` and backed by a `.slang` file. |
 | **Common** | Shared GLSL or Slang included at the top of every pass. Not a render pass — has no framebuffer. |
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
@@ -72,7 +72,7 @@ If the file doesn't exist yet, the editor shows a **Create File** button that ge
 
 ## Compute Passes
 
-For a Slang shader, a pass name beginning with `Compute` selects the WebGPU compute pipeline. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
+For a Slang shader, declare a compute pass with `"type": "compute"`; its pass name can be any valid identifier. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
 
 See [Compute Passes](compute.md) for the authoring convention, storage layout rules, and executable examples.
 

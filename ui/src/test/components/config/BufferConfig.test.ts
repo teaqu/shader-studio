@@ -78,7 +78,7 @@ describe('BufferConfig', () => {
   describe('compute settings', () => {
     it('shows Slang compute controls and commits dispatch changes through the compute handler', async () => {
       const onComputeCommit = vi.fn(() => ({}));
-      const config: ComputePass = { path: 'sim.slang', inputs: {} };
+      const config: ComputePass = { type: 'compute', path: 'sim.slang', inputs: {} };
       const { getByLabelText, getByRole } = render(BufferConfig, {
         bufferName: 'ComputeSim',
         config,
@@ -94,6 +94,7 @@ describe('BufferConfig', () => {
       await fireEvent.change(getByLabelText('Dispatch mode'), { target: { value: 'storage' } });
 
       expect(onComputeCommit).toHaveBeenCalledWith({
+        type: 'compute',
         path: 'sim.slang',
         inputs: {},
         dispatch: { cover: 'particles' },
@@ -229,7 +230,7 @@ describe('BufferConfig', () => {
     });
 
     it('should request Slang compute files when selecting a compute pass source', async () => {
-      const config: BufferPass = { path: 'existing.slang', inputs: {} };
+      const config: ComputePass = { type: 'compute', path: 'existing.slang', inputs: {} };
 
       const { container } = render(BufferConfig, {
         bufferName: 'ComputeA',
@@ -255,7 +256,7 @@ describe('BufferConfig', () => {
     });
 
     it('should request the suggested Slang path when creating a compute pass source', async () => {
-      const config: BufferPass = { path: '', inputs: {} };
+      const config: ComputePass = { type: 'compute', path: '', inputs: {} };
 
       const { container } = render(BufferConfig, {
         bufferName: 'ComputeA',

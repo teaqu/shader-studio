@@ -198,6 +198,7 @@ export class ConfigManager {
       passes: {
         ...this.config!.passes,
         [computePassName]: {
+          type: 'compute' as const,
           path: '',
           inputs: {}
         }
@@ -276,7 +277,7 @@ export class ConfigManager {
       return 'config-unavailable';
     }
 
-    const sourcePass: BufferPass | ImagePass | undefined = this.config.passes[oldName];
+    const sourcePass: BufferPass | ImagePass | ComputePass | undefined = this.config.passes[oldName];
     if (!sourcePass) {
       return 'source-not-found';
     }
@@ -310,7 +311,7 @@ export class ConfigManager {
     // Build new passes object preserving key order
     const newPasses = {} as ShaderConfig['passes'];
     for (const key of Object.keys(this.config.passes)) {
-      const value: BufferPass | ImagePass | undefined = this.config.passes[key];
+      const value: BufferPass | ImagePass | ComputePass | undefined = this.config.passes[key];
       const rewrittenPass = value
         ? this.rewriteBufferReferences(value, oldName, newName)
         : value;
@@ -330,10 +331,10 @@ export class ConfigManager {
   }
 
   private rewriteBufferReferences(
-    pass: BufferPass | ImagePass,
+    pass: BufferPass | ImagePass | ComputePass,
     oldName: string,
     newName: string,
-  ): BufferPass | ImagePass {
+  ): BufferPass | ImagePass | ComputePass {
     if (!pass.inputs) {
       return pass;
     }

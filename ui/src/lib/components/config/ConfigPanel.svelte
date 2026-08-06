@@ -348,7 +348,8 @@
   }
 
   function isComputeTab(tabName: string): boolean {
-    return tabName.startsWith("Compute");
+    const pass = config?.passes?.[getActualBufferName(tabName)];
+    return !!pass && 'type' in pass && pass.type === "compute";
   }
 
   function computeEntryPoints(passName: string): string[] {

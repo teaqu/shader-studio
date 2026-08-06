@@ -321,7 +321,25 @@ suite('FileDialogHandler Test Suite', () => {
         respondFn,
       );
 
-      assert.ok((writeStub.firstCall.args[1] as string).includes('inout float3 position'));
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('inout float3 position'));
+      assert.ok(!content.includes('Deform position, normal, or UV'));
+    });
+
+    test('writes a GLSL mainVertex template without boilerplate comments', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/image.vert.glsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.glsl', suggestedPath: 'image.vert.glsl', fileType: 'glsl-vertex', requestId: 'vertex-glsl' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('inout vec3 position'));
+      assert.ok(!content.includes('Deform position, normal, or UV'));
     });
 
     test('writes default mainImage template for glsl fileType', async () => {

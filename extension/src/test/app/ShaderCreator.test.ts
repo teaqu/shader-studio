@@ -139,7 +139,7 @@ suite('ShaderCreator Test Suite', () => {
     assert.strictEqual(path.dirname(defaultUri.fsPath), testDir);
   });
 
-  test('should pass GLSL filter and title to save dialog', async () => {
+  test('should pass GLSL and Slang filters and title to save dialog', async () => {
     sandbox.stub(vscode.workspace, 'workspaceFolders').value([{
       uri: vscode.Uri.file(testDir), name: 'test', index: 0,
     }]);
@@ -148,7 +148,10 @@ suite('ShaderCreator Test Suite', () => {
     await shaderCreator.create();
 
     const callArgs = showSaveDialogStub.firstCall.args[0]!;
-    assert.deepStrictEqual(callArgs.filters, { 'GLSL Shader': ['glsl'] });
+    assert.deepStrictEqual(callArgs.filters, {
+      'GLSL Shader': ['glsl'],
+      'Slang Shader': ['slang'],
+    });
     assert.strictEqual(callArgs.title, 'New Shader');
   });
 
@@ -204,6 +207,27 @@ suite('ShaderCreator Test Suite', () => {
     // Clean up
     try {
       fs.unlinkSync(filePath); 
+    } catch { }
+  });
+
+  test('should write a Slang shader template when the chosen filename ends in .slang', async () => {
+    const filePath = path.join(testDir, 'template-test.slang');
+    const fileUri = vscode.Uri.file(filePath);
+
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(content.includes('float4 mainImage'));
+    assert.ok(content.includes('return float4'));
+    assert.ok(!content.includes('out vec4 fragColor'));
+
+    try {
+      fs.unlinkSync(filePath);
     } catch { }
   });
 

@@ -318,7 +318,7 @@ suite('ErrorHandler Test Suite', () => {
       diagnostics = values;
     }) as typeof mockDiagnosticCollection.set;
     errorHandler.setShaderConfig({
-      config: { passes: { ComputeLife: { path: 'passes/life-step.slang' } } },
+      config: { passes: { ComputeLife: { type: 'compute', path: 'passes/life-step.slang' } } },
       shaderPath: fragmentUri.fsPath,
       bufferPathMap: { ComputeLife: computeUri.fsPath },
     });

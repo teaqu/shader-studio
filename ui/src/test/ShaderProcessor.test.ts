@@ -215,7 +215,7 @@ describe('ShaderProcessor', () => {
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
         code: 'float4 mainImage(float2 c) { return 1; }',
-        config: { passes: { ComputeLife: { path: 'passes/life-step.slang' } } },
+        config: { passes: { ComputeLife: { type: 'compute', path: 'passes/life-step.slang' } } },
         path: '/shaders/image.slang',
         buffers: { ComputeLife: 'void computeMain(uint3 id) {}' },
         bufferPathMap: {
