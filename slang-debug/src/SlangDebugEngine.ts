@@ -27,6 +27,19 @@ export class SlangDebugEngine implements ShaderDebugEngine {
     return planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [analysis.analysis.previewValueId], "preview");
   }
 
+  /**
+   * Build an inline preview for an explicit visible value, such as a value
+   * selected from the variable inspector rather than inferred from the cursor.
+   */
+  planPreviewValue(request: DebugAnalysisRequest, valueId: string, _options: DebugPreviewOptions): DebugPlanResult {
+    const resolved = this.resolve(request);
+    if (!resolved.ok) return { ok: false, diagnostics: resolved.diagnostics };
+    const analysis = analyzeSlangSite(resolved.file, request.position);
+    return analysis.ok
+      ? planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [valueId], "preview")
+      : analysis;
+  }
+
   planCapture(request: DebugAnalysisRequest, valueIds: string[]): DebugPlanResult {
     const resolved = this.resolve(request);
     if (!resolved.ok) return { ok: false, diagnostics: resolved.diagnostics };

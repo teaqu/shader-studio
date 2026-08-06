@@ -27,9 +27,11 @@ export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSource
     return failure(file.source.uri, position, "slang-debug-site-not-executed", "The selected Slang statement is not inside a callable body.");
   }
   const visibleDeclarations = visibleDeclarationsAt(file, statement, callable);
-  const visibleValues = visibleDeclarations
+  const declaredValues = visibleDeclarations
     .filter((declaration) => isSlangCapturableType(declaration.typeName))
     .map(toVisibleValue);
+  const returnValue = syntheticReturnValue(file, statement, callable);
+  const visibleValues = returnValue ? [...declaredValues, returnValue] : declaredValues;
   const preview = previewDeclaration(file, statement, callable, visibleDeclarations);
   if (preview && !isSlangCapturableType(preview.typeName)) {
     return failure(
@@ -52,7 +54,7 @@ export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSource
         .sort((left, right) => comparePositions(left.range.start, right.range.start))
         .map((control) => ({ kind: control.kind, range: control.range })),
       origin: originForStatement(file, statement),
-      previewValueId: preview?.id ?? null,
+      previewValueId: returnValue?.id ?? preview?.id ?? null,
     },
   };
 }
@@ -90,6 +92,11 @@ function visibleDeclarationsAt(
     if (names.has(declaration.name)) return false;
     names.add(declaration.name);
     return true;
+  }).sort((left, right) => {
+    const leftParameter = parameterIds.has(left.id);
+    const rightParameter = parameterIds.has(right.id);
+    if (leftParameter !== rightParameter) return leftParameter ? -1 : 1;
+    return comparePositions(left.range.start, right.range.start);
   });
 }
 
@@ -103,9 +110,6 @@ function previewDeclaration(
   if (declared) return declared;
   const identifier = assignmentTarget(file, statement.range);
   if (identifier) return declarations.find((declaration) => declaration.name === identifier);
-  if (statement.kind === "return" && isSlangCapturableType(callable.returnTypeName)) {
-    return returnedIdentifier(file, statement.range, declarations);
-  }
   return undefined;
 }
 
@@ -119,14 +123,25 @@ function assignmentTarget(file: SlangWorkspaceFile, range: DebugSourceRange): st
   return undefined;
 }
 
-function returnedIdentifier(
+function syntheticReturnValue(
   file: SlangWorkspaceFile,
-  range: DebugSourceRange,
-  declarations: SlangDeclarationNode[],
-): SlangDeclarationNode | undefined {
-  const tokens = file.preprocessor.activeTokens.filter((token) => containsRange(range, token.range));
-  const identifier = tokens.find((token, index) => index > 0 && tokens[index - 1].text === "return" && token.kind === "identifier");
-  return identifier ? declarations.find((declaration) => declaration.name === identifier.text) : undefined;
+  statement: SlangStatementNode,
+  callable: SlangCallableNode,
+): DebugVisibleValue | undefined {
+  if (statement.kind !== "return" || !isSlangCapturableType(callable.returnTypeName)) return undefined;
+  const statementStart = offsetAt(file.source.source, statement.range.start);
+  const statementEnd = offsetAt(file.source.source, statement.range.end);
+  const expression = file.source.source.slice(statementStart, statementEnd)
+    .match(/^\s*return\s+([\s\S]*?);?\s*$/)?.[1]?.trim();
+  if (!expression) return undefined;
+  return {
+    id: `return:${file.source.uri}:${statement.range.start.line}:${statement.range.start.character}`,
+    name: "_dbgReturn",
+    typeName: callable.returnTypeName,
+    sourceUri: file.source.uri,
+    declarationRange: statement.range,
+    access: "read",
+  };
 }
 
 function scopeAncestry(file: SlangWorkspaceFile, scopeId: string): SlangScopeNode[] {
@@ -194,4 +209,14 @@ function comparePositions(left: DebugSourcePosition, right: DebugSourcePosition)
 
 function rangeSize(range: DebugSourceRange): number {
   return (range.end.line - range.start.line) * 100000 + range.end.character - range.start.character;
+}
+
+function offsetAt(source: string, position: DebugSourcePosition): number {
+  let line = 0;
+  let character = 0;
+  for (let offset = 0; offset < source.length; offset += 1) {
+    if (line === position.line && character === position.character) return offset;
+    if (source[offset] === "\n") { line += 1; character = 0; } else character += 1;
+  }
+  return source.length;
 }

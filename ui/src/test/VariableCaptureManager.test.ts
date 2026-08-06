@@ -448,7 +448,6 @@ describe('VariableCaptureManager', () => {
         false, // grid mode → captureCoordUniform=false
         gridWidth,
         gridHeight,
-        'glsl',
       );
     });
 
@@ -467,7 +466,6 @@ describe('VariableCaptureManager', () => {
         true, // pixel mode → captureCoordUniform=true
         expect.any(Number),
         expect.any(Number),
-        'glsl',
       );
     });
   });
@@ -629,7 +627,6 @@ describe('VariableCaptureManager', () => {
         false,
         BASE_GRID.gridWidth,
         BASE_GRID.gridHeight,
-        'glsl',
       );
       expect(mockIssueCaptureGrid).toHaveBeenCalledWith(
         [

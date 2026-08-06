@@ -38,6 +38,59 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(plan?.files[0].source).toContain('_ssdbg_');
   });
 
+  it('builds a native preview plan for the default Slang shader return value', () => {
+    const defaultShader = `float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));
+    return float4(col, 1.0);
+}`;
+    manager.setImageShaderCode(defaultShader);
+    manager.setShaderContext(null, '/default.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(4, '    return float4(col, 1.0);', '/default.slang');
+
+    const plan = manager.getSlangPreviewPlan(defaultShader, null);
+
+    expect(plan?.captureSlots[1]).toMatchObject({ name: '_dbgReturn', typeName: 'float4' });
+    const output = plan?.files[0].source ?? '';
+    expect(output.indexOf('_executed = true;')).toBeLessThan(output.indexOf('return float4(col, 1.0);'));
+  });
+
+  it('uses the inspector-hovered Slang variable rather than the return expression default', () => {
+    manager.setShaderContext(null, '/flow.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(5, '    return float4(col, 1.0);', '/flow.slang');
+    expect(manager.setVariablePreview({
+      varName: 'uv',
+      varType: 'float2',
+      debugLine: 4,
+      activeBufferName: 'Image',
+      filePath: '/flow.slang',
+    })).toBe(true);
+
+    const plan = manager.getSlangPreviewPlan(slangShader, null);
+
+    expect(plan?.captureSlots[1]).toMatchObject({ name: 'uv', typeName: 'float2' });
+  });
+
+  it('normalizes the fragment-coordinate built-in for an inspector preview', () => {
+    manager.setShaderContext(null, '/flow.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(4, '    return float4(col, 1.0);', '/flow.slang');
+    expect(manager.setVariablePreview({
+      varName: 'fragCoord',
+      varType: 'float2',
+      debugLine: 4,
+      activeBufferName: 'Image',
+      filePath: '/flow.slang',
+    })).toBe(true);
+
+    const plan = manager.getSlangPreviewPlan(slangShader, null);
+
+    expect(plan?.files[0].source).toMatch(/float4\(_ssdbg_\w+_slot1 \/ iResolution\.xy, 0\.0, 1\.0\)/);
+  });
+
   it('builds a native Slang capture plan with user slots after the hidden marker', () => {
     manager.setShaderContext(null, '/flow.slang', {});
     manager.toggleEnabled();
@@ -46,19 +99,18 @@ describe('ShaderDebugManager - Slang language mode', () => {
     const capture = manager.getSlangCapturePlan(slangShader, null);
 
     expect(capture?.plan.captureSlots[0]).toMatchObject({ index: 0, hidden: true });
-    expect(capture?.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'uv' });
+    expect(capture?.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'fragCoord' });
   });
 
-  it('generates Slang debug output for line debugging', () => {
+  it('includes the actual return expression as _dbgReturn for native Slang capture', () => {
+    manager.setShaderContext(null, '/flow.slang', {});
     manager.toggleEnabled();
-    manager.updateDebugLine(3, '    float3 col = float3(uv, 0.5);', 'flow.slang');
+    manager.updateDebugLine(5, '    return float4(col, 1.0);', '/flow.slang');
 
-    const result = manager.modifyShaderForDebugging(slangShader, 3);
+    const capture = manager.getSlangCapturePlan(slangShader, null);
 
-    expect(result).not.toBeNull();
-    expect(result).toContain('return float4(col, 1.0);');
-    expect(result).not.toContain('fragColor =');
-    expect(result).not.toContain('vec4(');
+    expect(capture?.values).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4' }));
+    expect(capture?.plan.captureSlots).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4', hidden: false }));
   });
 
   it('generates GLSL debug output when language is glsl', () => {
@@ -78,82 +130,4 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(result).toContain('fragColor = vec4(col, 1.0);');
   });
 
-  it('applies Slang full-shader post-processing', () => {
-    manager.setNormalizeMode('soft');
-
-    const result = manager.applyFullShaderPostProcessing(slangShader);
-
-    expect(result).not.toBeNull();
-    expect(result).toContain('_dbgUserMain');
-    expect(result).toContain('float4 mainImage(float2 fragCoord)');
-    expect(result).not.toContain('vec3(');
-  });
-
-  it('extracts Slang function context on debug line updates', () => {
-    manager.toggleEnabled();
-    manager.updateDebugLine(3, '    float3 col = float3(uv, 0.5);', 'flow.slang');
-
-    const context = manager.getState().functionContext;
-
-    expect(context).not.toBeNull();
-    expect(context!.functionName).toBe('mainImage');
-    expect(context!.returnType).toBe('float4');
-  });
-
-  it('generates Slang output for variable previews', () => {
-    manager.toggleEnabled();
-    manager.updateDebugLine(4, '    col += float3(0.1);', 'flow.slang');
-    manager.setVariablePreview({
-      varName: 'col',
-      varType: 'float3',
-      debugLine: 4,
-      activeBufferName: 'Image',
-      filePath: 'flow.slang',
-    });
-
-    const result = manager.modifyShaderForDebugging(slangShader, 4);
-
-    expect(result).not.toBeNull();
-    expect(result).toContain('return float4(col, 1.0);');
-    expect(result).not.toContain('vec4(');
-  });
-
-  it('uses writable Slang storage when previewing an earlier local in an imported standalone helper', () => {
-    const source = `#language slang 2026
-module debugpalette;
-import debugmath;
-
-public float3 debugPalette(float phase)
-{
-    float blend = debugWave(phase);
-    float3 coolColor = float3(0.03, 0.22, 1.0);
-    float3 warmColor = float3(1.0, 0.12, 0.38);
-    float3 color = lerp(coolColor, warmColor, blend);
-    return color;
-}`;
-    manager.setImageShaderCode(source);
-    manager.setShaderContext(null, '/debugpalette.slang', {}, [{
-      moduleName: 'debugmath',
-      path: '/debugmath.slang',
-      source: 'module debugmath; public float debugWave(float phase) { return sin(phase); }',
-      ownerPass: 'Image',
-    }]);
-    manager.toggleEnabled();
-    manager.updateDebugLine(10, '    return color;', '/debugpalette.slang');
-
-    expect(manager.setVariablePreview({
-      varName: 'blend',
-      varType: 'float',
-      debugLine: 10,
-      activeBufferName: 'Image',
-      filePath: '/debugpalette.slang',
-    })).toBe(true);
-
-    const target = manager.getDebugTarget(source, null);
-    const result = manager.modifyShaderForDebugging(target.code, 10);
-
-    expect(target.slangModules).toHaveLength(1);
-    expect(result).toContain('static float _dbgCaptured;');
-    expect(result).toContain('return float4(float3(_dbgCaptured), 1.0);');
-  });
 });

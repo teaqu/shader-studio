@@ -2708,19 +2708,40 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!root) {
       return { success: false, errors: ["Slang debug plan root is missing"] };
     }
-    const modules: SlangSourceModule[] = plan.files
+    const planModules: SlangSourceModule[] = plan.files
       .filter((file) => file.uri !== root.uri)
-      .map((file) => ({ ...file, ownerPass: root.ownerPass }));
-    return this.compileShaderPipeline(
+      // A debug plan always compiles its generated wrapper as Image, even
+      // when the selected source belongs to a compute pass.
+      .map((file) => ({ ...file, ownerPass: "Image" }));
+    const previous = this.lastCompile;
+    const planModulePaths = new Set(planModules.map((module) => module.path));
+    const modules = [
+      ...(previous?.slangModules.filter((module) => !planModulePaths.has(module.path)) ?? []),
+      ...planModules,
+    ];
+    const result = await this.compileShaderPipeline(
       root.source,
-      this.currentConfig,
-      root.path,
-      {},
-      this.customUniformManager.getDeclarations(),
-      this.customUniformManager.getUniformInfo(),
+      previous?.config ?? this.currentConfig,
+      previous?.path ?? root.path,
+      previous?.buffers ?? {},
+      previous?.customUniformDeclarations ?? this.customUniformManager.getDeclarations(),
+      previous?.customUniformInfo ?? this.customUniformManager.getUniformInfo(),
       modules,
-      root.path,
+      previous?.slangSourcePath ?? root.path,
     );
+    if (!result || result.success || result.superseded) {
+      return result;
+    }
+
+    const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
+    const selectedLabel = selectedSource?.path ?? plan.selectedSourceUri;
+    return {
+      ...result,
+      errors: (result.errors?.length ? result.errors : ["Unknown Slang debug compilation error"])
+        .map((error) => error.includes(selectedLabel) || error.includes(plan.selectedSourceUri)
+          ? error
+          : `${selectedLabel}: ${error}`),
+    };
   }
 
   getCurrentConfig(): ShaderConfig | null {

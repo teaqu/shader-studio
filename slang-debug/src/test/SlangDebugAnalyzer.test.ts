@@ -34,8 +34,8 @@ describe("analyzeSlangSite", () => {
       analysis: {
         previewValueId: "declaration:file:///work/main.slang:4:10",
         visibleValues: [
-          { name: "value", typeName: "float" },
           { name: "uv", typeName: "float2" },
+          { name: "value", typeName: "float" },
         ],
         controlFlow: [{ kind: "if" }],
       },

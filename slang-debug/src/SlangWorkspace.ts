@@ -32,6 +32,9 @@ export function createSlangWorkspace(workspace: DebugWorkspace): CreateSlangWork
 
   for (const file of workspace.files) {
     const sourceUri = canonicalizeSlangUri(file.uri || file.path);
+    if (!Number.isInteger(file.version) || file.version < 0) {
+      diagnostics.push(invalidWorkspaceDiagnostic(sourceUri, `Slang source '${sourceUri}' has an invalid version.`));
+    }
     if (filesByUri.has(sourceUri)) {
       diagnostics.push(invalidWorkspaceDiagnostic(sourceUri, `Duplicate Slang source identity '${sourceUri}'.`));
       continue;

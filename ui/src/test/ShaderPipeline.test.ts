@@ -551,7 +551,7 @@ describe('ShaderPipeline — overlay cursor gate', () => {
 });
 
 describe('ShaderPipeline — standalone function debugging', () => {
-  it('compiles a synthesized Slang entry point before reporting a missing mainImage error', async () => {
+  it('does not synthesize a GLSL debug entry point for a Slang helper without mainImage', async () => {
     const code = [
       'public float debugWave(float2 uv)',
       '{',
@@ -614,13 +614,9 @@ describe('ShaderPipeline — standalone function debugging', () => {
       },
     } as MessageEvent<ShaderSourceMessage>);
 
-    expect(result).toEqual({ success: true, warnings: undefined });
+    expect(result).toMatchObject({ success: false, errors: ['Image: Missing mainImage function'] });
     expect(compiledSources).toHaveLength(1);
-    expect(compiledSources[0]).toContain('float4 mainImage');
-    expect(compiledSources[0]).toContain('_dbg_debugWave');
-    expect(transport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
-      type: 'error',
-    }));
+    expect(compiledSources[0]).toBe(code);
   });
 });
 

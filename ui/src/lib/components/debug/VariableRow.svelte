@@ -5,10 +5,12 @@
   import ColorFrequencyBar from './ColorFrequencyBar.svelte';
   import GreyscaleFrequencyBar from './GreyscaleFrequencyBar.svelte';
   import CaptureThumbnail from './CaptureThumbnail.svelte';
+  import { clearVariablePreview, setVariablePreview } from '../../state/variablePreviewState.svelte';
 
   interface Props {
     variable: CapturedVariable;
     isPixelMode: boolean;
+    enableRowPreview?: boolean;
     onExpandToggle?: () => void;
     onLineClick?: () => void;
   }
@@ -16,13 +18,28 @@
   let {
     variable,
     isPixelMode,
+    enableRowPreview = false,
     onExpandToggle = () => {},
     onLineClick = () => {},
   }: Props = $props();
 
   let isScalar = $derived(variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool');
-  let isVec = $derived(variable.varType === 'vec2' || variable.varType === 'vec3' || variable.varType === 'vec4' || variable.varType === 'mat2');
-  let isColorVec = $derived(variable.varType === 'vec3' || variable.varType === 'vec4');
+  let isVec = $derived(
+    variable.varType === 'vec2'
+    || variable.varType === 'vec3'
+    || variable.varType === 'vec4'
+    || variable.varType === 'mat2'
+    || variable.varType === 'float2'
+    || variable.varType === 'float3'
+    || variable.varType === 'float4'
+    || variable.varType === 'float2x2'
+  );
+  let isColorVec = $derived(
+    variable.varType === 'vec3'
+    || variable.varType === 'vec4'
+    || variable.varType === 'float3'
+    || variable.varType === 'float4'
+  );
   let isExpanded = $derived(variable.histogram !== null || variable.colorFrequencies !== null || variable.channelHistograms !== null);
   let isVecConstant = $derived(isVec && variable.channelStats !== null
     && variable.channelStats.every(s => s.min === s.max));
@@ -51,9 +68,38 @@
   function isDimmed(v: number): boolean {
     return Math.abs(v) < 0.0001;
   }
+
+  function activatePreview() {
+    if (!enableRowPreview) {
+      return;
+    }
+    setVariablePreview({
+      varName: variable.varName,
+      varType: variable.varType,
+      debugLine: variable.captureLine,
+      activeBufferName: variable.captureBufferName,
+      filePath: variable.captureFilePath,
+    });
+  }
+
+  function deactivatePreview() {
+    if (!enableRowPreview) {
+      return;
+    }
+    clearVariablePreview(variable.varName, variable.varType);
+  }
 </script>
 
-<div class="var-row" class:has-thumb={showThumbnail}>
+<div
+  class="var-row"
+  class:has-thumb={showThumbnail}
+  role="group"
+  aria-label={`Preview ${variable.varName}`}
+  onmouseenter={activatePreview}
+  onmouseleave={deactivatePreview}
+  onfocusin={activatePreview}
+  onfocusout={deactivatePreview}
+>
   {#if showThumbnail}
     <div class="thumb-col" class:expanded={isExpanded}>
       <CaptureThumbnail
@@ -66,6 +112,7 @@
         activeBufferName={variable.captureBufferName}
         filePath={variable.captureFilePath}
         maxSize={32}
+        previewEnabled={!enableRowPreview}
       />
     </div>
   {/if}

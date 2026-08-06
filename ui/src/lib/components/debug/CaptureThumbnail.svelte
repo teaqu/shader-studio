@@ -16,6 +16,7 @@
     activeBufferName: string;
     filePath: string | null;
     maxSize?: number;
+    previewEnabled?: boolean;
   }
 
   let {
@@ -28,6 +29,7 @@
     activeBufferName,
     filePath,
     maxSize = 32,
+    previewEnabled = true,
   }: Props = $props();
 
   let canvas: HTMLCanvasElement;
@@ -64,6 +66,9 @@
   }
 
   function syncPreviewActive() {
+    if (!previewEnabled) {
+      return;
+    }
     const nextActive = hovered || focused;
     if (previewActive === nextActive) {
       return;
@@ -91,7 +96,9 @@
   });
 
   onDestroy(() => {
-    clearVariablePreview(varName, varType);
+    if (previewEnabled) {
+      clearVariablePreview(varName, varType);
+    }
   });
 
   $effect(() => {

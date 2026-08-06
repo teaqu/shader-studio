@@ -16,7 +16,7 @@ function mockEngine(language: 'glsl' | 'slang') {
     setCustomUniforms: vi.fn(),
     setInputBindings: vi.fn(),
     clearLastError: vi.fn(),
-    getLastError: vi.fn(() => null),
+    getLastError: vi.fn<() => string | null>(() => null),
     issueCaptureAtPixel: vi.fn(async () => 1),
     issueCaptureGrid: vi.fn(async () => 1),
     collectResults: vi.fn(() => []),
@@ -73,32 +73,6 @@ describe('VariableCaptureManager - Slang engine', () => {
     vi.stubGlobal('cancelAnimationFrame', (handle: number) => clearTimeout(handle));
   });
 
-  it('issues grid captures with Slang-typed variables from a Slang shader', async () => {
-    const { engine, capturer } = mockEngine('slang');
-    const manager = new VariableCaptureManager(engine, () => {});
-
-    manager.notifyStateChange(captureParams(slangShader));
-    await vi.waitFor(() => {
-      expect(capturer.issueCaptureGrid).toHaveBeenCalled();
-    });
-
-    const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; varType: string; captureShader: string }>;
-    const names = captures.map(c => c.varName);
-    expect(names).toContain('uv');
-    expect(names).toContain('col');
-    expect(captures.find(c => c.varName === 'col')!.varType).toBe('float3');
-    // Slang capture shader: selector returns, no GLSL uniform declarations
-    expect(captures[0].captureShader).toContain('_dbgVarIndex');
-    expect(captures[0].captureShader).not.toContain('uniform ');
-    expect(captures[0].captureShader).not.toContain('vec4(');
-    expect(engine.getVariableCaptureCompileContext).toHaveBeenCalledWith(
-      slangShader,
-      undefined,
-      '/shaders/image.slang',
-    );
-    manager.dispose();
-  });
-
   it('submits native Slang plan slots after its hidden execution marker', async () => {
     const { engine, capturer } = mockEngine('slang');
     const manager = new VariableCaptureManager(engine, () => {});
@@ -126,6 +100,110 @@ describe('VariableCaptureManager - Slang engine', () => {
     manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: null });
     await vi.waitFor(() => expect(capturer.issueCaptureGrid).not.toHaveBeenCalled());
 
+    manager.dispose();
+  });
+
+  it('explains that compute variable inspection is not available instead of compiling it as GLSL', async () => {
+    const { engine, capturer } = mockEngine('slang');
+    const errors = vi.fn();
+    const manager = new VariableCaptureManager(engine, () => {});
+    manager.setErrorCallback(errors);
+
+    manager.notifyStateChange({
+      ...captureParams(slangShader),
+      activeBufferName: 'ComputeLife',
+      slangCapture: null,
+    });
+
+    await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(
+      'Compute variable inspection is not available yet. Your shader will continue running normally.',
+    ));
+    expect(capturer.issueCaptureGrid).not.toHaveBeenCalled();
+    manager.dispose();
+  });
+
+  it('reports native capture failures against the selected imported module', async () => {
+    const { engine, capturer } = mockEngine('slang');
+    capturer.issueCaptureGrid.mockResolvedValue(0);
+    capturer.getLastError.mockReturnValue('/shaders/helper.slang: unexpected token');
+    const errors = vi.fn();
+    const manager = new VariableCaptureManager(engine, () => {});
+    manager.setErrorCallback(errors);
+    const plan = {
+      workspaceHash: 'hash', rootUri: 'file:///shaders/image.slang', selectedSourceUri: 'file:///shaders/helper.slang', executionMarkerSlot: 0,
+      captureSlots: [
+        { index: 0, valueId: 'marker', name: '_marker', typeName: 'bool', hidden: true },
+        { index: 1, valueId: 'helper-value', name: 'helperValue', typeName: 'float', hidden: false },
+      ],
+      files: [
+        { uri: 'file:///shaders/image.slang', path: '/shaders/image.slang', source: slangShader, version: 1, moduleName: '', ownerPass: 'Image' },
+        { uri: 'file:///shaders/helper.slang', path: '/shaders/helper.slang', source: 'module Helper;', version: 1, moduleName: 'Helper', ownerPass: 'Image' },
+      ],
+    };
+
+    manager.notifyStateChange({
+      ...captureParams(slangShader),
+      slangCapture: {
+        plan,
+        values: [{
+          id: 'helper-value', name: 'helperValue', typeName: 'float', sourceUri: plan.selectedSourceUri,
+          declarationRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 11 } }, access: 'readwrite',
+        }],
+      },
+    });
+
+    await vi.waitFor(() => expect(errors).toHaveBeenCalledWith('Failed to capture variables:\n/shaders/helper.slang: unexpected token'));
+    manager.dispose();
+  });
+
+  it('publishes user values when the execution marker is set', () => {
+    const { engine } = mockEngine('slang');
+    const updates = vi.fn();
+    const errors = vi.fn();
+    const manager = new VariableCaptureManager(engine, updates);
+    manager.setErrorCallback(errors);
+    (manager as unknown as { lastCaptureMode: string }).lastCaptureMode = 'pixel';
+
+    (manager as unknown as { decodeAndUpdate(results: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }>): void }).decodeAndUpdate([
+      { varName: '_marker', varType: 'bool', hidden: true, rgba: new Float32Array([1, 0, 0, 1]) },
+      { varName: 'uv', varType: 'float2', rgba: new Float32Array([0.25, 0.75, 0, 1]) },
+    ]);
+
+    expect(errors).not.toHaveBeenCalledWith('Selected Slang statement was not executed for this capture');
+    expect(updates).toHaveBeenLastCalledWith([expect.objectContaining({ varName: 'uv', value: [0.25, 0.75] })]);
+    expect(updates.mock.calls.flat().some((value) => (value as { varName?: string }).varName === '_marker')).toBe(false);
+    manager.dispose();
+  });
+
+  it('hides user values and reports a diagnostic when the execution marker is clear', () => {
+    const { engine } = mockEngine('slang');
+    const updates = vi.fn();
+    const errors = vi.fn();
+    const manager = new VariableCaptureManager(engine, updates);
+    manager.setErrorCallback(errors);
+
+    (manager as unknown as { decodeAndUpdate(results: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }>): void }).decodeAndUpdate([
+      { varName: '_marker', varType: 'bool', hidden: true, rgba: new Float32Array([0, 0, 0, 1]) },
+      { varName: 'uv', varType: 'float2', rgba: new Float32Array([0.25, 0.75, 0, 1]) },
+    ]);
+
+    expect(errors).toHaveBeenLastCalledWith('Selected Slang statement was not executed for this capture');
+    expect(updates).toHaveBeenLastCalledWith([]);
+    manager.dispose();
+  });
+
+  it('keeps grid values when any captured sample executed the selected statement', () => {
+    const { engine } = mockEngine('slang');
+    const updates = vi.fn();
+    const manager = new VariableCaptureManager(engine, updates);
+
+    (manager as unknown as { decodeAndUpdate(results: Array<{ varName: string; varType: string; rgba: Float32Array; hidden?: boolean }>): void }).decodeAndUpdate([
+      { varName: '_marker', varType: 'bool', hidden: true, rgba: new Float32Array([0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1]) },
+      { varName: 'value', varType: 'float', rgba: new Float32Array([10, 0, 0, 1, 20, 0, 0, 1, 30, 0, 0, 1, 40, 0, 0, 1]) },
+    ]);
+
+    expect(updates).toHaveBeenLastCalledWith([expect.objectContaining({ varName: 'value' })]);
+    expect(updates.mock.calls.flat().some((value) => (value as { varName?: string }).varName === '_marker')).toBe(false);
     manager.dispose();
   });
 });

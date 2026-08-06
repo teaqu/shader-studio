@@ -49,4 +49,15 @@ describe("createSlangWorkspace", () => {
     expect(absentRoot).toMatchObject({ ok: false, diagnostics: [{ code: "debug-invalid-workspace" }] });
     expect(duplicate).toMatchObject({ ok: false, diagnostics: [{ code: "debug-invalid-workspace" }] });
   });
+
+  it.each([-1, 1.5, Number.NaN])("rejects an invalid source version (%s)", (version) => {
+    const result = createSlangWorkspace(workspace([
+      { uri: "/work/main.slang", path: "/work/main.slang", source, version, moduleName: "", ownerPass: "Image" },
+    ]));
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "debug-invalid-workspace", message: expect.stringContaining("invalid version") }],
+    });
+  });
 });

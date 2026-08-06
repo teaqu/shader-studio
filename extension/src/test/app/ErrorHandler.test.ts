@@ -295,6 +295,49 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(diagnostics?.[0].range.start.line, 13);
   });
 
+  test('places a compute Slang diagnostic on its source file instead of the locked fragment editor', () => {
+    const fragmentUri = vscode.Uri.file('/test/image.slang');
+    const computeUri = vscode.Uri.file('/test/passes/life-step.slang');
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: {
+        document: {
+          languageId: 'slang',
+          fileName: fragmentUri.fsPath,
+          lineCount: 12,
+          uri: fragmentUri,
+          lineAt: (lineNumber: number) => ({ range: new vscode.Range(lineNumber, 0, lineNumber, 0) }),
+        },
+      },
+      writable: true,
+    });
+
+    let diagnosticUri: vscode.Uri | undefined;
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnosticUri = uri;
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+    errorHandler.setShaderConfig({
+      config: { passes: { ComputeLife: { path: 'passes/life-step.slang' } } },
+      shaderPath: fragmentUri.fsPath,
+      bufferPathMap: { ComputeLife: computeUri.fsPath },
+    });
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        'ComputeLife: error[E30015]: undefined identifier',
+        ' --> /computelife.slang:3:5',
+        '  |',
+        '3 | writeOutput(cell, color);',
+        '  | ^ undefined identifier',
+      ].join('\n')],
+    });
+
+    assert.strictEqual(diagnosticUri?.fsPath, computeUri.fsPath);
+    assert.strictEqual(diagnostics?.[0].range.start.line, 2);
+  });
+
   test('should target the configured shader when no GLSL editor is focused', () => {
     const shaderUri = vscode.Uri.file('/test/config-shader.glsl');
     const otherEditor = {

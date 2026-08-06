@@ -433,19 +433,25 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       ...(slangPlan
         ? { modules: slangPlan.files.filter((file) => file.uri !== slangPlan.rootUri).map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
         : this.compileContext.slangModules?.length
-        ? { modules: this.compileContext.slangModules }
-        : {}),
+          ? { modules: this.compileContext.slangModules }
+          : {}),
       ...(slangPlan
         ? { sourcePath: slangPlan.files.find((file) => file.uri === slangPlan.rootUri)?.path }
         : this.compileContext.slangSourcePath
-        ? { sourcePath: this.compileContext.slangSourcePath }
-        : {}),
+          ? { sourcePath: this.compileContext.slangSourcePath }
+          : {}),
     });
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
     if (!compileResult.success) {
-      this.lastError = compileResult.errors.join("\n");
+      const selectedSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
+      const selectedLabel = selectedSource?.path ?? slangPlan?.selectedSourceUri;
+      this.lastError = compileResult.errors
+        .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(slangPlan!.selectedSourceUri)
+          ? `${selectedLabel}: ${error}`
+          : error)
+        .join("\n");
       return null;
     }
 

@@ -309,6 +309,7 @@ export class ShaderProcessor {
       passName: debugPassName,
       slangModules: debugSlangModules,
       sourcePath: debugSourcePath,
+      debugPlan,
     } = this.getDebugCompileArgs(
       this.imageShaderCode,
       config ?? null,
@@ -320,20 +321,26 @@ export class ShaderProcessor {
       this.imageShaderCode,
     );
 
-    // Try compilation with debug-modified code, or original if modification failed
-    let result = await this.compile(
-      codeToCompile,
-      configToCompile,
-      path,
-      buffersToCompile,
-      cuDecl,
-      cuInfo,
-      debugSlangModules ?? message.slangModules,
-      debugSourcePath,
-    );
+    // Cursor movement uses this path, so native Slang preview plans must be
+    // routed here as well as through the initial shader-source compilation.
+    const structuredResult = debugPlan && this.renderEngine.compileSlangDebugPlan
+      ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+      : undefined;
+    let result: CompilationResult = structuredResult ?? (debugPlan
+      ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }
+      : await this.compile(
+        codeToCompile,
+        configToCompile,
+        path,
+        buffersToCompile,
+        cuDecl,
+        cuInfo,
+        debugSlangModules ?? message.slangModules,
+        debugSourcePath,
+      ));
 
     // If failed and modified code was used, try original
-    if (!result.superseded && !result.success && codeToCompile !== this.imageShaderCode) {
+    if (!result?.superseded && !result?.success && (debugPlan || codeToCompile !== this.imageShaderCode)) {
       this.shaderDebugManager.setDebugError(
         `Debug shader compilation failed: ${result.errors?.[0] || 'unknown error'}`
       );

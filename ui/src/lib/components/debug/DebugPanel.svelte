@@ -65,6 +65,9 @@
   const hasPixelSelected = $derived(
     (isInspectorActive || isInspectorLocked) && inspectorState.canvasPosition !== null
   );
+  const enableSlangGridRowPreview = $derived(
+    shaderDebugManager?.getLanguage() === 'slang' && !isInspectorActive && !isInspectorLocked
+  );
 
   let liveUniforms = $state<PassUniforms | null>(null);
   let uniformsHandle = $state<number | null>(null);
@@ -692,6 +695,7 @@
       <VariablesSection
         {capturedVariables}
         isPixelMode={isInspectorActive || isInspectorLocked}
+        enableRowPreview={enableSlangGridRowPreview}
         isLoading={variableCaptureLoading}
         captureError={variableCaptureError}
         onExpandToggle={onExpandVarHistogram}

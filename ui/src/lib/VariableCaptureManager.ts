@@ -568,7 +568,9 @@ export class VariableCaptureManager {
     captureCounters.issueCalls++;
 
     if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
-      this.emitErrorState('Slang capture could not be planned at this location');
+      this.emitErrorState(params.activeBufferName?.startsWith('Compute')
+        ? 'Compute variable inspection is not available yet. Your shader will continue running normally.'
+        : 'Slang capture could not be planned at this location');
       this.finishCollection([]);
       return;
     }
@@ -668,7 +670,6 @@ export class VariableCaptureManager {
       isPixelMode,
       gridWidth,
       gridHeight,
-      this.renderingEngine.getShaderLanguage?.() ?? 'glsl',
     );
 
     if (selectorShader) {
@@ -717,7 +718,7 @@ export class VariableCaptureManager {
     }
 
     this.pendingResults = [];
-    this.declaredOrder = captures.map(c => c.varName);
+    this.declaredOrder = captures.filter((capture) => !capture.hidden).map((capture) => capture.varName);
     this.lastGridWidth = gridWidth;
     this.lastGridHeight = gridHeight;
     this.emptyCollectFrames = 0;
