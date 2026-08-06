@@ -347,6 +347,7 @@ describe('BufferConfig', () => {
     });
 
     it('shows model and mesh selectors and writes their configuration', async () => {
+      mockGetWebviewUri.mockReturnValue('vscode-webview://webview-panel/robot.glb');
       const { getByLabelText, getByRole } = render(BufferConfig, {
         bufferName: 'Image', config: { inputs: {}, geometry: { type: 'model', path: './robot.glb' } }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
         postMessage: mockPostMessage, shaderPath: '/shaders/image.slang',
@@ -361,6 +362,29 @@ describe('BufferConfig', () => {
       const modelPath = getByLabelText('Model file:');
       await fireEvent.click(modelPath.closest('.input-group')!.querySelector('.select-file-btn')!);
       expect(mockPostMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ fileType: 'model' }) }));
+    });
+
+    it('waits for the model webview URI instead of fetching a raw relative path', async () => {
+      const fetchMock = vi.mocked(fetch);
+      render(BufferConfig, {
+        bufferName: 'Image', config: { inputs: {}, geometry: { type: 'model', path: './robot.glb' } }, onUpdate: mockOnUpdate,
+        getWebviewUri: () => undefined,
+      });
+
+      await tick();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not persist an invalid empty model path while selecting a model file', async () => {
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'Image', config: { inputs: {} }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+      });
+
+      await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+
+      expect(getByLabelText('Model file:')).toBeInTheDocument();
+      expect(mockOnUpdate).not.toHaveBeenCalled();
     });
 
     it('shows the vertex shader control for implicit fullscreen passes', () => {

@@ -444,6 +444,30 @@ suite('WebviewTransport Test Suite', () => {
       assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/downloads');
     });
 
+    test('should add model geometry directory to localResourceRoots', async () => {
+      transport = new WebviewTransport();
+      transport.addPanel(mockPanel as any);
+
+      mockWebview.asWebviewUri.returns(vscode.Uri.parse('vscode-webview://webview-panel/cat.glb'));
+      mockWebview.options = { localResourceRoots: [] };
+
+      transport.send({
+        type: 'shaderSource',
+        path: '/shaders/cat.slang',
+        config: {
+          version: '1.0',
+          passes: {
+            Image: { geometry: { type: 'model', path: './cat.glb' } }
+          }
+        }
+      });
+      await flush();
+
+      const roots = mockWebview.options.localResourceRoots || [];
+      assert.strictEqual(roots.length, 1);
+      assert.strictEqual((roots[0] as vscode.Uri).fsPath, '/shaders');
+    });
+
     test('should add audio directory to localResourceRoots', async () => {
       transport = new WebviewTransport();
       transport.addPanel(mockPanel as any);

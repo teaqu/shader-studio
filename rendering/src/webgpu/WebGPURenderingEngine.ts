@@ -758,11 +758,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
         graph,
         errors: graph.errors,
       });
-      console.info("[Shader Studio][Slang 3D] graph", graph.passes.map((pass) => ({
-        name: pass.name,
-        geometry: pass.geometry,
-        kind: pass.kind,
-      })));
       return this.failedCompilation(path, generation, {
         success: false,
         errors: graph.errors,
@@ -968,11 +963,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
               kind: channel.kind,
             }));
           if (!wgsl) {
-            console.info("[Shader Studio][Slang 3D] compiling pass", {
-              name: pass.name,
-              geometry: pass.geometry,
-              vertexHook: Boolean(pass.vertexSrc),
-            });
             const slangStartedAt = this.now();
             const compiled = await this.compiler.compile(pass.source, {
               passName: pass.name,
@@ -2425,11 +2415,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const mesh = pass.modelPath
           ? this.meshResources?.getModel(pass.name)
           : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
-        console.info("[Shader Studio][Slang 3D] drawing mesh", {
-          name: pass.name,
-          geometry: pass.geometry,
-          meshAvailable: Boolean(mesh),
-        });
         if (mesh) {
           renderPass.setVertexBuffer(0, mesh.vertexBuffer);
           renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);

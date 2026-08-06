@@ -92,7 +92,11 @@
   const isSlangShader = $derived(shaderPath.toLowerCase().endsWith('.slang'));
   const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${isSlangShader ? 'slang' : 'glsl'}`);
   const vertexFileType = $derived(isSlangShader ? 'slang-vertex' as const : 'glsl-vertex' as const);
-  const modelGeometry = $derived(config.geometry?.type === 'model' ? config.geometry : undefined);
+  let modelSelectionPending = $state(false);
+  const modelGeometry = $derived(config.geometry?.type === 'model'
+    ? config.geometry
+    : modelSelectionPending ? { type: 'model' as const, path: '' } : undefined);
+  const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
   let activeModalChannel = $state<string | null>(null);
@@ -117,10 +121,16 @@
       modelMeshLoading = false;
       return;
     }
+    if (!modelUrl) {
+      modelMeshNames = [];
+      modelMeshError = null;
+      modelMeshLoading = true;
+      return;
+    }
     let cancelled = false;
     modelMeshLoading = true;
     modelMeshError = null;
-    fetch(getWebviewUri(path) ?? path)
+    fetch(modelUrl)
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Unable to load model (${response.status})`);
@@ -324,14 +334,27 @@
 
   function handleGeometryChange(type: GeometryType) {
     if (type === 'fullscreen') {
+      modelSelectionPending = false;
       const { geometry: _geometry, ...next } = config;
       updateConfig(next as EditableConfig);
       return;
     }
-    updateConfig({ ...config, geometry: type === 'model' ? { type, path: '' } : { type } });
+    if (type === 'model') {
+      modelSelectionPending = true;
+      return;
+    }
+    modelSelectionPending = false;
+    updateConfig({ ...config, geometry: { type } });
   }
 
   function handleModelPathChange(path: string) {
+    if (!path) {
+      modelSelectionPending = true;
+      const { geometry: _geometry, ...next } = config;
+      updateConfig(next as EditableConfig);
+      return;
+    }
+    modelSelectionPending = false;
     updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
   }
 
@@ -530,7 +553,7 @@
         <h3 class="section-title">Geometry</h3>
         <select
           aria-label="Geometry"
-          value={config.geometry?.type ?? "fullscreen"}
+          value={modelGeometry ? "model" : config.geometry?.type ?? "fullscreen"}
           onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
         >
           <option value="fullscreen">Fullscreen</option>
