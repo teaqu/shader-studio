@@ -58,7 +58,7 @@ describe("RenderingEngine WebGL Initialization", () => {
   });
 
   describe("piCreateGlContext usage", () => {
-    it("should call piCreateGlContext with alpha disabled", async () => {
+    it("should request a depth buffer for mesh Image passes", async () => {
       const mockGL = {} as any;
       const mockCanvas = { addEventListener: vi.fn() } as any;
       mockPiCreateGlContext.mockReturnValue(mockGL);
@@ -74,7 +74,7 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,
         false, // useAlpha
-        false, // useDepth
+        true, // useDepth
         false, // usePreserveBuffer (default)
         false, // useSupersampling
       );
@@ -95,7 +95,7 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(mockPiCreateGlContext).toHaveBeenCalledWith(
         mockCanvas,
         false, // useAlpha
-        false, // useDepth
+        true, // useDepth
         true,  // usePreserveBuffer
         false, // useSupersampling
       );

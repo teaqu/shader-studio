@@ -64,7 +64,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.pixelRegionCapturer = null;
     this.glCanvas = glCanvas;
 
-    const gl = piCreateGlContext(glCanvas, false, false, preserveDrawingBuffer, false);
+    const gl = piCreateGlContext(glCanvas, false, true, preserveDrawingBuffer, false);
     if (!gl) {
       throw new Error("WebGL2 not supported");
     }
