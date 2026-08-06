@@ -96,13 +96,18 @@ function moduleNameFromPath(filePath: string): string {
   return path.basename(filePath, path.extname(filePath));
 }
 
-const INCLUDE_PATTERN = /^[ \t]*(?:#|__)include[ \t]+"([^"]+)"[ \t]*$/gm;
+const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
+const INCLUDE_IDENT_PATTERN = /^[ \t]*__include[ \t]+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)[ \t]*;?[ \t]*$/gm;
 
 /**
- * Resolve `#include "…"` and `__include "…"` directives in Slang source by
- * inlining the referenced files. The Slang WASM runtime has no filesystem
- * access, so both preprocessor includes and module-level includes must be
- * resolved on the host before the source is handed to the compiler.
+ * Resolve `#include "…"`, `__include "…"`, and `__include identifier` directives
+ * in Slang source by inlining the referenced files. The Slang WASM runtime has
+ * no filesystem access, so includes must be resolved on the host before the
+ * source is handed to the compiler.
+ *
+ * The identifier form (`__include dir.file_name`) is translated per the Slang
+ * spec: underscores become hyphens, dots become path separators, and `.slang`
+ * is appended.
  *
  * Resolution is relative to the source file's directory and is recursive (an
  * included file may itself include other files). Cycles are detected and left
@@ -121,19 +126,30 @@ export function resolveSlangIncludes(
   includedPaths: string[] = [],
 ): ResolvedIncludesResult {
   const sourceDir = path.dirname(path.normalize(sourcePath));
-  const resolved_source = source.replace(INCLUDE_PATTERN, (_match: string, includePath: string) => {
-    const resolved = path.normalize(path.resolve(sourceDir, includePath));
-    if (visited.has(resolved)) {
-      return _match; // cycle — leave unresolved, Slang will report it
-    }
+
+  function resolveFile(filePath: string, fallback: () => string): string {
+    const resolved = path.normalize(path.resolve(sourceDir, filePath));
+    if (visited.has(resolved)) return fallback();
     const content = readSource(resolved);
-    if (content === null) {
-      return _match; // file not found — leave unresolved, Slang will report it
-    }
+    if (content === null) return fallback();
     visited.add(resolved);
     includedPaths.push(resolved);
     return resolveSlangIncludes(content, resolved, readSource, visited, includedPaths).source;
+  }
+
+  // String form: #include "path" / __include "path"
+  const afterStrings = source.replace(INCLUDE_STRING_PATTERN, (_match: string, hashPath: string, usPath: string) => {
+    const filePath = hashPath || usPath;
+    return resolveFile(filePath, () => _match);
   });
+
+  // Identifier form: __include dir.file_name
+  const resolved_source = afterStrings.replace(INCLUDE_IDENT_PATTERN, (_match: string, identPath: string) => {
+    // Slang spec: _ → -, . → /, append .slang
+    const filePath = identPath.replace(/_/g, "-").replace(/\./g, "/") + ".slang";
+    return resolveFile(filePath, () => _match);
+  });
+
   return { source: resolved_source, includedPaths };
 }
 

@@ -145,6 +145,26 @@ suite("resolveSlangIncludes", () => {
     assert.strictEqual(result, "implementing scene;\nvoid helper() {}\nvoid main() { helper(); }");
   });
 
+  test("inlines a __include with identifier syntax", () => {
+    const files = {
+      [path.normalize("/shader/utils/helpers.slang")]: "implementing scene;\nvoid helper() {}",
+    };
+    const source = "__include utils.helpers;\nvoid main() { helper(); }";
+    const { source: result } = resolveSlangIncludes(source, "/shader/scene.slang", readSource(files));
+    assert.ok(result.includes("void helper()"));
+    assert.ok(!result.includes("__include"));
+  });
+
+  test("translates underscores to hyphens in __include identifiers", () => {
+    const files = {
+      [path.normalize("/shader/utils/my-helpers.slang")]: "void helper() {}",
+    };
+    const source = "__include utils.my_helpers;\nvoid main() { helper(); }";
+    const { source: result } = resolveSlangIncludes(source, "/shader/scene.slang", readSource(files));
+    assert.ok(result.includes("void helper()"));
+    assert.ok(!result.includes("__include"));
+  });
+
   test("tracks included paths for dependency invalidation", () => {
     const files = {
       [path.normalize("/shader/include/tone-map.slang")]: "float3 toneMap(float3 c) { return c; }",
