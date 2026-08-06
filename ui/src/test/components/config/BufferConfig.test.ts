@@ -5,6 +5,29 @@ import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
 import type { BufferPass, ComputePass, ImagePass } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
+  it('updates the optional vertex shader path', async () => {
+    const onUpdate = vi.fn();
+    const { getByLabelText } = render(BufferConfig, {
+      bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate, getWebviewUri: () => undefined, isImagePass: true,
+    });
+
+    await fireEvent.input(getByLabelText('Path:'), { target: { value: './warp.vert.glsl' } });
+
+    expect(onUpdate).toHaveBeenCalledWith('Image', expect.objectContaining({ vertex: './warp.vert.glsl' }));
+  });
+  it('creates a Slang vertex file for a Slang shader', async () => {
+    const postMessage = vi.fn();
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
+      shaderPath: '/shaders/rays.slang', postMessage,
+    });
+
+    await fireEvent.click(getByText('Create'));
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'createFile',
+      payload: expect.objectContaining({ fileType: 'slang-vertex', suggestedPath: '/shaders/rays.image.vert.slang' }),
+    }));
+  });
   let mockOnUpdate: ReturnType<typeof vi.fn>;
   let mockGetWebviewUri: ReturnType<typeof vi.fn>;
   let mockPostMessage: ReturnType<typeof vi.fn>;

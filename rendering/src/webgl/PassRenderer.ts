@@ -152,7 +152,8 @@ export class PassRenderer {
     const view = this.meshCamera.getViewMatrix();
     this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), true);
     this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), true);
-    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(this.meshCamera.getProjectionMatrix(aspect)), true);
+    const projection = this.meshCamera.getProjectionMatrix(aspect);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(projection), true);
     const normalLocation = shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
       this.gl.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));

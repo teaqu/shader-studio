@@ -197,6 +197,7 @@
 
   // Config panel state
   let currentConfig = $state<ShaderConfig | null>(null);
+  const hasMeshPass = $derived(Boolean(Object.values(currentConfig?.passes ?? {}).some((pass) => pass && 'geometry' in pass && pass.geometry?.type && pass.geometry.type !== 'fullscreen')));
   let pathMap = $state<Record<string, string>>({});
   let bufferPathMap = $state<Record<string, string>>({});
   let bufferSources = $state<Record<string, string>>({});
@@ -279,7 +280,7 @@
 
   // Reactive: notify variable capture manager when relevant state changes.
   $effect(() => {
-    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugEnabled && !hasMeshPass) {
+    if (initialized && variableCaptureManager && shaderDebugManager && varInspectorEnabled && debugEnabled) {
       notifyVariableCaptureManager();
     } else if (initialized && variableCaptureManager) {
       variableCaptureManager.stop();
@@ -534,14 +535,11 @@
   }
 
   function handleCanvasClick() {
-    if (hasMeshPass) {
-      return;
-    }
     pixelInspectorManager?.handleCanvasClick();
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
-    if (!pixelInspectorManager || !initialized || hasMeshPass) {
+    if (!pixelInspectorManager || !initialized) {
       return;
     }
     pixelInspectorManager.handleMouseMove(event);
@@ -699,7 +697,7 @@
         lastSentDebugEnabled = $debugPanelStore.isVisible;
 
         if ($debugPanelStore.isVisible) {
-          pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && !hasMeshPass);
+          pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled);
         } else {
           pixelInspectorManager.setEnabled(false);
         }
@@ -717,7 +715,7 @@
 
   $effect(() => {
     if (pixelInspectorManager) {
-      const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible && !hasMeshPass;
+      const desiredInspectorEnabled = $debugPanelStore.isPixelInspectorEnabled && $debugPanelStore.isVisible;
       const currentInspectorEnabled = pixelInspectorManager.getState().isEnabled;
       if (currentInspectorEnabled !== desiredInspectorEnabled) {
         pixelInspectorManager.setEnabled(desiredInspectorEnabled);
@@ -820,7 +818,7 @@
   }
 
   function notifyVariableCaptureManager() {
-    if (!variableCaptureManager || !shaderDebugManager || hasMeshPass) {
+    if (!variableCaptureManager || !shaderDebugManager) {
       return;
     }
     const state = shaderDebugManager.getState();
@@ -1101,7 +1099,7 @@
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
       pixelInspectorManager.initialize(renderingEngine, timeManager, glCanvas);
-      pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled && !hasMeshPass);
+      pixelInspectorManager.setEnabled($debugPanelStore.isPixelInspectorEnabled && debugState.isEnabled);
       registerLockAtHandler((x, y) => pixelInspectorManager?.lockToPosition(x, y));
 
       variableCaptureManager = new VariableCaptureManager(renderingEngine, (vars) => {

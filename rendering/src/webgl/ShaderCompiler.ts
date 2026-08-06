@@ -11,6 +11,7 @@ export interface ShaderWrapOptions {
   slotAssignments?: SlotAssignment[];
   channelTypes?: ChannelSamplerType[];
   customUniformDeclarations?: string;
+  vertexCode?: string;
 }
 
 export interface WrappedShaderSource {
@@ -133,7 +134,7 @@ uniform struct {
     const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
     const headerLineCount = (header.match(/\n/g) || []).length;
     return {
-      vertexSource: this.buildVertexSource(mesh),
+      vertexSource: this.buildVertexSource(mesh, options.vertexCode),
       wrappedCode: shaderCode,
       headerLineCount,
       commonCodeLineCount,
@@ -471,9 +472,24 @@ uniform struct {
     };
   }
 
-  private buildVertexSource(mesh: boolean): string {
-    if (!mesh) {
+  private buildVertexSource(mesh: boolean, vertexCode?: string): string {
+    const hasHook = Boolean(vertexCode?.trim());
+    if (!hasHook && !mesh) {
       return "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
+    }
+    const hook = hasHook ? `${vertexCode}\n` : "";
+    if (!mesh) {
+      return `in vec2 position;
+uniform float iTime;
+uniform vec3 iResolution;
+${hook}
+void main() {
+ vec3 _vertexPosition = vec3(position, 0.0);
+ vec3 _vertexNormal = vec3(0.0);
+ vec2 _vertexUv = position * 0.5 + 0.5;
+ mainVertex(_vertexPosition, _vertexNormal, _vertexUv);
+ gl_Position = vec4(_vertexPosition, 1.0);
+}`;
     }
     return `layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -482,15 +498,22 @@ uniform mat4 _meshModel;
 uniform mat4 _meshView;
 uniform mat4 _meshProjection;
 uniform mat3 _meshNormalMatrix;
+uniform float iTime;
+uniform vec3 iResolution;
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out vec3 ${MESH_FRAGMENT_CONTEXT.normal};
+${hook}
 void main() {
- vec4 _meshWorldPosition = _meshModel * vec4(position, 1.0);
+ vec3 _vertexPosition = position;
+ vec3 _vertexNormal = normal;
+ vec2 _vertexUv = uv;
+ ${hasHook ? "mainVertex(_vertexPosition, _vertexNormal, _vertexUv);" : ""}
+ vec4 _meshWorldPosition = _meshModel * vec4(_vertexPosition, 1.0);
  gl_Position = _meshProjection * _meshView * _meshWorldPosition;
- ${MESH_FRAGMENT_CONTEXT.uv} = uv;
+ ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
- ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * normal;
+ ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;
 }`;
   }
 

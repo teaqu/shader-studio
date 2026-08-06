@@ -3,6 +3,7 @@ import type { BufferResolution, GeometryType } from "@shader-studio/types";
 export type Pass = {
   name: string;
   shaderSrc: string;
+  vertexSrc?: string;
   inputs: Record<string, any>;
   geometry: GeometryType;
   path?: string;

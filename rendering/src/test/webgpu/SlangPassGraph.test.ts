@@ -34,6 +34,29 @@ describe("buildSlangPassGraph", () => {
     });
   });
 
+  it("attaches each configured vertex source to its matching render pass", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: {
+          Image: { vertex: "image.vert.slang" },
+          BufferA: { path: "buffer-a.slang", vertex: "buffer-a.vert.slang" },
+        },
+      },
+      buffers: {
+        BufferA: imageCode,
+        "__shader_studio_vertex__:Image": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
+        "__shader_studio_vertex__:BufferA": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
+      },
+      canvasWidth: 800,
+      canvasHeight: 600,
+    });
+
+    expect(graph.passes.find((pass) => pass.name === "Image")?.vertexSrc).toContain("mainVertex");
+    expect(graph.passes.find((pass) => pass.name === "BufferA")?.vertexSrc).toContain("mainVertex");
+  });
+
   it("resolves mixed pass geometry without changing dependency order or channels", () => {
     const config: ShaderConfig = {
       version: "1",

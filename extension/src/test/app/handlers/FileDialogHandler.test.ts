@@ -310,6 +310,20 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(content.includes('Common functions'));
     });
 
+    test('writes a Slang mainVertex template for slang-vertex fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/image.vert.slang'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.slang', suggestedPath: 'image.vert.slang', fileType: 'slang-vertex', requestId: 'vertex-slang' },
+        respondFn,
+      );
+
+      assert.ok((writeStub.firstCall.args[1] as string).includes('inout float3 position'));
+    });
+
     test('writes default mainImage template for glsl fileType', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(false);

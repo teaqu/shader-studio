@@ -40,6 +40,20 @@ suite('Shader config JSON schema', () => {
     });
   });
 
+  test('accepts a vertex source path on renderable passes but not Common', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: { geometry: { type: 'cube' }, vertex: 'image.vert.glsl' },
+        BufferA: { path: 'buffer.glsl', vertex: 'buffer.vert.glsl' },
+      },
+    });
+    assertInvalid({
+      version: '1.0',
+      passes: { Image: {}, common: { path: 'common.glsl', vertex: 'bad.vert.glsl' } },
+    }, 'should NOT have additional properties');
+  });
+
   test('rejects malformed image and buffer geometry objects', () => {
     const malformedCases: Array<[unknown, string]> = [
       [null, 'should be object'],

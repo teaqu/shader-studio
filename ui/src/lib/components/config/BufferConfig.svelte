@@ -10,13 +10,14 @@
     BufferResolution,
     AspectRatioMode,
     GeometryType,
+    ComputePass,
   } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import PathInput from "./PathInput.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
 
-  type EditableConfig = BufferPass | ImagePass;
+  type EditableConfig = BufferPass | ImagePass | ComputePass;
 
   type BufferConfigProps = {
     bufferName: string;
@@ -31,6 +32,11 @@
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
     availableBufferNames?: string[];
+    language?: 'glsl' | 'slang';
+    passKind?: 'render' | 'compute';
+    storageNames?: string[];
+    entryPointNames?: string[];
+    onComputeCommit?: (nextConfig: ComputePass) => Record<string, string>;
   };
 
   let {
@@ -46,6 +52,11 @@
     audioVideoController = undefined,
     globalMuted = false,
     availableBufferNames = [],
+    language = 'glsl',
+    passKind = 'render',
+    storageNames = [],
+    entryPointNames = [],
+    onComputeCommit = undefined,
   }: BufferConfigProps = $props();
 
   const IMAGE_SCALES = [0.25, 0.5, 1, 2, 4] as const;
@@ -76,6 +87,9 @@
     return 'none' as const;
   });
   const configuredChannelNames = $derived(Object.keys(configuredInputs));
+  const isSlangShader = $derived(shaderPath.toLowerCase().endsWith('.slang'));
+  const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${isSlangShader ? 'slang' : 'glsl'}`);
+  const vertexFileType = $derived(isSlangShader ? 'slang-vertex' as const : 'glsl-vertex' as const);
 
   let currentPath = $state("path" in config ? config.path : "");
   let activeModalChannel = $state<string | null>(null);
@@ -271,6 +285,15 @@
     }
     updateConfig({ ...config, geometry: { type } });
   }
+
+  function handleVertexPathChange(path: string) {
+    if (path.trim() === '') {
+      const { vertex: _vertex, ...next } = config;
+      updateConfig(next as EditableConfig);
+      return;
+    }
+    updateConfig({ ...config, vertex: path });
+  }
 </script>
 
 <div class="buffer-config">
@@ -314,6 +337,21 @@
           <option value="sphere">Sphere</option>
         </select>
       </div>
+      {#if config.geometry?.type && config.geometry.type !== 'fullscreen'}
+        <div class="config-item">
+          <h3 class="section-title">Vertex shader</h3>
+          <PathInput
+            value={config.vertex ?? ""}
+            onPathChange={handleVertexPathChange}
+            fileType={vertexFileType}
+            note="Optional mainVertex hook"
+            suggestedPath={vertexSuggestedPath}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+        </div>
+      {/if}
       <div class="config-item">
         {#if !isImagePass}<h3 class="section-title">Channels</h3>{/if}
         {#if configuredChannelNames.length > 0}

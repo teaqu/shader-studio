@@ -19,7 +19,10 @@ import type { ShaderConfig } from "@shader-studio/types";
 
 export type ShaderMessageTarget =
   | { kind: 'main' }
-  | { kind: 'buffer'; passName: string };
+  | { kind: 'buffer'; passName: string }
+  | { kind: 'vertex'; passName: string };
+
+const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
 
 export class ShaderPipeline {
   private renderEngine: RenderingEngine;
@@ -110,6 +113,14 @@ export class ShaderPipeline {
         return undefined;
       }
 
+      if (messageTarget.kind === 'vertex') {
+        // Vertex sources are not fragment buffers. Ask the extension to resend
+        // the owning shader so its current vertex source is compiled together
+        // with the pass, rather than attempting a buffer-only recompile.
+        this.refresh(this.shaderLocker.getLockedShaderPath());
+        return undefined;
+      }
+
       return await this.processMainShaderCompilation(message, event);
 
     } catch (err) {
@@ -149,7 +160,9 @@ export class ShaderPipeline {
     );
 
     return matchingBuffer
-      ? { kind: 'buffer', passName: matchingBuffer[0] }
+      ? matchingBuffer[0].startsWith(VERTEX_SOURCE_PREFIX)
+        ? { kind: 'vertex', passName: matchingBuffer[0].slice(VERTEX_SOURCE_PREFIX.length) }
+        : { kind: 'buffer', passName: matchingBuffer[0] }
       : null;
   }
 

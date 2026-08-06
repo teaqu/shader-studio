@@ -47,6 +47,11 @@ function geometryChanged(previous: ShaderConfig | null, next: ShaderConfig): boo
   return [...passNames].some((passName) => geometryType(previous, passName) !== geometryType(next, passName));
 }
 
+function vertexChanged(previous: ShaderConfig | null, next: ShaderConfig): boolean {
+  const passNames = new Set([...Object.keys(previous?.passes ?? {}), ...Object.keys(next.passes)]);
+  return [...passNames].some((passName) => previous?.passes[passName]?.vertex !== next.passes[passName]?.vertex);
+}
+
 export interface ControllerDeps {
   readonly currentConfig: ShaderConfig | null;
   readonly debugState: ShaderDebugState;
@@ -124,7 +129,7 @@ export class ResolutionSessionController {
   }
 
   public handleConfigUpdated(updatedConfig: ShaderConfig): void {
-    const requiresGeometryRecompile = geometryChanged(this.deps.currentConfig, updatedConfig);
+    const requiresGeometryRecompile = geometryChanged(this.deps.currentConfig, updatedConfig) || vertexChanged(this.deps.currentConfig, updatedConfig);
     this.deps.setCurrentConfig(updatedConfig);
     this.deps.setEditorConfig(updatedConfig);
     this.deps.setShaderContext(updatedConfig, this.deps.getShaderPath(), this.deps.getBufferPathMap());

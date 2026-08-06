@@ -11,8 +11,7 @@ import { resolveBufferPassSize } from "./BufferPassResolution";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import { resolvePassGeometry } from "../types/Geometry";
 
-const SLANG_FEATURE_WARNING =
-  "compute passes and storage buffers require the Slang/WebGPU engine";
+const VERTEX_SOURCE_PREFIX = "__shader_studio_vertex__:";
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;
@@ -94,13 +93,8 @@ export class ShaderPipeline {
       return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
     }
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
-    const configWarnings = config?.storage !== undefined ||
-      Object.keys(config?.passes ?? {}).some(name => name.startsWith("Compute"))
-      ? [SLANG_FEATURE_WARNING]
-      : [];
     const nextPasses = this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders(nextPasses);
-    const compileWarnings = [...(compilation.warnings || []), ...configWarnings];
 
     if (this.disposed) {
       if (compilation.passShaders) {
@@ -113,16 +107,13 @@ export class ShaderPipeline {
       if (pathChanged) {
         this.applyFailedCompilation(path, nextPasses);
       }
-      return compileWarnings.length > 0
-        ? { ...compilation, warnings: compileWarnings }
-        : compilation;
+      return compilation;
     }
 
     if (!compilation.passShaders) {
       return {
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
-        warnings: compileWarnings.length > 0 ? compileWarnings : undefined,
       };
     }
 
@@ -133,6 +124,7 @@ export class ShaderPipeline {
       pathChanged,
     );
 
+    const compileWarnings = compilation.warnings || [];
     const resourceWarnings = await this.updateResources();
     if (!resourceWarnings) {
       return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
@@ -147,7 +139,7 @@ export class ShaderPipeline {
     buffers: Record<string, string>
   ): Pass[] {
     const passNames = config?.passes
-      ? Object.keys(config.passes).filter(name => !name.startsWith("Compute"))
+      ? Object.keys(config.passes)
       : [];
 
     if (passNames.length === 0) {
@@ -185,8 +177,9 @@ export class ShaderPipeline {
         return {
           name: passName,
           shaderSrc,
+          vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
           inputs: pass?.inputs ?? {},
-          geometry: resolvePassGeometry(pass),
+          geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
           resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
         };
@@ -250,6 +243,7 @@ export class ShaderPipeline {
             slotAssignments,
             channelTypes,
             customUniformDeclarations: customDecl,
+            vertexCode: pass.vertexSrc,
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
@@ -257,6 +251,7 @@ export class ShaderPipeline {
           slotAssignments,
           channelTypes,
           customUniformDeclarations: customDecl,
+          vertexCode: pass.vertexSrc,
         });
       } catch (error) {
         this.cleanupPartialShaders(newPassShaders);

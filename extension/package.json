@@ -177,11 +177,6 @@
           "type": "boolean",
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
-        },
-        "shader-studio.webglGlslEditorIntegration": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Shader Studio integration with the WebGL GLSL Editor extension. When enabled, Shader Studio overwrites the extension's code injection with its generated uniforms."
         }
       }
     },

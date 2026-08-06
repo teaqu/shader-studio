@@ -64,6 +64,10 @@
         },
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
+        },
+        "vertex": {
+          "type": "string",
+          "description": "Path to the optional per-pass vertex shader hook source"
         }
       },
       "additionalProperties": false
@@ -85,6 +89,10 @@
         },
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
+        },
+        "vertex": {
+          "type": "string",
+          "description": "Path to the optional per-pass vertex shader hook source"
         }
       },
       "additionalProperties": false

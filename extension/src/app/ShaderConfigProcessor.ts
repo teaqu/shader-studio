@@ -95,6 +95,9 @@ export class ShaderConfigProcessor {
       if ("path" in pass && pass.path && typeof pass.path === "string") {
         this.processBufferPath(pass, passName, shaderPath, buffers);
       }
+      if ("vertex" in pass && pass.vertex && typeof pass.vertex === "string") {
+        this.processVertexPath(pass.vertex, passName, shaderPath, buffers);
+      }
 
       // Process inputs - resolve texture paths to absolute paths
       if (pass.inputs && typeof pass.inputs === "object") {
@@ -158,6 +161,17 @@ export class ShaderConfigProcessor {
 
     // Don't mutate pass.path - keep the original relative path for UI display
     // The resolved absolute path is only needed for loading buffer content above
+  }
+
+  private processVertexPath(vertexPath: string, passName: string, shaderPath: string, buffers: Record<string, string>): void {
+    const resolvedPath = PathResolver.resolvePath(shaderPath, vertexPath);
+    const document = vscode.workspace.textDocuments.find((doc) => doc.fileName === resolvedPath);
+    const source = document?.getText() ?? (fs.existsSync(resolvedPath) ? fs.readFileSync(resolvedPath, "utf-8") : undefined);
+    if (source === undefined) {
+      this.errorHandler.handlePersistentError({ type: 'error', payload: [`Vertex shader file not found: ${resolvedPath}`] });
+      return;
+    }
+    buffers[`__shader_studio_vertex__:${passName}`] = source;
   }
 
   /**

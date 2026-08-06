@@ -150,7 +150,7 @@ suite('WebSocketTransport Test Suite', () => {
     assert.strictEqual(transport.hasActiveClients(), false);
   });
 
-  test('initial current shader claims ownership and emits preamble preparation', async () => {
+  test('initial current shader is sent to the connecting client', async () => {
     Logger.initialize({
       info: sandbox.stub(),
       debug: sandbox.stub(),
@@ -172,7 +172,6 @@ suite('WebSocketTransport Test Suite', () => {
     mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(editor);
 
     const send = sandbox.stub();
-    const onPreamblePreparation = sandbox.stub();
     const provider = new ShaderProvider(
       {
         send,
@@ -184,7 +183,6 @@ suite('WebSocketTransport Test Suite', () => {
       } as any,
       undefined,
       undefined,
-      onPreamblePreparation,
     );
     transport = new WebSocketTransport(
       51484,
@@ -197,16 +195,6 @@ suite('WebSocketTransport Test Suite', () => {
     (transport as any).sendCurrentShaderToNewClient(mockWsClient);
     await new Promise(resolve => setTimeout(resolve, 125));
 
-    sinon.assert.calledOnceWithExactly(onPreamblePreparation, {
-      kind: 'valid',
-      snapshot: {
-        shaderPath,
-        configPath: null,
-        passName: 'Image',
-        inputs: undefined,
-        customUniformDeclarations: '',
-      },
-    });
     sinon.assert.calledOnce(send);
   });
 

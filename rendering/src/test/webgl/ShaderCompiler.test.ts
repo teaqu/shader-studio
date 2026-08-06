@@ -95,6 +95,17 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).not.toContain("mainImage(fragColor, gl_FragCoord.xy);");
     });
 
+    it("runs a configured vertex hook before projecting a mesh", () => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        geometry: "sphere",
+        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal * sin(iTime); }",
+      });
+
+      expect(vertexSource).toContain("position += normal * sin(iTime);");
+      expect(vertexSource).toContain("mainVertex(_vertexPosition, _vertexNormal, _vertexUv);");
+      expect(vertexSource.indexOf("mainVertex(_vertexPosition")).toBeGreaterThan(vertexSource.indexOf("void mainVertex"));
+    });
+
     it("keeps fullscreen coordinates and provides deterministic zero mesh compatibility values", () => {
       const code = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         fragColor = vec4(iWorldPosition + iNormal + iCameraPosition, 1.0);

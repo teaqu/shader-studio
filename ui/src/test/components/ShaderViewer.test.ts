@@ -1823,6 +1823,22 @@ describe('ShaderViewer', () => {
     expect(mockVCMFactory._notifyCalls.length).toBe(1);
   });
 
+  it('keeps grid-style variable capture enabled for a mesh pass', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/shader.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { passes: { Image: { geometry: { type: 'cube' } } } },
+      pathMap: { Image: '/test/shader.glsl' },
+    });
+
+    await enableDebugAndVariableInspector();
+
+    expect(mockVCMFactory._lastNotifyParams).not.toBeNull();
+  });
+
   it('should trigger exactly one capture per cursor move in manual mode', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

@@ -7,23 +7,17 @@ import { WorkspaceFileScanner } from "../WorkspaceFileScanner";
 import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
-import type {
-  CreateFileMessage,
-  ErrorMessage,
-  FileDialogFileType,
-  FileSelectedMessage,
-  SelectFileMessage,
-} from "@shader-studio/types";
+import type { ErrorMessage } from "@shader-studio/types";
 import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS } from "@shader-studio/types";
 
-function fileTypeToFilters(fileType: FileDialogFileType): { [name: string]: string[] } {
+function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
     case 'script':   return { 'Script files': SCRIPT_EXTENSIONS };
-    case 'slang-compute': return { 'Slang files': ['slang'] };
     case 'texture':  return { 'Texture files': TEXTURE_EXTENSIONS };
     case 'video':    return { 'Video files': VIDEO_EXTENSIONS };
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
     case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
+    case 'slang-vertex': return { 'Slang files': ['slang'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
 }
@@ -39,8 +33,8 @@ export class FileDialogHandler {
   ) {}
 
   async handleSelectFile(
-    payload: SelectFileMessage['payload'],
-    respondFn: (msg: FileSelectedMessage) => void,
+    payload: { shaderPath: string; fileType: string; requestId: string },
+    respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -72,8 +66,8 @@ export class FileDialogHandler {
   }
 
   async handleCreateFile(
-    payload: CreateFileMessage['payload'],
-    respondFn: (msg: FileSelectedMessage) => void,
+    payload: { shaderPath: string; suggestedPath: string; fileType: string; requestId: string },
+    respondFn: (msg: any) => void,
   ): Promise<void> {
     try {
       const shaderDir = payload.shaderPath
@@ -83,12 +77,7 @@ export class FileDialogHandler {
           return e ? path.dirname(e.document.uri.fsPath) : null;
         })();
       const isScript = payload.fileType === 'script';
-      const isSlangCompute = payload.fileType === 'slang-compute';
-      const filters: { [name: string]: string[] } = isScript
-        ? { 'Script files': ['ts', 'js'] }
-        : isSlangCompute
-          ? { 'Slang files': ['slang'] }
-          : { 'GLSL files': ['glsl', 'frag', 'vert'] };
+      const filters = fileTypeToFilters(payload.fileType);
       const defaultPath = shaderDir && payload.suggestedPath
         ? path.resolve(shaderDir, payload.suggestedPath)
         : shaderDir
@@ -110,10 +99,12 @@ export class FileDialogHandler {
           template = filePath.endsWith('.ts')
             ? this.buildTsTemplate(filePath, shaderDir || path.dirname(filePath))
             : `export function uniforms(ctx) {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
-        } else if (isSlangCompute) {
-          template = `void computeMain(uint3 dispatchThreadID) {\n    // Compute shader logic\n}\n`;
         } else if (payload.fileType === 'glsl-common') {
           template = `// Common functions shared across all passes\n`;
+        } else if (payload.fileType === 'glsl-vertex') {
+          template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
+        } else if (payload.fileType === 'slang-vertex') {
+          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
         } else {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }

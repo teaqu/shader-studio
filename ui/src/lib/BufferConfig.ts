@@ -145,9 +145,15 @@ export class BufferConfig {
       if (this.config.geometry !== undefined) {
         errors.push('common pass cannot define geometry');
       }
+      if (this.config.vertex !== undefined) {
+        errors.push('common pass cannot define vertex');
+      }
     } else {
       if (!isValidGeometry(this.config.geometry)) {
         errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
+      }
+      if (this.config.vertex !== undefined && (typeof this.config.vertex !== 'string' || this.config.vertex.trim() === '')) {
+        errors.push(`${this.bufferName} pass vertex path must be a non-empty string`);
       }
 
       // Validate input channels

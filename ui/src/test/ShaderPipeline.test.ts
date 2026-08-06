@@ -125,6 +125,21 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       },
     );
 
+    it('classifies a configured vertex source separately from a fragment buffer', () => {
+      const lockedPath = '/project/main.glsl';
+      const vertexPath = '/project/main.vert.glsl';
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(lockedPath);
+      (pipeline as unknown as { lastEvent: MessageEvent<ShaderSourceMessage> }).lastEvent = {
+        data: {
+          type: 'shaderSource', code: 'main', path: lockedPath,
+          bufferPathMap: { Image: lockedPath, '__shader_studio_vertex__:Image': vertexPath },
+        },
+      } as unknown as MessageEvent<ShaderSourceMessage>;
+
+      expect(pipeline.getShaderMessageTarget({ path: vertexPath })).toEqual({ kind: 'vertex', passName: 'Image' });
+    });
+
     it('rejects messages when the lock has no shader path', () => {
       vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
       vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue(undefined);

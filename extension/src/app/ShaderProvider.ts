@@ -20,23 +20,16 @@ import type {
   SlangDependencyDiagnostic,
   SlangSourceModule,
 } from "@shader-studio/types";
-import type { WebglGlslInjectionPreparation } from "./WebglGlslInjection";
 
 interface OwnedShaderPass {
   shaderPath: string;
   passName: string;
   config: ShaderConfig;
-}
-
-interface ActivePreamblePass {
-  filePath: string;
-  shaderPath: string;
-  passName: string;
+  stage: 'fragment' | 'vertex';
 }
 
 interface ActiveAnalysisContext {
   filePath: string;
-  pass: ActivePreamblePass | null;
   preferredRootShaderPath: string | null;
   generation: number;
 }
@@ -53,15 +46,11 @@ export class ShaderProvider {
   private readonly activeAnalysisContexts = new Map<string, ActiveAnalysisContext>();
   private nextAnalysisContextGeneration = 1;
   private readonly preparationGenerations = new Map<string, number>();
-  private readonly customDeclarationsByShader = new Map<string, string>();
 
   constructor(
     private messenger: Messenger,
     getDebugModeEnabled?: () => boolean,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
-    private readonly onPreamblePreparation?: (
-      preparation: WebglGlslInjectionPreparation,
-    ) => void | Promise<void>,
     private readonly getLockedShaderPath: () => string | undefined = () => undefined,
   ) {
     this.configProcessor = new ShaderConfigProcessor(this.messenger.getErrorHandler());
@@ -77,7 +66,6 @@ export class ShaderProvider {
     const previous = this.activeAnalysisContexts.get(contextKey);
     this.activeAnalysisContexts.set(contextKey, {
       filePath,
-      pass: null,
       preferredRootShaderPath: this.resolvePreferredRootForClaim(filePath, previous),
       generation: this.nextAnalysisContextGeneration++,
     });
@@ -87,11 +75,7 @@ export class ShaderProvider {
     filePath: string,
     previous: ActiveAnalysisContext | undefined,
   ): string {
-    if (previous?.pass?.filePath === filePath) {
-      return previous.pass.shaderPath;
-    }
-
-    const previousRoot = previous?.pass?.shaderPath ?? previous?.preferredRootShaderPath;
+    const previousRoot = previous?.preferredRootShaderPath;
     if (!previousRoot) {
       return filePath;
     }
@@ -135,8 +119,8 @@ export class ShaderProvider {
     // after the file has been created.
     this.messenger.getErrorHandler().clearPersistentErrors();
 
-    if (await this.trySendNonMainImageShader(shaderPath, code, (owner) => (
-      this.sendNonMainImageShaderFromEditor(owner, shaderPath, code, editor, options)
+    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      this.sendNonMainImageShaderFromEditor(shaderPath, code, editor, options)
     ), options, cursorPosition)) {
       return;
     }
@@ -170,8 +154,8 @@ export class ShaderProvider {
 
       const code = fs.readFileSync(shaderPath, "utf-8");
 
-      if (await this.trySendNonMainImageShader(shaderPath, code, (owner) => (
-        this.sendNonMainImageShaderFromPath(owner, shaderPath, code, options)
+      if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+        this.sendNonMainImageShaderFromPath(shaderPath, code, options)
       ), options)) {
         return;
       }
@@ -220,8 +204,8 @@ export class ShaderProvider {
       }
     }
 
-    if (await this.trySendNonMainImageShader(shaderPath, code, (owner) => (
-      this.sendNonMainImageShaderFromDocument(owner, shaderPath, code, document, options)
+    if (await this.trySendNonMainImageShader(shaderPath, code, () => (
+      this.sendNonMainImageShaderFromDocument(shaderPath, code, document, options)
     ), options, cursorPosition)) {
       return;
     }
@@ -301,8 +285,6 @@ export class ShaderProvider {
       ) {
         return;
       }
-      this.emitActiveRootPreamble(shaderPath, config, message, contextGeneration);
-
       this.messenger.send(message);
       this.startScriptPolling(config);
     } catch {
@@ -470,11 +452,11 @@ export class ShaderProvider {
     }
 
     for (const [passName, pass] of Object.entries(config.passes)) {
-      if (passName === 'Image') {
-        continue;
-      }
-      if (pass && typeof pass === 'object' && 'path' in pass && pass.path && typeof pass.path === 'string') {
+      if (passName !== 'Image' && pass && typeof pass === 'object' && 'path' in pass && pass.path && typeof pass.path === 'string') {
         bufferPathMap[passName] = PathResolver.resolvePath(shaderPath, pass.path);
+      }
+      if (pass && typeof pass === 'object' && 'vertex' in pass && typeof pass.vertex === 'string' && pass.vertex) {
+        bufferPathMap[`__shader_studio_vertex__:${passName}`] = PathResolver.resolvePath(shaderPath, pass.vertex);
       }
     }
 
@@ -525,12 +507,22 @@ export class ShaderProvider {
     }
     const match = Object.entries(this.buildBufferPathMap(config, shaderPath))
       .find(([passName, candidatePath]) => passName !== "Image" && candidatePath === filePath);
-    return match ? { shaderPath, passName: match[0], config } : null;
+    if (!match) {
+      return null;
+    }
+    const vertexPrefix = '__shader_studio_vertex__:';
+    const isVertex = match[0].startsWith(vertexPrefix);
+    return {
+      shaderPath,
+      passName: isVertex ? match[0].slice(vertexPrefix.length) : match[0],
+      config,
+      stage: isVertex ? 'vertex' : 'fragment',
+    };
   }
 
   private resolveOwningShaderPass(filePath: string): OwnedShaderPass | null {
     const context = this.getActiveAnalysisContext(filePath);
-    const preferredRoot = context?.pass?.shaderPath ?? context?.preferredRootShaderPath;
+    const preferredRoot = context?.preferredRootShaderPath;
     if (preferredRoot) {
       const preferredOwner = this.resolveOwnedShaderPassForRoot(filePath, preferredRoot);
       if (preferredOwner) {
@@ -567,6 +559,20 @@ export class ShaderProvider {
     }
 
     if (getShaderLanguage(shaderPath) === "slang") {
+      // A configured pass/vertex source is not a Slang import. Re-send its
+      // owning root so the WebGPU engine can reuse cached unchanged passes
+      // and recompile only the pass whose source changed.
+      const configuredOwner = this.resolveOwningShaderPass(shaderPath);
+      if (configuredOwner) {
+        const ownerSource = this.readShaderSource(configuredOwner.shaderPath);
+        if (ownerSource !== null) {
+          // Vertex sources are compiled into a pass, but their local scope is
+          // not a fragment-variable inspection target. Do not replace the
+          // active fragment cursor with this file's cursor position.
+          await this.sendMainImageShader(configuredOwner.shaderPath, ownerSource, options, undefined, false);
+          return true;
+        }
+      }
       const lockedShaderPath = this.getLockedShaderPath();
       const dependencyOwnerPath = lockedShaderPath
         ? this.resolveOwningSlangDependency(shaderPath)
@@ -705,7 +711,6 @@ export class ShaderProvider {
     ) {
       return;
     }
-    this.emitActiveRootPreamble(shaderPath, config, message, expectedContextGeneration);
     this.messenger.send(message);
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");
@@ -716,7 +721,6 @@ export class ShaderProvider {
   }
 
   private async sendNonMainImageShaderFromEditor(
-    owner: OwnedShaderPass | undefined,
     filePath: string,
     code: string,
     editor: vscode.TextEditor,
@@ -737,14 +741,10 @@ export class ShaderProvider {
         : undefined,
     );
 
-    if (owner) {
-      this.emitOwnedPassPreamble(owner, filePath);
-    }
     this.messenger.send(message);
   }
 
   private async sendNonMainImageShaderFromPath(
-    owner: OwnedShaderPass | undefined,
     filePath: string,
     code: string,
     options?: { reload?: boolean },
@@ -755,15 +755,11 @@ export class ShaderProvider {
       options,
     );
 
-    if (owner) {
-      this.emitOwnedPassPreamble(owner, filePath);
-    }
     this.messenger.send(message);
   }
 
   // Uses the current in-memory TextDocument content, including unsaved edits.
   private async sendNonMainImageShaderFromDocument(
-    owner: OwnedShaderPass | undefined,
     filePath: string,
     code: string,
     document: vscode.TextDocument,
@@ -793,152 +789,7 @@ export class ShaderProvider {
       cursorPosition,
     );
 
-    if (owner) {
-      this.emitOwnedPassPreamble(owner, filePath);
-    }
     this.messenger.send(message);
-  }
-
-  private resolveActivePassName(
-    rootShaderPath: string,
-    config: ShaderConfig | null,
-    context: ActiveAnalysisContext,
-  ): string | null {
-    if (context.filePath === rootShaderPath) {
-      return "Image";
-    }
-    const preferredRoot = context.pass?.shaderPath ?? context.preferredRootShaderPath;
-    if (preferredRoot && preferredRoot !== rootShaderPath) {
-      return null;
-    }
-    return Object.entries(this.buildBufferPathMap(config, rootShaderPath))
-      .find(([passName, candidatePath]) => (
-        passName !== "Image" && candidatePath === context.filePath
-      ))?.[0] ?? null;
-  }
-
-  private resolveRetainedActivePassName(
-    rootShaderPath: string,
-    context: ActiveAnalysisContext,
-  ): string | null {
-    if (context.filePath === rootShaderPath) {
-      return "Image";
-    }
-    if (
-      context.pass?.filePath === context.filePath
-      && context.pass.shaderPath === rootShaderPath
-    ) {
-      return context.pass.passName;
-    }
-    return null;
-  }
-
-  private emitActiveRootPreamble(
-    shaderPath: string,
-    config: ShaderConfig | null,
-    message: ShaderSourceMessage,
-    expectedContextGeneration: number | null,
-  ): void {
-    if (getShaderLanguage(shaderPath) !== "glsl" || !this.onPreamblePreparation) {
-      return;
-    }
-
-    const configPath = getConfigPathForShaderPath(shaderPath);
-    const configInvalid = !config && fs.existsSync(configPath);
-    const invalid = message.scriptBundleError !== undefined || configInvalid;
-    if (!invalid) {
-      this.customDeclarationsByShader.set(
-        shaderPath,
-        message.customUniformDeclarations ?? "",
-      );
-    }
-
-    const context = this.getActiveAnalysisContext(shaderPath);
-    if (
-      expectedContextGeneration === null
-      || !context
-      || context.generation !== expectedContextGeneration
-    ) {
-      return;
-    }
-
-    const passName = configInvalid
-      ? this.resolveRetainedActivePassName(shaderPath, context)
-      : this.resolveActivePassName(shaderPath, config, context);
-    if (!passName) {
-      if (config && context.pass?.shaderPath === shaderPath) {
-        context.pass = null;
-      }
-      return;
-    }
-
-    context.pass = {
-      filePath: context.filePath,
-      shaderPath,
-      passName,
-    };
-    context.preferredRootShaderPath = shaderPath;
-    this.emitPreamblePreparation(
-      shaderPath,
-      config,
-      passName,
-      this.customDeclarationsByShader.get(shaderPath),
-      invalid,
-    );
-  }
-
-  private emitOwnedPassPreamble(owner: OwnedShaderPass, filePath: string): void {
-    const context = this.getActiveAnalysisContext(filePath);
-    if (!context || context.filePath !== filePath) {
-      return;
-    }
-    context.pass = {
-      filePath,
-      shaderPath: owner.shaderPath,
-      passName: owner.passName,
-    };
-    context.preferredRootShaderPath = owner.shaderPath;
-    this.emitPreamblePreparation(
-      owner.shaderPath,
-      owner.config,
-      owner.passName,
-      this.customDeclarationsByShader.get(owner.shaderPath),
-      false,
-    );
-  }
-
-  private emitPreamblePreparation(
-    shaderPath: string,
-    config: ShaderConfig | null,
-    passName: string,
-    customUniformDeclarations: string | undefined,
-    invalid: boolean,
-  ): void {
-    if (getShaderLanguage(shaderPath) !== "glsl" || !this.onPreamblePreparation) {
-      return;
-    }
-    const configPath = getConfigPathForShaderPath(shaderPath);
-    const preparation: WebglGlslInjectionPreparation = invalid
-      ? { kind: "invalid", shaderPath }
-      : {
-        kind: "valid",
-        snapshot: {
-          shaderPath,
-          configPath: fs.existsSync(configPath) ? configPath : null,
-          passName,
-          inputs: config?.passes[passName]?.inputs,
-          customUniformDeclarations,
-        },
-      };
-
-    try {
-      const callbackResult = this.onPreamblePreparation(preparation);
-      void Promise.resolve(callbackResult).catch((error) => {
-        this.logger.warn(`Failed to publish WebGL GLSL Editor injection context: ${error}`);
-      });
-    } catch (error) {
-      this.logger.warn(`Failed to publish WebGL GLSL Editor injection context: ${error}`);
-    }
   }
 
   private buildNonMainImageShaderMessage(
