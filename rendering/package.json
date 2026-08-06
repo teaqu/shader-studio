@@ -15,6 +15,7 @@
     "dist"
   ],
   "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
     "@shader-studio/glsl-debug": "*",
     "@shader-studio/types": "*"
   },

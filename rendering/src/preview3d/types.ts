@@ -3,13 +3,13 @@ import type { GeometryType } from '@shader-studio/types';
 /** A fixed-size tuple used by preview scene APIs. */
 export type Vec3 = readonly [number, number, number];
 
-export type PreviewMeshKind = Exclude<GeometryType, 'fullscreen'>;
+export type PreviewMeshKind = Exclude<GeometryType, 'fullscreen' | 'model'>;
 
 export interface PreviewMesh {
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
-  indices: Uint16Array;
+  indices: Uint16Array | Uint32Array;
 }
 
 export interface PreviewObjectTransform {

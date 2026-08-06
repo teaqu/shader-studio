@@ -18,6 +18,7 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
     case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
     case 'slang-vertex': return { 'Slang files': ['slang'] };
+    case 'model': return { 'GLB models': ['glb'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
 }

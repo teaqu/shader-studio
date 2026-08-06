@@ -43,6 +43,11 @@ describe("ConfigValidator", () => {
         }
       });
 
+      it("accepts a model only when it supplies a GLB path", () => {
+        expect(ConfigValidator.validateConfig({ version: "1.0", passes: { Image: { geometry: { type: "model", path: "robot.glb", mesh: "Body" } } } })).toEqual({ isValid: true, errors: [] });
+        expect(ConfigValidator.validateConfig({ version: "1.0", passes: { Image: { geometry: { type: "model" } } } } as never).isValid).toBe(false);
+      });
+
       it("should keep omitted geometry valid without materializing a default", () => {
         const config: ShaderConfig = {
           version: "1.0",
@@ -98,7 +103,7 @@ describe("ConfigValidator", () => {
         };
 
         expect(ConfigValidator.validateConfig(config as never).errors)
-          .toContain("Image pass geometry type must be one of: fullscreen, plane, cube, sphere");
+          .toContain("Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model");
       });
 
       it("should reject geometry on the Common pass", () => {

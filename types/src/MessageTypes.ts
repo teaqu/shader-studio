@@ -202,6 +202,7 @@ export type FileDialogFileType =
   | 'glsl-buffer'
   | 'glsl-common'
   | 'slang-compute'
+  | 'model'
   | 'texture'
   | 'video'
   | 'audio'

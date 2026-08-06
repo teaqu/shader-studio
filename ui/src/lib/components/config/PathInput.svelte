@@ -1,10 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
 
-  type FileType = 'script' | 'glsl-buffer' | 'glsl-common' | 'glsl-vertex' | 'slang-vertex' | 'texture' | 'video' | 'audio' | 'cubemap';
+  import type { FileDialogFileType } from '@shader-studio/types';
+
+  type FileType = FileDialogFileType | 'glsl-vertex' | 'slang-vertex';
 
   interface Props {
     value: string;
+    label?: string;
+    inputId?: string;
     placeholder?: string;
     onPathChange?: (path: string) => void;
     fileExists?: boolean;
@@ -20,6 +24,8 @@
 
   let {
     value,
+    label = 'Path:',
+    inputId = 'path-input',
     placeholder = '',
     onPathChange = undefined,
     fileExists = true,
@@ -120,9 +126,9 @@
 
 <div class="input-group">
   <div class="input-row">
-    <label for="path-input">Path:</label>
+    <label for={inputId}>{label}</label>
     <input
-      id="path-input"
+      id={inputId}
       type="text"
       value={localPath}
       oninput={handlePathInput}

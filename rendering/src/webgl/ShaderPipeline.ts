@@ -180,6 +180,10 @@ export class ShaderPipeline {
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
           inputs: pass?.inputs ?? {},
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
+          ...(pass?.geometry?.type === "model" ? {
+            modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
+            modelMesh: pass.geometry.mesh,
+          } : {}),
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
           resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
         };

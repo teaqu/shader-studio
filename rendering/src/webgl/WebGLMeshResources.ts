@@ -1,13 +1,16 @@
 import { createPreviewMesh } from "../preview3d/meshes";
+import { loadGlbMesh } from "../preview3d/GltfMeshLoader";
+import type { PreviewMesh } from "../preview3d/types";
 import type { GeometryType } from "@shader-studio/types";
 
-type MeshKind = Exclude<GeometryType, "fullscreen">;
+type MeshKind = Exclude<GeometryType, "fullscreen" | "model">;
 
 interface MeshResource {
   vao: WebGLVertexArrayObject;
   vertexBuffer: WebGLBuffer;
   indexBuffer: WebGLBuffer;
   indexCount: number;
+  indexType: GLenum;
 }
 
 export class WebGLMeshResources {
@@ -15,13 +18,30 @@ export class WebGLMeshResources {
 
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
-  public get(kind: MeshKind): Pick<MeshResource, "vao" | "indexCount"> {
+  public get(kind: MeshKind): Pick<MeshResource, "vao" | "indexCount" | "indexType"> {
     let resource = this.resources.get(kind);
     if (!resource) {
       resource = this.upload(kind);
       this.resources.set(kind, resource);
     }
     return resource;
+  }
+
+  public getModel(key: string): Pick<MeshResource, "vao" | "indexCount" | "indexType"> | undefined {
+    return this.resources.get(key as MeshKind);
+  }
+
+  public async loadModel(key: string, url: string, meshName?: string): Promise<void> {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Unable to load GLB (${response.status}): ${url}`);
+    const previous = this.resources.get(key as MeshKind);
+    const resource = this.uploadMesh(await loadGlbMesh(new Uint8Array(await response.arrayBuffer()), meshName));
+    this.resources.set(key as MeshKind, resource);
+    if (previous) {
+      this.gl.deleteVertexArray(previous.vao);
+      this.gl.deleteBuffer(previous.vertexBuffer);
+      this.gl.deleteBuffer(previous.indexBuffer);
+    }
   }
 
   public dispose(): void {
@@ -34,7 +54,10 @@ export class WebGLMeshResources {
   }
 
   private upload(kind: MeshKind): MeshResource {
-    const mesh = createPreviewMesh(kind);
+    return this.uploadMesh(createPreviewMesh(kind));
+  }
+
+  private uploadMesh(mesh: PreviewMesh): MeshResource {
     const vertexCount = mesh.positions.length / 3;
     const data = new Float32Array(vertexCount * 8);
     for (let index = 0; index < vertexCount; index += 1) {
@@ -71,6 +94,6 @@ export class WebGLMeshResources {
     this.gl.enableVertexAttribArray(2);
     this.gl.vertexAttribPointer(2, 2, this.gl.FLOAT, false, 32, 24);
     this.gl.bindVertexArray(null);
-    return { vao, vertexBuffer, indexBuffer, indexCount: mesh.indices.length };
+    return { vao, vertexBuffer, indexBuffer, indexCount: mesh.indices.length, indexType: mesh.indices instanceof Uint32Array ? this.gl.UNSIGNED_INT : this.gl.UNSIGNED_SHORT };
   }
 }

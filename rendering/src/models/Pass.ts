@@ -6,6 +6,8 @@ export type Pass = {
   vertexSrc?: string;
   inputs: Record<string, any>;
   geometry: GeometryType;
+  modelPath?: string;
+  modelMesh?: string;
   path?: string;
   resolution?: BufferResolution;
 }

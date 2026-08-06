@@ -17,6 +17,7 @@
   import PathInput from "./PathInput.svelte";
   import { setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
+  import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
   type EditableConfig = BufferPass | ImagePass | ComputePass;
 
@@ -91,6 +92,7 @@
   const isSlangShader = $derived(shaderPath.toLowerCase().endsWith('.slang'));
   const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${isSlangShader ? 'slang' : 'glsl'}`);
   const vertexFileType = $derived(isSlangShader ? 'slang-vertex' as const : 'glsl-vertex' as const);
+  const modelGeometry = $derived(config.geometry?.type === 'model' ? config.geometry : undefined);
 
   let currentPath = $state("path" in config ? config.path : "");
   let activeModalChannel = $state<string | null>(null);
@@ -99,9 +101,51 @@
   let heightInput = $state<number | null>(null);
   let bufferWidthInput = $state('');
   let bufferHeightInput = $state('');
+  let modelMeshNames = $state<string[]>([]);
+  let modelMeshLoading = $state(false);
+  let modelMeshError = $state<string | null>(null);
 
   $effect(() => {
     currentPath = "path" in config ? config.path : "";
+  });
+
+  $effect(() => {
+    const path = modelGeometry?.path;
+    if (!path) {
+      modelMeshNames = [];
+      modelMeshError = null;
+      modelMeshLoading = false;
+      return;
+    }
+    let cancelled = false;
+    modelMeshLoading = true;
+    modelMeshError = null;
+    fetch(getWebviewUri(path) ?? path)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Unable to load model (${response.status})`);
+        }
+        return response.arrayBuffer();
+      })
+      .then((data) => listGlbMeshNames(new Uint8Array(data)))
+      .then((names) => {
+        if (!cancelled) {
+          modelMeshNames = names;
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          modelMeshError = error instanceof Error ? error.message : String(error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          modelMeshLoading = false;
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   });
 
   $effect(() => {
@@ -284,7 +328,16 @@
       updateConfig(next as EditableConfig);
       return;
     }
-    updateConfig({ ...config, geometry: { type } });
+    updateConfig({ ...config, geometry: type === 'model' ? { type, path: '' } : { type } });
+  }
+
+  function handleModelPathChange(path: string) {
+    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
+  }
+
+  function handleModelMeshChange(event: Event) {
+    const mesh = (event.currentTarget as HTMLInputElement).value.trim();
+    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
   }
 
   function handleVertexPathChange(path: string) {
@@ -484,7 +537,34 @@
           <option value="plane">Plane</option>
           <option value="cube">Cube</option>
           <option value="sphere">Sphere</option>
+          <option value="model">GLB model</option>
         </select>
+        {#if modelGeometry}
+          <PathInput
+            label="Model file:"
+            inputId="model-path-input"
+            value={modelGeometry.path}
+            onPathChange={handleModelPathChange}
+            fileType="model"
+            allowCreate={false}
+            {shaderPath}
+            {postMessage}
+            {onMessage}
+          />
+          <label class="mesh-name" for="mesh-name">Mesh</label>
+          <select id="mesh-name" class="config-input" value={modelGeometry.mesh ?? modelMeshNames[0] ?? ''} onchange={handleModelMeshChange} disabled={modelMeshLoading}>
+            {#if modelMeshLoading}
+              <option value="">Loading meshes…</option>
+            {:else if modelMeshNames.length > 0}
+              {#each modelMeshNames as name}
+                <option value={name}>{name}</option>
+              {/each}
+            {:else}
+              <option value={modelGeometry.mesh ?? ''}>{modelGeometry.mesh || 'First mesh'}</option>
+            {/if}
+          </select>
+          {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
+        {/if}
       </div>
       <div class="config-item">
         <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>

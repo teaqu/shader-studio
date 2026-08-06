@@ -55,6 +55,13 @@ export class ConfigPathConverter {
           }
         }
       }
+
+      if (pass.geometry?.type === 'model') {
+        const absolutePath = processedMessage.path
+          ? PathResolver.resolvePath(processedMessage.path, pass.geometry.path)
+          : (path.isAbsolute(pass.geometry.path) ? pass.geometry.path : path.join(configDir, pass.geometry.path));
+        pass.geometry.resolved_path = this.convertUriForClient(absolutePath, webview);
+      }
     }
 
     return processedMessage;

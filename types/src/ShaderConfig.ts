@@ -76,9 +76,17 @@ export type BufferResolution =
     | { width: number; height: number; scale?: never }
     | { scale: number; width?: never; height?: never };
 
-export const GEOMETRY_TYPES = ["fullscreen", "plane", "cube", "sphere"] as const;
+export const GEOMETRY_TYPES = ["fullscreen", "plane", "cube", "sphere", "model"] as const;
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
-export interface GeometryConfig { type: GeometryType; }
+export interface BuiltinGeometryConfig { type: Exclude<GeometryType, "model">; }
+/** A static GLB mesh. `resolved_path` is injected by the extension for webview loading. */
+export interface ModelGeometryConfig {
+  type: "model";
+  path: string;
+  mesh?: string;
+  resolved_path?: string;
+}
+export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;
 
 export interface ImagePass {
   inputs?: Record<string, ConfigInput>;

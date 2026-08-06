@@ -15,6 +15,7 @@ export type { FunctionInfo, VarInfo, ParameterMode, DebugParameterInfo, DebugLoo
 export * from './preview3d/types';
 export * from './preview3d/math';
 export * from './preview3d/meshes';
+export { listGlbMeshNames } from './preview3d/GltfMeshLoader';
 export { OrbitCamera } from './preview3d/OrbitCamera';
 export * from './types';
 export * from './models';

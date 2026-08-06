@@ -110,14 +110,24 @@
       "additionalProperties": false
     },
     "GeometryConfig": {
-      "type": "object",
-      "required": ["type"],
-      "properties": {
-        "type": {
-          "enum": ["fullscreen", "plane", "cube", "sphere"]
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "enum": ["fullscreen", "plane", "cube", "sphere"] } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "model" },
+            "path": { "type": "string", "minLength": 1 },
+            "mesh": { "type": "string" }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "ComputePass": {
       "type": "object",

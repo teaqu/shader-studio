@@ -8,12 +8,15 @@ function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefi
     return false;
   }
 
-  const properties = Object.keys(geometry);
   const type = (geometry as { type?: unknown }).type;
-  return properties.length === 1 &&
-    properties[0] === "type" &&
-    typeof type === "string" &&
-    GEOMETRY_TYPES.includes(type as GeometryConfig["type"]);
+  if (type === "model") {
+    const { path, mesh, resolved_path, ...rest } = geometry as { path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown };
+    return Object.keys(rest).length === 1 && typeof path === "string" && path.length > 0 &&
+      (mesh === undefined || typeof mesh === "string") && (resolved_path === undefined || typeof resolved_path === "string");
+  }
+  const properties = Object.keys(geometry);
+  return properties.length === 1 && properties[0] === "type" &&
+    typeof type === "string" && GEOMETRY_TYPES.includes(type as GeometryConfig["type"]);
 }
 
 export interface ValidationResult {

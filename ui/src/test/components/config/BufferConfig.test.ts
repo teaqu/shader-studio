@@ -1,4 +1,4 @@
-import { render, fireEvent } from '@testing-library/svelte';
+import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
@@ -9,6 +9,10 @@ import {
   setEditorOverlayVisible,
   setOverlayActiveFile,
 } from '../../../lib/state/editorOverlayState.svelte';
+
+vi.mock('../../../../../rendering/src/preview3d/GltfMeshLoader', () => ({
+  listGlbMeshNames: vi.fn().mockResolvedValue(['Body', 'Visor']),
+}));
 
 function getMainPathConfig(container: HTMLElement): HTMLElement {
   const configItem = container.querySelector<HTMLElement>('.buffer-details > .config-item:first-child');
@@ -68,6 +72,7 @@ describe('BufferConfig', () => {
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
     mockPostMessage = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)) }));
   });
 
   describe('compute settings', () => {
@@ -339,6 +344,23 @@ describe('BufferConfig', () => {
       expect(select.value).toBe('fullscreen');
       await fireEvent.change(select, { target: { value: 'sphere' } });
       expect(mockOnUpdate).toHaveBeenCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' } });
+    });
+
+    it('shows model and mesh selectors and writes their configuration', async () => {
+      const { getByLabelText, getByRole } = render(BufferConfig, {
+        bufferName: 'Image', config: { inputs: {}, geometry: { type: 'model', path: './robot.glb' } }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage, shaderPath: '/shaders/image.slang',
+      });
+
+      expect((getByLabelText('Geometry') as HTMLSelectElement).value).toBe('model');
+      expect(getByLabelText('Model file:')).toHaveValue('./robot.glb');
+      await waitFor(() => expect(getByLabelText('Mesh')).toHaveTextContent('Body'));
+      await fireEvent.change(getByLabelText('Mesh'), { target: { value: 'Body' } });
+
+      expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'model', path: './robot.glb', mesh: 'Body' } });
+      const modelPath = getByLabelText('Model file:');
+      await fireEvent.click(modelPath.closest('.input-group')!.querySelector('.select-file-btn')!);
+      expect(mockPostMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ fileType: 'model' }) }));
     });
 
     it('shows the vertex shader control for implicit fullscreen passes', () => {

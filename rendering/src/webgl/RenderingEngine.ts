@@ -228,6 +228,15 @@ export class RenderingEngine implements RenderingEngineInterface {
     const holdVideosForReset = this.holdVideoResumeForResetCompile;
 
     if (result.success) {
+      try {
+        for (const pass of this.shaderPipeline.getPasses()) {
+          if (pass.modelPath) {
+            await this.meshResources?.loadModel(pass.name, pass.modelPath, pass.modelMesh);
+          }
+        }
+      } catch (error) {
+        return { success: false, errors: [error instanceof Error ? error.message : String(error)] };
+      }
       const shaderTime = this.timeManager.getCurrentTime(performance.now());
       const paused = this.timeManager.isPaused();
       this.resourceManager.syncAllVideosToTime(shaderTime);

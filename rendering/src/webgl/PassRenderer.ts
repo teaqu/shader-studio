@@ -146,7 +146,10 @@ export class PassRenderer {
       return;
     }
 
-    const mesh = this.meshResources.get(passConfig.geometry);
+    const mesh = passConfig.modelPath
+      ? this.meshResources.getModel(passConfig.name)
+      : passConfig.geometry === "model" ? undefined : this.meshResources.get(passConfig.geometry);
+    if (!mesh) return;
     const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
     const view = this.meshCamera.getViewMatrix();
@@ -169,7 +172,7 @@ export class PassRenderer {
     );
     try {
       this.gl.bindVertexArray(mesh.vao);
-      this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, this.gl.UNSIGNED_SHORT, 0);
+      this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? this.gl.UNSIGNED_SHORT, 0);
     } finally {
       this.gl.bindVertexArray(null);
       this.gl.disable(this.gl.DEPTH_TEST);

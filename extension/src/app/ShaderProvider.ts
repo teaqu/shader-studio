@@ -385,6 +385,11 @@ export class ShaderProvider {
       // Collect all texture/video paths and convert them
       for (const [passName, pass] of Object.entries(config.passes || {})) {
         if (pass && typeof pass === 'object' && 'inputs' in pass) {
+          if (pass.geometry?.type === 'model') {
+            const originalPath = pass.geometry.path;
+            const absolutePath = path.isAbsolute(originalPath) ? originalPath : path.join(configDir, originalPath);
+            pathMap[originalPath] = ConfigPathConverter.convertUriForClient(absolutePath, webview);
+          }
           const inputs = pass.inputs;
           if (inputs) {
             for (const key of Object.keys(inputs)) {

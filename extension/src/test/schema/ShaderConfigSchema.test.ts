@@ -40,6 +40,17 @@ suite('Shader config JSON schema', () => {
     });
   });
 
+  test('accepts a model path and optional mesh selection', () => {
+    assertValid({
+      version: '1.0',
+      passes: {
+        Image: { geometry: { type: 'model', path: './cat.glb', mesh: 'CatBody' } },
+        BufferA: { path: 'head.glsl', geometry: { type: 'model', path: './cat.glb', mesh: 'CatHead' } },
+      },
+    });
+    assertInvalid({ version: '1.0', passes: { Image: { geometry: { type: 'model' } } } }, "should have required property 'path'");
+  });
+
   test('accepts a vertex source path on renderable passes but not Common', () => {
     assertValid({
       version: '1.0',

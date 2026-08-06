@@ -30,6 +30,10 @@ describe('BufferConfig', () => {
       expect(bufferConfig.getConfig()).toEqual({});
     });
 
+    it('accepts a model geometry with a path', () => {
+      expect(new BufferConfig('Image', { geometry: { type: 'model', path: 'robot.glb', mesh: 'Body' } }).validate()).toEqual({ isValid: true, errors: [] });
+    });
+
     it.each([
       null,
       'sphere',
@@ -63,7 +67,7 @@ describe('BufferConfig', () => {
       } as never;
 
       expect(new BufferConfig('BufferA', config).validate().errors)
-        .toContain('BufferA pass geometry type must be one of: fullscreen, plane, cube, sphere');
+        .toContain('BufferA pass geometry type must be one of: fullscreen, plane, cube, sphere, model');
     });
 
     it('rejects geometry on the Common pass', () => {

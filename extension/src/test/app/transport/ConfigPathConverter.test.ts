@@ -95,6 +95,19 @@ suite('ConfigPathConverter Test Suite', () => {
     assert.strictEqual(originalMessage.config.passes.Image.inputs.iChannel0.path, '/absolute/path/to/texture.png');
   });
 
+  test('processConfigPaths resolves GLB geometry paths for the webview', async () => {
+    const mockUri = vscode.Uri.parse('vscode-webview://webview-panel/robot.glb');
+    mockWebview.asWebviewUri.returns(mockUri);
+    const message = { type: 'shaderSource', path: '/workspace/shader.slang', config: {
+      version: '1.0', passes: { Image: { geometry: { type: 'model', path: './robot.glb' } } }
+    } };
+
+    const processed = await ConfigPathConverter.processConfigPaths(message as any, mockWebview);
+
+    assert.strictEqual((processed.config.passes.Image.geometry as any).resolved_path, mockUri.toString());
+    assert.strictEqual((message.config.passes.Image.geometry as any).resolved_path, undefined);
+  });
+
   test('processConfigPaths handles config without inputs', async () => {
     const message = {
       type: 'shaderSource',

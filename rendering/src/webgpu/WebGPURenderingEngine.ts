@@ -886,6 +886,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
       }
 
+      for (const pass of graph.passes) {
+        if (pass.modelPath) {
+          try {
+            await this.meshResources?.loadModel(pass.name, pass.modelPath, pass.modelMesh);
+          } catch (error) {
+            errors.push(WebGPURenderingEngine.prefixPassError(pass.name, error instanceof Error ? error.message : String(error)));
+          }
+        }
+      }
+      if (errors.length > 0) {
+        return this.failedCompilation(path, generation, { success: false, errors, warnings: graph.warnings });
+      }
+
       const nextPipelines = new Map<string, SlangPassPipeline>();
       const nextKeys = new Map<string, string>();
       const nextComputePipelines = new Map<string, SlangComputePipeline>();
@@ -2409,7 +2422,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!pass.geometry || pass.geometry === "fullscreen") {
         renderPass.draw(3);
       } else {
-        const mesh = this.meshResources?.get(pass.geometry);
+        const mesh = pass.modelPath
+          ? this.meshResources?.getModel(pass.name)
+          : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
         console.info("[Shader Studio][Slang 3D] drawing mesh", {
           name: pass.name,
           geometry: pass.geometry,
@@ -2417,7 +2432,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         });
         if (mesh) {
           renderPass.setVertexBuffer(0, mesh.vertexBuffer);
-          renderPass.setIndexBuffer(mesh.indexBuffer, "uint16");
+          renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
           renderPass.drawIndexed(mesh.indexCount);
         }
       }

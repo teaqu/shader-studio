@@ -187,6 +187,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       name,
       source,
       geometry: resolvePassGeometry(passConfig),
+      ...resolveModelGeometry(passConfig),
       vertexSrc: options.buffers[`__shader_studio_vertex__:${name}`],
       path,
       kind: "render",
@@ -210,7 +211,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"]);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"], resolveModelGeometry(imageConfig));
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -230,11 +231,13 @@ function createImagePass(
   channels: RenderPassChannel[],
   geometry: ReturnType<typeof resolvePassGeometry>,
   vertexSrc?: string,
+  modelGeometry: { modelPath?: string; modelMesh?: string } = {},
 ): RenderPassNode {
   return {
     name: "Image",
     source,
     geometry,
+    ...modelGeometry,
     vertexSrc,
     kind: "render",
     output: "canvas",
@@ -246,6 +249,13 @@ function createImagePass(
     height,
     channels,
   };
+}
+
+function resolveModelGeometry(pass: { geometry?: { type: string; path?: string; mesh?: string; resolved_path?: string } } | undefined): { modelPath?: string; modelMesh?: string } {
+  if (pass?.geometry?.type !== "model") {
+    return {};
+  }
+  return { modelPath: pass.geometry.resolved_path ?? pass.geometry.path, modelMesh: pass.geometry.mesh };
 }
 
 function resolveOutputLayersByPass(

@@ -63,6 +63,9 @@ export interface RenderPassNode {
   name: RenderPassName;
   source: string;
   geometry: GeometryType;
+  /** Webview-accessible GLB URL when geometry is `model`. */
+  modelPath?: string;
+  modelMesh?: string;
   vertexSrc?: string;
   path?: string;
   kind: "render" | "compute";

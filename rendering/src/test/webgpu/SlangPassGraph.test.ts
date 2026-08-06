@@ -129,6 +129,37 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
+  it("carries a model's resolved GLB URL and selected mesh to the Slang pass", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { geometry: { type: "model", path: "robot.glb", resolved_path: "https://preview/robot.glb", mesh: "Body" } } } },
+      buffers: {}, canvasWidth: 640, canvasHeight: 360,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0]).toMatchObject({ geometry: "model", modelPath: "https://preview/robot.glb", modelMesh: "Body" });
+  });
+
+  it("keeps two selected meshes distinct in a Slang multipass graph", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: {
+          BufferA: { path: "body.slang", geometry: { type: "model", path: "robot.glb", resolved_path: "https://preview/robot.glb", mesh: "Body" } },
+          Image: { geometry: { type: "model", path: "robot.glb", resolved_path: "https://preview/robot.glb", mesh: "Visor" } },
+        },
+      },
+      buffers: { BufferA: imageCode }, canvasWidth: 640, canvasHeight: 360,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map(({ name, geometry, modelPath, modelMesh }) => ({ name, geometry, modelPath, modelMesh }))).toEqual([
+      { name: "BufferA", geometry: "model", modelPath: "https://preview/robot.glb", modelMesh: "Body" },
+      { name: "Image", geometry: "model", modelPath: "https://preview/robot.glb", modelMesh: "Visor" },
+    ]);
+  });
+
   it("creates BufferA before Image and attaches common code to renderable passes", () => {
     const config: ShaderConfig = {
       version: "1",
