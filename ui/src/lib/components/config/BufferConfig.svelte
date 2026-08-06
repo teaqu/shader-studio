@@ -36,7 +36,7 @@
     globalMuted?: boolean;
     availableBufferNames?: string[];
     language?: 'glsl' | 'slang';
-    passKind?: 'render' | 'compute';
+    passType?: 'render' | 'compute';
     storageNames?: string[];
     entryPointNames?: string[];
     onComputeCommit?: (nextConfig: ComputePass) => Record<string, string>;
@@ -56,7 +56,7 @@
     globalMuted = false,
     availableBufferNames = [],
     language = 'glsl',
-    passKind = 'render',
+    passType = 'render',
     storageNames = [],
     entryPointNames = [],
     onComputeCommit = undefined,
@@ -70,7 +70,7 @@
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
   const fileType = $derived(
-    language === 'slang' && passKind === 'compute'
+    language === 'slang' && passType === 'compute'
       ? 'slang-compute' as const
       : bufferName === 'common'
       ? 'glsl-common' as const
@@ -405,7 +405,7 @@
           {onMessage}
         />
 
-        {#if passKind === 'compute' && onComputeCommit}
+        {#if passType === 'compute' && onComputeCommit}
           <ComputePassControls
             pass={config as ComputePass}
             {storageNames}
@@ -516,7 +516,7 @@
       </div>
     {/if}
 
-    {#if !isImagePass && bufferName !== "common"}
+    {#if !isImagePass && bufferName !== "common" && passType !== 'compute'}
       <div class="config-item resolution-section">
         <h3 class="section-title">Resolution</h3>
         <div class="resolution-row">
@@ -565,7 +565,7 @@
       </div>
     {/if}
 
-    {#if bufferName !== "common"}
+    {#if bufferName !== "common" && passType !== 'compute'}
       <div class="config-item geometry-section">
         <h3 class="section-title">Geometry</h3>
         <select
@@ -808,6 +808,20 @@
 
   .reset-btn:hover {
     color: var(--vscode-foreground, #cccccc);
+    border-color: var(--vscode-focusBorder, #007acc);
+  }
+
+  select {
+    padding: 3px 6px;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    font-size: 12px;
+    outline: none;
+  }
+
+  select:focus {
     border-color: var(--vscode-focusBorder, #007acc);
   }
 

@@ -784,7 +784,7 @@
           bufferName={getActualBufferName(activeTab)}
           config={activeTabConfig}
           {language}
-          passKind={isComputeTab(activeTab) ? 'compute' : 'render'}
+          passType={isComputeTab(activeTab) ? 'compute' : 'render'}
           onUpdate={(bufferName, updatedConfig) => {
             if (isComputeTab(activeTab)) {
               configManager?.updateComputePass(bufferName, updatedConfig as ComputePass);

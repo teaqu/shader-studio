@@ -85,7 +85,7 @@ describe('BufferConfig', () => {
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
         language: 'slang',
-        passKind: 'compute',
+        passType: 'compute',
         storageNames: ['particles'],
         onComputeCommit,
       });
@@ -99,6 +99,39 @@ describe('BufferConfig', () => {
         inputs: {},
         dispatch: { cover: 'particles' },
       });
+    });
+
+    it('does not render Resolution, Geometry, or Vertex shader sections for compute passes', () => {
+      const config: ComputePass = { type: 'compute', path: 'sim.slang', inputs: {} };
+      const { container, queryByRole } = render(BufferConfig, {
+        bufferName: 'ComputeSim',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        language: 'slang',
+        passType: 'compute',
+        onComputeCommit: vi.fn(() => ({})),
+      });
+
+      const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
+      expect(sectionTitles).toEqual(['Channels']);
+      expect(queryByRole('heading', { name: 'Resolution' })).toBeNull();
+      expect(queryByRole('heading', { name: 'Geometry' })).toBeNull();
+      expect(queryByRole('heading', { name: 'Vertex shader' })).toBeNull();
+    });
+
+    it('renders Resolution, Geometry, and Vertex shader for render passes', () => {
+      const config: BufferPass = { path: 'a.glsl', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config,
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+        passType: 'render',
+      });
+
+      const sectionTitles = Array.from(container.querySelectorAll('.section-title')).map((title) => title.textContent);
+      expect(sectionTitles).toEqual(['Channels', 'Resolution', 'Geometry', 'Vertex shader']);
     });
   });
 
@@ -239,7 +272,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
         postMessage: mockPostMessage,
         language: 'slang',
-        passKind: 'compute',
+        passType: 'compute',
         shaderPath: '/shaders/image.slang',
       });
 
@@ -265,7 +298,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
         postMessage: mockPostMessage,
         language: 'slang',
-        passKind: 'compute',
+        passType: 'compute',
         shaderPath: '/shaders/image.slang',
         suggestedPath: 'image.computea.slang',
       });
@@ -286,9 +319,9 @@ describe('BufferConfig', () => {
     });
 
     it.each([
-      { language: 'glsl' as const, passKind: 'compute' as const },
-      { language: 'slang' as const, passKind: 'render' as const },
-    ])('should preserve GLSL buffer selection for $language $passKind passes', async ({ language, passKind }) => {
+      { language: 'glsl' as const, passType: 'compute' as const },
+      { language: 'slang' as const, passType: 'render' as const },
+    ])('should preserve GLSL buffer selection for $language $passType passes', async ({ language, passType }) => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
       const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
@@ -297,7 +330,7 @@ describe('BufferConfig', () => {
         getWebviewUri: mockGetWebviewUri,
         postMessage: mockPostMessage,
         language,
-        passKind,
+        passType,
       });
 
       await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
