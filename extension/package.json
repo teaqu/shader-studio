@@ -119,10 +119,6 @@
         "title": "Shader Studio: Open Slang Spike (dev)"
       },
       {
-        "command": "shader-studio.configureSlangFocusContextPoc",
-        "title": "Shader Studio: Configure Slang Editor Support"
-      },
-      {
         "command": "shader-studio.toggleEditorOverlay",
         "title": "Shader Studio: Toggle Editor Overlay"
       },
@@ -186,11 +182,6 @@
           "type": "boolean",
           "default": true,
           "description": "Enable automatic WebGL GLSL Editor code injection for Shader Studio uniforms."
-        },
-        "shader-studio.slangEditorIntegration": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic Slang editor context integration for Shader Studio uniforms."
         }
       }
     },
