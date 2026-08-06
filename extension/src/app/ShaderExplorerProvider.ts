@@ -14,7 +14,7 @@ import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { collectSlangDependencies } from "./SlangDependencyGraph";
-import { getConfigPathForShaderPath, getShaderPathFromConfigPath } from "./ShaderConfigPaths";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
@@ -54,7 +54,6 @@ export class ShaderExplorerProvider {
   private shaderSearchTextCache = new Map<string, ShaderSearchCacheEntry>();
   private latestSearchRequestId = 0;
   private readonly shaderSearchConcurrency = 16;
-  private slangPreviewRoots = new Map<string, string>();
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -213,7 +212,7 @@ export class ShaderExplorerProvider {
     }
 
     try {
-      const previewPath = await this.resolvePreviewPath(shaderPath);
+      const previewPath = shaderPath;
       const doc = await vscode.workspace.openTextDocument(previewPath);
       const code = doc.getText();
             
@@ -265,35 +264,6 @@ export class ShaderExplorerProvider {
     } catch (error) {
       this.logger.error(`Failed to load shader code: ${error}`);
     }
-  }
-
-  private async resolvePreviewPath(shaderPath: string): Promise<string> {
-    if (getShaderLanguage(shaderPath) !== "slang" || fs.existsSync(getConfigPathForShaderPath(shaderPath))) {
-      return shaderPath;
-    }
-    const cached = this.slangPreviewRoots.get(shaderPath);
-    if (cached) {
-      return cached;
-    }
-
-    const normalizedShaderPath = path.normalize(shaderPath);
-    const configFiles = await vscode.workspace.findFiles("**/*.sha.json", "**/node_modules/**");
-    for (const configFile of configFiles) {
-      const rootPath = getShaderPathFromConfigPath(configFile.fsPath);
-      if (!rootPath || getShaderLanguage(rootPath) !== "slang") {
-        continue;
-      }
-      const config = this.configProcessor.loadAndProcessConfig(rootPath, {});
-      const ownsPass = Object.values(config?.passes ?? {}).some((pass) =>
-        pass && typeof pass === "object" && "path" in pass && typeof pass.path === "string"
-        && path.normalize(PathResolver.resolvePath(rootPath, pass.path)) === normalizedShaderPath,
-      );
-      if (ownsPass) {
-        this.slangPreviewRoots.set(shaderPath, rootPath);
-        return rootPath;
-      }
-    }
-    return shaderPath;
   }
 
   private collectSlangModules(

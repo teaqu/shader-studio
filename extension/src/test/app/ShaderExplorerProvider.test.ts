@@ -1025,7 +1025,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       }]);
     });
 
-    test('uses the owning Slang workspace when previewing a configured compute pass', async () => {
+    test('does not use the owning image shader when previewing a configured compute pass', async () => {
       const rootPath = '/test/repeated-substeps.slang';
       const passPath = '/test/passes/substep.slang';
       const configPath = '/test/repeated-substeps.sha.json';
@@ -1056,9 +1056,43 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
       const message = postMessageSpy.firstCall.args[0];
       assert.strictEqual(message.path, passPath);
-      assert.strictEqual(message.previewPath, rootPath);
-      assert.strictEqual(message.code, 'float4 mainImage(float2 fragCoord) { return laneA[0]; }');
+      assert.strictEqual(message.previewPath, passPath);
+      assert.strictEqual(message.code, 'void computeMain(uint3 tid) { laneA[tid.x] = 0.0; }');
       assert.strictEqual(message.buffers.ComputeSubsteps, 'void computeMain(uint3 tid) { laneA[tid.x] = 0.0; }');
+    });
+
+    test('does not use the owning image shader when previewing a configured buffer pass', async () => {
+      const rootPath = '/test/buffer-workspace.slang';
+      const passPath = '/test/passes/buffer-a.slang';
+      const configPath = '/test/buffer-workspace.sha.json';
+      const config = {
+        passes: { BufferA: { path: './passes/buffer-a.slang' } },
+      } as any;
+      existsSyncStub.callsFake((filePath: string) => ![
+        '/test/passes/buffer-a.sha.json',
+        '/test/buffer-workspace.glsl',
+        '/test/buffer-workspace.frag',
+      ].includes(filePath));
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([vscode.Uri.file(configPath)]);
+      sandbox.stub(vscode.workspace, 'openTextDocument').callsFake((async (filePath: string | vscode.Uri) => ({
+        getText: () => (typeof filePath === 'string' ? filePath : filePath.fsPath) === rootPath
+          ? 'float4 mainImage(float2 fragCoord) { return float4(0); }'
+          : 'float4 mainImage(float2 fragCoord) { return float4(1); }',
+      })) as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').callsFake((_path: string, buffers: Record<string, string>) => {
+        buffers.BufferA = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
+        return config;
+      });
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: passPath });
+
+      const message = postMessageSpy.firstCall.args[0];
+      assert.strictEqual(message.path, passPath);
+      assert.strictEqual(message.previewPath, passPath);
+      assert.strictEqual(message.code, 'float4 mainImage(float2 fragCoord) { return float4(1); }');
     });
 
     test('should include config and buffers in shader code response', async () => {
