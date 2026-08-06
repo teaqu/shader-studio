@@ -33,12 +33,18 @@ export interface SlangCompileTarget {
   value: number;
 }
 
-export interface SlangEntryPoint {
+/** Every object returned by Embind owns a native handle unless it aliases another handle. */
+export interface SlangClassHandle {
+  isAliasOf(other: SlangClassHandle): boolean;
+  delete(): void;
+}
+
+export interface SlangEntryPoint extends SlangClassHandle {
   // Opaque handle passed back into createCompositeComponentType.
   readonly _entryPoint?: never;
 }
 
-export interface SlangComponentType {
+export interface SlangComponentType extends SlangClassHandle {
   link(): SlangComponentType | null;
   getTargetCode(targetIndex: number): string;
 }
@@ -47,12 +53,12 @@ export interface SlangModule extends SlangComponentType {
   findEntryPointByName(name: string): SlangEntryPoint | null;
 }
 
-export interface SlangSession {
+export interface SlangSession extends SlangClassHandle {
   loadModuleFromSource(source: string, name: string, path: string): SlangModule | null;
   createCompositeComponentType(components: unknown[]): SlangComponentType | null;
 }
 
-export interface SlangGlobalSession {
+export interface SlangGlobalSession extends SlangClassHandle {
   createSession(targetValue: number): SlangSession | null;
 }
 
@@ -66,6 +72,12 @@ export interface SlangError {
 export type SlangVectorLike<T> = T[] | { size(): number; get(i: number): T };
 
 export interface SlangModuleApi {
+  FS: {
+    mkdirTree(path: string): void;
+    writeFile(path: string, source: string): void;
+    unlink(path: string): void;
+    analyzePath(path: string): { exists: boolean };
+  };
   createGlobalSession(): SlangGlobalSession | null;
   getCompileTargets(): SlangVectorLike<SlangCompileTarget>;
   getLastError(): SlangError;

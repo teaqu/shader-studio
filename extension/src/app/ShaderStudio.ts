@@ -16,8 +16,6 @@ import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
 import { getShaderPathFromConfigPath, isConfigPath } from "./ShaderConfigPaths";
 import { ConfigChangeClassifier, type ConfigChangeVerdict } from "./services/ConfigChangeClassifier";
-import { WebglGlslEditorManager } from "./WebglGlslEditorManager";
-import { ShaderValidatorPreambleManager } from "./ShaderValidatorPreambleManager";
 import type { CursorPositionMessage, ErrorMessage, ResetLayoutMessage } from "@shader-studio/types";
 
 export class ShaderStudio {
@@ -36,7 +34,6 @@ export class ShaderStudio {
   private errorHandler: ErrorHandler;
   private cursorPositionTimeout: NodeJS.Timeout | null = null;
   private isDebugModeEnabled = false;
-  private lockedShaderPath: string | undefined;
   private compileController: CompileController;
   private configChangeDebounce = new Map<string, NodeJS.Timeout>();
   private static readonly CONFIG_CHANGE_DEBOUNCE_MS = 150;
@@ -44,8 +41,6 @@ export class ShaderStudio {
   // ConfigUpdateHandler (classifies the disk-write fallback) so all three
   // agree on what was last sent for a given config path.
   private configChangeClassifier = new ConfigChangeClassifier();
-  private webglGlslEditorManager: WebglGlslEditorManager;
-  private shaderValidatorPreambleManager: ShaderValidatorPreambleManager;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -56,9 +51,6 @@ export class ShaderStudio {
 
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
-    this.webglGlslEditorManager = new WebglGlslEditorManager(context, this.logger);
-    this.shaderValidatorPreambleManager = new ShaderValidatorPreambleManager(context, this.logger);
-    void this.webglGlslEditorManager.initializeWorkspaceFolders();
 
     this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
@@ -69,20 +61,12 @@ export class ShaderStudio {
     this.messenger = new Messenger(
       outputChannel,
       errorHandler,
-      (enabled) => this.setDebugModeEnabled(enabled),
-      (lockedShaderPath) => {
-        this.lockedShaderPath = lockedShaderPath;
-      },
+      (enabled) => this.setDebugModeEnabled(enabled)
     );
     this.shaderProvider = new ShaderProvider(
       this.messenger,
       () => this.isDebugModeEnabled,
       this.configChangeClassifier,
-      (preparation) => Promise.all([
-        this.webglGlslEditorManager.apply(preparation),
-        this.shaderValidatorPreambleManager.apply(preparation),
-      ]).then(() => undefined),
-      () => this.lockedShaderPath,
     );
     this.compileController = new CompileController(
       context,
@@ -124,12 +108,12 @@ export class ShaderStudio {
   }
 
   public dispose(): void {
+    this.compileController.dispose();
+    this.panelManager.dispose();
     this.webServer.stopWebServer();
     this.messenger.close();
     this.sShaderExplorerProvider.dispose();
     this.errorHandler.dispose();
-    this.webglGlslEditorManager.dispose();
-    this.shaderValidatorPreambleManager.dispose();
     this.logger.info("Shader extension disposed");
   }
 
@@ -306,14 +290,11 @@ export class ShaderStudio {
     this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshSpecificShaderByPath",
-        (
-          shaderPath: string,
-          options?: { claimActiveAnalysisContext?: boolean },
-        ) => {
+        (shaderPath: string) => {
           this.logger.info(
             `shader-studio.refreshSpecificShaderByPath command executed for: ${shaderPath}`,
           );
-          this.refreshSpecificShaderByPath(shaderPath, options);
+          this.refreshSpecificShaderByPath(shaderPath);
         },
       ),
     );
@@ -403,6 +384,13 @@ export class ShaderStudio {
         vscode.window.visibleTextEditors,
       );
     });
+
+    const slangWatcher = vscode.workspace.createFileSystemWatcher("**/*.slang");
+    this.context.subscriptions.push(
+      slangWatcher,
+      slangWatcher.onDidCreate((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+      slangWatcher.onDidDelete((uri) => this.compileController.handleSlangFileCreatedOrDeleted(uri.fsPath)),
+    );
 
     // Track cursor position in GLSL editors for debug mode
     this.context.subscriptions.push(
@@ -511,7 +499,6 @@ export class ShaderStudio {
       this.logger.info(
         `Refreshing current shader: ${activeEditor.document.fileName}`,
       );
-      this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
       this.shaderProvider.sendShaderFromEditor(activeEditor, { reload: true });
     } else {
       // Only fall back to the last viewed file if it is currently open in VS Code.
@@ -524,7 +511,6 @@ export class ShaderStudio {
         this.logger.info(
           `No active GLSL editor, using last viewed file: ${lastViewedFile}`,
         );
-        this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
         // Use sendShaderFromPath to avoid switching focus
         await this.shaderProvider.sendShaderFromPath(lastViewedFile, { reload: true });
       } else {
@@ -533,10 +519,7 @@ export class ShaderStudio {
     }
   }
 
-  private async refreshSpecificShaderByPath(
-    shaderPath: string,
-    options?: { claimActiveAnalysisContext?: boolean },
-  ): Promise<void> {
+  private async refreshSpecificShaderByPath(shaderPath: string): Promise<void> {
     this.logger.info(`Refreshing shader by path: ${shaderPath}`);
 
     try {
@@ -549,10 +532,7 @@ export class ShaderStudio {
 
       // Always read from file to avoid switching focus
       this.logger.info(`Sending shader from path: ${shaderPath}`);
-      if (options?.claimActiveAnalysisContext) {
-        this.glslFileTracker.setLastViewedGlslFile(shaderPath);
-        this.shaderProvider.claimActiveAnalysisContext(shaderPath);
-      }
+      this.glslFileTracker.setLastViewedGlslFile(shaderPath);
       await this.shaderProvider.sendShaderFromPath(shaderPath, { reload: true });
     } catch (error) {
       this.logger.error(

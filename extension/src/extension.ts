@@ -5,7 +5,7 @@ import { applySnippetContributionSetting } from "./app/SnippetContributionSettin
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
 import { openSlangSpikePanel } from "./app/SlangSpikePanel";
-import { SlangFocusContextPoc } from "./app/SlangFocusContextPoc";
+import { registerSlangLanguageFeatures } from "./language/registerSlangLanguageFeatures";
 
 let shaderExtension: ShaderStudio | undefined;
 
@@ -16,14 +16,11 @@ export function activate(context: vscode.ExtensionContext) {
   });
   outputChannel.debug("Output channel initialized");
 
-  context.subscriptions.push(
-    new SlangFocusContextPoc(context, outputChannel),
-  );
-
   const diagnosticCollection = vscode.languages.createDiagnosticCollection(
     "shader-studio",
   );
   context.subscriptions.push(diagnosticCollection);
+  registerSlangLanguageFeatures(context);
 
   // Listen for configuration changes that require restart
   context.subscriptions.push(

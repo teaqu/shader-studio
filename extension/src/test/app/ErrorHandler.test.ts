@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { ErrorMessage, WarningMessage } from '@shader-studio/types';
+import { CompileDiagnosticScope, ErrorMessage, SlangDiagnostic, WarningMessage } from '@shader-studio/types';
 import { ErrorHandler } from '../../app/ErrorHandler';
 
 suite('ErrorHandler Test Suite', () => {
@@ -73,6 +73,191 @@ suite('ErrorHandler Test Suite', () => {
 
   teardown(() => {
     errorHandler.dispose();
+  });
+
+  function useStatefulDiagnosticCollection(): Map<string, readonly vscode.Diagnostic[]> {
+    const current = new Map<string, readonly vscode.Diagnostic[]>();
+    mockDiagnosticCollection.get = ((uri: vscode.Uri) => current.get(uri.toString())) as typeof mockDiagnosticCollection.get;
+    mockDiagnosticCollection.set = ((uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      current.set(uri.toString(), diagnostics ?? []);
+    }) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.delete = ((uri: vscode.Uri) => {
+      current.delete(uri.toString());
+    }) as typeof mockDiagnosticCollection.delete;
+    return current;
+  }
+
+  function scope(rootUri: string, generationId: number): CompileDiagnosticScope {
+    return { rootUris: [rootUri], ownerId: `panel:${rootUri}`, generationId };
+  }
+
+  function compileDiagnostic(uri: string, message: string): SlangDiagnostic {
+    return {
+      uri,
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      severity: 'error',
+      message,
+      source: 'slang-compile',
+    };
+  }
+
+  test('a success replaces only its compile scope and leaves another root failure visible', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['A failed'], diagnostics: [compileDiagnostic(rootA, 'A failed')],
+      compileScope: scope(rootA, 1),
+    });
+    errorHandler.handleCompileSuccess([], scope(rootB, 1));
+
+    assert.deepStrictEqual(current.get(rootA)?.map((diagnostic) => diagnostic.message), ['A failed']);
+  });
+
+  test('a success clears its own scope without clearing another root failure', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['A failed'], diagnostics: [compileDiagnostic(rootA, 'A failed')],
+      compileScope: scope(rootA, 1),
+    });
+    errorHandler.handleError({
+      type: 'error', payload: ['B failed'], diagnostics: [compileDiagnostic(rootB, 'B failed')],
+      compileScope: scope(rootB, 1),
+    });
+    errorHandler.handleCompileSuccess([], scope(rootA, 2));
+
+    assert.strictEqual(current.has(rootA), false);
+    assert.deepStrictEqual(current.get(rootB)?.map((diagnostic) => diagnostic.message), ['B failed']);
+  });
+
+  test('ignores an out-of-order result for an older generation of the same scope', () => {
+    const current = useStatefulDiagnosticCollection();
+    const root = vscode.Uri.file('/project/a.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['new failure'], diagnostics: [compileDiagnostic(root, 'new failure')],
+      compileScope: scope(root, 2),
+    });
+    errorHandler.handleCompileSuccess([], scope(root, 1));
+
+    assert.deepStrictEqual(current.get(root)?.map((diagnostic) => diagnostic.message), ['new failure']);
+  });
+
+  test('an owned direct success clears an unowned dependency failure for the same root', () => {
+    const current = useStatefulDiagnosticCollection();
+    const root = vscode.Uri.file('/project/a.slang').toString();
+    const dependency = vscode.Uri.file('/project/shared.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['dependency failed'], diagnostics: [compileDiagnostic(dependency, 'dependency failed')],
+      compileScope: { rootUris: [root], generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [root], ownerId: 'active-editor', generationId: 2,
+    });
+
+    assert.strictEqual(current.has(dependency), false);
+  });
+
+  test('an aggregate success clears an earlier direct failure for every covered root', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['A failed'], diagnostics: [compileDiagnostic(rootA, 'A failed')],
+      compileScope: { rootUris: [rootA], ownerId: 'panel:a', generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [rootB, rootA], ownerId: 'panel:aggregate', generationId: 2,
+    });
+
+    assert.strictEqual(current.has(rootA), false);
+  });
+
+  test('a direct success replaces only that root from an earlier aggregate failure', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['aggregate failed'],
+      diagnostics: [compileDiagnostic(rootA, 'A failed'), compileDiagnostic(rootB, 'B failed')],
+      compileScope: { rootUris: [rootA, rootB], ownerId: 'panel:aggregate', generationId: 1 },
+    });
+    errorHandler.handleCompileSuccess([], {
+      rootUris: [rootB], ownerId: 'panel:b', generationId: 2,
+    });
+
+    assert.deepStrictEqual(current.get(rootA)?.map((diagnostic) => diagnostic.message), ['A failed']);
+    assert.strictEqual(current.has(rootB), false);
+  });
+
+  test('deduplicates identical diagnostics contributed by overlapping root scopes', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+    const dependency = vscode.Uri.file('/project/shared.slang').toString();
+    const duplicate = compileDiagnostic(dependency, 'shared failure');
+
+    errorHandler.handleError({
+      type: 'error', payload: ['shared failure'], diagnostics: [duplicate, duplicate],
+      compileScope: { rootUris: [rootA, rootB], generationId: 1 },
+    });
+
+    assert.deepStrictEqual(current.get(dependency)?.map((diagnostic) => diagnostic.message), ['shared failure']);
+  });
+
+  test('ignores out-of-order generations independently for each root in an aggregate scope', () => {
+    const current = useStatefulDiagnosticCollection();
+    const rootA = vscode.Uri.file('/project/a.slang').toString();
+    const rootB = vscode.Uri.file('/project/b.slang').toString();
+
+    errorHandler.handleError({
+      type: 'error', payload: ['new A failure'], diagnostics: [compileDiagnostic(rootA, 'new A failure')],
+      compileScope: { rootUris: [rootA], generationId: 3 },
+    });
+    errorHandler.handleError({
+      type: 'error', payload: ['old aggregate failure'],
+      diagnostics: [compileDiagnostic(rootA, 'old A failure'), compileDiagnostic(rootB, 'old B failure')],
+      compileScope: { rootUris: [rootA, rootB], generationId: 2 },
+    });
+
+    assert.deepStrictEqual(current.get(rootA)?.map((diagnostic) => diagnostic.message), ['new A failure']);
+    assert.deepStrictEqual(current.get(rootB)?.map((diagnostic) => diagnostic.message), ['old B failure']);
+  });
+
+  test('persistent warning and error survive structured, legacy, and successful compile results on the same URI', () => {
+    const current = useStatefulDiagnosticCollection();
+    const root = vscode.Uri.file('/test/shader.glsl').toString();
+    const compileScope = scope(root, 1);
+
+    errorHandler.handlePersistentError({ type: 'warning', payload: ['persistent warning'] });
+    errorHandler.handlePersistentError({ type: 'error', payload: ['persistent error'] });
+    errorHandler.handleError({
+      type: 'error', payload: ['structured failure'], diagnostics: [compileDiagnostic(root, 'structured failure')],
+      compileScope,
+    });
+    errorHandler.handleError({
+      type: 'error', payload: ['legacy failure'], compileScope: { ...compileScope, generationId: 2 },
+    });
+
+    const afterLegacy = current.get(root) ?? [];
+    assert.deepStrictEqual(afterLegacy.map((diagnostic) => diagnostic.message), [
+      'legacy failure', 'persistent warning', 'persistent error',
+    ]);
+    assert.strictEqual(afterLegacy[0].source, 'shader-studio-compile');
+
+    errorHandler.handleCompileSuccess([], { ...compileScope, generationId: 3 });
+
+    assert.deepStrictEqual(current.get(root)?.map((diagnostic) => diagnostic.message), [
+      'persistent warning', 'persistent error',
+    ]);
   });
 
   // Keep only meaningful behavioral tests
@@ -274,27 +459,6 @@ suite('ErrorHandler Test Suite', () => {
     assert.ok(errorCalled, 'Should log error to output channel');
   });
 
-  test('places Slang compiler diagnostics on their reported source line', () => {
-    let diagnostics: readonly vscode.Diagnostic[] | undefined;
-    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
-      diagnostics = values;
-    }) as typeof mockDiagnosticCollection.set;
-
-    errorHandler.handleError({
-      type: 'error',
-      payload: [[
-        "Image: error[E20002]: syntax error",
-        "  --> /image.slang:14:49",
-        "   |",
-        "14 | float gridY = step(0.92, frac(uv.y * 10.0));>",
-        "   |                                             ^ syntax error.",
-      ].join("\n")],
-    });
-
-    assert.strictEqual(diagnostics?.length, 1);
-    assert.strictEqual(diagnostics?.[0].range.start.line, 13);
-  });
-
   test('should target the configured shader when no GLSL editor is focused', () => {
     const shaderUri = vscode.Uri.file('/test/config-shader.glsl');
     const otherEditor = {
@@ -320,7 +484,7 @@ suite('ErrorHandler Test Suite', () => {
         return;
       }
       diagnosticUri = uriOrEntries[0]?.[0];
-    }) as typeof mockDiagnosticCollection.set;
+    }) as unknown as typeof mockDiagnosticCollection.set;
 
     errorHandler.setShaderConfig({
       config: { passes: {} },
@@ -378,5 +542,167 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.ok(diagnosticUri, 'Should set a diagnostic URI');
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
+  });
+
+  test('publishes structured compiler diagnostics at their canonical dependency URI and clears stale entries', () => {
+    const sets: Array<{ uri: vscode.Uri; diagnostics: readonly vscode.Diagnostic[] }> = [];
+    const deletes: vscode.Uri[] = [];
+    mockDiagnosticCollection.set = ((uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      sets.push({ uri, diagnostics: diagnostics ?? [] });
+    }) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.delete = ((uri: vscode.Uri) => {
+      deletes.push(uri);
+    }) as typeof mockDiagnosticCollection.delete;
+    const dependencyUri = vscode.Uri.file('/project/lib/helper.slang').toString();
+    const diagnostic = {
+      uri: dependencyUri,
+      range: { start: { line: 2, character: 4 }, end: { line: 2, character: 7 } },
+      severity: 'error' as const,
+      code: 'E123',
+      message: 'unknown symbol',
+      source: 'slang-compile' as const,
+      passName: 'BufferA',
+    };
+
+    errorHandler.handleError({ type: 'error', payload: ['legacy fallback'], diagnostics: [diagnostic] });
+    errorHandler.handleError({ type: 'error', payload: ['legacy fallback'], diagnostics: [diagnostic] });
+
+    assert.strictEqual(sets[0].uri.toString(), dependencyUri);
+    assert.strictEqual(sets[0].diagnostics[0].range.start.line, 2);
+    assert.strictEqual(sets[0].diagnostics[0].message, 'BufferA: unknown symbol');
+    assert.strictEqual(sets[0].diagnostics[0].source, 'slang-compile');
+    assert.strictEqual(sets[0].diagnostics[0].code, 'E123');
+    assert.strictEqual(sets.length, 2);
+    assert.deepStrictEqual(deletes, []);
+  });
+
+  test('clears structured compiler diagnostics after a successful generation', () => {
+    const dependencyUri = vscode.Uri.file('/project/lib/helper.slang').toString();
+    const deletes: string[] = [];
+    mockDiagnosticCollection.delete = ((uri: vscode.Uri) => {
+      deletes.push(uri.toString());
+    }) as typeof mockDiagnosticCollection.delete;
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['failed generation'],
+      diagnostics: [{
+        uri: dependencyUri,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        severity: 'error',
+        message: 'unknown symbol',
+        source: 'slang-compile',
+      }],
+    });
+
+    errorHandler.clearErrors();
+
+    assert.deepStrictEqual(deletes, [dependencyUri]);
+  });
+
+  test('legacy fallback atomically replaces structured dependency diagnostics even inside debounce window', () => {
+    const dependencyUri = vscode.Uri.file('/project/lib/helper.slang').toString();
+    const deletes: string[] = [];
+    const sets: string[] = [];
+    mockDiagnosticCollection.delete = ((uri: vscode.Uri) => {
+      deletes.push(uri.toString());
+    }) as typeof mockDiagnosticCollection.delete;
+    mockDiagnosticCollection.set = ((uri: vscode.Uri) => {
+      sets.push(uri.toString());
+    }) as unknown as typeof mockDiagnosticCollection.set;
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['structured fallback'],
+      diagnostics: [{
+        uri: dependencyUri,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        severity: 'error',
+        message: 'unknown symbol',
+        source: 'slang-compile',
+      }],
+    });
+
+    errorHandler.handleError({ type: 'error', payload: ['legacy compile failure'] });
+    errorHandler.handleError({ type: 'error', payload: ['legacy compile failure'] });
+
+    assert.ok(deletes.includes(dependencyUri));
+    assert.strictEqual(sets.filter((uri) => uri.endsWith('/test/shader.glsl')).length, 2);
+  });
+
+  test('publishes warning, information, and hint diagnostics from a successful compile without clearing the collection', () => {
+    const sets: vscode.Diagnostic[][] = [];
+    let clearCount = 0;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      sets.push([...(diagnostics ?? [])]);
+    }) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.clear = (() => {
+      clearCount++;
+    }) as typeof mockDiagnosticCollection.clear;
+    const uri = vscode.Uri.file('/project/image.slang').toString();
+
+    errorHandler.handleCompileSuccess(['warning', 'information', 'hint'].map((severity, index) => ({
+      uri,
+      range: { start: { line: index, character: 0 }, end: { line: index, character: 1 } },
+      severity: severity as 'warning' | 'information' | 'hint',
+      message: severity,
+      source: 'slang-compile' as const,
+    })));
+
+    assert.deepStrictEqual(sets[0].map((diagnostic) => diagnostic.severity), [
+      vscode.DiagnosticSeverity.Warning,
+      vscode.DiagnosticSeverity.Information,
+      vscode.DiagnosticSeverity.Hint,
+    ]);
+    assert.strictEqual(clearCount, 0);
+  });
+
+  test('preserves language-owned diagnostics while replacing compile-owned diagnostics', () => {
+    const uri = vscode.Uri.file('/project/image.slang');
+    const languageDiagnostic = new vscode.Diagnostic(
+      new vscode.Range(0, 0, 0, 1),
+      'language issue',
+      vscode.DiagnosticSeverity.Error,
+    );
+    languageDiagnostic.source = 'slang-language';
+    const sets: vscode.Diagnostic[][] = [];
+    mockDiagnosticCollection.get = (() => [languageDiagnostic]) as typeof mockDiagnosticCollection.get;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      sets.push([...(diagnostics ?? [])]);
+    }) as unknown as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleCompileSuccess([{
+      uri: uri.toString(),
+      range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } },
+      severity: 'warning',
+      message: 'compile warning',
+      source: 'slang-compile',
+    }]);
+    errorHandler.clearErrors();
+
+    assert.strictEqual(sets[0][0], languageDiagnostic);
+    assert.strictEqual(sets[0][1].source, 'slang-compile');
+    assert.deepStrictEqual(sets.at(-1), [languageDiagnostic]);
+  });
+
+  test('keeps persistent and successful compile diagnostics that share one URI', () => {
+    let current: readonly vscode.Diagnostic[] = [];
+    mockDiagnosticCollection.get = (() => current) as typeof mockDiagnosticCollection.get;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, diagnostics?: readonly vscode.Diagnostic[]) => {
+      current = diagnostics ?? [];
+    }) as unknown as typeof mockDiagnosticCollection.set;
+    const uri = vscode.Uri.file('/test/shader.glsl').toString();
+
+    errorHandler.handlePersistentError({ type: 'warning', payload: ['persistent config warning'] });
+    errorHandler.handleCompileSuccess([{
+      uri,
+      range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } },
+      severity: 'warning',
+      message: 'compile warning',
+      source: 'slang-compile',
+    }]);
+
+    assert.deepStrictEqual(current.map((diagnostic) => diagnostic.message), [
+      'compile warning',
+      'persistent config warning',
+    ]);
   });
 });

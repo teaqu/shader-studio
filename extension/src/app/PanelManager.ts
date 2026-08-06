@@ -13,6 +13,8 @@ import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
   private panelSlots: Map<vscode.WebviewPanel, number> = new Map();
+  private panelOwnerIds: Map<vscode.WebviewPanel, string> = new Map();
+  private nextPanelOwnerId = 1;
   private logger!: Logger;
   private webviewTransport: WebviewTransport;
   private clientHandler: ClientMessageHandler;
@@ -119,6 +121,8 @@ export class PanelManager {
 
     this.panels.add(panel);
     this.panelSlots.set(panel, layoutSlot);
+    const panelOwnerId = `panel:${this.nextPanelOwnerId++}`;
+    this.panelOwnerIds.set(panel, panelOwnerId);
 
     // Add panel to the shared webview transport
     this.webviewTransport.addPanel(panel);
@@ -126,11 +130,11 @@ export class PanelManager {
     const initialLanguage = editor
       ? getShaderLanguage(editor.document.uri.fsPath)
       : "glsl";
-    this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
+    this.setupWebviewHtml(panel, layoutSlot, initialLanguage, panelOwnerId);
 
+    const shaderOwnerId = "active-editor";
     if (editor) {
-      this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
-      void this.shaderProvider.sendShaderFromEditor(editor);
+      void this.shaderProvider.sendShaderFromEditor(editor, { ownerId: shaderOwnerId });
     }
 
     // Handle messages from webview
@@ -146,6 +150,11 @@ export class PanelManager {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
+      this.panelOwnerIds.delete(panel);
+      this.shaderProvider.releaseSlangRootOwner(panelOwnerId);
+      if (!this.messenger.hasActiveClients()) {
+        this.shaderProvider.releaseSlangRootOwner(shaderOwnerId);
+      }
     });
 
     this.logger.info("Webview panel created");
@@ -181,6 +190,20 @@ export class PanelManager {
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
     this.logger.debug(`Webview message received: ${message.type}`);
 
+    if (message.type === 'shaderLockChanged') {
+      const ownerId = this.panelOwnerIds.get(panel);
+      if (!ownerId) {
+        return;
+      }
+      const rootPath = message.payload?.rootPath;
+      if (message.payload?.locked && typeof rootPath === 'string' && rootPath.endsWith('.slang')) {
+        this.shaderProvider.activateSlangRootOwner(ownerId, rootPath);
+      } else {
+        this.shaderProvider.releaseSlangRootOwner(ownerId);
+      }
+      return;
+    }
+
     // Handle moveToNewWindow directly — it needs the panel reference and is not shared
     if (message.type === 'extensionCommand' && message.payload?.command === 'moveToNewWindow') {
       panel.reveal();
@@ -203,6 +226,7 @@ export class PanelManager {
     panel: vscode.WebviewPanel,
     layoutSlot: number,
     initialLanguage: "glsl" | "slang" = "glsl",
+    panelOwnerId: string = `panel:${layoutSlot}`,
   ): void {
     const htmlPath = path.join(
       this.context.extensionPath,
@@ -213,7 +237,7 @@ export class PanelManager {
 
     let processedHtml = rawHtml;
 
-    const layoutMeta = `<meta name="shader-studio-layout-slot" content="vscode:${layoutSlot}"><meta name="shader-studio-host-type" content="vscode"><meta name="shader-studio-initial-language" content="${initialLanguage}">`;
+    const layoutMeta = `<meta name="shader-studio-layout-slot" content="vscode:${layoutSlot}"><meta name="shader-studio-host-type" content="vscode"><meta name="shader-studio-initial-language" content="${initialLanguage}"><meta name="shader-studio-preview-owner" content="${panelOwnerId}">`;
     processedHtml = processedHtml.replace(/<head([^>]*)>/i, `<head$1>${layoutMeta}`);
 
     // Convert relative resource URLs to webview URIs

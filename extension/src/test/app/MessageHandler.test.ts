@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
 import { ErrorHandler } from '../../app/ErrorHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage, ShaderLockStateMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -158,8 +158,8 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(successEvent);
 
-    // Verify ALL errors were cleared
-    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+    // Compile-owned diagnostics are replaced without clearing unrelated collections.
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
   });
 
   test('should clear errors when buffer update succeeds', () => {
@@ -179,8 +179,50 @@ suite('MessageHandler Test Suite', () => {
     };
     messageHandler.handleMessage(bufferSuccessEvent);
 
-    // Verify errors were cleared
-    sinon.assert.calledOnce(mockDiagnosticCollection.clear as any);
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
+  });
+
+  test('should publish structured diagnostics from a successful compilation', () => {
+    const uri = vscode.Uri.file('/project/helper.slang').toString();
+    const successEvent: LogMessage = {
+      type: 'log',
+      payload: ['Shader compiled and linked'],
+      diagnostics: [{
+        uri,
+        range: { start: { line: 1, character: 2 }, end: { line: 1, character: 3 } },
+        severity: 'warning',
+        message: 'implicit conversion',
+        source: 'slang-compile',
+      }],
+    };
+
+    messageHandler.handleMessage(successEvent);
+
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as any);
+    const [diagnosticUri, diagnostics] = (mockDiagnosticCollection.set as sinon.SinonStub).firstCall.args;
+    assert.strictEqual(diagnosticUri.toString(), uri);
+    assert.strictEqual(diagnostics[0].severity, vscode.DiagnosticSeverity.Warning);
+    sinon.assert.notCalled(mockDiagnosticCollection.clear as any);
+  });
+
+  test('forwards compile scope from successful compilation messages', () => {
+    const scopedErrorHandler = {
+      setShaderConfig: sandbox.stub(),
+      handleCompileSuccess: sandbox.stub(),
+    } as unknown as ErrorHandler;
+    const scopedMessageHandler = new MessageHandler(mockOutputChannel, scopedErrorHandler);
+    const rootUri = vscode.Uri.file('/project/image.slang').toString();
+    const compileScope = { rootUris: [rootUri], ownerId: 'panel:1', generationId: 7 };
+
+    scopedMessageHandler.handleMessage({
+      type: 'log', payload: ['Shader compiled and linked'], compileScope,
+    });
+
+    sinon.assert.calledOnceWithExactly(
+      scopedErrorHandler.handleCompileSuccess as sinon.SinonStub,
+      [],
+      compileScope,
+    );
   });
 
   test('should show non-line-number errors at line 1', () => {
@@ -412,30 +454,6 @@ suite('MessageHandler Test Suite', () => {
 
     sinon.assert.calledOnce(onDebugModeChangedCallback);
     sinon.assert.calledWith(onDebugModeChangedCallback, false);
-  });
-
-  test('should report shader lock and unlock state through the callback', () => {
-    const onShaderLockChanged = sandbox.stub();
-    const errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
-    const handler = new MessageHandler(
-      mockOutputChannel,
-      errorHandler,
-      undefined,
-      onShaderLockChanged,
-    );
-    const locked: ShaderLockStateMessage = {
-      type: 'shaderLockState',
-      payload: { lockedShaderPath: '/shaders/image.slang' },
-    };
-    const unlocked: ShaderLockStateMessage = {
-      type: 'shaderLockState',
-      payload: {},
-    };
-
-    handler.handleMessage(locked);
-    sinon.assert.calledWith(onShaderLockChanged, '/shaders/image.slang');
-    handler.handleMessage(unlocked);
-    sinon.assert.calledWith(onShaderLockChanged, undefined);
   });
 
   test('should not throw error when onDebugModeChanged callback is not provided', () => {

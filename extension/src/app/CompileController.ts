@@ -7,8 +7,11 @@ import type { ErrorMessage } from "@shader-studio/types";
 export type CompileMode = "hot" | "save" | "manual";
 
 export class CompileController {
+  private static readonly SLANG_HOT_DEBOUNCE_MS = 40;
   private compileMode: CompileMode;
   private lastActiveGlslPath: string | null = null;
+  private pendingSlangHotChanges = new Map<string, vscode.TextDocument | null>();
+  private slangHotTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -46,7 +49,7 @@ export class CompileController {
     this.glslFileTracker.setLastViewedGlslFile(shaderPath);
 
     if (this.compileMode === "hot" || switchedShader) {
-      this.performShaderUpdate(editor, true);
+      this.performShaderUpdate(editor);
     }
 
     this.lastActiveGlslPath = shaderPath;
@@ -56,11 +59,13 @@ export class CompileController {
     event: vscode.TextDocumentChangeEvent,
   ): void {
     if (isShaderDocument(event.document)) {
-      if (vscode.window.activeTextEditor?.document.uri.fsPath === event.document.uri.fsPath) {
-        this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
-      }
+      this.glslFileTracker.setLastViewedGlslFile(event.document.uri.fsPath);
       if (this.compileMode === "hot") {
-        this.performShaderDocumentUpdate(event.document);
+        if (event.document.fileName.endsWith(".slang")) {
+          this.queueSlangHotChange(event.document.uri.fsPath, event.document);
+        } else {
+          this.performShaderDocumentUpdate(event.document);
+        }
       }
       return;
     }
@@ -79,18 +84,13 @@ export class CompileController {
     }
 
     if (isShaderDocument(document)) {
-      const isActiveDocument = (
-        vscode.window.activeTextEditor?.document.uri.fsPath === document.uri.fsPath
-      );
-      if (isActiveDocument) {
-        this.glslFileTracker.setLastViewedGlslFile(document.uri.fsPath);
-      }
+      this.glslFileTracker.setLastViewedGlslFile(document.uri.fsPath);
       const visibleEditor = visibleTextEditors.find(
         (editor) => editor.document.uri.fsPath === document.uri.fsPath,
       );
 
       if (visibleEditor && this.glslFileTracker.isGlslEditor(visibleEditor)) {
-        this.performShaderUpdate(visibleEditor, isActiveDocument);
+        this.performShaderUpdate(visibleEditor);
       } else if (this.messenger.hasActiveClients()) {
         void this.shaderProvider.sendShaderFromPath(document.uri.fsPath);
       }
@@ -115,14 +115,12 @@ export class CompileController {
 
     if (targetEditor && this.glslFileTracker.isGlslEditor(targetEditor)) {
       this.glslFileTracker.setLastViewedGlslFile(targetEditor.document.uri.fsPath);
-      this.shaderProvider.claimActiveAnalysisContext(targetEditor.document.uri.fsPath);
       await this.shaderProvider.sendShaderFromEditor(targetEditor);
       return;
     }
 
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
     if (lastViewedFile) {
-      this.shaderProvider.claimActiveAnalysisContext(lastViewedFile);
       await this.shaderProvider.sendShaderFromPath(lastViewedFile);
       return;
     }
@@ -134,16 +132,28 @@ export class CompileController {
     this.messenger.send(errorMsg);
   }
 
+  public handleSlangFileCreatedOrDeleted(filePath: string): void {
+    if (this.compileMode !== "hot" || !this.messenger.hasActiveClients()) {
+      return;
+    }
+    this.queueSlangHotChange(filePath, null);
+  }
+
+  public dispose(): void {
+    if (this.slangHotTimer) {
+      clearTimeout(this.slangHotTimer);
+      this.slangHotTimer = null;
+    }
+    this.pendingSlangHotChanges.clear();
+  }
+
   private getStoredCompileMode(): CompileMode {
     const stored = this.context.globalState.get<string>("shader-studio.compileMode");
     return stored === "save" || stored === "manual" ? stored : "hot";
   }
 
-  private performShaderUpdate(editor: vscode.TextEditor, claimActiveAnalysisContext: boolean): void {
+  private performShaderUpdate(editor: vscode.TextEditor): void {
     if (this.messenger.hasActiveClients()) {
-      if (claimActiveAnalysisContext) {
-        this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
-      }
       void this.shaderProvider.sendShaderFromEditor(editor);
     }
   }
@@ -152,6 +162,25 @@ export class CompileController {
     if (this.messenger.hasActiveClients()) {
       void this.shaderProvider.sendShaderFromDocument(document);
     }
+  }
+
+  private queueSlangHotChange(filePath: string, document: vscode.TextDocument | null): void {
+    this.pendingSlangHotChanges.set(filePath, document);
+    if (this.slangHotTimer) {
+      clearTimeout(this.slangHotTimer);
+    }
+    this.slangHotTimer = setTimeout(() => {
+      this.slangHotTimer = null;
+      const changes = [...this.pendingSlangHotChanges.entries()];
+      this.pendingSlangHotChanges.clear();
+      void this.shaderProvider.sendAffectedSlangChanges(
+        changes.map(([filePath, latestDocument]) => ({
+          filePath,
+          source: latestDocument?.getText(),
+        })),
+        { reload: true },
+      );
+    }, CompileController.SLANG_HOT_DEBOUNCE_MS);
   }
 
   private handleScriptDocumentChange(document: vscode.TextDocument): void {

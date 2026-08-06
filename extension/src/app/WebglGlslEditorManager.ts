@@ -17,7 +17,6 @@ interface ManagerDeps {
   getWorkspaceFolders(): readonly vscode.WorkspaceFolder[];
   isIntegrationEnabled(folder: vscode.WorkspaceFolder): boolean;
   onDidChangeExtensions(listener: () => void): vscode.Disposable;
-  showInformationMessage(message: string): Thenable<string | undefined>;
 }
 
 interface WorkspaceState {
@@ -29,26 +28,11 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-interface SettingInspection<T> {
-  globalValue?: T;
-  workspaceValue?: T;
-  workspaceFolderValue?: T;
-}
-
-function hasUserValue<T>(inspection: SettingInspection<T> | undefined): boolean {
-  return inspection !== undefined && [
-    inspection.globalValue,
-    inspection.workspaceValue,
-    inspection.workspaceFolderValue,
-  ].some((value) => value !== undefined);
-}
-
 export class WebglGlslEditorManager implements vscode.Disposable {
   private readonly deps: ManagerDeps;
   private readonly extensionChangeListener: vscode.Disposable;
   private readonly states = new Map<string, WorkspaceState>();
   private readonly recentWorkspaceFolders = new Map<string, vscode.WorkspaceFolder>();
-  private readonly notifiedConflicts = new Set<string>();
   private disposed = false;
 
   constructor(
@@ -64,7 +48,6 @@ export class WebglGlslEditorManager implements vscode.Disposable {
           .get<boolean>('webglGlslEditorIntegration', true) !== false
       ),
       onDidChangeExtensions: (listener) => vscode.extensions.onDidChange(listener),
-      showInformationMessage: (message) => vscode.window.showInformationMessage(message),
       ...deps,
     };
     this.extensionChangeListener = this.deps.onDidChangeExtensions(() => {
@@ -157,8 +140,6 @@ export class WebglGlslEditorManager implements vscode.Disposable {
     }
     const configuration = vscode.workspace.getConfiguration('webgl-glsl-editor', folder.uri);
     const existingSource = configuration.get<unknown>(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING);
-    const sourceInspection = configuration.inspect<unknown>(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING);
-    const enabledInspection = configuration.inspect<boolean>(WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING);
     if (!this.deps.isIntegrationEnabled(folder)) {
       if (isManagedWebglGlslInjection(existingSource)) {
         await configuration.update(
@@ -169,27 +150,13 @@ export class WebglGlslEditorManager implements vscode.Disposable {
       }
       return;
     }
-    if (isManagedWebglGlslInjection(existingSource)) {
-      if (existingSource.join('\n') !== lines.join('\n')) {
-        await configuration.update(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING, lines, vscode.ConfigurationTarget.Workspace);
-      }
-      if (!hasUserValue(enabledInspection)) {
-        await configuration.update(WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING, true, vscode.ConfigurationTarget.Workspace);
-      }
-      return;
-    }
-    if (!hasUserValue(sourceInspection) && !hasUserValue(enabledInspection)) {
+    if (!isManagedWebglGlslInjection(existingSource) || existingSource.join('\n') !== lines.join('\n')) {
       await configuration.update(WEBGL_GLSL_EDITOR_INJECTION_SOURCE_SETTING, lines, vscode.ConfigurationTarget.Workspace);
-      await configuration.update(WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING, true, vscode.ConfigurationTarget.Workspace);
-      return;
     }
-    const key = folder.uri.toString();
-    if (this.notifiedConflicts.has(key)) {
-      return;
-    }
-    this.notifiedConflicts.add(key);
-    await this.deps.showInformationMessage(
-      `WebGL GLSL Editor already has code injection configured for ${folder.name}; Shader Studio left it unchanged.`,
+    await configuration.update(
+      WEBGL_GLSL_EDITOR_INJECTION_ENABLED_SETTING,
+      true,
+      vscode.ConfigurationTarget.Workspace,
     );
   }
 }

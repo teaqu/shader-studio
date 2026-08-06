@@ -1,4 +1,6 @@
 const esbuild = require('esbuild');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -44,6 +46,35 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+	}
+
+	const slangOutDir = path.join(__dirname, 'dist', 'slang');
+	fs.rmSync(slangOutDir, { recursive: true, force: true });
+	fs.mkdirSync(slangOutDir, { recursive: true });
+	const slangWorkerContext = await esbuild.context({
+		entryPoints: [path.join(__dirname, 'src', 'language', 'slangLanguageWorker.ts')],
+		bundle: true,
+		format: 'cjs',
+		platform: 'node',
+		target: 'node18',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		outfile: path.join(slangOutDir, 'slangLanguageWorker.js'),
+		external: [],
+	});
+	if (watch) {
+		await slangWorkerContext.watch();
+	} else {
+		await slangWorkerContext.rebuild();
+		await slangWorkerContext.dispose();
+	}
+	for (const asset of ['slang-wasm.js', 'slang-wasm.wasm']) {
+		const outputName = asset.endsWith('.js') ? 'slang-wasm.mjs' : asset;
+		fs.copyFileSync(
+			path.join(__dirname, '..', 'ui', 'src', 'slang', asset),
+			path.join(slangOutDir, outputName),
+		);
 	}
 }
 

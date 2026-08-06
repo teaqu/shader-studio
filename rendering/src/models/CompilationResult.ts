@@ -1,7 +1,10 @@
+import type { SlangDiagnostic } from "@shader-studio/types";
+
 export interface CompilationResult {
   success: boolean;
   errors?: string[];
   warnings?: string[];
+  diagnostics?: SlangDiagnostic[];
   /**
    * Set when the compile was discarded because a newer compile (or a
    * dispose) landed while it was in flight. Callers should silently drop
