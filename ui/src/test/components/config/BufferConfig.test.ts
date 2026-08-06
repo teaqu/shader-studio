@@ -3,8 +3,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
 import BufferConfig from '../../../lib/components/config/BufferConfig.svelte';
 import type { BufferPass, ComputePass, ImagePass } from '@shader-studio/types';
+import {
+  getEditorOverlayVisible,
+  getOverlayActiveFile,
+  setEditorOverlayVisible,
+  setOverlayActiveFile,
+} from '../../../lib/state/editorOverlayState.svelte';
 
 describe('BufferConfig', () => {
+  it('opens the configured vertex shader in the editor overlay when its title is double-clicked', async () => {
+    setEditorOverlayVisible(false);
+    setOverlayActiveFile('Image');
+
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'Image',
+      config: { inputs: {}, geometry: { type: 'cube' }, vertex: './warp.vert.glsl' },
+      onUpdate: vi.fn(),
+      getWebviewUri: () => undefined,
+      isImagePass: true,
+    });
+
+    await fireEvent.dblClick(getByText('Vertex shader'));
+
+    expect(getEditorOverlayVisible()).toBe(true);
+    expect(getOverlayActiveFile()).toBe('__shader_studio_vertex__:Image');
+  });
+
   it('updates the optional vertex shader path', async () => {
     const onUpdate = vi.fn();
     const { getByLabelText } = render(BufferConfig, {

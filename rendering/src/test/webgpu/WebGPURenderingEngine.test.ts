@@ -111,7 +111,7 @@ describe("WebGPURenderingEngine", () => {
 
     expect(compile).toHaveBeenCalledWith(expect.any(String), null, "/main.slang", {}, "", [], [{
       uri: "file:///helper.slang", path: "/helper.slang", source: "module helper;", version: 1, moduleName: "helper", ownerPass: "Image",
-    }], "/main.slang");
+    }], "/main.slang", undefined);
   });
 
   it("attributes structured Slang debug failures to the selected imported module", async () => {
@@ -151,7 +151,7 @@ describe("WebGPURenderingEngine", () => {
 
     expect(compile).toHaveBeenCalledWith(
       expect.any(String), previous.config, "/image.slang", previous.buffers,
-      "", [], previous.slangModules, "/image.slang",
+      "", [], previous.slangModules, "/image.slang", undefined,
     );
   });
 
@@ -2666,15 +2666,15 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
-    it("keeps installed pipelines and the canvas when a different shader path fails", async () => {
+    it("discards the installed shader and clears the canvas when a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
       const installedPipelineMap = new Map(
         (engine as any).passPipelines as Map<string, SlangPassPipeline>,
       );
       const installedPipelines = [...installedPipelineMap.values()];
       const disposeSpies = installedPipelines.map((pipeline) => vi.spyOn(pipeline, "dispose"));
-      const cleanupResources = vi.fn();
-      (engine as any).resourceManager = { cleanup: cleanupResources };
+      const disposeResources = vi.fn();
+      (engine as any).resourceManager = { dispose: disposeResources };
       const cleanupTime = vi.spyOn(engine.getTimeManager(), "cleanup");
       compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
 
@@ -2687,18 +2687,18 @@ describe("WebGPURenderingEngine", () => {
 
       expect(result?.success).toBe(false);
       expect(result?.errors?.[0]).toMatch(/syntax error/);
-      expect(engine.getPasses().map(({ name }) => name)).toEqual(["BlurPass", "Image"]);
-      expect((engine as any).passPipelines).toEqual(installedPipelineMap);
+      expect(engine.getPasses()).toEqual([]);
+      expect((engine as any).passPipelines.size).toBe(0);
       for (const dispose of disposeSpies) {
-        expect(dispose).not.toHaveBeenCalled();
+        expect(dispose).toHaveBeenCalledOnce();
       }
-      expect(cleanupResources).not.toHaveBeenCalled();
-      expect(cleanupTime).not.toHaveBeenCalled();
-      expect(device.createCommandEncoder).not.toHaveBeenCalled();
-      expect(device.queue.submit).not.toHaveBeenCalled();
+      expect(disposeResources).toHaveBeenCalledOnce();
+      expect(cleanupTime).toHaveBeenCalledOnce();
+      expect(device.createCommandEncoder).toHaveBeenCalledOnce();
+      expect(device.queue.submit).toHaveBeenCalledOnce();
     });
 
-    it("keeps presenting a black canvas after a different shader path fails", async () => {
+    it("does not render after a different shader path fails", async () => {
       const { engine, device, compiler } = await compiledEngine();
       compiler.compile.mockReturnValue({ success: false, errors: ["syntax error"] });
 
@@ -2712,17 +2712,8 @@ describe("WebGPURenderingEngine", () => {
 
       engine.render(16);
 
-      expect(device.createCommandEncoder).toHaveBeenCalledTimes(1);
-      const encoder = device.createCommandEncoder.mock.results[0].value;
-      expect(encoder.beginRenderPass).toHaveBeenCalledWith({
-        colorAttachments: [{
-          view: { label: "canvas" },
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: "clear",
-          storeOp: "store",
-        }],
-      });
-      expect(device.queue.submit).toHaveBeenCalledTimes(1);
+      expect(device.createCommandEncoder).not.toHaveBeenCalled();
+      expect(device.queue.submit).not.toHaveBeenCalled();
     });
 
     it("uses the updated content on subsequent updates too", async () => {
@@ -2902,7 +2893,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getCurrentConfig()).toBe(lifecycleConfig);
     });
 
-    it("fails before publication when candidate video synchronization throws", async () => {
+    it("discards the installed generation when candidate video synchronization throws on a path switch", async () => {
       const engine = new WebGPURenderingEngine(assets);
       const { device } = stubEngineInternals(engine);
       (engine as any).resourceManager = new ResourceManager(
@@ -2911,8 +2902,6 @@ describe("WebGPURenderingEngine", () => {
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
         BufferA: bufferSource,
       });
-      const installedPipelines = (engine as any).passPipelines;
-      const installedConfig = engine.getCurrentConfig();
       const installedResourceManager = engine.getResourceManager();
       const loadSpy = vi.spyOn(ResourceManager.prototype, "loadVideoTexture")
         .mockResolvedValue({ texture: {} as never });
@@ -2950,12 +2939,12 @@ describe("WebGPURenderingEngine", () => {
           success: false,
           errors: [expect.stringMatching(/candidate video synchronization failed/i)],
         });
-        expect((engine as any).passPipelines).toBe(installedPipelines);
-        expect(engine.getCurrentConfig()).toBe(installedConfig);
-        expect(engine.getResourceManager()).toBe(installedResourceManager);
+        expect((engine as any).passPipelines.size).toBe(0);
+        expect(engine.getCurrentConfig()).toBeNull();
+        expect(engine.getResourceManager()).not.toBe(installedResourceManager);
         expect(disposeSpy.mock.instances.filter((instance) =>
           instance === candidateResourceManager)).toHaveLength(1);
-        expect(disposeSpy.mock.instances).not.toContain(installedResourceManager);
+        expect(disposeSpy.mock.instances).toContain(installedResourceManager);
       } finally {
         loadSpy.mockRestore();
         syncSpy.mockRestore();
@@ -3532,7 +3521,7 @@ describe("WebGPURenderingEngine", () => {
       }
     });
 
-    it("keeps the installed config and its resize behavior during a failed path switch", async () => {
+    it("clears the installed config after a failed path switch", async () => {
       const { engine, compiler } = lifecycleEngine();
       const installedConfig: ShaderConfig = {
         version: "1",
@@ -3578,7 +3567,8 @@ describe("WebGPURenderingEngine", () => {
       const result = await pending;
 
       expect(result?.success).toBe(false);
-      expect(engine.getCurrentConfig()).toBe(installedConfig);
+      expect(engine.getCurrentConfig()).toBeNull();
+      expect(engine.getPasses()).toEqual([]);
     });
 
     it("recompiles attempted source with its matching config after a failed path switch", async () => {
@@ -3601,7 +3591,7 @@ describe("WebGPURenderingEngine", () => {
         { BufferB: "broken candidate" },
       );
       expect(failed?.success).toBe(false);
-      expect(engine.getCurrentConfig()).toBe(lifecycleConfig);
+      expect(engine.getCurrentConfig()).toBeNull();
       compiler.compile.mockReturnValue({ success: true, wgsl: "// fixed candidate" });
 
       const recovered = await engine.updateBufferAndRecompile("BufferB", "fixed candidate");
@@ -3615,7 +3605,7 @@ describe("WebGPURenderingEngine", () => {
       );
     });
 
-    it("keeps capture context on the installed generation while a different path is pending or fails", async () => {
+    it("keeps capture context for the last attempted shader when a different path fails", async () => {
       const { engine, compiler } = lifecycleEngine();
       await engine.compileShaderPipeline(imageSource, lifecycleConfig, "/first.slang", {
         common: "float commonA() { return 1.0; }",
@@ -3662,9 +3652,9 @@ describe("WebGPURenderingEngine", () => {
       rejectCandidate();
       expect((await pending)?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
-        commonCode: "float commonA() { return 1.0; }",
+        commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangChannels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -3683,7 +3673,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(failedSamePath?.success).toBe(false);
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
-        commonCode: "float commonA() { return 1.0; }",
+        commonCode: "float commonC() { return 3.0; }",
         slangPassName: "Image",
         slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
         slangStorage: [],
@@ -3759,7 +3749,7 @@ describe("WebGPURenderingEngine", () => {
 
       const failed = await engine.compileShaderPipeline("broken image", null, "/broken.slang");
       expect(failed?.success).toBe(false);
-      expect(engine.getPasses().map((pass) => pass.name)).toEqual(["BufferA", "Image"]);
+      expect(engine.getPasses()).toEqual([]);
 
       compiler.compile.mockReturnValue({ success: true, wgsl: "// corrected" });
       const recovered = await engine.compileShaderPipeline(

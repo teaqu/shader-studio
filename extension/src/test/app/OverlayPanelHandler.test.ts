@@ -206,6 +206,35 @@ suite('OverlayPanelHandler Test Suite', () => {
       assert.strictEqual(message.payload.path, '/path/to/buffer.glsl');
     });
 
+    test('should send file contents for a configured vertex shader', async () => {
+      const fs = require('fs');
+      const existsSyncStub = sandbox.stub(fs, 'existsSync');
+      existsSyncStub.withArgs('/path/to/shader.sha.json').returns(true);
+      existsSyncStub.withArgs('/path/to/mesh.vert.glsl').returns(true);
+
+      sandbox.stub(fs, 'readFileSync')
+        .withArgs('/path/to/shader.sha.json', 'utf-8').returns(JSON.stringify({
+          passes: { Image: { vertex: 'mesh.vert.glsl' } },
+        }))
+        .withArgs('/path/to/mesh.vert.glsl', 'utf-8').returns('void mainVertex() {}');
+      sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+
+      await handler.handleRequestFileContents(
+        { bufferName: '__shader_studio_vertex__:Image', shaderPath: '/path/to/shader.glsl' },
+        respondFn,
+      );
+
+      assert.ok(respondFn.calledOnce);
+      assert.deepStrictEqual(respondFn.firstCall.args[0], {
+        type: 'fileContents',
+        payload: {
+          code: 'void mainVertex() {}',
+          path: '/path/to/mesh.vert.glsl',
+          bufferName: '__shader_studio_vertex__:Image',
+        },
+      });
+    });
+
     test('should use the companion .sha.json config for .slang shaders', async () => {
       const fs = require('fs');
       const existsSyncStub = sandbox.stub(fs, 'existsSync');

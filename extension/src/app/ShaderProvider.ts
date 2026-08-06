@@ -21,16 +21,7 @@ import type {
   SlangSourceModule,
 } from "@shader-studio/types";
 
-interface OwnedShaderPass {
-  shaderPath: string;
-  passName: string;
-  config: ShaderConfig;
-  stage: 'fragment' | 'vertex';
-}
-
 interface ActiveAnalysisContext {
-  filePath: string;
-  preferredRootShaderPath: string | null;
   generation: number;
 }
 
@@ -63,30 +54,9 @@ export class ShaderProvider {
     }
 
     const contextKey = this.resolveAnalysisContextKey(filePath);
-    const previous = this.activeAnalysisContexts.get(contextKey);
     this.activeAnalysisContexts.set(contextKey, {
-      filePath,
-      preferredRootShaderPath: this.resolvePreferredRootForClaim(filePath, previous),
       generation: this.nextAnalysisContextGeneration++,
     });
-  }
-
-  private resolvePreferredRootForClaim(
-    filePath: string,
-    previous: ActiveAnalysisContext | undefined,
-  ): string {
-    const previousRoot = previous?.preferredRootShaderPath;
-    if (!previousRoot) {
-      return filePath;
-    }
-
-    try {
-      return this.resolveOwnedShaderPassForRoot(filePath, previousRoot)
-        ? previousRoot
-        : filePath;
-    } catch {
-      return filePath;
-    }
   }
 
   public async sendShaderFromEditor(
@@ -497,82 +467,19 @@ export class ShaderProvider {
     return this.preparationGenerations.get(shaderPath) === generation;
   }
 
-  private resolveOwnedShaderPassForRoot(
-    filePath: string,
-    shaderPath: string,
-  ): OwnedShaderPass | null {
-    const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
-    if (!config) {
-      return null;
-    }
-    const match = Object.entries(this.buildBufferPathMap(config, shaderPath))
-      .find(([passName, candidatePath]) => passName !== "Image" && candidatePath === filePath);
-    if (!match) {
-      return null;
-    }
-    const vertexPrefix = '__shader_studio_vertex__:';
-    const isVertex = match[0].startsWith(vertexPrefix);
-    return {
-      shaderPath,
-      passName: isVertex ? match[0].slice(vertexPrefix.length) : match[0],
-      config,
-      stage: isVertex ? 'vertex' : 'fragment',
-    };
-  }
-
-  private resolveOwningShaderPass(filePath: string): OwnedShaderPass | null {
-    const context = this.getActiveAnalysisContext(filePath);
-    const preferredRoot = context?.preferredRootShaderPath;
-    if (preferredRoot) {
-      const preferredOwner = this.resolveOwnedShaderPassForRoot(filePath, preferredRoot);
-      if (preferredOwner) {
-        return preferredOwner;
-      }
-    }
-
-    const contextKey = this.resolveAnalysisContextKey(filePath);
-    for (const shaderPath of this.activeShaders) {
-      if (
-        shaderPath === preferredRoot
-        || this.resolveAnalysisContextKey(shaderPath) !== contextKey
-      ) {
-        continue;
-      }
-      const owner = this.resolveOwnedShaderPassForRoot(filePath, shaderPath);
-      if (owner) {
-        return owner;
-      }
-    }
-
-    return null;
-  }
-
   private async trySendNonMainImageShader(
     shaderPath: string,
     code: string,
-    sendOwnedShader: (owner?: OwnedShaderPass) => Promise<void>,
+    sendNonMainShader: () => Promise<void>,
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
+    const language = getShaderLanguage(shaderPath);
     if (code.includes("mainImage")) {
       return false;
     }
 
-    if (getShaderLanguage(shaderPath) === "slang") {
-      // A configured pass/vertex source is not a Slang import. Re-send its
-      // owning root so the WebGPU engine can reuse cached unchanged passes
-      // and recompile only the pass whose source changed.
-      const configuredOwner = this.resolveOwningShaderPass(shaderPath);
-      if (configuredOwner) {
-        const ownerSource = this.readShaderSource(configuredOwner.shaderPath);
-        if (ownerSource !== null) {
-          // Vertex sources are compiled into a pass, but their local scope is
-          // not a fragment-variable inspection target. Do not replace the
-          // active fragment cursor with this file's cursor position.
-          await this.sendMainImageShader(configuredOwner.shaderPath, ownerSource, options, undefined, false);
-          return true;
-        }
-      }
+    if (language === "slang") {
       const lockedShaderPath = this.getLockedShaderPath();
       const dependencyOwnerPath = lockedShaderPath
         ? this.resolveOwningSlangDependency(shaderPath)
@@ -584,18 +491,11 @@ export class ShaderProvider {
           return true;
         }
       }
-      await sendOwnedShader();
+      await sendNonMainShader();
       return true;
     }
 
-    const owner = this.resolveOwningShaderPass(shaderPath);
-    if (owner && owner.shaderPath !== shaderPath) {
-      this.logger.debug(`Sending non-mainImage source ${shaderPath} with owner shader context ${owner.shaderPath}`);
-      await sendOwnedShader(owner);
-      return true;
-    }
-
-    await sendOwnedShader();
+    await sendNonMainShader();
     return true;
   }
 

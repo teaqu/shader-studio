@@ -76,4 +76,39 @@ describe('EditorOverlayManager', () => {
     const event = callbacks.handleShaderMessage.mock.calls[0][0];
     expect(event.data.code).toBe('compiled code');
   });
+
+  it('does not attempt a buffer-only recompile for a vertex source', async () => {
+    const { manager, renderingEngine } = createManager();
+
+    manager.handleConfigFileSelect('__shader_studio_vertex__:Image', '/test/shader.glsl');
+    await manager.handleEditorCodeChange('void mainVertex() {}');
+    await manager.compileCurrentCode();
+
+    expect(renderingEngine.updateBufferAndRecompile).not.toHaveBeenCalled();
+  });
+
+  it('loads and recompiles a compute pass from the editor overlay', async () => {
+    const { manager, transport, renderingEngine, callbacks } = createManager();
+    renderingEngine.updateBufferAndRecompile.mockResolvedValue({ success: true });
+    manager.setConfig({
+      version: '1',
+      passes: { Image: {}, ComputeParticles: { path: 'particles.slang', inputs: {} } },
+    });
+
+    manager.handleConfigFileSelect('ComputeParticles', '/test/shader.slang');
+    await manager.handleEditorCodeChange('[shader("compute")] void computeMain() {}');
+    await manager.compileCurrentCode();
+
+    expect(manager.getState().bufferNames).toContain('ComputeParticles');
+    expect(transport.postMessage).toHaveBeenCalledWith({
+      type: 'requestFileContents',
+      payload: { bufferName: 'ComputeParticles', shaderPath: '/test/shader.slang' },
+    });
+    expect(renderingEngine.updateBufferAndRecompile).toHaveBeenCalledWith(
+      'ComputeParticles',
+      '[shader("compute")] void computeMain() {}',
+    );
+    expect(callbacks.onClearErrors).toHaveBeenCalled();
+    expect(callbacks.onStartRenderLoop).toHaveBeenCalled();
+  });
 });

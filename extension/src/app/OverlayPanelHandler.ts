@@ -4,6 +4,8 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 
+const VERTEX_SOURCE_PREFIX = "__shader_studio_vertex__:";
+
 export class OverlayPanelHandler {
   private logger: Logger;
 
@@ -73,15 +75,19 @@ export class OverlayPanelHandler {
 
       const configText = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(configText);
-      const pass = config?.passes?.[bufferName];
-      if (!pass?.path) {
-        this.logger.warn(`No path found for buffer ${bufferName}`);
+      const vertexPassName = bufferName.startsWith(VERTEX_SOURCE_PREFIX)
+        ? bufferName.slice(VERTEX_SOURCE_PREFIX.length)
+        : null;
+      const pass = config?.passes?.[vertexPassName ?? bufferName];
+      const sourcePath = vertexPassName ? pass?.vertex : pass?.path;
+      if (!sourcePath) {
+        this.logger.warn(`No path found for ${vertexPassName ? 'vertex shader' : 'buffer'} ${vertexPassName ?? bufferName}`);
         return;
       }
 
       // Resolve the buffer file path relative to the main shader
       const shaderDir = path.dirname(mainShaderPath);
-      const bufferFilePath = path.resolve(shaderDir, pass.path);
+      const bufferFilePath = path.resolve(shaderDir, sourcePath);
 
       if (!fs.existsSync(bufferFilePath)) {
         this.logger.warn(`Buffer file not found: ${bufferFilePath}`);

@@ -8,6 +8,8 @@ import {
   toggleVimMode as toggleVimModeState,
 } from './state/editorOverlayState.svelte';
 
+const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
+
 export interface EditorOverlayCallbacks {
   onStateChanged: (state: EditorOverlayState) => void;
   onShaderCodeChanged: (code: string) => void;
@@ -113,6 +115,10 @@ export class EditorOverlayManager {
         });
         this.callbacks.handleShaderMessage(syntheticEvent);
       }
+    } else if (this.bufferName.startsWith(VERTEX_SOURCE_PREFIX)) {
+      // The overlay persists vertex source changes to its own file. The
+      // extension then refreshes the owning shader with that source included.
+      return;
     } else {
       const renderingEngine = this.getRenderingEngine();
       const result = await renderingEngine.updateBufferAndRecompile(this.bufferName, code);

@@ -1681,7 +1681,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private failedCompilation(
-    _path: string,
+    path: string,
     generation: number,
     result: CompilationResult,
   ): CompilationResult {
@@ -1689,7 +1689,66 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
+    if (this.shaderPath !== "" && this.shaderPath !== path) {
+      this.discardInstalledGeneration();
+      this.stopRenderLoop();
+      this.clearCanvas();
+    }
+
     return result;
+  }
+
+  /** Release the active shader after switching to a different shader fails. */
+  private discardInstalledGeneration(): void {
+    const passPipelines = [...this.passPipelines.values()];
+    const computePipelines = [...this.computePipelines.values()];
+    const resourceManager = this.resourceManager;
+
+    this.passPipelines.clear();
+    this.passKeys.clear();
+    this.computePipelines.clear();
+    this.computeKeys.clear();
+    this.passGraph = [];
+    this.dispatchOnceRan.clear();
+    this.hasSubmittedFrameForInstalledGeneration = false;
+    this.installedCompile = null;
+    this.installedResourceKey = null;
+    this.currentConfig = null;
+    this.shaderPath = "";
+    this.customUniformManager = new CustomUniformManager();
+    this.resetFeedbackOnNextApply = false;
+
+    for (const buffer of this.storageBuffers.values()) {
+      try {
+        buffer.destroy();
+      } catch {
+        // The failed switch must preserve its compilation error even when
+        // best-effort GPU cleanup is unavailable.
+      }
+    }
+    this.storageBuffers.clear();
+    this.storageKeys.clear();
+    this.storageLayouts.clear();
+    this.resetStorageOnNextSync = false;
+
+    for (const pipeline of [...passPipelines, ...computePipelines]) {
+      try {
+        pipeline.dispose();
+      } catch {
+        // See storage cleanup above.
+      }
+    }
+
+    this.resourceManager = this.device
+      ? new ResourceManager(new WebGPUTextureBackend(this.device))
+      : null;
+    this.resourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
+    try {
+      resourceManager?.dispose?.();
+    } catch {
+      // See storage cleanup above.
+    }
+    this.timeManager.cleanup();
   }
 
   private clearCanvas(): void {

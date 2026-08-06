@@ -15,6 +15,7 @@
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import PathInput from "./PathInput.svelte";
+  import { setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
 
   type EditableConfig = BufferPass | ImagePass | ComputePass;
@@ -294,6 +295,14 @@
     }
     updateConfig({ ...config, vertex: path });
   }
+
+  function openVertexShaderInOverlay() {
+    if (!config.vertex) {
+      return;
+    }
+    setOverlayActiveFile(`__shader_studio_vertex__:${bufferName}`);
+    setEditorOverlayVisible(true);
+  }
 </script>
 
 <div class="buffer-config">
@@ -479,12 +488,11 @@
       </div>
       {#if config.geometry?.type && config.geometry.type !== 'fullscreen'}
         <div class="config-item">
-          <h3 class="section-title">Vertex shader</h3>
+          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
           <PathInput
             value={config.vertex ?? ""}
             onPathChange={handleVertexPathChange}
             fileType={vertexFileType}
-            note="Optional mainVertex hook"
             suggestedPath={vertexSuggestedPath}
             {shaderPath}
             {postMessage}

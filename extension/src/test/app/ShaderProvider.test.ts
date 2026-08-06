@@ -66,7 +66,7 @@ suite('ShaderProvider Test Suite', () => {
 
   suite('sendShaderFromEditor', () => {
 
-    test('sends a configured Image vertex file through its owning shader', async () => {
+    test('sends a configured Image vertex file as its own source', async () => {
       const shaderPath = '/path/to/main.glsl';
       const vertexPath = '/path/to/main.vert.glsl';
       const vertexSource = 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}';
@@ -88,10 +88,91 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(sendSpy.firstCall.args[0].path, vertexPath);
     });
 
-    test('does not forward a configured Slang vertex cursor into fragment debugging', async () => {
+    test('sends an unlocked configured compute pass as a standalone source', async () => {
       const shaderPath = '/path/to/main.slang';
+      const computePath = '/path/to/sim.slang';
+      const computeSource = 'void computeMain(uint3 tid) {}';
+      loadAndProcessConfigStub.returns({
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { path: 'sim.slang', inputs: {} },
+        },
+      } as any);
+      sandbox.stub(PathResolver, 'resolvePath').callsFake((_shaderPath: string, targetPath: string) => {
+        return `/path/to/${targetPath}`;
+      });
+      (provider as any).activeShaders.add(shaderPath);
+
+      await provider.sendShaderFromEditor({
+        document: {
+          getText: () => computeSource,
+          uri: { fsPath: computePath },
+          fileName: computePath,
+          languageId: 'slang',
+          lineAt: () => ({ text: computeSource }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, computePath);
+      assert.strictEqual(sendSpy.firstCall.args[0].code, computeSource);
+      assert.strictEqual(sendSpy.firstCall.args[0].config, null);
+    });
+
+    test('sends a native Slang compute entrypoint as a standalone source', async () => {
+      const computePath = '/path/to/native-compute.slang';
+      const computeSource = '[shader("compute")] [numthreads(8, 8, 1)] void update(uint3 tid : SV_DispatchThreadID) {}';
+
+      await provider.sendShaderFromEditor({
+        document: {
+          getText: () => computeSource,
+          uri: { fsPath: computePath },
+          fileName: computePath,
+          languageId: 'slang',
+          lineAt: () => ({ text: computeSource }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, computePath);
+      assert.strictEqual(sendSpy.firstCall.args[0].code, computeSource);
+      assert.strictEqual(sendSpy.firstCall.args[0].config, null);
+    });
+
+    test('does not re-route a locked compute pass to its shader root', async () => {
+      const shaderPath = '/path/to/main.slang';
+      const computePath = '/path/to/sim.slang';
+      const computeSource = 'void computeMain(uint3 tid) {}';
+      const lockedProvider = new ShaderProvider(
+        mockMessenger,
+        undefined,
+        new ConfigChangeClassifier(),
+        () => shaderPath,
+      );
+      (lockedProvider as any).activeShaders.add(shaderPath);
+
+      await lockedProvider.sendShaderFromEditor({
+        document: {
+          getText: () => computeSource,
+          uri: { fsPath: computePath },
+          fileName: computePath,
+          languageId: 'slang',
+          lineAt: () => ({ text: computeSource }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, computePath);
+      assert.strictEqual(sendSpy.firstCall.args[0].code, computeSource);
+      assert.strictEqual(sendSpy.firstCall.args[0].config, null);
+    });
+
+    test('keeps a configured Slang vertex cursor on its own source', async () => {
       const vertexPath = '/path/to/main.image.vert.slang';
-      const shaderSource = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
       const vertexSource = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
       const config = { version: '1.0', passes: { Image: { vertex: 'main.image.vert.slang' } } };
       const debugProvider = new ShaderProvider(mockMessenger, () => true, new ConfigChangeClassifier());
@@ -99,14 +180,6 @@ suite('ShaderProvider Test Suite', () => {
         buffers['__shader_studio_vertex__:Image'] = vertexSource;
         return config as any;
       });
-      sandbox.stub(debugProvider as any, 'readShaderSource').callsFake((filePath: unknown) => {
-        if (filePath === shaderPath) {
-          return shaderSource;
-        }
-        return null;
-      });
-      (debugProvider as any).activeShaders.add(shaderPath);
-
       await debugProvider.sendShaderFromEditor({
         document: {
           getText: () => vertexSource,
@@ -120,8 +193,8 @@ suite('ShaderProvider Test Suite', () => {
 
       const message = sendSpy.lastCall.args[0];
       assert.strictEqual(message.type, 'shaderSource');
-      assert.strictEqual(message.path, shaderPath);
-      assert.strictEqual(message.cursorPosition, undefined);
+      assert.strictEqual(message.path, vertexPath);
+      assert.strictEqual(message.cursorPosition?.filePath, vertexPath);
     });
 
     test('should clear persistent errors before processing', async () => {
@@ -712,28 +785,6 @@ suite('ShaderProvider Test Suite', () => {
       const result = (provider as any).buildBufferPathMap(null, '/path/to/shader.glsl');
       assert.deepStrictEqual(Object.keys(result), ['Image']);
       assert.strictEqual(result.Image, '/path/to/shader.glsl');
-    });
-  });
-
-  suite('resolveOwningShaderPass', () => {
-    test('routes compute pass changes back to their owning shader', () => {
-      (provider as any).activeShaders.add('/path/to/shader.slang');
-      loadAndProcessConfigStub.returns({
-        version: '1.0',
-        passes: {
-          Image: { inputs: {} },
-          BufferFlow: { path: 'flow.slang', inputs: {} },
-          ComputeSim: { path: 'sim.slang', inputs: {} },
-        }
-      });
-      sandbox.stub(PathResolver, 'resolvePath').callsFake((_shaderPath: string, targetPath: string) => {
-        return `/resolved/${targetPath}`;
-      });
-
-      const owner = (provider as any).resolveOwningShaderPass('/resolved/sim.slang');
-
-      assert.strictEqual(owner.shaderPath, '/path/to/shader.slang');
-      assert.strictEqual(owner.passName, 'ComputeSim');
     });
   });
 
