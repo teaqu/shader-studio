@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
   import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
+  import type { SlangSourceModule } from '@shader-studio/types';
   import { renderQueue } from '../stores/shaderStore';
   import { requestShaderCode, type ShaderLanguage } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
@@ -28,11 +29,13 @@
   let capturedImage: string = $state('');
   let compilationFailed: boolean = $state(false);
   let shaderCode: string = '';
+  let previewPath: string = shader.path;
   let shaderConfig: any = null;
   let shaderBuffers: Record<string, string> = {};
   let shaderLanguage: ShaderLanguage = 'glsl';
   let customUniformDeclarations: string | undefined;
   let customUniformInfo: { name: string; type: string }[] | undefined;
+  let slangModules: SlangSourceModule[] | undefined;
   let queueId: string = '';
   let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
   let prevWidth: number = 0;
@@ -167,11 +170,13 @@
       }
 
       shaderCode = response.code;
+      previewPath = response.previewPath ?? shader.path;
       shaderConfig = response.config || null;
       shaderBuffers = response.buffers;
       shaderLanguage = response.language;
       customUniformDeclarations = response.customUniformDeclarations;
       customUniformInfo = response.customUniformInfo;
+      slangModules = response.slangModules;
     } catch (err) {
       if (isCurrent()) {
         console.error('Failed to load shader code:', err);
@@ -214,10 +219,11 @@
       const result = await engine.compileShaderPipeline(
         shaderCode,
         shaderConfig,
-        shader.path,
+        previewPath,
         shaderBuffers,
         customUniformDeclarations,
         customUniformInfo,
+        slangModules,
       );
 
       if (!isCurrent() || ownership.isDisposed()) {
