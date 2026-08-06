@@ -16,13 +16,11 @@
     "ComputeInit": {
       "path": "init.slang",
       "dispatch": { "cover": "positions" },
-      "dispatchOnce": true,
-      "workgroupSize": [64, 1, 1]
+      "dispatchOnce": true
     },
     "ComputeSim": {
       "path": "sim.slang",
-      "dispatch": { "cover": "positions" },
-      "workgroupSize": [64, 1, 1]
+      "dispatch": { "cover": "positions" }
     },
     "Image": {
       "resolution": { "aspectRatio": "16:9" }

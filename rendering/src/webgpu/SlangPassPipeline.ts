@@ -394,7 +394,7 @@ export class SlangPassPipeline {
     for (const node of this.descriptor.storage ?? []) {
       entries.push({
         binding: storageBaseBinding + node.binding,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         buffer: { type: "read-only-storage" },
       });
     }

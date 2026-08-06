@@ -10,7 +10,6 @@ import type {
 import {
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
-  SLANG_ENTRY_COMPUTE,
 } from "../../webgpu/SlangPrelude";
 
 function findRealSlangAssets(): { script: string; wasm: string } | null {
@@ -225,7 +224,7 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float4 helper() { return 1; }");
   });
 
-  it("wraps compute source and links only the compute entry point", () => {
+  it("wraps native compute source and links only its declared entry point", () => {
     const onLoad = vi.fn();
     const onFindEntryPoint = vi.fn();
     const onComposite = vi.fn();
@@ -236,7 +235,9 @@ describe("SlangCompiler", () => {
     }));
 
     const result = compiler.compileImagePass(
-      "void computeMain(uint3 tid) { writeOutput(tid.xy, float4(1)); }",
+      `[shader("compute")]
+      [numthreads(4, 2, 1)]
+      void simulate(uint3 tid : SV_DispatchThreadID) { writeOutput(tid.xy, float4(1)); }`,
       {
         passName: "ComputeSim",
         passKind: "compute",
@@ -258,9 +259,7 @@ describe("SlangCompiler", () => {
 
     expect(result).toEqual({ success: true, wgsl: "// wgsl output" });
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain(`[shader("compute")]`);
-    expect(wrapped).toContain(`[numthreads(4, 2, 1)]`);
-    expect(wrapped).toContain(`void ${SLANG_ENTRY_COMPUTE}`);
+    expect(wrapped).toContain(`void simulate(uint3 tid : SV_DispatchThreadID)`);
     expect(wrapped).toContain("Texture2D<float4> iChannel2;");
     expect(wrapped).toContain("RWStructuredBuffer<Particle> particles;");
     expect(wrapped).toContain("WTexture2DArray<float4> _outTex;");
@@ -268,27 +267,27 @@ describe("SlangCompiler", () => {
     expect(wrapped).not.toContain(SLANG_ENTRY_VERTEX);
     expect(wrapped).not.toContain(SLANG_ENTRY_FRAGMENT);
     expect(onFindEntryPoint).toHaveBeenCalledTimes(1);
-    expect(onFindEntryPoint).toHaveBeenCalledWith(SLANG_ENTRY_COMPUTE);
+    expect(onFindEntryPoint).toHaveBeenCalledWith("simulate");
     expect(onComposite.mock.calls[0][0]).toHaveLength(2);
   });
 
-  it("uses compute wrapper defaults and emits no output when hasOutput is false", () => {
+  it("preserves native compute attributes and emits no output when hasOutput is false", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("void computeMain(uint3 tid) {}", {
+    compiler.compileImagePass(`[shader("compute")] [numthreads(8, 8, 1)] void clear(uint3 tid : SV_DispatchThreadID) {}`, {
       passKind: "compute",
       hasOutput: false,
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("[numthreads(8, 8, 1)]");
+    expect(wrapped).toContain("void clear(uint3 tid : SV_DispatchThreadID)");
     expect(wrapped).not.toContain("_outTex");
   });
 
-  it("reports a compute-specific error when the compute entry point is missing", () => {
+  it("rejects legacy compute sources without a native entry point", () => {
     const compiler = new SlangCompiler(
-      makeFakeSlang({ missingEntryPoint: SLANG_ENTRY_COMPUTE }),
+      makeFakeSlang(),
     );
 
     const result = compiler.compileImagePass("void computeMain(uint3 tid) {}", {
@@ -297,7 +296,7 @@ describe("SlangCompiler", () => {
 
     expect(result).toEqual({
       success: false,
-      errors: ["Slang: compute entry point not found (is `computeMain` defined?)"],
+      errors: ['Slang: compute source must declare a native `[shader("compute")]` entry point'],
     });
   });
 

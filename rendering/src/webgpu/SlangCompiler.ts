@@ -7,8 +7,7 @@ import {
 import {
   wrapSlangComputeSource,
   wrapSlangImageSource,
-  SLANG_ENTRY_COMPUTE,
-  getNativeComputeEntryPoint,
+  getNativeComputeEntryPoints,
   stripShaderStudioEditorImport,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
@@ -65,6 +64,16 @@ export class SlangCompiler {
     }
 
     const isCompute = options.passKind === "compute";
+    const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(userSource) : [];
+    const computeEntryPoint = options.entryPoint
+      ? nativeComputeEntryPoints.find(({ name }) => name === options.entryPoint)?.name
+      : nativeComputeEntryPoints.length === 1 ? nativeComputeEntryPoints[0]!.name : undefined;
+    if (isCompute && !computeEntryPoint) {
+      return {
+        success: false,
+        errors: ['Slang: compute source must declare a native `[shader("compute")]` entry point'],
+      };
+    }
     const wrapped = isCompute
       ? wrapSlangComputeSource(userSource, {
         passName: options.passName,
@@ -109,14 +118,14 @@ export class SlangCompiler {
     }
 
     const entryPointNames = isCompute
-      ? [options.entryPoint ?? getNativeComputeEntryPoint(userSource)?.name ?? SLANG_ENTRY_COMPUTE]
+      ? [computeEntryPoint!]
       : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
     const entryPoints = entryPointNames.map((name) => module.findEntryPointByName(name));
     if (entryPoints.some((entryPoint) => !entryPoint)) {
       return {
         success: false,
         errors: [isCompute
-          ? "Slang: compute entry point not found (is `computeMain` defined?)"
+          ? "Slang: configured native compute entry point was not found"
           : "Slang: entry points not found (is `mainImage` defined?)"],
       };
     }

@@ -8,6 +8,9 @@ import {
 } from "../../webgpu/SlangPassGraph";
 
 const imageCode = "float4 mainImage(float2 fragCoord) { return float4(0, 0, 0, 1); }";
+const computeCode = `[shader("compute")]
+[numthreads(8, 8, 1)]
+void computeKernel(uint3 id : SV_DispatchThreadID) {}`;
 
 describe("buildSlangPassGraph", () => {
   it("creates an Image pass when no config is provided", () => {
@@ -835,10 +838,15 @@ describe("file and input channels", () => {
 
 describe("Slang compute passes", () => {
   function build(config: ShaderConfig, buffers: Record<string, string> = {}) {
+    const computeBuffers = Object.fromEntries(
+      Object.entries(config.passes)
+        .filter(([name]) => name.startsWith("Compute"))
+        .map(([name]) => [name, buffers[name] === imageCode ? computeCode : buffers[name] ?? computeCode]),
+    );
     return buildSlangPassGraph({
       imageCode,
       config,
-      buffers,
+      buffers: { ...buffers, ...computeBuffers },
       canvasWidth: 320,
       canvasHeight: 180,
     });
@@ -945,7 +953,7 @@ describe("Slang compute passes", () => {
 
   it.each([
     [undefined, { mode: "texel" }, [8, 8, 1]],
-    [{ count: 1024 }, { mode: "count", count: 1024 }, [64, 1, 1]],
+    [{ count: 1024 }, { mode: "count", count: 1024 }, [8, 8, 1]],
     [{ x: 3, y: 4, z: 5 }, { mode: "workgroups", x: 3, y: 4, z: 5 }, [8, 8, 1]],
     [{ cover: "particles" }, { mode: "cover-storage", name: "particles" }, [8, 8, 1]],
     [{ cover: "iChannel3" }, { mode: "cover-channel", key: "iChannel3" }, [8, 8, 1]],
@@ -991,7 +999,7 @@ describe("Slang compute passes", () => {
     });
   });
 
-  it("uses the dispatch default instead of the legacy config workgroup size", () => {
+  it("uses the native entry point workgroup size instead of the legacy config workgroup size", () => {
     const graph = build({
       version: "1",
       passes: {
@@ -1011,7 +1019,7 @@ describe("Slang compute passes", () => {
       dispatch: { mode: "count", count: 8 },
       dispatchCount: 3,
       dispatchOnce: false,
-      workgroupSize: [64, 1, 1],
+      workgroupSize: [8, 8, 1],
     });
   });
 
@@ -1063,6 +1071,18 @@ describe("Slang compute passes", () => {
 
     expect(graph.errors).toEqual([]);
     expect(graph.passes[0]).toMatchObject({ entryPoint: "simulateKernel", workgroupSize: [64, 1, 1] });
+  });
+
+  it("rejects a compute source without a native annotated entry point", () => {
+    const graph = build({
+      version: "1",
+      passes: { Image: { inputs: {} }, ComputeMain: { path: "legacy.slang" } },
+    }, { ComputeMain: "void computeMain(uint3 id) {}" });
+
+    expect(graph.errors).toContain(
+      'ComputeMain: compute source must declare a native `[shader("compute")]` entry point',
+    );
+    expect(graph.passes.map(({ name }) => name)).toEqual(["Image"]);
   });
 
   it.each([
@@ -1127,7 +1147,7 @@ describe("Slang compute passes", () => {
   });
 
   it.each([[8, 8], [8, 8, 1, 1], [8, 0, 1], [8, 1.5, 1], [16, 16, 2]])(
-    "ignores legacy workgroupSize %j and uses the dispatch-mode default", (workgroupSize) => {
+    "ignores legacy workgroupSize %j and uses the native entry point size", (workgroupSize) => {
       const config = {
         version: "1",
         passes: {
@@ -1139,7 +1159,7 @@ describe("Slang compute passes", () => {
       const graph = build(config, { ComputeMain: imageCode });
 
       expect(graph.errors).toEqual([]);
-      expect(graph.passes[0].workgroupSize).toEqual([64, 1, 1]);
+      expect(graph.passes[0].workgroupSize).toEqual([8, 8, 1]);
     },
   );
 
@@ -1191,7 +1211,7 @@ describe("Slang compute passes", () => {
         Image: { inputs: {} },
         ComputeMain: { path: "compute.slang" },
       },
-    });
+    }, { ComputeMain: "" });
 
     expect(graph.errors).toContain('ComputeMain: Buffer file not found or is empty (path: "compute.slang")');
     expect(graph.passes.map(({ name }) => name)).toEqual(["Image"]);
@@ -1652,9 +1672,9 @@ describe("Slang pass references", () => {
       },
     }, {
       RenderEarly: imageCode,
-      ComputeEarly: imageCode,
+      ComputeEarly: computeCode,
       RenderLate: imageCode,
-      ComputeLate: imageCode,
+      ComputeLate: computeCode,
     });
 
     expect(graph.errors).toEqual([]);

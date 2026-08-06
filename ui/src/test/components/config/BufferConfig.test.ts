@@ -10,6 +10,14 @@ import {
   setOverlayActiveFile,
 } from '../../../lib/state/editorOverlayState.svelte';
 
+function getMainPathConfig(container: HTMLElement): HTMLElement {
+  const configItem = container.querySelector<HTMLElement>('.buffer-details > .config-item:first-child');
+  if (!configItem) {
+    throw new Error('Expected the main shader path configuration');
+  }
+  return configItem;
+}
+
 describe('BufferConfig', () => {
   it('opens the configured vertex shader in the editor overlay when its title is double-clicked', async () => {
     setEditorOverlayVisible(false);
@@ -92,7 +100,7 @@ describe('BufferConfig', () => {
     it('should show create file button when path is empty and postMessage provided', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
-      const { getByText, container } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -101,10 +109,10 @@ describe('BufferConfig', () => {
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      expect(getByText('Create')).toBeTruthy();
-      expect(container.querySelector('.create-file-btn')).toBeTruthy();
+      const mainPathConfig = getMainPathConfig(container);
+      expect(mainPathConfig.querySelector('.create-file-btn')).toBeTruthy();
       // Path input should also be visible alongside the create button
-      expect(container.querySelector('.config-input')).toBeTruthy();
+      expect(mainPathConfig.querySelector('.config-input')).toBeTruthy();
     });
 
     it('should not show create file button when path has a value', () => {
@@ -119,14 +127,14 @@ describe('BufferConfig', () => {
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      expect(container.querySelector('.create-file-btn')).toBeNull();
+      expect(getMainPathConfig(container).querySelector('.create-file-btn')).toBeNull();
       expect(getByDisplayValue('existing.glsl')).toBeTruthy();
     });
 
     it('should not show create file button for Image pass', () => {
       const config: ImagePass = { inputs: {} };
 
-      const { queryByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'Image',
         config,
         onUpdate: mockOnUpdate,
@@ -136,13 +144,13 @@ describe('BufferConfig', () => {
         suggestedPath: 'myshader.image.glsl'
       });
 
-      expect(queryByText(/Create/)).toBeNull();
+      expect(getMainPathConfig(container).querySelector('.create-file-btn')).toBeNull();
     });
 
     it('should call postMessage with createFile when create button is clicked', async () => {
       const config: BufferPass = { path: '', inputs: {} };
 
-      const { getByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -151,7 +159,7 @@ describe('BufferConfig', () => {
         suggestedPath: 'myshader.buffera.glsl'
       });
 
-      await fireEvent.click(getByText('Create'));
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('createFile');
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
@@ -174,7 +182,7 @@ describe('BufferConfig', () => {
     it('should show select button when postMessage is provided', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
-      const { getByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -182,7 +190,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      expect(getByText('Select')).toBeTruthy();
+      expect(getMainPathConfig(container).querySelector('.select-file-btn')).toBeTruthy();
     });
 
     it('should not show select button when postMessage is not provided', () => {
@@ -201,7 +209,7 @@ describe('BufferConfig', () => {
     it('should call postMessage with selectFile when select button is clicked', async () => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
 
-      const { getByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -209,7 +217,7 @@ describe('BufferConfig', () => {
         postMessage: mockPostMessage,
       });
 
-      await fireEvent.click(getByText('Select'));
+      await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
       expect(mockPostMessage).toHaveBeenCalledOnce();
       expect(mockPostMessage.mock.calls[0][0].type).toBe('selectFile');
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
@@ -218,7 +226,7 @@ describe('BufferConfig', () => {
     it('should request Slang compute files when selecting a compute pass source', async () => {
       const config: BufferPass = { path: 'existing.slang', inputs: {} };
 
-      const { getByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'ComputeA',
         config,
         onUpdate: mockOnUpdate,
@@ -229,7 +237,7 @@ describe('BufferConfig', () => {
         shaderPath: '/shaders/image.slang',
       });
 
-      await fireEvent.click(getByText('Select'));
+      await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
         type: 'selectFile',
@@ -244,7 +252,7 @@ describe('BufferConfig', () => {
     it('should request the suggested Slang path when creating a compute pass source', async () => {
       const config: BufferPass = { path: '', inputs: {} };
 
-      const { getByText, getByLabelText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'ComputeA',
         config,
         onUpdate: mockOnUpdate,
@@ -256,8 +264,9 @@ describe('BufferConfig', () => {
         suggestedPath: 'image.computea.slang',
       });
 
-      expect(getByLabelText('Path:')).toHaveAttribute('placeholder', 'image.computea.slang');
-      await fireEvent.click(getByText('Create'));
+      const mainPathConfig = getMainPathConfig(container);
+      expect(mainPathConfig.querySelector('.config-input')).toHaveAttribute('placeholder', 'image.computea.slang');
+      await fireEvent.click(mainPathConfig.querySelector('.create-file-btn')!);
 
       expect(mockPostMessage).toHaveBeenCalledWith({
         type: 'createFile',
@@ -275,7 +284,7 @@ describe('BufferConfig', () => {
       { language: 'slang' as const, passKind: 'render' as const },
     ])('should preserve GLSL buffer selection for $language $passKind passes', async ({ language, passKind }) => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
-      const { getByText } = render(BufferConfig, {
+      const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
         config,
         onUpdate: mockOnUpdate,
@@ -285,7 +294,7 @@ describe('BufferConfig', () => {
         passKind,
       });
 
-      await fireEvent.click(getByText('Select'));
+      await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
 
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
@@ -330,6 +339,17 @@ describe('BufferConfig', () => {
       expect(select.value).toBe('fullscreen');
       await fireEvent.change(select, { target: { value: 'sphere' } });
       expect(mockOnUpdate).toHaveBeenCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' } });
+    });
+
+    it('shows the vertex shader control for implicit fullscreen passes', () => {
+      const { getByRole } = render(BufferConfig, {
+        bufferName: 'BufferA',
+        config: { path: 'a.glsl', inputs: {} },
+        onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri,
+      });
+
+      expect(getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
     });
 
     it('does not show geometry controls for Common', () => {
@@ -564,7 +584,7 @@ describe('BufferConfig', () => {
         isImagePass: true,
       });
 
-      const pathInput = container.querySelector('.config-input');
+      const pathInput = container.querySelector('.buffer-details > .config-item:first-child .config-input');
       expect(pathInput).toBeNull();
     });
 

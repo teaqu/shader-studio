@@ -105,6 +105,8 @@ export class FileDialogHandler {
           template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
           template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n    // Deform position, normal, or UV before Shader Studio projects this pass.\n}\n`;
+        } else if (payload.fileType === 'slang-compute') {
+          template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n    // Guard dispatchThreadID before indexing storage or writing output.\n}\n`;
         } else {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }

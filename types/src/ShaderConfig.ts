@@ -125,6 +125,7 @@ export interface ComputePass {
     dispatch?: ComputeDispatch;
     dispatchCount?: number;
     dispatchOnce?: boolean;
+    /** @deprecated Define the workgroup size with the shader's `[numthreads(...)]` attribute. */
     workgroupSize?: [number, number, number];
     /** Named native `[shader("compute")]` entrypoint in this pass source. */
     entryPoint?: string;

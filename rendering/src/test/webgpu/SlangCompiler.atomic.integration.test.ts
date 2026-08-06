@@ -53,7 +53,9 @@ describe.runIf(hasBundledSlangWasm)("SlangCompiler atomic storage with bundled s
   it("compiles compute atomic writes and fragment scalar reads of the same storage", () => {
     const compiler = new SlangCompiler(slang);
     const computeWgsl = compiledWgsl(compiler.compileImagePass(
-      "void computeMain(uint3 id) { uint previous = counters[0].add(1u); }",
+      `[shader("compute")]
+      [numthreads(1, 1, 1)]
+      void incrementCounter(uint3 id : SV_DispatchThreadID) { uint previous = counters[0].add(1u); }`,
       {
         passName: "ComputeAtomic",
         passKind: "compute",
@@ -74,6 +76,21 @@ describe.runIf(hasBundledSlangWasm)("SlangCompiler atomic storage with bundled s
     expect(computeWgsl).toContain("atomicAdd");
     expect(fragmentWgsl).toMatch(/var<storage, read> counters_\d+ : array<u32>/);
     expect(fragmentWgsl).not.toContain("atomic<u32>");
+  });
+
+  it("compiles a fullscreen vertex hook that reads render storage", () => {
+    const compiler = new SlangCompiler(slang);
+    const result = compiler.compileImagePass(
+      "float4 mainImage(float2 coord) { return float4(coord, 0.0, 1.0); }",
+      {
+        passName: "Image",
+        passKind: "render",
+        storage: [coverageItems],
+        vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.xy += coverageItems[0].xx; }",
+      },
+    );
+
+    expect(result.success ? result.wgsl : result.errors.join("\n")).toContain("fn vertexMain");
   });
 
   it("emits the selected native compute entry point for a multi-entry source", () => {

@@ -2033,7 +2033,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         hasOutput: pass.output === "texture",
         outputLayers: pass.outputLayers,
         workgroupSize: pass.workgroupSize,
-        entryPoint: pass.entryPoint,
+        entryPoint: pass.entryPoint!,
         dispatchCount: pass.dispatchCount,
         channels,
         storage,

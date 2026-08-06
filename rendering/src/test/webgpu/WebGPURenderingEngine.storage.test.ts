@@ -137,7 +137,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     );
   });
 
-  it("draws a storage-only fragment pass with a read-only layout and complete bind group", async () => {
+  it("draws a storage-only render pass with a vertex-and-fragment read-only layout and complete bind group", async () => {
     const { engine, device } = engineHarness();
     const renderPass = enableRendering(engine, device);
     await engine.compileShaderPipeline(
@@ -158,7 +158,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       },
       {
         binding: 1,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         buffer: { type: "read-only-storage" },
       },
     ]);

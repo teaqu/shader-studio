@@ -130,7 +130,6 @@ function findRootEntry(rootFile: SlangWorkspaceFile): { kind: "render" | "comput
 
   const computeCandidates = callables.filter((callable) =>
     callable.returnTypeName === "void" && (
-      (callable.name === "computeMain" && callable.parameters.length === 1 && callable.parameters[0]?.typeName === "uint3") ||
       callable.attributes.some((attribute) => /^shader\s*\(\s*[\"']compute[\"']\s*\)$/i.test(attribute))
     ),
   );

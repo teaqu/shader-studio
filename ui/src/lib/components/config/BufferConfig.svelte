@@ -486,20 +486,18 @@
           <option value="sphere">Sphere</option>
         </select>
       </div>
-      {#if config.geometry?.type && config.geometry.type !== 'fullscreen'}
-        <div class="config-item">
-          <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
-          <PathInput
-            value={config.vertex ?? ""}
-            onPathChange={handleVertexPathChange}
-            fileType={vertexFileType}
-            suggestedPath={vertexSuggestedPath}
-            {shaderPath}
-            {postMessage}
-            {onMessage}
-          />
-        </div>
-      {/if}
+      <div class="config-item">
+        <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
+        <PathInput
+          value={config.vertex ?? ""}
+          onPathChange={handleVertexPathChange}
+          fileType={vertexFileType}
+          suggestedPath={vertexSuggestedPath}
+          {shaderPath}
+          {postMessage}
+          {onMessage}
+        />
+      </div>
     {/if}
   </div>
 </div>

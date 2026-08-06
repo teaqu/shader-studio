@@ -8,7 +8,9 @@ float3 sourceColor(float2 uv)
         + disc * float3(0.1, 0.7, 1.4);
 }
 
-void computeMain(uint3 tid)
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void blur(uint3 tid : SV_DispatchThreadID)
 {
     uint2 size = uint2(iResolution.xy);
     if (tid.x >= size.x || tid.y >= size.y)

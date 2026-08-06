@@ -16,14 +16,12 @@
     "ComputeInit": {
       "path": "init.slang",
       "dispatch": { "cover": "laneA" },
-      "dispatchOnce": true,
-      "workgroupSize": [64, 1, 1]
+      "dispatchOnce": true
     },
     "ComputeSubsteps": {
       "path": "substep.slang",
       "dispatch": { "cover": "laneA" },
-      "dispatchCount": 6,
-      "workgroupSize": [64, 1, 1]
+      "dispatchCount": 6
     },
     "Image": {
       "resolution": { "aspectRatio": "16:9" }

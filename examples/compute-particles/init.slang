@@ -1,4 +1,6 @@
-void computeMain(uint3 tid)
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void initializeParticles(uint3 tid : SV_DispatchThreadID)
 {
     uint index = tid.x;
     if (index >= PARTICLE_COUNT)

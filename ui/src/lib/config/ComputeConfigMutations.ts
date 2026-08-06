@@ -31,7 +31,6 @@ export function validateComputePass(
   if (workgroup?.some((value) => !isPositiveInteger(value))) {
     errors.workgroupSize = 'Workgroup dimensions must be positive integers';
   }
-
   if (pass.dispatchCount !== undefined && (
     !isPositiveInteger(pass.dispatchCount) || pass.dispatchCount > MAX_DISPATCH_COUNT
   )) {

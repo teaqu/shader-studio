@@ -342,7 +342,7 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(content.includes('mainImage'));
     });
 
-    test('creates a Slang compute source with the suggested path and computeMain template', async () => {
+    test('creates a Slang compute source with a native compute entrypoint template', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(false);
       const writeStub = sandbox.stub(fs, 'writeFileSync');
@@ -363,7 +363,9 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(showSaveStub.firstCall.args[0]!.defaultUri!.fsPath, savedUri.fsPath);
       assert.ok(writeStub.calledOnce);
       const content: string = writeStub.firstCall.args[1];
-      assert.ok(content.includes('void computeMain(uint3 dispatchThreadID)'));
+      assert.ok(content.includes('[shader("compute")]'));
+      assert.ok(content.includes('[numthreads(8, 8, 1)]'));
+      assert.ok(content.includes('void compute(uint3 dispatchThreadID : SV_DispatchThreadID)'));
       assert.ok(!content.includes('mainImage'));
       assert.strictEqual(respondFn.firstCall.args[0].payload.path, './image.computea.slang');
     });

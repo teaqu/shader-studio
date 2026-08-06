@@ -30,7 +30,7 @@ describe('compute config mutations', () => {
       }), 'ComputeSim', pass)).toEqual({});
     });
 
-    it('leaves device-specific workgroup capacity to the rendering engine', () => {
+    it('leaves deprecated workgroup capacity to the rendering engine', () => {
       expect(validateComputePass(config(), 'ComputeSim', {
         path: 'sim.slang', workgroupSize: [16, 16, 2],
       })).toEqual({});

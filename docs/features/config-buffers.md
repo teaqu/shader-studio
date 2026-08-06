@@ -72,7 +72,7 @@ If the file doesn't exist yet, the editor shows a **Create File** button that ge
 
 ## Compute Passes
 
-For a Slang shader, a pass name beginning with `Compute` selects the WebGPU compute pipeline. The **+ Compute** action adds a pass entry; give it a `.slang` path and create that file with a `computeMain` function. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, `workgroupSize`, and `outputLayers` are currently edited in the raw `.sha.json` view.
+For a Slang shader, a pass name beginning with `Compute` selects the WebGPU compute pipeline. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
 
 See [Compute Passes](compute.md) for the authoring convention, storage layout rules, and executable examples.
 

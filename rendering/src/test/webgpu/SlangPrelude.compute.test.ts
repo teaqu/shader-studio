@@ -5,10 +5,13 @@ import {
   getNativeComputeWorkgroupSize,
   getNativeComputeEntryPoint,
   getNativeComputeEntryPoints,
-  SLANG_ENTRY_COMPUTE,
   wrapSlangComputeSource,
   wrapSlangImageSource,
 } from "../../webgpu/SlangPrelude";
+
+const computeSource = `[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeKernel(uint3 tid : SV_DispatchThreadID) {}`;
 
 const builtinStorage: StorageBindingNode = {
   name: "positions",
@@ -51,22 +54,20 @@ describe("wrapSlangComputeSource", () => {
       { name: 'draw', workgroupSize: [8, 8, 1] },
     ]);
   });
-  it("generates the configured compute entry point", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+  it("does not generate an entry point for a legacy compute function", () => {
+    const source = "void computeMain(uint3 tid) {}";
+    const wrapped = wrapSlangComputeSource(source, {
       workgroupSize: [8, 4, 2],
       outputLayers: 0,
       hasOutput: false,
     });
 
-    expect(SLANG_ENTRY_COMPUTE).toBe("computeMainEntry");
-    expect(wrapped).toContain('[shader("compute")]');
-    expect(wrapped).toContain("[numthreads(8, 4, 2)]");
-    expect(wrapped).toContain("void computeMainEntry(uint3 tid : SV_DispatchThreadID)");
-    expect(wrapped).toContain("computeMain(tid);");
+    expect(wrapped).toContain(source);
+    expect(wrapped).not.toContain("computeMainEntry");
   });
 
   it("allocates channel, storage, output, and dispatch bindings without conflicts", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [
         { slot: 2, key: "iChannel2" },
         { slot: 0, key: "iChannel0" },
@@ -93,7 +94,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("places one storage binding before output and dispatch with no channels", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       storage: [builtinStorage],
       workgroupSize: [1, 1, 1],
       outputLayers: 1,
@@ -108,7 +109,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("declares the sixteen-byte dispatch uniform and iDispatch macro", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       workgroupSize: [1, 1, 1],
       outputLayers: 0,
       hasOutput: false,
@@ -122,7 +123,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("does not declare writeOutput or an output texture when output is disabled", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       workgroupSize: [1, 1, 1],
       outputLayers: 0,
       hasOutput: false,
@@ -134,7 +135,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("emits a Y-flipped, bounds-checked 2D output helper", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       workgroupSize: [1, 1, 1],
       outputLayers: 1,
       hasOutput: true,
@@ -151,7 +152,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("emits a Y-flipped, bounds-checked array output helper", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       workgroupSize: [1, 1, 1],
       outputLayers: 3,
       hasOutput: true,
@@ -170,7 +171,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("keeps built-in storage before common code and custom storage after it", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       commonCode: "struct Particle { float4 position; };",
       storage: [builtinStorage, customStorage],
       workgroupSize: [1, 1, 1],
@@ -187,7 +188,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("uses explicit LOD for 2D texture and buffer channels in compute helpers", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [
         { slot: 1, key: "bufferChannel", kind: "buffer" },
         { slot: 0, key: "textureChannel", kind: "texture" },
@@ -207,7 +208,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("uses explicit LOD for cubemap channels in compute helpers", () => {
-    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+    const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [{ slot: 0, key: "cubeChannel", kind: "cubemap" }],
       workgroupSize: [1, 1, 1],
       outputLayers: 0,
@@ -234,7 +235,7 @@ describe("wrapSlangComputeSource", () => {
   });
 
   it("puts #line directly above user source and the entry point after it", () => {
-    const source = "void computeMain(uint3 tid) { int value = iDispatch; }";
+    const source = `[shader("compute")]\n[numthreads(1, 1, 1)]\nvoid dispatchKernel(uint3 tid : SV_DispatchThreadID) { int value = iDispatch; }`;
     const wrapped = wrapSlangComputeSource(source, {
       workgroupSize: [1, 1, 1],
       outputLayers: 0,
@@ -242,6 +243,6 @@ describe("wrapSlangComputeSource", () => {
     });
 
     expect(wrapped).toContain(`#line 1\n${source}`);
-    expect(wrapped.indexOf(source)).toBeLessThan(wrapped.indexOf("void computeMainEntry"));
+    expect(wrapped).not.toContain("computeMainEntry");
   });
 });

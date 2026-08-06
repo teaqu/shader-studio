@@ -1,7 +1,9 @@
 static const uint BODY_COUNT = 256;
 static const float TAU = 6.28318530718;
 
-void computeMain(uint3 tid)
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void initializeBodies(uint3 tid : SV_DispatchThreadID)
 {
     uint index = tid.x;
     if (index >= BODY_COUNT)

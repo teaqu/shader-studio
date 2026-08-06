@@ -157,7 +157,7 @@
         },
         "workgroupSize": {
           "type": "array",
-          "description": "Compute workgroup dimensions",
+          "description": "Deprecated: define workgroup dimensions with [numthreads(...)] in the shader",
           "items": {
             "$ref": "#/definitions/PositiveInteger"
           },

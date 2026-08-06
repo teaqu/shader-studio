@@ -1,7 +1,9 @@
 static const uint BODY_COUNT = 256;
 static const int SUBSTEP_COUNT = 6;
 
-void computeMain(uint3 tid)
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void simulateSubstep(uint3 tid : SV_DispatchThreadID)
 {
     uint index = tid.x;
     if (index >= BODY_COUNT)

@@ -8,7 +8,7 @@ import type {
   StorageBindingNode,
 } from "../types/PassGraph";
 import { assignInputSlots } from "../util/InputSlotAssigner";
-import { getNativeComputeEntryPoints, SLANG_ENTRY_COMPUTE } from "./SlangPrelude";
+import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { resolvePassGeometry } from "../types/Geometry";
 
 export type {
@@ -141,10 +141,15 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       const nativeEntryPoint = requestedEntryPoint
         ? nativeEntries.find(({ name }) => name === requestedEntryPoint)
         : nativeEntries.length === 1 ? nativeEntries[0] : undefined;
-      if (requestedEntryPoint && !nativeEntryPoint) {
-        errors.push(`${name}: entry point "${requestedEntryPoint}" was not found in its compute source`);
-      } else if (!requestedEntryPoint && nativeEntries.length > 1) {
-        errors.push(`${name}: compute source has multiple entry points; select one in the config UI`);
+      if (!nativeEntryPoint) {
+        if (requestedEntryPoint) {
+          errors.push(`${name}: entry point "${requestedEntryPoint}" was not found in its compute source`);
+        } else if (nativeEntries.length > 1) {
+          errors.push(`${name}: compute source has multiple entry points; select one in the config UI`);
+        } else {
+          errors.push(`${name}: compute source must declare a native \`[shader("compute")]\` entry point`);
+        }
+        continue;
       }
       const dispatchCount = resolveDispatchCount(name, computeConfig.dispatchCount, errors);
       const dispatchOnce = resolveDispatchOnce(name, computeConfig.dispatchOnce, errors);
@@ -170,7 +175,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
           options.computeWorkgroupLimits ?? PORTABLE_COMPUTE_WORKGROUP_LIMITS,
           errors,
         ),
-        entryPoint: nativeEntryPoint?.name ?? SLANG_ENTRY_COMPUTE,
+        entryPoint: nativeEntryPoint.name,
         width: resolution.width,
         height: resolution.height,
         channels,

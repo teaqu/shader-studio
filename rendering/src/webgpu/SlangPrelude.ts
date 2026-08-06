@@ -18,7 +18,6 @@ import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragment
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
-export const SLANG_ENTRY_COMPUTE = "computeMainEntry";
 
 const SHADER_STUDIO_EDITOR_IMPORT = /^(\s*)(?:__exported\s+)?import\s+(?:shader_studio|"shader-studio(?:\.slang)?")\s*;[^\r\n]*$/gm;
 
@@ -513,17 +512,6 @@ ConstantBuffer<DispatchUniforms> _dsp;
 `;
 }
 
-function buildComputeEntryPoint(workgroupSize: [number, number, number]): string {
-  const [x, y, z] = workgroupSize;
-  return `[shader("compute")]
-[numthreads(${x}, ${y}, ${z})]
-void ${SLANG_ENTRY_COMPUTE}(uint3 tid : SV_DispatchThreadID)
-{
-    computeMain(tid);
-}
-`;
-}
-
 /** Returns a shader-owned compute entrypoint annotated with stage and workgroup metadata. */
 export function getNativeComputeEntryPoint(source: string): { name: string; workgroupSize: [number, number, number] } | null {
   return getNativeComputeEntryPoints(source)[0] ?? null;
@@ -562,7 +550,5 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
-  const entryPoint = getNativeComputeEntryPoint(strippedUserSource) ? "" : buildComputeEntryPoint(options.workgroupSize);
-
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${strippedUserSource}\n${entryPoint}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${strippedUserSource}`;
 }

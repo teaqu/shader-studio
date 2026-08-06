@@ -274,7 +274,7 @@ describe("SlangPassPipeline", () => {
     });
   });
 
-  it("places read-only fragment storage at its exact binding after slot-sorted channel pairs", async () => {
+  it("places read-only render storage at its exact binding after slot-sorted channel pairs", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "Image",
@@ -292,18 +292,18 @@ describe("SlangPassPipeline", () => {
     expect(entries.slice(3)).toEqual([
       {
         binding: 3,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         buffer: { type: "read-only-storage" },
       },
       {
         binding: 4,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         buffer: { type: "read-only-storage" },
       },
     ]);
   });
 
-  it("keeps direct atomic storage bindings read-only in fragment pipelines", async () => {
+  it("keeps direct atomic storage bindings read-only in render pipelines", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "Image",
@@ -323,7 +323,7 @@ describe("SlangPassPipeline", () => {
 
     expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)).toEqual({
       binding: 1,
-      visibility: GPUShaderStage.FRAGMENT,
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
       buffer: { type: "read-only-storage" },
     });
   });

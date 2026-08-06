@@ -98,7 +98,7 @@ describe("planSlangInstrumentation", () => {
     expect(output.indexOf("_ssdbg_defa1234_executed = true;")).toBeLessThan(output.indexOf("return float4(col, 1.0);"));
   });
 
-  it("declines legacy compute variable inspection without modifying the shader", () => {
+  it("does not recognize a legacy compute function as an entry point", () => {
     const source = [
       "void computeMain(uint3 id)",
       "{",
@@ -122,7 +122,7 @@ describe("planSlangInstrumentation", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      diagnostics: [{ message: "Compute variable inspection is not available yet. Your shader will continue running normally." }],
+      diagnostics: [{ message: "The Slang workspace root has no mainImage or supported compute entry function." }],
     });
   });
 

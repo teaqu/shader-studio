@@ -8,7 +8,6 @@ import { BUFFER_TEXTURE_FORMAT } from "../../webgpu/SlangPassPipeline";
 import {
   DISPATCH_UNIFORM_SIZE,
   SHADERTOY_UNIFORM_SIZE,
-  SLANG_ENTRY_COMPUTE,
 } from "../../webgpu/SlangPrelude";
 
 interface FakeBuffer {
@@ -117,6 +116,7 @@ function descriptor(
     hasOutput: true,
     outputLayers: 1,
     workgroupSize: [8, 8, 1],
+    entryPoint: "computeKernel",
     dispatchCount: 1,
     channels: [],
     storage: [],
@@ -164,7 +164,7 @@ describe("SlangComputePipeline", () => {
       layout: device.createPipelineLayout.mock.results[0].value,
       compute: {
         module: device.createShaderModule.mock.results[0].value,
-        entryPoint: SLANG_ENTRY_COMPUTE,
+        entryPoint: "computeKernel",
       },
     });
     expect(compute.getPipeline()).toBe(device.createComputePipeline.mock.results[0].value);

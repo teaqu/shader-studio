@@ -4,11 +4,7 @@ import {
   BUFFER_TEXTURE_FORMAT,
   type SlangChannelResource,
 } from "./SlangPassPipeline";
-import {
-  DISPATCH_UNIFORM_SIZE,
-  SHADERTOY_UNIFORM_SIZE,
-  SLANG_ENTRY_COMPUTE,
-} from "./SlangPrelude";
+import { DISPATCH_UNIFORM_SIZE, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
 
 export interface SlangComputePipelineDescriptor {
   name: string;
@@ -17,7 +13,7 @@ export interface SlangComputePipelineDescriptor {
   hasOutput: boolean;
   outputLayers: number;
   workgroupSize: [number, number, number];
-  entryPoint?: string;
+  entryPoint: string;
   dispatchCount: number;
   channels: Array<{ slot: number; key: string; kind?: string }>;
   storage: StorageBindingNode[];
@@ -63,7 +59,7 @@ export class SlangComputePipeline {
       }),
       compute: {
         module: shaderModule,
-        entryPoint: this.descriptor.entryPoint ?? SLANG_ENTRY_COMPUTE,
+        entryPoint: this.descriptor.entryPoint,
       },
     };
 
