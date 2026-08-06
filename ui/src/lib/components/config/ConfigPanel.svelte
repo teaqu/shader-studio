@@ -721,7 +721,7 @@
                 role="menuitem"
                 aria-label="Add compute pass"
                 onclick={() => runAddMenuAction(addComputePass)}
-              >+ Compute</button>
+              >Compute</button>
             {/if}
             {#if !config?.passes?.common}
               <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addCommonBuffer)}>Common</button>

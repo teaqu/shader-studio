@@ -106,6 +106,34 @@ describe("ShaderCompiler", () => {
       expect(vertexSource.indexOf("mainVertex(_vertexPosition")).toBeGreaterThan(vertexSource.indexOf("void mainVertex"));
     });
 
+    it("provides configured channels and explicit-LOD helpers to vertex hooks", () => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        slotAssignments: [{ slot: 3, key: "iChannel3", isCustomName: false }],
+        channelTypes: ["2D", "2D", "2D", "2D"],
+        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
+      });
+
+      expect(vertexSource).toContain("uniform sampler2D iChannel3;");
+      expect(vertexSource).toContain("uniform float iChannelTime[4];");
+      expect(vertexSource).toContain("} iCh3;");
+      expect(vertexSource).toContain("vec4 sampleIChannel3(vec2 uv)");
+      expect(vertexSource).toContain("return textureLod(iChannel3, uv, 0.0);");
+      expect(vertexSource).toContain("mainVertex(_vertexPosition, _vertexNormal, _vertexUv);");
+    });
+
+    it("provides explicit-LOD cubemap and custom-name helpers to vertex hooks", () => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        slotAssignments: [{ slot: 1, key: "environment", isCustomName: true }],
+        channelTypes: ["2D", "Cube", "2D", "2D"],
+        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += sampleEnvironment(normal).xyz; }",
+      });
+
+      expect(vertexSource).toContain("uniform samplerCube environment;");
+      expect(vertexSource).toContain("vec4 sampleIChannel1(vec3 dir)");
+      expect(vertexSource).toContain("return textureLod(iChannel1, dir, 0.0);");
+      expect(vertexSource).toContain("vec4 sampleEnvironment(vec3 dir)");
+    });
+
     it("keeps fullscreen coordinates and provides deterministic zero mesh compatibility values", () => {
       const code = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         fragColor = vec4(iWorldPosition + iNormal + iCameraPosition, 1.0);

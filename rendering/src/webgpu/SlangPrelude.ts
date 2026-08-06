@@ -138,8 +138,27 @@ ConstantBuffer<MeshUniforms> _mesh;
 `;
 }
 
-function buildMeshEntryPoints(vertexCode: string): string {
-  return `${vertexCode}
+function buildVertexChannelAliases(channels: SlangChannelBinding[]): { define: string; undef: string } {
+  const aliases = [...channels]
+    .sort((a, b) => a.slot - b.slot)
+    .flatMap((channel) => {
+      const helperName = `sampleIChannel${channel.slot}`;
+      const customHelperName = channel.key === `iChannel${channel.slot}`
+        ? null
+        : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
+      return [helperName, customHelperName].filter((name): name is string => name !== null);
+    });
+
+  return {
+    define: aliases.map((name) => `#define ${name} ${name}Vertex`).join("\n"),
+    undef: aliases.map((name) => `#undef ${name}`).join("\n"),
+  };
+}
+
+function buildMeshEntryPoints(vertexCode: string, vertexChannelAliases: { define: string; undef: string }): string {
+  return `${vertexChannelAliases.define}
+${vertexCode}
+${vertexChannelAliases.undef}
 struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
 [shader("vertex")]
 MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0) { mainVertex(position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
@@ -154,9 +173,13 @@ float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
 `;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): string {
-  if (!vertexCode.trim()) return ENTRY_POINTS;
-  return `${vertexCode}
+function buildFullscreenEntryPoints(vertexCode: string, vertexChannelAliases: { define: string; undef: string }): string {
+  if (!vertexCode.trim()) {
+    return ENTRY_POINTS;
+  }
+  return `${vertexChannelAliases.define}
+${vertexCode}
+${vertexChannelAliases.undef}
 [shader("vertex")]
 float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(position, normal, uv); return float4(position, 1); }
 [shader("fragment")]
@@ -354,9 +377,17 @@ float4 ${helperName}(float3 dir)
 {
     return ${channel.key}.${sampleMethod}(${channel.key}Sampler, dir${explicitLod});
 }
+float4 ${helperName}Vertex(float3 dir)
+{
+    return ${channel.key}.SampleLevel(${channel.key}Sampler, dir, 0.0);
+}
 ${customHelperName ? `float4 ${customHelperName}(float3 dir)
 {
     return ${helperName}(dir);
+}
+float4 ${customHelperName}Vertex(float3 dir)
+{
+    return ${helperName}Vertex(dir);
 }
 ` : ""}${objectAccessor}
 `;
@@ -372,9 +403,17 @@ float4 ${helperName}(float2 uv)
     // the texel the caller expects.
     return ${channel.key}.${sampleMethod}(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y)${explicitLod});
 }
+float4 ${helperName}Vertex(float2 uv)
+{
+    return ${channel.key}.SampleLevel(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), 0.0);
+}
 ${customHelperName ? `float4 ${customHelperName}(float2 uv)
 {
     return ${helperName}(uv);
+}
+float4 ${customHelperName}Vertex(float2 uv)
+{
+    return ${helperName}Vertex(uv);
 }
 ` : ""}${objectAccessor}
 `;
@@ -451,11 +490,12 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
   const vertexCode = options.vertexCode?.trim() ?? "";
+  const vertexChannelAliases = buildVertexChannelAliases(options.channels ?? []);
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}", vertexChannelAliases)}`;
   }
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode, vertexChannelAliases)}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number): string {

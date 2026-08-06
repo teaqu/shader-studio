@@ -134,7 +134,7 @@ uniform struct {
     const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
     const headerLineCount = (header.match(/\n/g) || []).length;
     return {
-      vertexSource: this.buildVertexSource(mesh, options.vertexCode),
+      vertexSource: this.buildVertexSource(mesh, options),
       wrappedCode: shaderCode,
       headerLineCount,
       commonCodeLineCount,
@@ -472,16 +472,19 @@ uniform struct {
     };
   }
 
-  private buildVertexSource(mesh: boolean, vertexCode?: string): string {
-    const hasHook = Boolean(vertexCode?.trim());
+  private buildVertexSource(mesh: boolean, options: ShaderWrapOptions): string {
+    const hasHook = Boolean(options.vertexCode?.trim());
     if (!hasHook && !mesh) {
       return "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
     }
-    const hook = hasHook ? `${vertexCode}\n` : "";
+    const hook = hasHook ? `${options.vertexCode}\n` : "";
+    const vertexUniforms = hasHook ? this.buildVertexUniformDeclarations(options) : "";
+    const channelHelpers = hasHook
+      ? this.buildVertexChannelHelpers(options.slotAssignments, options.channelTypes)
+      : "";
     if (!mesh) {
       return `in vec2 position;
-uniform float iTime;
-uniform vec3 iResolution;
+${vertexUniforms}${channelHelpers}
 ${hook}
 void main() {
  vec3 _vertexPosition = vec3(position, 0.0);
@@ -498,8 +501,7 @@ uniform mat4 _meshModel;
 uniform mat4 _meshView;
 uniform mat4 _meshProjection;
 uniform mat3 _meshNormalMatrix;
-uniform float iTime;
-uniform vec3 iResolution;
+${vertexUniforms}${channelHelpers}
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out vec3 ${MESH_FRAGMENT_CONTEXT.normal};
@@ -515,6 +517,84 @@ void main() {
  ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
  ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;
 }`;
+  }
+
+  private buildVertexUniformDeclarations(options: ShaderWrapOptions): string {
+    const types = options.channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
+    return `uniform vec3 iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform float iFrameRate;
+${channelDeclarations}uniform vec4 iMouse;
+uniform int iFrame;
+uniform vec4 iDate;
+uniform float iChannelTime[4];
+uniform float iSampleRate;
+uniform vec3 iCameraPos;
+uniform vec3 iCameraDir;
+${this.buildChannelMetadataDeclarations(types)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
+  }
+
+  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
+    const types = channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelCount = !slotAssignments || slotAssignments.length === 0
+      ? 4
+      : Math.max(4, slotAssignments.length);
+    let helpers = "";
+    for (let slot = 0; slot < channelCount; slot++) {
+      const type = types[slot] || '2D';
+      const coordinateType = type === '2D' ? 'vec2' : 'vec3';
+      const coordinateName = type === '2D' ? 'uv' : 'dir';
+      helpers += `vec4 sampleIChannel${slot}(${coordinateType} ${coordinateName})
+{
+    return textureLod(iChannel${slot}, ${coordinateName}, 0.0);
+}
+`;
+    }
+    for (const { slot, key, isCustomName } of slotAssignments ?? []) {
+      if (!isCustomName) {
+        continue;
+      }
+      const type = types[slot] || '2D';
+      const coordinateType = type === '2D' ? 'vec2' : 'vec3';
+      const coordinateName = type === '2D' ? 'uv' : 'dir';
+      const helperName = `sample${key[0].toUpperCase()}${key.slice(1)}`;
+      helpers += `vec4 ${helperName}(${coordinateType} ${coordinateName})
+{
+    return textureLod(${key}, ${coordinateName}, 0.0);
+}
+`;
+    }
+    return helpers;
+  }
+
+  private buildChannelMetadataDeclarations(types: ChannelSamplerType[]): string {
+    return `uniform struct {
+  ${this.getSamplerType(types[0])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh0;
+uniform struct {
+  ${this.getSamplerType(types[1])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh1;
+uniform struct {
+  ${this.getSamplerType(types[2])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh2;
+uniform struct {
+  ${this.getSamplerType(types[3])} sampler;
+  vec3 size;
+  float time;
+  int loaded;
+} iCh3;
+`;
   }
 
   private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {

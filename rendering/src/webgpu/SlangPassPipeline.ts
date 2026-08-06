@@ -381,12 +381,12 @@ export class SlangPassPipeline {
       }
       entries.push({
         binding: 1 + index * 2,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         texture: textureEntry,
       });
       entries.push({
         binding: 2 + index * 2,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
         sampler: { type: "filtering" },
       });
     }

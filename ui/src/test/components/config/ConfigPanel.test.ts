@@ -702,12 +702,14 @@ describe('ConfigPanel', () => {
     }
 
     it('shows the add-compute affordance for Slang', async () => {
-      const { getByRole } = renderPanel('slang');
+      const { getByRole, getByText, queryByText } = renderPanel('slang');
 
       await tick();
       await fireEvent.click(getByRole('button', { name: '+ New' }));
 
       expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
+      expect(getByText('Compute')).toBeInTheDocument();
+      expect(queryByText('+ Compute')).not.toBeInTheDocument();
     });
 
     it('hides the add-compute affordance for GLSL', async () => {

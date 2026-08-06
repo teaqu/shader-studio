@@ -4,7 +4,9 @@
 
 Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on.
 
-Each pass has its own channel grid with up to 16 slots, from `iChannel0` to `iChannel15`. The Image pass, arbitrary named fragment buffer passes, and Slang compute passes can each have a separate set of channels. That means `iChannel0` in Image can point to a pass named `Flow`, while `iChannel0` in `Flow` can point to a noise texture.
+Each pass has its own channel grid with up to 16 slots, from `iChannel0` to `iChannel15`. The Image pass, arbitrary named fragment buffer passes, vertex hooks, and Slang compute passes can each access their pass's channels. That means `iChannel0` in Image can point to a pass named `Flow`, while `iChannel0` in `Flow` can point to a noise texture.
+
+Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. Sample a configured channel with the generated helper, such as `sampleIChannel0(uv)`. Vertex sampling uses mip level 0. Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
 
 ## What Channels Can Do
 

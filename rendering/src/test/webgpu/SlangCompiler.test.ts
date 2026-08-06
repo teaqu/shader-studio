@@ -180,6 +180,27 @@ describe("SlangCompiler", () => {
     },
   );
 
+  it.runIf(realSlangAssets)(
+    "compiles a vertex hook that samples configured iChannel3 with real Slang",
+    async () => {
+      const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
+      const compiler = new SlangCompiler(slang);
+
+      const result = compiler.compileImagePass(
+        "float4 mainImage(float2 fragCoord) { return float4(1); }",
+        {
+          channels: [{ slot: 3, key: "iChannel3" }],
+          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += sampleIChannel3(uv).x; }",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.wgsl.trim().length).toBeGreaterThan(0);
+      }
+    },
+  );
+
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
     const result = compiler.compileImagePass("float4 mainImage(float2 c) { return float4(1); }");
