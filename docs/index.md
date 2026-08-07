@@ -1,6 +1,6 @@
 # Shader Studio User Guide
 
-Shader Studio is a VS Code extension for live previewing, editing, and debugging Shadertoy-style GLSL shaders. It gives you a real-time GPU canvas inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects.
+Shader Studio is a VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL for the WebGL pipeline or Slang for the WebGPU pipeline — both with a real-time GPU canvas inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects including compute shaders.
 
 
 
@@ -12,7 +12,7 @@ Shader Studio is a VS Code extension for live previewing, editing, and debugging
 
 ### Live Shader Preview
 
-Write GLSL in VS Code and see the result instantly. Every keystroke recompiles and updates the preview. Shader Studio runs Shadertoy-style fragment shaders with the familiar `mainImage(out vec4 fragColor, in vec2 fragCoord)` entry point, so shaders from Shadertoy and tutorials work with little or no modification.
+Write GLSL or Slang in VS Code and see the result instantly. Every keystroke recompiles and updates the preview. Shader Studio runs Shadertoy-style fragment shaders with the familiar `mainImage(out vec4 fragColor, in vec2 fragCoord)` entry point in GLSL, and `float4 mainImage(float2 fragCoord)` in Slang — so existing shaders from Shadertoy and tutorials work with little or no modification, and new projects can target WebGPU.
 
 ### Multi-Pass Pipelines
 

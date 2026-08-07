@@ -1,6 +1,6 @@
 # Shader Studio
 
-A GLSL fragment shader viewer for VS Code with hot reloading, designed specifically for Shadertoy-style shaders.
+A GLSL and Slang shader viewer for VS Code with hot reloading. Edit Shadertoy-style GLSL fragment shaders or write Slang shaders for the WebGPU pipeline — both with live preview, multi-pass pipelines, and visual debugging.
 
 Marketplace: https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio  
 Docs: https://teaqu.github.io/shader-studio/

@@ -10,25 +10,41 @@ Or install directly from the [VS Code Marketplace](https://marketplace.visualstu
 
 ## Step 2: Create a Shader
 
-Open an existing `.glsl` file, or create a new one and write a `mainImage` function. If you want a head start, click the <img src="../assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the status bar and choose **New Shader**, or open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **Shader Studio: New Shader** to generate a template.
+Open an existing `.glsl` or `.slang` file, or create a new one and write a `mainImage` function. If you want a head start, click the <img src="../assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the status bar and choose **New Shader**, or open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **Shader Studio: New Shader** to generate a template.
 
 ## Step 3: Write Your Shader
 
 Shader Studio runs Shadertoy-style shaders. Your shader needs a `mainImage` function. If you created your shader with the **New Shader** button, you should see something like this:
 
-```glsl
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    // Normalized pixel coordinates (from 0 to 1)
-    vec2 uv = fragCoord/iResolution.xy;
+=== "GLSL"
+    ```glsl
+    void mainImage( out vec4 fragColor, in vec2 fragCoord )
+    {
+        // Normalized pixel coordinates (from 0 to 1)
+        vec2 uv = fragCoord/iResolution.xy;
 
-    // Time varying pixel color
-    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+        // Time varying pixel color
+        vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
 
-    // Output to screen
-    fragColor = vec4(col,1.0);
-}
-```
+        // Output to screen
+        fragColor = vec4(col,1.0);
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    float4 mainImage(float2 fragCoord)
+    {
+        // Normalized pixel coordinates (from 0 to 1)
+        float2 uv = fragCoord / iResolution.xy;
+
+        // Time varying pixel color
+        float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0.0, 2.0, 4.0));
+
+        // Output to screen
+        return float4(col, 1.0);
+    }
+    ```
 
 !!! note "New to shaders or Shadertoy?"
     A shader is a small program that runs on your GPU. Instead of looping over pixels in code, the GPU runs `mainImage` **once per pixel, in parallel**, every frame.
@@ -99,13 +115,23 @@ If the image was just added, you may need to click the reload button in the pick
 
 Once a texture is bound to `iChannel0`, you can sample it in your shader:
 
-```glsl
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-    vec4 tex = texture(iChannel0, uv);
-    fragColor = tex;
-}
-```
+=== "GLSL"
+    ```glsl
+    void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+        vec2 uv = fragCoord / iResolution.xy;
+        vec4 tex = texture(iChannel0, uv);
+        fragColor = tex;
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    float4 mainImage(float2 fragCoord) {
+        float2 uv = fragCoord / iResolution.xy;
+        float4 tex = sampleIChannel0(uv);
+        return tex;
+    }
+    ```
 
 See [Configure Buffers and Inputs](features/config-buffers.md) for the full guide.
 

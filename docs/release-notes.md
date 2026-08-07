@@ -1,5 +1,20 @@
 # Release Notes
 
+## v0.5.0
+
+### Slang and WebGPU
+
+- **Slang shader language** — Native support for `.slang` files with syntax highlighting, code snippets, and IntelliSense. Slang is a GPU shading language that targets WebGPU via WGSL codegen.
+- **WebGPU rendering engine** — A new WebGPU backend alongside the existing WebGL pipeline. The engine is selected automatically based on file extension (`.slang` → WebGPU, `.glsl` → WebGL).
+- **Compute passes** — Write Slang compute shaders with `[shader("compute")]` and `[numthreads]` annotations. Compute passes run before fragment passes each frame with configurable dispatch modes (per-texel, element count, workgroup count, storage buffer cover, or channel dimensions).
+- **Storage buffers** — Persistent typed GPU buffers (`RWStructuredBuffer<T>` in compute, read-only `StructuredBuffer<T>` in render passes). Supports scalars, vectors, matrices, `Atomic<uint>`/`Atomic<int>`, and custom structs. Includes a visual storage inspector for reading and editing buffer elements.
+- **Compute output textures** — Compute passes can write `rgba16float` output textures sampled by later passes, with support for up to 8 layers.
+- **Repeated and one-shot dispatch** — `dispatchCount` runs a compute pass multiple times per frame with `iDispatch` indexing; `dispatchOnce` runs initialization passes on the first frame after compile or reset.
+- **Slang module system** — `import` declarations, `#include`/`__include` directives, and module dependency graphs resolved host-side for the WASM compiler.
+- **Native Slang debugging** — Variable capture and pixel inspection work directly on compiled Slang shaders without transpilation.
+- **Per-pass geometry** — Configure 2D (full-screen quad) or 3D (sphere, cube, plane, custom GLB mesh) geometry per pass. GLSL passes render with vertex/fragment shaders; Slang passes use vertex hooks with `mainVertex`.
+- **VS Code language support** — Full TextMate grammar, bracket matching, auto-closing pairs, folding, indentation rules, and bundled snippets (2D SDF, 3D SDF, coordinates, math) for `.slang` files.
+
 
 ## v0.4.0
 
