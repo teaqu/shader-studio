@@ -178,18 +178,9 @@ class SlangLexer(RegexLexer):
             ), prefix=r"\b", suffix=r"\b"), Name.Builtin),
             # gl_ reserved names (compatibility)
             (r"gl_\w*", Name.Builtin),
-            # --- ShaderToy inputs (both GLSL and Slang) ---
+            # --- Shader entry points and generated helpers ---
             (words((
-                "iResolution", "iTime", "iTimeDelta", "iFrameRate",
-                "iFrame", "iMouse", "iDate", "iSampleRate",
-                "iChannel0", "iChannel1", "iChannel2", "iChannel3",
-                "iChannel4", "iChannel5", "iChannel6", "iChannel7",
-                "iChannel8", "iChannel9", "iChannel10", "iChannel11",
-                "iChannel12", "iChannel13", "iChannel14", "iChannel15",
-                "iChannelResolution", "iChannelTime",
-                "iCameraPos", "iCameraDir", "iDispatch",
                 "mainImage", "mainVertex", "mainSound",
-                "fragColor", "fragCoord",
                 "sampleIChannel0", "sampleIChannel1", "sampleIChannel2",
                 "sampleIChannel3", "sampleIChannel4", "sampleIChannel5",
                 "sampleIChannel6", "sampleIChannel7", "sampleIChannel8",
