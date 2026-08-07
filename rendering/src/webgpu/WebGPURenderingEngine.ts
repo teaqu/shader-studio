@@ -114,6 +114,7 @@ const DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z = 64;
+const DEFAULT_MAX_TEXTURE_ARRAY_LAYERS = 256;
 
 type WorkgroupCounts = [number, number, number];
 
@@ -434,6 +435,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ["maxComputeWorkgroupSizeX", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X],
       ["maxComputeWorkgroupSizeY", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y],
       ["maxComputeWorkgroupSizeZ", DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z],
+      ["maxComputeWorkgroupsPerDimension", DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION],
     ];
     for (const [name, portableLimit] of computeLimits) {
       const adapterLimit = adapter.limits?.[name];
@@ -444,6 +446,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       ) {
         requiredLimits[name] = adapterLimit;
       }
+    }
+    const adapterArrayLayersLimit = adapter.limits?.maxTextureArrayLayers;
+    if (
+      typeof adapterArrayLayersLimit === "number" &&
+      Number.isFinite(adapterArrayLayersLimit) &&
+      adapterArrayLayersLimit > DEFAULT_MAX_TEXTURE_ARRAY_LAYERS
+    ) {
+      requiredLimits.maxTextureArrayLayers = adapterArrayLayersLimit;
     }
     const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
     if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
@@ -1400,7 +1410,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const grantedLimit = this.device?.limits?.maxTextureArrayLayers;
     return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
       ? Math.floor(grantedLimit)
-      : 256;
+      : DEFAULT_MAX_TEXTURE_ARRAY_LAYERS;
   }
 
   private resolveMaxStorageBuffers(): number {
