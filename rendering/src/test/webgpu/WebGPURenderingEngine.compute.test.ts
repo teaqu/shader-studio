@@ -1022,6 +1022,39 @@ describe("WebGPURenderingEngine compute compilation", () => {
       .toHaveLength(2);
   });
 
+  it("preserves storage buffers across same-shader recompile but reallocates on session change", async () => {
+    const testHarness = harness();
+    const config = computeConfig({ dispatchOnce: true });
+    // First compile
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE, config, "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const firstStorage = [...storageBuffers(testHarness.buffers)];
+
+    // Same-shader recompile must reuse storage buffers (dispatchOnce preserved)
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE, config, "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const sameShaderStorage = storageBuffers(testHarness.buffers);
+    expect(sameShaderStorage).toHaveLength(firstStorage.length);
+    for (let i = 0; i < firstStorage.length; i++) {
+      expect(sameShaderStorage[i]).toBe(firstStorage[i]);
+    }
+
+    // Different-shader compile must reallocate storage (session changed)
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE, config, "/other.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    const newShaderStorage = storageBuffers(testHarness.buffers);
+    expect(newShaderStorage).toHaveLength(firstStorage.length);
+    for (let i = 0; i < firstStorage.length; i++) {
+      expect(newShaderStorage[i]).not.toBe(firstStorage[i]);
+    }
+  });
+
   it("does not re-arm dispatchOnce when a pending compile is superseded", async () => {
     const testHarness = harness();
     const config = computeConfig({ dispatchOnce: true });
