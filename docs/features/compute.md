@@ -280,7 +280,7 @@ The Slang visual config form includes a **Storage** tab and per-compute-pass con
 - `count`, `stride`, and `elementType` are config-authored; stride is not reflection-validated.
 - Every storage buffer is bound to every pass. There is no per-pass storage binding list.
 - Custom-typed buffers cannot be accessed from `common`; only their type definitions belong there.
-- Compute output is `rgba16float`, is created only when sampled, and supports at most 8 layers.
+- Compute output is `rgba16float` by default, `rgba32float` when the device supports float32 filtering, is created only when sampled, and supports at most 8 layers.
 
 ## Next
 

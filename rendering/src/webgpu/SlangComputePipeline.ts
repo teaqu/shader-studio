@@ -1,7 +1,6 @@
 /// <reference types="@webgpu/types" />
 import type { StorageBindingNode } from "../types/PassGraph";
 import {
-  BUFFER_TEXTURE_FORMAT,
   type SlangChannelResource,
 } from "./SlangPassPipeline";
 import { DISPATCH_UNIFORM_SIZE, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
@@ -18,6 +17,9 @@ export interface SlangComputePipelineDescriptor {
   channels: Array<{ slot: number; key: string; kind?: string }>;
   storage: StorageBindingNode[];
   uniformBufferSize?: number;
+  /** Output texture format for compute texture writes. Prefer rgba32float
+   *  when float32-filterable is available; rgba16float is the fallback. */
+  bufferTextureFormat?: GPUTextureFormat;
 }
 
 async function shaderModuleErrors(shaderModule: GPUShaderModule, passName: string): Promise<string[]> {
@@ -362,7 +364,7 @@ export class SlangComputePipeline {
         visibility: GPUShaderStage.COMPUTE,
         storageTexture: {
           access: "write-only",
-          format: BUFFER_TEXTURE_FORMAT,
+          format: this.descriptor.bufferTextureFormat || "rgba16float",
           viewDimension: this.descriptor.outputLayers > 1 ? "2d-array" : "2d",
         },
       });
@@ -385,7 +387,7 @@ export class SlangComputePipeline {
         height,
         depthOrArrayLayers: this.descriptor.outputLayers,
       },
-      format: BUFFER_TEXTURE_FORMAT,
+      format: this.descriptor.bufferTextureFormat || "rgba16float",
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
   }

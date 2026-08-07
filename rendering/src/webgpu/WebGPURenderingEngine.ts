@@ -2041,6 +2041,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         channels,
         storage,
         uniformBufferSize,
+        bufferTextureFormat: this.bufferTextureFormat,
       })
       : new SlangPassPipeline(this.device, this.format, {
         name: pass.name,
