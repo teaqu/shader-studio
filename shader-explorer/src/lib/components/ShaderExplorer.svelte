@@ -279,6 +279,9 @@
       >
         {showOptions ? '✕' : '⚙'}
       </button>
+      <button class="icon-button" onclick={refreshShaders} title="Refresh">
+        ↻
+      </button>
       <div class="shader-count">
         {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
       </div>
@@ -328,9 +331,6 @@
           <input type="checkbox" bind:checked={openFilesOnSelect} />
           <span class="checkbox-label">Open Files</span>
         </label>
-        <button class="icon-button" onclick={refreshShaders} title="Refresh">
-          ↻
-        </button>
       </div>
     {/if}
   </div>
