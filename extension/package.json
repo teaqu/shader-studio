@@ -155,7 +155,7 @@
         {
           "type": "webview",
           "id": "shader-studio.shaderExplorer",
-          "name": "Shader Explorer"
+          "name": "EXPLORER"
         }
       ]
     },

@@ -15,13 +15,14 @@
     isDisposed: () => boolean;
   }
 
-  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, onCompilationFailed }: {
+  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, compact = false, onCompilationFailed }: {
     shader: ShaderFile;
     width?: number;
     height?: number;
     vscodeApi: any;
-    forceFresh?: boolean; 
-    onCompilationFailed?: () => void;  
+    forceFresh?: boolean;
+    compact?: boolean;
+    onCompilationFailed?: () => void;
   } = $props();
 
   let canvas: HTMLCanvasElement = $state()!;
@@ -29,9 +30,12 @@
   let capturedImage: string = $state('');
   let compilationFailed: boolean = $state(false);
 
-  const errorScale = $derived(Math.max(1, Math.min(width / 80, 6)));
-  const errorIconSize = $derived(Math.round(9 * errorScale));
-  const errorTextSize = $derived(Math.round(6 * errorScale));
+  const errorIconSize = $derived(compact
+    ? Math.min(Math.round(width * 0.07), 40)
+    : Math.round(width * 0.2));
+  const errorTextSize = $derived(compact
+    ? Math.min(Math.round(width * 0.047), 28)
+    : Math.round(width * 0.13));
   let shaderCode: string = '';
   let previewPath: string = shader.path;
   let shaderConfig: any = null;

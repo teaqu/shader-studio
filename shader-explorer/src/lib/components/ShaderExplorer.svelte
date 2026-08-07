@@ -257,8 +257,13 @@
         class="icon-button"
         onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
         title="Show Panel"
+        aria-label="Show Panel"
       >
-        🖵
+        <svg class="panel-icon" viewBox="0 0 16 16" width="14" height="14">
+          <path fill="currentColor" d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/>
+          <rect fill="currentColor" x="4.5" y="5" width="3" height="6"/>
+          <rect fill="currentColor" x="8.5" y="5" width="3" height="3"/>
+        </svg>
       </button>
       <button
         class="icon-button"
@@ -279,6 +284,7 @@
       </div>
     </div>
     {#if showOptions}
+      <div class="options-divider"></div>
       <div class="toolbar-actions">
         {#if layoutMode === 'grid'}
           <div class="card-size-control">
@@ -469,7 +475,7 @@
   .search-container {
     flex: 1 1 120px;
     min-width: 120px;
-    margin: 0 4px;
+    margin: 0;
     display: flex;
     align-items: center;
     max-width: unset;
@@ -504,10 +510,20 @@
     align-items: center;
     justify-content: center;
     min-width: 26px;
+    line-height: 1;
   }
 
   .icon-button:hover {
     background: var(--vscode-button-secondaryHoverBackground);
+  }
+
+  .panel-icon {
+    display: block;
+  }
+
+  .options-divider {
+    border-top: 1px solid var(--vscode-panel-border);
+    margin: 2px -8px 6px -8px;
   }
 
   .sort-select,
@@ -657,12 +673,13 @@
     gap: 2px;
     justify-content: center;
     align-items: center;
-    padding: 4px 0 12px 0;
+    margin: 8px 0 8px 0;
+    padding: 4px 0;
   }
 
   .pagination-top {
-    padding-top: 0;
-    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 8px;
   }
 
   .page-button {

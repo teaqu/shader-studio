@@ -68,6 +68,10 @@ suite('ShaderExplorerProvider Test Suite', () => {
       if (path.includes('index.html')) {
         return '<html><head></head><body>Mock Shader Explorer</body></html>';
       }
+      // Default shader content must pass the mainImage filter
+      if (/\.(glsl|slang|frag|vert)$/i.test(path)) {
+        return 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }';
+      }
       return '<html><head></head><body></body></html>';
     });
 
@@ -632,6 +636,53 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(shader.createdTime, 1_000);
     });
 
+    test('should exclude shaders whose filename contains "buffer"', async () => {
+      const fs = require('fs');
+      const goodUri = vscode.Uri.file('/workspace/shaders/main.glsl');
+      const bufferUri = vscode.Uri.file('/workspace/shaders/feedback.buffer.glsl');
+      const bufferDashUri = vscode.Uri.file('/workspace/shaders/buffer-a.slang');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([goodUri, bufferUri, bufferDashUri]);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      readFileSyncStub.returns('void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }');
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shaders = postMessageSpy.firstCall.args[0].shaders;
+      assert.strictEqual(shaders.length, 1, 'Only non-buffer shader should remain');
+      assert.strictEqual(shaders[0].path, '/workspace/shaders/main.glsl');
+    });
+
+    test('should exclude shaders whose source mentions mainImage only in a comment', async () => {
+      const fs = require('fs');
+      const commentOnlyUri = vscode.Uri.file('/workspace/shaders/no-mainimage-twin.glsl');
+      const realUri = vscode.Uri.file('/workspace/shaders/real.glsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([commentOnlyUri, realUri]);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 1_000, birthtimeMs: 500 });
+      readFileSyncStub.callsFake((filePath: string) => (
+        filePath === realUri.fsPath
+          ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
+          : '// Standalone no-mainImage twin of debugfeedback.slang.\nvec3 debugFeedbackDecay(vec3 h) { return h; }'
+      ));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shaders = postMessageSpy.firstCall.args[0].shaders;
+      assert.strictEqual(shaders.length, 1, 'Comment-only file should be excluded');
+      assert.strictEqual(shaders[0].path, realUri.fsPath);
+    });
+
     test('should handle requestShaders message type', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
@@ -1023,6 +1074,79 @@ suite('ShaderExplorerProvider Test Suite', () => {
         source: 'module substep;\npublic float substepValue() { return 1.0; }',
         ownerPass: 'Image',
       }]);
+    });
+
+    test('resolves #include directives inline in Slang main source', async () => {
+      const mockDocument = {
+        getText: () => '#include "include/tone-map.slang"\nfloat4 mainImage(float2 fragCoord) { return float4(foundationToneMap(1.0), 1.0); }',
+      };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+      readFileSyncStub.withArgs('/test/include/tone-map.slang', 'utf-8').returns(
+        'float foundationToneMap(float v) { return v * 0.5; }',
+      );
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/image.slang' });
+
+      const message = postMessageSpy.firstCall.args[0];
+      assert.ok(!message.code.includes('#include'), 'Include directive should be inlined');
+      assert.ok(message.code.includes('foundationToneMap'), 'Included source should be present');
+      assert.strictEqual(message.code.split('foundationToneMap').length, 3);
+    });
+
+    test('resolves import directives inline in Slang main source', async () => {
+      const mockDocument = {
+        getText: () => 'import lib.palette;\nfloat4 mainImage(float2 fragCoord) { return float4(foundationPalette(0.5), 1.0); }',
+      };
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+      readFileSyncStub.withArgs('/test/lib/palette.slang', 'utf-8').returns(
+        'module palette;\npublic float foundationPalette(float t) { return t; }',
+      );
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/image.slang' });
+
+      const message = postMessageSpy.firstCall.args[0];
+      assert.ok(!message.code.includes('import lib.palette'), 'Import should be inlined');
+      assert.ok(message.code.includes('foundationPalette'), 'Imported source should be present');
+    });
+
+    test('resolves #include and import directives in Slang buffer passes', async () => {
+      const config = {
+        passes: {
+          BufferA: { path: './passes/history.slang' },
+        },
+      } as any;
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves({
+        getText: () => 'float4 mainImage(float2 fragCoord) { return float4(0); }',
+      } as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').callsFake((_path: string, buffers: Record<string, string>) => {
+        buffers.BufferA = '#include "../include/tone-map.slang"\nimport lib.palette;\nfloat4 mainImage(float2 fragCoord) { return float4(foundationToneMap(foundationPalette(0.5)), 1.0); }';
+        return config;
+      });
+      sandbox.stub(ConfigPathConverter, 'processConfigPaths').callsFake(async (message: any) => message);
+      readFileSyncStub.withArgs('/test/include/tone-map.slang', 'utf-8').returns(
+        'float foundationToneMap(float v) { return v * 0.5; }',
+      );
+      readFileSyncStub.withArgs('/test/lib/palette.slang', 'utf-8').returns(
+        'module palette;\npublic float foundationPalette(float t) { return t; }',
+      );
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaderCode', path: '/test/main.slang' });
+
+      const bufferSource = postMessageSpy.firstCall.args[0].buffers.BufferA;
+      assert.ok(!bufferSource.includes('#include'), 'Buffer include should be inlined');
+      assert.ok(!bufferSource.includes('import lib.palette'), 'Buffer import should be inlined');
+      assert.ok(bufferSource.includes('foundationToneMap'), 'Buffer included source should be present');
+      assert.ok(bufferSource.includes('foundationPalette'), 'Buffer imported source should be present');
     });
 
     test('does not use the owning image shader when previewing a configured compute pass', async () => {
@@ -1732,6 +1856,44 @@ suite('ShaderExplorerProvider Test Suite', () => {
     });
   });
 
+  suite('Message Handling - newShader and togglePanel', () => {
+    test('should create new shader then refresh the shader list', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'newShader' });
+
+      assert.ok(executeCommandStub.calledWith('shader-studio.newShader'));
+      const messages = postMessageSpy.args.map((a: any) => a[0].type);
+      assert.ok(messages.includes('shadersUpdate'), 'Should refresh list after creating shader');
+    });
+
+    test('should refresh list even if new shader is not created', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'newShader' });
+
+      const messages = postMessageSpy.args.map((a: any) => a[0].type);
+      assert.ok(messages.includes('shadersUpdate'));
+      assert.ok(executeCommandStub.calledWith('shader-studio.newShader'));
+    });
+
+    test('should open the shader panel on togglePanel message', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'togglePanel' });
+
+      assert.ok(executeCommandStub.calledWith('shader-studio.view'));
+    });
+  });
+
   suite('Message Handling - saveState', () => {
     test('should save state to workspace storage on saveState message', async () => {
       const updateStub = mockContext.workspaceState.update as sinon.SinonStub;
@@ -1760,7 +1922,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
     test('should delete shader file, refresh list, and reload panel', async () => {
       const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
       const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
 
@@ -1768,7 +1931,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
 
       assert.ok(showWarningStub.calledOnce, 'Should ask for confirmation');
-      assert.ok(fsDeleteStub.called, 'Should call fs.delete');
+      assert.ok(deleteStub.called, 'Should call fs.delete');
       assert.ok(
         executeCommandStub.calledWith('shader-studio.refreshCurrentShader'),
         'Should reload panel after delete',
@@ -1777,21 +1940,22 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
     test('should not delete if user cancels confirmation', async () => {
       sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined as any);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
 
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
 
-      assert.ok(fsDeleteStub.notCalled, 'Should not delete when user cancels');
+      assert.ok(deleteStub.notCalled, 'Should not delete when user cancels');
     });
 
     test('should delete config file alongside shader', async () => {
       sandbox.stub(vscode.commands, 'executeCommand').resolves();
       sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
-      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
 
@@ -1802,7 +1966,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
 
-      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      const deletedPaths = deleteStub.args.map(a => a[0].fsPath);
       assert.ok(
         deletedPaths.some((p: string) => p === configPath),
         'Should delete config file',
@@ -1815,8 +1979,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
     test('should merge delete and dependent files into single dialog', async () => {
       sandbox.stub(vscode.commands, 'executeCommand').resolves();
-      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
 
@@ -1841,7 +2005,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.ok(dialogText.includes('compute.slang'));
       assert.ok(dialogText.includes('main.glsl'));
 
-      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      const deletedPaths = deleteStub.args.map(a => a[0].fsPath);
       assert.ok(deletedPaths.some((p: string) => p.includes('buffer-a.slang')));
       assert.ok(deletedPaths.some((p: string) => p.includes('compute.slang')));
       assert.ok(deletedPaths.some((p: string) => p.includes('main.glsl')));
@@ -1849,8 +2013,8 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
     test('should delete only shader when user chooses Delete Shader Only', async () => {
       sandbox.stub(vscode.commands, 'executeCommand').resolves();
-      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
 
@@ -1863,15 +2027,16 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'deleteShader', path: '/test/main.glsl' });
 
-      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      const deletedPaths = deleteStub.args.map(a => a[0].fsPath);
       assert.ok(!deletedPaths.some((p: string) => p.includes('buffer-a.slang')));
       assert.ok(deletedPaths.some((p: string) => p.includes('main.glsl')));
     });
 
     test('should show error if deletion fails', async () => {
       sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
-      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
-      sandbox.stub(vscode.workspace.fs, 'delete').rejects(new Error('Permission denied'));
+      sandbox.stub(vscode.workspace, 'fs').value({
+        delete: sandbox.stub().rejects(new Error('Permission denied')),
+      } as any);
       const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
 
@@ -1885,11 +2050,10 @@ suite('ShaderExplorerProvider Test Suite', () => {
     test('should handle shader with no config', async () => {
       sandbox.stub(vscode.commands, 'executeCommand').resolves();
       sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
-      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
-      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      const deleteStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ delete: deleteStub } as any);
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
-
       // Config does not exist
       existsSyncStub.callsFake((filePath: string) => filePath.includes('shader-explorer-dist'));
 
@@ -1897,7 +2061,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
 
       // Should only delete the shader file, no config
-      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      const deletedPaths = deleteStub.args.map(a => a[0].fsPath);
       assert.strictEqual(deletedPaths.length, 1);
       assert.ok(deletedPaths[0].includes('shader.glsl'));
     });

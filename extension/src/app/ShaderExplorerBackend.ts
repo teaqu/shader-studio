@@ -13,7 +13,7 @@ import { getShaderLanguage } from "./GlslFileTracker";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
-import { collectSlangDependencies, resolveSlangIncludes } from "./SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
 import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
@@ -337,23 +337,24 @@ export class ShaderExplorerBackend {
       };
 
       if (message.language === "slang") {
-        // Resolve #include directives inline so the preview engine can compile
-        this.logger.debug(`Resolving Slang includes for ${previewPath}`);
-        const resolved = resolveSlangIncludes(code, previewPath, (p) => this.readShaderSource(p));
-        this.logger.debug(`Resolved main source, included: ${resolved.includedPaths.join(', ')}`);
-        message.code = resolved.source;
+        // Collect imported modules from the original source first (imports are
+        // inlined below, matching the main panel's ordering)
+        message.slangModules = this.collectSlangModules(previewPath, code, config, buffers);
+        // Resolve #include and import directives inline so the preview engine can compile
+        const readSource = (p: string) => this.readShaderSource(p);
+        message.code = resolveSlangIncludes(code, previewPath, readSource).source;
+        message.code = resolveSlangImports(message.code, previewPath, readSource);
         const resolvedBuffers: Record<string, string> = {};
         for (const [name, source] of Object.entries(buffers)) {
           const passConfig = config?.passes?.[name];
           const passPath = (passConfig && typeof passConfig === 'object' && 'path' in passConfig)
             ? PathResolver.resolvePath(previewPath, passConfig.path as string)
             : path.resolve(path.dirname(previewPath), name);
-          const bufResolved = resolveSlangIncludes(source, passPath, (p) => this.readShaderSource(p));
-          this.logger.debug(`Resolved buffer ${name} at ${passPath}, included: ${bufResolved.includedPaths.join(', ')}`);
-          resolvedBuffers[name] = bufResolved.source;
+          let resolved = resolveSlangIncludes(source, passPath, readSource).source;
+          resolved = resolveSlangImports(resolved, passPath, readSource);
+          resolvedBuffers[name] = resolved;
         }
         message.buffers = resolvedBuffers;
-        message.slangModules = this.collectSlangModules(previewPath, message.code, config, resolvedBuffers);
       }
 
       await this.addCustomUniformMetadata(config, previewPath, message);
@@ -673,16 +674,18 @@ export class ShaderExplorerBackend {
   }
 
   private hasMainImage(filePath: string): boolean {
+    // Match an actual mainImage function definition (Slang: float4 mainImage(...), GLSL: void mainImage(...))
+    const mainImagePattern = /\bmainImage\s*\(/;
     // Check open document first (for unsaved changes)
     const openDocument = vscode.workspace.textDocuments.find(
       (document) => path.normalize(document.uri.fsPath) === path.normalize(filePath),
     );
     if (openDocument) {
-      return openDocument.getText().includes("mainImage");
+      return mainImagePattern.test(openDocument.getText());
     }
     try {
       const content = fs.readFileSync(filePath, "utf-8");
-      return content.includes("mainImage");
+      return mainImagePattern.test(content);
     } catch {
       return false;
     }
@@ -720,6 +723,12 @@ export class ShaderExplorerBackend {
         const isDirty = repoRelativePath
           ? gitMetadataResult!.dirtyPaths.has(repoRelativePath)
           : false;
+
+        // Skip files whose name suggests they are buffer pass fragments
+        // (e.g. foo.buffer.glsl, buffer-a.slang) rather than standalone shaders
+        if (/\bbuffer\b/i.test(fileName)) {
+          continue;
+        }
 
         // Check if config file exists
         const configPath = this.getConfigPath(file.fsPath);
@@ -878,9 +887,7 @@ export class ShaderExplorerBackend {
       }
       if (choice === 'Delete All') {
         filesToDelete.push(...depFiles);
-      } else if (choice === 'Delete' && depFiles.length === 0) {
-        // Proceed — filesToDelete already has shader + config
-      } else {
+      } else if (choice !== 'Delete' && choice !== 'Delete Shader Only') {
         return; // Cancelled
       }
 

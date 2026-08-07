@@ -69,6 +69,7 @@
       {width}
       {height}
       {forceFresh}
+      compact={layoutMode === 'grid'}
       onCompilationFailed={onCompilationFailed}
     />
   </div>
