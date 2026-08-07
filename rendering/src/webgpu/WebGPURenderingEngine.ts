@@ -1220,7 +1220,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.passKeys = nextKeys;
       this.computePipelines = nextComputePipelines;
       this.computeKeys = nextComputeKeys;
-      this.dispatchOnceRan.clear();
+      if (sessionChanged) {
+        this.dispatchOnceRan.clear();
+      }
       this.hasSubmittedFrameForInstalledGeneration = false;
       if (candidateResourceManager) {
         this.resourceManager = candidateResourceManager;

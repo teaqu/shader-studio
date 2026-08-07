@@ -980,6 +980,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     enableRendering(testHarness);
     testHarness.engine.render(1000);
 
+    // A failed recompile of the SAME shader must not consume dispatchOnce
     testHarness.compiler.compile.mockImplementationOnce(async () => ({
       success: false,
       errors: ["expected failure"],
@@ -995,14 +996,28 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
       .toHaveLength(1);
 
-    const successful = await testHarness.engine.compileShaderPipeline(
+    // A successful recompile of the SAME shader must also preserve dispatchOnce
+    // (debug recompiles, buffer edits, etc. must not reset compute state)
+    const sameShader = await testHarness.engine.compileShaderPipeline(
       IMAGE_SOURCE,
       config,
       "/shader.slang",
       { ComputeSim: COMPUTE_SOURCE },
     );
-    expect(successful?.success).toBe(true);
+    expect(sameShader?.success).toBe(true);
     testHarness.engine.render(1032);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+
+    // A DIFFERENT shader must clear dispatchOnce so its init pass fires
+    const newShader = await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      config,
+      "/other.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    expect(newShader?.success).toBe(true);
+    testHarness.engine.render(1048);
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
       .toHaveLength(2);
   });
