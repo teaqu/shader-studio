@@ -20,7 +20,7 @@
   let sortOrder = $state<'asc' | 'desc'>('desc');
   let currentPage = $state(1);
   let pageSize = $state(20);
-  let cardSize = $state(280); // Card width in pixels (200-500)
+  let cardSize = $state(200); // Card width in pixels (100-1000)
   let hideFailedShaders = $state(false);
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
@@ -228,9 +228,9 @@
         <input 
           id="card-size-slider"
           type="range" 
-          min="200" 
-          max="1000" 
-          step="20"
+          min="100"
+          max="1000"
+          step="10"
           bind:value={cardSize}
           class="card-size-slider"
           title={`${cardSize}px`}
@@ -371,15 +371,15 @@
   .shader-explorer {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100%;
     overflow: hidden;
   }
 
   .toolbar {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 16px;
+    gap: 4px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--vscode-panel-border);
     background-color: var(--vscode-editor-background);
     align-items: stretch;
@@ -387,23 +387,16 @@
 
   .toolbar-actions {
     display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-  .toolbar-actions {
-    display: flex;
-    gap: 8px;
+    gap: 4px;
     align-items: center;
     flex-wrap: wrap;
     width: 100%;
   }
 
   .search-container {
-    flex: 1 1 180px;
-    min-width: 180px;
-    margin: 0 8px;
+    flex: 1 1 120px;
+    min-width: 120px;
+    margin: 0 4px;
     display: flex;
     align-items: center;
     max-width: unset;
@@ -413,12 +406,12 @@
     min-width: 0;
     flex: 1 1 auto;
     width: 100%;
-    padding: 6px 12px;
+    padding: 3px 6px;
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border);
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
     outline: none;
   }
 
@@ -426,24 +419,18 @@
     border-color: var(--vscode-focusBorder);
   }
 
-  .toolbar-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
   .icon-button {
-    padding: 6px 12px;
+    padding: 3px 6px;
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 32px;
+    min-width: 26px;
   }
 
   .icon-button:hover {
@@ -452,12 +439,12 @@
 
   .sort-select,
   .page-size-select {
-    padding: 6px 12px;
+    padding: 3px 6px;
     background: var(--vscode-dropdown-background);
     color: var(--vscode-dropdown-foreground);
     border: 1px solid var(--vscode-dropdown-border);
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     outline: none;
   }
@@ -470,17 +457,17 @@
   .card-size-control {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
   }
 
   .size-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--vscode-descriptionForeground);
     white-space: nowrap;
   }
 
   .card-size-slider {
-    width: 120px;
+    width: 80px;
     height: 4px;
     background: var(--vscode-input-background);
     border-radius: 2px;
@@ -527,7 +514,7 @@
   .checkbox-control {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     cursor: pointer;
     user-select: none;
   }
@@ -537,26 +524,26 @@
   }
 
   .checkbox-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--vscode-foreground);
     white-space: nowrap;
   }
 
   .shader-count {
     color: var(--vscode-descriptionForeground);
-    font-size: 12px;
+    font-size: 11px;
     white-space: nowrap;
   }
 
   .content {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 8px;
   }
 
   .shader-grid {
     display: grid;
-    gap: 16px;
+    gap: 8px;
   }
 
   .empty-state {
@@ -592,20 +579,20 @@
     gap: 4px;
     justify-content: center;
     align-items: center;
-    margin-top: 24px;
-    padding: 16px 0;
+    margin-top: 12px;
+    padding: 8px 0;
   }
 
   .page-button {
-    min-width: 32px;
-    height: 32px;
-    padding: 0 8px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: 1px solid var(--vscode-button-border, transparent);
     border-radius: 4px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     display: flex;
     align-items: center;
     justify-content: center;

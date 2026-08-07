@@ -6,6 +6,7 @@ import { ShaderProvider } from "./ShaderProvider";
 import { WebServer } from "./WebServer";
 import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
+import { ShaderExplorerViewProvider } from "./ShaderExplorerViewProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
@@ -94,6 +95,15 @@ export class ShaderStudio {
 
     // Register shader explorer
     this.sShaderExplorerProvider = ShaderExplorerProvider.register(context);
+
+    // Register shader explorer sidebar view
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        "shader-studio.shaderExplorer",
+        new ShaderExplorerViewProvider(context),
+        { webviewOptions: { retainContextWhenHidden: true } },
+      ),
+    );
 
     // Start WebSocket transport unless in test mode
     this.startWebSocketTransport();

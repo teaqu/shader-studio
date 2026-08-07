@@ -129,9 +129,13 @@ export function resolveSlangIncludes(
 
   function resolveFile(filePath: string, fallback: () => string): string {
     const resolved = path.normalize(path.resolve(sourceDir, filePath));
-    if (visited.has(resolved)) return fallback();
+    if (visited.has(resolved)) {
+      return fallback();
+    }
     const content = readSource(resolved);
-    if (content === null) return fallback();
+    if (content === null) {
+      return fallback();
+    }
     visited.add(resolved);
     includedPaths.push(resolved);
     return resolveSlangIncludes(content, resolved, readSource, visited, includedPaths).source;

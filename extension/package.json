@@ -141,6 +141,24 @@
       }
     ],
     "menus": {},
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shader-studio",
+          "title": "Shader Studio",
+          "icon": "$(shader-studio-icon)"
+        }
+      ]
+    },
+    "views": {
+      "shader-studio": [
+        {
+          "type": "webview",
+          "id": "shader-studio.shaderExplorer",
+          "name": "Shader Explorer"
+        }
+      ]
+    },
     "configuration": {
       "title": "Shader Studio",
       "properties": {
