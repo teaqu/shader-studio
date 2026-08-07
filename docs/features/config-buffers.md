@@ -149,25 +149,47 @@ Because the script runs in Node.js, you can pull in values from anywhere — gam
 
 The Common pass points to a `.glsl` or `.slang` file whose contents are prepended to every other pass before compilation. Use it for shared utility functions, constants, and type definitions.
 
-```glsl
-// shader.common.glsl — available in Image, BufferA, etc.
-#define PI 3.14159265359
+=== "GLSL"
+    ```glsl
+    // shader.common.glsl — available in Image, BufferA, etc.
+    #define PI 3.14159265359
 
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
 
-float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-}
-```
+    float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // shader.common.slang — available in Image, BufferA, etc.
+    #define PI 3.14159265359
+
+    float hash(float2 p) {
+        return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+    }
+
+    float noise(float2 p) {
+        float2 i = floor(p);
+        float2 f = fract(p);
+        float a = hash(i);
+        float b = hash(i + float2(1.0, 0.0));
+        float c = hash(i + float2(0.0, 1.0));
+        float d = hash(i + float2(1.0, 1.0));
+        float2 u = f * f * (3.0 - 2.0 * f);
+        return lerp(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+    }
+    ```
 
 You can then use `hash`, `noise`, or `PI` in any Image or named buffer pass.
 
