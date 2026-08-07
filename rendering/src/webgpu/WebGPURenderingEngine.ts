@@ -745,6 +745,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasHeight: this.canvas?.height ?? 1,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.resolveMaxOutputLayers(),
+      maxStorageBuffers: this.resolveMaxStorageBuffers(),
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -1400,6 +1401,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
       ? Math.floor(grantedLimit)
       : 256;
+  }
+
+  private resolveMaxStorageBuffers(): number {
+    const grantedLimit = this.device?.limits?.maxStorageBuffersPerShaderStage;
+    return typeof grantedLimit === "number" && grantedLimit > 0
+      ? grantedLimit
+      : DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE;
   }
 
   private validateStaticComputeDispatchLimits(
@@ -3249,6 +3257,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasHeight: this.canvas?.height ?? 1,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.resolveMaxOutputLayers(),
+      maxStorageBuffers: this.resolveMaxStorageBuffers(),
     });
     return { passes: graph.passes, storage: graph.storage };
   }

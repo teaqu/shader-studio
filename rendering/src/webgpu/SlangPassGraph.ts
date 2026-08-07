@@ -29,6 +29,8 @@ export interface BuildSlangPassGraphOptions {
   computeWorkgroupLimits?: ComputeWorkgroupLimits;
   /** Maximum texture array layers for compute output; defaults to the WebGPU spec minimum of 256. */
   maxOutputLayers?: number;
+  /** Maximum storage buffers per shader stage for the warning threshold; defaults to 8. */
+  maxStorageBuffers?: number;
 }
 
 export interface ComputeWorkgroupLimits {
@@ -48,7 +50,6 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
 
 const SPECIAL_PASS_NAMES = new Set(["common", "Image"]);
 const MAX_TOTAL_STORAGE_BYTES = 256 * 1024 * 1024;
-const BASELINE_STORAGE_BUFFER_COUNT = 8;
 const PORTABLE_COMPUTE_WORKGROUP_LIMITS: ComputeWorkgroupLimits = {
   maxInvocations: 256,
   maxSizeX: 256,
@@ -98,7 +99,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .map(([name]) => name),
   );
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
-  const storage = resolveStorage(config.storage, warnings, errors);
+  const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8);
   warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings);
   const storageNames = new Set(storage.map(({ name }) => name));
   const computePasses: RenderPassNode[] = [];
@@ -292,6 +293,7 @@ function resolveStorage(
   storageConfig: ShaderConfig["storage"],
   warnings: string[],
   errors: string[],
+  maxStorageBuffers: number,
 ): StorageBindingNode[] {
   const storage: StorageBindingNode[] = [];
   let totalBytes = 0;
@@ -326,9 +328,9 @@ function resolveStorage(
     totalBytes += declaration.count * declaration.stride;
   }
 
-  if (storage.length > BASELINE_STORAGE_BUFFER_COUNT) {
+  if (storage.length > maxStorageBuffers) {
     warnings.push(
-      `Storage uses more than the WebGPU baseline 8 storage buffers; check adapter support or consider packing buffers`,
+      `Storage uses ${storage.length} buffers but the device supports at most ${maxStorageBuffers}; consider packing buffers`,
     );
   }
   if (totalBytes > MAX_TOTAL_STORAGE_BYTES) {

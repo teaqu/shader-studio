@@ -1291,7 +1291,7 @@ describe("Slang storage graph", () => {
     expect(graph.storage[0].binding).toBe(0);
   });
 
-  it("warns but does not error when storage exceeds the WebGPU baseline of 8 buffers", () => {
+  it("warns but does not error when storage exceeds the device limit", () => {
     const storage = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
       `data${index}`,
       { count: 1, stride: 4, elementType: "float" },
@@ -1301,9 +1301,8 @@ describe("Slang storage graph", () => {
     expect(graph.errors).toEqual([]);
     expect(graph.storage).toHaveLength(9);
     expect(graph.warnings.some((warning) =>
-      warning.includes("WebGPU baseline 8")
-      && warning.includes("adapter support")
-      && warning.includes("packing")
+      warning.includes("Storage uses 9 buffers")
+      && warning.includes("consider packing buffers")
     )).toBe(true);
   });
 
