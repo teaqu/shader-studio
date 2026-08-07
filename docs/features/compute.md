@@ -222,7 +222,7 @@ void writeTexture(uint3 id : SV_DispatchThreadID)
 
 The output is a ping-pong `rgba16float` texture. `writeOutput` checks its coordinate bounds. If no pass samples the compute pass, no output is allocated and `writeOutput` is intentionally undefined; storage-only compute passes should not call it.
 
-Set `outputLayers` from 1 through 8 for a texture array. Layered output changes the helper signature, and a consumer chooses one layer with `layer` (default 0):
+Set `outputLayers` to any value up to the device's `maxTextureArrayLayers` limit (256 minimum) for a texture array. Layered output changes the helper signature, and a consumer chooses one layer with `layer` (default 0):
 
 ```slang
 writeOutput(id.xy, 0u, rawColor);
@@ -280,7 +280,7 @@ The Slang visual config form includes a **Storage** tab and per-compute-pass con
 - `count`, `stride`, and `elementType` are config-authored; stride is not reflection-validated.
 - Every storage buffer is bound to every pass. There is no per-pass storage binding list.
 - Custom-typed buffers cannot be accessed from `common`; only their type definitions belong there.
-- Compute output is `rgba16float` by default, `rgba32float` when the device supports float32 filtering, is created only when sampled, and supports at most 8 layers.
+- Compute output is `rgba16float` by default, `rgba32float` when the device supports float32 filtering, is created only when sampled, and layers are capped at the device's `maxTextureArrayLayers` limit (minimum 256 per spec).
 
 ## Next
 

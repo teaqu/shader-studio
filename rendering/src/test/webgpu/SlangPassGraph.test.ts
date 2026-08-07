@@ -1204,7 +1204,7 @@ describe("Slang compute passes", () => {
     expect(graph.passes[0].dispatchOnce).toBe(false);
   });
 
-  it.each([0, 1.5, 9])("reports invalid outputLayers %s and falls back to one", (outputLayers) => {
+  it.each([0, 1.5, 257])("reports invalid outputLayers %s and falls back to one", (outputLayers) => {
     const graph = build({
       version: "1",
       passes: {
@@ -1213,7 +1213,7 @@ describe("Slang compute passes", () => {
       },
     }, { ComputeMain: imageCode });
 
-    expect(graph.errors.some((error) => error.includes("outputLayers must be an integer from 1 to 8"))).toBe(true);
+    expect(graph.errors.some((error) => error.includes("outputLayers must be an integer from 1 to 256"))).toBe(true);
     expect(graph.passes[0].outputLayers).toBe(1);
   });
 

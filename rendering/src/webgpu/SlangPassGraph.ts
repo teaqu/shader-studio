@@ -27,6 +27,8 @@ export interface BuildSlangPassGraphOptions {
   canvasHeight: number;
   /** Limits granted by the active WebGPU device; omitted means portable WebGPU defaults. */
   computeWorkgroupLimits?: ComputeWorkgroupLimits;
+  /** Maximum texture array layers for compute output; defaults to the WebGPU spec minimum of 256. */
+  maxOutputLayers?: number;
 }
 
 export interface ComputeWorkgroupLimits {
@@ -95,7 +97,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .filter(([name, passConfig]) => !SPECIAL_PASS_NAMES.has(name) && passConfig !== undefined)
       .map(([name]) => name),
   );
-  const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors);
+  const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
   const storage = resolveStorage(config.storage, warnings, errors);
   warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings);
   const storageNames = new Set(storage.map(({ name }) => name));
@@ -261,6 +263,7 @@ function resolveModelGeometry(pass: { geometry?: { type: string; path?: string; 
 function resolveOutputLayersByPass(
   passEntries: [string, ShaderConfig["passes"][string]][],
   errors: string[],
+  maxLayers: number,
 ): Map<string, number> {
   const outputLayers = new Map<string, number>();
   for (const [name, passConfig] of passEntries) {
@@ -275,10 +278,10 @@ function resolveOutputLayersByPass(
     const configuredLayers = (passConfig as ComputePass).outputLayers;
     if (configuredLayers === undefined) {
       outputLayers.set(name, 1);
-    } else if (Number.isInteger(configuredLayers) && configuredLayers >= 1 && configuredLayers <= 8) {
+    } else if (Number.isInteger(configuredLayers) && configuredLayers >= 1 && configuredLayers <= maxLayers) {
       outputLayers.set(name, configuredLayers);
     } else {
-      errors.push(`${name}: outputLayers must be an integer from 1 to 8`);
+      errors.push(`${name}: outputLayers must be an integer from 1 to ${maxLayers}`);
       outputLayers.set(name, 1);
     }
   }

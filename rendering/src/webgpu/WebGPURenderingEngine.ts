@@ -744,6 +744,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
+      maxOutputLayers: this.resolveMaxOutputLayers(),
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -1392,6 +1393,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
       maxSizeY: resolve(limits?.maxComputeWorkgroupSizeY, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y),
       maxSizeZ: resolve(limits?.maxComputeWorkgroupSizeZ, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z),
     };
+  }
+
+  private resolveMaxOutputLayers(): number {
+    const grantedLimit = this.device?.limits?.maxTextureArrayLayers;
+    return typeof grantedLimit === "number" && Number.isFinite(grantedLimit) && grantedLimit > 0
+      ? Math.floor(grantedLimit)
+      : 256;
   }
 
   private validateStaticComputeDispatchLimits(
@@ -3240,6 +3248,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
+      maxOutputLayers: this.resolveMaxOutputLayers(),
     });
     return { passes: graph.passes, storage: graph.storage };
   }
