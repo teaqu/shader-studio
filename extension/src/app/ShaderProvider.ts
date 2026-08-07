@@ -237,6 +237,7 @@ export class ShaderProvider {
       };
       if (getShaderLanguage(shaderPath) === "slang") {
         message.language = "slang";
+        message.originalCode = code;
         this.attachSlangDependencies(message);
       }
 
@@ -596,6 +597,7 @@ export class ShaderProvider {
     };
 
     if (message.language === "slang") {
+      message.originalCode = code;
       this.attachSlangDependencies(message);
     }
 
@@ -722,6 +724,7 @@ export class ShaderProvider {
       cursorPosition,
     };
     if (message.language === "slang") {
+      message.originalCode = code;
       this.attachSlangDependencies(message);
     }
     return message;

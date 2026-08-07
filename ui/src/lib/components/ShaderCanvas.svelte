@@ -102,7 +102,7 @@
   });
 
   let mouseDownPosition: { x: number; y: number } | null = $state(null);
-  const CLICK_THRESHOLD = 5;
+  const CLICK_THRESHOLD = 8;
 
   function setupInputHandling() {
     if (glCanvas) {
@@ -114,10 +114,6 @@
     mouseDownPosition = { x: event.clientX, y: event.clientY };
     if (isInspectorActive) {
       glCanvas?.focus();
-    }
-    if (isInspectorActive) {
-      event.stopPropagation();
-      event.preventDefault();
     }
   }
 
@@ -153,13 +149,13 @@
   role="button"
   tabindex="0"
   bind:this={containerEl}
-  onclick={handleClick}
   onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
+  onpointerdown={handleMouseDown}
+  onclick={handleClick}
 >
   <canvas
     bind:this={glCanvas}
     style:cursor={isInspectorActive ? 'crosshair' : undefined}
-    onmousedown={handleMouseDown}
   ></canvas>
   <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>

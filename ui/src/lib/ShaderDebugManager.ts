@@ -162,11 +162,11 @@ export class ShaderDebugManager {
     };
   }
 
-  public getSlangPreviewPlan(imageCode: string, config: ShaderConfig | null): DebugInstrumentationPlan | null {
+  public getSlangPreviewPlan(imageCode: string, config: ShaderConfig | null, lineOffset = 0): DebugInstrumentationPlan | null {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
-    const request = this.createSlangDebugRequest(imageCode, config);
+    const request = this.createSlangDebugRequest(imageCode, config, lineOffset);
     if (!request) {
       return null;
     }
@@ -185,24 +185,26 @@ export class ShaderDebugManager {
     return result.plan;
   }
 
-  public getSlangCapturePlan(imageCode: string, config: ShaderConfig | null): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null {
-    const request = this.createSlangDebugRequest(imageCode, config);
+  public getSlangCapturePlan(imageCode: string, config: ShaderConfig | null, lineOffset = 0): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | { error: string } | null {
+    const request = this.createSlangDebugRequest(imageCode, config, lineOffset);
     if (!request) {
+      if (this.language === 'slang' && this.state.isActive && this.state.currentLine !== null) {
+        return { error: 'Slang debug source path could not be resolved' };
+      }
       return null;
     }
     const analysis = this.slangDebugEngine.analyze(request);
     if (!analysis.ok) {
-      return null;
+      return { error: analysis.diagnostics[0]?.message ?? 'Slang capture analysis failed' };
     }
     const result = this.slangDebugEngine.planCapture(request, analysis.analysis.visibleValues.map((value) => value.id));
     if (!result.ok) {
-      this.setDebugError(result.diagnostics[0]?.message ?? 'Slang capture planning failed');
-      return null;
+      return { error: result.diagnostics[0]?.message ?? 'Slang capture planning failed' };
     }
     return { plan: result.plan, values: analysis.analysis.visibleValues };
   }
 
-  private createSlangDebugRequest(imageCode: string, config: ShaderConfig | null): DebugAnalysisRequest | null {
+  private createSlangDebugRequest(imageCode: string, config: ShaderConfig | null, lineOffset = 0): DebugAnalysisRequest | null {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
@@ -217,7 +219,8 @@ export class ShaderDebugManager {
       ...this.slangModules.filter((module) => module.ownerPass === target.passName).map((module) => ({ ...module, uri: module.path, version: 1 })),
     ];
     const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
-    const selectedLine = this.variablePreview?.debugLine ?? this.state.currentLine;
+    const rawLine = this.variablePreview?.debugLine ?? this.state.currentLine;
+    const selectedLine = rawLine + lineOffset;
     const selectedSource = selectedPath === rootPath
       ? rootSource
       : this.findSlangModule(selectedPath)?.source ?? '';

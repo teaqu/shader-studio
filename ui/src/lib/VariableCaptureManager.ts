@@ -202,6 +202,7 @@ interface CaptureParams {
   refreshMode: RefreshMode;
   pollingMs: number;
   slangCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
+  slangCaptureError?: string | null;
 }
 
 /**
@@ -568,7 +569,7 @@ export class VariableCaptureManager {
     captureCounters.issueCalls++;
 
     if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
-      this.emitErrorState('Slang capture could not be planned at this location');
+      this.emitErrorState(params.slangCaptureError ?? 'Slang capture could not be planned at this location');
       this.finishCollection([]);
       return;
     }

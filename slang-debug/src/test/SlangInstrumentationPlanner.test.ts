@@ -126,6 +126,46 @@ describe("planSlangInstrumentation", () => {
     });
   });
 
+  it("inserts capture code before an if-statement header", () => {
+    const source = [
+      "float4 mainImage(float2 fragCoord)",
+      "{",
+      "  float2 uv = fragCoord / iResolution.xy;",
+      "  float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));",
+      "  if (col.x > 0.5)",
+      "    col = col * 2.0;",
+      "  return float4(col, 1.0);",
+      "}",
+      "",
+    ].join("\n");
+    const created = createSlangWorkspace({
+      rootUri: "/work/if-ctrl.slang",
+      rootPath: "/work/if-ctrl.slang",
+      passName: "Image",
+      contentHash: "ifctrl123",
+      files: [{ uri: "/work/if-ctrl.slang", path: "/work/if-ctrl.slang", source, version: 1, moduleName: "", ownerPass: "Image" }],
+    });
+    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
+    // Cursor on the if-statement header (line 4, "  if (col.x > 0.5)")
+    const analysis = analyzeSlangSite(file, { line: 4, character: 6 });
+    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+
+    const col = analysis.analysis.visibleValues.find((value) => value.name === "col");
+    if (!col) throw new Error("Expected col to be visible at the if header");
+    const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [col.id], "capture");
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    const output = result.plan.files[0].source;
+    // Capture assignment must appear BEFORE the if statement
+    const execIndex = output.indexOf("_ssdbg_fc123000_executed = true;");
+    const ifIndex = output.indexOf("if (col.x > 0.5)");
+    expect(execIndex).toBeGreaterThan(-1);
+    expect(ifIndex).toBeGreaterThan(-1);
+    expect(execIndex).toBeLessThan(ifIndex);
+  });
+
   it("declines native output-writing compute variable inspection", () => {
     const source = [
       '[shader("compute")]',

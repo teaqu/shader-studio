@@ -81,9 +81,13 @@ export function planSlangInstrumentation(
   );
   const statementStart = offsetAt(selectedFile.source.source, analysis.statementRange.start);
   const statementEnd = offsetAt(selectedFile.source.source, analysis.statementRange.end);
-  const isReturnStatement = selectedFile.source.source.slice(statementStart, statementEnd).trimStart().startsWith("return");
-  const captureOffset = isReturnStatement ? statementStart : statementEnd;
-  const captureText = isReturnStatement ? `${captureAssignment}\n  ` : captureAssignment;
+  const trimmedStatement = selectedFile.source.source.slice(statementStart, statementEnd).trimStart();
+  const isReturnStatement = trimmedStatement.startsWith("return");
+  const controlFlowKeywords = ["if", "for", "while", "switch", "do"];
+  const isControlFlowHeader = controlFlowKeywords.some((keyword) => trimmedStatement.startsWith(keyword));
+  const captureBefore = isReturnStatement || isControlFlowHeader;
+  const captureOffset = captureBefore ? statementStart : statementEnd;
+  const captureText = captureBefore ? `${captureAssignment}\n  ` : captureAssignment;
   const selectedEdits = [
     { start: captureOffset, end: captureOffset, text: captureText },
     { start: selectedFile.source.source.length, end: selectedFile.source.source.length, text: `\n${declarations}\n` },

@@ -8,7 +8,7 @@ import type {
   DebugSourceRange,
   DebugVisibleValue,
 } from "@shader-studio/types";
-import type { SlangCallableNode, SlangDeclarationNode, SlangScopeNode, SlangStatementNode } from "./model";
+import type { SlangCallableNode, SlangControlFlowNode, SlangDeclarationNode, SlangScopeNode, SlangStatementNode } from "./model";
 import type { SlangWorkspaceFile } from "./SlangWorkspace";
 
 const captureTypeNames = new Set(["float", "float2", "float3", "float4", "int", "bool", "float2x2"]);
@@ -19,20 +19,73 @@ export function isSlangCapturableType(typeName: string): boolean {
 
 export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSourcePosition): DebugAnalysisResult {
   const statement = smallestContainingStatement(file, position);
-  if (!statement) {
-    return failure(file.source.uri, position, "slang-debug-site-not-executed", "The selected Slang location is not an executable statement.");
+  if (statement) {
+    return analyzeStatementSite(file, position, statement);
   }
+  const controlFlow = innermostContainingControlFlow(file, position);
+  if (controlFlow) {
+    return analyzeControlFlowSite(file, position, controlFlow);
+  }
+  // Fallback: if the cursor is on a blank/comment/non-code line inside a
+  // callable body, show variables from the nearest preceding statement.
+  const containingCallableForFallback = innermostContainingCallable(file, position);
+  if (containingCallableForFallback) {
+    const preceding = nearestPrecedingStatement(file, position);
+    if (preceding) {
+      return analyzeStatementSite(file, position, preceding);
+    }
+  }
+  // No debuggable location found.
+  if (position.line === 0 && file.structure.callables.size > 0) {
+    return failure(file.source.uri, position, "slang-debug-site-not-executed", "Select a line to inspect variables");
+  }
+  const sourceLine = file.source.source.split("\n")[position.line]?.trim() ?? "(unknown)";
+  return failure(file.source.uri, position, "slang-debug-site-not-executed", `Not an executable statement (L${position.line}: "${sourceLine.slice(0, 40)}" in ${file.source.uri})`);
+}
+
+function analyzeStatementSite(
+  file: SlangWorkspaceFile,
+  position: DebugSourcePosition,
+  statement: SlangStatementNode,
+): DebugAnalysisResult {
   const callable = containingCallable(file, statement);
   if (!callable) {
     return failure(file.source.uri, position, "slang-debug-site-not-executed", "The selected Slang statement is not inside a callable body.");
   }
   const visibleDeclarations = visibleDeclarationsAt(file, statement, callable);
+  return buildDebugSiteAnalysis(file, position, statement.range, callable, visibleDeclarations, () => syntheticReturnValue(file, statement, callable), () => previewDeclaration(file, statement, callable, visibleDeclarations), originForStatement(file, statement));
+}
+
+function analyzeControlFlowSite(
+  file: SlangWorkspaceFile,
+  position: DebugSourcePosition,
+  controlFlow: SlangControlFlowNode,
+): DebugAnalysisResult {
+  const callable = containingCallableByRange(file, controlFlow.range);
+  if (!callable) {
+    return failure(file.source.uri, position, "slang-debug-site-not-executed", "The selected Slang statement is not inside a callable body.");
+  }
+  const boundaryPosition = { ...controlFlow.range.start };
+  const visibleDeclarations = visibleDeclarationsAtScope(file, controlFlow.scopeId, boundaryPosition, callable);
+  return buildDebugSiteAnalysis(file, position, controlFlow.range, callable, visibleDeclarations, () => undefined, () => undefined, { kind: "direct", writableRange: controlFlow.range });
+}
+
+function buildDebugSiteAnalysis(
+  file: SlangWorkspaceFile,
+  position: DebugSourcePosition,
+  statementRange: DebugSourceRange,
+  callable: SlangCallableNode,
+  visibleDeclarations: SlangDeclarationNode[],
+  returnValueFn: () => DebugVisibleValue | undefined,
+  previewFn: () => SlangDeclarationNode | undefined,
+  origin: DebugOrigin,
+): DebugAnalysisResult {
   const declaredValues = visibleDeclarations
     .filter((declaration) => isSlangCapturableType(declaration.typeName))
     .map(toVisibleValue);
-  const returnValue = syntheticReturnValue(file, statement, callable);
+  const returnValue = returnValueFn();
   const visibleValues = returnValue ? [...declaredValues, returnValue] : declaredValues;
-  const preview = previewDeclaration(file, statement, callable, visibleDeclarations);
+  const preview = previewFn();
   if (preview && !isSlangCapturableType(preview.typeName)) {
     return failure(
       file.source.uri,
@@ -46,14 +99,14 @@ export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSource
     analysis: {
       sourceUri: file.source.uri,
       selectedRange: { start: { ...position }, end: { ...position } },
-      statementRange: statement.range,
+      statementRange,
       containingCallable: toDebugCallable(callable),
       visibleValues,
       controlFlow: [...file.structure.controlFlows.values()]
-        .filter((control) => containsRange(control.range, statement.range))
+        .filter((control) => containsRange(control.range, statementRange))
         .sort((left, right) => comparePositions(left.range.start, right.range.start))
         .map((control) => ({ kind: control.kind, range: control.range })),
-      origin: originForStatement(file, statement),
+      origin,
       previewValueId: returnValue?.id ?? preview?.id ?? null,
     },
   };
@@ -65,9 +118,31 @@ function smallestContainingStatement(file: SlangWorkspaceFile, position: DebugSo
     .sort((left, right) => rangeSize(left.range) - rangeSize(right.range))[0];
 }
 
-function containingCallable(file: SlangWorkspaceFile, statement: SlangStatementNode): SlangCallableNode | undefined {
+function nearestPrecedingStatement(file: SlangWorkspaceFile, position: DebugSourcePosition): SlangStatementNode | undefined {
+  return [...file.structure.statements.values()]
+    .filter((statement) => comparePositions(statement.range.end, position) <= 0)
+    .sort((left, right) => comparePositions(right.range.end, left.range.end))[0];
+}
+
+function innermostContainingCallable(file: SlangWorkspaceFile, position: DebugSourcePosition): SlangCallableNode | undefined {
   return [...file.structure.callables.values()]
-    .filter((callable) => containsRange(callable.bodyRange, statement.range))
+    .filter((callable) => containsPosition(callable.bodyRange, position))
+    .sort((left, right) => rangeSize(left.bodyRange) - rangeSize(right.bodyRange))[0];
+}
+
+function innermostContainingControlFlow(file: SlangWorkspaceFile, position: DebugSourcePosition): SlangControlFlowNode | undefined {
+  return [...file.structure.controlFlows.values()]
+    .filter((control) => containsPosition(control.range, position))
+    .sort((left, right) => rangeSize(left.range) - rangeSize(right.range))[0];
+}
+
+function containingCallable(file: SlangWorkspaceFile, statement: SlangStatementNode): SlangCallableNode | undefined {
+  return containingCallableByRange(file, statement.range);
+}
+
+function containingCallableByRange(file: SlangWorkspaceFile, range: DebugSourceRange): SlangCallableNode | undefined {
+  return [...file.structure.callables.values()]
+    .filter((callable) => containsRange(callable.bodyRange, range))
     .sort((left, right) => rangeSize(left.bodyRange) - rangeSize(right.bodyRange))[0];
 }
 
@@ -76,13 +151,22 @@ function visibleDeclarationsAt(
   statement: SlangStatementNode,
   callable: SlangCallableNode,
 ): SlangDeclarationNode[] {
-  const scopes = scopeAncestry(file, statement.scopeId);
+  return visibleDeclarationsAtScope(file, statement.scopeId, statement.range.start, callable);
+}
+
+function visibleDeclarationsAtScope(
+  file: SlangWorkspaceFile,
+  scopeId: string,
+  boundaryPosition: DebugSourcePosition,
+  callable: SlangCallableNode,
+): SlangDeclarationNode[] {
+  const scopes = scopeAncestry(file, scopeId);
   const scopeDepth = new Map(scopes.map((scope, index) => [scope.id, index]));
   const parameterIds = new Set(callable.parameters.map((parameter) => parameter.id));
   const candidates = [...file.structure.declarations.values()]
     .filter((declaration) => scopeDepth.has(declaration.scopeId))
     .filter((declaration) => parameterIds.has(declaration.id)
-      || comparePositions(declaration.statementRange.start, statement.range.start) <= 0)
+      || comparePositions(declaration.statementRange.start, boundaryPosition) <= 0)
     .sort((left, right) => {
       const depth = scopeDepth.get(left.scopeId)! - scopeDepth.get(right.scopeId)!;
       return depth || comparePositions(right.range.start, left.range.start);

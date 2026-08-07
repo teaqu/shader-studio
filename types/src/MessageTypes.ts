@@ -64,6 +64,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   customUniformInfo?: { name: string; type: string }[];
   /** In-memory Slang modules, grouped by the pass that imports them. */
   slangModules?: SlangSourceModule[];
+  /** Original unprocessed source before #include/import expansion — used by the debugger for accurate line mapping. */
+  originalCode?: string;
   /** Dependency discovery failures produced by the extension host. */
   slangDependencyDiagnostics?: SlangDependencyDiagnostic[];
   cursorPosition?: {

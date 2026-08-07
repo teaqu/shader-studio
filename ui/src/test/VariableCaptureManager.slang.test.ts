@@ -113,6 +113,7 @@ describe('VariableCaptureManager - Slang engine', () => {
       ...captureParams(slangShader),
       activeBufferName: 'ComputeLife',
       slangCapture: null,
+      slangCaptureError: 'Compute variable inspection is not available yet. Your shader will continue running normally.',
     });
 
     await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(
