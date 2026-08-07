@@ -442,6 +442,14 @@
     }
   }
 
+  async function copyErrors() {
+    try {
+      await navigator.clipboard.writeText(errorMessage);
+    } catch {
+    // clipboard write failed — silently ignore
+    }
+  }
+
 
 
 
@@ -594,7 +602,18 @@
           role="presentation"
           onmouseenter={handlePauseTooltipEnter}
           onmouseleave={handlePauseTooltipLeave}
-        >{errorMessage}</div>
+        >
+          <div class="error-tooltip-content">
+          <button
+            class="error-tooltip-copy"
+            onclick={copyErrors}
+            aria-label="Copy error to clipboard"
+          >
+            <i class="codicon codicon-copy"></i>
+          </button>
+          {errorMessage}
+        </div>
+        </div>
       {/if}
     </div>
     <TimeControls {timeManager} {currentTime} disabled={!hasShader} />

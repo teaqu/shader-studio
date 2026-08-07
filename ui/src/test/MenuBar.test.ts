@@ -1526,9 +1526,10 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const errorTooltip = screen.getByText('Shader compilation failed');
-      expect(errorTooltip).toBeInTheDocument();
-      expect(errorTooltip).toHaveClass('error-tooltip');
+      const errorTooltipContent = screen.getByText('Shader compilation failed');
+      expect(errorTooltipContent).toBeInTheDocument();
+      expect(errorTooltipContent).toHaveClass('error-tooltip-content');
+      expect(errorTooltipContent.parentElement).toHaveClass('error-tooltip');
     });
 
     it('should not display error tooltip when no errors', () => {
@@ -1552,16 +1553,18 @@ describe('MenuBar Component', () => {
         }
       });
 
-      // The errors should be displayed in the tooltip
-      const errorTooltip = screen.getByText((content, element) => {
+      // The errors should be displayed in the tooltip content
+      const errorTooltipContent = screen.getByText((content, element) => {
         if (!element) {
           return false;
         }
-        return element.classList.contains('error-tooltip') &&
+        return element.classList.contains('error-tooltip-content') &&
                content.includes('Error 1') &&
                content.includes('Error 2');
       });
-      expect(errorTooltip).toBeInTheDocument();
+      expect(errorTooltipContent).toBeInTheDocument();
+      // Verify it's inside the error-tooltip wrapper
+      expect(errorTooltipContent.parentElement).toHaveClass('error-tooltip');
     });
 
     it('should update error display when errors prop changes', async () => {
@@ -1646,7 +1649,8 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const tooltip = screen.getByText('Error message');
+      const tooltipContent = screen.getByText('Error message');
+      const tooltip = tooltipContent.parentElement!;
       expect(tooltip).not.toHaveClass('visible');
 
       await fireEvent.mouseEnter(tooltip);
@@ -1662,7 +1666,8 @@ describe('MenuBar Component', () => {
       });
 
       const pauseButton = screen.getByLabelText('Toggle pause');
-      const tooltip = screen.getByText('Error message');
+      const tooltipContent = screen.getByText('Error message');
+      const tooltip = tooltipContent.parentElement!;
 
       await fireEvent.mouseEnter(pauseButton);
       expect(tooltip).toHaveClass('visible');
@@ -1673,6 +1678,41 @@ describe('MenuBar Component', () => {
 
       await fireEvent.mouseLeave(tooltip);
       expect(tooltip).not.toHaveClass('visible');
+    });
+
+    it('should copy errors to clipboard when copy button is clicked', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          errors: ['Error 1', 'Error 2']
+        }
+      });
+
+      const copyButton = screen.getByLabelText('Copy error to clipboard');
+      await fireEvent.click(copyButton);
+
+      expect(writeText).toHaveBeenCalledOnce();
+      expect(writeText).toHaveBeenCalledWith('Error 1\nError 2');
+    });
+
+    it('should gracefully handle clipboard write failure', async () => {
+      const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          errors: ['Some error']
+        }
+      });
+
+      const copyButton = screen.getByLabelText('Copy error to clipboard');
+      // Should not throw despite clipboard rejection
+      await fireEvent.click(copyButton);
+      expect(writeText).toHaveBeenCalledOnce();
     });
   });
 

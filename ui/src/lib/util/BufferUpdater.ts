@@ -5,6 +5,7 @@ import type {
   LogMessage,
 } from "@shader-studio/types";
 import { BufferPathResolver } from "./BufferPathResolver";
+import type { CompilationResult } from "../ShaderProcessor";
 
 /**
  * Handles updating a buffer and recompiling the shader pipeline.
@@ -13,14 +14,19 @@ export class BufferUpdater {
   private renderEngine: RenderingEngine;
   private transport: Transport;
   private resolver: BufferPathResolver;
+  private compilationState: { setResult: (result: CompilationResult) => void } | null = null;
 
   constructor(
     renderEngine: RenderingEngine,
-    transport: Transport
+    transport: Transport,
   ) {
     this.renderEngine = renderEngine;
     this.transport = transport;
     this.resolver = new BufferPathResolver(renderEngine);
+  }
+
+  public setCompilationState(state: { setResult: (result: CompilationResult) => void } | null): void {
+    this.compilationState = state;
   }
 
   public updateBuffer(
@@ -63,6 +69,11 @@ export class BufferUpdater {
             // that is rendering fine.
             return;
           }
+          // Report result to compilation state so the pause-button error
+          // tooltip shows pass compilation errors alongside VS Code diagnostics.
+          if (result) {
+            this.compilationState?.setResult(result);
+          }
           if (!result?.success) {
             const errorMessage: ErrorMessage = {
               type: "error",
@@ -71,9 +82,9 @@ export class BufferUpdater {
             this.transport.postMessage(errorMessage);
             return;
           }
-          
+
           this.renderEngine.startRenderLoop();
-          
+
           // Send success message - this will clear previous errors
           const logMessage: LogMessage = {
             type: "log",

@@ -319,12 +319,40 @@ canvas {
   white-space: pre-wrap;
   width: max-content;
   max-width: min(700px, 70vw);
+  max-height: 300px;
+  overflow-y: auto;
   z-index: 1301;
   opacity: 0;
   pointer-events: auto;
   user-select: text;
   cursor: text;
   transition: opacity 0.1s ease-in;
+}
+
+.error-tooltip-content {
+  /* button sits absolutely in corner — no extra padding needed */
+}
+
+.error-tooltip .error-tooltip-copy {
+  display: inline;
+  vertical-align: middle;
+  padding: 1px 3px;
+  margin-left: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.error-tooltip .error-tooltip-copy:hover {
+  opacity: 1;
+  color: var(--vscode-button-foreground);
+  background: transparent;
+  border-color: transparent;
 }
 
 .error-tooltip.visible {
@@ -342,6 +370,7 @@ canvas {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow-y: auto;
 }
 
 .error-content {

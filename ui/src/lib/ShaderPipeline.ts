@@ -56,10 +56,12 @@ export class ShaderPipeline {
     this.shaderDebugManager = shaderDebugManager;
     this.shaderProcessor = new ShaderProcessor(renderEngine, shaderDebugManager);
     this.compilationState = compilationState ?? null;
+    this.bufferUpdater.setCompilationState(this.compilationState);
   }
 
   public setCompilationState(compilationState: Pick<ShaderCompilationState, 'setResult'> | null): void {
     this.compilationState = compilationState;
+    this.bufferUpdater.setCompilationState(compilationState);
   }
 
   public async handleShaderMessage(
