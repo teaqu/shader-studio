@@ -114,10 +114,7 @@
         "command": "shader-studio.transpileGlslToJs",
         "title": "Shader Studio: Transpile GLSL to JavaScript (for debugging)"
       },
-      {
-        "command": "shader-studio.openSlangSpike",
-        "title": "Shader Studio: Open Slang Spike (dev)"
-      },
+
       {
         "command": "shader-studio.toggleEditorOverlay",
         "title": "Shader Studio: Toggle Editor Overlay"
