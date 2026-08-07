@@ -21,6 +21,8 @@
   let currentPage = $state(1);
   let pageSize = $state(20);
   let cardSize = $state(200); // Card width in pixels (100-1000)
+  let layoutMode = $state<'grid' | 'row'>('grid');
+  let showOptions = $state(false);
   let hideFailedShaders = $state(false);
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
@@ -30,7 +32,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect, layoutMode, showOptions };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -138,7 +140,21 @@
     
     switch (message.type) {
       case 'shadersUpdate':
-        shaders = message.shaders || [];
+        // Detect removed shaders — if one was deleted, activate the next one
+        const oldList = shaders;
+        const newList: ShaderFile[] = message.shaders || [];
+        if (oldList.length > 0 && newList.length < oldList.length && vscode) {
+          const newPaths = new Set(newList.map(s => s.path));
+          const removed = oldList.find(s => !newPaths.has(s.path));
+          if (removed) {
+            const oldIdx = oldList.indexOf(removed);
+            const next = newList[Math.min(oldIdx, newList.length - 1)];
+            if (next) {
+              vscode.postMessage({ type: 'activateShader', path: next.path });
+            }
+          }
+        }
+        shaders = newList;
         shadersStore.set(shaders);
         
         if (message.savedState) {
@@ -153,6 +169,12 @@
           }
           if (typeof message.savedState.openFilesOnSelect === 'boolean') {
             openFilesOnSelect = message.savedState.openFilesOnSelect;
+          }
+          if (message.savedState.layoutMode === 'grid' || message.savedState.layoutMode === 'row') {
+            layoutMode = message.savedState.layoutMode;
+          }
+          if (typeof message.savedState.showOptions === 'boolean') {
+            showOptions = message.savedState.showOptions;
           }
         }
         
@@ -208,68 +230,103 @@
   }
 
   function handleCompilationFailure(shader: ShaderFile) {
-    failedShaders = new Set(failedShaders).add(shader.path); // Create new Set to trigger reactivity
+    failedShaders = new Set(failedShaders).add(shader.path);
   }
+
 </script>
 
 <div class="shader-explorer">
   <div class="toolbar">
     <div class="toolbar-actions">
       <div class="search-container">
-        <input 
-          type="text" 
-          bind:value={search} 
-          placeholder="Search shaders..." 
+        <input
+          type="text"
+          bind:value={search}
+          placeholder="Search shaders..."
           class="search-input"
         />
       </div>
-      <div class="card-size-control">
-        <label for="card-size-slider" class="size-label">Card Size</label>
-        <input 
-          id="card-size-slider"
-          type="range" 
-          min="100"
-          max="1000"
-          step="10"
-          bind:value={cardSize}
-          class="card-size-slider"
-          title={`${cardSize}px`}
-        />
-      </div>
-      <select class="sort-select" bind:value={sortBy}>
-        <option value="name">Name</option>
-        <option value="updated">Updated</option>
-        <option value="created">Created</option>
-      </select>
-      <button 
-        class="icon-button sort-order-button" 
-        onclick={toggleSortOrder} 
-        title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+      <button
+        class="icon-button"
+        onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
+        title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
       >
-        {sortOrder === 'asc' ? '↑' : '↓'}
+        {layoutMode === 'grid' ? '☰' : '⊞'}
       </button>
-      <select class="page-size-select" bind:value={pageSize}>
-        <option value={10}>Show 10</option>
-        <option value={20}>Show 20</option>
-        <option value={30}>Show 30</option>
-        <option value={50}>Show 50</option>
-        <option value={100}>Show 100</option>
-      </select>
-      <label class="checkbox-control">
-        <input type="checkbox" bind:checked={hideFailedShaders} />
-        <span class="checkbox-label">Hide Failed</span>
-      </label>
-      <label class="checkbox-control">
-        <input type="checkbox" bind:checked={openFilesOnSelect} />
-        <span class="checkbox-label">Open Files</span>
-      </label>
-      <button class="icon-button" onclick={refreshShaders} title="Refresh">
-        ↻
+      <button
+        class="icon-button"
+        onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
+        title="Show Panel"
+      >
+        🖵
+      </button>
+      <button
+        class="icon-button"
+        onclick={() => vscode?.postMessage({ type: 'newShader' })}
+        title="New Shader"
+      >
+        +
+      </button>
+      <button
+        class="icon-button"
+        onclick={() => showOptions = !showOptions}
+        title="Options"
+      >
+        {showOptions ? '✕' : '⚙'}
       </button>
       <div class="shader-count">
         {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
       </div>
     </div>
+    {#if showOptions}
+      <div class="toolbar-actions">
+        {#if layoutMode === 'grid'}
+          <div class="card-size-control">
+            <label for="card-size-slider" class="size-label">Size</label>
+            <input
+              id="card-size-slider"
+              type="range"
+              min="100"
+              max="1000"
+              step="10"
+              bind:value={cardSize}
+              class="card-size-slider"
+              title={`${cardSize}px`}
+            />
+          </div>
+        {/if}
+        <select class="sort-select" bind:value={sortBy}>
+          <option value="name">Name</option>
+          <option value="updated">Updated</option>
+          <option value="created">Created</option>
+        </select>
+        <button
+          class="icon-button sort-order-button"
+          onclick={toggleSortOrder}
+          title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+        >
+          {sortOrder === 'asc' ? '↑' : '↓'}
+        </button>
+        <select class="page-size-select" bind:value={pageSize}>
+          <option value={10}>Show 10</option>
+          <option value={20}>Show 20</option>
+          <option value={30}>Show 30</option>
+          <option value={50}>Show 50</option>
+          <option value={100}>Show 100</option>
+        </select>
+        <label class="checkbox-control">
+          <input type="checkbox" bind:checked={hideFailedShaders} />
+          <span class="checkbox-label">Hide Failed</span>
+        </label>
+        <label class="checkbox-control">
+          <input type="checkbox" bind:checked={openFilesOnSelect} />
+          <span class="checkbox-label">Open Files</span>
+        </label>
+        <button class="icon-button" onclick={refreshShaders} title="Refresh">
+          ↻
+        </button>
+      </div>
+    {/if}
   </div>
 
   <div class="content">
@@ -286,12 +343,24 @@
         {/if}
       </div>
     {:else}
-      <div class="shader-grid" style="grid-template-columns: repeat(auto-fill, minmax({cardSize}px, 1fr));">
+      {#if totalPages > 1}
+        <div class="pagination pagination-top">
+          {@render pagination()}
+        </div>
+      {/if}
+      <div
+        class="shader-grid"
+        class:row-mode={layoutMode === 'row'}
+        style={layoutMode === 'grid'
+          ? `grid-template-columns: repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`
+          : ''}
+      >
         {#each paginatedShaders as shader (`${shader.path}-${refreshKey}`)}
-          <ShaderCard 
+          <ShaderCard
             {shader}
             {cardSize}
             {forceFresh}
+            {layoutMode}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}
             onCompilationFailed={() => handleCompilationFailure(shader)}
@@ -299,68 +368,71 @@
         {/each}
       </div>
       
+{#snippet pagination()}
+        <button
+          class="page-button"
+          onclick={prevPage}
+          disabled={currentPage === 1}
+        >
+          ‹
+        </button>
+
+        {#if totalPages <= 5}
+          {#each Array(totalPages) as _, i}
+            <button
+              class="page-button {currentPage === i + 1 ? 'active' : ''}"
+              onclick={() => goToPage(i + 1)}
+            >
+              {i + 1}
+            </button>
+          {/each}
+        {:else}
+          <button
+            class="page-button {currentPage === 1 ? 'active' : ''}"
+            onclick={() => goToPage(1)}
+          >
+            1
+          </button>
+
+          {#if currentPage > 3}
+            <span class="page-ellipsis">…</span>
+          {/if}
+
+          {@const startPage = Math.max(2, currentPage - 1)}
+          {@const endPage = Math.min(totalPages - 1, currentPage + 1)}
+          {#each Array(endPage - startPage + 1) as _, i}
+            {@const pageNum = startPage + i}
+            <button
+              class="page-button {currentPage === pageNum ? 'active' : ''}"
+              onclick={() => goToPage(pageNum)}
+            >
+              {pageNum}
+            </button>
+          {/each}
+
+          {#if currentPage < totalPages - 2}
+            <span class="page-ellipsis">…</span>
+          {/if}
+
+          <button
+            class="page-button {currentPage === totalPages ? 'active' : ''}"
+            onclick={() => goToPage(totalPages)}
+          >
+            {totalPages}
+          </button>
+        {/if}
+
+        <button
+          class="page-button"
+          onclick={nextPage}
+          disabled={currentPage === totalPages}
+        >
+          ›
+        </button>
+      {/snippet}
       {#if totalPages > 1}
         <div class="pagination">
-          <button 
-            class="page-button" 
-            onclick={prevPage}
-            disabled={currentPage === 1}
-          >
-            ‹
-          </button>
-          
-          {#if totalPages <= 7}
-            {#each Array(totalPages) as _, i}
-              <button 
-                class="page-button {currentPage === i + 1 ? 'active' : ''}"
-                onclick={() => goToPage(i + 1)}
-              >
-                {i + 1}
-              </button>
-            {/each}
-          {:else}
-            <button 
-              class="page-button {currentPage === 1 ? 'active' : ''}"
-              onclick={() => goToPage(1)}
-            >
-              1
-            </button>
-            
-            {#if currentPage > 3}
-              <span class="page-ellipsis">...</span>
-            {/if}
-            
-            {@const startPage = Math.max(2, Math.min(currentPage - 2, totalPages - 4))}
-            {@const endPage = Math.min(totalPages - 1, Math.max(currentPage + 2, 5))}
-            {#each Array(endPage - startPage + 1) as _, i}
-              {@const pageNum = startPage + i}
-              <button 
-                class="page-button {currentPage === pageNum ? 'active' : ''}"
-                onclick={() => goToPage(pageNum)}
-              >
-                {pageNum}
-              </button>
-            {/each}
-            
-            {#if currentPage < totalPages - 2}
-              <span class="page-ellipsis">...</span>
-            {/if}
-            
-            <button 
-              class="page-button {currentPage === totalPages ? 'active' : ''}"
-              onclick={() => goToPage(totalPages)}
-            >
-              {totalPages}
-            </button>
-          {/if}
-          
-          <button 
-            class="page-button" 
-            onclick={nextPage}
-            disabled={currentPage === totalPages}
-          >
-            ›
-          </button>
+          {@render pagination()}
         </div>
       {/if}
     {/if}
@@ -383,6 +455,7 @@
     border-bottom: 1px solid var(--vscode-panel-border);
     background-color: var(--vscode-editor-background);
     align-items: stretch;
+    flex-shrink: 0;
   }
 
   .toolbar-actions {
@@ -546,6 +619,11 @@
     gap: 8px;
   }
 
+  .shader-grid.row-mode {
+    display: flex;
+    flex-direction: column;
+  }
+
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -576,17 +654,21 @@
 
   .pagination {
     display: flex;
-    gap: 4px;
+    gap: 2px;
     justify-content: center;
     align-items: center;
-    margin-top: 12px;
-    padding: 8px 0;
+    padding: 4px 0 12px 0;
+  }
+
+  .pagination-top {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .page-button {
-    min-width: 28px;
-    height: 28px;
-    padding: 0 6px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     border: 1px solid var(--vscode-button-border, transparent);

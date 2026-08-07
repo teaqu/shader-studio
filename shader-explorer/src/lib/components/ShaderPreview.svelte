@@ -28,6 +28,10 @@
   let renderingOwnership: RendererOwnership | null = null;
   let capturedImage: string = $state('');
   let compilationFailed: boolean = $state(false);
+
+  const errorScale = $derived(Math.max(1, Math.min(width / 80, 6)));
+  const errorIconSize = $derived(Math.round(9 * errorScale));
+  const errorTextSize = $derived(Math.round(6 * errorScale));
   let shaderCode: string = '';
   let previewPath: string = shader.path;
   let shaderConfig: any = null;
@@ -515,8 +519,8 @@
     />
   {:else if compilationFailed}
     <div class="shader-error">
-      <div class="error-icon">⚠️</div>
-      <div class="error-message">Compilation Failed</div>
+      <div class="error-icon" style="font-size:{errorIconSize}px">⚠️</div>
+      <div class="error-message" style="font-size:{errorTextSize}px">Failed</div>
     </div>
   {:else}
     <div class="loading-placeholder"></div>
@@ -536,8 +540,9 @@
     display: block;
     position: relative;
     background: #000;
+    overflow: hidden;
   }
-  
+
   .shader-preview {
     width: 100%;
     height: 100%;
@@ -565,20 +570,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 1px;
     background: #000;
     color: #fff;
+    overflow: hidden;
+    padding: 2px;
   }
-  
+
   .error-icon {
-    font-size: 48px;
-    margin-bottom: 8px;
+    line-height: 1;
     opacity: 0.6;
     filter: grayscale(100%);
+    flex-shrink: 0;
   }
-  
+
   .error-message {
-    font-size: 12px;
+    line-height: 1;
     opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    flex-shrink: 0;
   }
   
   .hover-canvas-wrapper {

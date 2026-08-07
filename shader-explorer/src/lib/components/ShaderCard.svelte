@@ -2,19 +2,45 @@
   import type { ShaderFile } from '../types/ShaderFile';
   import ShaderPreview from './ShaderPreview.svelte';
 
-  let { shader, vscodeApi, cardSize = 280, forceFresh = false, onOpen, onCompilationFailed }: {
+  let { shader, vscodeApi, cardSize = 280, forceFresh = false, layoutMode = 'grid', onOpen, onCompilationFailed }: {
     shader: ShaderFile;
     vscodeApi: any;
     cardSize?: number;
     forceFresh?: boolean;
+    layoutMode?: 'grid' | 'row';
     onOpen?: () => void;
     onCompilationFailed?: () => void;
   } = $props();
 
-  const displayName = shader.name.replace(/\.glsl$/, '');
+  const displayName = shader.name.replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, '');
 
-  let width = $derived(Math.round(cardSize * 2.286));
-  let height = $derived(Math.round(width * 9 / 16));
+  let width = $derived(layoutMode === 'row' ? 96 : Math.round(cardSize * 2.286));
+  let height = $derived(layoutMode === 'row' ? 54 : Math.round(width * 9 / 16));
+
+  let menuX = $state(0);
+  let menuY = $state(0);
+  let menuOpen = $state(false);
+
+  function showContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    menuX = e.clientX;
+    menuY = e.clientY;
+    menuOpen = true;
+  }
+
+  function closeMenu() {
+    menuOpen = false;
+  }
+
+  function deleteShader() {
+    vscodeApi?.postMessage({ type: 'deleteShader', path: shader.path });
+    menuOpen = false;
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') closeMenu();
+  }
 
   function formatDate(ms: number): string {
     return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -25,11 +51,15 @@
   const hasTimestamps = $derived(!!(createdStr || modifiedStr));
 </script>
 
+<svelte:window onclick={closeMenu} onkeydown={handleKeydown} />
+
 <div
   class="shader-card"
+  class:row={layoutMode === 'row'}
   role="button"
   tabindex="0"
   onclick={() => onOpen?.()}
+  oncontextmenu={showContextMenu}
   onkeydown={(e) => e.key === 'Enter' && onOpen?.()}
 >
   <div class="shader-thumbnail">
@@ -49,12 +79,20 @@
 
     {#if hasTimestamps}
       <div class="timestamp-popup">
-        {#if createdStr}<div class="timestamp-row"><span class="ts-label">Created at</span><span class="ts-value">{createdStr}</span></div>{/if}
-        {#if modifiedStr}<div class="timestamp-row"><span class="ts-label">Edited at</span><span class="ts-value">{modifiedStr}</span></div>{/if}
+        {#if createdStr}<div class="timestamp-row"><span class="ts-label">Created</span><span class="ts-value">{createdStr}</span></div>{/if}
+        {#if modifiedStr}<div class="timestamp-row"><span class="ts-label">Edited</span><span class="ts-value">{modifiedStr}</span></div>{/if}
       </div>
     {/if}
   </div>
 </div>
+
+{#if menuOpen}
+  <div class="context-menu" style="left: {menuX}px; top: {menuY}px;">
+    <button class="context-menu-item" onclick={deleteShader}>
+      🗑 Delete
+    </button>
+  </div>
+{/if}
 
 <style>
   .shader-card {
@@ -64,6 +102,39 @@
     overflow: hidden;
     cursor: pointer;
     transition: all 0.2s ease;
+  }
+
+  .shader-card.row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-radius: 4px;
+    height: 54px;
+  }
+
+  .shader-card.row .shader-thumbnail {
+    width: 96px;
+    height: 54px;
+    flex-shrink: 0;
+    aspect-ratio: unset;
+  }
+
+  .shader-card.row .shader-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2px 6px;
+    gap: 1px;
+  }
+
+  .shader-card.row .shader-name {
+    font-size: 11px;
+  }
+
+  .shader-card.row .shader-path {
+    font-size: 10px;
   }
 
   .shader-card:hover {
@@ -104,6 +175,35 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    padding: 4px;
+    min-width: 120px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .context-menu-item:hover {
+    background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   }
 
   .timestamp-popup {

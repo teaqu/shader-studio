@@ -1547,7 +1547,11 @@ suite('ShaderExplorerProvider Test Suite', () => {
   });
 
   suite('Message Handling - openShader', () => {
-    test('should open shader file on openShader message', async () => {
+    test('should open shader file and ensure panel is open', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand');
+      executeCommandStub.withArgs('shader-studio.hasActiveViewer').resolves(false);
+      executeCommandStub.withArgs('shader-studio.view').resolves();
+
       const mockDocument = {} as any;
       const openTextDocumentStub = sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument);
       const showTextDocumentStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
@@ -1556,9 +1560,27 @@ suite('ShaderExplorerProvider Test Suite', () => {
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'openShader', path: '/test/shader.glsl' });
 
+      assert.ok(executeCommandStub.calledWith('shader-studio.hasActiveViewer'));
+      assert.ok(executeCommandStub.calledWith('shader-studio.view'), 'Should open panel if none exists');
       assert.ok(openTextDocumentStub.calledOnce);
       assert.strictEqual(openTextDocumentStub.firstCall.args[0], '/test/shader.glsl');
       assert.ok(showTextDocumentStub.calledOnce);
+    });
+
+    test('should not open panel if one already exists', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand');
+      executeCommandStub.withArgs('shader-studio.hasActiveViewer').resolves(true);
+
+      const mockDocument = {} as any;
+      sandbox.stub(vscode.workspace, 'openTextDocument').resolves(mockDocument);
+      sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'openShader', path: '/test/shader.glsl' });
+
+      assert.ok(executeCommandStub.calledWith('shader-studio.hasActiveViewer'));
+      assert.ok(!executeCommandStub.calledWith('shader-studio.view'), 'Should not open panel if one exists');
     });
 
     test('should show error message if opening shader fails', async () => {
@@ -1731,6 +1753,153 @@ suite('ShaderExplorerProvider Test Suite', () => {
       await messageHandler({ type: 'saveState', state: null });
 
       assert.ok(updateStub.calledWith('shaderBrowser.state', null));
+    });
+  });
+
+  suite('Message Handling - deleteShader', () => {
+    test('should delete shader file, refresh list, and reload panel', async () => {
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
+
+      assert.ok(showWarningStub.calledOnce, 'Should ask for confirmation');
+      assert.ok(fsDeleteStub.called, 'Should call fs.delete');
+      assert.ok(
+        executeCommandStub.calledWith('shader-studio.refreshCurrentShader'),
+        'Should reload panel after delete',
+      );
+    });
+
+    test('should not delete if user cancels confirmation', async () => {
+      sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined as any);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
+
+      assert.ok(fsDeleteStub.notCalled, 'Should not delete when user cancels');
+    });
+
+    test('should delete config file alongside shader', async () => {
+      sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
+      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      const configPath = '/test/shader.sha.json';
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns(null);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
+
+      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      assert.ok(
+        deletedPaths.some((p: string) => p === configPath),
+        'Should delete config file',
+      );
+      assert.ok(
+        deletedPaths.some((p: string) => p === '/test/shader.glsl'),
+        'Should delete shader file',
+      );
+    });
+
+    test('should merge delete and dependent files into single dialog', async () => {
+      sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      const showWarningStub = sandbox.stub(vscode.window, 'showWarningMessage')
+        .resolves('Delete All' as any);
+
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        passes: {
+          BufferA: { path: './buffer-a.slang' },
+          ComputePass: { type: 'compute', path: './compute.slang' },
+        },
+      } as any);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/main.glsl' });
+
+      // Should only show one dialog with both "Delete All" and "Delete Shader Only"
+      assert.strictEqual(showWarningStub.callCount, 1);
+      const dialogText = showWarningStub.firstCall.args[0];
+      assert.ok(dialogText.includes('buffer-a.slang'));
+      assert.ok(dialogText.includes('compute.slang'));
+      assert.ok(dialogText.includes('main.glsl'));
+
+      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      assert.ok(deletedPaths.some((p: string) => p.includes('buffer-a.slang')));
+      assert.ok(deletedPaths.some((p: string) => p.includes('compute.slang')));
+      assert.ok(deletedPaths.some((p: string) => p.includes('main.glsl')));
+    });
+
+    test('should delete only shader when user chooses Delete Shader Only', async () => {
+      sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete Shader Only' as any);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'loadAndProcessConfig').returns({
+        passes: { BufferA: { path: './buffer-a.slang' } },
+      } as any);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/main.glsl' });
+
+      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      assert.ok(!deletedPaths.some((p: string) => p.includes('buffer-a.slang')));
+      assert.ok(deletedPaths.some((p: string) => p.includes('main.glsl')));
+    });
+
+    test('should show error if deletion fails', async () => {
+      sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
+      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
+      sandbox.stub(vscode.workspace.fs, 'delete').rejects(new Error('Permission denied'));
+      const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
+
+      assert.ok(showErrorStub.calledOnce);
+      assert.ok(showErrorStub.firstCall.args[0].includes('Failed to delete'));
+    });
+
+    test('should handle shader with no config', async () => {
+      sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.window, 'showWarningMessage').resolves('Delete' as any);
+      sandbox.stub(vscode.window.tabGroups, 'all').value([{ tabs: [] }]);
+      const fsDeleteStub = sandbox.stub(vscode.workspace.fs, 'delete').resolves();
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      // Config does not exist
+      existsSyncStub.callsFake((filePath: string) => filePath.includes('shader-explorer-dist'));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'deleteShader', path: '/test/shader.glsl' });
+
+      // Should only delete the shader file, no config
+      const deletedPaths = fsDeleteStub.args.map(a => a[0].fsPath);
+      assert.strictEqual(deletedPaths.length, 1);
+      assert.ok(deletedPaths[0].includes('shader.glsl'));
     });
   });
 

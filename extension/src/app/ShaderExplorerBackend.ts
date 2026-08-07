@@ -13,7 +13,7 @@ import { getShaderLanguage } from "./GlslFileTracker";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
-import { collectSlangDependencies } from "./SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes } from "./SlangDependencyGraph";
 import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
@@ -100,8 +100,18 @@ export class ShaderExplorerBackend {
         await this.createConfig(message.shaderPath);
         break;
       case "saveState":
-        // Save state to workspace storage
         await this.context.workspaceState.update('shaderBrowser.state', message.state);
+        break;
+      case "newShader":
+        await vscode.commands.executeCommand("shader-studio.newShader");
+        await new Promise(r => setTimeout(r, 300));
+        await this.sendShaderList();
+        break;
+      case "deleteShader":
+        await this.deleteShader(message.path);
+        break;
+      case "togglePanel":
+        await vscode.commands.executeCommand("shader-studio.view");
         break;
     }
   }
@@ -327,7 +337,23 @@ export class ShaderExplorerBackend {
       };
 
       if (message.language === "slang") {
-        message.slangModules = this.collectSlangModules(previewPath, code, config, buffers);
+        // Resolve #include directives inline so the preview engine can compile
+        this.logger.debug(`Resolving Slang includes for ${previewPath}`);
+        const resolved = resolveSlangIncludes(code, previewPath, (p) => this.readShaderSource(p));
+        this.logger.debug(`Resolved main source, included: ${resolved.includedPaths.join(', ')}`);
+        message.code = resolved.source;
+        const resolvedBuffers: Record<string, string> = {};
+        for (const [name, source] of Object.entries(buffers)) {
+          const passConfig = config?.passes?.[name];
+          const passPath = (passConfig && typeof passConfig === 'object' && 'path' in passConfig)
+            ? PathResolver.resolvePath(previewPath, passConfig.path as string)
+            : path.resolve(path.dirname(previewPath), name);
+          const bufResolved = resolveSlangIncludes(source, passPath, (p) => this.readShaderSource(p));
+          this.logger.debug(`Resolved buffer ${name} at ${passPath}, included: ${bufResolved.includedPaths.join(', ')}`);
+          resolvedBuffers[name] = bufResolved.source;
+        }
+        message.buffers = resolvedBuffers;
+        message.slangModules = this.collectSlangModules(previewPath, message.code, config, resolvedBuffers);
       }
 
       await this.addCustomUniformMetadata(config, previewPath, message);
@@ -753,6 +779,13 @@ export class ShaderExplorerBackend {
 
   private async openShader(shaderPath: string): Promise<void> {
     try {
+      // Ensure a panel is open
+      const hasActiveViewer = await vscode.commands.executeCommand<boolean>(
+        "shader-studio.hasActiveViewer",
+      );
+      if (!hasActiveViewer) {
+        await vscode.commands.executeCommand("shader-studio.view");
+      }
       const doc = await vscode.workspace.openTextDocument(shaderPath);
       await vscode.window.showTextDocument(doc, this.tabGroupResolver.findTargetColumn());
     } catch (error) {
@@ -792,6 +825,80 @@ export class ShaderExplorerBackend {
       vscode.window.showErrorMessage(
         `Failed to open config: ${error}`,
       );
+    }
+  }
+
+  private async deleteShader(shaderPath: string): Promise<void> {
+    try {
+      const configPath = this.getConfigPath(shaderPath);
+      const depFiles: string[] = [];
+
+      // Check config for referenced buffer/compute pass files
+      if (fs.existsSync(configPath)) {
+        try {
+          const config = this.configProcessor.loadAndProcessConfig(shaderPath, {});
+          if (config?.passes) {
+            for (const [_passName, passConfig] of Object.entries(config.passes)) {
+              if (passConfig && typeof passConfig === 'object' && 'path' in passConfig) {
+                const passPath = PathResolver.resolvePath(shaderPath, passConfig.path as string);
+                if (fs.existsSync(passPath) && !depFiles.includes(passPath)) {
+                  depFiles.push(passPath);
+                }
+              }
+            }
+          }
+        } catch {
+          // If config can't be parsed, just delete the shader and config
+        }
+      }
+
+      // Single confirmation dialog covering everything
+      const shaderName = path.basename(shaderPath);
+      let choice: string | undefined;
+      if (depFiles.length > 0) {
+        const depNames = depFiles.map(f => path.basename(f)).join(', ');
+        choice = await vscode.window.showWarningMessage(
+          `Delete "${shaderName}" and ${depFiles.length} dependent file${depFiles.length > 1 ? 's' : ''} (${depNames})?`,
+          { modal: true },
+          'Delete All',
+          'Delete Shader Only',
+        );
+      } else {
+        choice = await vscode.window.showWarningMessage(
+          `Delete "${shaderName}"?`,
+          { modal: true },
+          'Delete',
+        );
+      }
+
+      // Determine what to delete based on choice
+      const filesToDelete: string[] = [shaderPath];
+      if (fs.existsSync(configPath)) {
+        filesToDelete.push(configPath);
+      }
+      if (choice === 'Delete All') {
+        filesToDelete.push(...depFiles);
+      } else if (choice === 'Delete' && depFiles.length === 0) {
+        // Proceed — filesToDelete already has shader + config
+      } else {
+        return; // Cancelled
+      }
+
+      for (const file of filesToDelete) {
+        await vscode.workspace.fs.delete(vscode.Uri.file(file), { useTrash: true });
+      }
+
+      this.logger.info(`Deleted shader: ${shaderPath}`);
+      await this.sendShaderList();
+      // Reload the panel — if the deleted shader was active, the panel clears
+      await new Promise(r => setTimeout(r, 100));
+      try {
+        await vscode.commands.executeCommand("shader-studio.refreshCurrentShader");
+      } catch {
+        // Panel might not be open
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to delete shader: ${error}`);
     }
   }
 
