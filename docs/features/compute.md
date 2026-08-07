@@ -21,6 +21,7 @@ JSON does not allow comments; the annotations below use JSONC for explanation. R
     "ComputeInit": {
       "type": "compute",
       "path": "init.slang",
+      "entryPoint": "initParticles",
       "dispatch": { "cover": "particles" },
       "dispatchOnce": true
     },
@@ -55,7 +56,7 @@ Pass names must be valid shader identifiers: the first character is a letter or 
 
 ## Writing a Compute Shader
 
-A compute pass file must define exactly one native compute entrypoint. Declare its workgroup size with `[numthreads]`; Shader Studio supplies the global thread ID:
+A compute pass file must define at least one native compute entrypoint. Declare its workgroup size with `[numthreads]`; Shader Studio supplies the global thread ID. If a source file has more than one `[shader("compute")]` entry point, set the `entryPoint` field in the pass config to select one:
 
 ```slang
 [shader("compute")]
@@ -71,7 +72,7 @@ void simulateParticles(uint3 id : SV_DispatchThreadID)
 }
 ```
 
-The usual Slang built-ins are available: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, and `iFrame`. Compute passes can also sample configured channels with generated helpers such as `sampleIChannel0(uv)`. Compute sampling uses explicit mip level 0.
+The usual Slang built-ins are available in compute passes: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iChannelTime`, `iChannelLoaded`, `iSampleRate`, `iDate`, `iChannelResolution`, `iCameraPos`, and `iCameraDir`. Compute passes can also sample configured channels with generated helpers such as `sampleIChannel0(uv)`. Compute sampling uses explicit mip level 0. Script-driven custom uniforms are also available in compute passes.
 
 Dispatch sizes are rounded up to complete workgroups. Always guard the logical domain before indexing a storage buffer or doing work for a texel:
 
@@ -266,7 +267,11 @@ struct ParticleData
 One `StructuredBuffer<ParticleData>` consumes one storage binding while keeping those fields together. Packing does not remove the need to calculate the struct stride correctly.
 
 !!! warning
-    GLSL/WebGL cannot run compute passes or bind storage buffers. If a GLSL project contains passes with `"type": "compute"` or `storage`, Shader Studio warns that they require the Slang/WebGPU engine and skips the compute passes instead of silently rendering black.
+    GLSL/WebGL cannot run compute passes or bind storage buffers. Compute passes and storage buffers require the Slang/WebGPU engine; they are silently skipped when a `.glsl` shader is loaded. Switch to a `.slang` shader to use compute features.
+
+## Visual Config Form
+
+The Slang visual config form includes a **Storage** tab and per-compute-pass controls for dispatch mode, repeats, and output layers. Workgroup size belongs in the required shader `[numthreads]` annotation. Valid compute control edits apply immediately. Storage edits are applied explicitly because they recreate and clear that GPU buffer; renaming a declaration updates `cover` dispatch references but does not rewrite Slang source files. The **Inspect** control captures an explicit GPU snapshot of a selected element range and supports editing `float`, `int`, `uint`, and their 2–4 component vector forms before writing the range back. `dispatchOnce` and `entryPoint` are available in both the visual editor and raw JSON configuration. When a compute source file has more than one `[shader("compute")]` entry point, select one in the pass controls.
 
 ## Current Limitations
 
@@ -276,13 +281,6 @@ One `StructuredBuffer<ParticleData>` consumes one storage binding while keeping 
 - Every storage buffer is bound to every pass. There is no per-pass storage binding list.
 - Custom-typed buffers cannot be accessed from `common`; only their type definitions belong there.
 - Compute output is `rgba16float`, is created only when sampled, and supports at most 8 layers.
-- The Slang visual config form includes a **Storage** tab and per-compute-pass controls for dispatch mode, repeats, and output layers. Workgroup size belongs in the required shader `[numthreads]` annotation. Valid compute control edits apply immediately. Storage edits are applied explicitly because they recreate and clear that GPU buffer; renaming a declaration updates `cover` dispatch references but does not rewrite Slang source files. The **Inspect** control captures an explicit GPU snapshot of a selected element range and supports editing `float`, `int`, `uint`, and their 2–4 component vector forms before writing the range back. `dispatchOnce` remains available in JSON configuration. Multiple native compute entrypoints are supported; select one in the pass controls when a source has more than one.
-
-## Examples
-
-- `examples/compute-particles` — a one-shot initializer, per-frame integration, and Image rendering from current-frame storage.
-- `examples/compute-blur` — per-texel `writeOutput` with two output layers; Image samples the blurred layer.
-- `examples/compute-substeps` — separate one-shot initialization plus six `iDispatch` two-lane solver steps per frame.
 
 ## Next
 
