@@ -90,4 +90,34 @@ suite('ThumbnailCache Test Suite', () => {
       cache.saveThumbnail('/some/shader.glsl', 'data:image/png;base64,invaliddata');
     });
   });
+
+  test('cache survives float precision drift (JSON round-trip)', () => {
+    const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+    const shaderPath = '/some/shader.slang';
+    // Simulate mtimeMs returning a high-precision float
+    const savedTime = 1723054123.456789;
+    // Simulate the same value after JSON serialization/deserialization
+    // (IEEE 754 can lose the last digit)
+    const loadedTime = 1723054123.456788;
+
+    cache.saveThumbnail(shaderPath, dataUri, savedTime);
+
+    // Should hit the cache despite the slight difference
+    const result = cache.getThumbnail(shaderPath, loadedTime);
+    assert.ok(result, 'cache should hit despite float precision drift');
+    assert.ok(result!.startsWith('data:image/png;base64,'));
+  });
+
+  test('different modified times produce different cache keys', () => {
+    const dataUri1 = 'data:image/png;base64,AAAA';
+    const dataUri2 = 'data:image/png;base64,BBBB';
+    const shaderPath = '/some/shader.slang';
+
+    cache.saveThumbnail(shaderPath, dataUri1, 1000);
+    cache.saveThumbnail(shaderPath, dataUri2, 2000);
+
+    // Each should retrieve its own thumbnail
+    assert.strictEqual(cache.getThumbnail(shaderPath, 1000), dataUri1);
+    assert.strictEqual(cache.getThumbnail(shaderPath, 2000), dataUri2);
+  });
 });

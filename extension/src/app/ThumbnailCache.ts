@@ -24,7 +24,8 @@ export class ThumbnailCache {
     const hash = createHash("md5");
     hash.update(shaderPath);
     if (modifiedTime) {
-      hash.update(modifiedTime.toString());
+      // Floor to avoid float-precision drift across JSON round-trip
+      hash.update(Math.floor(modifiedTime).toString());
     }
     return hash.digest("hex");
   }
