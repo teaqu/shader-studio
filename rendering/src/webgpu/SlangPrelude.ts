@@ -238,6 +238,8 @@ export interface SlangComputeWrapOptions {
   outputLayers: number;
   hasOutput: boolean;
   customUniforms?: SlangCustomUniformInfo[];
+  /** WGSL image format for compute output texture: "rgba16f" (default) or "rgba32f". */
+  outputImageFormat?: "rgba16f" | "rgba32f";
 }
 
 // Capture uniform block layout (bytes): coordGrid float4 @0
@@ -498,11 +500,11 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode, vertexChannelAliases)}`;
 }
 
-function buildOutputPrelude(binding: number, outputLayers: number): string {
+function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
   if (outputLayers > 1) {
     return `// ---- shader-studio Slang compute output (generated) ----
 [[vk::binding(${binding}, 0)]]
-[[vk::image_format("rgba16f")]]
+[[vk::image_format("${imageFormat}")]]
 WTexture2DArray<float4> _outTex;
 
 void writeOutput(uint2 coord, uint layer, float4 color)
@@ -522,7 +524,7 @@ void writeOutput(uint2 coord, uint layer, float4 color)
 
   return `// ---- shader-studio Slang compute output (generated) ----
 [[vk::binding(${binding}, 0)]]
-[[vk::image_format("rgba16f")]]
+[[vk::image_format("${imageFormat}")]]
 WTexture2D<float4> _outTex;
 
 void writeOutput(uint2 coord, float4 color)
@@ -586,7 +588,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
   const outputBinding = 1 + channels.length * 2 + storage.length;
   const outputPrelude = options.hasOutput
-    ? buildOutputPrelude(outputBinding, options.outputLayers)
+    ? buildOutputPrelude(outputBinding, options.outputLayers, options.outputImageFormat ?? "rgba16f")
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);

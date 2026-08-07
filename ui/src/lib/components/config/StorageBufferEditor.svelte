@@ -22,26 +22,26 @@
   let { name, declaration, existingNames, referencedBy, onApply, onDelete, onDeleted = () => {}, onRead, onWrite }: Props = $props();
   let draftName = $state(name);
   let count = $state(String(declaration.count));
-  let stride = $state(String(declaration.stride));
   let elementType = $state(declaration.elementType);
   let errors = $state<ConfigFieldErrors>({});
   let inspecting = $state(false);
 
   const builtinStride = $derived(getBuiltinStorageStride(elementType));
-  const effectiveStride = $derived(builtinStride ?? Number(stride));
 
   $effect(() => {
     draftName = name;
     count = String(declaration.count);
-    stride = String(declaration.stride);
     elementType = declaration.elementType;
   });
 
-  const dirty = $derived(draftName !== name || count !== String(declaration.count) || effectiveStride !== declaration.stride || elementType !== declaration.elementType);
+  const dirty = $derived(
+    draftName !== name ||
+    count !== String(declaration.count) ||
+    elementType !== declaration.elementType,
+  );
 
   function draft(): StorageBufferConfig | null {
     const nextCount = Number(count);
-    const nextStride = effectiveStride;
     const nextErrors: ConfigFieldErrors = {};
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(draftName)) {
       nextErrors.name = 'Use a valid shader identifier';
@@ -51,30 +51,23 @@
     if (!Number.isInteger(nextCount) || nextCount <= 0) {
       nextErrors.count = 'Enter a positive integer';
     }
-    if (builtinStride === null && (!Number.isInteger(nextStride) || nextStride <= 0)) {
-      nextErrors.stride = 'Enter a positive integer';
-    }
     if (elementType.trim().length === 0) {
       nextErrors.elementType = 'Element type is required';
     }
     errors = nextErrors;
-    return Object.keys(nextErrors).length === 0
-      ? { count: nextCount, stride: nextStride, elementType: elementType.trim() }
-      : null;
+    if (Object.keys(nextErrors).length > 0) return null;
+    return { count: nextCount, elementType: elementType.trim() };
   }
 
   function apply() {
     const next = draft();
-    if (!next) {
-      return;
-    }
+    if (!next) return;
     errors = onApply(name, draftName, next);
   }
 
   function cancel() {
     draftName = name;
     count = String(declaration.count);
-    stride = String(declaration.stride);
     elementType = declaration.elementType;
     errors = {};
   }
@@ -92,8 +85,10 @@
   <label>Name<input name="storage-name" aria-label="Storage name" aria-invalid={errors.name ? 'true' : undefined} bind:value={draftName} /></label>
   <label>Element count<input aria-label="Element count" aria-invalid={errors.count ? 'true' : undefined} bind:value={count} /></label>
   <label>Element type<input aria-label="Element type" aria-invalid={errors.elementType ? 'true' : undefined} bind:value={elementType} /></label>
-  {#if builtinStride === null}
-    <label>Byte stride<input aria-label="Byte stride" aria-invalid={errors.stride ? 'true' : undefined} bind:value={stride} /></label>
+  {#if builtinStride !== null}
+    <p class="stride-info">Stride: {builtinStride} bytes (auto-inferred from type)</p>
+  {:else}
+    <p class="stride-info">Stride inferred from struct definition in source</p>
   {/if}
   {#each Object.values(errors) as error}<p role="alert">{error}</p>{/each}
   {#if referencedBy.length > 0}
@@ -111,5 +106,13 @@
 
 <style>
   .storage-editor { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--vscode-panel-border, #3c3c3c); border-radius: 4px; }
-  h3, p { margin: 0; } label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; } input { min-width: 120px; padding: 4px 6px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: none; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); font: inherit; } input:hover { background: var(--vscode-inputOption-hoverBackground, #454545); } input:focus { border-color: var(--vscode-focusBorder, #007fd4); } input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground, #f48771)); } p { color: var(--vscode-errorForeground, #f48771); font-size: 12px; } .actions { display: flex; gap: 6px; }
+  h3, p { margin: 0; }
+  label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+  input { min-width: 120px; padding: 4px 6px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: none; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #ccc); font: inherit; }
+  input:hover { background: var(--vscode-inputOption-hoverBackground, #454545); }
+  input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+  input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground, #f48771)); }
+  p[role="alert"] { color: var(--vscode-errorForeground, #f48771); font-size: 12px; }
+  .stride-info { color: var(--vscode-descriptionForeground, #888); font-size: 11px; }
+  .actions { display: flex; gap: 6px; }
 </style>

@@ -991,7 +991,7 @@ describe("Slang compute passes", () => {
   ] as const)("resolves dispatch %j", (dispatch, expectedDispatch, expectedWorkgroupSize) => {
     const graph = build({
       version: "1",
-      storage: { particles: { count: 16, stride: 16, elementType: "float4" } },
+      storage: { particles: { count: 16, elementType: "float4" } },
       passes: {
         Image: { inputs: {} },
         ComputeMain: { type: 'compute',
@@ -1233,10 +1233,21 @@ describe("Slang compute passes", () => {
 
 describe("Slang storage graph", () => {
   function build(storage: ShaderConfig["storage"], commonCode = "") {
+    // Define any custom struct types referenced in storage config so stride
+    // can be auto-inferred from them.
+    const structDefs = [
+      "struct Particle { float4 position; float4 velocity; };",
+      "struct ColoredParticle { float4 position; float4 velocity; float4 color; };",
+      "struct MixedLayout { float3 direction; float lifetime; float4 extra; };",
+      "struct Transform { float4x4 modelMatrix; };",
+      "struct RigidBody { float4x4 transform; float4 angularVelocity; };",
+      "struct Trail { float4 color; };",
+    ].join("\n");
+    const code = structDefs + "\n" + commonCode;
     return buildSlangPassGraph({
       imageCode,
       config: { version: "1", storage, passes: { Image: { inputs: {} } } },
-      buffers: commonCode === "" ? {} : { common: commonCode },
+      buffers: { common: code },
       canvasWidth: 64,
       canvasHeight: 64,
     });
@@ -1244,9 +1255,9 @@ describe("Slang storage graph", () => {
 
   it("preserves declaration order, trims types, assigns dense bindings, and identifies builtins", () => {
     const graph = build({
-      positions: { count: 4, stride: 16, elementType: "  float4  " },
-      custom: { count: 2, stride: 32, elementType: "Particle" },
-      counter: { count: 1, stride: 4, elementType: "Atomic<uint>" },
+      positions: { count: 4, elementType: "  float4  " },
+      custom: { count: 2, elementType: "Particle" },
+      counter: { count: 1, elementType: "Atomic<uint>" },
     });
 
     expect(graph.errors).toEqual([]);
@@ -1258,26 +1269,44 @@ describe("Slang storage graph", () => {
   });
 
   it.each([0, -1, 1.5])("rejects storage with invalid count %s", (count) => {
-    const graph = build({ invalid: { count, stride: 4, elementType: "float" } });
+    const graph = build({ invalid: { count, elementType: "float" } });
     expect(graph.errors).toContain("Storage invalid: count must be a positive integer");
     expect(graph.storage).toEqual([]);
   });
 
-  it.each([0, -1, 1.5])("rejects storage with invalid stride %s", (stride) => {
-    const graph = build({ invalid: { count: 1, stride, elementType: "float" } });
-    expect(graph.errors).toContain("Storage invalid: stride must be a positive integer");
+  it("rejects storage when element type cannot be resolved", () => {
+    const graph = build({ invalid: { count: 1, elementType: "UnknownStruct" } });
+    expect(graph.errors.some((e) => e.includes("cannot determine stride"))).toBe(true);
     expect(graph.storage).toEqual([]);
   });
 
+  it("auto-fills stride for custom structs defined in the source", () => {
+    const graph = build(
+      { particles: { count: 64, elementType: "Particle" } },
+      `struct Particle { float4 position; float4 velocity; };`,
+    );
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage).toHaveLength(1);
+    expect(graph.storage[0]!.stride).toBe(32);
+    expect(graph.storage[0]!.builtin).toBe(false);
+  });
+
+  it("auto-fills stride for built-in types", () => {
+    const graph = build({ data: { count: 1, elementType: "float" } });
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage).toHaveLength(1);
+    expect(graph.storage[0]!.stride).toBe(4);
+  });
+
   it.each(["", "   "])("rejects storage with empty elementType %j", (elementType) => {
-    const graph = build({ invalid: { count: 1, stride: 4, elementType } });
+    const graph = build({ invalid: { count: 1, elementType } });
     expect(graph.errors).toContain("Storage invalid: elementType is required");
     expect(graph.storage).toEqual([]);
   });
 
   it("rejects storage with a non-string elementType from runtime JSON", () => {
     const graph = build({
-      invalid: { count: 1, stride: 4, elementType: null },
+      invalid: { count: 1, elementType: null },
     } as unknown as ShaderConfig["storage"]);
     expect(graph.errors).toContain("Storage invalid: elementType is required");
     expect(graph.storage).toEqual([]);
@@ -1285,8 +1314,8 @@ describe("Slang storage graph", () => {
 
   it("assigns bindings among emitted nodes when an earlier declaration is invalid", () => {
     const graph = build({
-      invalid: { count: 0, stride: 4, elementType: "float" },
-      valid: { count: 1, stride: 4, elementType: "float" },
+      invalid: { count: 0, elementType: "float" },
+      valid: { count: 1, elementType: "float" },
     });
     expect(graph.storage[0].binding).toBe(0);
   });
@@ -1294,7 +1323,7 @@ describe("Slang storage graph", () => {
   it("warns but does not error when storage exceeds the device limit", () => {
     const storage = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [
       `data${index}`,
-      { count: 1, stride: 4, elementType: "float" },
+      { count: 1, elementType: "float" },
     ]));
     const graph = build(storage);
 
@@ -1308,9 +1337,9 @@ describe("Slang storage graph", () => {
 
   it("warns in config order when common references custom-typed storage", () => {
     const graph = build({
-      trails: { count: 2, stride: 16, elementType: "Trail" },
-      positions: { count: 2, stride: 16, elementType: "float4" },
-      particles: { count: 2, stride: 32, elementType: "Particle" },
+      trails: { count: 2, elementType: "Trail" },
+      positions: { count: 2, elementType: "float4" },
+      particles: { count: 2, elementType: "Particle" },
     }, `
 float4 readParticle(uint index)
 {
@@ -1327,7 +1356,7 @@ float4 readParticle(uint index)
 
   it("warns when trivia separates custom storage from indexed access", () => {
     const graph = build({
-      particles: { count: 2, stride: 32, elementType: "Particle" },
+      particles: { count: 2, elementType: "Particle" },
     }, `
 float4 readParticle(uint index)
 {
@@ -1343,8 +1372,8 @@ float4 readParticle(uint index)
 
   it("does not warn for builtin or unreferenced custom storage", () => {
     const graph = build({
-      positions: { count: 2, stride: 16, elementType: "float4" },
-      particles: { count: 2, stride: 32, elementType: "Particle" },
+      positions: { count: 2, elementType: "float4" },
+      particles: { count: 2, elementType: "Particle" },
     }, "float4 readPosition(uint index) { return positions[index]; }");
 
     expect(graph.warnings).toEqual([]);
@@ -1352,11 +1381,11 @@ float4 readParticle(uint index)
 
   it("matches exact identifier tokens and ignores comments, strings, chars, and escapes", () => {
     const graph = build({
-      particle: { count: 2, stride: 32, elementType: "Particle" },
-      commentsOnly: { count: 2, stride: 32, elementType: "Particle" },
-      blockOnly: { count: 2, stride: 32, elementType: "Particle" },
-      stringOnly: { count: 2, stride: 32, elementType: "Particle" },
-      q: { count: 2, stride: 32, elementType: "Particle" },
+      particle: { count: 2, elementType: "Particle" },
+      commentsOnly: { count: 2, elementType: "Particle" },
+      blockOnly: { count: 2, elementType: "Particle" },
+      stringOnly: { count: 2, elementType: "Particle" },
+      q: { count: 2, elementType: "Particle" },
     }, String.raw`
 float particles = 0;
 // commentsOnly[0]
@@ -1371,14 +1400,14 @@ char quote = '\'';
 
   it("ignores custom storage names in declarations, shadowing, and member access", () => {
     const graph = build({
-      parameter: { count: 2, stride: 32, elementType: "Particle" },
-      local: { count: 2, stride: 32, elementType: "Particle" },
-      typeName: { count: 2, stride: 32, elementType: "Particle" },
-      field: { count: 2, stride: 32, elementType: "Particle" },
-      genericField: { count: 2, stride: 32, elementType: "Particle" },
-      pointerField: { count: 2, stride: 32, elementType: "Particle" },
-      externalType: { count: 2, stride: 32, elementType: "Particle" },
-      member: { count: 2, stride: 32, elementType: "Particle" },
+      parameter: { count: 2, elementType: "Particle" },
+      local: { count: 2, elementType: "Particle" },
+      typeName: { count: 2, elementType: "Particle" },
+      field: { count: 2, elementType: "Particle" },
+      genericField: { count: 2, elementType: "Particle" },
+      pointerField: { count: 2, elementType: "Particle" },
+      externalType: { count: 2, elementType: "Particle" },
+      member: { count: 2, elementType: "Particle" },
     }, `
 struct typeName { float4 value; };
 struct Holder
@@ -1402,13 +1431,13 @@ float4 shadowed(float4 parameter)
 
   it("ignores shadowed storage in comma-separated declarations", () => {
     const graph = build({
-      commaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      pointerCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      genericCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      parameterCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      initializerCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      inlineStructCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
-      forCommaLocal: { count: 2, stride: 32, elementType: "Particle" },
+      commaLocal: { count: 2, elementType: "Particle" },
+      pointerCommaLocal: { count: 2, elementType: "Particle" },
+      genericCommaLocal: { count: 2, elementType: "Particle" },
+      parameterCommaLocal: { count: 2, elementType: "Particle" },
+      initializerCommaLocal: { count: 2, elementType: "Particle" },
+      inlineStructCommaLocal: { count: 2, elementType: "Particle" },
+      forCommaLocal: { count: 2, elementType: "Particle" },
     }, `
 float4 shadowed()
 {
@@ -1445,7 +1474,7 @@ float4 forInitializerShadow()
 
   it("warns for indexed storage used after a function argument comma", () => {
     const graph = build({
-      particles: { count: 2, stride: 32, elementType: "Particle" },
+      particles: { count: 2, elementType: "Particle" },
     }, `
 float4 readParticle(uint index)
 {
@@ -1463,8 +1492,8 @@ float4 readParticle(uint index)
 
   it("ignores directive lines and nested code inside an inactive if-zero block", () => {
     const graph = build({
-      particles: { count: 2, stride: 32, elementType: "Particle" },
-      trails: { count: 2, stride: 16, elementType: "Trail" },
+      particles: { count: 2, elementType: "Particle" },
+      trails: { count: 2, elementType: "Trail" },
     }, String.raw`
 #define READ_PARTICLE particles[0]
 #define READ_TRAIL \
@@ -1488,7 +1517,7 @@ float4 adjacentBlockComment = trails[0].color;
 
   it("keeps endif text inside inactive multiline comments from ending the region", () => {
     const graph = build({
-      particles: { count: 2, stride: 32, elementType: "Particle" },
+      particles: { count: 2, elementType: "Particle" },
     }, `
 #if 0
 /*
@@ -1503,13 +1532,13 @@ float4 stillInactive = particles[0].position;
 
   it("tracks literal else and elif branches, including nested conditionals", () => {
     const graph = build({
-      activeElse: { count: 2, stride: 32, elementType: "Particle" },
-      inactiveIf: { count: 2, stride: 32, elementType: "Particle" },
-      activeIf: { count: 2, stride: 32, elementType: "Particle" },
-      inactiveElse: { count: 2, stride: 32, elementType: "Particle" },
-      activeElif: { count: 2, stride: 32, elementType: "Particle" },
-      activeFinalElse: { count: 2, stride: 32, elementType: "Particle" },
-      nestedActive: { count: 2, stride: 32, elementType: "Particle" },
+      activeElse: { count: 2, elementType: "Particle" },
+      inactiveIf: { count: 2, elementType: "Particle" },
+      activeIf: { count: 2, elementType: "Particle" },
+      inactiveElse: { count: 2, elementType: "Particle" },
+      activeElif: { count: 2, elementType: "Particle" },
+      activeFinalElse: { count: 2, elementType: "Particle" },
+      nestedActive: { count: 2, elementType: "Particle" },
     }, `
 #if 0
 float4 a = inactiveIf[0].position;
@@ -1557,14 +1586,14 @@ float4 h = activeFinalElse[0].position;
 
   it("suppresses every branch of conditionals with unknown expressions", () => {
     const graph = build({
-      unknownIf: { count: 2, stride: 32, elementType: "Particle" },
-      unknownElse: { count: 2, stride: 32, elementType: "Particle" },
-      unknownIfdef: { count: 2, stride: 32, elementType: "Particle" },
-      unknownIfdefElse: { count: 2, stride: 32, elementType: "Particle" },
-      compoundIf: { count: 2, stride: 32, elementType: "Particle" },
-      compoundElse: { count: 2, stride: 32, elementType: "Particle" },
-      disjunctionIf: { count: 2, stride: 32, elementType: "Particle" },
-      disjunctionElse: { count: 2, stride: 32, elementType: "Particle" },
+      unknownIf: { count: 2, elementType: "Particle" },
+      unknownElse: { count: 2, elementType: "Particle" },
+      unknownIfdef: { count: 2, elementType: "Particle" },
+      unknownIfdefElse: { count: 2, elementType: "Particle" },
+      compoundIf: { count: 2, elementType: "Particle" },
+      compoundElse: { count: 2, elementType: "Particle" },
+      disjunctionIf: { count: 2, elementType: "Particle" },
+      disjunctionElse: { count: 2, elementType: "Particle" },
     }, `
 #if FEATURE_FLAG
 float4 a = unknownIf[0].position;
@@ -1592,7 +1621,7 @@ float4 h = disjunctionElse[0].position;
   });
 
   it("reports total valid storage larger than 256 MiB", () => {
-    const graph = build({ huge: { count: 268_435_457, stride: 1, elementType: "uint" } });
+    const graph = build({ huge: { count: 268_435_457, elementType: "uint" } });
 
     expect(graph.errors.some((error) => error.includes("256 MiB"))).toBe(true);
     expect(graph.storage).toHaveLength(1);

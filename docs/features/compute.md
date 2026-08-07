@@ -100,7 +100,7 @@ The top-level `storage` object declares persistent engine-managed buffers. Each 
 | Field | Meaning |
 |-------|---------|
 | `count` | Number of elements. Must be a positive integer. |
-| `stride` | Bytes per element. Must be a positive integer and match the element type's WGSL storage layout. |
+| `stride` | Bytes per element. Optional for built-in types (`float4` → 16, `uint` → 4, etc.) where it's inferred automatically. Required for custom struct types. Must match the element type's WGSL storage layout if provided. |
 | `elementType` | A Slang type such as `float4`, `uint`, `Atomic<uint>`, or a struct declared in `common`. |
 
 Shader Studio allocates `count * stride` zero-initialized bytes. Storage survives between frames and across successful same-session recompiles when its declaration is unchanged. Choosing **Reset** explicitly recreates every storage buffer with zeroed contents. A main shader/path switch installs fresh storage for the new session, and an individual buffer is recreated when its declaration changes. Timeline scrubbing, loop wrap, negative playback, and ordinary time changes do not clear storage. The engine declares and binds every configured storage buffer in every pass. Compute passes see `RWStructuredBuffer<T>`; vertex and fragment stages see read-only `StructuredBuffer<T>`. Direct `Atomic<uint>` and `Atomic<int>` elements are the exception described below: render stages see their scalar `uint` or `int` representation. Do not declare the buffers or choose binding numbers yourself:
@@ -110,7 +110,7 @@ Shader Studio allocates `count * stride` zero-initialized bytes. Storage survive
 positions[id.x] = float4(0.0, 1.0, 0.0, 1.0);
 ```
 
-Stride is not inferred or checked against Slang reflection yet. Scalars such as `uint` use 4 bytes and `float4` uses 16 bytes. For structs, account for field alignment and padding; a `float3` can introduce 16-byte alignment. Prefer layouts made from `float4`/`uint4`, calculate the final aligned size, and keep `stride` equal to it.
+Stride is inferred automatically for built-in element types: `float`/`int`/`uint` → 4, `float2` → 8, `float3` → 12, `float4` → 16, `float4x4` → 64, and so on. For custom struct types, you must specify the stride. If a stride is provided for a built-in type, it's validated and a warning is emitted if it doesn't match.
 
 Atomics work as element types or struct fields in compute passes. For example, an `Atomic<uint>` storage element can be incremented with:
 
@@ -277,7 +277,7 @@ The Slang visual config form includes a **Storage** tab and per-compute-pass con
 
 - Compute shaders require Slang and WebGPU; there is no GLSL fallback.
 - Compute variable capture/debugging and indirect dispatch are not implemented.
-- `count`, `stride`, and `elementType` are config-authored; stride is not reflection-validated.
+- Stride for custom struct types must be authored manually; it is not yet validated against compiled WGSL layout.
 - Every storage buffer is bound to every pass. There is no per-pass storage binding list.
 - Custom-typed buffers cannot be accessed from `common`; only their type definitions belong there.
 - Compute output is `rgba16float` by default, `rgba32float` when the device supports float32 filtering, is created only when sampled, and layers are capped at the device's `maxTextureArrayLayers` limit (minimum 256 per spec).

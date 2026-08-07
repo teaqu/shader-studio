@@ -44,6 +44,7 @@ import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
 export interface SlangAssetUrls {
@@ -805,6 +806,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     let pipelineCandidates: PendingPipelineCandidates | undefined;
     const passTimings: PassTiming[] = [];
     const errors: string[] = [];
+    let storageStridesValidated: boolean | null = null;
     let published = false;
     try {
       try {
@@ -987,6 +989,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
+              ...(pass.kind === "compute"
+                ? { outputImageFormat: this.wgslImageFormat(this.bufferTextureFormat) }
+                : {}),
               ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
               ...(passModules.length > 0 ? { modules: passModules } : {}),
               ...(slangSourcePaths?.[pass.name]
@@ -1015,6 +1020,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
             }
             wgsl = compiled.wgsl;
             sharedSlangWgslCache.set(wgslKey, wgsl);
+          }
+          // After the first successful compile, validate custom struct strides
+          // against the actual WGSL layout that Slang generated.
+          if (wgsl && storageStridesValidated === null) {
+            storageStridesValidated = false;
+            const structSizes = extractStructSizes(wgsl);
+            for (const storageNode of graph.storage) {
+              if (storageNode.builtin) continue;
+              const actualSize = structSizes.get(storageNode.elementType);
+              if (actualSize !== undefined && actualSize.size !== storageNode.stride) {
+                graph.warnings.push(
+                  `Storage "${storageNode.name}": stride ${storageNode.stride} does not match ` +
+                  `the compiled size of ${storageNode.elementType} (${actualSize.size} bytes from WGSL layout)`,
+                );
+              }
+            }
           }
           pipeline = this.createPassPipeline(
             pass,
@@ -1404,6 +1425,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
       maxSizeY: resolve(limits?.maxComputeWorkgroupSizeY, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y),
       maxSizeZ: resolve(limits?.maxComputeWorkgroupSizeZ, DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z),
     };
+  }
+
+  private wgslImageFormat(gpuFormat: GPUTextureFormat): "rgba16f" | "rgba32f" {
+    return gpuFormat === "rgba32float" ? "rgba32f" : "rgba16f";
   }
 
   private resolveMaxOutputLayers(): number {

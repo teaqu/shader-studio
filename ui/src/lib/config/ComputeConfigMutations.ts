@@ -3,6 +3,7 @@ import type {
   ShaderConfig,
   StorageBufferConfig,
 } from '@shader-studio/types';
+import { getBuiltinStorageStride } from './StorageTypeLayout';
 
 export type ConfigFieldErrors = Record<string, string>;
 
@@ -84,7 +85,7 @@ export function addStorageBuffer(config: ShaderConfig): { config: ShaderConfig; 
       ...config,
       storage: {
         ...config.storage,
-        [name]: { count: 1024, stride: 16, elementType: 'float4' },
+        [name]: { count: 1024, elementType: 'float4' },
       },
     },
   };
@@ -107,23 +108,28 @@ function validateStorageBuffer(
   if (!isPositiveInteger(declaration.count)) {
     errors.count = 'Element count must be a positive integer';
   }
-  if (!isPositiveInteger(declaration.stride)) {
-    errors.stride = 'Byte stride must be a positive integer';
-  }
   if (declaration.elementType.trim().length === 0) {
     errors.elementType = 'Element type is required';
   }
 
-  if (isPositiveInteger(declaration.count) && isPositiveInteger(declaration.stride)) {
-    const bytes = declaration.count * declaration.stride;
-    if (!Number.isSafeInteger(bytes)) {
-      errors.count = 'Count multiplied by stride must be a safe integer';
-    } else {
-      const otherBytes = Object.entries(config.storage ?? {})
-        .filter(([existingName]) => existingName !== originalName)
-        .reduce((sum, [, item]) => sum + item.count * item.stride, 0);
-      if (otherBytes + bytes > MAX_TOTAL_STORAGE_BYTES) {
-        errors.count = 'Total storage allocation must not exceed 256 MiB';
+  // Total bytes estimate: only calculable for built-in types where stride is known.
+  // Custom struct strides are inferred at compile time in the rendering backend.
+  if (isPositiveInteger(declaration.count)) {
+    const stride = getBuiltinStorageStride(declaration.elementType);
+    if (stride !== null) {
+      const bytes = declaration.count * stride;
+      if (!Number.isSafeInteger(bytes)) {
+        errors.count = 'Count multiplied by stride must be a safe integer';
+      } else {
+        const otherBytes = Object.entries(config.storage ?? {})
+          .filter(([existingName]) => existingName !== originalName)
+          .reduce((sum, [, item]) => {
+            const itemStride = getBuiltinStorageStride(item.elementType) ?? 0;
+            return sum + item.count * itemStride;
+          }, 0);
+        if (otherBytes + bytes > MAX_TOTAL_STORAGE_BYTES) {
+          errors.count = 'Total storage allocation must not exceed 256 MiB';
+        }
       }
     }
   }

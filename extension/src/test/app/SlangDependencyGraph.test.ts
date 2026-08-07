@@ -249,5 +249,4 @@ suite("resolveSlangImports", () => {
     // a is inlined, a's import of b is inlined, b's import of a is left (cycle)
     assert.ok(result.includes("import"));
   });
-  });
 });

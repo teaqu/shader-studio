@@ -93,6 +93,7 @@ export class SlangCompiler {
         outputLayers: options.outputLayers ?? 1,
         hasOutput: options.hasOutput === true,
         customUniforms: options.customUniforms,
+        outputImageFormat: options.outputImageFormat ?? "rgba16f",
       })
       : wrapSlangImageSource(resolvedSource, {
         passName: options.passName,

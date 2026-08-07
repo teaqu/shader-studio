@@ -10,6 +10,7 @@ import type {
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { resolvePassGeometry } from "../types/Geometry";
+import { parseSlangStructs } from "./slangStructSize";
 
 export type {
   ChannelReadTiming,
@@ -46,6 +47,15 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
   "uint", "uint2", "uint3", "uint4",
   "Atomic<uint>", "Atomic<int>",
   "float2x2", "float3x3", "float4x4",
+]);
+
+/** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
+export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
+  ["float", 4], ["float2", 8], ["float3", 12], ["float4", 16],
+  ["int", 4], ["int2", 8], ["int3", 12], ["int4", 16],
+  ["uint", 4], ["uint2", 8], ["uint3", 12], ["uint4", 16],
+  ["Atomic<uint>", 4], ["Atomic<int>", 4],
+  ["float2x2", 16], ["float3x3", 48], ["float4x4", 64],
 ]);
 
 const SPECIAL_PASS_NAMES = new Set(["common", "Image"]);
@@ -98,8 +108,12 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       .filter(([name, passConfig]) => !SPECIAL_PASS_NAMES.has(name) && passConfig !== undefined)
       .map(([name]) => name),
   );
+  // Collect all Slang source files so we can parse struct definitions and
+  // auto-infer strides for custom types without needing compilation first.
+  const allSources = [options.imageCode, commonCode, ...Object.values(options.buffers).filter((v): v is string => typeof v === "string")];
+  const parsedStructs = parseSlangStructs(allSources);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
-  const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8);
+  const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8, parsedStructs);
   warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings);
   const storageNames = new Set(storage.map(({ name }) => name));
   const computePasses: RenderPassNode[] = [];
@@ -294,6 +308,7 @@ function resolveStorage(
   warnings: string[],
   errors: string[],
   maxStorageBuffers: number,
+  parsedStructs: Map<string, { size: number; alignment: number }>,
 ): StorageBindingNode[] {
   const storage: StorageBindingNode[] = [];
   let totalBytes = 0;
@@ -304,15 +319,26 @@ function resolveStorage(
       errors.push(`Storage ${name}: count must be a positive integer`);
       valid = false;
     }
-    if (!isPositiveInteger(declaration?.stride)) {
-      errors.push(`Storage ${name}: stride must be a positive integer`);
-      valid = false;
-    }
     const elementType = typeof declaration?.elementType === "string" ? declaration.elementType.trim() : "";
     if (elementType === "") {
       errors.push(`Storage ${name}: elementType is required`);
       valid = false;
     }
+    const builtinSize = BUILTIN_STORAGE_SIZES.get(elementType);
+    const isBuiltin = BUILTIN_STORAGE_TYPES.has(elementType);
+
+    // Stride is always auto-inferred: from the built-in table for known
+    // Slang types, or from parsed struct definitions in source files.
+    let stride: number;
+    const parsedSize = builtinSize ?? parsedStructs.get(elementType)?.size;
+    if (parsedSize !== undefined) {
+      stride = parsedSize;
+    } else {
+      errors.push(`Storage ${name}: cannot determine stride for type "${elementType}" — is the struct defined in a source file?`);
+      valid = false;
+      stride = 0;
+    }
+
     if (!valid) {
       continue;
     }
@@ -321,11 +347,11 @@ function resolveStorage(
       name,
       binding: storage.length,
       elementType,
-      builtin: BUILTIN_STORAGE_TYPES.has(elementType),
+      builtin: isBuiltin,
       count: declaration.count,
-      stride: declaration.stride,
+      stride,
     });
-    totalBytes += declaration.count * declaration.stride;
+    totalBytes += declaration.count * stride;
   }
 
   if (storage.length > maxStorageBuffers) {

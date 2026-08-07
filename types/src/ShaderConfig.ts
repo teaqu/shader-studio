@@ -111,10 +111,10 @@ export interface CommonPass {
   vertex?: never;
 }
 
-/** Describes the layout of a named GPU storage buffer. */
+/** Describes the layout of a named GPU storage buffer. Stride is always
+ *  auto-inferred from the element type (built-in table or parsed struct). */
 export interface StorageBufferConfig {
     count: number;
-    stride: number;
     elementType: string;
 }
 
