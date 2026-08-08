@@ -11,14 +11,12 @@ A vertex shader is useful when you want to:
 - **Custom projections** — apply non-standard camera transforms per pass
 - **Raymarching** — use 3D geometry as a bounding volume, then raymarch in the fragment shader
 
-If you're rendering a standard 2D full-screen quad (the default), you don't need a vertex shader.
+Fullscreen passes can also use vertex shaders for warping, custom projections, or screen-space effects without switching to 3D geometry.
 
 ## Configuring a Vertex Shader
 
 1. In the config panel, select the pass you want to configure
-2. Open the **Geometry** dropdown and pick a non-fullscreen option (plane, cube, sphere, or model)
-3. A **Vertex shader** section appears with a path field
-4. Enter a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub
+2. In the **Vertex shader** section, enter a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub
 
 **Double-click the "Vertex shader" title** to open the file in the [editor overlay](editor-overlay.md).
 
@@ -56,7 +54,7 @@ The meaning of the `inout` parameters depends on the geometry type:
 | **Sphere** | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
 | **Model** | GLB mesh vertex position | Mesh vertex normal | Mesh UV |
 
-For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. For fullscreen, the position is used directly as clip-space coordinates.
+For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. For fullscreen, `position` is in clip-space coordinates directly and can be modified in-place for warping effects.
 
 ## Available Built-ins
 
@@ -92,7 +90,33 @@ When using 3D geometry, the fragment shader receives per-pixel interpolated valu
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
 
-## Example: Displacing a Plane
+## Examples
+
+### Fullscreen
+
+A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for warping or custom projections:
+
+=== "GLSL"
+    ```glsl
+    // warp.vert.glsl
+    void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        // position is in clip space; offset to create a ripple
+        position.x += sin(uv.y * 20.0 + iTime) * 0.1;
+        position.y += cos(uv.x * 20.0 + iTime) * 0.1;
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // warp.vert.slang
+    void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {
+        float ripple = sin(uv.y * 20.0 + iTime) * 0.1;
+        position.x += ripple;
+        position.y += cos(uv.x * 20.0 + iTime) * 0.1;
+    }
+    ```
+
+### Displacing a Plane
 
 === "GLSL"
     ```glsl
