@@ -330,23 +330,6 @@ export class ShaderDebugManager {
   }
 
   public clearDebugState(): void {
-    const before = {
-      currentLine: this.state.currentLine,
-      lineContent: this.state.lineContent,
-      filePath: this.state.filePath,
-      debugError: this.state.debugError,
-      debugNotice: this.state.debugNotice,
-      capturedCount: (this.state.capturedVariables as unknown[]).length,
-      activeBufferName: this.state.activeBufferName,
-      isLineLocked: this.state.isLineLocked,
-      lockedFilePath: this.lockedFilePath,
-      hasVariablePreview: this.variablePreview !== null,
-      lastFunctionName: this.lastFunctionName,
-      imageShaderCodeLength: this.imageShaderCode?.length ?? null,
-      imagePassPath: this.imagePassPath,
-      customParams: this.customParameters.size,
-      loopMaxIters: this.loopMaxIterations.size,
-    };
     this.state.currentLine = null;
     this.state.lineContent = null;
     this.state.filePath = null;
@@ -364,24 +347,6 @@ export class ShaderDebugManager {
     this.loopMaxIterations.clear();
     this.updateActiveState();
     this.notifyStateChange();
-    const after = {
-      currentLine: this.state.currentLine,
-      lineContent: this.state.lineContent,
-      filePath: this.state.filePath,
-      debugError: this.state.debugError,
-      debugNotice: this.state.debugNotice,
-      capturedCount: (this.state.capturedVariables as unknown[]).length,
-      activeBufferName: this.state.activeBufferName,
-      isLineLocked: this.state.isLineLocked,
-      lockedFilePath: this.lockedFilePath,
-      hasVariablePreview: this.variablePreview !== null,
-      lastFunctionName: this.lastFunctionName,
-      imageShaderCodeLength: this.imageShaderCode?.length ?? null,
-      imagePassPath: this.imagePassPath,
-      customParams: this.customParameters.size,
-      loopMaxIters: this.loopMaxIterations.size,
-    };
-    console.debug('[clearDebugState] before', before, 'after', after);
   }
 
   public updateDebugLine(line: number, lineContent: string, filePath: string, notifyCapture = true): void {
