@@ -856,11 +856,6 @@ function resolveChannels(options: {
   const validInputs: Record<string, ConfigInput> = {};
 
   for (const [key, input] of Object.entries(options.inputs)) {
-    const numericName = /^iChannel(\d+)$/.exec(key);
-    if (numericName && Number.parseInt(numericName[1], 10) > 15) {
-      options.warnings.push(`${options.passName}: ignoring channel input "${key}" above slot 15`);
-      continue;
-    }
     validInputs[key] = input;
   }
 

@@ -1,3 +1,4 @@
+export { ConfigValidator } from './util/ConfigValidator';
 export { RenderingEngine } from './webgl/RenderingEngine';
 export { ShaderCompiler } from './webgl/ShaderCompiler';
 export type { ChannelSamplerType } from './webgl/ShaderCompiler';

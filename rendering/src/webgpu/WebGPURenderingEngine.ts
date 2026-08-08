@@ -116,6 +116,7 @@ const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Y = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_Z = 64;
 const DEFAULT_MAX_TEXTURE_ARRAY_LAYERS = 256;
+const DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE = 16;
 
 type WorkgroupCounts = [number, number, number];
 
@@ -344,6 +345,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!adapter) {
         throw new Error("requestAdapter() returned null");
       }
+      const adapterSampledTextures = adapter.limits?.maxSampledTexturesPerShaderStage;
+      ConfigValidator.setChannelLimit(
+        typeof adapterSampledTextures === "number" && adapterSampledTextures > 0
+          ? adapterSampledTextures
+          : DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE,
+      );
       const deviceStartedAt = this.now();
       this.logSlangPerf("device request start", {});
       const deviceDescriptor = this.buildDeviceDescriptor(adapter);
@@ -457,6 +464,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
       requiredLimits.maxTextureArrayLayers = adapterArrayLayersLimit;
     }
     const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
+    const adapterSampledTexturesLimit = adapter.limits?.maxSampledTexturesPerShaderStage;
+    if (
+      typeof adapterSampledTexturesLimit === "number" &&
+      Number.isFinite(adapterSampledTexturesLimit) &&
+      adapterSampledTexturesLimit > DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE
+    ) {
+      requiredLimits.maxSampledTexturesPerShaderStage = adapterSampledTexturesLimit;
+    }
     if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
       return undefined;
     }
@@ -1027,7 +1042,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
             storageStridesValidated = false;
             const structSizes = extractStructSizes(wgsl);
             for (const storageNode of graph.storage) {
-              if (storageNode.builtin) continue;
+              if (storageNode.builtin) {
+                continue;
+              }
               const actualSize = structSizes.get(storageNode.elementType);
               if (actualSize !== undefined && actualSize.size !== storageNode.stride) {
                 graph.warnings.push(

@@ -115,8 +115,16 @@ export class ConfigValidator {
     }
   }
 
-  private static readonly MAX_CHANNELS = 16;
+  private static channelLimit = 32;
   private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+  static setChannelLimit(limit: number): void {
+    ConfigValidator.channelLimit = Math.max(1, limit);
+  }
+
+  static getChannelLimit(): number {
+    return ConfigValidator.channelLimit;
+  }
 
   private static validateInputs(inputs: any, passName: string, errors: string[]): void {
     if (typeof inputs !== 'object') {
@@ -125,9 +133,6 @@ export class ConfigValidator {
     }
 
     const keys = Object.keys(inputs);
-    if (keys.length > this.MAX_CHANNELS) {
-      errors.push(`${passName} pass has too many input channels (max ${this.MAX_CHANNELS})`);
-    }
 
     for (const channel of keys) {
       if (!this.GLSL_IDENTIFIER.test(channel)) {

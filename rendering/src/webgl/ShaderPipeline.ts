@@ -290,7 +290,9 @@ export class ShaderPipeline {
 
         return {
           success: false,
-          errors: errors.length > 0 ? errors : [`${pass.name}: Failed to compile shader`],
+          errors: errors.length > 0
+            ? errors
+            : [`${pass.name}: ${shader.mInfo || 'Failed to compile shader'}`],
         };
       }
 

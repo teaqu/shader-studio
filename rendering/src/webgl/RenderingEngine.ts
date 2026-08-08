@@ -73,6 +73,14 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.meshResources?.dispose();
     this.meshResources = new WebGLMeshResources(this.gl);
     this.renderLimits = getWebGLRenderLimits(this.gl);
+    try {
+      const maxTextureUnits = this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS);
+      if (typeof maxTextureUnits === "number" && maxTextureUnits > 0) {
+        ConfigValidator.setChannelLimit(maxTextureUnits);
+      }
+    } catch {
+      // Non-standard GL context (e.g., test mock) — keep default limit
+    }
     this.clampCanvasToRenderLimits();
     this.renderer = piRenderer();
     this.renderer.Initialize(this.gl);

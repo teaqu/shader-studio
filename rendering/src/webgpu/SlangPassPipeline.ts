@@ -69,9 +69,14 @@ export class SlangPassPipeline {
     // never statically uses it gets a layout without those bindings, and the
     // bind group we build (which always supplies them) fails validation,
     // silently dropping every draw.
+    this.device.pushErrorScope("validation");
     const bindGroupLayout = this.device.createBindGroupLayout({
       entries: this.buildBindGroupLayoutEntries(),
     });
+    const layoutError = await this.device.popErrorScope();
+    if (layoutError) {
+      return [`${this.descriptor.name}: ${layoutError.message}`];
+    }
     const pipelineDescriptor: GPURenderPipelineDescriptor = {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
       vertex: {
@@ -318,11 +323,17 @@ export class SlangPassPipeline {
     return this.uniformBuffer;
   }
 
-  getMeshUniformBuffer(): GPUBuffer | null { return this.meshUniformBuffer; }
+  getMeshUniformBuffer(): GPUBuffer | null {
+    return this.meshUniformBuffer; 
+  }
 
-  getDepthView(): GPUTextureView | null { return this.depthTexture?.createView() ?? null; }
+  getDepthView(): GPUTextureView | null {
+    return this.depthTexture?.createView() ?? null; 
+  }
 
-  isMesh(): boolean { return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen"; }
+  isMesh(): boolean {
+    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen"; 
+  }
 
   getOutputSize(): { width: number; height: number } {
     return { width: this.descriptor.width, height: this.descriptor.height };
@@ -381,12 +392,12 @@ export class SlangPassPipeline {
       }
       entries.push({
         binding: 1 + index * 2,
-        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.FRAGMENT,
         texture: textureEntry,
       });
       entries.push({
         binding: 2 + index * 2,
-        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        visibility: GPUShaderStage.FRAGMENT,
         sampler: { type: "filtering" },
       });
     }

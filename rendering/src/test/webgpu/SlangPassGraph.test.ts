@@ -520,13 +520,13 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
-  it("warns and ignores iChannel slots above 15", () => {
+  it("does not filter iChannel slots regardless of name", () => {
     const config: ShaderConfig = {
       version: "1",
       passes: {
         Image: {
           inputs: {
-            iChannel16: { type: "buffer", source: "BufferA" },
+            iChannel32: { type: "buffer", source: "BufferA" },
           },
         },
         BufferA: { path: "buffer-a.slang", inputs: {} },
@@ -542,8 +542,9 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    expect(graph.warnings).toContain("Image: ignoring channel input \"iChannel16\" above slot 15");
-    expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toEqual([]);
+    expect(graph.warnings).toEqual([]);
+    const imageChannels = graph.passes.find((pass) => pass.name === "Image")?.channels ?? [];
+    expect(imageChannels.length).toBe(1);
   });
 
   it("orders arbitrary render passes in config order before Image", () => {

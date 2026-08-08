@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { ConfigValidator } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
     BufferPass,
@@ -450,7 +451,7 @@
               Sort A-Z
             </button>
           {/if}
-          {#if configuredChannelNames.length < 16}
+          {#if configuredChannelNames.length < ConfigValidator.getChannelLimit()}
             <button class="add-channel-btn" onclick={handleAddChannel}>
               + Add Channel
             </button>

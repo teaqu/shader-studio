@@ -17,7 +17,7 @@ export interface SlotAssignment {
  * isCustomName is true when the key doesn't match its slot's
  * natural iChannel{N} name (i.e. it needs an alias uniform).
  *
- * Max 16 total; excess keys are dropped.
+ * No hard limit; the GPU will enforce its own texture unit count.
  */
 export function assignInputSlots(inputs: Readonly<Record<string, GlslInputLike>>): SlotAssignment[] {
   return resolveGlslInputBindings(inputs).map(({ slot, key, isCustomName }) => ({

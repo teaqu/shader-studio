@@ -76,25 +76,24 @@ describe("assignInputSlots", () => {
     ]);
   });
 
-  it("limits to 16 channels total", () => {
+  it("no longer caps channel count", () => {
     const inputs: Record<string, any> = {};
     for (let i = 0; i < 20; i++) {
       inputs[`tex${i}`] = { type: "texture" };
     }
     const result = assignInputSlots(inputs);
-    expect(result).toHaveLength(16);
-    expect(result[15].slot).toBe(15);
+    expect(result).toHaveLength(20);
   });
 
-  it("assigns all 16 slots sequentially for large input sets", () => {
+  it("assigns all slots sequentially for large input sets", () => {
     const inputs: Record<string, any> = {};
     inputs.iChannel5 = { type: "texture" };
     inputs.iChannel10 = { type: "texture" };
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 18; i++) {
       inputs[`custom${i}`] = { type: "texture" };
     }
     const result = assignInputSlots(inputs);
-    expect(result).toHaveLength(16);
+    expect(result).toHaveLength(20);
     // iChannel5 is first key → slot 0
     expect(result[0]).toEqual({ slot: 0, key: "iChannel5", isCustomName: true });
     // iChannel10 is second key → slot 1

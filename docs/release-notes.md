@@ -15,6 +15,17 @@
 - **Per-pass geometry** — Configure 2D (full-screen quad) or 3D (sphere, cube, plane, custom GLB mesh) geometry per pass. GLSL passes render with vertex/fragment shaders; Slang passes use vertex hooks with `mainVertex`.
 - **VS Code language support** — Full TextMate grammar, bracket matching, auto-closing pairs, folding, indentation rules, and bundled snippets (2D SDF, 3D SDF, coordinates, math) for `.slang` files.
 
+### Shader Explorer
+
+- **Activity bar sidebar** — The Shader Explorer is now available as a persistent sidebar view in the VS Code activity bar, alongside the existing full-panel view. Both share the same `ShaderExplorerBackend` so state and behavior are consistent.
+- **Slang discovery and WebGPU previews** — `.slang` shaders are discovered alongside `.glsl`, `.frag`, and `.vert` files. Thumbnail previews automatically use the WebGL or WebGPU rendering pipeline based on shader language.
+- **Grid and row layout modes** — Toggle between a responsive card grid and a single-column row layout with larger thumbnails.
+- **Card size range** — Slider expanded to 100–1000px (was 200–1000px) for more compact or larger cards.
+- **Open files on select** — Optional toggle to control whether clicking a card opens the shader file in the editor.
+- **Buffer and non-mainImage filtering** — Files with "buffer" in the name, and files without a `mainImage` entry point, are automatically filtered out of the explorer.
+- **New shader and delete** — Create new shaders from a template directly in the explorer toolbar. Right-click a card to delete the shader file, with a confirmation dialog when dependent buffer pass files are detected.
+- **Click-to-refresh** — Clicking an individual shader card refreshes its thumbnail preview, so you can update a card after editing its shader without rescanning the entire workspace.
+
 
 ## v0.4.0
 

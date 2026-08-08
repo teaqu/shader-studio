@@ -25,7 +25,7 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
-    When editing buffer files, use the <i class="codicon codicon-lock"></i> **Lock** button to keep the preview pinned to your Image pass. See [Locking](locking.md).
+    Double-click a pass tab to open that pass's file — the shader locks automatically so the preview stays on your Image pass. You can also use the <i class="codicon codicon-lock"></i> **Lock** button manually. See [Locking](locking.md).
 
 ---
 
@@ -69,6 +69,19 @@ If the file doesn't exist yet, the editor shows a **Create File** button that ge
 | **Scale** | `0.5×` | Multiplier on the Image resolution — tracks canvas changes |
 
 ---
+
+## Per-Pass Geometry and Vertex Shaders
+
+Buffer and Image passes can render with 2D (full-screen quad) or 3D geometry (sphere, cube, plane, or a custom GLB model). When using 3D geometry, you can configure a custom vertex shader for that pass.
+
+### Vertex Shader
+
+In the pass config, open the **Geometry** dropdown and select any non-fullscreen option to reveal the **Vertex shader** section. Set a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate one with a `mainVertex` stub.
+
+**Double-click the "Vertex shader" title** to open the vertex shader file in the [editor overlay](editor-overlay.md). This uses a synthetic file key scoped to the pass, so you can inspect and edit the vertex shader inline without leaving the preview.
+
+!!! note
+    GLSL vertex files define `vec3 mainVertex(vec2 pos)` or `vec3 mainVertex(vec3 pos)` depending on geometry. Slang vertex files use `float3 mainVertex(float2 pos)` or `float3 mainVertex(float3 pos)`.
 
 ## Compute Passes
 

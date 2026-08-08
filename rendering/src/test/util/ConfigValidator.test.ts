@@ -366,9 +366,9 @@ describe("ConfigValidator", () => {
         expect(result.isValid).toBe(true);
       });
 
-      it("should accept exactly 16 input channels", () => {
+      it("should accept any number of input channels", () => {
         const inputs: Record<string, any> = {};
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 33; i++) {
           inputs[`channel${i}`] = { type: 'keyboard' };
         }
         const config = {
@@ -380,23 +380,6 @@ describe("ConfigValidator", () => {
 
         const result = ConfigValidator.validateConfig(config);
         expect(result.isValid).toBe(true);
-      });
-
-      it("should reject more than 16 input channels", () => {
-        const inputs: Record<string, any> = {};
-        for (let i = 0; i < 17; i++) {
-          inputs[`channel${i}`] = { type: 'keyboard' };
-        }
-        const config = {
-          version: "1.0",
-          passes: {
-            Image: { inputs }
-          }
-        } as any;
-
-        const result = ConfigValidator.validateConfig(config);
-        expect(result.isValid).toBe(false);
-        expect(result.errors).toContain('Image pass has too many input channels (max 16)');
       });
 
       it("should accept names with leading underscore", () => {

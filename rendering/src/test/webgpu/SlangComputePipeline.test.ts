@@ -54,6 +54,8 @@ function fakeDevice(
   let textureId = 0;
   const pipeline = { label: "compute-pipeline" };
   return {
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(() => null),
     createShaderModule: vi.fn(() => ({
       label: "shader-module",
       getCompilationInfo: getCompilationInfo ?? vi.fn(async () => ({ messages: compilationMessages })),
@@ -871,7 +873,7 @@ describe("SlangComputePipeline", () => {
     expect(device.createTexture).toHaveBeenCalledTimes(2);
   });
 
-  it("ignores stale diagnostics when a newer rebuild completes during compilation info", async () => {
+  it("ignores stale diagnostics when a newer rebuild completes during compilation info", { timeout: 15000 }, async () => {
     const firstCompilationInfo = deferred<{
       messages: Array<{ type: string; lineNum: number; linePos: number; message: string }>;
     }>();

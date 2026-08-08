@@ -54,7 +54,7 @@ export function buildGlslCompatibilityUniformDeclarationLines(
 export function resolveGlslInputBindings(
   inputs: Readonly<Record<string, GlslInputLike>> = {},
 ): GlslInputBinding[] {
-  return Object.keys(inputs).slice(0, 16).map((key, slot) => ({
+  return Object.keys(inputs).map((key, slot) => ({
     slot,
     key,
     isCustomName: key !== `iChannel${slot}`,

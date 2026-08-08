@@ -1,76 +1,13 @@
 # Shader Studio User Guide
 
-Shader Studio is a VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL for the WebGL pipeline or Slang for the WebGPU pipeline — both with a real-time GPU canvas inside your editor, a visual debugger that lets you see what every line computes, and a full pipeline for multi-pass effects including compute shaders.
+Shader Studio is a VS Code extension for live previewing, editing, and debugging shaders. It closely follows the Shadertoy format but also supports additional features such as Slang compute shaders, vertex shaders, and debugging tools like inspecting the output at different lines or capturing color at different pixels.
+
+Click the <img src="assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the VS Code activity bar to open the Shader Explorer sidebar, where you can browse and preview all shaders in your workspace. Use the sidebar to dive deeper into individual features.
 
 
 
 ![Shader Studio overview](assets/images/overview.png)
 
 ---
-
-## What You Can Do
-
-### Live Shader Preview
-
-Write GLSL or Slang in VS Code and see the result instantly. Every keystroke recompiles and updates the preview. Shader Studio runs Shadertoy-style fragment shaders with the familiar `mainImage(out vec4 fragColor, in vec2 fragCoord)` entry point in GLSL, and `float4 mainImage(float2 fragCoord)` in Slang — so existing shaders from Shadertoy and tutorials work with little or no modification, and new projects can target WebGPU.
-
-### Multi-Pass Pipelines
-
-Build complex effects with buffer passes that render offscreen and feed into each other. Set up feedback loops for particle trails, blur chains, post-processing stacks, and simulation grids.
-
-See [Configure Buffers and Inputs](features/config-buffers.md) for the full guide.
-
-### Visual Debugging
-
-Place your cursor on any line and see the value of that variable rendered across the whole screen in real time. Debug mode works inside `mainImage`, helper functions, buffer passes, and even loops. You can inspect variables by sampling across the canvas or at a specific pixel.
-
-See [Debug Mode Overview](debugging/index.md) to get started.
-
-### Rich Input Channels
-
-Bind textures, videos, audio files, cubemaps, keyboard state, and even the output of other buffer passes to `iChannel0`–`iChannel15`. Audio channels provide FFT spectrum and waveform data. Keyboard channels give you held, pressed, and toggle states per key. Everything is configured through the visual config panel — no manual uniform declarations needed.
-
-### Time & Playback Controls
-
-Scrub time, loop sections, change playback speed, or pause entirely. The timeline controls are precise enough to frame-scrub an animation and find the exact frame you want to capture.
-
-See [Time and Playback Controls](features/time-controls.md).
-
-### Recording
-
-Take screenshots or record video and GIF animations directly from the preview. Recordings use the live canvas resolution and respect the current time, paused state, and playback speed.
-
-See [Recording](features/recording.md).
-
-### Shader Explorer
-
-Browse, search, and preview the shaders in your workspace with the built-in Shader Explorer.
-
-See [Shader Explorer](features/shader-explorer.md).
-
-### GLSL and Slang Code Snippets
-
-Use native VS Code completion to insert bundled 2D SDF, 3D SDF, coordinate, and math snippets in either GLSL or Slang.
-
-See [GLSL and Slang Code Snippets](features/code-snippets.md).
-
-### Editor Overlay
-
-Toggle an inline code overlay on the preview canvas so you can edit shader code while watching the result full-screen.
-
-See [Editor Overlay](features/editor-overlay.md).
-
-### Additional Features
-
-| Feature | Description |
-|---------|-------------|
-| [Performance](features/performance.md) | Cap the frame rate or open a detailed performance panel |
-| [Resolution](features/resolution.md) | Scale the canvas, set custom dimensions, or change aspect ratio |
-| [Panel Layout](features/panel-layout.md) | Open the preview as an editor panel or in a separate window |
-| [Locking](features/locking.md) | Keep the preview pinned to a shader while you edit other files |
-| [Compile Modes](features/compile-modes.md) | Switch between strict and compatibility compilation modes |
-| [Open in Browser](features/web-server.md) | Run the preview in a standalone browser window |
-
-## Next
 
 [Quick Start](quick-start.md) — install the extension, open your first preview, and understand the toolbar.

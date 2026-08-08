@@ -17,10 +17,11 @@ Locking solves this. Once locked, you can freely open and edit any buffer file a
 
 ## Double-Clicking Buffer Tabs
 
-When locked, double-clicking a buffer tab in the config panel lets you navigate to that pass without unlocking:
+Double-click a pass tab in the config panel to open that pass's file. If the shader isn't already locked, double-clicking **locks it automatically** — you don't need to lock first.
 
-- If the editor overlay is open, the overlay switches to that pass's file
-- If the overlay is closed, that pass's file opens in the VS Code editor
+- The shader is locked so the preview stays on the Image pass while you edit the buffer
+- If the [editor overlay](editor-overlay.md) is open, it switches to the double-clicked pass's file
+- If the overlay is closed, the pass's file opens in the VS Code editor
 
 ## Next
 

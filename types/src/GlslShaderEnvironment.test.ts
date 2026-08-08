@@ -32,13 +32,13 @@ describe("GLSL shader environment", () => {
     ]));
   });
 
-  it("assigns inputs in insertion order, caps them at sixteen, and marks aliases", () => {
+  it("assigns inputs in insertion order without capping, and marks aliases", () => {
     const inputs = Object.fromEntries(Array.from({ length: 18 }, (_, index) => [
       index === 0 ? "sourceTexture" : `iChannel${index}`,
       { type: index === 1 ? "cubemap" : "texture" },
     ]));
     const bindings = resolveGlslInputBindings(inputs);
-    expect(bindings).toHaveLength(16);
+    expect(bindings).toHaveLength(18);
     expect(bindings[0]).toEqual({
       slot: 0,
       key: "sourceTexture",
@@ -46,9 +46,8 @@ describe("GLSL shader environment", () => {
       samplerType: "sampler2D",
     });
     expect(bindings[1]?.samplerType).toBe("samplerCube");
-    expect(bindings[15]?.key).toBe("iChannel15");
-    expect(bindings.map(({ key }) => key)).not.toContain("iChannel16");
-    expect(bindings.map(({ key }) => key)).not.toContain("iChannel17");
+    expect(bindings[16]?.key).toBe("iChannel16");
+    expect(bindings[17]?.key).toBe("iChannel17");
   });
 
   it("builds the complete renderer-compatible anonymous uniform structs", () => {

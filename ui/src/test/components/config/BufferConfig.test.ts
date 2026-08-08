@@ -597,9 +597,12 @@ describe('BufferConfig', () => {
       expect(getByText('iChannel1')).toBeTruthy();
     });
 
-    it('should not show Add Channel button when at 16 channels', () => {
+    it('should not show Add Channel button when at channel limit', async () => {
+      const { ConfigValidator } = await import('@shader-studio/rendering');
+      const previousLimit = ConfigValidator.getChannelLimit();
+      ConfigValidator.setChannelLimit(4);
       const inputs: Record<string, any> = {};
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 4; i++) {
         inputs[`ch${i}`] = { type: 'keyboard' };
       }
       const config: BufferPass = { path: 'buffer.glsl', inputs };
@@ -612,6 +615,7 @@ describe('BufferConfig', () => {
       });
 
       expect(queryByText('+ Add Channel')).toBeNull();
+      ConfigValidator.setChannelLimit(previousLimit);
     });
   });
 
