@@ -80,7 +80,7 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
     it('should handle refresh cycle correctly', () => {
         vi.useFakeTimers();
         const vscode = mockVscodeApi;
-        let forceFresh = false;
+        let refreshAll = false;
         let refreshKey = 0;
         
         // Simulate refreshShaders function
@@ -89,13 +89,13 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
                 return;
             }
             
-            forceFresh = true;
+            refreshAll = true;
             refreshKey++;
             vscode.postMessage({ type: 'requestShaders', skipCache: true });
             
             setTimeout(() => {
                 if (vscode) {
-                    forceFresh = false;
+                    refreshAll = false;
                     vscode.postMessage({ type: 'requestShaders', skipCache: false });
                 }
             }, 3000);
@@ -105,7 +105,7 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
         refreshShaders();
 
         // Verify immediate state
-        expect(forceFresh).toBe(true);
+        expect(refreshAll).toBe(true);
         expect(refreshKey).toBe(1);
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: 'requestShaders',
@@ -116,7 +116,7 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
         vi.advanceTimersByTime(3000);
 
         // Verify final state
-        expect(forceFresh).toBe(false);
+        expect(refreshAll).toBe(false);
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: 'requestShaders',
             skipCache: false,
@@ -131,8 +131,8 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
         let stateRestored = true;
         let initialCardSizeSet = true;
         let debounceTimeout: NodeJS.Timeout | null = null;
-        let forceFresh = false;
-        void forceFresh;
+        let refreshAll = false;
+        void refreshAll;
 
         // Simulate the debounced effect for card size changes
         function simulateCardSizeChange(newSize: number) {
@@ -156,12 +156,12 @@ describe('ShaderExplorer - Refresh Functionality (Unit Tests)', () => {
                 return;
             }
             
-            forceFresh = true;
+            refreshAll = true;
             vscode.postMessage({ type: 'requestShaders', skipCache: true });
             
             setTimeout(() => {
                 if (vscode) {
-                    forceFresh = false;
+                    refreshAll = false;
                     vscode.postMessage({ type: 'requestShaders', skipCache: false });
                 }
             }, 3000);
@@ -1509,6 +1509,72 @@ describe('ShaderExplorer - Shader Selection', () => {
             type: 'activateShader',
             path: '/test/shader.glsl',
         });
+    });
+
+    it('should track lastClickedPath when opening a shader', () => {
+        const vscode = mockVscodeApi;
+        let lastClickedPath = '';
+        const openFilesOnSelect = true;
+
+        function openShader(shader: any) {
+            lastClickedPath = shader.path;
+            vscode?.postMessage({
+                type: openFilesOnSelect ? 'openShader' : 'activateShader',
+                path: shader.path,
+            });
+        }
+
+        expect(lastClickedPath).toBe('');
+
+        openShader({ path: '/test/shader1.glsl' });
+        expect(lastClickedPath).toBe('/test/shader1.glsl');
+
+        openShader({ path: '/test/shader2.glsl' });
+        expect(lastClickedPath).toBe('/test/shader2.glsl');
+    });
+
+    it('should increment clickGeneration when opening a shader', () => {
+        let clickGeneration = 0;
+
+        function openShader() {
+            clickGeneration++;
+        }
+
+        expect(clickGeneration).toBe(0);
+
+        openShader();
+        expect(clickGeneration).toBe(1);
+
+        openShader();
+        expect(clickGeneration).toBe(2);
+
+        openShader();
+        expect(clickGeneration).toBe(3);
+    });
+
+    it('should include clickGeneration in the each key only for the clicked shader', () => {
+        const lastClickedPath = '/test/active.glsl';
+        const clickGeneration = 3;
+
+        const shaderA = { path: '/test/active.glsl' };
+        const shaderB = { path: '/test/other.glsl' };
+
+        const keyA = `${shaderA.path}-0-${shaderA.path === lastClickedPath ? clickGeneration : ''}`;
+        const keyB = `${shaderB.path}-0-${shaderB.path === lastClickedPath ? clickGeneration : ''}`;
+
+        expect(keyA).toBe('/test/active.glsl-0-3');
+        expect(keyB).toBe('/test/other.glsl-0-');
+    });
+
+    it('should exclude clickGeneration from key when lastClickedPath is empty', () => {
+        const lastClickedPath = '';
+        const clickGeneration = 5;
+
+        const shader = { path: '/test/shader1.glsl' };
+
+        const key = `${shader.path}-0-${shader.path === lastClickedPath ? clickGeneration : ''}`;
+
+        expect(key).toBe('/test/shader1.glsl-0-');
     });
 });
 

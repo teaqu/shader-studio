@@ -2,10 +2,11 @@
   import type { ShaderFile } from '../types/ShaderFile';
   import ShaderPreview from './ShaderPreview.svelte';
 
-  let { shader, vscodeApi, cardSize = 280, forceFresh = false, layoutMode = 'grid', onOpen, onCompilationFailed }: {
+  let { shader, vscodeApi, cardSize = 280, refreshAll = false, forceFresh = false, layoutMode = 'grid', onOpen, onCompilationFailed }: {
     shader: ShaderFile;
     vscodeApi: any;
     cardSize?: number;
+    refreshAll?: boolean;
     forceFresh?: boolean;
     layoutMode?: 'grid' | 'row';
     onOpen?: () => void;
@@ -68,6 +69,7 @@
       {vscodeApi}
       {width}
       {height}
+      {refreshAll}
       {forceFresh}
       compact={layoutMode === 'grid'}
       onCompilationFailed={onCompilationFailed}

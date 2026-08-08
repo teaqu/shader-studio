@@ -101,12 +101,14 @@ describe('ShaderPreview - loading state', () => {
         expect(container.querySelector('.shader-error')).toBeNull();
     });
 
-    it('canvas has loading-canvas class while thumbnail is rendering', () => {
+    it('canvas is visible (not offscreen) while thumbnail is rendering', () => {
         const { container } = render(ShaderPreview, {
             props: { shader: makeShader(), vscodeApi: makeVscodeApi(), width: 320, height: 180 },
         });
 
-        expect(container.querySelector('canvas.loading-canvas')).not.toBeNull();
+        const canvas = container.querySelector('canvas');
+        expect(canvas).not.toBeNull();
+        expect(canvas?.classList.contains('offscreen')).toBe(false);
     });
 
     it('shows cached thumbnail image immediately when available', () => {
@@ -628,3 +630,47 @@ describe('ShaderPreview - thumbnail capture presentation', () => {
     });
 
 });
+
+describe('ShaderPreview - refreshAll', () => {
+    it('ignores cached thumbnail and renders fresh when refreshAll is true', async () => {
+        const shader = makeShader({ cachedThumbnail: 'data:image/png;base64,stale' });
+        const vscodeApi = makeVscodeApi();
+
+        const { container } = render(ShaderPreview, {
+            props: { shader, vscodeApi, width: 320, height: 180, refreshAll: true },
+        });
+
+        expect(container.querySelector('img')).toBeNull();
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        await waitFor(() => expect(toDataUrlMock).toHaveBeenCalled());
+
+        expect(vscodeApi.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'saveThumbnail',
+        }));
+    });
+});
+
+describe('ShaderPreview - forceFresh', () => {
+    it('shows cached thumbnail as fallback then renders fresh when forceFresh is true', async () => {
+        const shader = makeShader({ cachedThumbnail: 'data:image/png;base64,stale' });
+        const vscodeApi = makeVscodeApi();
+
+        const { container } = render(ShaderPreview, {
+            props: { shader, vscodeApi, width: 320, height: 180, forceFresh: true },
+        });
+
+        // Cached thumbnail shown as fallback while fresh render loads
+        expect(container.querySelector('img')).not.toBeNull();
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,stale');
+
+        // Also renders fresh in the background
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        await waitFor(() => expect(toDataUrlMock).toHaveBeenCalled());
+
+        expect(vscodeApi.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'saveThumbnail',
+        }));
+    });
+});
+

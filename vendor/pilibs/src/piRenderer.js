@@ -61,19 +61,6 @@ function piRenderer()
                         mFloat16Filter    = mGL.getExtension( 'OES_texture_half_float_linear' );
                         mAnisotropic      = mGL.getExtension( 'EXT_texture_filter_anisotropic' );
                         mRenderToFloat32F = mGL.getExtension( 'EXT_color_buffer_float');
-                        
-                        var maxTexSize = mGL.getParameter( mGL.MAX_TEXTURE_SIZE );
-                        var maxCubeSize = mGL.getParameter( mGL.MAX_CUBE_MAP_TEXTURE_SIZE );
-                        var maxRenderbufferSize = mGL.getParameter( mGL.MAX_RENDERBUFFER_SIZE );
-                        var extensions = mGL.getSupportedExtensions();
-                        var textureUnits = mGL.getParameter( mGL.MAX_TEXTURE_IMAGE_UNITS );
-                        console.log("WebGL 2.0 : " +
-                                    " Anisotropic Textures: " + ((mAnisotropic !== null) ? "yes" : "no") +
-                                    ", Render to 32F: " + ((mRenderToFloat32F !== null) ? "yes" : "no") +
-                                    ", Texture Units: " + textureUnits +
-                                    ", Max Texture Size: " + maxTexSize +
-                                    ", Max Render Buffer Size: " + maxRenderbufferSize +
-                                    ", Max Cubemap Size: " + maxCubeSize );
 
                         // create a 2D quad Vertex Buffer
                         var vertices = new Float32Array( [ -1.0, -1.0,   1.0, -1.0,    -1.0,  1.0,     1.0, -1.0,    1.0,  1.0,    -1.0,  1.0] );

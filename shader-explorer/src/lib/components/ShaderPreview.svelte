@@ -15,11 +15,12 @@
     isDisposed: () => boolean;
   }
 
-  let { shader, width = 320, height = 180, vscodeApi, forceFresh = false, compact = false, onCompilationFailed }: {
+  let { shader, width = 320, height = 180, vscodeApi, refreshAll = false, forceFresh = false, compact = false, onCompilationFailed }: {
     shader: ShaderFile;
     width?: number;
     height?: number;
     vscodeApi: any;
+    refreshAll?: boolean;
     forceFresh?: boolean;
     compact?: boolean;
     onCompilationFailed?: () => void;
@@ -112,12 +113,16 @@
 
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
-    
-    // Use cached thumbnail if available and we're not forcing a refresh
-    if (shader.cachedThumbnail && useCache && !forceFresh) {
+
+    // Always show cached thumbnail as fallback (unless refreshAll)
+    if (shader.cachedThumbnail && useCache && !refreshAll) {
       capturedImage = shader.cachedThumbnail;
       compilationFailed = false;
-    } else {
+    }
+
+    // Render fresh if no cache or forcing a refresh. The fresh render
+    // overwrites capturedImage when complete — no flash, no placeholder.
+    if (!capturedImage || forceFresh) {
       if (previewContainer) {
         stopVisibilityObserver = observeNearViewport(previewContainer, () => {
           void startLoading();
@@ -513,13 +518,20 @@
     class:visible={hoverVisible}
   ></div>
 
+  <canvas
+    bind:this={canvas}
+    {width}
+    {height}
+    class="shader-preview"
+    class:offscreen={!!capturedImage && !compilationFailed}
+  ></canvas>
   {#if capturedImage}
     <img
       src={capturedImage}
       alt={shader.name}
       {width}
       {height}
-      class="shader-preview"
+      class="shader-preview image-overlay"
     />
   {:else if compilationFailed}
     <div class="shader-error">
@@ -528,12 +540,6 @@
     </div>
   {:else}
     <div class="loading-placeholder"></div>
-    <canvas
-      bind:this={canvas}
-      {width}
-      {height}
-      class="shader-preview loading-canvas"
-    ></canvas>
   {/if}
 </div>
 
@@ -557,14 +563,20 @@
   .loading-placeholder {
     width: 100%;
     height: 100%;
-    background: var(--vscode-editor-background, #1e1e1e);
+    background: #000;
     position: absolute;
     top: 0;
     left: 0;
   }
 
-  .loading-canvas {
+  .offscreen {
     opacity: 0;
+  }
+
+  .image-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
   }
 
   .shader-error {

@@ -27,7 +27,9 @@
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
-  let forceFresh = $state(false); // Flag to force fresh rendering, ignoring cache
+  let refreshAll = $state(false); // Flag to force fresh rendering, ignoring cache
+  let lastClickedPath = $state(''); // Track last clicked shader to remount its card
+  let clickGeneration = $state(0); // Incremented on click to change the {#each} key
   let stateRestored = $state(false);
 
   // Persist state changes by sending to extension
@@ -202,6 +204,8 @@
 
 
   function openShader(shader: ShaderFile) {
+    lastClickedPath = shader.path;
+    clickGeneration++;
     vscode?.postMessage({
       type: openFilesOnSelect ? 'openShader' : 'activateShader',
       path: shader.path,
@@ -214,7 +218,7 @@
     }
     
     failedShaders = new Set(); // Clear failed shaders list
-    forceFresh = true; // Force components to ignore cache
+    refreshAll = true; // Force components to ignore cache
     refreshKey++; // Force ShaderPreview components to remount and reload
     // Request fresh shader list from extension without cached thumbnails
     vscode.postMessage({ type: 'requestShaders', skipCache: true });
@@ -223,7 +227,7 @@
     // request the list again WITH cache to restore cached state
     setTimeout(() => {
       if (vscode) {
-        forceFresh = false; // Allow cache again
+        refreshAll = false; // Allow cache again
         vscode.postMessage({ type: 'requestShaders', skipCache: false });
       }
     }, 3000); // Wait 3 seconds for rendering to complete
@@ -361,11 +365,12 @@
           ? `grid-template-columns: repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))`
           : ''}
       >
-        {#each paginatedShaders as shader (`${shader.path}-${refreshKey}`)}
+        {#each paginatedShaders as shader (`${shader.path}-${refreshKey}-${shader.path === lastClickedPath ? clickGeneration : ''}`)}
           <ShaderCard
             {shader}
             {cardSize}
-            {forceFresh}
+            {refreshAll}
+            forceFresh={shader.path === lastClickedPath}
             {layoutMode}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}

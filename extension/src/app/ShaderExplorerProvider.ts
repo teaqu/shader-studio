@@ -29,8 +29,16 @@ export class ShaderExplorerProvider {
 
   public show(): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.One);
-      return;
+      try {
+        this.panel.reveal(vscode.ViewColumn.One);
+        return;
+      } catch {
+        // Panel was disposed without onDidDispose firing (e.g. extension
+        // host restart). Clean up and create a fresh one below.
+        this.panel = undefined;
+        this.backend?.dispose();
+        this.backend = undefined;
+      }
     }
 
     // Get workspace folders for texture loading
