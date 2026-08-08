@@ -2,10 +2,11 @@
 
 ## Preview Is Blank
 
-- Confirm your shader has the correct signature: `void mainImage(out vec4 fragColor, in vec2 fragCoord)`
+- Confirm your shader has the correct signature: `void mainImage(out vec4 fragColor, in vec2 fragCoord)` for GLSL or `float4 mainImage(float2 fragCoord)` for Slang
 - Check the error tooltip near the play/pause button — a red indicator means compilation failed
+- Try closing and reopening the preview panel
 - Try **Refresh** from the options menu
-- Make sure the file extension is `.glsl`
+- Make sure the file extension is `.glsl`, `.slang`, `.frag`, or `.vert`
 
 ## Crashing or Halting
 

@@ -91,7 +91,6 @@ nav:
       - Normalization And Step: debugging/normalization.md
       - JavaScript Transpilation: help/transpilation.md
   - Help:
-      - Release Notes: release-notes.md
       - Troubleshooting: help/troubleshooting.md
       - Shadertoy Compatibility: help/shadertoy-compatibility.md
       - Config File Format: help/config-file.md
