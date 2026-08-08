@@ -140,6 +140,7 @@ export interface NavigateToBufferMessage extends BaseMessage {
   payload: {
     bufferPath: string;
     shaderPath: string;
+    mode?: "active" | "beside";
   };
 }
 

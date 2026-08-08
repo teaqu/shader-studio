@@ -35,6 +35,7 @@
     actualPollFps?: number;
     uniformActualFps?: Record<string, number>;
     onConfigChange?: (config: ShaderConfig) => void;
+    onOpenInNewTab?: (bufferName: string, mode: "active" | "beside") => void;
   }
 
   let {
@@ -58,6 +59,7 @@
     actualPollFps = 0,
     uniformActualFps = {},
     onConfigChange = () => {},
+    onOpenInNewTab = () => {},
   }: Props = $props();
 
   let configManager = $state<ConfigManager | undefined>(undefined);
@@ -411,12 +413,16 @@
     return tabName !== "Image" && tabName !== "Common" && tabName !== "Script" && tabName !== "Storage";
   }
 
+  function canOpenTab(tabName: string): boolean {
+    return tabName !== "Storage";
+  }
+
   async function openRenameMenu(
     tabName: string,
     event: MouseEvent,
     trigger: HTMLButtonElement,
   ) {
-    if (!isRenameableTab(tabName)) {
+    if (!canOpenTab(tabName)) {
       return;
     }
     event.preventDefault();
@@ -430,7 +436,7 @@
   }
 
   async function handleTabKeyDown(tabName: string, event: KeyboardEvent) {
-    if (!isRenameableTab(tabName) || (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey))) {
+    if (!canOpenTab(tabName) || (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey))) {
       return;
     }
     event.preventDefault();
@@ -492,6 +498,18 @@
     await tick();
     renameInput?.focus();
     renameInput?.select();
+  }
+
+  function handleOpenTab() {
+    if (!menuTab) {
+      return;
+    }
+    const actualName = getActualBufferName(menuTab);
+    dismissRenameMenu();
+    if (getEditorOverlayVisible()) {
+      setOverlayActiveFile(actualName);
+    }
+    onOpenInNewTab(actualName, "active");
   }
 
   async function focusTab(tabName: string) {
@@ -588,18 +606,8 @@
     const actualName = getActualBufferName(tabName);
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);
-      return;
     }
-    if (!isLocked) {
-      return;
-    }
-    const bufferPath = bufferPathMap[actualName];
-    if (bufferPath) {
-      transport.postMessage({
-        type: 'navigateToBuffer',
-        payload: { bufferPath, shaderPath }
-      });
-    }
+    onOpenInNewTab(actualName, "active");
   }
 
   // Reactive statement to get the current active tab's config
@@ -654,7 +662,7 @@
             onclick={() => switchTab(tabName)}
             ondblclick={() => handleTabDblClick(tabName)}
             oncontextmenu={(event) => {
-              if (isRenameableTab(tabName)) {
+              if (canOpenTab(tabName)) {
                 event.stopPropagation();
                 openRenameMenu(tabName, event, event.currentTarget);
               }
@@ -817,7 +825,10 @@
 
 {#if menuTab}
   <div use:portal bind:this={menuElement} class="buffer-rename-menu" role="menu" style:left="{menuX}px" style:top="{menuY}px">
-    <button bind:this={menuButton} role="menuitem" onclick={startRename}>Rename</button>
+    <button bind:this={menuButton} role="menuitem" onclick={handleOpenTab}>Open</button>
+    {#if isRenameableTab(menuTab)}
+      <button role="menuitem" onclick={startRename}>Rename</button>
+    {/if}
   </div>
 {/if}
 

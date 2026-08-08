@@ -190,58 +190,52 @@ describe("CameraManager", () => {
     it("should set up event listeners", () => {
       const canvas = {
         addEventListener: vi.fn(),
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
 
       camera.setupEventListeners(canvas);
-      expect(canvas.addEventListener).toHaveBeenCalledWith("mousedown", expect.any(Function));
+      expect(canvas.addEventListener).toHaveBeenCalledWith("pointerdown", expect.any(Function));
     });
 
-    it("horizontal mouse drag should change yaw", () => {
+    it("horizontal pointer drag should change yaw", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
         addEventListener: vi.fn((event: string, handler: Function) => {
           listeners[event] = handler;
         }),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowAddSpy = vi.spyOn(window, "addEventListener");
 
       camera.setupEventListeners(canvas);
 
-      // Capture the mousemove handler
-      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
-
-      // Simulate left click
-      listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
+      // Simulate left click with pointerdown
+      listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn() });
 
       // Drag right
-      moveHandler({ clientX: 150, clientY: 100 });
+      listeners.pointermove({ clientX: 150, clientY: 100 });
 
       const dir = camera.getCameraDir();
       // Drag right → yaw right → dir.x > 0
       expect(dir[0]).toBeGreaterThan(0);
-
-      windowAddSpy.mockRestore();
     });
 
-    it("vertical mouse drag should change pitch", () => {
+    it("vertical pointer drag should change pitch", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
         addEventListener: vi.fn((event: string, handler: Function) => {
           listeners[event] = handler;
         }),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowAddSpy = vi.spyOn(window, "addEventListener");
 
       camera.setupEventListeners(canvas);
-      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
 
-      listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
-      moveHandler({ clientX: 100, clientY: 50 }); // drag up (dy = -50)
+      listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn() });
+      listeners.pointermove({ clientX: 100, clientY: 50 }); // drag up (dy = -50)
 
       const dir = camera.getCameraDir();
       expect(dir[1]).toBeGreaterThan(0); // drag up = look up
-
-      windowAddSpy.mockRestore();
     });
 
     it("should not respond to right-click drag", () => {
@@ -250,47 +244,41 @@ describe("CameraManager", () => {
         addEventListener: vi.fn((event: string, handler: Function) => {
           listeners[event] = handler;
         }),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowAddSpy = vi.spyOn(window, "addEventListener");
 
       camera.setupEventListeners(canvas);
-      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
 
       // Right click
-      listeners.mousedown({ button: 2, clientX: 100, clientY: 100, preventDefault: vi.fn() });
-      moveHandler({ clientX: 200, clientY: 100 });
+      listeners.pointerdown({ button: 2, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn() });
+      listeners.pointermove({ clientX: 200, clientY: 100 });
 
       const dir = camera.getCameraDir();
       expect(dir[0]).toBeCloseTo(0, 5); // unchanged
-
-      windowAddSpy.mockRestore();
     });
 
-    it("mouse up should stop drag", () => {
+    it("pointer up should stop drag", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
         addEventListener: vi.fn((event: string, handler: Function) => {
           listeners[event] = handler;
         }),
+        setPointerCapture: vi.fn(),
+        releasePointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowAddSpy = vi.spyOn(window, "addEventListener");
 
       camera.setupEventListeners(canvas);
-      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
-      const upHandler = windowAddSpy.mock.calls.find(c => c[0] === "mouseup")![1] as Function;
 
-      listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
-      upHandler({ button: 0 });
+      listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn() });
+      listeners.pointerup({ button: 0, pointerId: 1 });
 
       // Further movement should not change direction
       const dirBefore = [...camera.getCameraDir()];
-      moveHandler({ clientX: 200, clientY: 200 });
+      listeners.pointermove({ clientX: 200, clientY: 200 });
       const dirAfter = camera.getCameraDir();
 
       expect(dirAfter[0]).toBeCloseTo(dirBefore[0], 5);
       expect(dirAfter[1]).toBeCloseTo(dirBefore[1], 5);
-
-      windowAddSpy.mockRestore();
     });
   });
 
@@ -306,28 +294,25 @@ describe("CameraManager", () => {
       expect(pos[2]).toBe(0);
     });
 
-    it("should ignore mouse drag while disabled", () => {
+    it("should ignore pointer drag while disabled", () => {
       const listeners: Record<string, Function> = {};
       const canvas = {
         addEventListener: vi.fn((event: string, handler: Function) => {
           listeners[event] = handler;
         }),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowAddSpy = vi.spyOn(window, "addEventListener");
 
       camera.setupEventListeners(canvas);
-      const moveHandler = windowAddSpy.mock.calls.find(c => c[0] === "mousemove")![1] as Function;
 
       camera.setEnabled(false);
-      listeners.mousedown({ button: 0, clientX: 100, clientY: 100, preventDefault: vi.fn() });
-      moveHandler({ clientX: 150, clientY: 100 });
+      listeners.pointerdown({ button: 0, clientX: 100, clientY: 100, pointerId: 1, preventDefault: vi.fn() });
+      listeners.pointermove({ clientX: 150, clientY: 100 });
 
       const dir = camera.getCameraDir();
       expect(dir[0]).toBeCloseTo(0, 5);
       expect(dir[1]).toBeCloseTo(0, 5);
       expect(dir[2]).toBeCloseTo(-1, 5);
-
-      windowAddSpy.mockRestore();
     });
   });
 
@@ -386,17 +371,15 @@ describe("CameraManager", () => {
       const canvas = {
         addEventListener: vi.fn(),
         removeEventListener: removeEventListenerSpy,
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
-      const windowRemoveSpy = vi.spyOn(window, "removeEventListener");
 
       camera.setupEventListeners(canvas);
       camera.dispose();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith("mousedown", expect.any(Function));
-      expect(windowRemoveSpy).toHaveBeenCalledWith("mousemove", expect.any(Function));
-      expect(windowRemoveSpy).toHaveBeenCalledWith("mouseup", expect.any(Function));
-
-      windowRemoveSpy.mockRestore();
+      expect(removeEventListenerSpy).toHaveBeenCalledWith("pointerdown", expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith("pointermove", expect.any(Function));
+      expect(removeEventListenerSpy).toHaveBeenCalledWith("pointerup", expect.any(Function));
     });
 
     it("should not throw if called without setupEventListeners", () => {
@@ -407,16 +390,18 @@ describe("CameraManager", () => {
       const firstCanvas = {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
       const secondCanvas = {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        setPointerCapture: vi.fn(),
       } as unknown as HTMLCanvasElement;
 
       camera.setupEventListeners(firstCanvas);
       camera.setupEventListeners(secondCanvas);
 
-      expect(firstCanvas.removeEventListener).toHaveBeenCalledWith("mousedown", expect.any(Function));
+      expect(firstCanvas.removeEventListener).toHaveBeenCalledWith("pointerdown", expect.any(Function));
     });
   });
 

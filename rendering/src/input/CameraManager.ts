@@ -66,9 +66,9 @@ export class CameraManager {
   private enabled = true;
 
   private canvas: HTMLCanvasElement | null = null;
-  private onMouseDown: ((e: MouseEvent) => void) | null = null;
-  private onMouseMove: ((e: MouseEvent) => void) | null = null;
-  private onMouseUp: ((e: MouseEvent) => void) | null = null;
+  private onPointerDown: ((e: PointerEvent) => void) | null = null;
+  private onPointerMove: ((e: PointerEvent) => void) | null = null;
+  private onPointerUp: ((e: PointerEvent) => void) | null = null;
 
   constructor(private keyboardManager: KeyboardManager) {}
 
@@ -76,7 +76,7 @@ export class CameraManager {
     this.dispose();
     this.canvas = canvas;
 
-    this.onMouseDown = (e: MouseEvent) => {
+    this.onPointerDown = (e: PointerEvent) => {
       if (!this.enabled) {
         return;
       }
@@ -84,10 +84,11 @@ export class CameraManager {
         this.isMouseDown = true;
         this.lastMouseX = e.clientX;
         this.lastMouseY = e.clientY;
+        canvas.setPointerCapture(e.pointerId);
       }
     };
 
-    this.onMouseMove = (e: MouseEvent) => {
+    this.onPointerMove = (e: PointerEvent) => {
       if (!this.enabled) {
         return;
       }
@@ -101,18 +102,19 @@ export class CameraManager {
       this.applyMouseLook(-dx * this.lookSpeed, -dy * this.lookSpeed);
     };
 
-    this.onMouseUp = (e: MouseEvent) => {
+    this.onPointerUp = (e: PointerEvent) => {
       if (!this.enabled) {
         return;
       }
       if (e.button === 0) {
         this.isMouseDown = false;
+        canvas.releasePointerCapture(e.pointerId);
       }
     };
 
-    canvas.addEventListener("mousedown", this.onMouseDown);
-    window.addEventListener("mousemove", this.onMouseMove);
-    window.addEventListener("mouseup", this.onMouseUp);
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointerup", this.onPointerUp);
   }
 
   private applyMouseLook(yawDelta: number, pitchDelta: number): void {
@@ -226,19 +228,21 @@ export class CameraManager {
   }
 
   dispose(): void {
-    if (this.canvas && this.onMouseDown) {
-      this.canvas.removeEventListener("mousedown", this.onMouseDown);
-    }
-    if (this.onMouseMove) {
-      window.removeEventListener("mousemove", this.onMouseMove);
-    }
-    if (this.onMouseUp) {
-      window.removeEventListener("mouseup", this.onMouseUp);
+    if (this.canvas) {
+      if (this.onPointerDown) {
+        this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+      }
+      if (this.onPointerMove) {
+        this.canvas.removeEventListener("pointermove", this.onPointerMove);
+      }
+      if (this.onPointerUp) {
+        this.canvas.removeEventListener("pointerup", this.onPointerUp);
+      }
     }
     this.canvas = null;
-    this.onMouseDown = null;
-    this.onMouseMove = null;
-    this.onMouseUp = null;
+    this.onPointerDown = null;
+    this.onPointerMove = null;
+    this.onPointerUp = null;
     this.isMouseDown = false;
   }
 }

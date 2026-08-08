@@ -624,6 +624,25 @@
     setOverlayActiveFile(name);
   }
 
+  function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
+    // Lock the shader if not already locked
+    if (!shaderLocker.isLocked()) {
+      handleToggleLock();
+    }
+
+    const actualName = bufferName === "Common" ? "common" : bufferName;
+    const bufferPath = actualName === "Script" || actualName === "Image"
+      ? shaderPath
+      : bufferPathMap[actualName];
+
+    if (bufferPath) {
+      transport.postMessage({
+        type: "navigateToBuffer",
+        payload: { bufferPath, shaderPath, mode },
+      });
+    }
+  }
+
   function handleZoomChange(zoom: number) {
     zoomLevel = zoom;
   }
@@ -880,9 +899,13 @@
     // duplicate lines like "{" or "}".
     for (let i = 0; i < originalLines.length; i++) {
       const trimmed = originalLines[i].trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
       // Only use lines that are unique in the original source
-      if (originalLines.filter((l: string) => l.trim() === trimmed).length !== 1) continue;
+      if (originalLines.filter((l: string) => l.trim() === trimmed).length !== 1) {
+        continue;
+      }
       const processedIdx = processedLines.findIndex((l: string) => l.trim() === trimmed);
       if (processedIdx >= 0 && processedIdx !== i) {
         return processedIdx - i;
@@ -1434,6 +1457,7 @@
         onFileSelect={handleOverlayBufferSelect}
         selectedBuffer={configSelectedBuffer}
         isLocked={isLocked}
+        onOpenInNewTab={handleOpenInNewTab}
         {audioVideoController}
         globalMuted={audioMuted}
         {scriptInfo}

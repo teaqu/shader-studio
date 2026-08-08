@@ -156,6 +156,8 @@
   <canvas
     bind:this={glCanvas}
     style:cursor={isInspectorActive ? 'crosshair' : undefined}
+    onpointerdown={handleMouseDown}
+    onmousedown={handleMouseDown}
   ></canvas>
   <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>

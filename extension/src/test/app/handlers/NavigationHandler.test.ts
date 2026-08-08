@@ -47,6 +47,28 @@ suite('NavigationHandler Test Suite', () => {
   });
 
   suite('handleNavigateToBuffer', () => {
+    test('opens buffer file with ViewColumn.Beside when mode is "beside"', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+        get: sandbox.stub().withArgs('navigateOnBufferSwitch', true).returns(true),
+      } as any);
+      sandbox.stub(vscode.window, 'tabGroups').value({
+        all: [{ viewColumn: vscode.ViewColumn.One, tabs: [] }],
+      });
+      const showTextDocStub = sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+
+      await handler.handleNavigateToBuffer({
+        bufferPath: '/test/bufferA.glsl',
+        shaderPath: '/test/shader.glsl',
+        mode: 'beside',
+      });
+
+      assert.ok(showTextDocStub.calledOnce);
+      const [_uri, opts] = showTextDocStub.firstCall.args as [vscode.Uri, vscode.TextDocumentShowOptions];
+      assert.strictEqual(opts.viewColumn, vscode.ViewColumn.Beside);
+    });
+
     test('opens buffer file in VS Code editor', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(true);

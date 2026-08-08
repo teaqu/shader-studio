@@ -10,7 +10,7 @@ export class NavigationHandler {
     private logger: Logger,
   ) {}
 
-  async handleNavigateToBuffer(payload: { bufferPath: string; shaderPath: string }): Promise<void> {
+  async handleNavigateToBuffer(payload: { bufferPath: string; shaderPath: string; mode?: "active" | "beside" }): Promise<void> {
     const enabled = vscode.workspace.getConfiguration('shader-studio').get('navigateOnBufferSwitch', true);
     if (!enabled) {
       return;
@@ -20,7 +20,9 @@ export class NavigationHandler {
       return;
     }
 
-    const viewColumn = this.resolveTargetColumn(payload.shaderPath);
+    const viewColumn = payload.mode === "beside"
+      ? vscode.ViewColumn.Beside
+      : this.resolveTargetColumn(payload.shaderPath);
     const uri = vscode.Uri.file(payload.bufferPath);
     await vscode.window.showTextDocument(uri, { viewColumn, preview: false, preserveFocus: true });
   }

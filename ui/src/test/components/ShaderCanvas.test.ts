@@ -231,7 +231,7 @@ describe('ShaderCanvas Component', () => {
       const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
       const canvas = container.querySelector('canvas') as HTMLCanvasElement;
 
-      // Simulate small movement (within 5px threshold)
+      // Simulate small movement (within 8px threshold)
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       await fireEvent.click(canvasContainer, { clientX: 102, clientY: 103 });
 
@@ -251,7 +251,7 @@ describe('ShaderCanvas Component', () => {
       const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
       const canvas = container.querySelector('canvas') as HTMLCanvasElement;
 
-      // Simulate drag beyond threshold (>5px)
+      // Simulate drag beyond threshold (>8px)
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       await fireEvent.click(canvasContainer, { clientX: 110, clientY: 110 });
 

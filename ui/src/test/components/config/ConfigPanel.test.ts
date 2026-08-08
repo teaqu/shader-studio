@@ -1094,9 +1094,9 @@ describe('ConfigPanel', () => {
       await tick();
 
       const menu = getByRole('menu');
-      const rename = getByRole('menuitem', { name: 'Rename' });
+      const openItem = getByRole('menuitem', { name: 'Open' });
       expect(menu).toHaveStyle({ left: '120px', top: '240px' });
-      expect(rename).toBe(document.activeElement);
+      expect(openItem).toBe(document.activeElement);
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
@@ -1156,28 +1156,29 @@ describe('ConfigPanel', () => {
       }
     });
 
-    it.each(['Image', 'Common', 'Script'])('does not expose Rename for protected %s tabs', async (tabName) => {
-      const { container, queryByRole } = renderRenameableBuffers();
+    it.each(['Image', 'Common', 'Script'])('shows Open but not Rename for %s', async (tabName) => {
+      const { container, getByRole, queryByRole } = renderRenameableBuffers();
       await tick();
 
       await fireEvent.contextMenu(getTab(container, tabName));
       await tick();
 
-      expect(queryByRole('menu', { name: /rename/i })).toBeNull();
+      expect(getByRole('menu')).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Open' })).toBeInTheDocument();
       expect(queryByRole('menuitem', { name: 'Rename' })).toBeNull();
     });
 
     it.each([
       ['Shift+F10', { key: 'F10', shiftKey: true }],
       ['ContextMenu', { key: 'ContextMenu' }],
-    ])('opens Rename menu with %s', async (_shortcut, init) => {
+    ])('opens context menu with %s', async (_shortcut, init) => {
       const { container, getByRole } = renderRenameableBuffers();
       await tick();
 
       await fireEvent.keyDown(getTab(container, 'BufferA'), init);
       await tick();
 
-      expect(getByRole('menuitem', { name: 'Rename' })).toBe(document.activeElement);
+      expect(getByRole('menuitem', { name: 'Open' })).toBe(document.activeElement);
     });
 
     it('starts an inline rename shell for only the selected buffer', async () => {
@@ -1493,7 +1494,7 @@ describe('ConfigPanel', () => {
       const imageTab = getTab(container, 'Image');
       await fireEvent.contextMenu(bufferTab);
       await tick();
-      expect(getByRole('menuitem', { name: 'Rename' })).toBe(document.activeElement);
+      expect(getByRole('menuitem', { name: 'Open' })).toBe(document.activeElement);
 
       imageTab.focus();
       await tick();
@@ -1502,19 +1503,202 @@ describe('ConfigPanel', () => {
       expect(imageTab).toBe(document.activeElement);
     });
 
-    it('dismisses an open buffer menu when right-clicking protected tabs', async () => {
+    it('replaces the context menu when right-clicking a different menuable tab', async () => {
       const { container, queryByRole } = renderRenameableBuffers();
       await tick();
 
-      for (const tabName of ['Image', 'Common', 'Script']) {
-        await fireEvent.contextMenu(getTab(container, 'BufferA'));
-        await tick();
-        expect(queryByRole('menu')).toBeTruthy();
+      // Right-click BufferA to open its menu
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await tick();
+      expect(queryByRole('menu')).toBeTruthy();
 
-        await fireEvent.contextMenu(getTab(container, tabName));
+      // Right-click Image — should close the first menu and open a new one
+      await fireEvent.contextMenu(getTab(container, 'Image'));
+      await tick();
+      expect(queryByRole('menu')).toBeTruthy();
+      expect(queryByRole('menuitem', { name: 'Rename' })).toBeNull();
+    });
+
+    it('shows Open and Rename for buffer pass tabs', async () => {
+      const { container, getByRole } = renderRenameableBuffers();
+      await tick();
+
+      await fireEvent.contextMenu(getTab(container, 'BufferA'));
+      await tick();
+
+      expect(getByRole('menuitem', { name: 'Open' })).toBeInTheDocument();
+      expect(getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument();
+    });
+
+    it('does not show a context menu for Storage tab', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        storage: { particles: { count: 1024, elementType: 'float4' } },
+        passes: { Image: { inputs: {} } },
+      } as any;
+
+      const { container, queryByRole } = render(ConfigPanel, {
+        config,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+      await tick();
+
+      // Need to get tab by finding the element
+      const storageTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Storage');
+      if (storageTab) {
+        await fireEvent.contextMenu(storageTab);
         await tick();
-        expect(queryByRole('menu')).toBeNull();
       }
+
+      expect(queryByRole('menu')).toBeNull();
+    });
+
+    it('"Open" menu item calls onOpenInNewTab with "active"', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: {
+            Image: { inputs: {} },
+            common: { path: '/test/common.glsl' },
+            BufferA: { path: '/test/bufferA.glsl', inputs: {} },
+          },
+          script: './shader.uniforms.ts',
+        },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const bufferTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'BufferA')!;
+      await fireEvent.contextMenu(bufferTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
+    });
+
+    it('"Open" on Image tab calls onOpenInNewTab with "Image" and "active"', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} }, BufferA: { path: '/test/bufferA.glsl', inputs: {} } },
+        },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const imageTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Image')!;
+      await fireEvent.contextMenu(imageTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(onOpenInNewTab).toHaveBeenCalledWith('Image', 'active');
+    });
+
+    it('"Open" on Common tab calls onOpenInNewTab with "common" and "active"', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: {
+            Image: { inputs: {} },
+            common: { path: '/test/common.glsl' },
+          },
+        },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const commonTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Common')!;
+      await fireEvent.contextMenu(commonTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(onOpenInNewTab).toHaveBeenCalledWith('common', 'active');
+    });
+
+    it('"Open" on Script tab calls onOpenInNewTab with "Script" and "active"', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+          script: './shader.uniforms.ts',
+        } as any,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const scriptTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Script')!;
+      await fireEvent.contextMenu(scriptTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(onOpenInNewTab).toHaveBeenCalledWith('Script', 'active');
+    });
+
+    it('context menu "Open" switches overlay and calls onOpenInNewTab when overlay is visible', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} }, BufferA: { path: '/test/bufferA.glsl', inputs: {} } },
+        },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      setEditorOverlayVisible(true);
+      await tick();
+
+      const bufferTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'BufferA')!;
+      await fireEvent.contextMenu(bufferTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(getOverlayActiveFile()).toBe('BufferA');
+      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
     });
   });
 
@@ -1555,7 +1739,7 @@ describe('ConfigPanel', () => {
       expect(mockTransport.postMessage).not.toHaveBeenCalled();
     });
 
-    it('should send navigateToBuffer on double-click when locked and buffer has path', async () => {
+    it('should call onOpenInNewTab with "active" on double-click when buffer has path', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -1563,22 +1747,24 @@ describe('ConfigPanel', () => {
           BufferA: { path: 'bufferA.glsl', inputs: {} },
         },
       };
-      const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
 
       (ConfigManager as unknown as Mock).mockImplementation(() =>
         createMockConfigManager(['BufferA']),
       );
 
+      const onOpenInNewTab = vi.fn();
+
       const { getAllByRole } = render(ConfigPanel, {
         config,
         pathMap: {},
-        bufferPathMap,
+        bufferPathMap: { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' },
         transport: mockTransport,
         shaderPath: '/path/shader.glsl',
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
-        isLocked: true,
+        isLocked: false,
+        onOpenInNewTab,
       });
 
       await tick();
@@ -1588,13 +1774,7 @@ describe('ConfigPanel', () => {
       expect(bufferATab).toBeTruthy();
       await fireEvent.dblClick(bufferATab!);
 
-      expect(mockTransport.postMessage).toHaveBeenCalledWith({
-        type: 'navigateToBuffer',
-        payload: {
-          bufferPath: '/path/bufferA.glsl',
-          shaderPath: '/path/shader.glsl',
-        }
-      });
+      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
     });
 
     it('should NOT send navigateToBuffer on single click', async () => {
@@ -1633,7 +1813,7 @@ describe('ConfigPanel', () => {
       expect(mockTransport.postMessage).not.toHaveBeenCalled();
     });
 
-    it('should NOT send navigateToBuffer on double-click when not locked', async () => {
+    it('should call onOpenInNewTab on double-click even when unlocked', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -1641,22 +1821,24 @@ describe('ConfigPanel', () => {
           BufferA: { path: 'bufferA.glsl', inputs: {} },
         },
       };
-      const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
 
       (ConfigManager as unknown as Mock).mockImplementation(() =>
         createMockConfigManager(['BufferA']),
       );
 
+      const onOpenInNewTab = vi.fn();
+
       const { getAllByRole } = render(ConfigPanel, {
         config,
         pathMap: {},
-        bufferPathMap,
+        bufferPathMap: { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' },
         transport: mockTransport,
         shaderPath: '/path/shader.glsl',
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
         isLocked: false,
+        onOpenInNewTab,
       });
 
       await tick();
@@ -1665,10 +1847,10 @@ describe('ConfigPanel', () => {
       const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
       await fireEvent.dblClick(bufferATab!);
 
-      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
     });
 
-    it('should NOT send navigateToBuffer on double-click when buffer has no path', async () => {
+    it('should call onOpenInNewTab on double-click even when buffer has no path', async () => {
       const config: ShaderConfig = {
         version: '1.0',
         passes: {
@@ -1676,22 +1858,24 @@ describe('ConfigPanel', () => {
           BufferA: { path: 'bufferA.glsl', inputs: {} },
         },
       };
-      const bufferPathMap = { Image: '/path/shader.glsl' }; // No BufferA path
 
       (ConfigManager as unknown as Mock).mockImplementation(() =>
         createMockConfigManager(['BufferA']),
       );
 
+      const onOpenInNewTab = vi.fn();
+
       const { getAllByRole } = render(ConfigPanel, {
         config,
         pathMap: {},
-        bufferPathMap,
+        bufferPathMap: { Image: '/path/shader.glsl' }, // No BufferA path
         transport: mockTransport,
         shaderPath: '/path/shader.glsl',
         isVisible: true,
         onFileSelect: mockOnFileSelect,
         selectedBuffer: 'Image',
         isLocked: true,
+        onOpenInNewTab,
       });
 
       await tick();
@@ -1700,7 +1884,8 @@ describe('ConfigPanel', () => {
       const bufferATab = tabs.find(t => t.textContent?.includes('BufferA'));
       await fireEvent.dblClick(bufferATab!);
 
-      expect(mockTransport.postMessage).not.toHaveBeenCalled();
+      // Still calls callback — resolution is up to the parent
+      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
     });
   });
 
