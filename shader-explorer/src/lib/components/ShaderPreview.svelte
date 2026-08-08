@@ -114,15 +114,15 @@
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
 
-    // Always show cached thumbnail as fallback (unless refreshAll)
-    if (shader.cachedThumbnail && useCache && !refreshAll) {
+    // Always show cached thumbnail as fallback — even during refreshAll
+    // or forceFresh. If the fresh render fails, the old thumbnail stays visible.
+    if (shader.cachedThumbnail && useCache) {
       capturedImage = shader.cachedThumbnail;
       compilationFailed = false;
     }
 
-    // Render fresh if no cache or forcing a refresh. The fresh render
-    // overwrites capturedImage when complete — no flash, no placeholder.
-    if (!capturedImage || forceFresh) {
+    // Render fresh if no cache or forcing a refresh
+    if (!capturedImage || refreshAll || forceFresh) {
       if (previewContainer) {
         stopVisibilityObserver = observeNearViewport(previewContainer, () => {
           void startLoading();

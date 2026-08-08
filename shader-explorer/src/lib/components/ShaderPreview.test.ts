@@ -632,7 +632,7 @@ describe('ShaderPreview - thumbnail capture presentation', () => {
 });
 
 describe('ShaderPreview - refreshAll', () => {
-    it('ignores cached thumbnail and renders fresh when refreshAll is true', async () => {
+    it('shows cached thumbnail as fallback then renders fresh when refreshAll is true', async () => {
         const shader = makeShader({ cachedThumbnail: 'data:image/png;base64,stale' });
         const vscodeApi = makeVscodeApi();
 
@@ -640,8 +640,11 @@ describe('ShaderPreview - refreshAll', () => {
             props: { shader, vscodeApi, width: 320, height: 180, refreshAll: true },
         });
 
-        expect(container.querySelector('img')).toBeNull();
+        // Cached thumbnail shown as fallback while fresh render loads
+        expect(container.querySelector('img')).not.toBeNull();
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,stale');
 
+        // Also renders fresh
         await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
         await waitFor(() => expect(toDataUrlMock).toHaveBeenCalled());
 
