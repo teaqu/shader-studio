@@ -53,11 +53,11 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | **BufferA–D** | Imported Shadertoy names work; Shader Studio also supports arbitrary names and more than 4 intermediate passes |
 | **Common** | Shared code included in all passes |
 
-## Not Yet Supported
+## Not Supported
 
 | Feature | Notes |
 |---------|-------|
 | Cubemap buffer | Shadertoy's Cubemap buffer pass is not supported |
-| Webcam input | Live camera feed (planned) |
+| Webcam input | Live camera feed |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
