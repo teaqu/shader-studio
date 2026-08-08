@@ -504,7 +504,12 @@
     if (!menuTab) {
       return;
     }
-    const actualName = getActualBufferName(menuTab);
+    let actualName: string;
+    if (menuTab === "Script" && scriptInfo?.filename) {
+      actualName = scriptInfo.filename;
+    } else {
+      actualName = getActualBufferName(menuTab);
+    }
     dismissRenameMenu();
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);
@@ -603,6 +608,17 @@
   }
 
   function handleTabDblClick(tabName: string) {
+    if (tabName === "Script") {
+      if (!scriptInfo?.filename) {
+        return;
+      }
+      const scriptPath = scriptInfo.filename;
+      if (getEditorOverlayVisible()) {
+        setOverlayActiveFile(scriptPath);
+      }
+      onOpenInNewTab(scriptPath, "active");
+      return;
+    }
     const actualName = getActualBufferName(tabName);
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);

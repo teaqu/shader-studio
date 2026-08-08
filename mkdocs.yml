@@ -78,6 +78,8 @@ nav:
       - Recording: features/recording.md
       - Open In Browser: features/web-server.md
       - Shader Explorer: features/shader-explorer.md
+      - 3D Camera: features/camera.md
+      - Vertex Shaders: features/vertex-shaders.md
       - Code Snippets: features/code-snippets.md
       - Performance: features/performance.md
   - Debugging:

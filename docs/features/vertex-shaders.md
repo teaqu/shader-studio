@@ -20,8 +20,6 @@ If you're rendering a standard 2D full-screen quad (the default), you don't need
 3. A **Vertex shader** section appears with a path field
 4. Enter a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub
 
-![Geometry and vertex shader config](../assets/images/config.png)
-
 **Double-click the "Vertex shader" title** to open the file in the [editor overlay](editor-overlay.md).
 
 ## The `mainVertex` Function
@@ -85,14 +83,14 @@ Channel samplers (e.g. `sampleIChannel0(uv)`) are also available. Vertex samplin
 When using 3D geometry, the fragment shader receives per-pixel interpolated values from the vertex output:
 
 === "GLSL"
-    The `mainImage` signature is unchanged, but additional varyings are available:
-    - `vWorldPosition` — world-space position of the fragment
-    - `vNormal` — world-space interpolated normal
+    The `mainImage` signature is unchanged, but the following globals are available:
+    - `iWorldPosition` — world-space position of the fragment
+    - `iNormal` — world-space interpolated normal
 
 === "Slang"
-    The `mainImage` signature is unchanged, but the `MeshFragmentContext` is available:
-    - `_mesh.worldPosition` — world-space position of the fragment
-    - `_mesh.normal` — world-space interpolated normal
+    The `mainImage` signature is unchanged, but the following globals are available:
+    - `iWorldPosition` — world-space position of the fragment
+    - `iNormal` — world-space interpolated normal
 
 ## Example: Displacing a Plane
 

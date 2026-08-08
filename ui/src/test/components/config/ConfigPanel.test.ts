@@ -1646,7 +1646,35 @@ describe('ConfigPanel', () => {
       expect(onOpenInNewTab).toHaveBeenCalledWith('common', 'active');
     });
 
-    it('"Open" on Script tab calls onOpenInNewTab with "Script" and "active"', async () => {
+    it('"Open" on Script tab calls onOpenInNewTab with script filename when scriptInfo provided', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container, getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+          script: './shader.uniforms.ts',
+        } as any,
+        scriptInfo: { filename: '/resolved/shader.uniforms.ts', uniforms: [], fileExists: true },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const scriptTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Script')!;
+      await fireEvent.contextMenu(scriptTab);
+      await tick();
+
+      await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
+      expect(onOpenInNewTab).toHaveBeenCalledWith('/resolved/shader.uniforms.ts', 'active');
+    });
+
+    it('"Open" on Script tab falls back to tab name when no scriptInfo', async () => {
       const onOpenInNewTab = vi.fn();
       const { container, getByRole } = render(ConfigPanel, {
         config: {
@@ -1671,6 +1699,57 @@ describe('ConfigPanel', () => {
 
       await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
       expect(onOpenInNewTab).toHaveBeenCalledWith('Script', 'active');
+    });
+
+    it('double-click Script tab opens the script file when scriptInfo provided', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+          script: './shader.uniforms.ts',
+        } as any,
+        scriptInfo: { filename: '/resolved/shader.uniforms.ts', uniforms: [], fileExists: true },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const scriptTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Script')!;
+      await fireEvent.dblClick(scriptTab);
+
+      expect(onOpenInNewTab).toHaveBeenCalledWith('/resolved/shader.uniforms.ts', 'active');
+    });
+
+    it('double-click Script tab does nothing when scriptInfo has no filename', async () => {
+      const onOpenInNewTab = vi.fn();
+      const { container } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+          script: './shader.uniforms.ts',
+        } as any,
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const scriptTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Script')!;
+      await fireEvent.dblClick(scriptTab);
+
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
     });
 
     it('context menu "Open" switches overlay and calls onOpenInNewTab when overlay is visible', async () => {

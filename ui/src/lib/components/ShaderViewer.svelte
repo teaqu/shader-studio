@@ -631,9 +631,19 @@
     }
 
     const actualName = bufferName === "Common" ? "common" : bufferName;
-    const bufferPath = actualName === "Script" || actualName === "Image"
-      ? shaderPath
-      : bufferPathMap[actualName];
+    let bufferPath: string | undefined;
+    if (actualName === "Image") {
+      bufferPath = shaderPath;
+    } else if (actualName.startsWith("./") || actualName.startsWith("../")) {
+      // Resolve relative path against shader directory
+      const shaderDir = shaderPath.substring(0, shaderPath.lastIndexOf("/"));
+      bufferPath = shaderDir + "/" + actualName.substring(2);
+    } else if (actualName.startsWith("@/")) {
+      // Workspace-root paths handled by extension
+      bufferPath = actualName;
+    } else {
+      bufferPath = bufferPathMap[actualName];
+    }
 
     if (bufferPath) {
       transport.postMessage({

@@ -9,9 +9,6 @@ Shader Studio provides bundled code snippets through VS Code's native completion
 - **Coordinate** — coordinate conversion and repetition utilities
 - **Math** — the PI mathematical constant
 
-## Custom Snippets
-
-Shader Studio does not provide a custom snippet editor or manage user or workspace snippet files. To create or manage your own snippets, use VS Code's built-in user snippets or workspace snippets.
 
 ## Enabling Bundled Snippets
 
