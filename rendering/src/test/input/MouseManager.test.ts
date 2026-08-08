@@ -22,6 +22,9 @@ const createMockCanvas = (
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
+  // jsdom doesn't provide setPointerCapture/releasePointerCapture
+  (canvas as any).setPointerCapture = vi.fn();
+  (canvas as any).releasePointerCapture = vi.fn();
   vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
     left: rectLeft,
     top: rectTop,
@@ -278,6 +281,8 @@ describe("MouseManager", () => {
       const canvas = document.createElement("canvas");
       canvas.width = 400;
       canvas.height = 300;
+      (canvas as any).setPointerCapture = vi.fn();
+      (canvas as any).releasePointerCapture = vi.fn();
       vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
         left: 0,
         top: 0,

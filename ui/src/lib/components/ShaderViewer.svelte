@@ -938,6 +938,9 @@
       hasShader = Boolean(shaderPath);
       currentShaderCode = event.data.code || "";
       originalShaderCode = event.data.originalCode || event.data.code || "";
+      if (!isSameShader) {
+        shaderDebugManager?.clearDebugState();
+      }
       if (!hasShader) {
         setEditorOverlayVisible(false);
       }
