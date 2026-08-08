@@ -57,7 +57,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 
 | Feature | Notes |
 |---------|-------|
-| CubemapA buffer | Shadertoy's CubemapA buffer pass (renders to a cubemap) is not supported — all buffer passes output 2D |
+| Cubemap buffer | Shadertoy's Cubemap buffer pass is not supported |
 | Webcam input | Live camera feed (planned) |
 | Microphone input | Real-time audio from microphone |
 | VR/AR | Immersive rendering modes |
