@@ -954,6 +954,31 @@ export class GlslParser {
     return parameters;
   }
 
+  /**
+   * Extracts the parameter names from the top-level mainImage function.
+   * Returns { fragColorName, fragCoordName } defaulting to the standard names
+   * if the function isn't found or its signature is non-standard.
+   */
+  static getMainImageParameterNames(
+    lines: string[],
+  ): { fragColorName: string; fragCoordName: string } {
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (/^void\s+mainImage\s*\(/.test(trimmed)) {
+        const params = GlslParser.parseFunctionParametersLegacy(lines, i);
+        const outParam = params.find((p) => p.type === 'vec4');
+        const inParam = params.find((p) => p.type === 'vec2');
+        if (outParam || inParam) {
+          return {
+            fragColorName: outParam?.name ?? 'fragColor',
+            fragCoordName: inParam?.name ?? 'fragCoord',
+          };
+        }
+      }
+    }
+    return { fragColorName: 'fragColor', fragCoordName: 'fragCoord' };
+  }
+
   private static extractDeclarationsFromLine(line: string): VarInfo[] {
     const stripped = GlslParser.stripLineComments(line).trim();
     if (!stripped) return [];

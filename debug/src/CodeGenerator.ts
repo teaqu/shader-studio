@@ -703,7 +703,7 @@ export class CodeGenerator {
     }
     wrapper.push(...result);
     wrapper.push('');
-    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    wrapper.push(`void mainImage(out vec4 fragColor, in vec2 fragCoord) {`);
     const call = useCaptureSideChannel
       ? CodeGenerator.generateProcedureCall(lines, debugFunctionName, functionInfo, captureVarName, varInfo.type, customParameters, normalizeMode, stepEdge)
       : CodeGenerator.generateFunctionCall(lines, debugFunctionName, functionInfo, varInfo, customParameters, normalizeMode, stepEdge);

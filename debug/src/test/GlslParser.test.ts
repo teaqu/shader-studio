@@ -718,4 +718,57 @@ describe("GlslParser", () => {
     });
   });
 
+  describe("getMainImageParameterNames", () => {
+    it("returns standard names for standard mainImage", () => {
+      const code = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.getMainImageParameterNames(code);
+      expect(result).toEqual({ fragColorName: "fragColor", fragCoordName: "fragCoord" });
+    });
+
+    it("detects renamed parameters", () => {
+      const code = [
+        "void mainImage(out vec4 c, in vec2 p) {",
+        "  c = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.getMainImageParameterNames(code);
+      expect(result).toEqual({ fragColorName: "c", fragCoordName: "p" });
+    });
+
+    it("handles parameters on separate lines", () => {
+      const code = [
+        "void mainImage(",
+        "  out vec4 color,",
+        "  in vec2 coord",
+        ") {",
+        "  color = vec4(1.0);",
+        "}",
+      ];
+      const result = GlslParser.getMainImageParameterNames(code);
+      expect(result.fragColorName).toBe("color");
+      expect(result.fragCoordName).toBe("coord");
+    });
+
+    it("defaults to standard names when mainImage not found", () => {
+      const code = ["void foo() {", "}"];
+      const result = GlslParser.getMainImageParameterNames(code);
+      expect(result).toEqual({ fragColorName: "fragColor", fragCoordName: "fragCoord" });
+    });
+
+    it("falls back to standard name when only coord param is renamed", () => {
+      const code = [
+        "void mainImage(out vec4 fragColor, in vec2 xy) {",
+        "  fragColor = vec4(xy / iResolution.xy, 0.0, 1.0);",
+        "}",
+      ];
+      const result = GlslParser.getMainImageParameterNames(code);
+      expect(result.fragColorName).toBe("fragColor");
+      expect(result.fragCoordName).toBe("xy");
+    });
+  });
+
 });

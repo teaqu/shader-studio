@@ -133,6 +133,7 @@ export class VariableCaptureBuilder {
     if (vars.length === 0) return null;
 
     const lines = code.split('\n');
+    const { fragColorName, fragCoordName } = GlslParser.getMainImageParameterNames(lines);
 
     let resolvedLine = debugLine;
     if (debugLine === -1) {
@@ -161,11 +162,11 @@ export class VariableCaptureBuilder {
         if (!isGlobal) return null;
       }
 
-      let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars);
+      let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars, fragColorName, fragCoordName);
       if (captureCoordUniform) {
-        shader = VariableCaptureBuilder.injectCaptureCoord(shader);
+        shader = VariableCaptureBuilder.injectCaptureCoord(shader, fragCoordName);
       } else {
-        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
+        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight, fragCoordName);
       }
       return shader;
     }
@@ -178,12 +179,14 @@ export class VariableCaptureBuilder {
         vars,
         loopMaxIterations,
         _customParameters,
+        fragColorName,
+        fragCoordName,
       );
       if (shader === null) return null;
       if (captureCoordUniform) {
-        shader = VariableCaptureBuilder.injectCaptureCoord(shader);
+        shader = VariableCaptureBuilder.injectCaptureCoord(shader, fragCoordName);
       } else {
-        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
+        shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight, fragCoordName);
       }
       return shader;
     }
@@ -223,9 +226,9 @@ export class VariableCaptureBuilder {
 
     let shader = `uniform int _dbgVarIndex;\n${result.join('\n')}`;
     if (captureCoordUniform) {
-      shader = VariableCaptureBuilder.injectCaptureCoord(shader);
+      shader = VariableCaptureBuilder.injectCaptureCoord(shader, fragCoordName);
     } else {
-      shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight);
+      shader = VariableCaptureBuilder.injectGridCoord(shader, gridWidth, gridHeight, fragCoordName);
     }
     return shader;
   }
@@ -233,6 +236,8 @@ export class VariableCaptureBuilder {
   private static wrapGlobalScopeForMultiCapture(
     lines: string[],
     vars: CaptureVarInfo[],
+    fragColorName = 'fragColor',
+    fragCoordName = 'fragCoord',
   ): string {
     const mainImageStart = VariableCaptureBuilder.findMainImageStart(lines);
     const mainImageEnd = mainImageStart >= 0
@@ -249,7 +254,7 @@ export class VariableCaptureBuilder {
     const result = [
       ...preservedLines,
       '',
-      'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+      `void mainImage(out vec4 ${fragColorName}, in vec2 ${fragCoordName}) {`,
       ...VariableCaptureBuilder.generateSelectorCaptureOutput(vars),
       '}',
     ];
@@ -263,6 +268,8 @@ export class VariableCaptureBuilder {
     vars: CaptureVarInfo[],
     loopMaxIterations: Map<number, number>,
     customParameters: Map<number, string>,
+    fragColorName = 'fragColor',
+    fragCoordName = 'fragCoord',
   ): string | null {
     const returnType = VariableCaptureBuilder.getFunctionReturnType(lines, functionInfo.start);
     if (returnType === null) return null;
@@ -391,7 +398,7 @@ export class VariableCaptureBuilder {
     }
     wrapper.push(...result);
     wrapper.push('');
-    wrapper.push('void mainImage(out vec4 fragColor, in vec2 fragCoord) {');
+    wrapper.push(`void mainImage(out vec4 ${fragColorName}, in vec2 ${fragCoordName}) {`);
     if (setup.length > 0) {
       wrapper.push(...setup);
     }
@@ -649,7 +656,7 @@ export class VariableCaptureBuilder {
    * Injects `uniform vec2 _dbgCaptureCoord;` and
    * `vec2 fragCoord = _dbgCaptureCoord;` at the start of mainImage body.
    */
-  private static injectCaptureCoord(code: string): string {
+  private static injectCaptureCoord(code: string, fragCoordName = 'fragCoord'): string {
     const lines = VariableCaptureBuilder.remapBuiltinFragCoord(code).split('\n');
 
     // Prepend uniform declaration before the first line
@@ -665,7 +672,7 @@ export class VariableCaptureBuilder {
               j + 1,
               0,
               '  vec2 _dbgRemappedFragCoord = _dbgCaptureCoord;',
-              '  fragCoord = _dbgRemappedFragCoord;',
+              `  ${fragCoordName} = _dbgRemappedFragCoord;`,
               '  vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);',
             );
             break;
@@ -682,7 +689,7 @@ export class VariableCaptureBuilder {
    * Injects `fragCoord = gl_FragCoord.xy / vec2(gridWidth, gridHeight) * iResolution.xy;`
    * at the start of mainImage body so the grid samples cover the full canvas with correct aspect ratio.
    */
-  private static injectGridCoord(code: string, gridWidth: number, gridHeight: number): string {
+  private static injectGridCoord(code: string, gridWidth: number, gridHeight: number, fragCoordName = 'fragCoord'): string {
     const lines = VariableCaptureBuilder.remapBuiltinFragCoord(code).split('\n');
     for (let i = 0; i < lines.length; i++) {
       if (/void\s+mainImage\s*\(/.test(lines[i])) {
@@ -692,7 +699,7 @@ export class VariableCaptureBuilder {
               j + 1,
               0,
               `  vec2 _dbgRemappedFragCoord = gl_FragCoord.xy / vec2(${gridWidth}.0, ${gridHeight}.0) * iResolution.xy;`,
-              '  fragCoord = _dbgRemappedFragCoord;',
+              `  ${fragCoordName} = _dbgRemappedFragCoord;`,
               '  vec4 _dbgGlFragCoord = vec4(_dbgRemappedFragCoord, 0.0, 1.0);',
             );
             break;
