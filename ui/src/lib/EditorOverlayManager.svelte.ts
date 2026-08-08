@@ -10,6 +10,11 @@ import {
 
 const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
 
+function isScriptFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith('.ts') || lower.endsWith('.tsx') || lower.endsWith('.js') || lower.endsWith('.jsx');
+}
+
 export interface EditorOverlayCallbacks {
   onStateChanged: (state: EditorOverlayState) => void;
   onShaderCodeChanged: (code: string) => void;
@@ -118,6 +123,10 @@ export class EditorOverlayManager {
     } else if (this.bufferName.startsWith(VERTEX_SOURCE_PREFIX)) {
       // The overlay persists vertex source changes to its own file. The
       // extension then refreshes the owning shader with that source included.
+      return;
+    } else if (isScriptFile(this.bufferName)) {
+      // Script files (.ts, .js) are persisted to disk via the overlay's
+      // updateShaderSource mechanism; no rendering engine compilation needed.
       return;
     } else {
       const renderingEngine = this.getRenderingEngine();

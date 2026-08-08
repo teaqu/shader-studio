@@ -253,6 +253,26 @@ describe('EditorOverlay', () => {
       expect(createCall?.[1]).toMatchObject({ language: 'glsl' });
     });
 
+    it('should use TypeScript as the model language for .ts files', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/script.uniforms.ts' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ language: 'typescript' });
+    });
+
+    it('should use JavaScript as the model language for .js files', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/script.uniforms.js' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ language: 'javascript' });
+    });
+
     it('should update the model language when switching shader languages', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, model } = createMockEditorWithCallbacks();

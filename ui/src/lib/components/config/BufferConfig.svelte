@@ -17,7 +17,7 @@
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
-  import { setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -41,6 +41,7 @@
     storageNames?: string[];
     entryPointNames?: string[];
     onComputeCommit?: (nextConfig: ComputePass) => Record<string, string>;
+    onOpenInNewTab?: (name: string, mode: "active" | "beside") => void;
   };
 
   let {
@@ -61,6 +62,7 @@
     storageNames = [],
     entryPointNames = [],
     onComputeCommit = undefined,
+    onOpenInNewTab = () => {},
   }: BufferConfigProps = $props();
 
   const IMAGE_SCALES = [0.25, 0.5, 1, 2, 4] as const;
@@ -384,8 +386,11 @@
     if (!config.vertex) {
       return;
     }
-    setOverlayActiveFile(`__shader_studio_vertex__:${bufferName}`);
-    setEditorOverlayVisible(true);
+    if (getEditorOverlayVisible()) {
+      setOverlayActiveFile(`__shader_studio_vertex__:${bufferName}`);
+    } else {
+      onOpenInNewTab(config.vertex, "active");
+    }
   }
 </script>
 

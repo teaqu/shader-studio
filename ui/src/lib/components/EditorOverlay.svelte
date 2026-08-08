@@ -69,8 +69,18 @@
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
 
-  function languageForShaderPath(path: string): "glsl" | "slang" {
-    return path.toLowerCase().endsWith(".slang") ? "slang" : "glsl";
+  function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
+    const lower = path.toLowerCase();
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) {
+      return "typescript";
+    }
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) {
+      return "javascript";
+    }
+    if (lower.endsWith(".slang")) {
+      return "slang";
+    }
+    return "glsl";
   }
 
   function focusMonacoTextInput() {

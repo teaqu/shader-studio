@@ -11,6 +11,7 @@ import {
   getOverlayActiveFile,
   setEditorOverlayVisible,
   setOverlayActiveFile,
+  getEditorOverlayVisible,
 } from '../../../lib/state/editorOverlayState.svelte';
 // Mock ConfigManager to avoid real transport interactions
 vi.mock('../../../lib/ConfigManager', () => ({
@@ -1727,6 +1728,34 @@ describe('ConfigPanel', () => {
       expect(onOpenInNewTab).toHaveBeenCalledWith('/resolved/shader.uniforms.ts', 'active');
     });
 
+    it('double-click Script tab switches overlay and does NOT open in VS Code when overlay is visible', async () => {
+      setEditorOverlayVisible(true);
+      const onOpenInNewTab = vi.fn();
+      const { container } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+          script: './shader.uniforms.ts',
+        } as any,
+        scriptInfo: { filename: '/resolved/shader.uniforms.ts', uniforms: [], fileExists: true },
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        onOpenInNewTab,
+      });
+      await tick();
+
+      const scriptTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button.tab-button'))
+        .find(el => el.querySelector('.tab-label')?.textContent === 'Script')!;
+      await fireEvent.dblClick(scriptTab);
+
+      expect(getOverlayActiveFile()).toBe('/resolved/shader.uniforms.ts');
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
+    });
+
     it('double-click Script tab does nothing when scriptInfo has no filename', async () => {
       const onOpenInNewTab = vi.fn();
       const { container } = render(ConfigPanel, {
@@ -1752,7 +1781,7 @@ describe('ConfigPanel', () => {
       expect(onOpenInNewTab).not.toHaveBeenCalled();
     });
 
-    it('context menu "Open" switches overlay and calls onOpenInNewTab when overlay is visible', async () => {
+    it('context menu "Open" switches overlay and does NOT open in VS Code when overlay is visible', async () => {
       const onOpenInNewTab = vi.fn();
       const { container, getByRole } = render(ConfigPanel, {
         config: {
@@ -1777,7 +1806,7 @@ describe('ConfigPanel', () => {
 
       await fireEvent.click(getByRole('menuitem', { name: 'Open' }));
       expect(getOverlayActiveFile()).toBe('BufferA');
-      expect(onOpenInNewTab).toHaveBeenCalledWith('BufferA', 'active');
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
     });
   });
 
@@ -1816,6 +1845,45 @@ describe('ConfigPanel', () => {
 
       expect(getOverlayActiveFile()).toBe('BufferA');
       expect(mockTransport.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call onOpenInNewTab on double-click when overlay is visible', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: 'bufferA.glsl', inputs: {} },
+        },
+      };
+
+      (ConfigManager as unknown as Mock).mockImplementation(() =>
+        createMockConfigManager(['BufferA']),
+      );
+      setEditorOverlayVisible(true);
+
+      const onOpenInNewTab = vi.fn();
+
+      const { getAllByRole } = render(ConfigPanel, {
+        config,
+        pathMap: {},
+        bufferPathMap: { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' },
+        transport: mockTransport,
+        shaderPath: '/path/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+        isLocked: false,
+        onOpenInNewTab,
+      });
+
+      await tick();
+
+      const bufferATab = getAllByRole('button').find((tab) => tab.textContent?.includes('BufferA'));
+      expect(bufferATab).toBeTruthy();
+      await fireEvent.dblClick(bufferATab!);
+
+      expect(getOverlayActiveFile()).toBe('BufferA');
+      expect(onOpenInNewTab).not.toHaveBeenCalled();
     });
 
     it('should call onOpenInNewTab with "active" on double-click when buffer has path', async () => {

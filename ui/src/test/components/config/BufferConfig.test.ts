@@ -23,22 +23,44 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
-  it('opens the configured vertex shader in the editor overlay when its title is double-clicked', async () => {
+  it('opens the configured vertex shader in VS Code when overlay is closed', async () => {
     setEditorOverlayVisible(false);
     setOverlayActiveFile('Image');
 
+    const onOpenInNewTab = vi.fn();
     const { getByText } = render(BufferConfig, {
       bufferName: 'Image',
       config: { inputs: {}, geometry: { type: 'cube' }, vertex: './warp.vert.glsl' },
       onUpdate: vi.fn(),
       getWebviewUri: () => undefined,
       isImagePass: true,
+      onOpenInNewTab,
     });
 
     await fireEvent.dblClick(getByText('Vertex shader'));
 
-    expect(getEditorOverlayVisible()).toBe(true);
-    expect(getOverlayActiveFile()).toBe('__shader_studio_vertex__:Image');
+    expect(getEditorOverlayVisible()).toBe(false);
+    expect(onOpenInNewTab).toHaveBeenCalledWith('./warp.vert.glsl', 'active');
+  });
+
+  it('switches overlay to vertex shader without opening VS Code when overlay is visible', async () => {
+    setEditorOverlayVisible(true);
+    setOverlayActiveFile('Image');
+
+    const onOpenInNewTab = vi.fn();
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'BufferA',
+      config: { inputs: {}, geometry: { type: 'cube' }, vertex: './warp.vert.glsl' },
+      onUpdate: vi.fn(),
+      getWebviewUri: () => undefined,
+      isImagePass: true,
+      onOpenInNewTab,
+    });
+
+    await fireEvent.dblClick(getByText('Vertex shader'));
+
+    expect(getOverlayActiveFile()).toBe('__shader_studio_vertex__:BufferA');
+    expect(onOpenInNewTab).not.toHaveBeenCalled();
   });
 
   it('updates the optional vertex shader path', async () => {

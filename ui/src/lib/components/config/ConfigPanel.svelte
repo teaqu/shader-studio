@@ -513,8 +513,9 @@
     dismissRenameMenu();
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);
+    } else {
+      onOpenInNewTab(actualName, "active");
     }
-    onOpenInNewTab(actualName, "active");
   }
 
   async function focusTab(tabName: string) {
@@ -615,15 +616,17 @@
       const scriptPath = scriptInfo.filename;
       if (getEditorOverlayVisible()) {
         setOverlayActiveFile(scriptPath);
+      } else {
+        onOpenInNewTab(scriptPath, "active");
       }
-      onOpenInNewTab(scriptPath, "active");
       return;
     }
     const actualName = getActualBufferName(tabName);
     if (getEditorOverlayVisible()) {
       setOverlayActiveFile(actualName);
+    } else {
+      onOpenInNewTab(actualName, "active");
     }
-    onOpenInNewTab(actualName, "active");
   }
 
   // Reactive statement to get the current active tab's config
@@ -802,6 +805,7 @@
           {audioVideoController}
           {globalMuted}
           {availableBufferNames}
+          {onOpenInNewTab}
         />
       {:else}
         <BufferConfig
@@ -833,6 +837,7 @@
             const result = configManager?.updateComputePass(getActualBufferName(activeTab), nextConfig);
             return result && !result.ok ? result.errors : {};
           }}
+          {onOpenInNewTab}
         />
       {/if}
     </div>
