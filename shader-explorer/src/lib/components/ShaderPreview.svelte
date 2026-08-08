@@ -193,6 +193,7 @@
     } catch (err) {
       if (isCurrent()) {
         console.error('Failed to load shader code:', err);
+        capturedImage = '';
         compilationFailed = true;
         onCompilationFailed?.();
       }
@@ -352,6 +353,7 @@
           }
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
+          capturedImage = '';
           compilationFailed = true;
           onCompilationFailed?.();
         }
@@ -365,6 +367,7 @@
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.errors);
+        capturedImage = '';
         compilationFailed = true;
         onCompilationFailed?.();
         // Still clean up on failure
@@ -381,6 +384,7 @@
       if (!isCurrent()) return;
 
       console.error('Failed to initialize rendering:', err);
+      capturedImage = '';
       compilationFailed = true;
       onCompilationFailed?.();
     }
