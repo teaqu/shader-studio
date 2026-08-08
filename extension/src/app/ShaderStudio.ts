@@ -336,6 +336,9 @@ export class ShaderStudio {
         this.logger.info("shader-studio.toggleEditorOverlay command executed");
         this.panelManager.toggleEditorOverlayInActivePanel();
       }),
+      vscode.commands.registerCommand("shader-studio.toggleLock", () => {
+        this.panelManager.toggleLockInActivePanel();
+      }),
     );
 
     this.context.subscriptions.push(

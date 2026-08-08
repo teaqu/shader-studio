@@ -72,6 +72,10 @@ export class PanelManager {
     this.postMessageToActivePanel({ type: "toggleEditorOverlay" }, "editor overlay toggle");
   }
 
+  public toggleLockInActivePanel(): void {
+    this.postMessageToActivePanel({ type: "toggleLock" }, "toggle lock");
+  }
+
   private postMessageToActivePanel(message: unknown, actionName: string): void {
     const activePanel =
       Array.from(this.panels).find((panel) => panel.active) ??

@@ -1095,6 +1095,11 @@
       return;
     }
 
+    if (type === 'toggleLock') {
+      handleToggleLock();
+      return;
+    }
+
     if (type === 'resetLayout') {
       handleResetLayout();
       return;

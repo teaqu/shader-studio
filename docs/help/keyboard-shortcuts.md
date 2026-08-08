@@ -7,6 +7,7 @@
 |----------|--------|
 | `Ctrl+\`` | Toggle the editor overlay (when shader preview is focused) |
 | `Ctrl+Enter` | Compile now (works in any mode; required in manual compile mode) |
+| `Ctrl+L` / `Cmd+L` | Lock/unlock the current shader |
 
 ## Editor Overlay
 

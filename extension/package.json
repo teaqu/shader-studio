@@ -120,6 +120,10 @@
         "title": "Shader Studio: Toggle Editor Overlay"
       },
       {
+        "command": "shader-studio.toggleLock",
+        "title": "Shader Studio: Toggle Lock"
+      },
+      {
         "command": "shader-studio.manualCompile",
         "title": "Shader Studio: Manual Compile"
       },
@@ -133,6 +137,11 @@
         "command": "shader-studio.toggleEditorOverlay",
         "key": "ctrl+`",
         "when": "activeWebviewPanelId == 'shader-studio'"
+      },
+      {
+        "command": "shader-studio.toggleLock",
+        "key": "ctrl+l",
+        "mac": "cmd+l"
       },
       {
         "command": "shader-studio.manualCompile",

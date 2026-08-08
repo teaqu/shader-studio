@@ -6,10 +6,6 @@ The overlay includes editor features designed to feel similar to the VS Code edi
 
 ![Editor overlay active](../assets/images/overlay.png)
 
-## Current Limitations
-
-Search inside the editor overlay is currently available in Vim mode with `/`. Non-Vim overlay search shortcuts are not currently supported; open the shader in the VS Code editor or use browser page search when you need those.
-
 ## Opening
 
 - Click the <i class="codicon codicon-code"></i> **Editor** icon in the toolbar
