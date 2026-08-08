@@ -1,6 +1,6 @@
 # Shader Explorer
 
-Shader Explorer lets you browse, search, and preview all shader files in your workspace. It supports both GLSL (`.glsl`, `.frag`, `.vert`) and Slang (`.slang`) shaders, with WebGL or WebGPU preview rendering selected automatically by shader language.
+Shader Explorer lets you browse, search, and preview all shader files in your workspace.
 
 ## Opening
 
@@ -53,4 +53,4 @@ Clicking an individual shader card also refreshes that shader's thumbnail — us
 
 ## Next
 
-[GLSL and Slang Code Snippets](code-snippets.md) — insert bundled shader code through native VS Code completion
+[Code Snippets](code-snippets.md) — insert bundled shader code through native VS Code completion

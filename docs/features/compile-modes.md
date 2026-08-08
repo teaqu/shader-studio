@@ -17,7 +17,7 @@ The current mode is shown in the menu. Your choice is saved and restored across 
 
 ## Hot Mode
 
-The shader recompiles immediately as you type. Compilation errors appear in the preview as soon as they occur.
+The shader recompiles immediately as you type. Compilation errors appear as an error overlay on the preview canvas — showing each error message with a **Dismiss** button to clear it.
 
 ## Save Mode
 

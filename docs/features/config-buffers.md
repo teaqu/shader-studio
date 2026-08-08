@@ -14,6 +14,11 @@ Click the <i class="codicon codicon-gear"></i> **Config** button in the toolbar.
 
 The tab bar at the top shows every pass in your shader. Click **+ New** to add a pass. Remove a pass with the `×` on its tab (Image cannot be removed).
 
+**Right-click a tab** to open a context menu:
+
+- **Open** — locks the shader and opens the pass's file in the editor
+- **Rename** — inline rename for buffer passes (Image, Common, and Script cannot be renamed)
+
 ![Config pass tab bar](../assets/images/config-tabs.png)
 
 | Tab | Description |
@@ -70,18 +75,19 @@ If the file doesn't exist yet, the editor shows a **Create File** button that ge
 
 ---
 
-## Per-Pass Geometry and Vertex Shaders
+## Per-Pass Geometry
 
-Buffer and Image passes can render with 2D (full-screen quad) or 3D geometry (sphere, cube, plane, or a custom GLB model). When using 3D geometry, you can configure a custom vertex shader for that pass.
+Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometry** dropdown in the pass config to choose:
 
-### Vertex Shader
+| Geometry | Description |
+|----------|-------------|
+| **Fullscreen** | A full-screen quad (default). Standard 2D shader rendering. |
+| **Plane** | A flat 3D plane. |
+| **Cube** | A unit cube centred at the origin. |
+| **Sphere** | A UV-mapped sphere. |
+| **Model** | A custom GLB mesh. Shows a file picker to select a `.glb` file and, for multi-mesh models, a dropdown to pick which mesh to render. |
 
-In the pass config, open the **Geometry** dropdown and select any non-fullscreen option to reveal the **Vertex shader** section. Set a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate one with a `mainVertex` stub.
-
-**Double-click the "Vertex shader" title** to open the vertex shader file in the [editor overlay](editor-overlay.md). This uses a synthetic file key scoped to the pass, so you can inspect and edit the vertex shader inline without leaving the preview.
-
-!!! note
-    GLSL vertex files define `vec3 mainVertex(vec2 pos)` or `vec3 mainVertex(vec3 pos)` depending on geometry. Slang vertex files use `float3 mainVertex(float2 pos)` or `float3 mainVertex(float3 pos)`.
+When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
 
 ## Compute Passes
 
