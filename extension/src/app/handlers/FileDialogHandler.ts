@@ -106,9 +106,9 @@ export class FileDialogHandler {
         } else if (payload.fileType === 'glsl-vertex') {
           template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
-          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n}\n`;
+          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
-          template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n`;
+          template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
         } else {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }

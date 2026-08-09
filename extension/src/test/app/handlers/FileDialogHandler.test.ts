@@ -322,6 +322,10 @@ suite('FileDialogHandler Test Suite', () => {
       );
 
       const content = writeStub.firstCall.args[1] as string;
+      assert.strictEqual(
+        content,
+        'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n',
+      );
       assert.ok(content.includes('inout float3 position'));
       assert.ok(!content.includes('Deform position, normal, or UV'));
     });
@@ -381,6 +385,10 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(showSaveStub.firstCall.args[0]!.defaultUri!.fsPath, savedUri.fsPath);
       assert.ok(writeStub.calledOnce);
       const content: string = writeStub.firstCall.args[1];
+      assert.strictEqual(
+        content,
+        '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n',
+      );
       assert.ok(content.includes('[shader("compute")]'));
       assert.ok(content.includes('[numthreads(8, 8, 1)]'));
       assert.ok(content.includes('void compute(uint3 dispatchThreadID : SV_DispatchThreadID)'));
