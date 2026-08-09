@@ -97,9 +97,12 @@ describe('ShaderDebugManager - Slang language mode', () => {
     manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
 
     const capture = manager.getSlangCapturePlan(slangShader, null);
+    if (!capture || "error" in capture) {
+      throw new Error(capture?.error ?? "Expected a Slang capture plan");
+    }
 
-    expect(capture?.plan.captureSlots[0]).toMatchObject({ index: 0, hidden: true });
-    expect(capture?.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'fragCoord' });
+    expect(capture.plan.captureSlots[0]).toMatchObject({ index: 0, hidden: true });
+    expect(capture.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'fragCoord' });
   });
 
   it('includes the actual return expression as _dbgReturn for native Slang capture', () => {
@@ -108,9 +111,12 @@ describe('ShaderDebugManager - Slang language mode', () => {
     manager.updateDebugLine(5, '    return float4(col, 1.0);', '/flow.slang');
 
     const capture = manager.getSlangCapturePlan(slangShader, null);
+    if (!capture || "error" in capture) {
+      throw new Error(capture?.error ?? "Expected a Slang capture plan");
+    }
 
-    expect(capture?.values).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4' }));
-    expect(capture?.plan.captureSlots).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4', hidden: false }));
+    expect(capture.values).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4' }));
+    expect(capture.plan.captureSlots).toContainEqual(expect.objectContaining({ name: '_dbgReturn', typeName: 'float4', hidden: false }));
   });
 
   it('generates GLSL debug output when language is glsl', () => {

@@ -87,6 +87,8 @@ function lifecycleDevice() {
     createSampler: vi.fn(() => ({})),
     queue: { writeTexture: vi.fn() },
     destroy: vi.fn(),
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   };
   return { device: device as unknown as GPUDevice, textures };
 }
@@ -704,6 +706,8 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
     const compiler = {
       compile: vi.fn(async () => ({ success: true, wgsl: "// wgsl" })),
@@ -882,6 +886,8 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
     const compiler = {
       compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
@@ -945,6 +951,8 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
     const compiler = {
       compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
@@ -991,6 +999,8 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
     const compiler = {
       compile: vi
@@ -1044,6 +1054,8 @@ describe("WebGPURenderingEngine", () => {
         createView: vi.fn(() => ({})),
         destroy: vi.fn(),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
     const compiler = {
       compile: vi.fn(() => ({ success: true, wgsl: "// wgsl" })),
@@ -1309,6 +1321,8 @@ describe("WebGPURenderingEngine", () => {
         })),
         finish: vi.fn(() => ({})),
       })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
     };
   }
 

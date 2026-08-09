@@ -62,11 +62,11 @@ export type DispatchSpec =
 export interface RenderPassNode {
   name: RenderPassName;
   source: string;
+  vertexSrc?: string;
   geometry: GeometryType;
   /** Webview-accessible GLB URL when geometry is `model`. */
   modelPath?: string;
   modelMesh?: string;
-  vertexSrc?: string;
   path?: string;
   kind: "render" | "compute";
   output: "texture" | "canvas" | "none";

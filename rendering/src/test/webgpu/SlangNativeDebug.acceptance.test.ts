@@ -139,6 +139,12 @@ describe("native Slang debug acceptance", () => {
     const main = plan.plan.files.find((file) => file.uri === "file:///main.slang")!;
     const modules = plan.plan.files.filter((file) => file.uri !== main.uri).map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source }));
 
-    expect(compiler.compileImagePass(main.source, { passName: "Image", sourcePath: main.path, captureMode: true, modules })).toMatchObject({ success: true });
+    const result = compiler.compileImagePass(main.source, {
+      passName: "Image",
+      sourcePath: main.path,
+      captureMode: true,
+      modules,
+    });
+    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
   });
 });

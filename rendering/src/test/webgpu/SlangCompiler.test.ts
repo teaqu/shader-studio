@@ -230,8 +230,8 @@ describe("SlangCompiler", () => {
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).not.toContain("import shader_studio;");
     expect(wrapped).toContain("// Shader Studio editor support import");
-    // import palette; is stripped — all imports are removed because
-    // the WASM runtime has no filesystem to resolve them.
+    // No dependency was supplied, so palette is stripped rather than asking
+    // the filesystem-less WASM runtime to resolve it.
     expect(wrapped).not.toContain("import palette;");
     expect(wrapped).toContain("float4 mainImage");
   });
@@ -456,7 +456,7 @@ describe("SlangCompiler", () => {
       source: "module palette;\npublic float4 paletteColor() { return 1; }",
     };
 
-    it("strips a quoted path import from the source", () => {
+    it("retains a quoted path import when its dependency is preloaded", () => {
       const loads: Array<{ source: string }> = [];
       const compiler = new SlangCompiler(makeFakeSlang({
         onLoad: (source) => loads.push({ source }),
@@ -468,10 +468,10 @@ describe("SlangCompiler", () => {
       );
 
       const rootSource = loads[loads.length - 1]!.source;
-      expect(rootSource).not.toContain("import");
+      expect(rootSource).toContain('import "../lib/palette.slang";');
     });
 
-    it("strips an identifier-path import from the source", () => {
+    it("retains an identifier-path import when its dependency is preloaded", () => {
       const loads: Array<{ source: string }> = [];
       const compiler = new SlangCompiler(makeFakeSlang({
         onLoad: (source) => loads.push({ source }),
@@ -483,7 +483,7 @@ describe("SlangCompiler", () => {
       );
 
       const rootSource = loads[loads.length - 1]!.source;
-      expect(rootSource).not.toContain("import");
+      expect(rootSource).toContain("import lib.palette;");
     });
 
     it("preserves source lines after the import", () => {

@@ -46,6 +46,7 @@ describe("RenderingEngine", () => {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
         setCustomUniformManager: vi.fn(),
         resetTime: vi.fn(),
+        getPasses: vi.fn(() => []),
       };
       Object.defineProperty(renderingEngine, 'shaderPipeline', {
         value: mockPipeline, writable: true, configurable: true,
@@ -589,6 +590,7 @@ describe("RenderingEngine", () => {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
         setCustomUniformManager: vi.fn(),
         resetTime: vi.fn(),
+        getPasses: vi.fn(() => []),
       };
       mockResourceManager = {
         syncAllVideosToTime: vi.fn(),
@@ -1165,6 +1167,7 @@ describe("RenderingEngine", () => {
         compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
         setCustomUniformManager: vi.fn(),
         resetTime: vi.fn(),
+        getPasses: vi.fn(() => []),
       };
       const mockResourceManager = {
         syncAllVideosToTime: vi.fn(),

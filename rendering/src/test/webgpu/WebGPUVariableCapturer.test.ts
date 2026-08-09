@@ -73,6 +73,8 @@ function mockGpu(readbackFloats?: (size: number) => Float32Array): MockGpu {
       copyTextureToBuffer,
       finish: vi.fn(() => ({})),
     })),
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   } as unknown as GPUDevice;
 
   const compiler = {

@@ -21,6 +21,8 @@ function mockDevice() {
       finish: vi.fn(() => ({})),
     })),
     queue: { writeTexture: vi.fn(), copyExternalImageToTexture: vi.fn(), submit: vi.fn() },
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   };
   return device as unknown as GPUDevice & typeof device;
 }

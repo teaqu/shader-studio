@@ -231,7 +231,9 @@ describe("wrapSlangComputeSource", () => {
       "textureChannel.Sample(textureChannelSampler, float2(uv.x, 1.0 - uv.y))",
     );
     expect(wrapped).toContain("cubeChannel.Sample(cubeChannelSampler, dir)");
-    expect(wrapped).not.toContain(".SampleLevel(");
+    expect(wrapped).toContain("sampleIChannel0Vertex(float2 uv)");
+    expect(wrapped).toContain("textureChannel.SampleLevel(textureChannelSampler");
+    expect(wrapped).toContain("sampleIChannel0(float2 uv)");
   });
 
   it("puts #line directly above user source and the entry point after it", () => {

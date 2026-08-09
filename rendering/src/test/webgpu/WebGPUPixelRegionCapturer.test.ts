@@ -52,6 +52,8 @@ const mockGpu = () => {
       buffers.push(buffer);
       return buffer;
     }),
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   } as unknown as GPUDevice;
   const encoder = { copyTextureToBuffer } as unknown as GPUCommandEncoder;
   return { device, encoder, buffers, copyTextureToBuffer };

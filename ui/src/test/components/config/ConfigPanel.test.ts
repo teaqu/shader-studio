@@ -208,7 +208,7 @@ describe('ConfigPanel', () => {
     it('renders the Storage tab for Slang configurations', async () => {
       const config: ShaderConfig = {
         version: '1.0',
-        storage: { particles: { count: 1024, stride: 16, elementType: 'float4' } },
+        storage: { particles: { count: 1024, elementType: 'float4' } },
         passes: { Image: { inputs: {} } },
       };
 

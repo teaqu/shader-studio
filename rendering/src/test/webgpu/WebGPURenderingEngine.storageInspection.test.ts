@@ -16,6 +16,8 @@ function engineWithStorage() {
     createBuffer: vi.fn(() => readback),
     createCommandEncoder: vi.fn(() => ({ copyBufferToBuffer, finish })),
     queue: { submit: vi.fn(), writeBuffer },
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   } as unknown as GPUDevice;
   const engine = new WebGPURenderingEngine({ scriptUrl: 'slang.js', wasmUrl: 'slang.wasm' });
   (engine as unknown as { device: GPUDevice }).device = device;

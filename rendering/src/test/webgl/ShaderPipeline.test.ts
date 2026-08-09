@@ -7,9 +7,6 @@ import type { BufferManager } from "../../webgl/BufferManager";
 import type { TimeManager } from "../../util/TimeManager";
 import type { CompilationResult, ShaderConfig } from "../../models";
 
-const SLANG_FEATURE_WARNING =
-  "compute passes and storage buffers require the Slang/WebGPU engine";
-
 const createMockCanvas = () => ({
   width: 800,
   height: 600,
@@ -987,17 +984,18 @@ describe("ShaderPipeline", () => {
         { ComputeSim: "compute source" },
       );
 
-      expect(result).toEqual({ success: true, warnings: [SLANG_FEATURE_WARNING] });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Image"]);
-      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(1);
-      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("image source");
+      expect(result).toEqual({ success: true });
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["ComputeSim", "Image"]);
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2);
+      expect(mockShaderCompiler.compileShaderAsync.mock.calls[0][0]).toBe("compute source");
+      expect(mockShaderCompiler.compileShaderAsync.mock.calls[1][0]).toBe("image source");
     });
 
     it("warns once when storage is configured without a Compute pass", async () => {
       const config: ShaderConfig = {
         version: "1.0",
         storage: {
-          particles: { count: 4, stride: 16, elementType: "float4" },
+          particles: { count: 4, elementType: "float4" },
         },
         passes: { Image: { inputs: {} } },
       };
@@ -1008,7 +1006,7 @@ describe("ShaderPipeline", () => {
         "shader.glsl",
       );
 
-      expect(result).toEqual({ success: true, warnings: [SLANG_FEATURE_WARNING] });
+      expect(result).toEqual({ success: true });
       expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Image"]);
     });
 
@@ -1016,7 +1014,7 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         storage: {
-          particles: { count: 4, stride: 16, elementType: "float4" },
+          particles: { count: 4, elementType: "float4" },
         },
         passes: {
           ComputeSim: { type: 'compute', path: "sim.slang" },
@@ -1031,7 +1029,7 @@ describe("ShaderPipeline", () => {
         { ComputeSim: "compute source" },
       );
 
-      expect(result).toEqual({ success: true, warnings: [SLANG_FEATURE_WARNING] });
+      expect(result).toEqual({ success: true });
     });
 
     it("treats an explicitly empty storage section as configured", async () => {
@@ -1047,7 +1045,7 @@ describe("ShaderPipeline", () => {
         "shader.glsl",
       );
 
-      expect(result).toEqual({ success: true, warnings: [SLANG_FEATURE_WARNING] });
+      expect(result).toEqual({ success: true });
     });
 
     it("skips arbitrary Compute-prefixed names without changing noncompute pass order", async () => {
@@ -1074,11 +1072,14 @@ describe("ShaderPipeline", () => {
         },
       );
 
-      expect(result).toEqual({ success: true, warnings: [SLANG_FEATURE_WARNING] });
-      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Flow", "Image"]);
+      expect(result).toEqual({ success: true });
+      expect(shaderPipeline.getPasses().map(({ name }) => name)).toEqual(["Compute", "Flow", "Compute_splat", "Image", "ComputeLater"]);
       expect(mockShaderCompiler.compileShaderAsync.mock.calls.map(([source]) => source)).toEqual([
+        "compute source",
         "flow source",
+        "splat source",
         "image source",
+        "later source",
       ]);
     });
 
@@ -1129,16 +1130,15 @@ describe("ShaderPipeline", () => {
           "BufferA: Buffer file not found or is empty (path: \"buffer-a.glsl\"). " +
             "Please check that the file exists and contains valid shader code.",
         ],
-        warnings: [SLANG_FEATURE_WARNING],
       });
-      expect(mockShaderCompiler.compileShaderAsync).not.toHaveBeenCalled();
+      expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalled();
     });
 
     it("keeps the storage warning when an ordinary shader fails to compile", async () => {
       const config: ShaderConfig = {
         version: "1.0",
         storage: {
-          particles: { count: 4, stride: 16, elementType: "float4" },
+          particles: { count: 4, elementType: "float4" },
         },
         passes: { Image: { inputs: {} } },
       };
@@ -1153,7 +1153,6 @@ describe("ShaderPipeline", () => {
       expect(result).toEqual({
         success: false,
         errors: ["Image: Failed to compile shader"],
-        warnings: [SLANG_FEATURE_WARNING],
       });
     });
 
@@ -1172,7 +1171,7 @@ describe("ShaderPipeline", () => {
       const config: ShaderConfig = {
         version: "1.0",
         storage: {
-          particles: { count: 4, stride: 16, elementType: "float4" },
+          particles: { count: 4, elementType: "float4" },
         },
         passes: {
           ComputeSim: { type: 'compute', path: "sim.slang" },
@@ -1190,7 +1189,7 @@ describe("ShaderPipeline", () => {
       expect(result).toEqual({
         success: false,
         errors: ["existing compile error"],
-        warnings: ["existing compile warning", SLANG_FEATURE_WARNING],
+        warnings: ["existing compile warning"],
       });
     });
 
@@ -1223,7 +1222,7 @@ describe("ShaderPipeline", () => {
       expect(result).toEqual({
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
-        warnings: ["existing compile warning", SLANG_FEATURE_WARNING],
+        warnings: ["existing compile warning"],
       });
     });
   });

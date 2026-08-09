@@ -66,11 +66,11 @@ export class SlangCompiler {
       dependencyModules.push(dependencyModule);
     }
 
-    // Strip import statements before passing source to the Slang WASM
-    // runtime. The WASM has no filesystem, so any form of `import` (quoted
-    // path or dotted identifier) triggers "cannot open file". Dependencies
-    // are pre-loaded above and linked via the composite below.
-    const resolvedSource = stripImports(userSource);
+    // The WASM cannot resolve imports from the filesystem, but it can resolve
+    // imports from modules already loaded into this session. Keep imports when
+    // the caller supplied those modules so their public declarations remain
+    // visible while compiling the root module.
+    const resolvedSource = stripImports(userSource, dependencyModules.length > 0);
 
     const isCompute = options.passKind === "compute";
     const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(resolvedSource) : [];
@@ -199,12 +199,12 @@ const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\
  * by `stripShaderStudioEditorImport` which replaces it with a line-preserving
  * comment inside the wrap functions.
  */
-function stripImports(source: string): string {
+function stripImports(source: string, preserveImports: boolean): string {
   return source.replace(IMPORT_STRIP_PATTERN, (_match, target: string) => {
     if (target === "shader_studio" || target === '"shader-studio.slang"') {
       return _match; // leave for stripShaderStudioEditorImport
     }
-    return "";
+    return preserveImports ? _match : "";
   });
 }
 

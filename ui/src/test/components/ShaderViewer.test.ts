@@ -4424,7 +4424,7 @@ describe('ShaderViewer', () => {
       expect(pauseButton.classList.contains('error')).toBe(true);
 
       // Click the dismiss button on the error display
-      const dismissButton = container.querySelector('.error-tooltip .dismiss-button, .error-tooltip button');
+      const dismissButton = container.querySelector('.error-dismiss');
       if (dismissButton) {
         await fireEvent.click(dismissButton);
         await tick();

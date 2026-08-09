@@ -1105,7 +1105,7 @@ describe('ConfigManager', () => {
     it('adds storage defaults and applies a renamed declaration', () => {
       configManager.setConfig({
         version: '1.0',
-        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        storage: { particles: { count: 4, elementType: 'float4' } },
         passes: {
           Image: { inputs: {} },
           ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
@@ -1114,12 +1114,12 @@ describe('ConfigManager', () => {
 
       expect(configManager.addStorageBuffer().name).toBe('storageA');
       const result = configManager.applyStorageBuffer('particles', 'positions', {
-        count: 8, stride: 16, elementType: 'float4',
+        count: 8, elementType: 'float4',
       });
 
       expect(result.ok).toBe(true);
       expect(configManager.getConfig()?.storage?.positions).toEqual({
-        count: 8, stride: 16, elementType: 'float4',
+        count: 8, elementType: 'float4',
       });
       expect((configManager.getConfig()?.passes.ComputeSim as { dispatch?: unknown }).dispatch)
         .toEqual({ cover: 'positions' });
@@ -1129,7 +1129,7 @@ describe('ConfigManager', () => {
     it('does not publish a blocked storage deletion', () => {
       configManager.setConfig({
         version: '1.0',
-        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        storage: { particles: { count: 4, elementType: 'float4' } },
         passes: {
           Image: { inputs: {} },
           ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },

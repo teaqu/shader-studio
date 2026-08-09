@@ -114,6 +114,7 @@ export class ShaderPipeline {
       return {
         success: false,
         errors: ["Compiled pipeline result was incomplete"],
+        warnings: compilation.warnings?.length ? compilation.warnings : undefined,
       };
     }
 

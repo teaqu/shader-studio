@@ -26,7 +26,7 @@ describe('compute config mutations', () => {
       { type: 'compute', path: 'sim.slang', inputs: { source: { type: 'texture', path: 'x.png' } }, dispatch: { cover: 'source' } },
     ])('accepts valid compute config %#', (pass) => {
       expect(validateComputePass(config({
-        storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+        storage: { particles: { count: 4, elementType: 'float4' } },
       }), 'ComputeSim', pass)).toEqual({});
     });
 
@@ -61,29 +61,29 @@ describe('compute config mutations', () => {
   });
 
   it('adds immutable uniquely named storage defaults', () => {
-    const original = config({ storage: { storageA: { count: 1, stride: 4, elementType: 'uint' } } });
+    const original = config({ storage: { storageA: { count: 1, elementType: 'uint' } } });
     const added = addStorageBuffer(original);
     expect(added.name).toBe('storageB');
-    expect(added.config.storage?.storageB).toEqual({ count: 1024, stride: 16, elementType: 'float4' });
+    expect(added.config.storage?.storageB).toEqual({ count: 1024, elementType: 'float4' });
     expect(original.storage?.storageB).toBeUndefined();
   });
 
   it('renames storage and rewrites compute cover references immutably', () => {
     const original = config({
-      storage: { particles: { count: 4, stride: 16, elementType: 'float4' } },
+      storage: { particles: { count: 4, elementType: 'float4' } },
       passes: {
         Image: { inputs: {} },
         ComputeSim: { type: 'compute', path: 'sim.slang', dispatch: { cover: 'particles' } },
       },
     });
     const result = applyStorageBuffer(original, 'particles', 'positions', {
-      count: 8, stride: 16, elementType: 'float4',
+      count: 8, elementType: 'float4',
     });
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
     }
-    expect(result.config.storage).toEqual({ positions: { count: 8, stride: 16, elementType: 'float4' } });
+    expect(result.config.storage).toEqual({ positions: { count: 8, elementType: 'float4' } });
     expect((result.config.passes.ComputeSim as ComputePass).dispatch).toEqual({ cover: 'positions' });
     expect((original.passes.ComputeSim as ComputePass).dispatch).toEqual({ cover: 'particles' });
   });
@@ -93,31 +93,30 @@ describe('compute config mutations', () => {
     ['Image', { name: 'Storage buffer name is reserved' }],
   ] as const)('rejects storage name %s', (name, errors) => {
     expect(applyStorageBuffer(config(), null, name, {
-      count: 1, stride: 4, elementType: 'uint',
+      count: 1, elementType: 'uint',
     })).toEqual({ ok: false, errors });
   });
 
   it('rejects duplicate names, invalid values, unsafe sizes, and total allocation overflow', () => {
-    const existing = config({ storage: { particles: { count: 1, stride: 4, elementType: 'uint' } } });
-    expect(applyStorageBuffer(existing, null, 'particles', { count: 1, stride: 4, elementType: 'uint' }))
+    const existing = config({ storage: { particles: { count: 1, elementType: 'uint' } } });
+    expect(applyStorageBuffer(existing, null, 'particles', { count: 1, elementType: 'uint' }))
       .toEqual({ ok: false, errors: { name: 'Storage buffer name is already in use' } });
-    expect(applyStorageBuffer(config(), null, 'values', { count: 0, stride: -1, elementType: '' }))
+    expect(applyStorageBuffer(config(), null, 'values', { count: 0, elementType: '' }))
       .toEqual({ ok: false, errors: {
         count: 'Element count must be a positive integer',
-        stride: 'Byte stride must be a positive integer',
         elementType: 'Element type is required',
       } });
     expect(applyStorageBuffer(config(), null, 'values', {
-      count: Number.MAX_SAFE_INTEGER, stride: 2, elementType: 'uint',
+      count: Number.MAX_SAFE_INTEGER, elementType: 'uint',
     })).toEqual({ ok: false, errors: { count: 'Count multiplied by stride must be a safe integer' } });
     expect(applyStorageBuffer(config(), null, 'values', {
-      count: 256 * 1024 * 1024 / 4 + 1, stride: 4, elementType: 'uint',
+      count: 256 * 1024 * 1024 / 4 + 1, elementType: 'uint',
     })).toEqual({ ok: false, errors: { count: 'Total storage allocation must not exceed 256 MiB' } });
   });
 
   it('finds cover references and blocks referenced deletion', () => {
     const source = config({
-      storage: { particles: { count: 1, stride: 4, elementType: 'uint' } },
+      storage: { particles: { count: 1, elementType: 'uint' } },
       passes: {
         Image: { inputs: {} },
         ComputeA: { type: 'compute', path: 'a.slang', dispatch: { cover: 'particles' } },
@@ -132,7 +131,7 @@ describe('compute config mutations', () => {
   });
 
   it('removes unreferenced storage immutably', () => {
-    const original = config({ storage: { values: { count: 1, stride: 4, elementType: 'uint' } } });
+    const original = config({ storage: { values: { count: 1, elementType: 'uint' } } });
     const result = removeStorageBuffer(original, 'values');
     expect(result).toEqual({ ok: true, config: { ...original, storage: undefined } });
     expect(original.storage?.values).toBeDefined();

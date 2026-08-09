@@ -53,6 +53,8 @@ function engineWithCanvasPass() {
       readbackBuffers.push(buffer);
       return buffer;
     }),
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   };
   const pipeline = {
     getPipeline: () => ({}), getBindGroup: () => ({}), getUniformBuffer: () => ({}),

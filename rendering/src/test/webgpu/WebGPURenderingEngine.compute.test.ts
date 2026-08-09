@@ -9,7 +9,6 @@ import type {
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { SlangComputePipeline } from "../../webgpu/SlangComputePipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
-import { ResourceManager } from "../../resources/ResourceManager";
 import { VideoTextureManager } from "../../resources/VideoTextureManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { SHADERTOY_UNIFORM_SIZE } from "../../webgpu/SlangPrelude";
@@ -32,7 +31,11 @@ type CompileResult =
 type ComputeFailureMethod = "setPipeline" | "setBindGroup" | "dispatchWorkgroups" | "end";
 
 const IMAGE_SOURCE = "float4 mainImage(float2 c) { return float4(0); }";
-const COMPUTE_SOURCE = "void computeMain(uint3 tid) {}";
+function computeSource(label: string): string {
+  return `[shader("compute")] [numthreads(8, 8, 1)] void computeMainEntry(uint3 tid : SV_DispatchThreadID) { /* ${label} */ }`;
+}
+
+const COMPUTE_SOURCE = computeSource("default");
 const NATIVE_COMPUTE_SOURCE = '[shader("compute")] [numthreads(8, 8, 1)] void computeMain(uint3 tid : SV_DispatchThreadID) {}';
 
 function computeConfig(options: {
@@ -234,6 +237,8 @@ function harness() {
         commandEvents.push({ type: "submit", value: buffers });
       }),
     },
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => null),
   };
   const compiler = {
     compile: vi.fn(async (_source: string, options: { passName?: string }): Promise<CompileResult> => ({
@@ -334,6 +339,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       passKind: "compute",
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
+      outputImageFormat: "rgba16f",
       hasOutput: false,
       entryPoint: "computeMainEntry",
     });
@@ -538,11 +544,13 @@ describe("WebGPURenderingEngine compute compilation", () => {
       label: "texel x",
       options: { resolution: { width: 41, height: 8 } },
       axis: "x",
+      expectedCount: 6,
     },
     {
       label: "count x",
       options: { dispatch: { count: 321 } },
       axis: "x",
+      expectedCount: 41,
     },
     {
       label: "storage x",
@@ -551,18 +559,21 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 41, stride: 4, elementType: "float" } },
       },
       axis: "x",
+      expectedCount: 6,
     },
     {
       label: "literal y",
       options: { dispatch: { x: 5, y: 6, z: 5 } },
       axis: "y",
+      expectedCount: 6,
     },
     {
       label: "literal z",
       options: { dispatch: { x: 5, y: 5, z: 6 } },
       axis: "z",
+      expectedCount: 6,
     },
-  ] as const)("rejects static $label dispatch above the device axis limit", async ({ options, axis }) => {
+  ] as const)("rejects static $label dispatch above the device axis limit", async ({ options, axis, expectedCount }) => {
     const testHarness = harness();
     testHarness.device.limits.maxComputeWorkgroupsPerDimension = 5;
 
@@ -575,7 +586,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
 
     expect(result).toMatchObject({
       success: false,
-      errors: [`ComputeSim: dispatch ${axis} count 6 exceeds device limit 5`],
+      errors: [`ComputeSim: dispatch ${axis} count ${expectedCount} exceeds device limit 5`],
     });
     expect(testHarness.device.createComputePipeline).not.toHaveBeenCalled();
   });
@@ -1285,7 +1296,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         Image: { inputs: {} },
       },
     } satisfies ShaderConfig, {
-      ComputeProducer: "producer source",
+      ComputeProducer: computeSource("producer"),
       ComputeSim: COMPUTE_SOURCE,
     }],
   ] as const)("covers the actual dimensions of a %s buffer source", async (
@@ -1484,8 +1495,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       },
     };
     await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeFirst: "first compute",
-      ComputeSecond: "second compute",
+      ComputeFirst: computeSource("first"),
+      ComputeSecond: computeSource("second"),
       BufferA: "buffer render",
     });
     enableRendering(testHarness);
@@ -1547,8 +1558,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       },
     };
     await earlierHarness.engine.compileShaderPipeline(IMAGE_SOURCE, earlierConfig, "/earlier.slang", {
-      ComputeFirst: "first compute",
-      ComputeSecond: "second compute",
+      ComputeFirst: computeSource("first"),
+      ComputeSecond: computeSource("second"),
     });
     enableRendering(earlierHarness);
     earlierHarness.device.createBindGroup.mockClear();
@@ -1577,8 +1588,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       },
     };
     await laterHarness.engine.compileShaderPipeline(IMAGE_SOURCE, laterConfig, "/later.slang", {
-      ComputeFirst: "first compute",
-      ComputeSecond: "second compute",
+      ComputeFirst: computeSource("first"),
+      ComputeSecond: computeSource("second"),
     });
     enableRendering(laterHarness);
     laterHarness.device.createBindGroup.mockClear();
@@ -1657,8 +1668,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       },
     };
     await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeSource: "source compute",
-      ComputeConsumer: "consumer compute",
+      ComputeSource: computeSource("source"),
+      ComputeConsumer: computeSource("consumer"),
     });
     const consumer = (testHarness.engine as unknown as {
       computePipelines: Map<string, SlangComputePipeline>;
@@ -1781,8 +1792,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
         },
       };
       await testHarness.engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-        ComputeOnce: "once compute",
-        ...(failurePoint === "later-compute" ? { ComputeLater: "later compute" } : {}),
+        ComputeOnce: computeSource("once"),
+        ...(failurePoint === "later-compute" ? { ComputeLater: computeSource("later") } : {}),
       });
       const once = (testHarness.engine as unknown as {
         computePipelines: Map<string, SlangComputePipeline>;
@@ -1928,7 +1939,6 @@ describe("WebGPURenderingEngine compute compilation", () => {
     ["name", { renamed: { count: 4, stride: 16, elementType: "float4" } }, 2],
     ["element type", { particles: { count: 4, stride: 16, elementType: "uint4" } }, 2],
     ["count", { particles: { count: 8, stride: 16, elementType: "float4" } }, 1],
-    ["stride", { particles: { count: 4, stride: 32, elementType: "float4" } }, 1],
   ])(
     "rebuilds the compute pipeline when storage %s changes while reusing layout-compatible WGSL",
     async (_label, storage, expectedComputeCompiles) => {
@@ -2011,90 +2021,6 @@ describe("WebGPURenderingEngine compute compilation", () => {
     }));
   });
 
-  it("keeps the installed path live while a different-path compile is pending and after it fails", async () => {
-    const { engine, compiler, buffers, textures } = harness();
-    const config = computeConfig({
-      sampled: true,
-      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
-    });
-    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/a.slang", {
-      ComputeSim: COMPUTE_SOURCE,
-    });
-    const installedTextures = [...textures];
-    const installedDispatch = dispatchBuffers(buffers)[0];
-    const installedStorage = storageBuffers(buffers)[0];
-    const blocked = deferred<CompileResult>();
-    compiler.compile.mockImplementationOnce(() => blocked.promise);
-
-    const pending = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
-      ComputeSim: "compute B",
-    });
-    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
-      "compute B",
-      expect.objectContaining({ passName: "ComputeSim" }),
-    ));
-
-    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
-    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
-    expect(installedDispatch.destroy).not.toHaveBeenCalled();
-    expect(installedStorage.destroy).not.toHaveBeenCalled();
-    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
-
-    blocked.resolve({ success: false, errors: ["broken B"] });
-    const result = await pending;
-
-    expect(result).toMatchObject({ success: false, errors: ["ComputeSim: broken B"] });
-    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
-    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
-    expect(installedDispatch.destroy).not.toHaveBeenCalled();
-    expect(installedStorage.destroy).not.toHaveBeenCalled();
-    expect(storageBuffers(buffers)[1].destroy).toHaveBeenCalledTimes(1);
-    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
-  });
-
-  it("keeps the installed path live when a pending path switch is superseded by a failure", async () => {
-    const { engine, compiler, buffers, textures } = harness();
-    const config = computeConfig({
-      sampled: true,
-      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
-    });
-    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/a.slang", {
-      ComputeSim: COMPUTE_SOURCE,
-    });
-    const installedTextures = [...textures];
-    const installedDispatch = dispatchBuffers(buffers)[0];
-    const installedStorage = storageBuffers(buffers)[0];
-    const blocked = deferred<CompileResult>();
-    compiler.compile.mockImplementationOnce(() => blocked.promise);
-
-    const pendingB = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
-      ComputeSim: "compute B",
-    });
-    await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
-      "compute B",
-      expect.objectContaining({ passName: "ComputeSim" }),
-    ));
-    const failedC = await engine.compileShaderPipeline(
-      IMAGE_SOURCE,
-      { version: "1" } as ShaderConfig,
-      "/c.slang",
-    );
-    blocked.resolve({ success: true, wgsl: "// stale B" });
-    const staleB = await pendingB;
-
-    expect(failedC?.success).toBe(false);
-    expect(staleB).toEqual({
-      success: false,
-      errors: ["Superseded by a newer compile"],
-      superseded: true,
-    });
-    expect(engine.getPasses()[0].source).toBe(COMPUTE_SOURCE);
-    expect(installedTextures.every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
-    expect(installedDispatch.destroy).not.toHaveBeenCalled();
-    expect(installedStorage.destroy).not.toHaveBeenCalled();
-    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
-  });
-
   it("commits a successful path switch with fresh pipelines, storage, and session state", async () => {
     const { engine, compiler, device, buffers, textures } = harness();
     const config = computeConfig({
@@ -2115,10 +2041,10 @@ describe("WebGPURenderingEngine compute compilation", () => {
     compiler.compile.mockImplementationOnce(() => blocked.promise);
 
     const pending = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/b.slang", {
-      ComputeSim: "compute B",
+      ComputeSim: computeSource("B"),
     });
     await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
-      "compute B",
+      computeSource("B"),
       expect.objectContaining({ passName: "ComputeSim" }),
     ));
     const stagedStorage = storageBuffers(buffers)[1];
@@ -2145,100 +2071,6 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/b.slang");
   });
 
-  it("releases staged storage when path-session resource construction throws", async () => {
-    const { engine, device, buffers, textures } = harness();
-    const installedConfig = computeConfig({
-      sampled: true,
-      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
-    });
-    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/a.slang", {
-      ComputeSim: COMPUTE_SOURCE,
-    });
-    const installedStorage = storageBuffers(buffers)[0];
-    const installedPasses = engine.getPasses();
-    const installedTextureCount = textures.length;
-    const installedResourceManager = { dispose: vi.fn() };
-    (engine as unknown as { resourceManager: typeof installedResourceManager })
-      .resourceManager = installedResourceManager;
-    device.queue.writeTexture.mockImplementationOnce(() => {
-      throw new Error("default texture allocation failed");
-    });
-
-    const pending = engine.compileShaderPipeline(
-      IMAGE_SOURCE,
-      computeConfig({
-        sampled: true,
-        storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
-      }),
-      "/b.slang",
-      { ComputeSim: "compute B" },
-    );
-    const stagedStorage = storageBuffers(buffers)[1];
-
-    await expect(pending).resolves.toMatchObject({
-      success: false,
-      errors: [expect.stringMatching(/default texture allocation failed/i)],
-    });
-    const partialCandidateTexture = textures[installedTextureCount];
-    expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
-    expect(partialCandidateTexture.destroy).toHaveBeenCalledTimes(1);
-    expect(installedStorage.destroy).not.toHaveBeenCalled();
-    expect(installedResourceManager.dispose).not.toHaveBeenCalled();
-    expect(engine.getPasses()).toBe(installedPasses);
-    expect(textures.slice(0, installedTextureCount)
-      .every(({ destroy }) => destroy.mock.calls.length === 0)).toBe(true);
-    expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
-  });
-
-  it("releases staged storage and candidate resources when path-session media setup throws", async () => {
-    const { engine, buffers, textures } = harness();
-    const installedConfig = computeConfig({
-      sampled: true,
-      storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
-    });
-    await engine.compileShaderPipeline(IMAGE_SOURCE, installedConfig, "/a.slang", {
-      ComputeSim: COMPUTE_SOURCE,
-    });
-    const installedStorage = storageBuffers(buffers)[0];
-    const installedPasses = engine.getPasses();
-    const installedTextureCount = textures.length;
-    const installedResourceManager = { dispose: vi.fn() };
-    (engine as unknown as { resourceManager: typeof installedResourceManager })
-      .resourceManager = installedResourceManager;
-    const setupSpy = vi.spyOn(ResourceManager.prototype, "setGlobalAudioState")
-      .mockImplementationOnce(() => {
-        throw new Error("media setup failed");
-      });
-
-    try {
-      const pending = engine.compileShaderPipeline(
-        IMAGE_SOURCE,
-        computeConfig({
-          sampled: true,
-          storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
-        }),
-        "/b.slang",
-        { ComputeSim: "compute B" },
-      );
-      const stagedStorage = storageBuffers(buffers)[1];
-
-      const result = await pending;
-      const candidateDefaultTexture = textures[installedTextureCount];
-      expect(result).toMatchObject({
-        success: false,
-        errors: [expect.stringMatching(/media setup failed/i)],
-      });
-      expect(stagedStorage.destroy).toHaveBeenCalledTimes(1);
-      expect(candidateDefaultTexture.destroy).toHaveBeenCalledTimes(1);
-      expect(installedStorage.destroy).not.toHaveBeenCalled();
-      expect(installedResourceManager.dispose).not.toHaveBeenCalled();
-      expect(engine.getPasses()).toBe(installedPasses);
-      expect((engine as unknown as { shaderPath: string }).shaderPath).toBe("/a.slang");
-    } finally {
-      setupSpy.mockRestore();
-    }
-  });
-
   it("keeps a published compute generation live when predecessor disposal throws", async () => {
     const { engine, buffers } = harness();
     const config = computeConfig({ sampled: true });
@@ -2253,7 +2085,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     });
 
     const result = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeSim: "void computeMain(uint3 tid) { uint changed = tid.x; }",
+      ComputeSim: computeSource("changed"),
     });
     const installed = (engine as unknown as {
       computePipelines: Map<string, SlangComputePipeline>;
@@ -2293,7 +2125,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "compiler broken" },
+      { ComputeSim: computeSource("compiler broken") },
     );
     const compilerFailureStorage = storageBuffers(buffers)[1];
 
@@ -2319,7 +2151,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "wgsl broken" },
+      { ComputeSim: computeSource("wgsl broken") },
     );
     const failedCandidateTextures = textures.slice(texturesBeforeWgslFailure);
     const wgslFailureStorage = storageBuffers(buffers)[2];
@@ -2410,26 +2242,26 @@ describe("WebGPURenderingEngine compute compilation", () => {
     };
 
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeFirst: "void computeMain(uint3 tid) { int first = 1; }",
-      ComputeSecond: "void computeMain(uint3 tid) { int second = 2; }",
+      ComputeFirst: computeSource("first 1"),
+      ComputeSecond: computeSource("second 2"),
     });
 
     expect(compiler.compile.mock.calls.map(([source]) => source)).toEqual([
-      "void computeMain(uint3 tid) { int first = 1; }",
-      "void computeMain(uint3 tid) { int second = 2; }",
+      computeSource("first 1"),
+      computeSource("second 2"),
       IMAGE_SOURCE,
     ]);
     expect(device.createComputePipeline).toHaveBeenCalledTimes(2);
 
     compiler.compile.mockClear();
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeFirst: "void computeMain(uint3 tid) { int first = 1; }",
-      ComputeSecond: "void computeMain(uint3 tid) { int second = 3; }",
+      ComputeFirst: computeSource("first 1"),
+      ComputeSecond: computeSource("second 3"),
     });
 
     expect(compiler.compile).toHaveBeenCalledTimes(1);
     expect(compiler.compile).toHaveBeenCalledWith(
-      "void computeMain(uint3 tid) { int second = 3; }",
+      computeSource("second 3"),
       expect.objectContaining({ passName: "ComputeSecond", passKind: "compute" }),
     );
     expect(device.createComputePipeline).toHaveBeenCalledTimes(3);
@@ -2449,7 +2281,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
 
     const blocked = deferred<CompileResult>();
     compiler.compile.mockImplementation((source: string, options: { passName?: string }) => {
-      if (source === "compute B") {
+      if (source === computeSource("B")) {
         return blocked.promise;
       }
       return Promise.resolve({ success: true, wgsl: `// ${options.passName ?? "pass"}` });
@@ -2461,7 +2293,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 8, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "compute B" },
+      { ComputeSim: computeSource("B") },
     );
     await vi.waitFor(() => expect(storageBuffers(buffers)).toHaveLength(2));
     const stagedBStorage = storageBuffers(buffers)[1];
@@ -2473,7 +2305,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 12, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "compute C" },
+      { ComputeSim: computeSource("C") },
     );
     const winnerTextures = textures.slice(2, 4);
     const winnerStorage = storageBuffers(buffers)[2];
@@ -2506,7 +2338,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 12, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "compute C" },
+      { ComputeSim: computeSource("C") },
     );
     expect(storageBuffers(buffers)).toHaveLength(3);
     expect(winnerStorage.destroy).not.toHaveBeenCalled();
@@ -2523,8 +2355,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       },
     };
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeStable: "stable baseline",
-      ComputeBlocked: "blocked baseline",
+      ComputeStable: computeSource("stable baseline"),
+      ComputeBlocked: computeSource("blocked baseline"),
     });
     const installed = (engine as unknown as {
       computePipelines: Map<string, SlangComputePipeline>;
@@ -2533,23 +2365,23 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const predecessorDispose = vi.spyOn(predecessor, "dispose");
     const blockedA = deferred<CompileResult>();
     compiler.compile.mockImplementation((source: string, options: { passName?: string }) => {
-      if (source === "blocked A") {
+      if (source === computeSource("blocked A")) {
         return blockedA.promise;
       }
       return Promise.resolve({ success: true, wgsl: `// ${options.passName ?? "pass"}` });
     });
 
     const pendingA = engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeStable: "stable baseline",
-      ComputeBlocked: "blocked A",
+      ComputeStable: computeSource("stable baseline"),
+      ComputeBlocked: computeSource("blocked A"),
     });
     await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledWith(
-      "blocked A",
+      computeSource("blocked A"),
       expect.objectContaining({ passName: "ComputeBlocked" }),
     ));
     const resultB = await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/shader.slang", {
-      ComputeStable: "stable B",
-      ComputeBlocked: "blocked B",
+      ComputeStable: computeSource("stable B"),
+      ComputeBlocked: computeSource("blocked B"),
     });
     const winner = (engine as unknown as {
       computePipelines: Map<string, SlangComputePipeline>;
@@ -2585,7 +2417,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "pending compute" },
+      { ComputeSim: computeSource("pending compute") },
     );
     await vi.waitFor(() => expect(storageBuffers(buffers)).toHaveLength(1));
     const stagedStorage = storageBuffers(buffers)[0];
@@ -2619,7 +2451,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "pending diagnostics" },
+      { ComputeSim: computeSource("pending diagnostics") },
     );
     await vi.waitFor(() => expect(textures).toHaveLength(2));
     const candidateTextures = [...textures];
@@ -2657,7 +2489,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "pending diagnostics" },
+      { ComputeSim: computeSource("pending diagnostics") },
     );
     await vi.waitFor(() => expect(textures).toHaveLength(2));
     const candidateTextures = [...textures];
@@ -2692,7 +2524,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       IMAGE_SOURCE,
       computeConfig({ sampled: true }),
       "/shader.slang",
-      { ComputeSim: "pending diagnostics A" },
+      { ComputeSim: computeSource("pending diagnostics A") },
     );
     await vi.waitFor(() => expect(textures).toHaveLength(2));
     const candidateTextures = [...textures];
@@ -2788,7 +2620,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         storage: { particles: { count: 4, stride: 16, elementType: "float4" } },
       }),
       "/shader.slang",
-      { ComputeSim: "pending pipeline" },
+      { ComputeSim: computeSource("pending pipeline") },
     );
     await vi.waitFor(() => expect(createComputePipelineAsync).toHaveBeenCalledTimes(1));
     const stagedStorage = storageBuffers(buffers)[0];

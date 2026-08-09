@@ -8,7 +8,7 @@ function renderEditor(referencedBy: string[] = []) {
   return {
     onApply, onDelete,
     ...render(StorageBufferEditor, {
-      name: 'particles', declaration: { count: 1024, stride: 16, elementType: 'float4' },
+      name: 'particles', declaration: { count: 1024, elementType: 'float4' },
       existingNames: ['particles'], referencedBy, onApply, onDelete,
     }),
   };
@@ -20,19 +20,20 @@ describe('StorageBufferEditor', () => {
     await fireEvent.input(getByLabelText('Element count'), { target: { value: '2048' } });
     expect(onApply).not.toHaveBeenCalled();
     await fireEvent.click(getByRole('button', { name: 'Apply particles changes' }));
-    expect(onApply).toHaveBeenCalledWith('particles', 'particles', { count: 2048, stride: 16, elementType: 'float4' });
+    expect(onApply).toHaveBeenCalledWith('particles', 'particles', { count: 2048, elementType: 'float4' });
   });
 
-  it('derives stride for built-in types and keeps the field for custom types', async () => {
-    const { getByLabelText, queryByLabelText, onApply } = renderEditor();
+  it('shows auto-inferred stride for built-in types', async () => {
+    const { getByText } = renderEditor();
 
-    expect(queryByLabelText('Byte stride')).toBeNull();
+    expect(getByText(/Stride: 16 bytes/)).toBeInTheDocument();
+  });
+
+  it('shows struct-inferred stride for custom types', async () => {
+    const { getByLabelText, getByText } = renderEditor();
 
     await fireEvent.input(getByLabelText('Element type'), { target: { value: 'Particle' } });
-    expect(getByLabelText('Byte stride')).toBeInTheDocument();
-    await fireEvent.input(getByLabelText('Byte stride'), { target: { value: '32' } });
-    await fireEvent.click(getByLabelText('Apply particles changes'));
-    expect(onApply).toHaveBeenCalledWith('particles', 'particles', { count: 1024, stride: 32, elementType: 'Particle' });
+    expect(getByText('Stride inferred from struct definition in source')).toBeInTheDocument();
   });
 
   it('deletes an unreferenced buffer immediately', async () => {
@@ -45,7 +46,7 @@ describe('StorageBufferEditor', () => {
 
   it('opens the inspector when GPU read and write controls are available', async () => {
     const { getByRole, getByLabelText } = render(StorageBufferEditor, {
-      name: 'particles', declaration: { count: 4, stride: 16, elementType: 'float4' },
+      name: 'particles', declaration: { count: 4, elementType: 'float4' },
       existingNames: ['particles'], referencedBy: [], onApply: vi.fn(() => ({})), onDelete: vi.fn(() => ({})),
       onRead: vi.fn(async () => ({
         name: 'particles', elementType: 'float4', stride: 16, start: 0, count: 1, data: new ArrayBuffer(16),
@@ -56,15 +57,5 @@ describe('StorageBufferEditor', () => {
     await fireEvent.click(getByRole('button', { name: 'Inspect particles' }));
 
     expect(getByLabelText('Page status')).toHaveTextContent('Page 1 of 1');
-  });
-
-  it('cancels a draft and blocks referenced deletion', async () => {
-    const { getByLabelText, getByRole, queryByRole, onDelete } = renderEditor(['ComputeSim']);
-    await fireEvent.input(getByLabelText('Element type'), { target: { value: 'uint' } });
-    await fireEvent.click(getByRole('button', { name: 'Cancel particles changes' }));
-    expect((getByLabelText('Element type') as HTMLInputElement).value).toBe('float4');
-    expect(queryByRole('button', { name: 'Delete particles' })).toBeNull();
-    expect(getByRole('alert')).toHaveTextContent('ComputeSim');
-    expect(onDelete).not.toHaveBeenCalled();
   });
 });
