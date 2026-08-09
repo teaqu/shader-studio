@@ -6,3 +6,4 @@ export * from './ProfileTypes';
 export * from './GlslShaderEnvironment';
 export * from './SlangSourceModule';
 export * from './DebugEngine';
+export * from './shader-environment/ShaderAuthoringEnvironment';

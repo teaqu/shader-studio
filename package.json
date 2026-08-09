@@ -12,7 +12,8 @@
     "extension",
     "ui",
     "shader-explorer",
-    "monaco"
+    "monaco",
+    "language-servers/*"
   ],
   "scripts": {
     "build": "npm run compile",

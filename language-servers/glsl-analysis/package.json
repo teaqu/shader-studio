@@ -1,0 +1,16 @@
+{
+  "name": "@shader-studio/glsl-analysis",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@shaderfrog/glsl-parser": "7.0.1",
+    "@shader-studio/types": "*",
+    "vscode-languageserver-protocol": "3.18.2"
+  }
+}
