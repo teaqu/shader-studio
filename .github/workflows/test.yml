@@ -47,6 +47,9 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      - name: Build workspace test dependencies
+        run: npm run build:deps -w extension && npm run build -w slang-debug
+
       - name: Run workspace Vitest suite
         run: npm test
 
