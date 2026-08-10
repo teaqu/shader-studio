@@ -1,10 +1,88 @@
 import { describe, expect, it } from 'vitest';
-import { wrapSlangImageSource } from '../../webgpu/SlangPrelude';
+import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 const vertex = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.y += 1; }';
 
 describe('wrapSlangImageSource vertex hooks', () => {
+  it('preserves the exact fixed uniform prelude emitted before the first channel helper', () => {
+    const source = wrapSlangImageSource(image);
+    const prelude = source.slice(0, source.indexOf('float4 sampleIChannel0(float2 uv)'));
+
+    expect(prelude).toBe(`// ---- shader-studio Slang prelude (generated) ----
+struct ShaderToyUniforms
+{
+    float4 resolution;
+    float4 mouse;
+    float time;
+    float timeDelta;
+    float frameRate;
+    int frame;
+    float4 channelTime;
+    float4 channelLoaded;
+    float sampleRate;
+    float4 date;
+    float3 channelResolution[4];
+    float4 cameraPos;
+    float4 cameraDir;
+
+};
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<ShaderToyUniforms> _st;
+
+#define iResolution (_st.resolution.xyz)
+#define iMouse (_st.mouse)
+#define iTime (_st.time)
+#define iTimeDelta (_st.timeDelta)
+#define iFrameRate (_st.frameRate)
+#define iFrame (_st.frame)
+#define iChannelTime (_st.channelTime)
+#define iChannelLoaded (_st.channelLoaded)
+#define iSampleRate (_st.sampleRate)
+#define iDate (_st.date)
+#define iChannelResolution (_st.channelResolution)
+#define iCameraPos (_st.cameraPos.xyz)
+#define iCameraDir (_st.cameraDir.xyz)
+
+static float3 iWorldPosition;
+static float3 iNormal;
+static float3 iCameraPosition;
+
+`);
+  });
+
+  it('keeps all shared uniform aliases and generated entry points in the final renderer wrapper', () => {
+    const source = wrapSlangImageSource(image, {
+      customUniforms: [
+        { name: 'gain', type: 'float' },
+        { name: 'enabled', type: 'bool' },
+      ],
+    });
+
+    for (const alias of [
+      '#define iResolution (_st.resolution.xyz)',
+      '#define iMouse (_st.mouse)',
+      '#define iTime (_st.time)',
+      '#define iTimeDelta (_st.timeDelta)',
+      '#define iFrameRate (_st.frameRate)',
+      '#define iFrame (_st.frame)',
+      '#define iChannelTime (_st.channelTime)',
+      '#define iChannelLoaded (_st.channelLoaded)',
+      '#define iSampleRate (_st.sampleRate)',
+      '#define iDate (_st.date)',
+      '#define iChannelResolution (_st.channelResolution)',
+      '#define iCameraPos (_st.cameraPos.xyz)',
+      '#define iCameraDir (_st.cameraDir.xyz)',
+      '#define gain (_st.custom_gain)',
+      '#define enabled (_st.custom_enabled != 0)',
+    ]) {
+      expect(source).toContain(alias);
+    }
+    expect(source).toContain(`[shader("vertex")]\nfloat4 ${SLANG_ENTRY_VERTEX}`);
+    expect(source).toContain(`[shader("fragment")]\nfloat4 ${SLANG_ENTRY_FRAGMENT}`);
+  });
+
   it('runs a fullscreen vertex hook before returning clip-space position', () => {
     const source = wrapSlangImageSource(image, { vertexCode: vertex });
     expect(source).toContain(vertex);

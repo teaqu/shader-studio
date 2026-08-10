@@ -6,9 +6,11 @@ import {
   glslSamplerType,
   resolveGlslInputBindings,
 } from "./GlslShaderEnvironment";
+import { GLSL_STABLE_DECLARATION_LINES as sharedDeclarationLines } from "./shader-environment/BuiltinUniforms";
 
 describe("GLSL shader environment", () => {
   it("declares the complete stable Shader Studio environment", () => {
+    expect(GLSL_STABLE_DECLARATION_LINES).toBe(sharedDeclarationLines);
     expect(GLSL_STABLE_DECLARATION_LINES).toEqual([
       "precision highp float;",
       "out vec4 fragColor;",

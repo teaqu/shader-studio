@@ -1,25 +1,4 @@
-export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
-  "precision highp float;",
-  "out vec4 fragColor;",
-  "#define HW_PERFORMANCE 1",
-  "uniform vec3 iResolution;",
-  "uniform float iTime;",
-  "uniform float iTimeDelta;",
-  "uniform float iFrameRate;",
-  "uniform vec4 iMouse;",
-  "uniform int iFrame;",
-  "uniform vec4 iDate;",
-  "uniform float iChannelTime[4];",
-  "uniform float iSampleRate;",
-  "uniform vec3 iCameraPos;",
-  "uniform vec3 iCameraDir;",
-] as const);
-
-export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
-  "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
-  "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
-  "iSampleRate", "iCameraPos", "iCameraDir",
-]);
+export { GLSL_STABLE_DECLARATION_LINES, GLSL_STABLE_NAMES } from "./shader-environment/BuiltinUniforms";
 
 export interface GlslInputLike {
   type: string;

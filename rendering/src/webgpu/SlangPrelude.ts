@@ -13,7 +13,11 @@
 // so Slang's diagnostics report the user's real line numbers.
 
 import type { StorageBindingNode } from "../types/PassGraph";
-import type { GeometryType } from "@shader-studio/types";
+import {
+  buildSlangRuntimePrelude,
+  type GeometryType,
+  type SlangCustomUniformInfo,
+} from "@shader-studio/types";
 import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
@@ -53,76 +57,11 @@ export const UNIFORM_OFFSETS = {
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
 // #define macros, and the Slang preprocessor would expand them inside the
 // struct member accesses below (`_st.resolution`), corrupting the code.
-export type SlangCustomUniformType = "float" | "vec2" | "vec3" | "vec4" | "bool";
-
-export interface SlangCustomUniformInfo {
-  name: string;
-  type: string;
-}
-
-const CUSTOM_SLANG_TYPES: Record<SlangCustomUniformType, string> = {
-  float: "float",
-  vec2: "float2",
-  vec3: "float3",
-  vec4: "float4",
-  bool: "int",
-};
-
-export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
-  return type in CUSTOM_SLANG_TYPES;
-}
+export { isSlangCustomUniformType } from "@shader-studio/types";
+export type { SlangCustomUniformInfo, SlangCustomUniformType } from "@shader-studio/types";
 
 function buildPrelude(customUniforms: SlangCustomUniformInfo[] = []): string {
-  const supported = customUniforms.filter(({ type }) => isSlangCustomUniformType(type));
-  const fields = supported
-    .map(({ name, type }) => `    ${CUSTOM_SLANG_TYPES[type as SlangCustomUniformType]} custom_${name};`)
-    .join("\n");
-  const aliases = supported
-    .map(({ name, type }) => type === "bool"
-      ? `#define ${name} (_st.custom_${name} != 0)`
-      : `#define ${name} (_st.custom_${name})`)
-    .join("\n");
-
-  return `// ---- shader-studio Slang prelude (generated) ----
-struct ShaderToyUniforms
-{
-    float4 resolution;
-    float4 mouse;
-    float time;
-    float timeDelta;
-    float frameRate;
-    int frame;
-    float channelTime[16];
-    float channelLoaded[16];
-    float sampleRate;
-    float4 date;
-    float3 channelResolution[16];
-    float4 cameraPos;
-    float4 cameraDir;
-${fields}
-};
-
-[[vk::binding(0, 0)]]
-ConstantBuffer<ShaderToyUniforms> _st;
-
-#define iResolution (_st.resolution.xyz)
-#define iMouse (_st.mouse)
-#define iTime (_st.time)
-#define iTimeDelta (_st.timeDelta)
-#define iFrameRate (_st.frameRate)
-#define iFrame (_st.frame)
-#define iChannelTime (_st.channelTime)
-#define iChannelLoaded (_st.channelLoaded)
-#define iSampleRate (_st.sampleRate)
-#define iDate (_st.date)
-#define iChannelResolution (_st.channelResolution)
-#define iCameraPos (_st.cameraPos.xyz)
-#define iCameraDir (_st.cameraDir.xyz)
-${aliases}
-static float3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
-static float3 ${MESH_FRAGMENT_CONTEXT.normal};
-static float3 ${MESH_FRAGMENT_CONTEXT.cameraPosition};
-`;
+  return buildSlangRuntimePrelude(customUniforms, MESH_FRAGMENT_CONTEXT);
 }
 
 function buildMeshPrelude(binding: number): string {
