@@ -141,21 +141,21 @@ export function validateShaderAuthoringEnvironment(
 ): ShaderAuthoringEnvironmentValidationIssue[] {
   const issues: ShaderAuthoringEnvironmentValidationIssue[] = [];
   const names = new Map<string, "custom uniform" | "resource">();
-  const validate = (name: string, noun: "custom uniform" | "resource", allowChannelName = false): void => {
+  const validate = (name: string, noun: "custom uniform" | "resource", allowChannelName = false): boolean => {
     const displayName = noun === "custom uniform" ? "Custom uniform" : "Resource";
     if (!SHADER_IDENTIFIER.test(name)) {
       issues.push({
         code: "invalid-identifier",
         message: `${displayName} "${name}" is not a valid shader identifier.`,
       });
-      return;
+      return false;
     }
     if (isReservedShaderStudioIdentifier(name) && !allowChannelName) {
       issues.push({
         code: "reserved-identifier",
         message: `${displayName} "${name}" conflicts with a Shader Studio built-in.`,
       });
-      return;
+      return false;
     }
     const existing = names.get(name);
     if (existing) {
@@ -163,16 +163,20 @@ export function validateShaderAuthoringEnvironment(
         code: "duplicate-identifier",
         message: `${displayName} "${name}" duplicates a ${existing}.`,
       });
-      return;
+      return false;
     }
     names.set(name, noun);
+    return true;
   };
 
   for (const uniform of environment.customUniforms) {
     validate(uniform.name, "custom uniform");
   }
+  const validResources = new Set<Readonly<AuthoringResource>>();
   for (const resource of environment.resources) {
-    validate(resource.name, "resource", resource.kind !== "storage" && /^iChannel\d+$/.test(resource.name));
+    if (validate(resource.name, "resource", resource.kind !== "storage" && /^iChannel\d+$/.test(resource.name))) {
+      validResources.add(resource);
+    }
     if (resource.kind === "storage" && resource.elementType && !isValidStorageElementType(resource.elementType)) {
       issues.push({
         code: "invalid-element-type",
@@ -224,7 +228,8 @@ export function validateShaderAuthoringEnvironment(
       }
       claims.set(identifier, owner);
     };
-    const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+    const channelBindings = resolveAuthoringChannelBindings(environment.resources)
+      .filter(({ resource }) => validResources.has(resource));
 
     for (const binding of channelBindings) {
       const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);

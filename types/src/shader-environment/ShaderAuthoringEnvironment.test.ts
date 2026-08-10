@@ -333,6 +333,19 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
   });
 
+  it("reports an empty Slang resource name without throwing during generated-name validation", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name: "", kind: "texture-2d" as const }],
+    };
+
+    expect(() => validateShaderAuthoringEnvironment(environment)).not.toThrow();
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "invalid-identifier",
+      message: 'Resource "" is not a valid shader identifier.',
+    });
+  });
+
   it("reports invalid and duplicate identifiers across uniforms and resources without throwing", () => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -394,6 +407,9 @@ describe("ShaderAuthoringEnvironment", () => {
     ["mutating", "a Slang modifier"],
     ["half3", "a Slang vector type"],
     ["uint64_t", "a Slang scalar type"],
+    ["float16_t4", "an extended Slang floating-point vector type"],
+    ["int64_t2", "an extended Slang signed vector type"],
+    ["uint8_t3", "an extended Slang unsigned vector type"],
     ["TextureCubeArray", "a Slang texture type"],
     ["RWByteAddressBuffer", "a Slang buffer type"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],

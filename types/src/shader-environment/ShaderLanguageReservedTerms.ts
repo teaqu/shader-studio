@@ -66,12 +66,16 @@ const SLANG_MODIFIER_KEYWORDS = [
   "uniform", "vertices", "indices", "virtual", "volatile", "writeonly",
 ] as const;
 
-const SLANG_MATRIX_BASE_TYPES = [
+const SLANG_SCALAR_TYPES_WITH_CONVENIENCE_SHAPES = [
   "bool", "double", "float", "float16_t", "float32_t", "float64_t", "half", "int", "int8_t", "int16_t",
   "int32_t", "int64_t", "uint", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
 ] as const;
 
-const SLANG_MATRIX_TYPES = SLANG_MATRIX_BASE_TYPES.flatMap((base) => (
+const SLANG_VECTOR_TYPES = SLANG_SCALAR_TYPES_WITH_CONVENIENCE_SHAPES.flatMap((base) => (
+  [2, 3, 4].map((size) => `${base}${size}`)
+));
+
+const SLANG_MATRIX_TYPES = SLANG_SCALAR_TYPES_WITH_CONVENIENCE_SHAPES.flatMap((base) => (
   [2, 3, 4].flatMap((rows) => [2, 3, 4].map((columns) => `${base}${rows}x${columns}`))
 ));
 
@@ -97,6 +101,7 @@ const SHADER_LANGUAGE_RESERVED_TERMS = new Set<string>([
   ...SLANG_MODIFIER_KEYWORDS,
   ...SLANG_LITERAL_KEYWORDS,
   ...SLANG_BUILTIN_TYPES,
+  ...SLANG_VECTOR_TYPES,
   ...SLANG_MATRIX_TYPES,
 ]);
 
