@@ -63,20 +63,27 @@ const SHADER_STUDIO_RESERVED_NAMES = new Set([
   "iCameraPosition",
 ]);
 const SHADER_LANGUAGE_KEYWORDS = new Set([
-  "asm", "atomic_uint", "attribute", "bool", "break", "buffer", "bvec2", "bvec3", "bvec4", "case",
-  "cbuffer", "centroid", "class", "coherent", "common", "const", "continue", "dmat2", "dmat3", "dmat4",
-  "double", "do", "dvec2", "dvec3", "dvec4", "default", "discard", "else", "enum", "extern", "false",
-  "flat", "float", "for", "fvec2", "fvec3", "fvec4", "groupshared", "half", "highp", "if", "image2D",
-  "image3D", "imageCube", "import", "in", "inout", "int", "interface", "layout", "lowp", "mat2", "mat2x2",
-  "mat2x3", "mat2x4", "mat3", "mat3x2", "mat3x3", "mat3x4", "mat4", "mat4x2", "mat4x3", "mat4x4",
-  "module", "namespace", "nointerpolation", "out", "packoffset", "precision", "public", "readonly", "return",
-  "RWStructuredBuffer", "RWTexture2D", "RWTexture2DArray", "SamplerComparisonState", "SamplerState", "sampler2D",
-  "sampler2DArray", "sampler2DArrayShadow", "sampler2DMS", "sampler2DMSArray", "sampler2DRect", "sampler2DShadow",
-  "sampler3D", "samplerCube", "samplerCubeArray", "samplerCubeArrayShadow", "static", "struct", "StructuredBuffer",
-  "switch", "Texture2D", "Texture2DArray", "Texture3D", "TextureCube", "true", "typedef", "uint", "uvec2", "uvec3",
-  "uvec4", "uniform", "varying", "vec2", "vec3", "vec4", "void", "volatile", "while", "writeonly",
-  "export", "invariant", "isampler2D", "isampler2DArray", "isampler2DArray", "isampler3D", "isamplerCube",
-  "noperspective", "samplerCubeShadow", "smooth", "subroutine",
+  "abstract", "asm", "associatedtype", "atomic_uint", "attribute", "bool", "break", "buffer", "bvec2", "bvec3",
+  "bvec4", "case", "cbuffer", "centroid", "class", "coherent", "common", "const", "continue", "dmat2", "dmat3",
+  "dmat4", "double", "do", "dvec2", "dvec3", "dvec4", "default", "discard", "each", "else", "enum", "export",
+  "extern", "false", "flat", "float", "float2", "float2x2", "float2x3", "float2x4", "float3", "float3x2", "float3x3",
+  "float3x4", "float4", "float4x2", "float4x3", "float4x4", "for", "foreach", "fvec2", "fvec3", "fvec4", "get",
+  "groupshared", "half", "highp", "if", "image1D", "image1DArray", "image2D", "image2DArray", "image2DMS",
+  "image2DMSArray", "image2DRect", "image3D", "imageBuffer", "imageCube", "imageCubeArray", "import", "in", "inline",
+  "inout", "int", "int2", "int3", "int4", "interface", "invariant", "isampler1D", "isampler1DArray", "isampler2D",
+  "isampler2DArray", "isampler2DMS", "isampler2DMSArray", "isampler2DRect", "isampler3D", "isamplerBuffer", "isamplerCube",
+  "isamplerCubeArray", "layout", "let", "lowp", "mat2", "mat2x2", "mat2x3", "mat2x4", "mat3", "mat3x2", "mat3x3",
+  "mat3x4", "mat4", "mat4x2", "mat4x3", "mat4x4", "module", "namespace", "nointerpolation", "noperspective", "out",
+  "override", "packoffset", "patch", "precision", "precise", "private", "property", "public", "readonly", "ref", "restrict",
+  "return", "RWStructuredBuffer", "RWTexture2D", "RWTexture2DArray", "sample", "SamplerComparisonState", "SamplerState",
+  "sampler1D", "sampler1DArray", "sampler1DArrayShadow", "sampler1DShadow", "sampler2D", "sampler2DArray",
+  "sampler2DArrayShadow", "sampler2DMS", "sampler2DMSArray", "sampler2DRect", "sampler2DShadow", "sampler3D", "samplerBuffer",
+  "samplerCube", "samplerCubeArray", "samplerCubeArrayShadow", "samplerCubeShadow", "sealed", "set", "shared", "smooth",
+  "static", "struct", "StructuredBuffer", "subroutine", "switch", "Texture2D", "Texture2DArray", "Texture3D", "TextureCube",
+  "true", "typedef", "uint", "uint2", "uint3", "uint4", "uniform", "uvec2", "uvec3", "uvec4", "usampler1D",
+  "usampler1DArray", "usampler2D", "usampler2DArray", "usampler2DMS", "usampler2DMSArray", "usampler2DRect", "usampler3D",
+  "usamplerBuffer", "usamplerCube", "usamplerCubeArray", "using", "var", "varying", "vec2", "vec3", "vec4", "virtual", "void",
+  "volatile", "where", "while", "writeonly",
 ]);
 const STORAGE_ELEMENT_TYPE = /^[A-Za-z_][A-Za-z0-9_]*(?:\s*<\s*[A-Za-z_][A-Za-z0-9_]*\s*>)?$/;
 const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
@@ -125,7 +132,7 @@ export function validateShaderAuthoringEnvironment(
 ): ShaderAuthoringEnvironmentValidationIssue[] {
   const issues: ShaderAuthoringEnvironmentValidationIssue[] = [];
   const names = new Map<string, "custom uniform" | "resource">();
-  const validate = (name: string, noun: "custom uniform" | "resource"): void => {
+  const validate = (name: string, noun: "custom uniform" | "resource", allowChannelName = false): void => {
     const displayName = noun === "custom uniform" ? "Custom uniform" : "Resource";
     if (!SHADER_IDENTIFIER.test(name)) {
       issues.push({
@@ -134,7 +141,7 @@ export function validateShaderAuthoringEnvironment(
       });
       return;
     }
-    if (isReservedShaderStudioIdentifier(name) && !(noun === "resource" && /^iChannel\d+$/.test(name))) {
+    if (isReservedShaderStudioIdentifier(name) && !allowChannelName) {
       issues.push({
         code: "reserved-identifier",
         message: `${displayName} "${name}" conflicts with a Shader Studio built-in.`,
@@ -156,7 +163,7 @@ export function validateShaderAuthoringEnvironment(
     validate(uniform.name, "custom uniform");
   }
   for (const resource of environment.resources) {
-    validate(resource.name, "resource");
+    validate(resource.name, "resource", resource.kind !== "storage" && /^iChannel\d+$/.test(resource.name));
     if (resource.kind === "storage" && resource.elementType && !isValidStorageElementType(resource.elementType)) {
       issues.push({
         code: "invalid-element-type",

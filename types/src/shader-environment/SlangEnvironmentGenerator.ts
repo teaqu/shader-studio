@@ -114,6 +114,47 @@ struct ShaderToyChannelCube
   return lines;
 }
 
+function buildSlangChannelDeclarations(
+  channelBindings: readonly AuthoringChannelBinding[],
+  stage: ShaderAuthoringEnvironment["stage"],
+): string[] {
+  const sampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
+  const explicitLod = stage === "compute" ? ", 0.0" : "";
+  const declarations = channelBindings.flatMap(({ resource, slot }) => {
+    if (resource.kind === "storage") {
+      return [];
+    }
+    const type = SLANG_RESOURCE_TYPES[resource.kind];
+    if (resource.kind === "texture-3d") {
+      // The runtime channel prelude only exposes two-dimensional and cube sampling helpers.
+      return [`${type} ${resource.name};`, `SamplerState ${resource.name}Sampler;`];
+    }
+    const isCube = resource.kind === "texture-cube";
+    const argument = isCube ? "float3 dir" : "float2 uv";
+    const sampledArgument = isCube ? "dir" : "float2(uv.x, 1.0 - uv.y)";
+    const helperName = `sampleIChannel${slot}`;
+    const customHelperName = resource.name === `iChannel${slot}`
+      ? null
+      : `sample${resource.name[0]!.toUpperCase()}${resource.name.slice(1)}`;
+    return [
+      `${type} ${resource.name};`,
+      `SamplerState ${resource.name}Sampler;`,
+      `float4 ${helperName}(${argument})\n{\n    return ${resource.name}.${sampleMethod}(${resource.name}Sampler, ${sampledArgument}${explicitLod});\n}`,
+      `float4 ${helperName}Vertex(${argument})\n{\n    return ${resource.name}.SampleLevel(${resource.name}Sampler, ${sampledArgument}, 0.0);\n}`,
+      ...(customHelperName ? [
+        `float4 ${customHelperName}(${argument})\n{\n    return ${helperName}(${isCube ? "dir" : "uv"});\n}`,
+        `float4 ${customHelperName}Vertex(${argument})\n{\n    return ${helperName}Vertex(${isCube ? "dir" : "uv"});\n}`,
+      ] : []),
+    ];
+  });
+  const claimedSlots = new Set(channelBindings.map(({ slot }) => slot));
+  const fallbackHelpers = [0, 1, 2, 3]
+    .filter((slot) => !claimedSlots.has(slot))
+    .map((slot) => `float4 sampleIChannel${slot}(float2 uv)\n{\n    return float4(0.0, 0.0, 0.0, 1.0);\n}`);
+
+  return [...declarations, ...fallbackHelpers];
+}
+
 export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
   return type in SLANG_RUNTIME_VALUE_TYPES;
 }
@@ -123,27 +164,20 @@ export function buildSlangAuthoringModule(
   environment: ShaderAuthoringEnvironment,
 ): GeneratedAuthoringSource {
   const channelBindings = resolveAuthoringChannelBindings(environment.resources);
-  const resourceLines = environment.resources.filter((resource) => resource.kind === "storage").flatMap((resource) => {
-    if (resource.kind === "storage") {
-      const elementType = resource.elementType ?? "float4";
-      const bufferType = environment.stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
-      const renderElementType = environment.stage === "compute"
-        ? elementType
-        : elementType === "Atomic<uint>" ? "uint" : elementType === "Atomic<int>" ? "int" : elementType;
-      return [`${bufferType}<${renderElementType}> ${resource.name};`];
-    }
-  });
-  const channelLines = channelBindings.flatMap(({ resource, slot }) => {
-    if (resource.kind === "storage") {
+  const resourceLines = environment.resources
+    .filter((resource) => resource.kind === "storage" && !/^iChannel\d+$/.test(resource.name))
+    .flatMap((resource) => {
+      if (resource.kind === "storage") {
+        const elementType = resource.elementType ?? "float4";
+        const bufferType = environment.stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
+        const renderElementType = environment.stage === "compute"
+          ? elementType
+          : elementType === "Atomic<uint>" ? "uint" : elementType === "Atomic<int>" ? "int" : elementType;
+        return [`${bufferType}<${renderElementType}> ${resource.name};`];
+      }
       return [];
-    }
-    const type = SLANG_RESOURCE_TYPES[resource.kind];
-    const aliases = resource.name === `iChannel${slot}` ? [] : [
-      `#define iChannel${slot} ${resource.name}`,
-      `#define iChannel${slot}Sampler ${resource.name}Sampler`,
-    ];
-    return [`${type} ${resource.name};`, `SamplerState ${resource.name}Sampler;`, ...aliases];
-  });
+    });
+  const channelLines = buildSlangChannelDeclarations(channelBindings, environment.stage);
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
       .filter((uniform) => !/^iChannel[0-3]$/.test(uniform.name) && !/^iCh[0-3]$/.test(uniform.name))

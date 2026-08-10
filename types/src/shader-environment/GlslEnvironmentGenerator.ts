@@ -51,7 +51,7 @@ export function buildGlslAuthoringPreamble(
       .filter(({ resource, slot }) => resource.name !== `iChannel${slot}`)
       .map(({ resource }) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
     ...environment.resources
-      .filter((resource) => resource.kind === "storage")
+      .filter((resource) => resource.kind === "storage" && !/^iChannel\d+$/.test(resource.name))
       .map((resource) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
   ];
 

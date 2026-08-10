@@ -35,6 +35,7 @@ function environmentWithCustomUniformAndCubeChannel(): ShaderAuthoringEnvironmen
 describe("ShaderAuthoringEnvironment", () => {
   it("generates the same GLSL built-ins exposed by the renderer", () => {
     const generated = buildGlslAuthoringPreamble(baseEnvironment("glsl"));
+    const slang = buildSlangAuthoringModule(baseEnvironment("slang"));
 
     for (const line of GLSL_STABLE_DECLARATION_LINES) {
       expect(generated.text).toContain(line);
@@ -50,6 +51,9 @@ describe("ShaderAuthoringEnvironment", () => {
     }
     expect(generated.uri).toBe("file:///shaders/image.glsl");
     expect(generated.generatedLineCount).toBe(generated.text.split("\n").length);
+    for (const slot of [0, 1, 2, 3]) {
+      expect(slang.text).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
+    }
   });
 
   it("describes custom uniforms and resources in both languages", () => {
@@ -86,8 +90,17 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(glsl.text).toContain("  samplerCube sampler;");
     expect(slang.text).toContain("TextureCube<float4> sky;");
     expect(slang.text).toContain("SamplerState skySampler;");
-    expect(slang.text).toContain("#define iChannel0 sky");
-    expect(slang.text).toContain("#define iChannel0Sampler skySampler");
+    expect(slang.text).toContain("float4 sampleIChannel0(float3 dir)");
+    expect(slang.text).toContain("return sky.Sample(skySampler, dir);");
+    expect(slang.text).toContain("float4 sampleIChannel0Vertex(float3 dir)");
+    expect(slang.text).toContain("return sky.SampleLevel(skySampler, dir, 0.0);");
+    expect(slang.text).toContain("float4 sampleSky(float3 dir)");
+    expect(slang.text).toContain("return sampleIChannel0(dir);");
+    expect(slang.text).toContain("float4 sampleIChannel1(float2 uv)");
+    expect(slang.text).toContain("return noise.Sample(noiseSampler, float2(uv.x, 1.0 - uv.y));");
+    expect(slang.text).toContain("float4 sampleNoiseVertex(float2 uv)");
+    expect(slang.text).not.toContain("#define iChannel0 sky");
+    expect(slang.text).not.toContain("#define iChannel0Sampler skySampler");
     expect(slang.text).toContain("struct ShaderToySamplerCube");
     expect(slang.text).toContain("ShaderToySamplerCube sampler;");
     expect(slang.text).toContain("float4 Sample(float3 dir)");
@@ -208,6 +221,22 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(render.text).toContain("StructuredBuffer<uint> counters;");
   });
 
+  it("rejects storage resources that collide with renderer channel symbols without emitting duplicate declarations", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name: "iChannel0", kind: "storage" as const, elementType: "float4" }],
+    };
+    const glsl = buildGlslAuthoringPreamble({ ...environment, languageId: "glsl" });
+    const slang = buildSlangAuthoringModule(environment);
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: 'Resource "iChannel0" conflicts with a Shader Studio built-in.',
+    });
+    expect(glsl.text.match(/uniform sampler2D iChannel0;/g)).toHaveLength(1);
+    expect(slang.text).not.toContain("StructuredBuffer<float4> iChannel0;");
+  });
+
   it("uses explicit-level sampling in compute channel metadata", () => {
     const compute = buildSlangAuthoringModule({
       ...baseEnvironment("slang"),
@@ -217,6 +246,8 @@ describe("ShaderAuthoringEnvironment", () => {
 
     expect(compute.text).toContain("return texture.SampleLevel(state, dir, 0.0);");
     expect(compute.text).not.toContain("return texture.Sample(state, dir);");
+    expect(compute.text).toContain("float4 sampleIChannel0(float3 dir)");
+    expect(compute.text).toContain("return iChannel0.SampleLevel(iChannel0Sampler, dir, 0.0);");
   });
 
   it("reports invalid and duplicate identifiers across uniforms and resources without throwing", () => {
@@ -224,11 +255,11 @@ describe("ShaderAuthoringEnvironment", () => {
       ...baseEnvironment("glsl"),
       customUniforms: [
         { name: "not valid", type: "float" },
-        { name: "shared", type: "float" },
+        { name: "repeat", type: "float" },
         { name: "iTime", type: "float" },
       ],
       resources: [
-        { name: "shared", kind: "texture-2d" },
+        { name: "repeat", kind: "texture-2d" },
         { name: "3d", kind: "texture-3d" },
       ],
     };
@@ -237,7 +268,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([
       { code: "invalid-identifier", message: 'Custom uniform "not valid" is not a valid shader identifier.' },
       { code: "reserved-identifier", message: 'Custom uniform "iTime" conflicts with a Shader Studio built-in.' },
-      { code: "duplicate-identifier", message: 'Resource "shared" duplicates a custom uniform.' },
+      { code: "duplicate-identifier", message: 'Resource "repeat" duplicates a custom uniform.' },
       { code: "invalid-identifier", message: 'Resource "3d" is not a valid shader identifier.' },
     ]);
   });
@@ -252,10 +283,18 @@ describe("ShaderAuthoringEnvironment", () => {
     ["invariant", "a GLSL qualifier"],
     ["smooth", "a GLSL interpolation qualifier"],
     ["noperspective", "a GLSL interpolation qualifier"],
+    ["precise", "a GLSL precision qualifier"],
     ["subroutine", "a GLSL subroutine keyword"],
+    ["usampler2D", "a GLSL unsigned integer sampler type"],
+    ["usamplerCube", "a GLSL unsigned integer sampler type"],
     ["import", "a Slang keyword"],
     ["export", "a Slang keyword"],
     ["groupshared", "a Slang storage keyword"],
+    ["shared", "a Slang storage keyword"],
+    ["restrict", "a Slang qualifier"],
+    ["patch", "a Slang interpolation qualifier"],
+    ["sample", "a Slang interpolation qualifier"],
+    ["private", "a Slang access keyword"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],
