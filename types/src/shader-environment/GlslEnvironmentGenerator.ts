@@ -3,7 +3,12 @@ import {
   buildGlslCompatibilityUniformDeclarationLines,
   type GlslSamplerType,
 } from "../GlslShaderEnvironment";
-import type { AuthoringResource, GeneratedAuthoringSource, ShaderAuthoringEnvironment } from "./ShaderAuthoringEnvironment";
+import {
+  resolveAuthoringChannelBindings,
+  type AuthoringResource,
+  type GeneratedAuthoringSource,
+  type ShaderAuthoringEnvironment,
+} from "./ShaderAuthoringEnvironment";
 
 const GLSL_VALUE_TYPES = {
   float: "float",
@@ -22,11 +27,6 @@ const GLSL_RESOURCE_TYPES = {
   storage: "sampler2D",
 } as const;
 
-function channelSlot(resource: AuthoringResource): number | null {
-  const match = /^iChannel(\d+)$/.exec(resource.name);
-  return match ? Number.parseInt(match[1]!, 10) : null;
-}
-
 function glslSamplerTypeFor(resource: AuthoringResource | undefined): GlslSamplerType {
   return resource?.kind === "texture-cube" ? "samplerCube"
     : resource?.kind === "texture-3d" ? "sampler3D"
@@ -37,13 +37,8 @@ function glslSamplerTypeFor(resource: AuthoringResource | undefined): GlslSample
 export function buildGlslAuthoringPreamble(
   environment: ShaderAuthoringEnvironment,
 ): GeneratedAuthoringSource {
-  const channels = new Map<number, AuthoringResource>();
-  for (const resource of environment.resources) {
-    const slot = channelSlot(resource);
-    if (slot !== null) {
-      channels.set(slot, resource);
-    }
-  }
+  const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+  const channels = new Map(channelBindings.map(({ slot, resource }) => [slot, resource]));
   const channelCount = Math.max(4, ...Array.from(channels.keys(), (slot) => slot + 1));
   const samplerTypes = Array.from({ length: 4 }, (_, slot) => glslSamplerTypeFor(channels.get(slot)));
   const lines = [
@@ -52,8 +47,11 @@ export function buildGlslAuthoringPreamble(
     `uniform vec3 iChannelResolution[${channelCount}];`,
     ...buildGlslCompatibilityUniformDeclarationLines(samplerTypes),
     ...environment.customUniforms.map((uniform) => `uniform ${GLSL_VALUE_TYPES[uniform.type]} ${uniform.name};`),
+    ...channelBindings
+      .filter(({ resource, slot }) => resource.name !== `iChannel${slot}`)
+      .map(({ resource }) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
     ...environment.resources
-      .filter((resource) => channelSlot(resource) === null)
+      .filter((resource) => resource.kind === "storage")
       .map((resource) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
   ];
 

@@ -13,6 +13,8 @@ export interface AuthoringResource {
   readonly name: string;
   readonly kind: "texture-2d" | "texture-cube" | "texture-3d" | "storage";
   readonly elementType?: string;
+  /** Renderer channel slot; omitted input resources use their insertion-order slot. */
+  readonly slot?: number;
 }
 
 export interface VirtualShaderFile {
@@ -40,9 +42,17 @@ export interface GeneratedAuthoringSource {
 }
 
 export interface ShaderAuthoringEnvironmentValidationIssue {
-  readonly code: "invalid-identifier" | "duplicate-identifier" | "reserved-identifier" | "invalid-element-type";
+  readonly code: "invalid-identifier" | "duplicate-identifier" | "reserved-identifier" | "invalid-element-type" | "invalid-channel-slot" | "duplicate-channel-slot" | "channel-alias-collision";
   readonly message: string;
 }
+
+export interface AuthoringChannelBinding {
+  readonly resource: Readonly<AuthoringResource>;
+  readonly slot: number;
+}
+
+/** Bounds generated declaration size while exceeding the renderer's compatibility minimum. */
+export const MAX_AUTHORING_CHANNEL_SLOTS = 1024;
 
 const SHADER_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SHADER_STUDIO_RESERVED_NAMES = new Set([
@@ -65,8 +75,14 @@ const SHADER_LANGUAGE_KEYWORDS = new Set([
   "sampler3D", "samplerCube", "samplerCubeArray", "samplerCubeArrayShadow", "static", "struct", "StructuredBuffer",
   "switch", "Texture2D", "Texture2DArray", "Texture3D", "TextureCube", "true", "typedef", "uint", "uvec2", "uvec3",
   "uvec4", "uniform", "varying", "vec2", "vec3", "vec4", "void", "volatile", "while", "writeonly",
+  "export", "invariant", "isampler2D", "isampler2DArray", "isampler2DArray", "isampler3D", "isamplerCube",
+  "noperspective", "samplerCubeShadow", "smooth", "subroutine",
 ]);
 const STORAGE_ELEMENT_TYPE = /^[A-Za-z_][A-Za-z0-9_]*(?:\s*<\s*[A-Za-z_][A-Za-z0-9_]*\s*>)?$/;
+const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
+  "float", "float2", "float3", "float4", "int", "int2", "int3", "int4", "uint", "uint2", "uint3", "uint4",
+  "float2x2", "float3x3", "float4x4", "Atomic<uint>", "Atomic<int>",
+]);
 
 function isReservedShaderStudioIdentifier(name: string): boolean {
   return SHADER_STUDIO_RESERVED_NAMES.has(name)
@@ -77,6 +93,9 @@ function isReservedShaderStudioIdentifier(name: string): boolean {
 }
 
 function isValidStorageElementType(elementType: string): boolean {
+  if (BUILTIN_STORAGE_ELEMENT_TYPES.has(elementType)) {
+    return true;
+  }
   if (!STORAGE_ELEMENT_TYPE.test(elementType)) {
     return false;
   }
@@ -88,6 +107,16 @@ function isValidStorageElementType(elementType: string): boolean {
   return !inner
     || (outer === "Atomic" && (inner === "uint" || inner === "int"))
     || (!SHADER_LANGUAGE_KEYWORDS.has(inner) && !inner.startsWith("gl_"));
+}
+
+/** Resolves non-storage resources to renderer channel slots without inferring slots from names. */
+export function resolveAuthoringChannelBindings(
+  resources: readonly Readonly<AuthoringResource>[],
+): AuthoringChannelBinding[] {
+  return resources
+    .filter((resource) => resource.kind !== "storage")
+    .map((resource, index) => ({ resource, slot: resource.slot ?? index }))
+    .filter(({ slot }) => Number.isInteger(slot) && slot >= 0 && slot < MAX_AUTHORING_CHANNEL_SLOTS);
 }
 
 /** Returns validation diagnostics for generated declarations without mutating or throwing. */
@@ -133,6 +162,34 @@ export function validateShaderAuthoringEnvironment(
         code: "invalid-element-type",
         message: `Storage resource "${resource.name}" has an invalid element type.`,
       });
+    }
+  }
+
+  const channelSlots = new Set<number>();
+  for (const { resource, slot } of environment.resources
+    .filter((resource) => resource.kind !== "storage")
+    .map((resource, index) => ({ resource, slot: resource.slot ?? index }))) {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_AUTHORING_CHANNEL_SLOTS) {
+      issues.push({
+        code: "invalid-channel-slot",
+        message: `Resource "${resource.name}" has an invalid channel slot.`,
+      });
+    } else {
+      const canonicalChannel = /^iChannel(0|[1-9]\d*)$/.exec(resource.name);
+      if (canonicalChannel && Number.parseInt(canonicalChannel[1]!, 10) !== slot) {
+        issues.push({
+          code: "channel-alias-collision",
+          message: `Resource "${resource.name}" conflicts with canonical channel slot ${canonicalChannel[1]}.`,
+        });
+      }
+      if (channelSlots.has(slot)) {
+        issues.push({
+          code: "duplicate-channel-slot",
+          message: `Resource "${resource.name}" duplicates channel slot ${slot}.`,
+        });
+      } else {
+        channelSlots.add(slot);
+      }
     }
   }
 

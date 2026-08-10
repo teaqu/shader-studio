@@ -3,7 +3,12 @@ import {
   SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES,
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
 } from "./BuiltinUniforms";
-import type { AuthoringResource, GeneratedAuthoringSource, ShaderAuthoringEnvironment } from "./ShaderAuthoringEnvironment";
+import {
+  resolveAuthoringChannelBindings,
+  type AuthoringChannelBinding,
+  type GeneratedAuthoringSource,
+  type ShaderAuthoringEnvironment,
+} from "./ShaderAuthoringEnvironment";
 
 export type SlangCustomUniformType = "float" | "vec2" | "vec3" | "vec4" | "bool";
 
@@ -35,22 +40,11 @@ const SLANG_RESOURCE_TYPES = {
   "texture-3d": "Texture3D<float4>",
 } as const;
 
-function channelSlot(resource: AuthoringResource): number | null {
-  const match = /^iChannel(\d+)$/.exec(resource.name);
-  return match ? Number.parseInt(match[1]!, 10) : null;
-}
-
 function buildSlangChannelMetadata(
-  resources: readonly AuthoringResource[],
+  channelBindings: readonly AuthoringChannelBinding[],
   stage: ShaderAuthoringEnvironment["stage"],
 ): string[] {
-  const channels = resources
-    .map((resource) => ({ resource, slot: channelSlot(resource) }))
-    .filter((channel): channel is { resource: AuthoringResource; slot: number } =>
-      channel.slot !== null
-      && channel.slot < 4
-      && channel.resource.kind !== "storage"
-      && channel.resource.kind !== "texture-3d");
+  const channels = channelBindings.filter(({ resource, slot }) => slot < 4 && resource.kind !== "texture-3d");
   const has2D = channels.some(({ resource }) => resource.kind !== "texture-cube");
   const hasCube = channels.some(({ resource }) => resource.kind === "texture-cube");
   const sample2D = stage === "compute"
@@ -128,7 +122,8 @@ export function isSlangCustomUniformType(type: string): type is SlangCustomUnifo
 export function buildSlangAuthoringModule(
   environment: ShaderAuthoringEnvironment,
 ): GeneratedAuthoringSource {
-  const resourceLines = environment.resources.flatMap((resource) => {
+  const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+  const resourceLines = environment.resources.filter((resource) => resource.kind === "storage").flatMap((resource) => {
     if (resource.kind === "storage") {
       const elementType = resource.elementType ?? "float4";
       const bufferType = environment.stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
@@ -137,10 +132,17 @@ export function buildSlangAuthoringModule(
         : elementType === "Atomic<uint>" ? "uint" : elementType === "Atomic<int>" ? "int" : elementType;
       return [`${bufferType}<${renderElementType}> ${resource.name};`];
     }
+  });
+  const channelLines = channelBindings.flatMap(({ resource, slot }) => {
+    if (resource.kind === "storage") {
+      return [];
+    }
     const type = SLANG_RESOURCE_TYPES[resource.kind];
-    return channelSlot(resource) !== null
-      ? [`${type} ${resource.name};`, `SamplerState ${resource.name}Sampler;`]
-      : [`${type} ${resource.name};`];
+    const aliases = resource.name === `iChannel${slot}` ? [] : [
+      `#define iChannel${slot} ${resource.name}`,
+      `#define iChannel${slot}Sampler ${resource.name}Sampler`,
+    ];
+    return [`${type} ${resource.name};`, `SamplerState ${resource.name}Sampler;`, ...aliases];
   });
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
@@ -150,13 +152,16 @@ export function buildSlangAuthoringModule(
       : `${uniform.slangType} ${uniform.name};`),
     ...environment.customUniforms.map((uniform) => `${SLANG_AUTHORING_VALUE_TYPES[uniform.type]} ${uniform.name};`),
     ...resourceLines,
-    ...buildSlangChannelMetadata(environment.resources, environment.stage),
+    ...channelLines,
+    ...buildSlangChannelMetadata(channelBindings, environment.stage),
   ];
+
+  const text = lines.join("\n");
 
   return {
     uri: environment.documentUri,
-    text: lines.join("\n"),
-    generatedLineCount: lines.length,
+    text,
+    generatedLineCount: text.split("\n").length,
   };
 }
 

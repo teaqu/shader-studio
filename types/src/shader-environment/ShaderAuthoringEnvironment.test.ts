@@ -61,12 +61,15 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain("TextureCube<float4> sky");
   });
 
-  it("models renderer channel slots, metadata, and sampler types without duplicate declarations", () => {
+  it("models renderer channel slots, aliases, metadata, and sampler types in insertion order", () => {
     const environment = {
       ...baseEnvironment("glsl"),
       resources: [
-        { name: "iChannel0", kind: "texture-cube" as const },
-        { name: "iChannel5", kind: "texture-3d" as const },
+        { name: "sky", kind: "texture-cube" as const },
+        { name: "noise", kind: "texture-2d" as const },
+        { name: "volume", kind: "texture-3d" as const },
+        { name: "albedo", kind: "texture-2d" as const },
+        { name: "detail", kind: "texture-2d" as const },
       ],
     };
     const glsl = buildGlslAuthoringPreamble(environment);
@@ -74,21 +77,72 @@ describe("ShaderAuthoringEnvironment", () => {
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
     expect(glsl.text).toContain("uniform samplerCube iChannel0;");
-    expect(glsl.text).not.toContain("uniform sampler2D iChannel0;");
+    expect(glsl.text).toContain("uniform samplerCube sky;");
     expect(glsl.text).toContain("uniform sampler2D iChannel4;");
-    expect(glsl.text).toContain("uniform sampler3D iChannel5;");
-    expect(glsl.text).toContain("uniform vec3 iChannelResolution[6];");
+    expect(glsl.text).toContain("uniform sampler2D detail;");
+    expect(glsl.text).toContain("uniform sampler2D iChannel4;");
+    expect(glsl.text).toContain("uniform vec3 iChannelResolution[5];");
     expect(glsl.text).toContain("} iCh0;");
     expect(glsl.text).toContain("  samplerCube sampler;");
-    expect(slang.text).toContain("TextureCube<float4> iChannel0;");
-    expect(slang.text).toContain("Texture3D<float4> iChannel5;");
+    expect(slang.text).toContain("TextureCube<float4> sky;");
+    expect(slang.text).toContain("SamplerState skySampler;");
+    expect(slang.text).toContain("#define iChannel0 sky");
+    expect(slang.text).toContain("#define iChannel0Sampler skySampler");
     expect(slang.text).toContain("struct ShaderToySamplerCube");
     expect(slang.text).toContain("ShaderToySamplerCube sampler;");
     expect(slang.text).toContain("float4 Sample(float3 dir)");
     expect(slang.text).toContain("ShaderToyChannelCube _getICh0()");
-    expect(slang.text).toContain("channel.sampler.texture = iChannel0;");
+    expect(slang.text).toContain("channel.sampler.texture = sky;");
     expect(slang.text).toContain("channel.size = iChannelResolution[0];");
     expect(slang.text).toContain("#define iCh0 (_getICh0())");
+  });
+
+  it("keeps numeric-looking channel aliases distinct from canonical slot names", () => {
+    const environment = {
+      ...baseEnvironment("glsl"),
+      resources: [
+        { name: "iChannel01", kind: "texture-cube" as const },
+        { name: "iChannel1", kind: "texture-2d" as const },
+      ],
+    };
+    const generated = buildGlslAuthoringPreamble(environment);
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    expect(generated.text).toContain("uniform samplerCube iChannel0;");
+    expect(generated.text).toContain("uniform samplerCube iChannel01;");
+    expect(generated.text).toContain("uniform sampler2D iChannel1;");
+  });
+
+  it("reports duplicate and pathological explicit channel slots", () => {
+    const environment = {
+      ...baseEnvironment("glsl"),
+      resources: [
+        { name: "sky", kind: "texture-cube" as const, slot: 1 },
+        { name: "noise", kind: "texture-2d" as const, slot: 1 },
+        { name: "tooFar", kind: "texture-2d" as const, slot: 1024 },
+      ],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "duplicate-channel-slot",
+      message: 'Resource "noise" duplicates channel slot 1.',
+    });
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "invalid-channel-slot",
+      message: 'Resource "tooFar" has an invalid channel slot.',
+    });
+  });
+
+  it("rejects canonical channel aliases that conflict with their resolved slot", () => {
+    const environment = {
+      ...baseEnvironment("glsl"),
+      resources: [{ name: "iChannel1", kind: "texture-2d" as const, slot: 0 }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "channel-alias-collision",
+      message: 'Resource "iChannel1" conflicts with canonical channel slot 1.',
+    });
   });
 
   it.each([
@@ -128,6 +182,15 @@ describe("ShaderAuthoringEnvironment", () => {
     };
 
     expect(buildSlangAuthoringModule(environment).text).toContain("StructuredBuffer<Particle> particles;");
+  });
+
+  it.each(["float", "int", "uint", "Atomic<int>", "Atomic<uint>"])("accepts the renderer storage element type %s", (elementType) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name: "values", kind: "storage" as const, elementType }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
   });
 
   it("matches stage-specific Slang storage declarations and render atomic normalisation", () => {
@@ -184,7 +247,14 @@ describe("ShaderAuthoringEnvironment", () => {
     ["uint", "a GLSL scalar type"],
     ["uvec2", "a GLSL vector type"],
     ["sampler2DShadow", "a GLSL sampler type"],
+    ["isampler2D", "a GLSL integer sampler type"],
+    ["samplerCubeShadow", "a GLSL shadow sampler type"],
+    ["invariant", "a GLSL qualifier"],
+    ["smooth", "a GLSL interpolation qualifier"],
+    ["noperspective", "a GLSL interpolation qualifier"],
+    ["subroutine", "a GLSL subroutine keyword"],
     ["import", "a Slang keyword"],
+    ["export", "a Slang keyword"],
     ["groupshared", "a Slang storage keyword"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],
     ["iChannel0", "a renderer channel symbol"],
@@ -225,20 +295,26 @@ describe("ShaderAuthoringEnvironment", () => {
     });
   });
 
-  it("reports generated line counts for custom uniforms and resources in both languages", () => {
-    const environment = environmentWithCustomUniformAndCubeChannel();
-    const glsl = buildGlslAuthoringPreamble(environment);
-    const slang = buildSlangAuthoringModule({ ...environment, languageId: "slang" });
+  it("reports physical generated line counts for base, custom, and multiline channel sources", () => {
+    const environments = [
+      baseEnvironment("glsl"),
+      environmentWithCustomUniformAndCubeChannel(),
+      { ...baseEnvironment("slang"), resources: [{ name: "sky", kind: "texture-cube" as const }] },
+    ];
 
-    expect(glsl.generatedLineCount).toBe(glsl.text.split("\n").length);
-    expect(slang.generatedLineCount).toBe(slang.text.split("\n").length);
+    for (const environment of environments) {
+      const glsl = buildGlslAuthoringPreamble({ ...environment, languageId: "glsl" });
+      const slang = buildSlangAuthoringModule({ ...environment, languageId: "slang" });
+      expect(glsl.generatedLineCount).toBe(glsl.text.split("\n").length);
+      expect(slang.generatedLineCount).toBe(slang.text.split("\n").length);
+    }
   });
 
   it("documents every renderer-visible built-in and channel symbol with a type and runtime meaning", () => {
     const rendererSymbols = [
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
       "iChannelTime", "iChannelLoaded", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir",
-      "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
+      "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);
