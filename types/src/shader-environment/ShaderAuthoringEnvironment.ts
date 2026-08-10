@@ -1,4 +1,5 @@
 import { GLSL_STABLE_NAMES, SHADER_STUDIO_BUILTIN_UNIFORMS } from "./BuiltinUniforms";
+import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
 
 export type ShaderStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
 
@@ -42,7 +43,7 @@ export interface GeneratedAuthoringSource {
 }
 
 export interface ShaderAuthoringEnvironmentValidationIssue {
-  readonly code: "invalid-identifier" | "duplicate-identifier" | "reserved-identifier" | "invalid-element-type" | "invalid-channel-slot" | "duplicate-channel-slot" | "channel-alias-collision";
+  readonly code: "invalid-identifier" | "duplicate-identifier" | "reserved-identifier" | "invalid-element-type" | "invalid-channel-slot" | "duplicate-channel-slot" | "channel-alias-collision" | "generated-identifier-collision";
   readonly message: string;
 }
 
@@ -62,29 +63,6 @@ const SHADER_STUDIO_RESERVED_NAMES = new Set([
   "iNormal",
   "iCameraPosition",
 ]);
-const SHADER_LANGUAGE_KEYWORDS = new Set([
-  "abstract", "asm", "associatedtype", "atomic_uint", "attribute", "bool", "break", "buffer", "bvec2", "bvec3",
-  "bvec4", "case", "cbuffer", "centroid", "class", "coherent", "common", "const", "continue", "dmat2", "dmat3",
-  "dmat4", "double", "do", "dvec2", "dvec3", "dvec4", "default", "discard", "each", "else", "enum", "export",
-  "extern", "false", "flat", "float", "float2", "float2x2", "float2x3", "float2x4", "float3", "float3x2", "float3x3",
-  "float3x4", "float4", "float4x2", "float4x3", "float4x4", "for", "foreach", "fvec2", "fvec3", "fvec4", "get",
-  "groupshared", "half", "highp", "if", "image1D", "image1DArray", "image2D", "image2DArray", "image2DMS",
-  "image2DMSArray", "image2DRect", "image3D", "imageBuffer", "imageCube", "imageCubeArray", "import", "in", "inline",
-  "inout", "int", "int2", "int3", "int4", "interface", "invariant", "isampler1D", "isampler1DArray", "isampler2D",
-  "isampler2DArray", "isampler2DMS", "isampler2DMSArray", "isampler2DRect", "isampler3D", "isamplerBuffer", "isamplerCube",
-  "isamplerCubeArray", "layout", "let", "lowp", "mat2", "mat2x2", "mat2x3", "mat2x4", "mat3", "mat3x2", "mat3x3",
-  "mat3x4", "mat4", "mat4x2", "mat4x3", "mat4x4", "module", "namespace", "nointerpolation", "noperspective", "out",
-  "override", "packoffset", "patch", "precision", "precise", "private", "property", "public", "readonly", "ref", "restrict",
-  "return", "RWStructuredBuffer", "RWTexture2D", "RWTexture2DArray", "sample", "SamplerComparisonState", "SamplerState",
-  "sampler1D", "sampler1DArray", "sampler1DArrayShadow", "sampler1DShadow", "sampler2D", "sampler2DArray",
-  "sampler2DArrayShadow", "sampler2DMS", "sampler2DMSArray", "sampler2DRect", "sampler2DShadow", "sampler3D", "samplerBuffer",
-  "samplerCube", "samplerCubeArray", "samplerCubeArrayShadow", "samplerCubeShadow", "sealed", "set", "shared", "smooth",
-  "static", "struct", "StructuredBuffer", "subroutine", "switch", "Texture2D", "Texture2DArray", "Texture3D", "TextureCube",
-  "true", "typedef", "uint", "uint2", "uint3", "uint4", "uniform", "uvec2", "uvec3", "uvec4", "usampler1D",
-  "usampler1DArray", "usampler2D", "usampler2DArray", "usampler2DMS", "usampler2DMSArray", "usampler2DRect", "usampler3D",
-  "usamplerBuffer", "usamplerCube", "usamplerCubeArray", "using", "var", "varying", "vec2", "vec3", "vec4", "virtual", "void",
-  "volatile", "where", "while", "writeonly",
-]);
 const STORAGE_ELEMENT_TYPE = /^[A-Za-z_][A-Za-z0-9_]*(?:\s*<\s*[A-Za-z_][A-Za-z0-9_]*\s*>)?$/;
 const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
   "float", "float2", "float3", "float4", "int", "int2", "int3", "int4", "uint", "uint2", "uint3", "uint4",
@@ -93,8 +71,7 @@ const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
 
 function isReservedShaderStudioIdentifier(name: string): boolean {
   return SHADER_STUDIO_RESERVED_NAMES.has(name)
-    || SHADER_LANGUAGE_KEYWORDS.has(name)
-    || name.startsWith("gl_")
+    || isShaderLanguageReservedTerm(name)
     || /^iChannel\d+$/.test(name)
     || /^iCh[0-3]$/.test(name);
 }
@@ -108,12 +85,44 @@ function isValidStorageElementType(elementType: string): boolean {
   }
   const tokens = elementType.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
   const [outer, inner] = tokens;
-  if (!outer || SHADER_LANGUAGE_KEYWORDS.has(outer) || outer.startsWith("gl_")) {
+  if (!outer || isShaderLanguageReservedTerm(outer)) {
     return false;
   }
   return !inner
     || (outer === "Atomic" && (inner === "uint" || inner === "int"))
-    || (!SHADER_LANGUAGE_KEYWORDS.has(inner) && !inner.startsWith("gl_"));
+    || !isShaderLanguageReservedTerm(inner);
+}
+
+export interface SlangChannelGeneratedIdentifiers {
+  readonly sampler: string;
+  readonly slotHelper?: string;
+  readonly slotVertexHelper?: string;
+  readonly aliasHelper?: string;
+  readonly aliasVertexHelper?: string;
+  readonly metadataAccessor?: string;
+}
+
+/** Derives the global Slang identifiers emitted for one renderer channel binding. */
+export function deriveSlangChannelGeneratedIdentifiers(
+  binding: AuthoringChannelBinding,
+): SlangChannelGeneratedIdentifiers {
+  const { resource, slot } = binding;
+  const sampler = `${resource.name}Sampler`;
+  if (resource.kind === "storage" || resource.kind === "texture-3d") {
+    return { sampler };
+  }
+  const slotHelper = `sampleIChannel${slot}`;
+  const aliasHelper = resource.name === `iChannel${slot}`
+    ? undefined
+    : `sample${resource.name[0]!.toUpperCase()}${resource.name.slice(1)}`;
+  return {
+    sampler,
+    slotHelper,
+    slotVertexHelper: `${slotHelper}Vertex`,
+    aliasHelper,
+    aliasVertexHelper: aliasHelper ? `${aliasHelper}Vertex` : undefined,
+    metadataAccessor: slot < 4 ? `_getICh${slot}` : undefined,
+  };
 }
 
 /** Resolves non-storage resources to renderer channel slots without inferring slots from names. */
@@ -196,6 +205,59 @@ export function validateShaderAuthoringEnvironment(
         });
       } else {
         channelSlots.add(slot);
+      }
+    }
+  }
+
+  if (environment.languageId === "slang") {
+    const claims = new Map<string, string>(
+      [...names].map(([name, noun]) => [name, `${noun} "${name}"`] as const),
+    );
+    const claimGeneratedIdentifier = (identifier: string, owner: string): void => {
+      const existing = claims.get(identifier);
+      if (existing) {
+        issues.push({
+          code: "generated-identifier-collision",
+          message: `Generated Slang identifier "${identifier}" collides between ${existing} and ${owner}.`,
+        });
+        return;
+      }
+      claims.set(identifier, owner);
+    };
+    const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+
+    for (const binding of channelBindings) {
+      const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
+      const owner = `resource "${binding.resource.name}"`;
+      for (const identifier of [
+        identifiers.sampler,
+        identifiers.slotHelper,
+        identifiers.slotVertexHelper,
+        identifiers.aliasHelper,
+        identifiers.aliasVertexHelper,
+        identifiers.metadataAccessor,
+      ]) {
+        if (identifier) {
+          claimGeneratedIdentifier(identifier, owner);
+        }
+      }
+    }
+
+    const metadataBindings = channelBindings
+      .filter(({ resource, slot }) => slot < 4 && resource.kind !== "texture-3d");
+    if (metadataBindings.some(({ resource }) => resource.kind === "texture-cube")) {
+      claimGeneratedIdentifier("ShaderToySamplerCube", "generated channel metadata");
+      claimGeneratedIdentifier("ShaderToyChannelCube", "generated channel metadata");
+    }
+    if (metadataBindings.some(({ resource }) => resource.kind !== "texture-cube")) {
+      claimGeneratedIdentifier("ShaderToySampler2D", "generated channel metadata");
+      claimGeneratedIdentifier("ShaderToyChannel2D", "generated channel metadata");
+    }
+
+    const claimedSlots = new Set(channelBindings.map(({ slot }) => slot));
+    for (const slot of [0, 1, 2, 3]) {
+      if (!claimedSlots.has(slot)) {
+        claimGeneratedIdentifier(`sampleIChannel${slot}`, `fallback channel slot ${slot}`);
       }
     }
   }

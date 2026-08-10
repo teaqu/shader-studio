@@ -250,6 +250,89 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(compute.text).toContain("return iChannel0.SampleLevel(iChannel0Sampler, dir, 0.0);");
   });
 
+  it.each([
+    "sampleIChannel0",
+    "sampleIChannel0Vertex",
+    "sampleSky",
+    "sampleSkyVertex",
+  ])("rejects a custom uniform that collides with generated Slang helper %s", (name) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      customUniforms: [{ name, type: "float" as const }],
+      resources: [{ name: "sky", kind: "texture-cube" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "generated-identifier-collision",
+      message: `Generated Slang identifier "${name}" collides between custom uniform "${name}" and resource "sky".`,
+    });
+  });
+
+  it("rejects a resource name that collides with its generated canonical helper", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name: "sampleIChannel0", kind: "texture-2d" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "generated-identifier-collision",
+      message: "Generated Slang identifier \"sampleIChannel0\" collides between resource \"sampleIChannel0\" and resource \"sampleIChannel0\".",
+    });
+  });
+
+  it("rejects case-derived helper collisions between resources", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [
+        { name: "sky", kind: "texture-cube" as const },
+        { name: "Sky", kind: "texture-cube" as const },
+      ],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual(expect.arrayContaining([
+      {
+        code: "generated-identifier-collision",
+        message: "Generated Slang identifier \"sampleSky\" collides between resource \"sky\" and resource \"Sky\".",
+      },
+      {
+        code: "generated-identifier-collision",
+        message: "Generated Slang identifier \"sampleSkyVertex\" collides between resource \"sky\" and resource \"Sky\".",
+      },
+    ]));
+  });
+
+  it.each([
+    ["skySampler", "skySampler"],
+    ["_getICh0", "_getICh0"],
+    ["ShaderToySampler2D", "ShaderToySampler2D"],
+  ])("rejects %s when it collides with generated identifier %s", (name, generatedName) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [
+        { name: "sky", kind: "texture-2d" as const },
+        { name, kind: "texture-2d" as const },
+      ],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "generated-identifier-collision",
+      message: expect.stringContaining(`Generated Slang identifier "${generatedName}" collides`),
+    });
+  });
+
+  it("accepts canonical channels and non-colliding normal aliases", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      customUniforms: [{ name: "tint", type: "vec3" as const }],
+      resources: [
+        { name: "iChannel0", kind: "texture-cube" as const },
+        { name: "noise", kind: "texture-2d" as const },
+      ],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
   it("reports invalid and duplicate identifiers across uniforms and resources without throwing", () => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -295,6 +378,24 @@ describe("ShaderAuthoringEnvironment", () => {
     ["patch", "a Slang interpolation qualifier"],
     ["sample", "a Slang interpolation qualifier"],
     ["private", "a Slang access keyword"],
+    ["mediump", "the active GLSL ES 300 default precision qualifier"],
+    ["bvec4", "a GLSL ES vector type"],
+    ["mat4x3", "a GLSL ES matrix type"],
+    ["sampler2DArrayShadow", "a GLSL ES shadow sampler type"],
+    ["isamplerCube", "a GLSL ES signed sampler type"],
+    ["usampler3D", "a GLSL ES unsigned sampler type"],
+    ["attribute", "a GLSL ES reserved word"],
+    ["protected", "a Slang access keyword"],
+    ["internal", "a Slang access keyword"],
+    ["extension", "a Slang declaration keyword"],
+    ["this", "a Slang expression keyword"],
+    ["operator", "a Slang declaration keyword"],
+    ["defer", "a Slang statement keyword"],
+    ["mutating", "a Slang modifier"],
+    ["half3", "a Slang vector type"],
+    ["uint64_t", "a Slang scalar type"],
+    ["TextureCubeArray", "a Slang texture type"],
+    ["RWByteAddressBuffer", "a Slang buffer type"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],

@@ -4,6 +4,7 @@ import {
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
 } from "./BuiltinUniforms";
 import {
+  deriveSlangChannelGeneratedIdentifiers,
   resolveAuthoringChannelBindings,
   type AuthoringChannelBinding,
   type GeneratedAuthoringSource,
@@ -95,20 +96,22 @@ struct ShaderToyChannelCube
 };`,
     ] : []),
   ];
-  for (const { resource, slot } of channels) {
+  for (const binding of channels) {
+    const { resource, slot } = binding;
     const type = resource.kind === "texture-cube" ? "Cube" : "2D";
+    const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
     lines.push(
-      `ShaderToyChannel${type} _getICh${slot}()
+      `ShaderToyChannel${type} ${identifiers.metadataAccessor!}()
 {
     ShaderToyChannel${type} channel;
     channel.sampler.texture = ${resource.name};
-    channel.sampler.state = ${resource.name}Sampler;
+    channel.sampler.state = ${identifiers.sampler};
     channel.size = iChannelResolution[${slot}];
     channel.time = iChannelTime[${slot}];
     channel.loaded = iChannelLoaded[${slot}] != 0.0 ? 1 : 0;
     return channel;
 }`,
-      `#define iCh${slot} (_getICh${slot}())`,
+      `#define iCh${slot} (${identifiers.metadataAccessor!}())`,
     );
   }
   return lines;
@@ -127,23 +130,25 @@ function buildSlangChannelDeclarations(
     const type = SLANG_RESOURCE_TYPES[resource.kind];
     if (resource.kind === "texture-3d") {
       // The runtime channel prelude only exposes two-dimensional and cube sampling helpers.
-      return [`${type} ${resource.name};`, `SamplerState ${resource.name}Sampler;`];
+      const { sampler } = deriveSlangChannelGeneratedIdentifiers({ resource, slot });
+      return [`${type} ${resource.name};`, `SamplerState ${sampler};`];
     }
     const isCube = resource.kind === "texture-cube";
     const argument = isCube ? "float3 dir" : "float2 uv";
     const sampledArgument = isCube ? "dir" : "float2(uv.x, 1.0 - uv.y)";
-    const helperName = `sampleIChannel${slot}`;
-    const customHelperName = resource.name === `iChannel${slot}`
-      ? null
-      : `sample${resource.name[0]!.toUpperCase()}${resource.name.slice(1)}`;
+    const identifiers = deriveSlangChannelGeneratedIdentifiers({ resource, slot });
+    const helperName = identifiers.slotHelper!;
+    const vertexHelperName = identifiers.slotVertexHelper!;
+    const customHelperName = identifiers.aliasHelper;
+    const customVertexHelperName = identifiers.aliasVertexHelper;
     return [
       `${type} ${resource.name};`,
-      `SamplerState ${resource.name}Sampler;`,
-      `float4 ${helperName}(${argument})\n{\n    return ${resource.name}.${sampleMethod}(${resource.name}Sampler, ${sampledArgument}${explicitLod});\n}`,
-      `float4 ${helperName}Vertex(${argument})\n{\n    return ${resource.name}.SampleLevel(${resource.name}Sampler, ${sampledArgument}, 0.0);\n}`,
-      ...(customHelperName ? [
+      `SamplerState ${identifiers.sampler};`,
+      `float4 ${helperName}(${argument})\n{\n    return ${resource.name}.${sampleMethod}(${identifiers.sampler}, ${sampledArgument}${explicitLod});\n}`,
+      `float4 ${vertexHelperName}(${argument})\n{\n    return ${resource.name}.SampleLevel(${identifiers.sampler}, ${sampledArgument}, 0.0);\n}`,
+      ...(customHelperName && customVertexHelperName ? [
         `float4 ${customHelperName}(${argument})\n{\n    return ${helperName}(${isCube ? "dir" : "uv"});\n}`,
-        `float4 ${customHelperName}Vertex(${argument})\n{\n    return ${helperName}Vertex(${isCube ? "dir" : "uv"});\n}`,
+        `float4 ${customVertexHelperName}(${argument})\n{\n    return ${vertexHelperName}(${isCube ? "dir" : "uv"});\n}`,
       ] : []),
     ];
   });
