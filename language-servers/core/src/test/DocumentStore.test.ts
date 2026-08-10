@@ -5,7 +5,16 @@ import { DocumentStore } from "../DocumentStore";
 const URI = "file:///image.glsl";
 
 function environment(generation: number): ShaderAuthoringEnvironment {
-  return { documentUri: URI, languageId: "glsl", generation };
+  return {
+    documentUri: URI,
+    languageId: "glsl",
+    generation,
+    passName: "Image",
+    stage: "fragment",
+    customUniforms: [],
+    resources: [],
+    virtualFiles: [],
+  };
 }
 
 function seededStore(): DocumentStore {
@@ -57,6 +66,34 @@ describe("DocumentStore", () => {
     expect(Object.isFrozen(storedEnvironment)).toBe(true);
     expect(Reflect.set(storedDocument!, "text", "stored changed")).toBe(false);
     expect(Reflect.set(storedEnvironment!, "generation", 10)).toBe(false);
+  });
+
+  it("deeply clones and freezes nested authoring declarations", () => {
+    const store = new DocumentStore();
+    const authoringEnvironment = {
+      ...environment(4),
+      customUniforms: [{ name: "tint", type: "vec3" as const }],
+      resources: [{ name: "sky", kind: "texture-cube" as const }],
+      virtualFiles: [{ uri: "file:///common.glsl", text: "float helper() { return 0.; }", version: 2 }],
+    };
+
+    store.syncEnvironment(authoringEnvironment);
+    authoringEnvironment.customUniforms[0]!.name = "changed";
+    authoringEnvironment.resources.push({ name: "extra", kind: "texture-2d" });
+    authoringEnvironment.virtualFiles[0]!.text = "changed";
+
+    const stored = store.getEnvironment(URI)!;
+    expect(stored.customUniforms).toEqual([{ name: "tint", type: "vec3" }]);
+    expect(stored.resources).toEqual([{ name: "sky", kind: "texture-cube" }]);
+    expect(stored.virtualFiles).toEqual([
+      { uri: "file:///common.glsl", text: "float helper() { return 0.; }", version: 2 },
+    ]);
+    expect(Object.isFrozen(stored.customUniforms)).toBe(true);
+    expect(Object.isFrozen(stored.customUniforms[0])).toBe(true);
+    expect(Object.isFrozen(stored.resources)).toBe(true);
+    expect(Object.isFrozen(stored.virtualFiles[0])).toBe(true);
+    expect(Reflect.set(stored.customUniforms[0]!, "name", "stored changed")).toBe(false);
+    expect(Reflect.set(stored.virtualFiles[0]!, "text", "stored changed")).toBe(false);
   });
 
   it("removes document and environment together", () => {

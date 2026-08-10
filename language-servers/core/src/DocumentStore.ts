@@ -24,7 +24,7 @@ export class DocumentStore {
       return false;
     }
 
-    this.environments.set(environment.documentUri, Object.freeze({ ...environment }));
+    this.environments.set(environment.documentUri, freezeEnvironment(environment));
     return true;
   }
 
@@ -49,4 +49,13 @@ export class DocumentStore {
     this.documents.set(document.uri, Object.freeze({ ...document }));
     return true;
   }
+}
+
+function freezeEnvironment(environment: ShaderAuthoringEnvironment): Readonly<ShaderAuthoringEnvironment> {
+  return Object.freeze({
+    ...environment,
+    customUniforms: Object.freeze(environment.customUniforms.map((uniform) => Object.freeze({ ...uniform }))),
+    resources: Object.freeze(environment.resources.map((resource) => Object.freeze({ ...resource }))),
+    virtualFiles: Object.freeze(environment.virtualFiles.map((file) => Object.freeze({ ...file }))),
+  });
 }

@@ -83,6 +83,98 @@ static float3 iCameraPosition;
     expect(source).toContain(`[shader("fragment")]\nfloat4 ${SLANG_ENTRY_FRAGMENT}`);
   });
 
+  it('preserves the complete custom-uniform wrapper output', () => {
+    const source = wrapSlangImageSource(image, {
+      customUniforms: [
+        { name: 'gain', type: 'float' },
+        { name: 'enabled', type: 'bool' },
+        { name: 'unsupported', type: 'int' },
+      ],
+    });
+
+    expect(source).toBe(`// ---- shader-studio Slang prelude (generated) ----
+struct ShaderToyUniforms
+{
+    float4 resolution;
+    float4 mouse;
+    float time;
+    float timeDelta;
+    float frameRate;
+    int frame;
+    float4 channelTime;
+    float4 channelLoaded;
+    float sampleRate;
+    float4 date;
+    float3 channelResolution[4];
+    float4 cameraPos;
+    float4 cameraDir;
+    float custom_gain;
+    int custom_enabled;
+};
+
+[[vk::binding(0, 0)]]
+ConstantBuffer<ShaderToyUniforms> _st;
+
+#define iResolution (_st.resolution.xyz)
+#define iMouse (_st.mouse)
+#define iTime (_st.time)
+#define iTimeDelta (_st.timeDelta)
+#define iFrameRate (_st.frameRate)
+#define iFrame (_st.frame)
+#define iChannelTime (_st.channelTime)
+#define iChannelLoaded (_st.channelLoaded)
+#define iSampleRate (_st.sampleRate)
+#define iDate (_st.date)
+#define iChannelResolution (_st.channelResolution)
+#define iCameraPos (_st.cameraPos.xyz)
+#define iCameraDir (_st.cameraDir.xyz)
+#define gain (_st.custom_gain)
+#define enabled (_st.custom_enabled != 0)
+static float3 iWorldPosition;
+static float3 iNormal;
+static float3 iCameraPosition;
+
+float4 sampleIChannel0(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
+float4 sampleIChannel1(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
+float4 sampleIChannel2(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
+float4 sampleIChannel3(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+
+#line 1
+${image}
+
+// ---- shader-studio Slang entry points (generated) ----
+[shader("vertex")]
+float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position
+{
+    float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
+    return float4(verts[vertexID], 0, 1);
+}
+
+[shader("fragment")]
+float4 fragmentMain(float4 fragCoord : SV_Position) : SV_Target
+{
+    // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
+    float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);
+    return mainImage(coord);
+}
+`);
+  });
+
   it('runs a fullscreen vertex hook before returning clip-space position', () => {
     const source = wrapSlangImageSource(image, { vertexCode: vertex });
     expect(source).toContain(vertex);

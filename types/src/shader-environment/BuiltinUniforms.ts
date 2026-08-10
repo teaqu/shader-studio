@@ -1,9 +1,19 @@
 export interface ShaderStudioBuiltinUniform {
-  name: string;
-  glslType?: string;
-  slangType: string;
-  languages: readonly ("glsl" | "slang")[];
-  description: string;
+  readonly name: string;
+  readonly glslType?: string;
+  readonly slangType: string;
+  readonly languages: readonly ("glsl" | "slang")[];
+  readonly description: string;
+}
+
+function deepFreezeBuiltin<T extends ShaderStudioBuiltinUniform>(builtin: T): Readonly<T> {
+  return Object.freeze({ ...builtin, languages: Object.freeze([...builtin.languages]) });
+}
+
+function deepFreezeBuiltinCatalog(
+  builtins: readonly ShaderStudioBuiltinUniform[],
+): readonly Readonly<ShaderStudioBuiltinUniform>[] {
+  return Object.freeze(builtins.map(deepFreezeBuiltin));
 }
 
 export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
@@ -38,7 +48,7 @@ export const GLSL_DEFAULT_CHANNEL_DECLARATION_LINES = Object.freeze([
   "uniform vec3 iChannelResolution[16];",
 ] as const);
 
-export const SHADER_STUDIO_BUILTIN_UNIFORMS = Object.freeze([
+export const SHADER_STUDIO_BUILTIN_UNIFORMS = deepFreezeBuiltinCatalog([
   { name: "iResolution", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
   { name: "iTime", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Elapsed time in seconds." },
   { name: "iTimeDelta", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Time since the previous frame in seconds." },
@@ -52,6 +62,14 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS = Object.freeze([
   { name: "iSampleRate", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Normalised camera look direction." },
+  { name: "iChannel0", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "First input channel; its texture shape follows the configured resource." },
+  { name: "iChannel1", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "Second input channel; its texture shape follows the configured resource." },
+  { name: "iChannel2", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "Third input channel; its texture shape follows the configured resource." },
+  { name: "iChannel3", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "Fourth input channel; its texture shape follows the configured resource." },
+  { name: "iCh0", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "First input channel with sampler, size, playback time, and loaded state metadata." },
+  { name: "iCh1", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Second input channel with sampler, size, playback time, and loaded state metadata." },
+  { name: "iCh2", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Third input channel with sampler, size, playback time, and loaded state metadata." },
+  { name: "iCh3", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Fourth input channel with sampler, size, playback time, and loaded state metadata." },
 ] as const satisfies readonly ShaderStudioBuiltinUniform[]);
 
 export const SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES = Object.freeze([
