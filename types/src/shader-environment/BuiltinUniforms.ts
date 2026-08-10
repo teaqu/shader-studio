@@ -2,6 +2,8 @@ export interface ShaderStudioBuiltinUniform {
   readonly name: string;
   readonly glslType?: string;
   readonly slangType: string;
+  /** Concrete declaration emitted into standalone Slang authoring modules. */
+  readonly slangDeclaration?: string;
   readonly languages: readonly ("glsl" | "slang")[];
   readonly description: string;
 }
@@ -49,19 +51,19 @@ export const GLSL_DEFAULT_CHANNEL_DECLARATION_LINES = Object.freeze([
 ] as const);
 
 export const SHADER_STUDIO_BUILTIN_UNIFORMS = deepFreezeBuiltinCatalog([
-  { name: "iResolution", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
-  { name: "iTime", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Elapsed time in seconds." },
-  { name: "iTimeDelta", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Time since the previous frame in seconds." },
-  { name: "iFrameRate", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Current frames per second." },
-  { name: "iMouse", glslType: "vec4", slangType: "float4", languages: ["glsl", "slang"], description: "Mouse position in xy and click position in zw." },
-  { name: "iFrame", glslType: "int", slangType: "int", languages: ["glsl", "slang"], description: "Frame counter starting at zero." },
-  { name: "iDate", glslType: "vec4", slangType: "float4", languages: ["glsl", "slang"], description: "Year, month, day, and seconds since midnight." },
-  { name: "iChannelTime", glslType: "float[16]", slangType: "float[16]", languages: ["glsl", "slang"], description: "Playback time for each input channel." },
-  { name: "iChannelLoaded", slangType: "float[16]", languages: ["slang"], description: "Loaded state for each input channel in Slang." },
-  { name: "iChannelResolution", glslType: "vec3[16]", slangType: "float3[16]", languages: ["glsl", "slang"], description: "Resolution of each input channel." },
-  { name: "iSampleRate", glslType: "float", slangType: "float", languages: ["glsl", "slang"], description: "Audio sample rate in hertz." },
-  { name: "iCameraPos", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Camera position in world space." },
-  { name: "iCameraDir", glslType: "vec3", slangType: "float3", languages: ["glsl", "slang"], description: "Normalised camera look direction." },
+  { name: "iResolution", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iResolution;", languages: ["glsl", "slang"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
+  { name: "iTime", glslType: "float", slangType: "float", slangDeclaration: "float iTime;", languages: ["glsl", "slang"], description: "Elapsed time in seconds." },
+  { name: "iTimeDelta", glslType: "float", slangType: "float", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang"], description: "Time since the previous frame in seconds." },
+  { name: "iFrameRate", glslType: "float", slangType: "float", slangDeclaration: "float iFrameRate;", languages: ["glsl", "slang"], description: "Current frames per second." },
+  { name: "iMouse", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang"], description: "Mouse position in xy and click position in zw." },
+  { name: "iFrame", glslType: "int", slangType: "int", slangDeclaration: "int iFrame;", languages: ["glsl", "slang"], description: "Frame counter starting at zero." },
+  { name: "iDate", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang"], description: "Year, month, day, and seconds since midnight." },
+  { name: "iChannelTime", glslType: "float[16]", slangType: "float[16]", slangDeclaration: "float iChannelTime[16];", languages: ["glsl", "slang"], description: "Playback time for each input channel." },
+  { name: "iChannelLoaded", slangType: "float[16]", slangDeclaration: "float iChannelLoaded[16];", languages: ["slang"], description: "Loaded state for each input channel in Slang." },
+  { name: "iChannelResolution", glslType: "vec3[16]", slangType: "float3[16]", slangDeclaration: "float3 iChannelResolution[16];", languages: ["glsl", "slang"], description: "Resolution of each input channel." },
+  { name: "iSampleRate", glslType: "float", slangType: "float", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang"], description: "Audio sample rate in hertz." },
+  { name: "iCameraPos", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang"], description: "Camera position in world space." },
+  { name: "iCameraDir", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang"], description: "Normalised camera look direction." },
   { name: "iChannelN", glslType: "sampler2D | samplerCube | sampler3D", slangType: "sampleIChannelN(float2 | float3) helper", languages: ["glsl", "slang"], description: "Any renderer-assigned input channel; GLSL exposes the sampler, while Slang exposes the matching sampling helper. Slots follow configured input order and are not inferred from resource names." },
   { name: "iChannel0", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "First input channel; its texture shape follows the configured resource." },
   { name: "iChannel1", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl", "slang"], description: "Second input channel; its texture shape follows the configured resource." },

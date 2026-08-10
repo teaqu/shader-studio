@@ -5,6 +5,7 @@ import {
 } from "./BuiltinUniforms";
 import {
   deriveSlangChannelGeneratedIdentifiers,
+  isValidShaderIdentifier,
   resolveAuthoringChannelBindings,
   type AuthoringChannelBinding,
   type GeneratedAuthoringSource,
@@ -168,9 +169,14 @@ export function isSlangCustomUniformType(type: string): type is SlangCustomUnifo
 export function buildSlangAuthoringModule(
   environment: ShaderAuthoringEnvironment,
 ): GeneratedAuthoringSource {
-  const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+  const channelBindings = resolveAuthoringChannelBindings(environment.resources)
+    .filter(({ resource }) => isValidShaderIdentifier(resource.name));
   const resourceLines = environment.resources
-    .filter((resource) => resource.kind === "storage" && !/^iChannel\d+$/.test(resource.name))
+    .filter((resource) => (
+      resource.kind === "storage"
+      && isValidShaderIdentifier(resource.name)
+      && !/^iChannel\d+$/.test(resource.name)
+    ))
     .flatMap((resource) => {
       if (resource.kind === "storage") {
         const elementType = resource.elementType ?? "float4";
@@ -185,11 +191,10 @@ export function buildSlangAuthoringModule(
   const channelLines = buildSlangChannelDeclarations(channelBindings, environment.stage);
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
-      .filter((uniform) => !/^iChannel[0-3]$/.test(uniform.name) && !/^iCh[0-3]$/.test(uniform.name))
-      .map((uniform) => uniform.name === "iChannelResolution"
-      ? "float3 iChannelResolution[4];"
-      : `${uniform.slangType} ${uniform.name};`),
-    ...environment.customUniforms.map((uniform) => `${SLANG_AUTHORING_VALUE_TYPES[uniform.type]} ${uniform.name};`),
+      .flatMap((uniform) => uniform.slangDeclaration ? [uniform.slangDeclaration] : []),
+    ...environment.customUniforms
+      .filter((uniform) => isValidShaderIdentifier(uniform.name))
+      .map((uniform) => `${SLANG_AUTHORING_VALUE_TYPES[uniform.type]} ${uniform.name};`),
     ...resourceLines,
     ...channelLines,
     ...buildSlangChannelMetadata(channelBindings, environment.stage),

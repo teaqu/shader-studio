@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGlslAuthoringPreamble,
   buildSlangAuthoringModule,
+  deriveSlangChannelGeneratedIdentifiers,
   GLSL_STABLE_DECLARATION_LINES,
   SHADER_STUDIO_BUILTIN_UNIFORMS,
   SHADER_STUDIO_SYMBOL_DOCS,
@@ -54,6 +55,7 @@ describe("ShaderAuthoringEnvironment", () => {
     for (const slot of [0, 1, 2, 3]) {
       expect(slang.text).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
     }
+    expect(slang.text).not.toContain("sampleIChannelN(float2 | float3) helper iChannelN;");
   });
 
   it("describes custom uniforms and resources in both languages", () => {
@@ -346,6 +348,28 @@ describe("ShaderAuthoringEnvironment", () => {
     });
   });
 
+  it.each(["", "3d", "not valid", "sky-dome"])(
+    "keeps generated Slang APIs total and omits the malformed resource name %j",
+    (name) => {
+      const resource = { name, kind: "texture-2d" as const };
+      const environment = {
+        ...baseEnvironment("slang"),
+        resources: [resource],
+      };
+
+      expect(() => deriveSlangChannelGeneratedIdentifiers({ resource, slot: 0 })).not.toThrow();
+      expect(() => buildSlangAuthoringModule(environment)).not.toThrow();
+      expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+        code: "invalid-identifier",
+        message: `Resource "${name}" is not a valid shader identifier.`,
+      });
+
+      const generated = buildSlangAuthoringModule(environment).text;
+      expect(generated).not.toContain(`Texture2D<float4> ${name};`);
+      expect(generated).not.toContain(`SamplerState ${name}Sampler;`);
+    },
+  );
+
   it("reports invalid and duplicate identifiers across uniforms and resources without throwing", () => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -370,7 +394,7 @@ describe("ShaderAuthoringEnvironment", () => {
   });
 
   it.each([
-    ["float", "a GLSL and Slang keyword"],
+    ["float", "a GLSL scalar type"],
     ["uint", "a GLSL scalar type"],
     ["uvec2", "a GLSL vector type"],
     ["sampler2DShadow", "a GLSL sampler type"],
@@ -383,14 +407,10 @@ describe("ShaderAuthoringEnvironment", () => {
     ["subroutine", "a GLSL subroutine keyword"],
     ["usampler2D", "a GLSL unsigned integer sampler type"],
     ["usamplerCube", "a GLSL unsigned integer sampler type"],
-    ["import", "a Slang keyword"],
-    ["export", "a Slang keyword"],
-    ["groupshared", "a Slang storage keyword"],
-    ["shared", "a Slang storage keyword"],
+    ["shared", "a GLSL ES reserved word"],
     ["restrict", "a Slang qualifier"],
     ["patch", "a Slang interpolation qualifier"],
     ["sample", "a Slang interpolation qualifier"],
-    ["private", "a Slang access keyword"],
     ["mediump", "the active GLSL ES 300 default precision qualifier"],
     ["bvec4", "a GLSL ES vector type"],
     ["mat4x3", "a GLSL ES matrix type"],
@@ -398,20 +418,8 @@ describe("ShaderAuthoringEnvironment", () => {
     ["isamplerCube", "a GLSL ES signed sampler type"],
     ["usampler3D", "a GLSL ES unsigned sampler type"],
     ["attribute", "a GLSL ES reserved word"],
-    ["protected", "a Slang access keyword"],
-    ["internal", "a Slang access keyword"],
-    ["extension", "a Slang declaration keyword"],
-    ["this", "a Slang expression keyword"],
-    ["operator", "a Slang declaration keyword"],
-    ["defer", "a Slang statement keyword"],
-    ["mutating", "a Slang modifier"],
-    ["half3", "a Slang vector type"],
-    ["uint64_t", "a Slang scalar type"],
-    ["float16_t4", "an extended Slang floating-point vector type"],
-    ["int64_t2", "an extended Slang signed vector type"],
-    ["uint8_t3", "an extended Slang unsigned vector type"],
-    ["TextureCubeArray", "a Slang texture type"],
-    ["RWByteAddressBuffer", "a Slang buffer type"],
+    ["this", "a GLSL ES reserved word"],
+    ["operator", "a GLSL ES reserved word"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],
@@ -425,6 +433,87 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([
       { code: "reserved-identifier", message: `Custom uniform "${name}" conflicts with a Shader Studio built-in.` },
     ]);
+  });
+
+  it.each([
+    "import",
+    "export",
+    "groupshared",
+    "private",
+    "protected",
+    "internal",
+    "extension",
+    "defer",
+    "mutating",
+  ])("allows the Slang-only contextual identifier %s in GLSL", (name) => {
+    const environment = {
+      ...baseEnvironment("glsl"),
+      customUniforms: [{ name, type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    "protected",
+    "internal",
+    "extension",
+    "this",
+    "TextureCubeArray",
+    "RWByteAddressBuffer",
+    "half3",
+    "uint64_t",
+    "float16_t4",
+    "int64_t2",
+    "uint8_t3",
+    "gl_FragCoord",
+  ])("allows the compiler-usable Slang identifier %s", (name) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name, kind: "texture-2d" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each(["new", "operator"])("rejects the truly reserved Slang identifier %s", (name) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name, kind: "texture-2d" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([
+      { code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in.` },
+    ]);
+  });
+
+  it("allows mixed-shape generated Slang overloads while rejecting identical signatures", () => {
+    const mixedShape = {
+      ...baseEnvironment("slang"),
+      resources: [
+        { name: "sky", kind: "texture-2d" as const },
+        { name: "Sky", kind: "texture-cube" as const },
+      ],
+    };
+    const identicalShape = {
+      ...baseEnvironment("slang"),
+      resources: [
+        { name: "sky", kind: "texture-2d" as const },
+        { name: "Sky", kind: "texture-2d" as const },
+      ],
+    };
+
+    expect(validateShaderAuthoringEnvironment(mixedShape)).toEqual([]);
+    expect(validateShaderAuthoringEnvironment(identicalShape)).toEqual(expect.arrayContaining([
+      {
+        code: "generated-identifier-collision",
+        message: 'Generated Slang identifier "sampleSky" collides between resource "sky" and resource "Sky".',
+      },
+      {
+        code: "generated-identifier-collision",
+        message: 'Generated Slang identifier "sampleSkyVertex" collides between resource "sky" and resource "Sky".',
+      },
+    ]));
   });
 
   it("reports invalid storage element types without interpolating multiline source", () => {
