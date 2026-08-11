@@ -1,6 +1,6 @@
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { IVariableCapturer } from '../../../rendering/src/capture/VariableCapturer';
-import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
+import { VariableCaptureBuilder } from '@shader-studio/debug';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
 import type { ConfigInput, DebugInstrumentationPlan, DebugVisibleValue } from '@shader-studio/types';

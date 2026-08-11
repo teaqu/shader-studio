@@ -9,10 +9,9 @@ export default defineConfig({
   base: './', // Use relative paths for assets
   resolve: {
     alias: {
-      '@shader-studio/glsl-debug': path.resolve(__dirname, '../debug/src'),
+      '@shader-studio/debug': path.resolve(__dirname, '../debug/src'),
       '@shader-studio/monaco': path.resolve(__dirname, '../monaco/src'),
       '@shader-studio/rendering': path.resolve(__dirname, '../rendering/src'),
-      '@shader-studio/slang-debug': path.resolve(__dirname, '../slang-debug/src'),
       '@shader-studio/types': path.resolve(__dirname, '../types/src'),
     },
   },

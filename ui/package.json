@@ -25,10 +25,9 @@
     "svelte-eslint-parser": "^0.43.0"
   },
   "dependencies": {
-    "@shader-studio/glsl-debug": "*",
+    "@shader-studio/debug": "*",
     "@shader-studio/monaco": "*",
     "@shader-studio/rendering": "*",
-    "@shader-studio/slang-debug": "*",
     "@shader-studio/types": "*",
     "@vscode/codicons": "^0.0.45",
     "codejar": "^4.3.0",

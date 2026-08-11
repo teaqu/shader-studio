@@ -2,10 +2,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VariableCaptureManager, computeGridDimensions } from '../lib/VariableCaptureManager';
 import type { CapturedVariable } from '../lib/VariableCaptureManager';
-import { VariableCaptureBuilder } from '../../../debug/src/VariableCaptureBuilder';
+import { VariableCaptureBuilder } from '@shader-studio/debug';
 
 // Mock VariableCaptureBuilder — the static methods are swapped with spies
-vi.mock('../../../debug/src/VariableCaptureBuilder', () => ({
+vi.mock('@shader-studio/debug', () => ({
   VariableCaptureBuilder: {
     getAllInScopeVariables: vi.fn(),
     generateMultiCaptureShader: vi.fn(),

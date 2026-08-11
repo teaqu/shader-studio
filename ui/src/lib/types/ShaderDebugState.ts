@@ -3,9 +3,9 @@ export type {
   DebugParameterInfo,
   DebugLoopInfo,
   DebugFunctionContext,
-} from '@shader-studio/glsl-debug';
+} from '@shader-studio/debug';
 
-import type { DebugFunctionContext } from '@shader-studio/glsl-debug';
+import type { DebugFunctionContext } from '@shader-studio/debug';
 import type { CapturedVariable } from '../VariableCaptureManager';
 
 export type NormalizeMode = 'off' | 'soft' | 'abs';

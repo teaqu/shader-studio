@@ -27,7 +27,7 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: '@shader-studio/glsl-debug',
+        find: '@shader-studio/debug',
         replacement: path.resolve(__dirname, '../debug/src'),
       },
       {

@@ -1,11 +1,12 @@
 {
-  "name": "@shader-studio/glsl-debug",
+  "name": "@shader-studio/debug",
   "version": "0.0.1",
   "private": true,
   "main": "./dist/index.js",
+  "module": "./dist/esm/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -13,8 +14,13 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@shader-studio/types": "*",
+    "@shader-studio/utils": "*"
+  },
   "devDependencies": {
     "@shaderfrog/glsl-parser": "^7.0.1",
+    "typescript": "*",
     "vitest": "*"
   }
 }

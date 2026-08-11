@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { FileProfileAdapter } from '../../lib/profiles/FileProfileAdapter';
 import type { ProfileIndex, ProfileData } from '@shader-studio/types';
 
@@ -30,6 +30,11 @@ function makeAdapter(overrides: Partial<Record<keyof FileProfileAdapter, unknown
 }
 
 describe('profileStore', () => {
+  beforeAll(async () => {
+    // Transform the Svelte module graph once before per-test module isolation begins.
+    await import('../../lib/state/profileStore.svelte');
+  });
+
   beforeEach(() => {
     vi.resetModules();
   });

@@ -1,9 +1,8 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
-import { ShaderDebugger } from "@shader-studio/glsl-debug";
+import { ShaderDebugger, SlangDebugEngine } from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
 import type { DebugAnalysisRequest, DebugInstrumentationPlan, DebugVisibleValue } from "@shader-studio/types";
-import { SlangDebugEngine } from "@shader-studio/slang-debug";
 
 type ShaderDialect = 'glsl' | 'slang';
 

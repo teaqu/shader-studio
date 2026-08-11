@@ -11,7 +11,7 @@ Monorepo with Turborepo. Key packages:
 - `rendering/` — WebGL pipeline logic
 - `extension/` — VS Code extension host
 - `electron/` — Electron shell
-- `glsl-debug/` — GLSL debug tooling
+- `debug/` — Shared GLSL and Slang debug tooling
 
 Most frontend work happens in `ui/src/lib/`.
 

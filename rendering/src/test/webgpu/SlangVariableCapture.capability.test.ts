@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import SlangModuleFactory from "../../../../ui/src/slang/slang-wasm.js";
-import { SlangDebugEngine } from "../../../../slang-debug/src";
+import { SlangDebugEngine } from "../../../../debug/src";
 import {
   SlangCompiler,
   type SlangCompileOptions,

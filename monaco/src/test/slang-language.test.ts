@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   slangAttributeKeywords,
@@ -156,6 +156,20 @@ function dottedNumberCorpus(): string[] {
 }
 
 describe('Slang Monarch language', () => {
+  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api');
+
+  beforeAll(async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
+    setupMonacoGlsl(monaco);
+    setupMonacoSlang(monaco);
+  }, 30_000);
+
   it('defines the same concrete vocabulary families as the extension grammar', () => {
     expect(sorted(slangControlKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.control.flow.slang')));
     expect(sorted(slangDeclarationKeywords)).toEqual(vocabulary(findPattern('keywords', 'keyword.declaration.slang')));
@@ -231,16 +245,7 @@ describe('Slang Monarch language', () => {
     }
   });
 
-  it('highlights the Slang language directive as a dedicated keyword', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('highlights the Slang language directive as a dedicated keyword', () => {
     const tokens = monaco.editor.tokenize('#language "slang" // shader language', 'slang')[0];
 
     expect(tokens.map(({ offset, type }) => ({ offset, type }))).toEqual([
@@ -255,19 +260,9 @@ describe('Slang Monarch language', () => {
         (rule) => rule.token === 'keyword.preprocessor.language',
       )?.foreground,
     ).toBe('FF70FF');
-  }, 15_000);
+  });
 
-  it('maps representative Slang and GLSL tokens to the same overlay colours', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
-    setupMonacoGlsl(monaco);
-    setupMonacoSlang(monaco);
-
+  it('maps representative Slang and GLSL tokens to the same overlay colours', () => {
     const colorFor = (tokenType: string): string | undefined => shaderStudioTheme.rules
       .filter((rule) => tokenType === rule.token || tokenType.startsWith(`${rule.token}.`))
       .sort((left, right) => right.token.length - left.token.length)[0]?.foreground;
@@ -305,19 +300,9 @@ describe('Slang Monarch language', () => {
         `${slangText}: ${slangType} must match ${glslType}`,
       ).toBe(colorFor(glslType));
     }
-  }, 15_000);
+  });
 
-  it('highlights control flow and user functions while keeping members neutral', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
-    setupMonacoGlsl(monaco);
-    setupMonacoSlang(monaco);
-
+  it('highlights control flow and user functions while keeping members neutral', () => {
     const sourceLines = [
       'float shade(float value) {',
       '  if (value > 0.0) {',
@@ -375,16 +360,7 @@ describe('Slang Monarch language', () => {
     }
   });
 
-  it('covers the remaining GLSL theme-facing vocabulary families', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoGlsl } = await import('../setup');
-    setupMonacoGlsl(monaco);
-
+  it('covers the remaining GLSL theme-facing vocabulary families', () => {
     const sourceLines = [
       'layout(std430) sample readonly buffer Data { dvec3 value; };',
       'uniform dmat4x4 transform;',
@@ -433,16 +409,7 @@ describe('Slang Monarch language', () => {
     }
   });
 
-  it('colours Slang-native functions, uniforms, and constants by GLSL category', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('colours Slang-native functions, uniforms, and constants by GLSL category', () => {
     const source = 'float4x4 transform; float16_t2x3 compact; '
       + 'lerp(frac(iTime), saturate(value), 0.5); '
       + 'texture.Sample(sampler, uv); null none';
@@ -457,16 +424,7 @@ describe('Slang Monarch language', () => {
     expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
   });
 
-  it('colours every Slang numeric family and preprocessor value as a number', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('colours every Slang numeric family and preprocessor value as a number', () => {
     const literals = [
       '0x1.fp3',
       '0x1#INF',
@@ -489,31 +447,13 @@ describe('Slang Monarch language', () => {
     expect(preprocessorTokens.map((token) => token.type)).toContain('number.slang');
   });
 
-  it('colours Slang raw strings as strings from prefix through terminator', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('colours Slang raw strings as strings from prefix through terminator', () => {
     const tokens = monaco.editor.tokenize('R"tag(raw text)tag"', 'slang')[0];
     expect(tokens.map(({ offset, type, language }) => ({ offset, type, language })))
       .toEqual([{ offset: 0, type: 'string.slang', language: 'slang' }]);
   });
 
-  it('keeps adjacent same-line raw strings separate', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('keeps adjacent same-line raw strings separate', () => {
     const types = monaco.editor.tokenize(
       'R"a(first)a" float4 value; R"a(second)a"',
       'slang',
@@ -524,16 +464,7 @@ describe('Slang Monarch language', () => {
     expect(types).toContain('identifier.slang');
   });
 
-  it('emits runtime categories for attributes and malformed literals', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('emits runtime categories for attributes and malformed literals', () => {
     const types = monaco.editor.tokenize(
       '[numthreads(8, 8, 1)] 08 "unfinished',
       'slang',
@@ -544,16 +475,7 @@ describe('Slang Monarch language', () => {
     expect(types).toContain('string.invalid.slang');
   });
 
-  it('keeps multiline raw strings active until their matching delimiter', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('keeps multiline raw strings active until their matching delimiter', () => {
     const lines = monaco.editor.tokenize(
       'R"a.b(first line\n)other"\nthird line\n)a.b"\nfloat4 value;',
       'slang',
@@ -587,16 +509,7 @@ describe('Slang Monarch language', () => {
     }
   });
 
-  it('keeps actual Monaco number ranges aligned with full-source TextMate semantics', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
-    const { setupMonacoSlang } = await import('../setup');
-    setupMonacoSlang(monaco);
-
+  it('keeps actual Monaco number ranges aligned with full-source TextMate semantics', () => {
     const textMateNumbers = grammar.repository.numbers.patterns!
       .map((entry) => new RegExp(entry.match));
     const standaloneDiscrepancies: Array<{
