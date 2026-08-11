@@ -211,6 +211,162 @@ describe("parseGlslDocument", () => {
     expect(intScalarOverload?.references).toHaveLength(1);
   });
 
+  it("resolves array overloads by every known extent independently of declaration order", () => {
+    const definitions = [
+      "int pick(int values[2]) { return 2; }",
+      "int pick(int values[3]) { return 3; }",
+    ];
+
+    for (const [index, orderedDefinitions] of [definitions, [...definitions].reverse()].entries()) {
+      const source = [
+        ...orderedDefinitions,
+        "int two[2], three[3], four[4];",
+        "void exercise() {",
+        "  int selectedTwo = pick(two);",
+        "  int selectedThree = pick(three);",
+        "  int selectedFour = pick(four);",
+        "}",
+      ].join("\n");
+      const document = parseGlslDocument(`file:///array-overloads-${index}.glsl`, source, "fragment");
+      const extentTwo = document.symbols.find((symbol) => (
+        symbol.kind === "function" && symbol.name === "pick" && symbol.definition.start.line === orderedDefinitions.indexOf(definitions[0])
+      ));
+      const extentThree = document.symbols.find((symbol) => (
+        symbol.kind === "function" && symbol.name === "pick" && symbol.definition.start.line === orderedDefinitions.indexOf(definitions[1])
+      ));
+      const firstCallLine = orderedDefinitions.length + 2;
+
+      expect(symbolAtPosition(document, { line: firstCallLine, character: 22 })?.id).toBe(extentTwo?.id);
+      expect(symbolAtPosition(document, { line: firstCallLine + 1, character: 24 })?.id).toBe(extentThree?.id);
+      expect(symbolAtPosition(document, { line: firstCallLine + 2, character: 23 })).toBeNull();
+      expect(extentTwo?.references).toHaveLength(1);
+      expect(extentThree?.references).toHaveLength(1);
+    }
+  });
+
+  it("does not equate an unknown array extent with a known overload extent", () => {
+    const source = [
+      "int pick(int values[2]) { return 2; }",
+      "int extent = 2;",
+      "int unknown[extent];",
+      "void exercise() {",
+      "  int selected = pick(unknown);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///unknown-array-extent.glsl", source, "fragment");
+
+    expect(document.diagnostics).toEqual([]);
+    expect(symbolAtPosition(document, { line: 4, character: 18 })).toBeNull();
+    expect(document.symbols.find((symbol) => symbol.name === "pick")?.references).toEqual([]);
+  });
+
+  it("retains array extents through function returns and struct fields", () => {
+    const source = [
+      "int pick(int values[2]) { return 2; }",
+      "int pick(int values[3]) { return 3; }",
+      "int[2] makeTwo() { int values[2]; return values; }",
+      "struct Holder { int values[3]; };",
+      "Holder holder;",
+      "void exercise() {",
+      "  int returned = pick(makeTwo());",
+      "  int field = pick(holder.values);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///array-shape-producers.glsl", source, "fragment");
+    const extentTwo = document.symbols.find((symbol) => (
+      symbol.kind === "function" && symbol.name === "pick" && symbol.definition.start.line === 0
+    ));
+    const extentThree = document.symbols.find((symbol) => (
+      symbol.kind === "function" && symbol.name === "pick" && symbol.definition.start.line === 1
+    ));
+
+    expect(symbolAtPosition(document, { line: 6, character: 17 })?.id).toBe(extentTwo?.id);
+    expect(symbolAtPosition(document, { line: 7, character: 14 })?.id).toBe(extentThree?.id);
+  });
+
+  it("validates array, vector, and matrix subscript types before resolving overloads", () => {
+    const definitions = [
+      "int choose(int value) { return value; }",
+      "float choose(float value) { return value; }",
+      "vec2 choose(vec2 value) { return value; }",
+    ];
+    const calls = [
+      ["  int signedArray = choose(values[1]);", "int choose(int)"],
+      ["  int unsignedArray = choose(values[uint(1)]);", "int choose(int)"],
+      ["  int floatArray = choose(values[1.0]);", undefined],
+      ["  int boolArray = choose(values[true]);", undefined],
+      ["  int vectorArray = choose(values[ivec2(0)]);", undefined],
+      ["  float signedVector = choose(vector[1]);", "float choose(float)"],
+      ["  float unsignedVector = choose(vector[uint(1)]);", "float choose(float)"],
+      ["  float floatVector = choose(vector[1.0]);", undefined],
+      ["  vec2 signedMatrix = choose(matrix[1]);", "vec2 choose(vec2)"],
+      ["  vec2 unsignedMatrix = choose(matrix[uint(1)]);", "vec2 choose(vec2)"],
+      ["  vec2 boolMatrix = choose(matrix[true]);", undefined],
+    ] as const;
+
+    for (const [index, orderedDefinitions] of [definitions, [...definitions].reverse()].entries()) {
+      const lines = [
+        ...orderedDefinitions,
+        "void exercise(int values[2], vec3 vector, mat3x2 matrix) {",
+        ...calls.map(([source]) => source),
+        "}",
+      ];
+      const document = parseGlslDocument(
+        `file:///validated-subscripts-${index}.glsl`,
+        lines.join("\n"),
+        "fragment",
+      );
+
+      for (const [callIndex, [source, signature]] of calls.entries()) {
+        const symbol = symbolAtPosition(document, {
+          line: orderedDefinitions.length + 1 + callIndex,
+          character: source.indexOf("choose") + 2,
+        });
+        expect(symbol?.signature, `${index}:${source}`).toBe(signature);
+      }
+    }
+  });
+
+  it("consumes multidimensional array extents in source order", () => {
+    const source = [
+      "int chooseRow(int value[2]) { return 2; }",
+      "int chooseRow(int value[3]) { return 3; }",
+      "int chooseScalar(int value) { return value; }",
+      "int grid[2][3];",
+      "void exercise() {",
+      "  int row = chooseRow(grid[1]);",
+      "  int scalar = chooseScalar(grid[1][2]);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///multidimensional-indexing.glsl", source, "fragment");
+    const extentThree = document.symbols.find((symbol) => (
+      symbol.kind === "function" && symbol.name === "chooseRow" && symbol.definition.start.line === 1
+    ));
+    const scalar = document.symbols.find((symbol) => symbol.signature === "int chooseScalar(int)");
+
+    expect(symbolAtPosition(document, { line: 5, character: 14 })?.id).toBe(extentThree?.id);
+    expect(symbolAtPosition(document, { line: 6, character: 17 })?.id).toBe(scalar?.id);
+  });
+
+  it("resolves array equality only for compiler-compatible complete shapes", () => {
+    const source = [
+      "bool choose(bool value) { return value; }",
+      "int sameLeft[2];",
+      "int sameRight[2];",
+      "int different[3];",
+      "void exercise() {",
+      "  bool same = choose(sameLeft == sameRight);",
+      "  bool mismatch = choose(sameLeft == different);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///array-equality.glsl", source, "fragment");
+    const choose = document.symbols.find((symbol) => symbol.signature === "bool choose(bool)");
+
+    expect(symbolAtPosition(document, { line: 5, character: 16 })?.id).toBe(choose?.id);
+    expect(symbolAtPosition(document, { line: 6, character: 20 })).toBeNull();
+    expect(choose?.references).toHaveLength(1);
+  });
+
   it("resolves GLSL ES binary operator shapes without claiming invalid expressions", () => {
     const definitions = [
       "vec3 choose(vec3 value) { return value; }",
@@ -541,6 +697,28 @@ describe("parseGlslDocument", () => {
       )).toBe(fieldName);
       expect(symbolAtPosition(document, field!.declaration.start)?.id).toBe(field?.id);
     }
+
+    const samplerUsageLine = preamble.split("\n").length + 1;
+    const samplerUsage = source.split("\n")[samplerUsageLine]!;
+    const iCh0Sampler = symbolAtPosition(document, {
+      line: samplerUsageLine,
+      character: samplerUsage.indexOf(".sampler") + 1,
+    });
+    const anonymousScopes = document.scopes.filter((scope) => scope.id === iCh0Sampler?.scopeId);
+
+    expect(anonymousScopes).toHaveLength(1);
+    expect(anonymousScopes[0]?.name).toBe("anonymous struct");
+    expect(anonymousScopes[0]?.name).not.toContain("@anonymous-struct:");
+    expect(repeated.scopes.find((scope) => scope.id === anonymousScopes[0]?.id)).toEqual(anonymousScopes[0]);
+    expect(document.symbols.every((symbol) => (
+      !symbol.typeName?.startsWith("@array:")
+      && !symbol.typeName?.startsWith("@anonymous-struct:")
+      && !symbol.signature?.startsWith("@array:")
+      && !symbol.signature?.startsWith("@anonymous-struct:")
+    ))).toBe(true);
+    expect(document.scopes.every((scope) => (
+      !scope.name.startsWith("@array:") && !scope.name.startsWith("@anonymous-struct:")
+    ))).toBe(true);
   });
 
   it("propagates field types through chained and indexed selectors", () => {
@@ -549,7 +727,7 @@ describe("parseGlslDocument", () => {
       "struct Outer { Inner inner; vec3 color; };",
       "uniform Outer outer;",
       "uniform Outer lights[2];",
-      "void f(){ float a=outer.inner.value; vec3 b=lights[0].color; }",
+      "void f(){ float a=outer.inner.value; vec3 b=lights[0].color; vec3 c=lights[true].color; }",
       "",
     ].join("\n");
     const document = parseGlslDocument("file:///field-chains.glsl", source, "fragment");
@@ -563,6 +741,7 @@ describe("parseGlslDocument", () => {
     expect(inner?.references).toHaveLength(1);
     expect(value?.references).toHaveLength(1);
     expect(color?.references).toHaveLength(1);
+    expect(symbolAtPosition(document, { line: 4, character: 82 })).toBeNull();
   });
 
   it("resolves indexed field chains rooted in calls and grouped expressions", () => {

@@ -63,6 +63,13 @@ interface DeclarationMetadata {
   readonly resolvedTypeName?: string;
 }
 
+type ArrayExtent = number | undefined;
+
+interface ResolvedArrayType {
+  readonly elementType: string;
+  readonly dimensions: readonly ArrayExtent[];
+}
+
 interface FieldMetadata {
   readonly name: string;
   readonly typeName?: string;
@@ -427,7 +434,13 @@ function normalizeProgram(
     );
   }
 
-  return { symbols, scopes: mutableScopes };
+  return {
+    symbols,
+    scopes: mutableScopes.map((scope) => ({
+      ...scope,
+      name: publicScopeName(scope.name),
+    })),
+  };
 }
 
 function parserScopeKind(
@@ -466,15 +479,15 @@ function collectDeclarationMetadata(
 
   if (value.type === "declarator_list") {
     const declarationMetadata = extractDeclarationMetadata(value.specified_type);
-    const specifiedArrayDepth = arrayQuantifierDepth(value.specified_type);
+    const specifiedArrayDimensions = arrayQuantifierDimensions(value.specified_type);
     for (const declaration of nodeArray(value.declarations)) {
       const identifier = identifierNode(declaration);
       if (identifier?.location) {
         metadata.set(
           identifier.location.start.offset,
-          withArrayDepth(
+          withArrayDimensions(
             declarationMetadata,
-            specifiedArrayDepth + arrayQuantifierDepth(declaration),
+            [...specifiedArrayDimensions, ...arrayQuantifierDimensions(declaration)],
           ),
         );
       }
@@ -487,7 +500,7 @@ function collectDeclarationMetadata(
       for (const structDeclaration of nodeArray(value.declarations)) {
         const declarator = asNode(structDeclaration.declaration);
         const fieldType = extractDeclarationMetadata(declarator?.specified_type);
-        const specifiedArrayDepth = arrayQuantifierDepth(declarator?.specified_type);
+        const specifiedArrayDimensions = arrayQuantifierDimensions(declarator?.specified_type);
         for (const declaration of nodeArray(declarator?.declarations)) {
           const identifier = identifierNode(declaration);
           const name = identifierValue(identifier);
@@ -495,9 +508,9 @@ function collectDeclarationMetadata(
             fields.push({
               name,
               typeName: fieldType.typeName,
-              resolvedTypeName: withArrayDepth(
+              resolvedTypeName: withArrayDimensions(
                 fieldType,
-                specifiedArrayDepth + arrayQuantifierDepth(declaration),
+                [...specifiedArrayDimensions, ...arrayQuantifierDimensions(declaration)],
               ).resolvedTypeName,
               location: identifier.location,
               ownerName,
@@ -585,7 +598,11 @@ function resolveFieldOwnerType(
   );
   for (const operation of reference.precedingOperations) {
     if (operation.type === "quantifier") {
-      ownerType = ownerType ? indexedType(ownerType) : undefined;
+      const indexExpression = asNode(operation.expression);
+      const indexType = indexExpression
+        ? resolveExpressionType(scopes, metadata, fields, indexExpression)
+        : undefined;
+      ownerType = ownerType && isValidIndexType(indexType) ? indexedType(ownerType) : undefined;
     } else if (operation.type === "field_selection") {
       const fieldName = identifierValue(asNode(operation.selection));
       ownerType = fields.find((field) => (
@@ -683,7 +700,11 @@ function resolveExpressionType(
     let ownerType = root ? resolveExpressionType(scopes, metadata, fields, root) : undefined;
     for (const operation of flattenPostfixOperations(asNode(expression.postfix))) {
       if (operation.type === "quantifier") {
-        ownerType = ownerType ? indexedType(ownerType) : undefined;
+        const indexExpression = asNode(operation.expression);
+        const indexType = indexExpression
+          ? resolveExpressionType(scopes, metadata, fields, indexExpression)
+          : undefined;
+        ownerType = ownerType && isValidIndexType(indexType) ? indexedType(ownerType) : undefined;
         if (!ownerType) {
           return undefined;
         }
@@ -724,7 +745,7 @@ function resolveFunctionReturnTypeAtReference(
   const header = asNode(prototype?.header);
   const returnType = extractTypeName(header?.returnType);
   return returnType
-    ? encodeArrayType(returnType, arrayQuantifierDepth(header?.returnType))
+    ? encodeArrayType(returnType, arrayQuantifierDimensions(header?.returnType))
     : encodeParserArrayType(normalizeParserType(definition.returnType));
 }
 
@@ -770,7 +791,7 @@ function resolvedFunctionParameterTypes(definition: ParserFunctionDefinition): r
     .map((parameter) => {
       const typeName = extractTypeName(parameter.specifier);
       return typeName
-        ? encodeArrayType(typeName, arrayQuantifierDepth(parameter))
+        ? encodeArrayType(typeName, arrayQuantifierDimensions(parameter))
         : undefined;
     });
   if (declaredParameterTypes.every((type): type is string => type !== undefined)) {
@@ -914,9 +935,9 @@ function isNumericAggregateWithComponent(aggregateType: string, componentType: s
 function indexedType(typeName: string): string | undefined {
   const arrayType = decodeArrayType(typeName);
   if (arrayType) {
-    return arrayType.depth === 1
+    return arrayType.dimensions.length === 1
       ? arrayType.elementType
-      : encodeArrayType(arrayType.elementType, arrayType.depth - 1);
+      : encodeArrayType(arrayType.elementType, arrayType.dimensions.slice(1));
   }
   const vector = vectorType(typeName);
   if (vector) {
@@ -928,6 +949,10 @@ function indexedType(typeName: string): string | undefined {
     return `${matrix[1]}vec${rowCount}`;
   }
   return undefined;
+}
+
+function isValidIndexType(typeName: string | undefined): boolean {
+  return typeName === "int" || typeName === "uint";
 }
 
 interface MatrixType {
@@ -956,7 +981,7 @@ function matrixTypeName(componentType: MatrixType["componentType"], columns: num
 function canonicalTypeName(typeName: string): string {
   const array = decodeArrayType(typeName);
   if (array) {
-    return encodeArrayType(canonicalTypeName(array.elementType), array.depth);
+    return encodeArrayType(canonicalTypeName(array.elementType), array.dimensions);
   }
   const matrix = matrixType(typeName);
   return matrix
@@ -1045,7 +1070,7 @@ function resolveBindingTypeAtReference(
     if (entry.declaration.type === "parameter_declaration") {
       const typeName = extractTypeName(entry.declaration.specifier);
       return typeName
-        ? encodeArrayType(typeName, arrayQuantifierDepth(entry.declaration))
+        ? encodeArrayType(typeName, arrayQuantifierDimensions(entry.declaration))
         : undefined;
     }
     const declarationLocation = identifierNode(entry.declaration, bindingName)?.location;
@@ -1466,41 +1491,94 @@ function extractDeclarationMetadata(value: unknown): DeclarationMetadata {
   };
 }
 
-function withArrayDepth(metadata: DeclarationMetadata, depth: number): DeclarationMetadata {
-  return depth > 0 && metadata.resolvedTypeName
-    ? { ...metadata, resolvedTypeName: encodeArrayType(metadata.resolvedTypeName, depth) }
+function withArrayDimensions(
+  metadata: DeclarationMetadata,
+  dimensions: readonly ArrayExtent[],
+): DeclarationMetadata {
+  return dimensions.length > 0 && metadata.resolvedTypeName
+    ? { ...metadata, resolvedTypeName: encodeArrayType(metadata.resolvedTypeName, dimensions) }
     : metadata;
 }
 
-function arrayQuantifierDepth(value: unknown): number {
+function arrayQuantifierDimensions(value: unknown): readonly ArrayExtent[] {
   if (!isNode(value)) {
-    return 0;
+    return [];
   }
-  const ownDepth = Array.isArray(value.quantifier)
-    ? value.quantifier.filter(isNode).length
-    : isNode(value.quantifier) ? 1 : 0;
-  return ownDepth + arrayQuantifierDepth(value.specifier);
+  const quantifiers = Array.isArray(value.quantifier)
+    ? value.quantifier.filter(isNode)
+    : isNode(value.quantifier) ? [value.quantifier] : [];
+  return [
+    ...arrayQuantifierDimensions(value.specifier),
+    ...quantifiers.map((quantifier) => arrayExtent(asNode(quantifier.expression))),
+  ];
 }
 
-function encodeArrayType(elementType: string, depth: number): string {
-  return depth > 0 ? `${ARRAY_TYPE_PREFIX}${depth}:${elementType}` : elementType;
+function arrayExtent(expression: ParserNode | undefined): ArrayExtent {
+  if (!expression || expression.type !== "int_constant" || typeof expression.token !== "string") {
+    return undefined;
+  }
+  const token = expression.token.replace(/[uU]$/, "");
+  if (!/^(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9]\d*)$/.test(token)) {
+    return undefined;
+  }
+  const radix = /^0[xX]/.test(token) ? 16 : /^0[0-7]+$/.test(token) ? 8 : 10;
+  const extent = Number.parseInt(token.replace(/^0[xX]/, ""), radix);
+  return Number.isSafeInteger(extent) && extent >= 0 ? extent : undefined;
 }
 
-function decodeArrayType(typeName: string): { elementType: string; depth: number } | undefined {
-  const match = /^@array:(\d+):(.+)$/.exec(typeName);
+function encodeArrayType(elementType: string, dimensions: readonly ArrayExtent[]): string {
+  if (dimensions.length === 0) {
+    return elementType;
+  }
+  const encodedDimensions = dimensions.map((extent) => extent ?? "?").join(",");
+  return `${ARRAY_TYPE_PREFIX}${encodedDimensions}:${elementType}`;
+}
+
+function decodeArrayType(typeName: string): ResolvedArrayType | undefined {
+  const match = /^@array:([^:]+):(.+)$/.exec(typeName);
   if (!match) {
     return undefined;
   }
-  return { depth: Number(match[1]), elementType: match[2] };
+  const dimensions = match[1].split(",").map((encoded): ArrayExtent | null => {
+    if (encoded === "?") {
+      return undefined;
+    }
+    if (!/^(?:0|[1-9]\d*)$/.test(encoded)) {
+      return null;
+    }
+    const extent = Number(encoded);
+    return Number.isSafeInteger(extent) ? extent : null;
+  });
+  if (dimensions.length === 0 || dimensions.some((extent) => extent === null)) {
+    return undefined;
+  }
+  return {
+    elementType: match[2],
+    dimensions: dimensions as ArrayExtent[],
+  };
 }
 
 function encodeParserArrayType(typeName: string | undefined): string | undefined {
   if (!typeName) {
     return undefined;
   }
-  const quantifiers = typeName.match(/\[[^\]]*\]/g) ?? [];
-  const elementType = typeName.replace(/\[[^\]]*\]/g, "");
-  return encodeArrayType(elementType, quantifiers.length);
+  const match = /^([^\[\]]+)((?:\[[^\[\]]*\])*)$/.exec(typeName);
+  if (!match || match[2].length === 0) {
+    return typeName;
+  }
+  const dimensions = [...match[2].matchAll(/\[([^\[\]]*)\]/g)]
+    .map((quantifier): ArrayExtent => parserArrayExtent(quantifier[1]));
+  return encodeArrayType(match[1], dimensions);
+}
+
+function parserArrayExtent(value: string): ArrayExtent {
+  const token = value.trim().replace(/[uU]$/, "");
+  if (!/^(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9]\d*)$/.test(token)) {
+    return undefined;
+  }
+  const radix = /^0[xX]/.test(token) ? 16 : /^0[0-7]+$/.test(token) ? 8 : 10;
+  const extent = Number.parseInt(token.replace(/^0[xX]/, ""), radix);
+  return Number.isSafeInteger(extent) && extent >= 0 ? extent : undefined;
 }
 
 function findStructNode(value: unknown): ParserNode | undefined {
@@ -1517,6 +1595,10 @@ function anonymousStructIdentity(node: ParserNode): string | undefined {
   return node.location
     ? `@anonymous-struct:${node.location.start.offset}:${node.location.end.offset}`
     : undefined;
+}
+
+function publicScopeName(name: string): string {
+  return name.startsWith("@anonymous-struct:") ? "anonymous struct" : name;
 }
 
 function nodeArray(value: unknown): readonly ParserNode[] {
