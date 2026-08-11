@@ -73,9 +73,14 @@ interface FieldMetadata {
 interface FieldReferenceMetadata {
   readonly fieldName: string;
   readonly selection: ParserNode;
-  readonly rootName: string;
-  readonly rootOffset: number;
+  readonly root: ParserNode;
   readonly precedingFields: readonly string[];
+}
+
+interface FunctionCallMetadata {
+  readonly name: string;
+  readonly identifier: ParserNode;
+  readonly arguments: readonly ParserNode[];
 }
 
 interface MutableScope {
@@ -123,6 +128,7 @@ export function parseGlslDocument(
       "syntax",
       error,
       originalLines,
+      processedLines,
       lineMapping.processedToOriginal,
     ));
   }
@@ -221,7 +227,8 @@ function normalizeProgram(
   const metadata = new Map<number, DeclarationMetadata>();
   const fields: FieldMetadata[] = [];
   const fieldReferences: FieldReferenceMetadata[] = [];
-  collectDeclarationMetadata(parsed.program ?? [], metadata, fields, fieldReferences);
+  const functionCalls: FunctionCallMetadata[] = [];
+  collectDeclarationMetadata(parsed.program ?? [], metadata, fields, fieldReferences, functionCalls);
 
   const scopeIds = new Map<ParserScope, string>();
   parserScopes.forEach((scope, index) => scopeIds.set(scope, `scope:${index}`));
@@ -273,13 +280,22 @@ function normalizeProgram(
       processedLines,
       processedToOriginal,
       characterMaps,
-    ) ?? mapGeneratedDeclarationLocation(
+    ) ?? mapGeneratedLocation(
       declarationLocation,
       originalLines,
       processedLines,
       processedToOriginal,
       characterMaps,
     );
+    const mappedDefinition = mapLocation(
+      declarationNode.location ?? declarationLocation,
+      originalLines,
+      processedLines,
+      processedToOriginal,
+    );
+    const definition = rangeContainsRange(mappedDefinition, declaration)
+      ? mappedDefinition
+      : declaration;
     const mappedReferences = references
       .map((reference) => identifierNode(reference, name)?.location)
       .filter((location): location is ParserLocation => location !== undefined)
@@ -301,6 +317,7 @@ function normalizeProgram(
       typeName,
       signature,
       declaration,
+      definition,
       references: deduplicateRanges(mappedReferences),
       scopeId: scope.id,
     });
@@ -328,6 +345,10 @@ function normalizeProgram(
     }
 
     for (const [name, overloads] of Object.entries(parserScope.functions)) {
+      const namedCalls = functionCalls.filter((call) => call.name === name);
+      const callOffsets = new Set(namedCalls
+        .map((call) => call.identifier.location?.start.offset)
+        .filter((offset): offset is number => offset !== undefined));
       for (const definition of Object.values(overloads)) {
         if (!definition.declaration) {
           continue;
@@ -346,7 +367,25 @@ function normalizeProgram(
           name,
           "function",
           definition.declaration,
-          definition.references,
+          [
+            ...definition.references.filter((reference) => {
+              const offset = identifierNode(reference, name)?.location?.start.offset;
+              return offset === undefined || !callOffsets.has(offset);
+            }),
+            ...namedCalls
+            .filter((call) => selectFunctionDefinition(
+              parserScopes,
+              call.name,
+              call.identifier.location?.start.offset ?? -1,
+              call.arguments.map((argument) => resolveExpressionType(
+                parserScopes,
+                metadata,
+                fields,
+                argument,
+              )),
+            ) === definition)
+            .map((call) => call.identifier),
+          ],
           returnType,
           returnType ? `${returnType} ${name}(${parameterTypes.join(", ")})` : undefined,
         );
@@ -417,9 +456,10 @@ function collectDeclarationMetadata(
   metadata: Map<number, DeclarationMetadata>,
   fields: FieldMetadata[],
   fieldReferences: FieldReferenceMetadata[],
+  functionCalls: FunctionCallMetadata[],
 ): void {
   if (Array.isArray(value)) {
-    value.forEach((entry) => collectDeclarationMetadata(entry, metadata, fields, fieldReferences));
+    value.forEach((entry) => collectDeclarationMetadata(entry, metadata, fields, fieldReferences, functionCalls));
     return;
   }
   if (!isNode(value)) {
@@ -461,8 +501,7 @@ function collectDeclarationMetadata(
 
   if (value.type === "postfix") {
     const root = asNode(value.expression);
-    const rootName = identifierValue(root);
-    if (rootName && root?.location) {
+    if (root?.location) {
       const precedingFields: string[] = [];
       for (const operation of flattenPostfixOperations(asNode(value.postfix))) {
         if (operation.type !== "field_selection") {
@@ -476,8 +515,7 @@ function collectDeclarationMetadata(
         fieldReferences.push({
           fieldName,
           selection,
-          rootName,
-          rootOffset: root.location.start.offset,
+          root,
           precedingFields: [...precedingFields],
         });
         precedingFields.push(fieldName);
@@ -485,9 +523,22 @@ function collectDeclarationMetadata(
     }
   }
 
+  if (value.type === "function_call") {
+    const callIdentifier = asNode(value.identifier);
+    const name = identifierValue(callIdentifier) ?? extractTypeName(callIdentifier);
+    const identifier = identifierNode(callIdentifier, name);
+    if (name && identifier) {
+      functionCalls.push({
+        name,
+        identifier,
+        arguments: nodeArray(value.args),
+      });
+    }
+  }
+
   for (const [key, child] of Object.entries(value)) {
     if (key !== "location") {
-      collectDeclarationMetadata(child, metadata, fields, fieldReferences);
+      collectDeclarationMetadata(child, metadata, fields, fieldReferences, functionCalls);
     }
   }
 }
@@ -512,11 +563,11 @@ function resolveFieldOwnerType(
   fields: readonly FieldMetadata[],
   reference: FieldReferenceMetadata,
 ): string | undefined {
-  let ownerType = resolveBindingTypeAtReference(
+  let ownerType = resolveExpressionType(
     scopes,
     metadata,
-    reference.rootName,
-    reference.rootOffset,
+    fields,
+    reference.root,
   );
   for (const fieldName of reference.precedingFields) {
     ownerType = fields.find((field) => (
@@ -527,6 +578,120 @@ function resolveFieldOwnerType(
     }
   }
   return ownerType;
+}
+
+function resolveExpressionType(
+  scopes: readonly ParserScope[],
+  metadata: ReadonlyMap<number, DeclarationMetadata>,
+  fields: readonly FieldMetadata[],
+  expression: ParserNode,
+): string | undefined {
+  if (expression.type === "identifier") {
+    const name = identifierValue(expression);
+    return name && expression.location
+      ? resolveBindingTypeAtReference(scopes, metadata, name, expression.location.start.offset)
+      : undefined;
+  }
+  if (expression.type === "group") {
+    const grouped = asNode(expression.expression);
+    return grouped ? resolveExpressionType(scopes, metadata, fields, grouped) : undefined;
+  }
+  if (expression.type === "function_call") {
+    const callIdentifier = asNode(expression.identifier);
+    const name = identifierValue(callIdentifier) ?? extractTypeName(callIdentifier);
+    if (name && isBuiltinValueType(name)) {
+      return name;
+    }
+    const identifier = identifierNode(callIdentifier, name);
+    if (!name || !identifier?.location) {
+      return undefined;
+    }
+    if (scopes.some((scope) => scope.types[name]?.declaration)) {
+      return name;
+    }
+    const argumentTypes = nodeArray(expression.args).map((argument) => (
+      resolveExpressionType(scopes, metadata, fields, argument)
+    ));
+    return resolveFunctionReturnTypeAtReference(
+      scopes,
+      name,
+      identifier.location.start.offset,
+      argumentTypes,
+    );
+  }
+  if (expression.type === "float_constant") return "float";
+  if (expression.type === "int_constant") return "int";
+  if (expression.type === "uint_constant") return "uint";
+  if (expression.type === "bool_constant") return "bool";
+  if (expression.type === "postfix") {
+    const root = asNode(expression.expression);
+    let ownerType = root ? resolveExpressionType(scopes, metadata, fields, root) : undefined;
+    for (const operation of flattenPostfixOperations(asNode(expression.postfix))) {
+      if (operation.type !== "field_selection") {
+        continue;
+      }
+      const fieldName = identifierValue(asNode(operation.selection));
+      ownerType = fields.find((field) => (
+        field.ownerName === ownerType && field.name === fieldName
+      ))?.typeName;
+      if (!ownerType) {
+        return undefined;
+      }
+    }
+    return ownerType;
+  }
+  return undefined;
+}
+
+function resolveFunctionReturnTypeAtReference(
+  scopes: readonly ParserScope[],
+  functionName: string,
+  referenceOffset: number,
+  argumentTypes: readonly (string | undefined)[],
+): string | undefined {
+  const definition = selectFunctionDefinition(
+    scopes,
+    functionName,
+    referenceOffset,
+    argumentTypes,
+  );
+  if (!definition) {
+    return undefined;
+  }
+  const prototype = asNode(definition.declaration?.prototype);
+  const header = asNode(prototype?.header);
+  return extractTypeName(header?.returnType) ?? normalizeParserType(definition.returnType);
+}
+
+function selectFunctionDefinition(
+  scopes: readonly ParserScope[],
+  functionName: string,
+  referenceOffset: number,
+  argumentTypes: readonly (string | undefined)[],
+): ParserFunctionDefinition | undefined {
+  for (const scope of scopes) {
+    const overloads = scope.functions[functionName];
+    if (!overloads) {
+      continue;
+    }
+    const definitions = Object.values(overloads);
+    const matchingDefinition = argumentTypes.every((type): type is string => type !== undefined)
+      ? definitions.find((candidate) => (
+        candidate.parameterTypes.length === argumentTypes.length
+        && candidate.parameterTypes.every((type, index) => normalizeParserType(type) === argumentTypes[index])
+      ))
+      : undefined;
+    const referencedDefinition = definitions.find((candidate) => candidate.references.some((reference) => (
+      identifierNode(reference, functionName)?.location?.start.offset === referenceOffset
+    )));
+    const definition = matchingDefinition ?? referencedDefinition ?? definitions[0];
+    if (definition) return definition;
+  }
+  return undefined;
+}
+
+function isBuiltinValueType(name: string): boolean {
+  return /^(?:bool|int|uint|float|double|[biud]?vec[234]|d?mat[234](?:x[234])?)$/.test(name);
 }
 
 function resolveBindingTypeAtReference(
@@ -564,17 +729,17 @@ function createDiagnostic(
   code: GlslParseDiagnostic["code"],
   error: unknown,
   originalLines: readonly string[],
+  processedLines: readonly string[] = originalLines,
   processedToOriginal?: readonly number[],
 ): GlslParseDiagnostic {
   const failure = error instanceof Error ? error as ParserFailure : undefined;
   const rawRange = failure?.location;
   const range = rawRange
-    ? mapLocation(rawRange, originalLines, originalLines, processedToOriginal)
+    ? code === "syntax"
+      ? mapDiagnosticLocation(rawRange, originalLines, processedLines, processedToOriginal)
+      : mapLocation(rawRange, originalLines, originalLines, processedToOriginal)
     : { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
-  const adjustedRange = code === "syntax" && rangesEqual(range, {
-    start: range.start,
-    end: range.start,
-  })
+  const adjustedRange = code === "syntax" && rawRange && parserLocationIsEmpty(rawRange)
     ? moveEofRangeToCode(range, originalLines)
     : range;
   return {
@@ -583,6 +748,55 @@ function createDiagnostic(
     range: adjustedRange,
     severity: 1,
   };
+}
+
+function mapDiagnosticLocation(
+  location: ParserLocation,
+  originalLines: readonly string[],
+  processedLines: readonly string[],
+  processedToOriginal?: readonly number[],
+): Range {
+  const range = mapLocation(location, originalLines, processedLines, processedToOriginal);
+  const processedLineIndex = Math.max(0, location.start.line - 1);
+  if (
+    location.start.line !== location.end.line
+    || range.start.line !== range.end.line
+    || parserLocationIsEmpty(location)
+  ) {
+    return range;
+  }
+
+  const original = originalLines[range.start.line] ?? "";
+  const processed = processedLines[processedLineIndex] ?? "";
+  const processedStart = Math.max(0, location.start.column - 1);
+  const length = Math.max(1, location.end.column - location.start.column);
+  const characterMaps = new Map<string, readonly number[]>();
+  const characterMap = buildCharacterMap(original, processed);
+  characterMaps.set(`${range.start.line}:${processedLineIndex}`, characterMap);
+  const originalStart = mapProcessedSpanToOriginal(
+    original,
+    processed,
+    processedStart,
+    length,
+    characterMap,
+  );
+  if (originalStart !== undefined) {
+    return {
+      start: { line: range.start.line, character: originalStart },
+      end: { line: range.start.line, character: originalStart + length },
+    };
+  }
+  return mapGeneratedLocation(
+    location,
+    originalLines,
+    processedLines,
+    processedToOriginal ?? processedLines.map((_, index) => index),
+    characterMaps,
+  );
+}
+
+function parserLocationIsEmpty(location: ParserLocation): boolean {
+  return location.start.offset === location.end.offset;
 }
 
 function moveEofRangeToCode(range: Range, lines: readonly string[]): Range {
@@ -672,7 +886,7 @@ function mapProcessedSpanToOriginal(
   return originalStart;
 }
 
-function mapGeneratedDeclarationLocation(
+function mapGeneratedLocation(
   location: ParserLocation,
   originalLines: readonly string[],
   processedLines: readonly string[],
@@ -717,11 +931,48 @@ function mapGeneratedDeclarationLocation(
   if (invocation?.index !== undefined) {
     originalStart += invocation.index;
     originalEnd = originalStart + invocation[0].length;
+  } else {
+    const containingInvocation = findContainingInvocation(original, originalStart, originalEnd);
+    if (containingInvocation) {
+      originalStart = containingInvocation.start;
+      originalEnd = containingInvocation.end;
+    }
   }
   return {
     start: { line: range.start.line, character: originalStart },
     end: { line: range.start.line, character: Math.max(originalStart, originalEnd) },
   };
+}
+
+function findContainingInvocation(
+  line: string,
+  rangeStart: number,
+  rangeEnd: number,
+): { start: number; end: number } | undefined {
+  const candidates: { start: number; end: number }[] = [];
+  for (const match of line.matchAll(/\b[A-Za-z_]\w*\s*\(/g)) {
+    const matchStart = match.index ?? -1;
+    const open = matchStart + match[0].lastIndexOf("(");
+    let depth = 0;
+    let close = -1;
+    for (let index = open; index < line.length; index++) {
+      if (line[index] === "(") depth++;
+      if (line[index] === ")") {
+        depth--;
+        if (depth === 0) {
+          close = index;
+          break;
+        }
+      }
+    }
+    if (close >= 0 && rangeStart >= matchStart && rangeEnd <= close + 1) {
+      const name = match[0].match(/[A-Za-z_]\w*/)?.[0];
+      if (name) {
+        candidates.push({ start: matchStart, end: matchStart + name.length });
+      }
+    }
+  }
+  return candidates[candidates.length - 1];
 }
 
 function buildCharacterMap(original: string, processed: string): number[] {
@@ -893,6 +1144,11 @@ function rangeContainsInclusiveEnd(range: Range, position: Position): boolean {
   return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
 }
 
+function rangeContainsRange(outer: Range, inner: Range): boolean {
+  return comparePosition(outer.start, inner.start) <= 0
+    && comparePosition(inner.end, outer.end) <= 0;
+}
+
 function comparePosition(left: Position, right: Position): number {
   return left.line === right.line ? left.character - right.character : left.line - right.line;
 }
@@ -936,6 +1192,7 @@ function freezeDocument(document: GlslAnalysisDocument): GlslAnalysisDocument {
   const symbols = document.symbols.map((symbol) => Object.freeze({
     ...symbol,
     declaration: freezeRange(symbol.declaration),
+    definition: freezeRange(symbol.definition),
     references: Object.freeze(symbol.references.map(freezeRange)),
   }));
   const scopes = document.scopes.map((scope) => Object.freeze({

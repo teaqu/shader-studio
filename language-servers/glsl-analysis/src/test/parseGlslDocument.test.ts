@@ -85,6 +85,43 @@ describe("parseGlslDocument", () => {
     expect(floatOverload?.references).toEqual([]);
   });
 
+  it("resolves overload references independently of declaration order", () => {
+    const source = [
+      "float shade(float value) { return value; }",
+      "vec3 shade(vec3 value) { return value; }",
+      "uniform vec3 tint;",
+      "void f(){ vec3 y=shade(tint); }",
+      "",
+    ].join("\n");
+    const document = parseGlslDocument("file:///overload-order.glsl", source, "fragment");
+    const floatOverload = document.symbols.find((symbol) => symbol.signature === "float shade(float)");
+    const vec3Overload = document.symbols.find((symbol) => symbol.signature === "vec3 shade(vec3)");
+
+    expect(floatOverload?.references).toEqual([]);
+    expect(vec3Overload?.references).toEqual([
+      { start: { line: 3, character: 17 }, end: { line: 3, character: 22 } },
+    ]);
+    expect(symbolAtPosition(document, { line: 3, character: 19 })?.id).toBe(vec3Overload?.id);
+  });
+
+  it("preserves function prototype references while resolving calls by overload", () => {
+    const source = [
+      "float f(float x);",
+      "float f(float x) { return x; }",
+      "void main() { float y=f(1.); }",
+      "",
+    ].join("\n");
+    const document = parseGlslDocument("file:///prototype-reference.glsl", source, "fragment");
+    const functionSymbol = document.symbols.find((symbol) => symbol.signature === "float f(float)");
+
+    expect(functionSymbol?.references).toEqual([
+      { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+      { start: { line: 2, character: 22 }, end: { line: 2, character: 23 } },
+    ]);
+    expect(symbolAtPosition(document, { line: 0, character: 6 })?.id).toBe(functionSymbol?.id);
+    expect(symbolAtPosition(document, { line: 2, character: 22 })?.id).toBe(functionSymbol?.id);
+  });
+
   it("normalizes user-defined function and parameter types from declarations", () => {
     const document = parseGlslDocument(
       "file:///types.glsl",
@@ -103,6 +140,27 @@ describe("parseGlslDocument", () => {
       kind: "parameter",
       typeName: "Light",
     }));
+  });
+
+  it("retains complete syntax ranges for split function and parameter declarations", () => {
+    const source = [
+      "float",
+      "shade(",
+      "  float",
+      "  value",
+      ") {",
+      "  return value;",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///split-signature.glsl", source, "fragment");
+    const shade = document.symbols.find((symbol) => symbol.kind === "function" && symbol.name === "shade");
+    const value = document.symbols.find((symbol) => symbol.kind === "parameter" && symbol.name === "value");
+
+    expect(shade?.declaration.start.line).toBe(1);
+    expect(shade?.definition.start.line).toBe(0);
+    expect(shade?.signature).toBe("float shade(float)");
+    expect(value?.declaration.start.line).toBe(3);
+    expect(value?.definition.start.line).toBe(2);
   });
 
   it("returns innermost declarations first and hides shadowed symbols", () => {
@@ -209,6 +267,27 @@ describe("parseGlslDocument", () => {
         start: { line: 1, character: 0 },
         end: { line: 1, character: 2 },
       },
+      definition: {
+        start: { line: 1, character: 0 },
+        end: { line: 1, character: 2 },
+      },
+    }));
+
+    const argumentDocument = parseGlslDocument(
+      "file:///macro-argument-declaration.glsl",
+      "#define DECL(T,N) T N\nDECL(float,x);\n",
+      "fragment",
+    );
+    expect(argumentDocument.symbols).toContainEqual(expect.objectContaining({
+      name: "x",
+      declaration: {
+        start: { line: 1, character: 11 },
+        end: { line: 1, character: 12 },
+      },
+      definition: {
+        start: { line: 1, character: 11 },
+        end: { line: 1, character: 12 },
+      },
     }));
   });
 
@@ -245,6 +324,65 @@ describe("parseGlslDocument", () => {
     expect(color?.references).toHaveLength(1);
   });
 
+  it("resolves indexed field chains rooted in calls and grouped expressions", () => {
+    const source = [
+      "struct Inner { float value; };",
+      "struct S { Inner inner[2]; };",
+      "S makeS(){ S s; return s; }",
+      "uniform S original;",
+      "void f(){ float a=makeS().inner[0].value; float b=(original).inner[1].value; }",
+      "",
+    ].join("\n");
+    const document = parseGlslDocument("file:///field-roots.glsl", source, "fragment");
+    const inner = document.symbols.find((symbol) => symbol.kind === "field" && symbol.name === "inner");
+    const value = document.symbols.find((symbol) => symbol.kind === "field" && symbol.name === "value");
+
+    expect(document.diagnostics).toEqual([]);
+    expect(inner?.references).toEqual([
+      { start: { line: 4, character: 26 }, end: { line: 4, character: 31 } },
+      { start: { line: 4, character: 61 }, end: { line: 4, character: 66 } },
+    ]);
+    expect(value?.references).toEqual([
+      { start: { line: 4, character: 35 }, end: { line: 4, character: 40 } },
+      { start: { line: 4, character: 70 }, end: { line: 4, character: 75 } },
+    ]);
+    expect(symbolAtPosition(document, { line: 4, character: 28 })?.id).toBe(inner?.id);
+    expect(symbolAtPosition(document, { line: 4, character: 37 })?.id).toBe(value?.id);
+    expect(symbolAtPosition(document, { line: 4, character: 63 })?.id).toBe(inner?.id);
+    expect(symbolAtPosition(document, { line: 4, character: 72 })?.id).toBe(value?.id);
+  });
+
+  it("resolves fields rooted in struct constructors", () => {
+    const source = "struct S { float value; };\nvoid f(){ float x=S(1.).value; }\n";
+    const document = parseGlslDocument("file:///constructor-field.glsl", source, "fragment");
+    const value = document.symbols.find((symbol) => symbol.kind === "field" && symbol.name === "value");
+
+    expect(value?.references).toEqual([
+      { start: { line: 1, character: 24 }, end: { line: 1, character: 29 } },
+    ]);
+    expect(symbolAtPosition(document, { line: 1, character: 26 })?.id).toBe(value?.id);
+  });
+
+  it("uses argument types to resolve overloaded call-rooted fields", () => {
+    const source = [
+      "struct A { float av; };",
+      "struct B { float bv; };",
+      "A make(float x){ A a; return a; }",
+      "B make(vec2 v){ B b; return b; }",
+      "void f(){ vec2 v; float y=make(v).bv; float z=make(vec2(1.)).bv; }",
+      "",
+    ].join("\n");
+    const document = parseGlslDocument("file:///overload-field.glsl", source, "fragment");
+    const bv = document.symbols.find((symbol) => symbol.kind === "field" && symbol.name === "bv");
+
+    expect(bv?.references).toEqual([
+      { start: { line: 4, character: 34 }, end: { line: 4, character: 36 } },
+      { start: { line: 4, character: 61 }, end: { line: 4, character: 63 } },
+    ]);
+    expect(symbolAtPosition(document, { line: 4, character: 35 })?.id).toBe(bv?.id);
+    expect(symbolAtPosition(document, { line: 4, character: 62 })?.id).toBe(bv?.id);
+  });
+
   it("uses identity line maps when preprocessing is unnecessary", () => {
     const document = parseGlslDocument("file:///plain.glsl", "float value;\n", "vertex");
 
@@ -264,6 +402,67 @@ describe("parseGlslDocument", () => {
     expect(document.diagnostics[0]).toEqual(expect.objectContaining({ code: "syntax", severity: 1 }));
     expect(document.diagnostics[0]?.range.start.line).toBe(1);
     expect(document.diagnostics[0]?.range.start.character).toBeLessThanOrEqual("float values[N]".length);
+  });
+
+  it("maps an explicit syntax-error token after a long macro expansion", () => {
+    const document = parseGlslDocument(
+      "file:///shifted-error.glsl",
+      "#define LONG 12345678901234567890\nfloat x = LONG + ;\n",
+      "fragment",
+    );
+
+    expect(document.diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 15 },
+      end: { line: 1, character: 16 },
+    });
+  });
+
+  it("maps generated syntax-error tokens to the macro invocation", () => {
+    const document = parseGlslDocument(
+      "file:///generated-error.glsl",
+      "#define BAD +\nfloat x = BAD ;\n",
+      "fragment",
+    );
+
+    expect(document.diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 10 },
+      end: { line: 1, character: 13 },
+    });
+  });
+
+  it("maps function-like macro errors to the macro name", () => {
+    const document = parseGlslDocument(
+      "file:///function-macro-error.glsl",
+      "#define BAD(x) x +\nfloat x = BAD(1.0);\n",
+      "fragment",
+    );
+
+    expect(document.diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 10 },
+      end: { line: 1, character: 13 },
+    });
+  });
+
+  it("distinguishes an explicit trailing token from true EOF after expansion", () => {
+    const explicitToken = parseGlslDocument(
+      "file:///trailing-token.glsl",
+      "#define LONG 12345678901234567890\nfloat x = LONG +\n",
+      "fragment",
+    );
+    const trueEof = parseGlslDocument(
+      "file:///true-eof.glsl",
+      "#define LONG 12345678901234567890\nfloat x = LONG\n",
+      "fragment",
+    );
+
+    expect(explicitToken.diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 15 },
+      end: { line: 1, character: 16 },
+    });
+    expect(trueEof.diagnostics[0]?.range).toEqual({
+      start: { line: 1, character: 14 },
+      end: { line: 1, character: 14 },
+    });
   });
 
   it("returns precise original ranges for ordinary malformed syntax", () => {
@@ -311,6 +510,8 @@ describe("parseGlslDocument", () => {
     expect(Object.isFrozen(firstSymbol)).toBe(true);
     expect(Object.isFrozen(firstSymbol?.declaration)).toBe(true);
     expect(Object.isFrozen(firstSymbol?.declaration.start)).toBe(true);
+    expect(Object.isFrozen(firstSymbol?.definition)).toBe(true);
+    expect(Object.isFrozen(firstSymbol?.definition.start)).toBe(true);
     expect(Object.isFrozen(firstSymbol?.references)).toBe(true);
     expect(Object.isFrozen(document.scopes[0]?.symbolIds)).toBe(true);
     expect(() => (document.symbols as GlslSymbol[]).push(firstSymbol!)).toThrow();

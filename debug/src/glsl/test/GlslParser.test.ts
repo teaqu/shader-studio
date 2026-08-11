@@ -57,6 +57,21 @@ describe("GlslParser", () => {
       expect(result.start).toBe(0);
     });
 
+    it("should preserve the return-type line as the function start", () => {
+      const lines = [
+        "float",
+        "shade(float x) {",
+        "  return x;",
+        "}",
+      ];
+
+      expect(GlslParser.findEnclosingFunction(lines, 2)).toEqual({
+        name: "shade",
+        start: 0,
+        end: 3,
+      });
+    });
+
     it("should find mainImage when cursor is on the function declaration line", () => {
       const lines = [
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
@@ -672,6 +687,20 @@ describe("GlslParser", () => {
       const lineMap = GlslParser.buildVariableLineMap(lines, 1, funcInfo);
       expect(lineMap.get('p')).toBe(0);
       expect(lineMap.get('r')).toBe(0);
+    });
+
+    it("should preserve the parameter type line for a split declaration", () => {
+      const lines = [
+        "float f(",
+        "  float",
+        "  x",
+        ") {",
+        "  return x;",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 3);
+
+      expect(GlslParser.buildVariableLineMap(lines, 3, functionInfo).get("x")).toBe(1);
     });
 
     it("should map locals to their declaration line", () => {

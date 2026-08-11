@@ -29,6 +29,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     expect(ctx!.parameters[1]).toMatchObject({ name: 'r', type: 'float' });
   });
 
+  it('should preserve the return type when it is split from the function name', () => {
+    const splitShader = `float
+shade(float x) {
+  return x;
+}`;
+
+    const ctx = ShaderDebugger.extractFunctionContext(splitShader, 2);
+
+    expect(ctx).toMatchObject({
+      functionName: 'shade',
+      returnType: 'float',
+      isFunction: true,
+    });
+    expect(ctx?.parameters).toEqual([
+      expect.objectContaining({ name: 'x', type: 'float' }),
+    ]);
+  });
+
   it('should return isFunction false for mainImage', () => {
     const ctx = ShaderDebugger.extractFunctionContext(shader, 10);
 

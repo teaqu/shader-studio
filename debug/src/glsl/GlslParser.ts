@@ -137,7 +137,7 @@ export class GlslParser {
     const visibleScopes = GlslParser.getVisibleScopes(document, functionInfo, upToLine);
     for (const scope of visibleScopes) {
       for (const symbol of GlslParser.getScopeVariables(document, scope)) {
-        const declarationLine = symbol.declaration.start.line;
+        const declarationLine = GlslParser.getCompatibilityDeclarationLine(symbol);
         if (declarationLine > upToLine) {
           continue;
         }
@@ -169,7 +169,7 @@ export class GlslParser {
       const visibleScopes = GlslParser.getVisibleScopes(document, functionInfo, upToLine);
       for (const scope of visibleScopes) {
         for (const symbol of GlslParser.getScopeVariables(document, scope)) {
-          const declarationLine = symbol.declaration.start.line;
+          const declarationLine = GlslParser.getCompatibilityDeclarationLine(symbol);
           if (declarationLine <= upToLine) {
             varLines.set(symbol.name, declarationLine);
           }
@@ -499,7 +499,7 @@ export class GlslParser {
           candidate.kind === 'function' &&
           candidate.name === symbol.name &&
           !claimedScopes.has(candidate.id) &&
-          candidate.range.start.line >= symbol.declaration.start.line
+          candidate.range.start.line >= symbol.definition.start.line
         )
         .sort((left, right) => left.range.start.line - right.range.start.line)[0];
       if (!scope) {
@@ -509,7 +509,7 @@ export class GlslParser {
       claimedScopes.add(scope.id);
       functions.push({
         name: symbol.name,
-        start: symbol.declaration.start.line,
+        start: symbol.definition.start.line,
         end: scope.range.end.line,
         returnType: symbol.typeName && GLSL_TYPES.has(symbol.typeName) ? symbol.typeName : null,
       });
@@ -548,6 +548,12 @@ export class GlslParser {
       symbolIds.has(symbol.id) &&
       (symbol.kind === 'variable' || symbol.kind === 'parameter')
     );
+  }
+
+  private static getCompatibilityDeclarationLine(symbol: GlslSymbol): number {
+    return symbol.kind === 'parameter'
+      ? symbol.definition.start.line
+      : symbol.declaration.start.line;
   }
 
   private static getCompatibilitySymbolType(

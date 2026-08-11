@@ -10,6 +10,7 @@ export interface GlslSymbol {
   readonly typeName?: string;
   readonly signature?: string;
   readonly declaration: Range;
+  readonly definition: Range;
   readonly references: readonly Range[];
   readonly scopeId: string;
 }
