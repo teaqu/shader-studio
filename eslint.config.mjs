@@ -26,7 +26,15 @@ export default [{
     ".worktrees/**",
   ],
 }, {
-  files: ["extension/**/*.ts"],
+  files: [
+    "extension/**/*.ts",
+    "language-servers/**/*.ts",
+    "types/src/**/*.ts",
+    "debug/src/GlslParser.ts",
+    "debug/src/test/GlslParser.test.ts",
+    "debug/src/test/ShaderDebugger.extractContext.test.ts",
+    "rendering/src/webgpu/SlangPrelude.ts",
+  ],
   plugins: {
     "@typescript-eslint": typescriptEslint,
   },

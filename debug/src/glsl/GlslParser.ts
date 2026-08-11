@@ -637,7 +637,9 @@ export class GlslParser {
             }
           }
         }
-        if (functionEnd !== -1) break;
+        if (functionEnd !== -1) {
+          break;
+        }
       }
 
       return {
@@ -657,8 +659,12 @@ export class GlslParser {
     for (let i = startLine; i >= 0; i--) {
       const strippedForBraces = GlslParser.stripLineComments(lines[i]);
       for (const char of strippedForBraces) {
-        if (char === '{') braceDepth--;
-        if (char === '}') braceDepth++;
+        if (char === '{') {
+          braceDepth--;
+        }
+        if (char === '}') {
+          braceDepth++;
+        }
       }
 
       if (braceDepth < 0) {
@@ -690,7 +696,9 @@ export class GlslParser {
             }
           }
         }
-        if (functionEnd !== -1) break;
+        if (functionEnd !== -1) {
+          break;
+        }
       }
     }
 
@@ -815,7 +823,9 @@ export class GlslParser {
 
   private static extractDeclarationsFromLine(line: string): VarInfo[] {
     const stripped = GlslParser.stripLineComments(line).trim();
-    if (!stripped) return [];
+    if (!stripped) {
+      return [];
+    }
 
     const declarations: VarInfo[] = [];
 
@@ -846,7 +856,9 @@ export class GlslParser {
 
   private static extractAssignedVariable(line: string): { name: string; member: boolean } | null {
     const stripped = GlslParser.stripLineComments(line).trim();
-    if (!stripped) return null;
+    if (!stripped) {
+      return null;
+    }
 
     const tokens = GlslParser.tokenize(stripped);
     const assignmentIndex = GlslParser.findTopLevelAssignmentOperatorIndex(tokens);
@@ -1113,8 +1125,12 @@ export class GlslParser {
         let depth = 1;
         index++;
         while (index < lhsTokens.length && depth > 0) {
-          if (lhsTokens[index].value === '[') depth++;
-          if (lhsTokens[index].value === ']') depth--;
+          if (lhsTokens[index].value === '[') {
+            depth++;
+          }
+          if (lhsTokens[index].value === ']') {
+            depth--;
+          }
           index++;
         }
         if (depth !== 0) {
@@ -1152,10 +1168,18 @@ export class GlslParser {
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];
-      if (token.value === '(') parenDepth++;
-      if (token.value === ')') parenDepth--;
-      if (token.value === '[') bracketDepth++;
-      if (token.value === ']') bracketDepth--;
+      if (token.value === '(') {
+        parenDepth++;
+      }
+      if (token.value === ')') {
+        parenDepth--;
+      }
+      if (token.value === '[') {
+        bracketDepth++;
+      }
+      if (token.value === ']') {
+        bracketDepth--;
+      }
 
       if (parenDepth === 0 && bracketDepth === 0 && token.type === 'operator' && ASSIGNMENT_OPERATORS.has(token.value)) {
         return i;
@@ -1198,7 +1222,9 @@ export class GlslParser {
 
       if (/\d/.test(char) || (char === '.' && /\d/.test(source[i + 1] ?? ''))) {
         let j = i + 1;
-        while (j < source.length && /[\d.]/.test(source[j])) j++;
+        while (j < source.length && /[\d.]/.test(source[j])) {
+          j++;
+        }
         tokens.push({ type: 'number', value: source.slice(i, j) });
         i = j;
         continue;
@@ -1206,7 +1232,9 @@ export class GlslParser {
 
       if (/[A-Za-z_]/.test(char)) {
         let j = i + 1;
-        while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) j++;
+        while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) {
+          j++;
+        }
         const value = source.slice(i, j);
         const type = (GLSL_TYPES.has(value) || CONTROL_FLOW_KEYWORDS.has(value) || value === 'return' || PARAMETER_QUALIFIERS.has(value))
           ? 'keyword'
@@ -1238,8 +1266,12 @@ export class GlslParser {
 
     let depth = 0;
     for (let i = openIndex; i < text.length; i++) {
-      if (text[i] === '(') depth++;
-      if (text[i] === ')') depth--;
+      if (text[i] === '(') {
+        depth++;
+      }
+      if (text[i] === ')') {
+        depth--;
+      }
       if (depth === 0) {
         return i;
       }

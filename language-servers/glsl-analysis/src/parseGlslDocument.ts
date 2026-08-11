@@ -373,18 +373,18 @@ function normalizeProgram(
               return offset === undefined || !callOffsets.has(offset);
             }),
             ...namedCalls
-            .filter((call) => selectFunctionDefinition(
-              parserScopes,
-              call.name,
-              call.identifier.location?.start.offset ?? -1,
-              call.arguments.map((argument) => resolveExpressionType(
+              .filter((call) => selectFunctionDefinition(
                 parserScopes,
-                metadata,
-                fields,
-                argument,
-              )),
-            ) === definition)
-            .map((call) => call.identifier),
+                call.name,
+                call.identifier.location?.start.offset ?? -1,
+                call.arguments.map((argument) => resolveExpressionType(
+                  parserScopes,
+                  metadata,
+                  fields,
+                  argument,
+                )),
+              ) === definition)
+              .map((call) => call.identifier),
           ],
           returnType,
           returnType ? `${returnType} ${name}(${parameterTypes.join(", ")})` : undefined,
@@ -619,10 +619,18 @@ function resolveExpressionType(
       argumentTypes,
     );
   }
-  if (expression.type === "float_constant") return "float";
-  if (expression.type === "int_constant") return "int";
-  if (expression.type === "uint_constant") return "uint";
-  if (expression.type === "bool_constant") return "bool";
+  if (expression.type === "float_constant") {
+    return "float";
+  }
+  if (expression.type === "int_constant") {
+    return "int";
+  }
+  if (expression.type === "uint_constant") {
+    return "uint";
+  }
+  if (expression.type === "bool_constant") {
+    return "bool";
+  }
   if (expression.type === "postfix") {
     const root = asNode(expression.expression);
     let ownerType = root ? resolveExpressionType(scopes, metadata, fields, root) : undefined;
@@ -685,7 +693,9 @@ function selectFunctionDefinition(
       identifierNode(reference, functionName)?.location?.start.offset === referenceOffset
     )));
     const definition = matchingDefinition ?? referencedDefinition ?? definitions[0];
-    if (definition) return definition;
+    if (definition) {
+      return definition;
+    }
   }
   return undefined;
 }
@@ -956,7 +966,9 @@ function findContainingInvocation(
     let depth = 0;
     let close = -1;
     for (let index = open; index < line.length; index++) {
-      if (line[index] === "(") depth++;
+      if (line[index] === "(") {
+        depth++;
+      }
       if (line[index] === ")") {
         depth--;
         if (depth === 0) {
