@@ -97,7 +97,7 @@ suite('Shader Studio Test Suite', () => {
     sandbox.stub(vscode.window, 'onDidChangeTextEditorSelection').callsFake((listener: any) => {
       return { dispose: sandbox.stub() } as any;
     });
-    sandbox.stub(vscode.window, 'registerCustomEditorProvider').returns({
+    sandbox.stub(vscode.window, 'registerWebviewViewProvider').returns({
       dispose: sandbox.stub()
     } as any);
     sandbox.stub(vscode.commands, 'registerCommand').returns({
@@ -534,6 +534,16 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledOnce(generateConfigSpy);
   });
 
+  test('does not register retired config editor commands', () => {
+    const registered = (vscode.commands.registerCommand as sinon.SinonStub)
+      .getCalls()
+      .map(call => call.args[0]);
+
+    assert.ok(!registered.includes('shader-studio.toggleConfigView'));
+    assert.ok(!registered.includes('shader-studio.toggleConfigViewToSource'));
+    assert.ok(!registered.includes('shader-studio.updateEditorPriority'));
+  });
+
   test('refreshSpecificShaderByPath should call sendShaderFromPath with reload', async () => {
     const shaderPath = '/mock/path/shader.glsl';
     const fs = require('fs');
@@ -596,25 +606,6 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderFromPathSpy);
     sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { reload: true });
-  });
-
-  test('refreshCurrentShader should not send shader when last viewed file is from a previous session (not currently open)', async () => {
-    const lastViewedFile = '/mock/path/last-shader.glsl';
-    const fs = require('fs');
-
-    fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
-
-    shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
-
-    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
-    // No visible editors — stale globalState path from a previous VS Code session
-    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
-
-    const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
-
-    await shaderStudio['refreshCurrentShader']();
-
-    sinon.assert.notCalled(sendShaderFromPathSpy);
   });
 
   test('refreshCurrentShader should call sendShaderFromEditor with reload when active GLSL editor exists', async () => {

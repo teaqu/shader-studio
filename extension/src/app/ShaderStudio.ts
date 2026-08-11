@@ -8,7 +8,6 @@ import { WebSocketTransport } from "./transport/WebSocketTransport";
 import { ShaderExplorerProvider } from "./ShaderExplorerProvider";
 import { ShaderExplorerViewProvider } from "./ShaderExplorerViewProvider";
 import { GlslFileTracker } from "./GlslFileTracker";
-import { ConfigViewToggler } from "./ConfigViewToggler";
 import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
@@ -29,7 +28,6 @@ export class ShaderStudio {
   private logger!: Logger;
   private sShaderExplorerProvider: vscode.Disposable;
   private glslFileTracker: GlslFileTracker;
-  private configViewToggler: ConfigViewToggler;
   private shaderCreator!: ShaderCreator;
   private configGenerator: ConfigGenerator;
   private errorHandler: ErrorHandler;
@@ -53,7 +51,6 @@ export class ShaderStudio {
 
     Logger.initialize(outputChannel);
     this.logger = Logger.getInstance();
-    this.configViewToggler = new ConfigViewToggler(this.logger);
     this.glslFileTracker = new GlslFileTracker(context);
     this.shaderCreator = new ShaderCreator(this.logger, this.glslFileTracker);
     
@@ -276,20 +273,6 @@ export class ShaderStudio {
     );
 
     this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-studio.toggleConfigView", () => {
-        this.logger.info("shader-studio.toggleConfigView command executed");
-        this.toggleConfigView();
-      }),
-    );
-
-    this.context.subscriptions.push(
-      vscode.commands.registerCommand("shader-studio.toggleConfigViewToSource", () => {
-        this.logger.info("shader-studio.toggleConfigViewToSource command executed");
-        this.toggleConfigView();
-      }),
-    );
-
-    this.context.subscriptions.push(
       vscode.commands.registerCommand(
         "shader-studio.refreshCurrentShader",
         () => {
@@ -496,10 +479,6 @@ export class ShaderStudio {
       // Send immediately (for document changes)
       sendMessage();
     }
-  }
-
-  private async toggleConfigView(): Promise<void> {
-    await this.configViewToggler.toggle();
   }
 
   private async refreshCurrentShader(): Promise<void> {

@@ -376,6 +376,7 @@ suite('ShaderProvider Test Suite', () => {
         path: dependencyPath,
         buffers: {},
         language: 'slang',
+        originalCode: dependencySource,
         reload: true,
         cursorPosition: undefined,
         slangModules: [],

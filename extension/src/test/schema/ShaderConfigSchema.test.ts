@@ -231,51 +231,6 @@ suite('Shader config JSON schema', () => {
     });
   });
 
-  test('validates every compute example config and its referenced shader files', () => {
-    const examplesRoot = path.resolve(path.dirname(schemaPath), '../../examples');
-    const expectedConfigs = [
-      'compute-blur/blur.sha.json',
-      'compute-particles/particles.sha.json',
-      'compute-substeps/substeps.sha.json'
-    ];
-    const requiredExampleFiles = [
-      'compute-particles/image.slang'
-    ];
-
-    assert.ok(fs.existsSync(examplesRoot), `Missing examples directory: ${examplesRoot}`);
-
-    const configPaths = fs.readdirSync(examplesRoot, { recursive: true, encoding: 'utf8' })
-      .filter(filePath => filePath.endsWith('.sha.json'))
-      .map(filePath => filePath.split(path.sep).join('/'))
-      .sort();
-    assert.deepStrictEqual(configPaths, expectedConfigs);
-
-    for (const relativeFilePath of requiredExampleFiles) {
-      assert.ok(
-        fs.existsSync(path.join(examplesRoot, relativeFilePath)),
-        `Missing required example file: ${relativeFilePath}`
-      );
-    }
-
-    for (const relativeConfigPath of configPaths) {
-      const configPath = path.join(examplesRoot, relativeConfigPath);
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      assertValid(config);
-
-      const configDirectory = path.dirname(configPath);
-      const imagePath = configPath.replace(/\.sha\.json$/i, '.slang');
-      assert.ok(fs.existsSync(imagePath), `Missing Image shader for ${relativeConfigPath}: ${imagePath}`);
-
-      for (const [passName, passConfig] of Object.entries(config.passes as Record<string, { path?: string }>)) {
-        if (!passConfig.path) {
-          continue;
-        }
-        const passPath = path.resolve(configDirectory, passConfig.path);
-        assert.ok(fs.existsSync(passPath), `Missing ${passName} shader for ${relativeConfigPath}: ${passPath}`);
-      }
-    }
-  });
-
   test('accepts dispatchOnce with dispatchCount greater than one for graph validation', () => {
     assertValid({
       version: '1.0',

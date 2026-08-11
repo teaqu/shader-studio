@@ -219,10 +219,7 @@ You can then use `hash`, `noise`, or `PI` in any Image or named buffer pass.
 
 ## Other: Editing the Config File Directly
 
-The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl` or `myshader.slang` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code — the visual editor and the raw file stay in sync.
-
-!!! tip
-    The config panel has a toggle to switch between the visual editor and raw JSON view.
+The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl` or `myshader.slang` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code, and the Config panel stays in sync with the file.
 
 See [Config File Format](../help/config-file.md) for the full schema reference.
 
