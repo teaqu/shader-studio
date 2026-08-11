@@ -1,7 +1,7 @@
 /**
  * Static GLSL ES 3.00 vocabulary rejected in a global declaration-name
  * position by the active compiler boundary. Compiler-backed tests keep later
- * and contextual vocabulary out of this grammar-only policy. See sections 3.7
+ * and contextual vocabulary out of this grammar-only policy. See sections 3.8
  * (keywords/reserved words) and 4.1 (basic types) of the Khronos specification:
  * https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf
  */

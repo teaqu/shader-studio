@@ -1,6 +1,11 @@
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { describe, expect, it } from "vitest";
 import { DocumentStore } from "../DocumentStore";
+import type {
+  AnalysisWorkerResponse,
+  DiagnosticsWorkerNotification,
+  DocumentRevision,
+} from "../protocol";
 
 const URI = "file:///image.glsl";
 
@@ -22,6 +27,15 @@ function seededStore(): DocumentStore {
   store.open({ uri: URI, languageId: "glsl", version: 2, text: "initial" });
   store.syncEnvironment(environment(4));
   return store;
+}
+
+function revision(version: number, environmentGeneration: number): DocumentRevision {
+  return {
+    uri: URI,
+    languageId: "glsl",
+    version,
+    environmentGeneration,
+  };
 }
 
 describe("DocumentStore", () => {
@@ -105,12 +119,44 @@ describe("DocumentStore", () => {
     expect(store.getEnvironment(URI)).toBeUndefined();
   });
 
-  it("is current only for matching document and environment revisions", () => {
+  it("is current only for the exact document and environment revision", () => {
     const store = seededStore();
 
-    expect(new DocumentStore().isCurrent(URI, 2, 4)).toBe(false);
-    expect(store.isCurrent(URI, 1, 4)).toBe(false);
-    expect(store.isCurrent(URI, 2, 3)).toBe(false);
-    expect(store.isCurrent(URI, 2, 4)).toBe(true);
+    expect(new DocumentStore().isCurrent(revision(2, 4))).toBe(false);
+    expect(store.isCurrent(revision(1, 4))).toBe(false);
+    expect(store.isCurrent(revision(2, 3))).toBe(false);
+    expect(store.isCurrent(revision(2, 4))).toBe(true);
+  });
+
+  it("rejects an in-flight response after only the environment generation changes", () => {
+    const store = seededStore();
+    const requestRevision = revision(2, 4);
+    const response: AnalysisWorkerResponse = {
+      kind: "response",
+      id: 12,
+      method: "diagnostics",
+      revision: requestRevision,
+      result: [],
+    };
+
+    expect(store.isCurrent(response.revision)).toBe(true);
+    expect(store.syncEnvironment(environment(5))).toBe(true);
+    expect(store.getDocument(URI)?.version).toBe(2);
+    expect(store.isCurrent(response.revision)).toBe(false);
+    expect(store.isCurrent(revision(2, 5))).toBe(true);
+  });
+
+  it("rejects stale diagnostics when the text version is unchanged", () => {
+    const store = seededStore();
+    const notification: DiagnosticsWorkerNotification = {
+      kind: "notification",
+      method: "diagnostics",
+      revision: revision(2, 4),
+      params: [],
+    };
+
+    expect(store.syncEnvironment(environment(5))).toBe(true);
+    expect(store.getDocument(URI)?.version).toBe(notification.revision.version);
+    expect(store.isCurrent(notification.revision)).toBe(false);
   });
 });

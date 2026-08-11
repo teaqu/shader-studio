@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGlslAuthoringPreamble,
   buildSlangAuthoringModule,
+  buildSlangRuntimePrelude,
   deriveSlangChannelGeneratedIdentifiers,
   GLSL_STABLE_DECLARATION_LINES,
   SHADER_STUDIO_BUILTIN_UNIFORMS,
@@ -161,21 +162,39 @@ describe("ShaderAuthoringEnvironment", () => {
   });
 
   it.each([
-    ["float", "float", "float"],
-    ["vec2", "vec2", "float2"],
-    ["vec3", "vec3", "float3"],
-    ["vec4", "vec4", "float4"],
-    ["bool", "bool", "bool"],
-    ["int", "int", "int"],
-  ] as const)("generates the %s uniform type in both languages", (type, glslType, slangType) => {
-    const environment = {
-      ...baseEnvironment("glsl"),
-      customUniforms: [{ name: "value", type: type as AuthoringValueType }],
-    };
+    ["float", "float", "float", "float", "#define value (_st.custom_value)"],
+    ["vec2", "vec2", "float2", "float2", "#define value (_st.custom_value)"],
+    ["vec3", "vec3", "float3", "float3", "#define value (_st.custom_value)"],
+    ["vec4", "vec4", "float4", "float4", "#define value (_st.custom_value)"],
+    ["bool", "bool", "bool", "int", "#define value (_st.custom_value != 0)"],
+  ] as const)(
+    "keeps the renderer-backed %s uniform type in GLSL, Slang authoring, and Slang runtime",
+    (type, glslType, slangType, slangRuntimeType, slangAlias) => {
+      const environment = {
+        ...baseEnvironment("glsl"),
+        customUniforms: [{ name: "value", type: type as AuthoringValueType }],
+      };
 
-    expect(buildGlslAuthoringPreamble(environment).text).toContain(`uniform ${glslType} value;`);
-    expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain(`${slangType} value;`);
-  });
+      expect(buildGlslAuthoringPreamble(environment).text).toContain(`uniform ${glslType} value;`);
+      expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain(`${slangType} value;`);
+      const runtime = buildSlangRuntimePrelude(environment.customUniforms);
+      expect(runtime).toContain(`    ${slangRuntimeType} custom_value;`);
+      expect(runtime).toContain(slangAlias);
+    });
+
+  it.each(["int", "toString", "__proto__", "constructor"])(
+    "does not generate declarations for unsupported custom-uniform metadata type %s",
+    (type) => {
+      const environment = {
+        ...baseEnvironment("glsl"),
+        customUniforms: [{ name: "mode", type }],
+      } as unknown as ShaderAuthoringEnvironment;
+
+      expect(buildGlslAuthoringPreamble(environment).text).not.toContain(" mode;");
+      expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).not.toContain(" mode;");
+      expect(buildSlangRuntimePrelude(environment.customUniforms)).not.toContain("custom_mode");
+    },
+  );
 
   it.each([
     ["texture-2d", "uniform sampler2D resource;", "Texture2D<float4> resource;"],

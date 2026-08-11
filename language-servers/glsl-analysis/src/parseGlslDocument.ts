@@ -60,11 +60,13 @@ interface ParserFailure extends Error {
 
 interface DeclarationMetadata {
   readonly typeName?: string;
+  readonly resolvedTypeName?: string;
 }
 
 interface FieldMetadata {
   readonly name: string;
   readonly typeName?: string;
+  readonly resolvedTypeName?: string;
   readonly location: ParserLocation;
   readonly ownerName: string;
   readonly ownerLocation: ParserLocation;
@@ -74,7 +76,7 @@ interface FieldReferenceMetadata {
   readonly fieldName: string;
   readonly selection: ParserNode;
   readonly root: ParserNode;
-  readonly precedingFields: readonly string[];
+  readonly precedingOperations: readonly ParserNode[];
 }
 
 interface FunctionCallMetadata {
@@ -93,6 +95,7 @@ interface MutableScope {
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ARRAY_TYPE_PREFIX = "@array:";
 
 export function parseGlslDocument(
   uri: string,
@@ -357,11 +360,7 @@ function normalizeProgram(
         const header = asNode(prototype?.header);
         const declaredReturnType = extractTypeName(header?.returnType);
         const returnType = declaredReturnType ?? normalizeParserType(definition.returnType);
-        const declaredParameterTypes = nodeArray(prototype?.parameters)
-          .map((parameter) => extractTypeName(parameter.specifier));
-        const parameterTypes = declaredParameterTypes.every((type): type is string => type !== undefined)
-          ? declaredParameterTypes
-          : definition.parameterTypes.map(normalizeParserType).filter((type): type is string => type !== undefined);
+        const parameterTypes = functionParameterTypes(definition);
         addSymbol(
           scope,
           name,
@@ -376,7 +375,6 @@ function normalizeProgram(
               .filter((call) => selectFunctionDefinition(
                 parserScopes,
                 call.name,
-                call.identifier.location?.start.offset ?? -1,
                 call.arguments.map((argument) => resolveExpressionType(
                   parserScopes,
                   metadata,
@@ -467,28 +465,40 @@ function collectDeclarationMetadata(
   }
 
   if (value.type === "declarator_list") {
-    const typeName = extractTypeName(value.specified_type);
+    const declarationMetadata = extractDeclarationMetadata(value.specified_type);
+    const specifiedArrayDepth = arrayQuantifierDepth(value.specified_type);
     for (const declaration of nodeArray(value.declarations)) {
       const identifier = identifierNode(declaration);
       if (identifier?.location) {
-        metadata.set(identifier.location.start.offset, { typeName });
+        metadata.set(
+          identifier.location.start.offset,
+          withArrayDepth(
+            declarationMetadata,
+            specifiedArrayDepth + arrayQuantifierDepth(declaration),
+          ),
+        );
       }
     }
   }
 
   if (value.type === "struct") {
-    const ownerName = identifierValue(asNode(value.typeName));
+    const ownerName = identifierValue(asNode(value.typeName)) ?? anonymousStructIdentity(value);
     if (ownerName && value.location) {
       for (const structDeclaration of nodeArray(value.declarations)) {
         const declarator = asNode(structDeclaration.declaration);
-        const typeName = extractTypeName(declarator?.specified_type);
+        const fieldType = extractDeclarationMetadata(declarator?.specified_type);
+        const specifiedArrayDepth = arrayQuantifierDepth(declarator?.specified_type);
         for (const declaration of nodeArray(declarator?.declarations)) {
           const identifier = identifierNode(declaration);
           const name = identifierValue(identifier);
           if (name && identifier?.location) {
             fields.push({
               name,
-              typeName,
+              typeName: fieldType.typeName,
+              resolvedTypeName: withArrayDepth(
+                fieldType,
+                specifiedArrayDepth + arrayQuantifierDepth(declaration),
+              ).resolvedTypeName,
               location: identifier.location,
               ownerName,
               ownerLocation: value.location,
@@ -502,8 +512,12 @@ function collectDeclarationMetadata(
   if (value.type === "postfix") {
     const root = asNode(value.expression);
     if (root?.location) {
-      const precedingFields: string[] = [];
+      const precedingOperations: ParserNode[] = [];
       for (const operation of flattenPostfixOperations(asNode(value.postfix))) {
+        if (operation.type === "quantifier") {
+          precedingOperations.push(operation);
+          continue;
+        }
         if (operation.type !== "field_selection") {
           continue;
         }
@@ -516,9 +530,9 @@ function collectDeclarationMetadata(
           fieldName,
           selection,
           root,
-          precedingFields: [...precedingFields],
+          precedingOperations: [...precedingOperations],
         });
-        precedingFields.push(fieldName);
+        precedingOperations.push(operation);
       }
     }
   }
@@ -569,10 +583,15 @@ function resolveFieldOwnerType(
     fields,
     reference.root,
   );
-  for (const fieldName of reference.precedingFields) {
-    ownerType = fields.find((field) => (
-      field.ownerName === ownerType && field.name === fieldName
-    ))?.typeName;
+  for (const operation of reference.precedingOperations) {
+    if (operation.type === "quantifier") {
+      ownerType = ownerType ? indexedType(ownerType) : undefined;
+    } else if (operation.type === "field_selection") {
+      const fieldName = identifierValue(asNode(operation.selection));
+      ownerType = fields.find((field) => (
+        field.ownerName === ownerType && field.name === fieldName
+      ))?.resolvedTypeName;
+    }
     if (!ownerType) {
       return undefined;
     }
@@ -596,6 +615,35 @@ function resolveExpressionType(
     const grouped = asNode(expression.expression);
     return grouped ? resolveExpressionType(scopes, metadata, fields, grouped) : undefined;
   }
+  if (expression.type === "unary") {
+    const operand = asNode(expression.expression);
+    const operandType = operand
+      ? resolveExpressionType(scopes, metadata, fields, operand)
+      : undefined;
+    return resolveUnaryType(literalValue(asNode(expression.operator)), operandType);
+  }
+  if (expression.type === "binary") {
+    const left = asNode(expression.left);
+    const right = asNode(expression.right);
+    return resolveBinaryType(
+      literalValue(asNode(expression.operator)),
+      left ? resolveExpressionType(scopes, metadata, fields, left) : undefined,
+      right ? resolveExpressionType(scopes, metadata, fields, right) : undefined,
+    );
+  }
+  if (expression.type === "ternary") {
+    const condition = asNode(expression.expression);
+    const left = asNode(expression.left);
+    const right = asNode(expression.right);
+    const conditionType = condition
+      ? resolveExpressionType(scopes, metadata, fields, condition)
+      : undefined;
+    const leftType = left ? resolveExpressionType(scopes, metadata, fields, left) : undefined;
+    const rightType = right ? resolveExpressionType(scopes, metadata, fields, right) : undefined;
+    return conditionType === "bool" && leftType && rightType && typesEquivalent(leftType, rightType)
+      ? canonicalTypeName(leftType)
+      : undefined;
+  }
   if (expression.type === "function_call") {
     const callIdentifier = asNode(expression.identifier);
     const name = identifierValue(callIdentifier) ?? extractTypeName(callIdentifier);
@@ -615,7 +663,6 @@ function resolveExpressionType(
     return resolveFunctionReturnTypeAtReference(
       scopes,
       name,
-      identifier.location.start.offset,
       argumentTypes,
     );
   }
@@ -635,13 +682,22 @@ function resolveExpressionType(
     const root = asNode(expression.expression);
     let ownerType = root ? resolveExpressionType(scopes, metadata, fields, root) : undefined;
     for (const operation of flattenPostfixOperations(asNode(expression.postfix))) {
-      if (operation.type !== "field_selection") {
+      if (operation.type === "quantifier") {
+        ownerType = ownerType ? indexedType(ownerType) : undefined;
+        if (!ownerType) {
+          return undefined;
+        }
         continue;
       }
+      if (operation.type !== "field_selection") {
+        return undefined;
+      }
       const fieldName = identifierValue(asNode(operation.selection));
-      ownerType = fields.find((field) => (
-        field.ownerName === ownerType && field.name === fieldName
-      ))?.typeName;
+      ownerType = ownerType && fieldName
+        ? resolveSwizzleType(ownerType, fieldName) ?? fields.find((field) => (
+          field.ownerName === ownerType && field.name === fieldName
+        ))?.resolvedTypeName
+        : undefined;
       if (!ownerType) {
         return undefined;
       }
@@ -654,13 +710,11 @@ function resolveExpressionType(
 function resolveFunctionReturnTypeAtReference(
   scopes: readonly ParserScope[],
   functionName: string,
-  referenceOffset: number,
   argumentTypes: readonly (string | undefined)[],
 ): string | undefined {
   const definition = selectFunctionDefinition(
     scopes,
     functionName,
-    referenceOffset,
     argumentTypes,
   );
   if (!definition) {
@@ -668,36 +722,307 @@ function resolveFunctionReturnTypeAtReference(
   }
   const prototype = asNode(definition.declaration?.prototype);
   const header = asNode(prototype?.header);
-  return extractTypeName(header?.returnType) ?? normalizeParserType(definition.returnType);
+  const returnType = extractTypeName(header?.returnType);
+  return returnType
+    ? encodeArrayType(returnType, arrayQuantifierDepth(header?.returnType))
+    : encodeParserArrayType(normalizeParserType(definition.returnType));
 }
 
 function selectFunctionDefinition(
   scopes: readonly ParserScope[],
   functionName: string,
-  referenceOffset: number,
   argumentTypes: readonly (string | undefined)[],
 ): ParserFunctionDefinition | undefined {
+  if (!argumentTypes.every((type): type is string => type !== undefined)) {
+    return undefined;
+  }
   for (const scope of scopes) {
     const overloads = scope.functions[functionName];
     if (!overloads) {
       continue;
     }
     const definitions = Object.values(overloads);
-    const matchingDefinition = argumentTypes.every((type): type is string => type !== undefined)
-      ? definitions.find((candidate) => (
-        candidate.parameterTypes.length === argumentTypes.length
-        && candidate.parameterTypes.every((type, index) => normalizeParserType(type) === argumentTypes[index])
+    const matchingDefinitions = definitions.filter((candidate) => (
+      resolvedFunctionParameterTypes(candidate).length === argumentTypes.length
+      && resolvedFunctionParameterTypes(candidate).every((type, index) => (
+        typesEquivalent(type, argumentTypes[index])
       ))
-      : undefined;
-    const referencedDefinition = definitions.find((candidate) => candidate.references.some((reference) => (
-      identifierNode(reference, functionName)?.location?.start.offset === referenceOffset
-    )));
-    const definition = matchingDefinition ?? referencedDefinition ?? definitions[0];
-    if (definition) {
-      return definition;
-    }
+    ));
+    return matchingDefinitions.length === 1 ? matchingDefinitions[0] : undefined;
   }
   return undefined;
+}
+
+function functionParameterTypes(definition: ParserFunctionDefinition): readonly string[] {
+  const prototype = asNode(definition.declaration?.prototype);
+  const declaredParameterTypes = nodeArray(prototype?.parameters)
+    .map((parameter) => extractTypeName(parameter.specifier));
+  return declaredParameterTypes.every((type): type is string => type !== undefined)
+    ? declaredParameterTypes
+    : definition.parameterTypes
+      .map(normalizeParserType)
+      .filter((type): type is string => type !== undefined && type !== "void");
+}
+
+function resolvedFunctionParameterTypes(definition: ParserFunctionDefinition): readonly string[] {
+  const prototype = asNode(definition.declaration?.prototype);
+  const declaredParameterTypes = nodeArray(prototype?.parameters)
+    .map((parameter) => {
+      const typeName = extractTypeName(parameter.specifier);
+      return typeName
+        ? encodeArrayType(typeName, arrayQuantifierDepth(parameter))
+        : undefined;
+    });
+  if (declaredParameterTypes.every((type): type is string => type !== undefined)) {
+    return declaredParameterTypes.length === 1 && declaredParameterTypes[0] === "void"
+      ? []
+      : declaredParameterTypes;
+  }
+  return definition.parameterTypes
+    .map(normalizeParserType)
+    .map(encodeParserArrayType)
+    .filter((type): type is string => type !== undefined && type !== "void");
+}
+
+function resolveUnaryType(operator: string | undefined, operandType: string | undefined): string | undefined {
+  if (!operator || !operandType) {
+    return undefined;
+  }
+  if (operator === "!") {
+    return operandType === "bool" ? "bool" : undefined;
+  }
+  if (operator === "~") {
+    return isIntegerType(operandType) ? operandType : undefined;
+  }
+  return ["+", "-", "++", "--"].includes(operator) && isNumericType(operandType)
+    ? operandType
+    : undefined;
+}
+
+function resolveBinaryType(
+  operator: string | undefined,
+  leftType: string | undefined,
+  rightType: string | undefined,
+): string | undefined {
+  if (!operator || !leftType || !rightType) {
+    return undefined;
+  }
+  if (["&&", "||", "^^"].includes(operator)) {
+    return leftType === "bool" && rightType === "bool" ? "bool" : undefined;
+  }
+  if (["==", "!="].includes(operator)) {
+    return typesEquivalent(leftType, rightType) ? "bool" : undefined;
+  }
+  if (["<", ">", "<=", ">="].includes(operator)) {
+    return leftType === rightType && isNumericScalarType(leftType) ? "bool" : undefined;
+  }
+  if (["&", "|", "^"].includes(operator)) {
+    return resolveIntegerComponentwiseType(leftType, rightType);
+  }
+  if (["<<", ">>"].includes(operator)) {
+    return resolveShiftType(leftType, rightType);
+  }
+  if (operator === "%") {
+    return resolveIntegerComponentwiseType(leftType, rightType);
+  }
+  if (["+", "-", "/"].includes(operator)) {
+    return resolveArithmeticComponentwiseType(leftType, rightType);
+  }
+  return operator === "*" ? resolveMultiplicationType(leftType, rightType) : undefined;
+}
+
+function resolveArithmeticComponentwiseType(leftType: string, rightType: string): string | undefined {
+  if (typesEquivalent(leftType, rightType)) {
+    return isNumericType(leftType) ? canonicalTypeName(leftType) : undefined;
+  }
+  if (isNumericAggregateWithComponent(leftType, rightType)) {
+    return leftType;
+  }
+  return isNumericAggregateWithComponent(rightType, leftType) ? rightType : undefined;
+}
+
+function resolveIntegerComponentwiseType(leftType: string, rightType: string): string | undefined {
+  if (leftType === rightType) {
+    return isIntegerType(leftType) ? leftType : undefined;
+  }
+  const leftVector = vectorType(leftType);
+  if (leftVector && isIntegerType(leftType) && leftVector.componentType === rightType) {
+    return leftType;
+  }
+  const rightVector = vectorType(rightType);
+  return rightVector && isIntegerType(rightType) && rightVector.componentType === leftType
+    ? rightType
+    : undefined;
+}
+
+function resolveShiftType(leftType: string, rightType: string): string | undefined {
+  if (!isIntegerType(leftType) || !isIntegerType(rightType)) {
+    return undefined;
+  }
+  const leftVector = vectorType(leftType);
+  const rightVector = vectorType(rightType);
+  if (!leftVector) {
+    return rightVector ? undefined : leftType;
+  }
+  return !rightVector || leftVector.size === rightVector.size ? leftType : undefined;
+}
+
+function resolveMultiplicationType(leftType: string, rightType: string): string | undefined {
+  const leftMatrix = matrixType(leftType);
+  const rightMatrix = matrixType(rightType);
+  const leftVector = vectorType(leftType);
+  const rightVector = vectorType(rightType);
+
+  if (leftMatrix || rightMatrix) {
+    if (leftMatrix && rightMatrix) {
+      return leftMatrix.componentType === rightMatrix.componentType
+        && leftMatrix.columns === rightMatrix.rows
+        ? matrixTypeName(leftMatrix.componentType, rightMatrix.columns, leftMatrix.rows)
+        : undefined;
+    }
+    if (leftMatrix && rightVector) {
+      return leftMatrix.componentType === rightVector.componentType
+        && leftMatrix.columns === rightVector.size
+        ? vectorTypeName(leftMatrix.componentType, leftMatrix.rows)
+        : undefined;
+    }
+    if (leftVector && rightMatrix) {
+      return leftVector.componentType === rightMatrix.componentType
+        && leftVector.size === rightMatrix.rows
+        ? vectorTypeName(rightMatrix.componentType, rightMatrix.columns)
+        : undefined;
+    }
+    if (leftMatrix && rightType === leftMatrix.componentType) {
+      return leftType;
+    }
+    if (rightMatrix && leftType === rightMatrix.componentType) {
+      return rightType;
+    }
+    return undefined;
+  }
+
+  return resolveArithmeticComponentwiseType(leftType, rightType);
+}
+
+function isNumericAggregateWithComponent(aggregateType: string, componentType: string): boolean {
+  const vector = vectorType(aggregateType);
+  const matrix = matrixType(aggregateType);
+  return isNumericType(aggregateType)
+    && (vector?.componentType === componentType || matrix?.componentType === componentType);
+}
+
+function indexedType(typeName: string): string | undefined {
+  const arrayType = decodeArrayType(typeName);
+  if (arrayType) {
+    return arrayType.depth === 1
+      ? arrayType.elementType
+      : encodeArrayType(arrayType.elementType, arrayType.depth - 1);
+  }
+  const vector = vectorType(typeName);
+  if (vector) {
+    return vector.componentType;
+  }
+  const matrix = /^(d?)mat([234])(?:x([234]))?$/.exec(typeName);
+  if (matrix) {
+    const rowCount = Number(matrix[3] ?? matrix[2]);
+    return `${matrix[1]}vec${rowCount}`;
+  }
+  return undefined;
+}
+
+interface MatrixType {
+  readonly componentType: "float" | "double";
+  readonly columns: number;
+  readonly rows: number;
+}
+
+function matrixType(typeName: string): MatrixType | undefined {
+  const match = /^(d?)mat([234])(?:x([234]))?$/.exec(typeName);
+  if (!match) {
+    return undefined;
+  }
+  return {
+    componentType: match[1] === "d" ? "double" : "float",
+    columns: Number(match[2]),
+    rows: Number(match[3] ?? match[2]),
+  };
+}
+
+function matrixTypeName(componentType: MatrixType["componentType"], columns: number, rows: number): string {
+  const prefix = componentType === "double" ? "dmat" : "mat";
+  return columns === rows ? `${prefix}${columns}` : `${prefix}${columns}x${rows}`;
+}
+
+function canonicalTypeName(typeName: string): string {
+  const array = decodeArrayType(typeName);
+  if (array) {
+    return encodeArrayType(canonicalTypeName(array.elementType), array.depth);
+  }
+  const matrix = matrixType(typeName);
+  return matrix
+    ? matrixTypeName(matrix.componentType, matrix.columns, matrix.rows)
+    : typeName;
+}
+
+function typesEquivalent(leftType: string, rightType: string | undefined): boolean {
+  return rightType !== undefined && canonicalTypeName(leftType) === canonicalTypeName(rightType);
+}
+
+function resolveSwizzleType(ownerType: string, selection: string): string | undefined {
+  const vector = vectorType(ownerType);
+  if (!vector || selection.length < 1 || selection.length > 4) {
+    return undefined;
+  }
+  const componentSets = ["xyzw", "rgba", "stpq"];
+  const componentSet = componentSets.find((set) => [...selection].every((component) => set.includes(component)));
+  if (!componentSet || [...selection].some((component) => componentSet.indexOf(component) >= vector.size)) {
+    return undefined;
+  }
+  return selection.length === 1
+    ? vector.componentType
+    : vectorTypeName(vector.componentType, selection.length);
+}
+
+function vectorType(typeName: string): { componentType: string; size: number } | undefined {
+  const match = /^(b|i|u|d)?vec([234])$/.exec(typeName);
+  if (!match) {
+    return undefined;
+  }
+  const componentTypes: Readonly<Record<string, string>> = {
+    "": "float",
+    b: "bool",
+    i: "int",
+    u: "uint",
+    d: "double",
+  };
+  return {
+    componentType: componentTypes[match[1] ?? ""],
+    size: Number(match[2]),
+  };
+}
+
+function vectorTypeName(componentType: string, size: number): string | undefined {
+  const prefixes: Readonly<Record<string, string>> = {
+    bool: "b",
+    int: "i",
+    uint: "u",
+    float: "",
+    double: "d",
+  };
+  const prefix = prefixes[componentType];
+  return prefix === undefined ? undefined : `${prefix}vec${size}`;
+}
+
+function isIntegerType(typeName: string): boolean {
+  return /^(?:int|uint|[iu]vec[234])$/.test(typeName);
+}
+
+function isNumericScalarType(typeName: string): boolean {
+  return /^(?:int|uint|float|double)$/.test(typeName);
+}
+
+function isNumericType(typeName: string): boolean {
+  return /^(?:int|uint|float|double|[iud]?vec[234]|d?mat[234](?:x[234])?)$/.test(typeName);
 }
 
 function isBuiltinValueType(name: string): boolean {
@@ -718,11 +1043,14 @@ function resolveBindingTypeAtReference(
       continue;
     }
     if (entry.declaration.type === "parameter_declaration") {
-      return extractTypeName(entry.declaration.specifier);
+      const typeName = extractTypeName(entry.declaration.specifier);
+      return typeName
+        ? encodeArrayType(typeName, arrayQuantifierDepth(entry.declaration))
+        : undefined;
     }
     const declarationLocation = identifierNode(entry.declaration, bindingName)?.location;
     return declarationLocation
-      ? metadata.get(declarationLocation.start.offset)?.typeName
+      ? metadata.get(declarationLocation.start.offset)?.resolvedTypeName
       : undefined;
   }
   return undefined;
@@ -1109,6 +1437,10 @@ function identifierValue(node: ParserNode | undefined): string | undefined {
   return undefined;
 }
 
+function literalValue(node: ParserNode | undefined): string | undefined {
+  return node && typeof node.literal === "string" ? node.literal : undefined;
+}
+
 function extractTypeName(value: unknown): string | undefined {
   if (!isNode(value)) {
     return undefined;
@@ -1123,6 +1455,68 @@ function extractTypeName(value: unknown): string | undefined {
     return identifierValue(asNode(value.typeName));
   }
   return extractTypeName(value.specifier);
+}
+
+function extractDeclarationMetadata(value: unknown): DeclarationMetadata {
+  const typeName = extractTypeName(value);
+  const anonymousStruct = findStructNode(value);
+  return {
+    typeName,
+    resolvedTypeName: typeName ?? (anonymousStruct ? anonymousStructIdentity(anonymousStruct) : undefined),
+  };
+}
+
+function withArrayDepth(metadata: DeclarationMetadata, depth: number): DeclarationMetadata {
+  return depth > 0 && metadata.resolvedTypeName
+    ? { ...metadata, resolvedTypeName: encodeArrayType(metadata.resolvedTypeName, depth) }
+    : metadata;
+}
+
+function arrayQuantifierDepth(value: unknown): number {
+  if (!isNode(value)) {
+    return 0;
+  }
+  const ownDepth = Array.isArray(value.quantifier)
+    ? value.quantifier.filter(isNode).length
+    : isNode(value.quantifier) ? 1 : 0;
+  return ownDepth + arrayQuantifierDepth(value.specifier);
+}
+
+function encodeArrayType(elementType: string, depth: number): string {
+  return depth > 0 ? `${ARRAY_TYPE_PREFIX}${depth}:${elementType}` : elementType;
+}
+
+function decodeArrayType(typeName: string): { elementType: string; depth: number } | undefined {
+  const match = /^@array:(\d+):(.+)$/.exec(typeName);
+  if (!match) {
+    return undefined;
+  }
+  return { depth: Number(match[1]), elementType: match[2] };
+}
+
+function encodeParserArrayType(typeName: string | undefined): string | undefined {
+  if (!typeName) {
+    return undefined;
+  }
+  const quantifiers = typeName.match(/\[[^\]]*\]/g) ?? [];
+  const elementType = typeName.replace(/\[[^\]]*\]/g, "");
+  return encodeArrayType(elementType, quantifiers.length);
+}
+
+function findStructNode(value: unknown): ParserNode | undefined {
+  if (!isNode(value)) {
+    return undefined;
+  }
+  if (value.type === "struct") {
+    return value;
+  }
+  return findStructNode(value.specifier);
+}
+
+function anonymousStructIdentity(node: ParserNode): string | undefined {
+  return node.location
+    ? `@anonymous-struct:${node.location.start.offset}:${node.location.end.offset}`
+    : undefined;
 }
 
 function nodeArray(value: unknown): readonly ParserNode[] {

@@ -3,7 +3,19 @@ import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
 
 export type ShaderStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
 
-export type AuthoringValueType = "float" | "vec2" | "vec3" | "vec4" | "bool" | "int";
+export type AuthoringValueType = "float" | "vec2" | "vec3" | "vec4" | "bool";
+
+const AUTHORING_VALUE_TYPES: ReadonlySet<string> = new Set([
+  "float",
+  "vec2",
+  "vec3",
+  "vec4",
+  "bool",
+]);
+
+export function isAuthoringValueType(value: unknown): value is AuthoringValueType {
+  return typeof value === "string" && AUTHORING_VALUE_TYPES.has(value);
+}
 
 export interface CustomUniformDeclaration {
   readonly name: string;

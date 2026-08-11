@@ -4,7 +4,9 @@ import {
   type GlslSamplerType,
 } from "../GlslShaderEnvironment";
 import {
+  isAuthoringValueType,
   resolveAuthoringChannelBindings,
+  type AuthoringValueType,
   type AuthoringResource,
   type GeneratedAuthoringSource,
   type ShaderAuthoringEnvironment,
@@ -16,8 +18,7 @@ const GLSL_VALUE_TYPES = {
   vec3: "vec3",
   vec4: "vec4",
   bool: "bool",
-  int: "int",
-} as const;
+} as const satisfies Record<AuthoringValueType, string>;
 
 const GLSL_RESOURCE_TYPES = {
   "texture-2d": "sampler2D",
@@ -46,7 +47,13 @@ export function buildGlslAuthoringPreamble(
     ...Array.from({ length: channelCount }, (_, slot) => `uniform ${glslSamplerTypeFor(channels.get(slot))} iChannel${slot};`),
     `uniform vec3 iChannelResolution[${channelCount}];`,
     ...buildGlslCompatibilityUniformDeclarationLines(samplerTypes),
-    ...environment.customUniforms.map((uniform) => `uniform ${GLSL_VALUE_TYPES[uniform.type]} ${uniform.name};`),
+    ...environment.customUniforms.flatMap((uniform) => {
+      if (!isAuthoringValueType(uniform.type)) {
+        return [];
+      }
+      const typeName = GLSL_VALUE_TYPES[uniform.type];
+      return [`uniform ${typeName} ${uniform.name};`];
+    }),
     ...channelBindings
       .filter(({ resource, slot }) => resource.name !== `iChannel${slot}`)
       .map(({ resource }) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),

@@ -20,6 +20,7 @@ export default [{
     "**/dist/**",
     "**/out/**",
     "**/coverage/**",
+    "**/.vscode-test/**",
     "extension/ui-dist/**",
     "extension/shader-explorer-dist/**",
     "vendor/**",

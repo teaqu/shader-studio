@@ -5,14 +5,16 @@ import {
 } from "./BuiltinUniforms";
 import {
   deriveSlangChannelGeneratedIdentifiers,
+  isAuthoringValueType,
   isValidShaderIdentifier,
   resolveAuthoringChannelBindings,
+  type AuthoringValueType,
   type AuthoringChannelBinding,
   type GeneratedAuthoringSource,
   type ShaderAuthoringEnvironment,
 } from "./ShaderAuthoringEnvironment";
 
-export type SlangCustomUniformType = "float" | "vec2" | "vec3" | "vec4" | "bool";
+export type SlangCustomUniformType = AuthoringValueType;
 
 export interface SlangCustomUniformInfo {
   name: string;
@@ -25,8 +27,7 @@ const SLANG_AUTHORING_VALUE_TYPES = {
   vec3: "float3",
   vec4: "float4",
   bool: "bool",
-  int: "int",
-} as const;
+} as const satisfies Record<AuthoringValueType, string>;
 
 const SLANG_RUNTIME_VALUE_TYPES: Record<SlangCustomUniformType, string> = {
   float: "float",
@@ -162,7 +163,7 @@ function buildSlangChannelDeclarations(
 }
 
 export function isSlangCustomUniformType(type: string): type is SlangCustomUniformType {
-  return type in SLANG_RUNTIME_VALUE_TYPES;
+  return isAuthoringValueType(type);
 }
 
 /** Builds a standalone Slang declaration module for authoring tools. */
@@ -194,7 +195,13 @@ export function buildSlangAuthoringModule(
       .flatMap((uniform) => uniform.slangDeclaration ? [uniform.slangDeclaration] : []),
     ...environment.customUniforms
       .filter((uniform) => isValidShaderIdentifier(uniform.name))
-      .map((uniform) => `${SLANG_AUTHORING_VALUE_TYPES[uniform.type]} ${uniform.name};`),
+      .flatMap((uniform) => {
+        if (!isAuthoringValueType(uniform.type)) {
+          return [];
+        }
+        const typeName = SLANG_AUTHORING_VALUE_TYPES[uniform.type];
+        return [`${typeName} ${uniform.name};`];
+      }),
     ...resourceLines,
     ...channelLines,
     ...buildSlangChannelMetadata(channelBindings, environment.stage),

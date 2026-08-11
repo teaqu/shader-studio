@@ -1,5 +1,5 @@
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
-import type { ShaderDocumentSnapshot } from "./protocol";
+import type { DocumentRevision, ShaderDocumentSnapshot } from "./protocol";
 
 export class DocumentStore {
   private readonly documents = new Map<string, Readonly<ShaderDocumentSnapshot>>();
@@ -36,8 +36,13 @@ export class DocumentStore {
     return this.environments.get(uri);
   }
 
-  isCurrent(uri: string, version: number, generation: number): boolean {
-    return this.documents.get(uri)?.version === version && this.environments.get(uri)?.generation === generation;
+  isCurrent(revision: DocumentRevision): boolean {
+    const document = this.documents.get(revision.uri);
+    const environment = this.environments.get(revision.uri);
+    return document?.languageId === revision.languageId
+      && document.version === revision.version
+      && environment?.languageId === revision.languageId
+      && environment.generation === revision.environmentGeneration;
   }
 
   private updateDocument(document: ShaderDocumentSnapshot): boolean {

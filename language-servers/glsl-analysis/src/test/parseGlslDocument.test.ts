@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { buildGlslAuthoringPreamble } from "../../../../types/src/shader-environment/GlslEnvironmentGenerator";
+import type { ShaderAuthoringEnvironment } from "../../../../types/src/shader-environment/ShaderAuthoringEnvironment";
 import {
   parseGlslDocument,
   symbolAtPosition,
@@ -20,6 +22,12 @@ const SOURCE = [
   "float shade(float value) { return value; }",
   "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(shade(tint), 1.0); }",
 ].join("\n");
+
+function offsetAtPosition(source: string, position: { line: number; character: number }): number {
+  return source.split("\n")
+    .slice(0, position.line)
+    .reduce((offset, line) => offset + line.length + 1, 0) + position.character;
+}
 
 describe("parseGlslDocument", () => {
   it("indexes declarations, references, overloads, fields, and nested scopes", () => {
@@ -102,6 +110,186 @@ describe("parseGlslDocument", () => {
       { start: { line: 3, character: 17 }, end: { line: 3, character: 22 } },
     ]);
     expect(symbolAtPosition(document, { line: 3, character: 19 })?.id).toBe(vec3Overload?.id);
+  });
+
+  it("resolves expression argument types independently of overload declaration order", () => {
+    const definitions = [
+      "int choose(int value) { return value; }",
+      "float choose(float value) { return value; }",
+      "vec2 choose(vec2 value) { return value; }",
+      "vec3 choose(vec3 value) { return value; }",
+      "bool choose(bool value) { return value; }",
+    ];
+    const calls = [
+      ["  int intBinary = choose(1 + 2);", "int choose(int)"],
+      ["  float floatBinary = choose(1.0 + 2.0);", "float choose(float)"],
+      ["  int unary = choose(-values[0]);", "int choose(int)"],
+      ["  float conditional = choose(condition ? 1.0 : 2.0);", "float choose(float)"],
+      ["  vec3 swizzle3 = choose(color.xyz);", "vec3 choose(vec3)"],
+      ["  vec2 swizzle2 = choose(color.xy);", "vec2 choose(vec2)"],
+      ["  float vectorIndex = choose(color[0]);", "float choose(float)"],
+      ["  vec3 vectorConstructor = choose(vec3(1.0));", "vec3 choose(vec3)"],
+      ["  float explicitFloat = choose(float(1));", "float choose(float)"],
+      ["  int explicitInt = choose(int(1.0));", "int choose(int)"],
+      ["  bool explicitBool = choose(bool(1));", "bool choose(bool)"],
+    ] as const;
+
+    for (const [index, orderedDefinitions] of [definitions, [...definitions].reverse()].entries()) {
+      const lines = [
+        ...orderedDefinitions,
+        "void exercise(bool condition, vec4 color, int values[2]) {",
+        ...calls.map(([source]) => source),
+        "}",
+      ];
+      const document = parseGlslDocument(
+        `file:///expression-overloads-${index}.glsl`,
+        lines.join("\n"),
+        "fragment",
+      );
+
+      for (const [callIndex, [source, signature]] of calls.entries()) {
+        const line = orderedDefinitions.length + 1 + callIndex;
+        const symbol = symbolAtPosition(document, {
+          line,
+          character: source.indexOf("choose") + 2,
+        });
+        expect(symbol?.signature, `${index}:${source}`).toBe(signature);
+      }
+    }
+  });
+
+  it("leaves an unresolved overloaded call unclaimed", () => {
+    const source = [
+      "int choose(int value) { return value; }",
+      "float choose(float value) { return value; }",
+      "void exercise() { choose(missing); }",
+    ].join("\n");
+    const document = parseGlslDocument("file:///ambiguous-overload.glsl", source, "fragment");
+
+    expect(symbolAtPosition(document, { line: 2, character: 20 })).toBeNull();
+    expect(document.symbols.filter((symbol) => symbol.name === "choose")).toEqual([
+      expect.objectContaining({ signature: "int choose(int)", references: [] }),
+      expect.objectContaining({ signature: "float choose(float)", references: [] }),
+    ]);
+  });
+
+  it("does not treat a scalar expression as indexable", () => {
+    const source = [
+      "int choose(int value) { return value; }",
+      "float choose(float value) { return value; }",
+      "void exercise(int scalar) { choose(scalar[0]); }",
+    ].join("\n");
+    const document = parseGlslDocument("file:///invalid-scalar-index.glsl", source, "fragment");
+
+    expect(symbolAtPosition(document, { line: 2, character: 30 })).toBeNull();
+    expect(document.symbols.filter((symbol) => symbol.name === "choose")).toEqual([
+      expect.objectContaining({ signature: "int choose(int)", references: [] }),
+      expect.objectContaining({ signature: "float choose(float)", references: [] }),
+    ]);
+  });
+
+  it("retains array shape through parameters and function return values", () => {
+    const source = [
+      "int consume(int values[2]) { return values[0]; }",
+      "float consume(float values[2]) { return values[0]; }",
+      "int select(int value) { return value; }",
+      "float select(float value) { return value; }",
+      "int[2] makeValues() { int values[2]; return values; }",
+      "void exercise() {",
+      "  int values[2];",
+      "  int direct = consume(values);",
+      "  int returned = select(makeValues()[0]);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///array-expression-shapes.glsl", source, "fragment");
+
+    const intArrayOverload = document.symbols.find((symbol) => symbol.signature === "int consume(int)");
+    const intScalarOverload = document.symbols.find((symbol) => symbol.signature === "int select(int)");
+    expect(symbolAtPosition(document, { line: 7, character: 18 })?.id).toBe(intArrayOverload?.id);
+    expect(symbolAtPosition(document, { line: 8, character: 20 })?.id).toBe(intScalarOverload?.id);
+    expect(intArrayOverload?.references).toHaveLength(1);
+    expect(intScalarOverload?.references).toHaveLength(1);
+  });
+
+  it("resolves GLSL ES binary operator shapes without claiming invalid expressions", () => {
+    const definitions = [
+      "vec3 choose(vec3 value) { return value; }",
+      "vec2 choose(vec2 value) { return value; }",
+      "mat2 choose(mat2 value) { return value; }",
+      "mat3 choose(mat3 value) { return value; }",
+      "mat2x3 choose(mat2x3 value) { return value; }",
+      "ivec2 choose(ivec2 value) { return value; }",
+      "int choose(int value) { return value; }",
+      "float choose(float value) { return value; }",
+      "bool choose(bool value) { return value; }",
+    ];
+    const calls = [
+      ["  vec3 matrixVector = choose(matrix23 * vector2);", "vec3 choose(vec3)"],
+      ["  vec2 vectorMatrix = choose(vector3 * matrix23);", "vec2 choose(vec2)"],
+      ["  mat3 matrixMatrix = choose(matrix23 * matrix32);", "mat3 choose(mat3)"],
+      ["  mat2 scalarMatrix = choose(1.0 + matrix2);", "mat2 choose(mat2)"],
+      ["  ivec2 vectorBitwise = choose(bits & 1);", "ivec2 choose(ivec2)"],
+      ["  ivec2 vectorModulo = choose(bits % 2);", "ivec2 choose(ivec2)"],
+      ["  int mixedShift = choose(1 << 2u);", "int choose(int)"],
+      ["  ivec2 vectorShift = choose(bits << 2u);", "ivec2 choose(ivec2)"],
+      ["  mat2x3 invalidMatrixProduct = choose(matrix23 * matrix23);", undefined],
+      ["  float invalidModulo = choose(1.0 % 2.0);", undefined],
+      ["  bool invalidRelational = choose(vector2 < vector2);", undefined],
+    ] as const;
+
+    for (const [index, orderedDefinitions] of [definitions, [...definitions].reverse()].entries()) {
+      const lines = [
+        ...orderedDefinitions,
+        "void exercise(mat2x3 matrix23, mat3x2 matrix32, vec2 vector2, vec3 vector3, mat2 matrix2, ivec2 bits) {",
+        ...calls.map(([source]) => source),
+        "}",
+      ];
+      const document = parseGlslDocument(
+        `file:///binary-operator-shapes-${index}.glsl`,
+        lines.join("\n"),
+        "fragment",
+      );
+
+      for (const [callIndex, [source, signature]] of calls.entries()) {
+        const line = orderedDefinitions.length + 1 + callIndex;
+        const symbol = symbolAtPosition(document, {
+          line,
+          character: source.indexOf("choose") + 2,
+        });
+        expect(symbol?.signature, `${index}:${source}`).toBe(signature);
+      }
+    }
+  });
+
+  it("matches square-matrix alias spellings during expression resolution", () => {
+    const source = [
+      "mat2 accept2(mat2 value) { return value; }",
+      "mat3 accept3(mat3x3 value) { return value; }",
+      "void exercise(mat2x3 matrix23, mat3x2 matrix32) {",
+      "  mat2 constructorAlias = accept2(mat2x2(1.0));",
+      "  mat3 productAlias = accept3(matrix23 * matrix32);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///square-matrix-aliases.glsl", source, "fragment");
+
+    expect(symbolAtPosition(document, { line: 3, character: 30 })?.signature).toBe("mat2 accept2(mat2)");
+    expect(symbolAtPosition(document, { line: 4, character: 25 })?.signature).toBe("mat3 accept3(mat3x3)");
+  });
+
+  it("normalizes an explicit void parameter list for zero-argument calls", () => {
+    const source = [
+      "float value(void) { return 1.0; }",
+      "float choose(float input) { return input; }",
+      "void exercise() { float selected = choose(value()); }",
+    ].join("\n");
+    const document = parseGlslDocument("file:///void-parameter-list.glsl", source, "fragment");
+    const value = document.symbols.find((symbol) => symbol.signature === "float value(void)");
+    const choose = document.symbols.find((symbol) => symbol.signature === "float choose(float)");
+
+    expect(symbolAtPosition(document, { line: 2, character: 44 })?.id).toBe(value?.id);
+    expect(symbolAtPosition(document, { line: 2, character: 38 })?.id).toBe(choose?.id);
+    expect(value?.references).toHaveLength(1);
+    expect(choose?.references).toHaveLength(1);
   });
 
   it("preserves function prototype references while resolving calls by overload", () => {
@@ -300,6 +488,59 @@ describe("parseGlslDocument", () => {
       { start: { line: 1, character: 37 }, end: { line: 1, character: 42 } },
     ]);
     expect(symbolAtPosition(document, { line: 1, character: 39 })?.id).toBe(color?.id);
+  });
+
+  it("indexes every iCh0 field from the real generated anonymous-struct preamble", () => {
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: "file:///generated-image.glsl",
+      languageId: "glsl",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [],
+    };
+    const preamble = buildGlslAuthoringPreamble(environment).text;
+    const usage = [
+      "void inspectChannelMetadata() {",
+      "  sampler2D selectedSampler = iCh0.sampler;",
+      "  vec3 selectedSize = iCh0.size;",
+      "  float selectedTime = iCh0.time;",
+      "  int selectedLoaded = iCh0.loaded;",
+      "}",
+    ].join("\n");
+    const source = `${preamble}\n${usage}\n`;
+    const document = parseGlslDocument(environment.documentUri, source, "fragment");
+    const repeated = parseGlslDocument(environment.documentUri, source, "fragment");
+    const iCh0CloseOffset = source.indexOf("} iCh0;");
+    const iCh0OpenOffset = source.lastIndexOf("uniform struct {", iCh0CloseOffset);
+
+    expect(document.diagnostics).toEqual([]);
+    for (const [lineOffset, fieldName, typeName] of [
+      [1, "sampler", "sampler2D"],
+      [2, "size", "vec3"],
+      [3, "time", "float"],
+      [4, "loaded", "int"],
+    ] as const) {
+      const line = preamble.split("\n").length + lineOffset;
+      const lineText = source.split("\n")[line]!;
+      const character = lineText.indexOf(`.${fieldName}`) + 1;
+      const field = symbolAtPosition(document, { line, character });
+      const repeatedField = symbolAtPosition(repeated, { line, character });
+
+      expect(field).toMatchObject({ kind: "field", name: fieldName, typeName });
+      expect(repeatedField?.id).toBe(field?.id);
+      expect(repeatedField?.scopeId).toBe(field?.scopeId);
+      const declarationOffset = offsetAtPosition(source, field!.declaration.start);
+      expect(declarationOffset).toBeGreaterThan(iCh0OpenOffset);
+      expect(declarationOffset).toBeLessThan(iCh0CloseOffset);
+      expect(source.slice(
+        declarationOffset,
+        offsetAtPosition(source, field!.declaration.end),
+      )).toBe(fieldName);
+      expect(symbolAtPosition(document, field!.declaration.start)?.id).toBe(field?.id);
+    }
   });
 
   it("propagates field types through chained and indexed selectors", () => {

@@ -5,6 +5,6 @@ export default defineConfig({
         environment: 'jsdom',
         globals: true,
         pool: 'forks',
-        poolOptions: { forks: { maxForks: 2 } },
+        poolOptions: { forks: { maxForks: 1 } },
     }
 });
