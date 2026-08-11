@@ -206,6 +206,57 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
     },
   );
 
+  it.each(["fragColor", "HW_PERFORMANCE", "iChannelN"])(
+    "allows the non-Slang fixed/documentation identifier %s",
+    (name) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `CrossLanguage_${name}`,
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      const result = compile(environment);
+      expect(result.success, result.error).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    },
+  );
+
+  it.each(["iChannelLoaded", "iTime", "iChannelResolution"])(
+    "rejects the concrete Slang built-in identifier %s",
+    (name) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `Concrete_${name}`,
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      const result = compile(environment);
+      expect(result.success).toBe(false);
+      expect(result.error).not.toBe("");
+      expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+        code: "reserved-identifier",
+        message: `Custom uniform "${name}" conflicts with a Shader Studio built-in.`,
+      });
+    },
+  );
+
+  it("rejects a custom uniform that takes a concrete Slang channel binding name", () => {
+    const environment = {
+      ...baseEnvironment(),
+      passName: "Concrete_iChannel0",
+      customUniforms: [{ name: "iChannel0", type: "float" as const }],
+      resources: [{ name: "iChannel0", kind: "texture-2d" as const }],
+    };
+
+    const result = compile(environment);
+    expect(result.success).toBe(false);
+    expect(result.error).not.toBe("");
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: 'Custom uniform "iChannel0" conflicts with a Shader Studio built-in.',
+    });
+  });
+
   it.each([
     ["bool uniform", {
       stage: "fragment" as const,
@@ -253,6 +304,65 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
     expect(result.success, result.error).toBe(true);
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
   });
+
+  it.each([
+    ["Atomic<uint> wrapper", "Atomic", "Atomic<uint>"],
+    ["Atomic<int> wrapper", "Atomic", "Atomic<int>"],
+    ["Atomic<uint> element", "uint", "Atomic<uint>"],
+  ] as const)("allows a compute %s to own its type-name declaration", (label, name, elementType) => {
+    const environment = {
+      ...baseEnvironment(),
+      stage: "compute" as const,
+      passName: `ComputeSelf_${label}`,
+      resources: [{ name, kind: "storage" as const, elementType }],
+    };
+
+    const result = compile(environment);
+    expect(result.success, result.error).toBe(true);
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    ["Atomic", "Atomic<uint>"],
+    ["uint", "Atomic<uint>"],
+    ["Atomic", "Atomic<int>"],
+    ["int", "Atomic<int>"],
+  ] as const)(
+    "rejects compute %s when another declaration needs the %s type tokens",
+    (name, elementType) => {
+      const environment = {
+        ...baseEnvironment(),
+        stage: "compute" as const,
+        passName: `ComputeCross_${name}_${elementType}`,
+        customUniforms: [{ name, type: "float" as const }],
+        resources: [{ name: "values", kind: "storage" as const, elementType }],
+      };
+
+      const result = compile(environment);
+      expect(result.success).toBe(false);
+      expect(result.error).not.toBe("");
+      expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+        code: "reserved-identifier",
+        message: `Custom uniform "${name}" conflicts with a Shader Studio built-in.`,
+      });
+    },
+  );
+
+  it.each(["Atomic<uint>", "Atomic<int>"] as const)(
+    "allows the name Atomic after render storage normalizes %s",
+    (elementType) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `RenderNormalization_${elementType}`,
+        customUniforms: [{ name: "Atomic", type: "float" as const }],
+        resources: [{ name: "values", kind: "storage" as const, elementType }],
+      };
+
+      const result = compile(environment);
+      expect(result.success, result.error).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    },
+  );
 
   it.each([
     ["bool", {

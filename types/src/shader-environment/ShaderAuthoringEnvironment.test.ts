@@ -480,6 +480,43 @@ describe("ShaderAuthoringEnvironment", () => {
   });
 
   it.each([
+    ["glsl", "iChannelLoaded"],
+    ["glsl", "iChannelN"],
+    ["slang", "fragColor"],
+    ["slang", "HW_PERFORMANCE"],
+    ["slang", "iChannelN"],
+  ] as const)("allows %s identifier %s when that language does not own a concrete symbol", (languageId, name) => {
+    const environment = {
+      ...baseEnvironment(languageId),
+      customUniforms: [{ name, type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    ["glsl", "fragColor"],
+    ["glsl", "HW_PERFORMANCE"],
+    ["glsl", "iTime"],
+    ["glsl", "iChannel0"],
+    ["glsl", "iCh0"],
+    ["slang", "iChannelLoaded"],
+    ["slang", "iTime"],
+    ["slang", "iChannel0"],
+    ["slang", "iWorldPosition"],
+  ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
+    const environment = {
+      ...baseEnvironment(languageId),
+      customUniforms: [{ name, type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: `Custom uniform "${name}" conflicts with a Shader Studio built-in.`,
+    });
+  });
+
+  it.each([
     "protected",
     "internal",
     "extension",

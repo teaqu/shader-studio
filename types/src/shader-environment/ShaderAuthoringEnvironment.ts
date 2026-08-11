@@ -56,13 +56,34 @@ export interface AuthoringChannelBinding {
 export const MAX_AUTHORING_CHANNEL_SLOTS = 1024;
 
 const SHADER_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const SHADER_STUDIO_RESERVED_NAMES = new Set([
-  ...GLSL_STABLE_NAMES,
-  ...SHADER_STUDIO_BUILTIN_UNIFORMS.map(({ name }) => name),
+const SHARED_RENDERER_OWNED_NAMES = [
   "iWorldPosition",
   "iNormal",
   "iCameraPosition",
-]);
+] as const;
+const DOCUMENTATION_ONLY_BUILTIN_NAMES = new Set(["iChannelN"]);
+
+function collectFixedRendererNames(
+  languageId: ShaderAuthoringEnvironment["languageId"],
+): ReadonlySet<string> {
+  const names = new Set<string>(SHARED_RENDERER_OWNED_NAMES);
+  if (languageId === "glsl") {
+    for (const name of GLSL_STABLE_NAMES) {
+      names.add(name);
+    }
+  }
+  for (const builtin of SHADER_STUDIO_BUILTIN_UNIFORMS) {
+    if (builtin.languages.includes(languageId) && !DOCUMENTATION_ONLY_BUILTIN_NAMES.has(builtin.name)) {
+      names.add(builtin.name);
+    }
+  }
+  return names;
+}
+
+const FIXED_RENDERER_NAMES_BY_LANGUAGE = {
+  glsl: collectFixedRendererNames("glsl"),
+  slang: collectFixedRendererNames("slang"),
+} as const;
 const STORAGE_ELEMENT_TYPE = /^[A-Za-z_][A-Za-z0-9_]*(?:\s*<\s*[A-Za-z_][A-Za-z0-9_]*\s*>)?$/;
 const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
   "float", "float2", "float3", "float4", "int", "int2", "int3", "int4", "uint", "uint2", "uint3", "uint4",
@@ -82,10 +103,9 @@ function isReservedShaderStudioIdentifier(
   name: string,
   languageId: ShaderAuthoringEnvironment["languageId"],
 ): boolean {
-  return SHADER_STUDIO_RESERVED_NAMES.has(name)
+  return FIXED_RENDERER_NAMES_BY_LANGUAGE[languageId].has(name)
     || isShaderLanguageReservedTerm(languageId, name)
-    || /^iChannel\d+$/.test(name)
-    || /^iCh[0-3]$/.test(name);
+    || /^iChannel\d+$/.test(name);
 }
 
 function isValidStorageElementType(

@@ -47,6 +47,40 @@ void main()
 }
 
 describe.runIf(hasGlslangValidator)("GLSL authoring preambles with glslangValidator", () => {
+  it.each(["iChannelLoaded", "iChannelN"])(
+    "allows the non-GLSL fixed/documentation identifier %s",
+    (name) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `CrossLanguage_${name}`,
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      const result = compile(environment);
+      expect(result.success, result.error).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    },
+  );
+
+  it.each(["fragColor", "HW_PERFORMANCE", "iTime", "iChannel0", "iCh0"])(
+    "rejects the concrete GLSL renderer-owned identifier %s",
+    (name) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `Concrete_${name}`,
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      const result = compile(environment);
+      expect(result.success).toBe(false);
+      expect(result.error).not.toBe("");
+      expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+        code: "reserved-identifier",
+        message: `Custom uniform "${name}" conflicts with a Shader Studio built-in.`,
+      });
+    },
+  );
+
   it.each([
     "image1DArrayShadow",
     "image1DShadow",
