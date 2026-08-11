@@ -31,9 +31,9 @@ export default [{
     "extension/**/*.ts",
     "language-servers/**/*.ts",
     "types/src/**/*.ts",
-    "debug/src/GlslParser.ts",
-    "debug/src/test/GlslParser.test.ts",
-    "debug/src/test/ShaderDebugger.extractContext.test.ts",
+    "debug/src/glsl/GlslParser.ts",
+    "debug/src/glsl/test/GlslParser.test.ts",
+    "debug/src/glsl/test/ShaderDebugger.extractContext.test.ts",
     "rendering/src/webgpu/SlangPrelude.ts",
   ],
   plugins: {
