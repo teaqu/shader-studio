@@ -59,6 +59,52 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(slang.text).not.toContain("sampleIChannelN(float2 | float3) helper iChannelN;");
   });
 
+  it("shares fragment-context declarations and documentation across both authoring languages", () => {
+    const glsl = buildGlslAuthoringPreamble(baseEnvironment("glsl")).text;
+    const slang = buildSlangAuthoringModule(baseEnvironment("slang")).text;
+    const expected = [
+      ["iWorldPosition", "vec3", "float3"],
+      ["iNormal", "vec3", "float3"],
+      ["iCameraPosition", "vec3", "float3"],
+    ] as const;
+
+    for (const [name, glslType, slangType] of expected) {
+      const builtin = SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name);
+      expect(builtin).toMatchObject({
+        name,
+        glslType,
+        slangType,
+        languages: ["glsl", "slang"],
+        stages: ["fragment"],
+      });
+      expect(glsl).toContain(`${glslType} ${name};`);
+      expect(slang).toContain(`${slangType} ${name};`);
+      expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name)).toMatchObject({
+        name,
+        glslType,
+        slangType,
+        languages: ["glsl", "slang"],
+        stages: ["fragment"],
+      });
+    }
+  });
+
+  it("limits renderer fragment-context authoring declarations to the fragment stage", () => {
+    const glslVertex = buildGlslAuthoringPreamble({
+      ...baseEnvironment("glsl"),
+      stage: "vertex",
+    }).text;
+    const slangCompute = buildSlangAuthoringModule({
+      ...baseEnvironment("slang"),
+      stage: "compute",
+    }).text;
+
+    for (const name of ["iWorldPosition", "iNormal", "iCameraPosition"]) {
+      expect(glslVertex).not.toContain(`vec3 ${name};`);
+      expect(slangCompute).not.toContain(`float3 ${name};`);
+    }
+  });
+
   it("describes custom uniforms and resources in both languages", () => {
     const environment = environmentWithCustomUniformAndCubeChannel();
 
@@ -412,6 +458,22 @@ describe("ShaderAuthoringEnvironment", () => {
     ]);
   });
 
+  it("reserves the Slang runtime uniform-buffer identifier without rejecting adjacent names", () => {
+    const collision = {
+      ...baseEnvironment("slang"),
+      customUniforms: [{ name: "_st", type: "float" as const }],
+    };
+    const control = {
+      ...baseEnvironment("slang"),
+      customUniforms: [{ name: "_stValue", type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(collision)).toEqual([
+      { code: "reserved-identifier", message: 'Custom uniform "_st" conflicts with a Shader Studio built-in.' },
+    ]);
+    expect(validateShaderAuthoringEnvironment(control)).toEqual([]);
+  });
+
   it.each([
     ["float", "a GLSL scalar type"],
     ["uint", "a GLSL scalar type"],
@@ -672,6 +734,7 @@ describe("ShaderAuthoringEnvironment", () => {
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
       "iChannelTime", "iChannelLoaded", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
+      "iWorldPosition", "iNormal", "iCameraPosition",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);

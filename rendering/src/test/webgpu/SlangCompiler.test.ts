@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
+import {
+  validateShaderAuthoringEnvironment,
+  type ShaderAuthoringEnvironment,
+} from "@shader-studio/types";
 import { SlangCompiler } from "../../webgpu/SlangCompiler";
 import type {
   SlangModuleApi,
@@ -177,6 +181,42 @@ describe("SlangCompiler", () => {
       if (result.success) {
         expect(result.wgsl.trim().length).toBeGreaterThan(0);
       }
+    },
+  );
+
+  it.runIf(realSlangAssets)(
+    "reserves the runtime _st object name while a neighboring custom uniform compiles with real Slang",
+    async () => {
+      const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
+      const compiler = new SlangCompiler(slang);
+      const environment = (name: string): ShaderAuthoringEnvironment => ({
+        documentUri: "file:///shader-studio-runtime.slang",
+        languageId: "slang",
+        generation: 1,
+        passName: "Image",
+        stage: "fragment",
+        customUniforms: [{ name, type: "float" }],
+        resources: [],
+        virtualFiles: [],
+      });
+
+      const collision = compiler.compileImagePass(
+        "float4 mainImage(float2 c) { return float4(_st); }",
+        { customUniforms: [{ name: "_st", type: "float" }] },
+      );
+      expect(collision.success).toBe(false);
+      if (!collision.success) {
+        expect(collision.errors.join("\n")).toMatch(/_st|resolution|member/i);
+      }
+      const control = compiler.compileImagePass(
+        "float4 mainImage(float2 c) { return float4(_stValue); }",
+        { customUniforms: [{ name: "_stValue", type: "float" }] },
+      );
+      expect(control.success, control.success ? "" : control.errors.join("\n")).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment("_st"))).toEqual([
+        { code: "reserved-identifier", message: 'Custom uniform "_st" conflicts with a Shader Studio built-in.' },
+      ]);
+      expect(validateShaderAuthoringEnvironment(environment("_stValue"))).toEqual([]);
     },
   );
 

@@ -120,6 +120,38 @@ void main() {
     expect(rejected.error).toMatch(/wrong operand types/);
   });
 
+  it("rejects sampler equality even when the expression is passed to a bool overload", () => {
+    const result = compile(fragment(`
+bool choose(bool value) { return value; }
+uniform sampler2D leftSampler;
+uniform sampler2D rightSampler;
+void main() {
+  bool selected = choose(leftSampler == rightSampler);
+  fragColor = vec4(float(selected));
+}`));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/can't use with samplers|wrong operand types/);
+  });
+
+  it.each([
+    ["scalar", "1 == 2"],
+    ["vector", "vec2(1.0) == vec2(2.0)"],
+    ["matrix", "mat2(1.0) == mat2(2.0)"],
+    ["same-shape array", "leftArray == rightArray"],
+  ])("accepts %s equality as a bool overload argument", (_name, expression) => {
+    const result = compile(fragment(`
+bool choose(bool value) { return value; }
+int leftArray[2];
+int rightArray[2];
+void main() {
+  bool selected = choose(${expression});
+  fragColor = vec4(float(selected));
+}`));
+
+    expect(result.success, result.error).toBe(true);
+  });
+
   it("rejects independently symbolic mismatched extents in calls and equality", () => {
     const rejectedCall = compile(fragment(`
 const int N = 2;

@@ -1,7 +1,9 @@
 import {
   SHADER_STUDIO_BUILTIN_UNIFORMS,
+  SHADER_STUDIO_FRAGMENT_CONTEXT,
   SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES,
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
+  SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
 } from "./BuiltinUniforms";
 import {
   deriveSlangChannelGeneratedIdentifiers,
@@ -192,7 +194,13 @@ export function buildSlangAuthoringModule(
   const channelLines = buildSlangChannelDeclarations(channelBindings, environment.stage);
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
-      .flatMap((uniform) => uniform.slangDeclaration ? [uniform.slangDeclaration] : []),
+      .flatMap((uniform) => (
+        uniform.slangDeclaration
+        && uniform.languages.includes("slang")
+        && (!uniform.stages || uniform.stages.includes(environment.stage))
+          ? [uniform.slangDeclaration]
+          : []
+      )),
     ...environment.customUniforms
       .filter((uniform) => isValidShaderIdentifier(uniform.name))
       .flatMap((uniform) => {
@@ -244,9 +252,14 @@ export function buildSlangRuntimePrelude(
     .flatMap(({ name, type }) => !isSlangCustomUniformType(type)
       ? []
       : [type === "bool"
-        ? `#define ${name} (_st.custom_${name} != 0)`
-        : `#define ${name} (_st.custom_${name})`])
+        ? `#define ${name} (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.custom_${name} != 0)`
+        : `#define ${name} (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.custom_${name})`])
     .join("\n");
+  const contextDeclarations = [
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.worldPosition, contextName: contextNames.worldPosition },
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.normal, contextName: contextNames.normal },
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition, contextName: contextNames.cameraPosition },
+  ].map(({ symbol, contextName }) => `static ${symbol.slangType} ${contextName};`).join("\n");
 
   return `// ---- shader-studio Slang prelude (generated) ----
 struct ShaderToyUniforms
@@ -256,12 +269,10 @@ ${fields}
 };
 
 [[vk::binding(0, 0)]]
-ConstantBuffer<ShaderToyUniforms> _st;
+ConstantBuffer<ShaderToyUniforms> ${SLANG_RUNTIME_UNIFORM_BUFFER_NAME};
 
 ${SLANG_RUNTIME_UNIFORM_ALIAS_LINES.join("\n")}
 ${aliases}
-static float3 ${contextNames.worldPosition};
-static float3 ${contextNames.normal};
-static float3 ${contextNames.cameraPosition};
+${contextDeclarations}
 `;
 }

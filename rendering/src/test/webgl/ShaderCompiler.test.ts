@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SHADER_STUDIO_BUILTIN_UNIFORMS } from "@shader-studio/types";
 import { ShaderCompiler } from "../../webgl/ShaderCompiler";
 import type { PiRenderer, PiShader } from "../../types/piRenderer";
 
@@ -72,6 +73,26 @@ describe("ShaderCompiler", () => {
   });
 
   describe("wrapShaderToyCode", () => {
+    it("keeps fragment-context wrapper types aligned with the shared authoring catalog", () => {
+      const mesh = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        { geometry: "sphere" },
+      ).wrappedCode;
+      const fullscreen = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+      ).wrappedCode;
+
+      for (const name of ["iWorldPosition", "iNormal", "iCameraPosition"]) {
+        const fact = SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name);
+        expect(fact).toMatchObject({ name, glslType: "vec3", languages: ["glsl", "slang"] });
+        if (!fact?.glslType) {
+          continue;
+        }
+        expect(mesh).toMatch(new RegExp(`(?:in|uniform) ${fact.glslType} ${name};`));
+        expect(fullscreen).toContain(`const ${fact.glslType} ${name} = ${fact.glslType}(0.0);`);
+      }
+    });
+
     it("generates mesh vertex inputs and passes UV-scaled coordinates to mainImage", () => {
       const code = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         fragColor = vec4(normalize(iNormal) + iWorldPosition + iCameraPosition, 1.0);

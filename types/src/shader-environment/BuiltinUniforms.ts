@@ -1,20 +1,40 @@
+export type ShaderStudioBuiltinStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
+
 export interface ShaderStudioBuiltinUniform {
   readonly name: string;
   readonly glslType?: string;
   readonly slangType: string;
+  /** Concrete declaration emitted into standalone GLSL authoring modules. */
+  readonly glslDeclaration?: string;
   /** Concrete declaration emitted into standalone Slang authoring modules. */
   readonly slangDeclaration?: string;
   readonly languages: readonly ("glsl" | "slang")[];
+  /** Stages that expose this symbol; omitted means every authoring stage. */
+  readonly stages?: readonly ShaderStudioBuiltinStage[];
   readonly description: string;
 }
 
-function deepFreezeBuiltin<T extends ShaderStudioBuiltinUniform>(builtin: T): Readonly<T> {
-  return Object.freeze({ ...builtin, languages: Object.freeze([...builtin.languages]) });
+export interface ShaderStudioFragmentContextSymbol extends ShaderStudioBuiltinUniform {
+  readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition";
+  readonly glslType: "vec3";
+  readonly slangType: "float3";
+  readonly glslDeclaration: string;
+  readonly slangDeclaration: string;
+  readonly languages: readonly ["glsl", "slang"];
+  readonly stages: readonly ["fragment"];
 }
 
-function deepFreezeBuiltinCatalog(
-  builtins: readonly ShaderStudioBuiltinUniform[],
-): readonly Readonly<ShaderStudioBuiltinUniform>[] {
+function deepFreezeBuiltin<T extends ShaderStudioBuiltinUniform>(builtin: T): Readonly<T> {
+  return Object.freeze({
+    ...builtin,
+    languages: Object.freeze([...builtin.languages]),
+    ...(builtin.stages ? { stages: Object.freeze([...builtin.stages]) } : {}),
+  });
+}
+
+function deepFreezeBuiltinCatalog<T extends ShaderStudioBuiltinUniform>(
+  builtins: readonly T[],
+): readonly Readonly<T>[] {
   return Object.freeze(builtins.map(deepFreezeBuiltin));
 }
 
@@ -50,7 +70,47 @@ export const GLSL_DEFAULT_CHANNEL_DECLARATION_LINES = Object.freeze([
   "uniform vec3 iChannelResolution[16];",
 ] as const);
 
-export const SHADER_STUDIO_BUILTIN_UNIFORMS = deepFreezeBuiltinCatalog([
+export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStudioFragmentContextSymbol>[] = deepFreezeBuiltinCatalog([
+  {
+    name: "iWorldPosition",
+    glslType: "vec3",
+    slangType: "float3",
+    glslDeclaration: "vec3 iWorldPosition;",
+    slangDeclaration: "float3 iWorldPosition;",
+    languages: ["glsl", "slang"],
+    stages: ["fragment"],
+    description: "World-space position of the current fragment; zero for fullscreen geometry.",
+  },
+  {
+    name: "iNormal",
+    glslType: "vec3",
+    slangType: "float3",
+    glslDeclaration: "vec3 iNormal;",
+    slangDeclaration: "float3 iNormal;",
+    languages: ["glsl", "slang"],
+    stages: ["fragment"],
+    description: "World-space interpolated normal of the current fragment; zero for fullscreen geometry.",
+  },
+  {
+    name: "iCameraPosition",
+    glslType: "vec3",
+    slangType: "float3",
+    glslDeclaration: "vec3 iCameraPosition;",
+    slangDeclaration: "float3 iCameraPosition;",
+    languages: ["glsl", "slang"],
+    stages: ["fragment"],
+    description: "World-space camera position for mesh fragments; zero for fullscreen geometry.",
+  },
+] as const satisfies readonly ShaderStudioFragmentContextSymbol[]);
+
+/** Semantic renderer keys backed by the same facts used for authoring and docs. */
+export const SHADER_STUDIO_FRAGMENT_CONTEXT = Object.freeze({
+  worldPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[0]!,
+  normal: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[1]!,
+  cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[2]!,
+});
+
+export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuiltinUniform>[] = deepFreezeBuiltinCatalog([
   { name: "iResolution", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iResolution;", languages: ["glsl", "slang"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
   { name: "iTime", glslType: "float", slangType: "float", slangDeclaration: "float iTime;", languages: ["glsl", "slang"], description: "Elapsed time in seconds." },
   { name: "iTimeDelta", glslType: "float", slangType: "float", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang"], description: "Time since the previous frame in seconds." },
@@ -73,7 +133,13 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS = deepFreezeBuiltinCatalog([
   { name: "iCh1", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Second input channel with sampler, size, playback time, and loaded state metadata." },
   { name: "iCh2", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Third input channel with sampler, size, playback time, and loaded state metadata." },
   { name: "iCh3", glslType: "ShaderToy channel metadata struct", slangType: "ShaderToyChannel2D | ShaderToyChannelCube", languages: ["glsl", "slang"], description: "Fourth input channel with sampler, size, playback time, and loaded state metadata." },
+  ...SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS,
 ] as const satisfies readonly ShaderStudioBuiltinUniform[]);
+
+export const SLANG_RUNTIME_UNIFORM_BUFFER_NAME = "_st";
+export const SLANG_RUNTIME_INTERNAL_NAMES = Object.freeze([
+  SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
+] as const);
 
 export const SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES = Object.freeze([
   "    float4 resolution;",
@@ -92,17 +158,17 @@ export const SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES = Object.freeze([
 ] as const);
 
 export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
-  "#define iResolution (_st.resolution.xyz)",
-  "#define iMouse (_st.mouse)",
-  "#define iTime (_st.time)",
-  "#define iTimeDelta (_st.timeDelta)",
-  "#define iFrameRate (_st.frameRate)",
-  "#define iFrame (_st.frame)",
-  "#define iChannelTime (_st.channelTime)",
-  "#define iChannelLoaded (_st.channelLoaded)",
-  "#define iSampleRate (_st.sampleRate)",
-  "#define iDate (_st.date)",
-  "#define iChannelResolution (_st.channelResolution)",
-  "#define iCameraPos (_st.cameraPos.xyz)",
-  "#define iCameraDir (_st.cameraDir.xyz)",
+  `#define iResolution (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.resolution.xyz)`,
+  `#define iMouse (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.mouse)`,
+  `#define iTime (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.time)`,
+  `#define iTimeDelta (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.timeDelta)`,
+  `#define iFrameRate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.frameRate)`,
+  `#define iFrame (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.frame)`,
+  `#define iChannelTime (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.channelTime)`,
+  `#define iChannelLoaded (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.channelLoaded)`,
+  `#define iSampleRate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.sampleRate)`,
+  `#define iDate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.date)`,
+  `#define iChannelResolution (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.channelResolution)`,
+  `#define iCameraPos (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.cameraPos.xyz)`,
+  `#define iCameraDir (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.cameraDir.xyz)`,
 ] as const);

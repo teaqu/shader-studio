@@ -342,9 +342,15 @@ function normalizeProgram(
       }
       const kind = entry.declaration.type === "parameter_declaration" ? "parameter" : "variable";
       const declarationLocation = identifierNode(entry.declaration, name)?.location;
-      const typeName = kind === "parameter"
-        ? extractTypeName(entry.declaration.specifier)
-        : declarationLocation ? metadata.get(declarationLocation.start.offset)?.typeName : undefined;
+      const resolvedTypeName = kind === "parameter"
+        ? (() => {
+          const baseType = extractTypeName(entry.declaration.specifier);
+          return baseType
+            ? encodeArrayType(baseType, arrayQuantifierDimensions(entry.declaration))
+            : undefined;
+        })()
+        : declarationLocation ? metadata.get(declarationLocation.start.offset)?.resolvedTypeName : undefined;
+      const typeName = publicTypeName(resolvedTypeName);
       addSymbol(scope, name, kind, entry.declaration, entry.references, typeName);
     }
 
@@ -363,10 +369,7 @@ function normalizeProgram(
         if (!definition.declaration) {
           continue;
         }
-        const prototype = asNode(definition.declaration.prototype);
-        const header = asNode(prototype?.header);
-        const declaredReturnType = extractTypeName(header?.returnType);
-        const returnType = declaredReturnType ?? normalizeParserType(definition.returnType);
+        const returnType = publicTypeName(resolvedFunctionReturnType(definition));
         const parameterTypes = functionParameterTypes(definition);
         addSymbol(
           scope,
@@ -430,7 +433,7 @@ function normalizeProgram(
           reference,
         ) === field.ownerName)
         .map((reference) => reference.selection),
-      field.typeName,
+      publicTypeName(field.resolvedTypeName),
     );
   }
 
@@ -741,6 +744,10 @@ function resolveFunctionReturnTypeAtReference(
   if (!definition) {
     return undefined;
   }
+  return resolvedFunctionReturnType(definition);
+}
+
+function resolvedFunctionReturnType(definition: ParserFunctionDefinition): string | undefined {
   const prototype = asNode(definition.declaration?.prototype);
   const header = asNode(prototype?.header);
   const returnType = extractTypeName(header?.returnType);
@@ -757,18 +764,23 @@ function selectFunctionDefinition(
   if (!argumentTypes.every((type): type is string => type !== undefined)) {
     return undefined;
   }
+  if (!argumentTypes.every(isWebGlSemanticType)) {
+    return undefined;
+  }
   for (const scope of scopes) {
     const overloads = scope.functions[functionName];
     if (!overloads) {
       continue;
     }
     const definitions = Object.values(overloads);
-    const matchingDefinitions = definitions.filter((candidate) => (
-      resolvedFunctionParameterTypes(candidate).length === argumentTypes.length
-      && resolvedFunctionParameterTypes(candidate).every((type, index) => (
-        typesEquivalent(type, argumentTypes[index])
-      ))
-    ));
+    const matchingDefinitions = definitions.filter((candidate) => {
+      const parameterTypes = resolvedFunctionParameterTypes(candidate);
+      const returnType = resolvedFunctionReturnType(candidate);
+      return parameterTypes.every(isWebGlSemanticType)
+        && (!returnType || isWebGlSemanticType(returnType))
+        && parameterTypes.length === argumentTypes.length
+        && parameterTypes.every((type, index) => typesEquivalent(type, argumentTypes[index]));
+    });
     return matchingDefinitions.length === 1 ? matchingDefinitions[0] : undefined;
   }
   return undefined;
@@ -777,11 +789,18 @@ function selectFunctionDefinition(
 function functionParameterTypes(definition: ParserFunctionDefinition): readonly string[] {
   const prototype = asNode(definition.declaration?.prototype);
   const declaredParameterTypes = nodeArray(prototype?.parameters)
-    .map((parameter) => extractTypeName(parameter.specifier));
+    .map((parameter) => {
+      const typeName = extractTypeName(parameter.specifier);
+      return typeName
+        ? publicTypeName(encodeArrayType(typeName, arrayQuantifierDimensions(parameter)))
+        : undefined;
+    });
   return declaredParameterTypes.every((type): type is string => type !== undefined)
     ? declaredParameterTypes
     : definition.parameterTypes
       .map(normalizeParserType)
+      .map(encodeParserArrayType)
+      .map(publicTypeName)
       .filter((type): type is string => type !== undefined && type !== "void");
 }
 
@@ -832,7 +851,9 @@ function resolveBinaryType(
     return leftType === "bool" && rightType === "bool" ? "bool" : undefined;
   }
   if (["==", "!="].includes(operator)) {
-    return typesEquivalent(leftType, rightType) ? "bool" : undefined;
+    return typesEquivalent(leftType, rightType) && isEqualityComparableType(leftType)
+      ? "bool"
+      : undefined;
   }
   if (["<", ">", "<=", ">="].includes(operator)) {
     return leftType === rightType && isNumericScalarType(leftType) ? "bool" : undefined;
@@ -935,9 +956,7 @@ function isNumericAggregateWithComponent(aggregateType: string, componentType: s
 function indexedType(typeName: string): string | undefined {
   const arrayType = decodeArrayType(typeName);
   if (arrayType) {
-    return arrayType.dimensions.length === 1
-      ? arrayType.elementType
-      : encodeArrayType(arrayType.elementType, arrayType.dimensions.slice(1));
+    return arrayType.dimensions.length === 1 ? arrayType.elementType : undefined;
   }
   const vector = vectorType(typeName);
   if (vector) {
@@ -1003,6 +1022,21 @@ function typesEquivalent(leftType: string, rightType: string | undefined): boole
       && canonicalTypeName(leftType) === canonicalTypeName(rightType);
   }
   return canonicalTypeName(leftType) === canonicalTypeName(rightType);
+}
+
+function isWebGlSemanticType(typeName: string): boolean {
+  const array = decodeArrayType(typeName);
+  return !array || array.dimensions.length === 1;
+}
+
+function isEqualityComparableType(typeName: string): boolean {
+  const array = decodeArrayType(typeName);
+  if (array) {
+    return array.dimensions.length === 1
+      && array.dimensions[0] !== undefined
+      && isEqualityComparableType(array.elementType);
+  }
+  return /^(?:bool|int|uint|float|[biu]?vec[234]|mat[234](?:x[234])?)$/.test(canonicalTypeName(typeName));
 }
 
 function resolveSwizzleType(ownerType: string, selection: string): string | undefined {
@@ -1562,6 +1596,23 @@ function decodeArrayType(typeName: string): ResolvedArrayType | undefined {
     elementType: match[2],
     dimensions: dimensions as ArrayExtent[],
   };
+}
+
+function publicTypeName(typeName: string | undefined): string | undefined {
+  if (!typeName) {
+    return undefined;
+  }
+  const encodedTypeName = encodeParserArrayType(typeName) ?? typeName;
+  const array = decodeArrayType(encodedTypeName);
+  if (array) {
+    const elementType = publicTypeName(array.elementType);
+    return elementType
+      ? `${elementType}${array.dimensions.map((extent) => `[${extent ?? ""}]`).join("")}`
+      : undefined;
+  }
+  return encodedTypeName.startsWith("@anonymous-struct:")
+    ? "anonymous struct"
+    : encodedTypeName;
 }
 
 function encodeParserArrayType(typeName: string | undefined): string | undefined {

@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { SHADER_STUDIO_BUILTIN_UNIFORMS } from '@shader-studio/types';
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX, wrapSlangImageSource } from '../../webgpu/SlangPrelude';
 
 const image = 'float4 mainImage(float2 fragCoord) { return float4(1); }';
 const vertex = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.y += 1; }';
 
 describe('wrapSlangImageSource vertex hooks', () => {
+  it('keeps fragment-context wrapper types aligned with the shared authoring catalog', () => {
+    const source = wrapSlangImageSource(image);
+
+    for (const name of ['iWorldPosition', 'iNormal', 'iCameraPosition']) {
+      const fact = SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name);
+      expect(fact).toMatchObject({ name, slangType: 'float3', languages: ['glsl', 'slang'] });
+      if (!fact) {
+        continue;
+      }
+      expect(source).toContain(`static ${fact.slangType} ${name};`);
+    }
+  });
+
   it('preserves the exact fixed uniform prelude emitted before the first channel helper', () => {
     const source = wrapSlangImageSource(image);
     const prelude = source.slice(0, source.indexOf('float4 sampleIChannel0(float2 uv)'));

@@ -203,12 +203,47 @@ describe("parseGlslDocument", () => {
     ].join("\n");
     const document = parseGlslDocument("file:///array-expression-shapes.glsl", source, "fragment");
 
-    const intArrayOverload = document.symbols.find((symbol) => symbol.signature === "int consume(int)");
+    const intArrayOverload = document.symbols.find((symbol) => symbol.signature === "int consume(int[2])");
     const intScalarOverload = document.symbols.find((symbol) => symbol.signature === "int select(int)");
     expect(symbolAtPosition(document, { line: 7, character: 18 })?.id).toBe(intArrayOverload?.id);
     expect(symbolAtPosition(document, { line: 8, character: 20 })?.id).toBe(intScalarOverload?.id);
     expect(intArrayOverload?.references).toHaveLength(1);
     expect(intScalarOverload?.references).toHaveLength(1);
+  });
+
+  it("publishes readable array shapes for every public symbol surface", () => {
+    const source = [
+      "int pick(int values[2]) { return values[0]; }",
+      "int pick(int values[3]) { return values[0]; }",
+      "int[2] makeValues() { int result[2]; return result; }",
+      "struct Holder { int values[3]; int grid[2][3]; };",
+      "int globalValues[2];",
+      "int unsizedValues[];",
+      "void consume(int grid[2][3]) {}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///public-array-shapes.glsl", source, "fragment");
+    const symbol = (kind: GlslSymbol["kind"], name: string, line?: number) => document.symbols.find((candidate) => (
+      candidate.kind === kind
+      && candidate.name === name
+      && (line === undefined || candidate.definition.start.line === line)
+    ));
+
+    expect(symbol("variable", "globalValues")?.typeName).toBe("int[2]");
+    expect(symbol("variable", "unsizedValues")?.typeName).toBe("int[]");
+    expect(symbol("parameter", "values", 0)?.typeName).toBe("int[2]");
+    expect(symbol("parameter", "values", 1)?.typeName).toBe("int[3]");
+    expect(symbol("parameter", "grid", 6)?.typeName).toBe("int[2][3]");
+    expect(symbol("field", "values")?.typeName).toBe("int[3]");
+    expect(symbol("field", "grid")?.typeName).toBe("int[2][3]");
+    expect(symbol("function", "makeValues")).toMatchObject({
+      typeName: "int[2]",
+      signature: "int[2] makeValues()",
+    });
+    expect(document.symbols.filter((candidate) => candidate.kind === "function" && candidate.name === "pick")
+      .map((candidate) => candidate.signature)).toEqual([
+      "int pick(int[2])",
+      "int pick(int[3])",
+    ]);
   });
 
   it("resolves array overloads by every known extent independently of declaration order", () => {
@@ -390,7 +425,7 @@ describe("parseGlslDocument", () => {
     }
   });
 
-  it("consumes multidimensional array extents in source order", () => {
+  it("retains multidimensional declarations without claiming WebGL-invalid semantic links", () => {
     const source = [
       "int chooseRow(int value[2]) { return 2; }",
       "int chooseRow(int value[3]) { return 3; }",
@@ -402,13 +437,18 @@ describe("parseGlslDocument", () => {
       "}",
     ].join("\n");
     const document = parseGlslDocument("file:///multidimensional-indexing.glsl", source, "fragment");
-    const extentThree = document.symbols.find((symbol) => (
-      symbol.kind === "function" && symbol.name === "chooseRow" && symbol.definition.start.line === 1
-    ));
-    const scalar = document.symbols.find((symbol) => symbol.signature === "int chooseScalar(int)");
-
-    expect(symbolAtPosition(document, { line: 5, character: 14 })?.id).toBe(extentThree?.id);
-    expect(symbolAtPosition(document, { line: 6, character: 17 })?.id).toBe(scalar?.id);
+    expect(document.symbols).toContainEqual(expect.objectContaining({
+      kind: "variable",
+      name: "grid",
+      typeName: "int[2][3]",
+    }));
+    expect(document.symbols.filter((symbol) => symbol.name === "chooseRow")).toEqual([
+      expect.objectContaining({ signature: "int chooseRow(int[2])", references: [] }),
+      expect.objectContaining({ signature: "int chooseRow(int[3])", references: [] }),
+    ]);
+    expect(document.symbols.find((symbol) => symbol.name === "chooseScalar")?.references).toEqual([]);
+    expect(symbolAtPosition(document, { line: 5, character: 14 })).toBeNull();
+    expect(symbolAtPosition(document, { line: 6, character: 17 })).toBeNull();
   });
 
   it("resolves array equality only for compiler-compatible complete shapes", () => {
@@ -428,6 +468,46 @@ describe("parseGlslDocument", () => {
     expect(symbolAtPosition(document, { line: 5, character: 16 })?.id).toBe(choose?.id);
     expect(symbolAtPosition(document, { line: 6, character: 20 })).toBeNull();
     expect(choose?.references).toHaveLength(1);
+  });
+
+  it("does not resolve sampler equality as a bool overload argument", () => {
+    const source = [
+      "bool choose(bool value) { return value; }",
+      "uniform sampler2D leftSampler;",
+      "uniform sampler2D rightSampler;",
+      "void exercise() {",
+      "  bool selected = choose(leftSampler == rightSampler);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///opaque-equality.glsl", source, "fragment");
+    const choose = document.symbols.find((symbol) => symbol.signature === "bool choose(bool)");
+
+    expect(symbolAtPosition(document, { line: 4, character: 20 })).toBeNull();
+    expect(choose?.references).toEqual([]);
+  });
+
+  it("resolves equality only for provably comparable built-in values", () => {
+    const source = [
+      "bool choose(bool value) { return value; }",
+      "struct Pair { int value; };",
+      "Pair leftPair; Pair rightPair;",
+      "int leftArray[2]; int rightArray[2];",
+      "void exercise() {",
+      "  bool scalar = choose(1 == 2);",
+      "  bool vector = choose(vec2(1.0) == vec2(2.0));",
+      "  bool matrix = choose(mat2(1.0) == mat2(2.0));",
+      "  bool array = choose(leftArray == rightArray);",
+      "  bool structure = choose(leftPair == rightPair);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///comparable-equality.glsl", source, "fragment");
+    const choose = document.symbols.find((symbol) => symbol.signature === "bool choose(bool)");
+
+    for (const line of [5, 6, 7, 8]) {
+      expect(symbolAtPosition(document, { line, character: 18 })?.id).toBe(choose?.id);
+    }
+    expect(symbolAtPosition(document, { line: 9, character: 21 })).toBeNull();
+    expect(choose?.references).toHaveLength(4);
   });
 
   it("resolves GLSL ES binary operator shapes without claiming invalid expressions", () => {
@@ -774,13 +854,13 @@ describe("parseGlslDocument", () => {
     expect(anonymousScopes[0]?.name).not.toContain("@anonymous-struct:");
     expect(repeated.scopes.find((scope) => scope.id === anonymousScopes[0]?.id)).toEqual(anonymousScopes[0]);
     expect(document.symbols.every((symbol) => (
-      !symbol.typeName?.startsWith("@array:")
-      && !symbol.typeName?.startsWith("@anonymous-struct:")
-      && !symbol.signature?.startsWith("@array:")
-      && !symbol.signature?.startsWith("@anonymous-struct:")
+      !symbol.typeName?.includes("@array:")
+      && !symbol.typeName?.includes("@anonymous-struct:")
+      && !symbol.signature?.includes("@array:")
+      && !symbol.signature?.includes("@anonymous-struct:")
     ))).toBe(true);
     expect(document.scopes.every((scope) => (
-      !scope.name.startsWith("@array:") && !scope.name.startsWith("@anonymous-struct:")
+      !scope.name.includes("@array:") && !scope.name.includes("@anonymous-struct:")
     ))).toBe(true);
   });
 

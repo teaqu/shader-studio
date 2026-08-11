@@ -76,14 +76,17 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
     }
   }, 30_000);
 
-  function compile(environment: ShaderAuthoringEnvironment): { readonly success: boolean; readonly error: string } {
+  function compile(
+    environment: ShaderAuthoringEnvironment,
+    sourceSuffix = "",
+  ): { readonly success: boolean; readonly error: string } {
     const session = globalSession?.createSession(compileTarget);
     if (!session) {
       throw new Error("Bundled Slang compiler could not create a compile session.");
     }
     const moduleName = `authoring_${environment.passName.toLowerCase().replace(/[^a-z0-9_]/g, "_")}`;
     const compiled = session.loadModuleFromSource(
-      buildSlangAuthoringModule(environment).text,
+      `${buildSlangAuthoringModule(environment).text}\n${sourceSuffix}`,
       moduleName,
       `/${moduleName}.slang`,
     );
@@ -110,6 +113,15 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
       const result = compile(environment);
       expect(result.success, result.error).toBe(true);
     }
+  });
+
+  it("compiles every renderer fragment-context symbol from the authoring module", () => {
+    const result = compile(
+      baseEnvironment(),
+      "float4 useFragmentContext() { return float4(iWorldPosition + iNormal + iCameraPosition, 1.0); }",
+    );
+
+    expect(result.success, result.error).toBe(true);
   });
 
   it.each([

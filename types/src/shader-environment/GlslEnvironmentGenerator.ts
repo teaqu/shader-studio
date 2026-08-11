@@ -1,4 +1,7 @@
-import { GLSL_STABLE_DECLARATION_LINES } from "./BuiltinUniforms";
+import {
+  GLSL_STABLE_DECLARATION_LINES,
+  SHADER_STUDIO_BUILTIN_UNIFORMS,
+} from "./BuiltinUniforms";
 import {
   buildGlslCompatibilityUniformDeclarationLines,
   type GlslSamplerType,
@@ -44,6 +47,13 @@ export function buildGlslAuthoringPreamble(
   const samplerTypes = Array.from({ length: 4 }, (_, slot) => glslSamplerTypeFor(channels.get(slot)));
   const lines = [
     ...GLSL_STABLE_DECLARATION_LINES,
+    ...SHADER_STUDIO_BUILTIN_UNIFORMS.flatMap((uniform) => (
+      uniform.glslDeclaration
+      && uniform.languages.includes("glsl")
+      && (!uniform.stages || uniform.stages.includes(environment.stage))
+        ? [uniform.glslDeclaration]
+        : []
+    )),
     ...Array.from({ length: channelCount }, (_, slot) => `uniform ${glslSamplerTypeFor(channels.get(slot))} iChannel${slot};`),
     `uniform vec3 iChannelResolution[${channelCount}];`,
     ...buildGlslCompatibilityUniformDeclarationLines(samplerTypes),

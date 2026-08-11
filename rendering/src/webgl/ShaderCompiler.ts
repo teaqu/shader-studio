@@ -1,5 +1,9 @@
 import type { GeometryType } from "@shader-studio/types";
-import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
+import {
+  isMeshGeometry,
+  MESH_FRAGMENT_CONTEXT,
+  MESH_FRAGMENT_CONTEXT_TYPES,
+} from "../preview3d/MeshFragmentContext";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
 
@@ -68,12 +72,12 @@ export class ShaderCompiler {
     const mesh = isMeshGeometry(options.geometry);
     const fragmentContext = mesh
       ? `in vec2 ${MESH_FRAGMENT_CONTEXT.uv};
-in vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
-in vec3 ${MESH_FRAGMENT_CONTEXT.normal};
-uniform vec3 ${MESH_FRAGMENT_CONTEXT.cameraPosition};`
-      : `const vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition} = vec3(0.0);
-const vec3 ${MESH_FRAGMENT_CONTEXT.normal} = vec3(0.0);
-const vec3 ${MESH_FRAGMENT_CONTEXT.cameraPosition} = vec3(0.0);`;
+in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
+in ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
+uniform ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition};`
+      : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
+const ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal} = ${MESH_FRAGMENT_CONTEXT_TYPES.normal}(0.0);
+const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`;
 
     let header = `
 precision highp float;
@@ -503,8 +507,8 @@ uniform mat4 _meshProjection;
 uniform mat3 _meshNormalMatrix;
 ${vertexUniforms}${channelHelpers}
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
-out vec3 ${MESH_FRAGMENT_CONTEXT.worldPosition};
-out vec3 ${MESH_FRAGMENT_CONTEXT.normal};
+out ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
+out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
 ${hook}
 void main() {
  vec3 _vertexPosition = position;

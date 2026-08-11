@@ -25,7 +25,7 @@ function baseEnvironment(): ShaderAuthoringEnvironment {
   };
 }
 
-function compile(environment: ShaderAuthoringEnvironment): {
+function compile(environment: ShaderAuthoringEnvironment, expression = "vec4(1.0)"): {
   readonly success: boolean;
   readonly error: string;
 } {
@@ -33,7 +33,7 @@ function compile(environment: ShaderAuthoringEnvironment): {
 ${buildGlslAuthoringPreamble(environment).text}
 void main()
 {
-    fragColor = vec4(1.0);
+    fragColor = ${expression};
 }
 `;
   const result = spawnSync("glslangValidator", ["--stdin", "-S", "frag"], {
@@ -47,6 +47,15 @@ void main()
 }
 
 describe.runIf(hasGlslangValidator)("GLSL authoring preambles with glslangValidator", () => {
+  it("compiles every renderer fragment-context symbol from the authoring preamble", () => {
+    const result = compile(
+      baseEnvironment(),
+      "vec4(iWorldPosition + iNormal + iCameraPosition, 1.0)",
+    );
+
+    expect(result.success, result.error).toBe(true);
+  });
+
   it.each(["iChannelLoaded", "iChannelN"])(
     "allows the non-GLSL fixed/documentation identifier %s",
     (name) => {

@@ -1,7 +1,12 @@
-import { GLSL_STABLE_NAMES, SHADER_STUDIO_BUILTIN_UNIFORMS } from "./BuiltinUniforms";
+import {
+  GLSL_STABLE_NAMES,
+  SHADER_STUDIO_BUILTIN_UNIFORMS,
+  SLANG_RUNTIME_INTERNAL_NAMES,
+  type ShaderStudioBuiltinStage,
+} from "./BuiltinUniforms";
 import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
 
-export type ShaderStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
+export type ShaderStage = ShaderStudioBuiltinStage;
 
 export type AuthoringValueType = "float" | "vec2" | "vec3" | "vec4" | "bool";
 
@@ -68,19 +73,18 @@ export interface AuthoringChannelBinding {
 export const MAX_AUTHORING_CHANNEL_SLOTS = 1024;
 
 const SHADER_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const SHARED_RENDERER_OWNED_NAMES = [
-  "iWorldPosition",
-  "iNormal",
-  "iCameraPosition",
-] as const;
 const DOCUMENTATION_ONLY_BUILTIN_NAMES = new Set(["iChannelN"]);
 
 function collectFixedRendererNames(
   languageId: ShaderAuthoringEnvironment["languageId"],
 ): ReadonlySet<string> {
-  const names = new Set<string>(SHARED_RENDERER_OWNED_NAMES);
+  const names = new Set<string>();
   if (languageId === "glsl") {
     for (const name of GLSL_STABLE_NAMES) {
+      names.add(name);
+    }
+  } else {
+    for (const name of SLANG_RUNTIME_INTERNAL_NAMES) {
       names.add(name);
     }
   }
