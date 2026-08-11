@@ -990,7 +990,19 @@ function canonicalTypeName(typeName: string): string {
 }
 
 function typesEquivalent(leftType: string, rightType: string | undefined): boolean {
-  return rightType !== undefined && canonicalTypeName(leftType) === canonicalTypeName(rightType);
+  if (rightType === undefined) {
+    return false;
+  }
+  const leftArray = decodeArrayType(leftType);
+  const rightArray = decodeArrayType(rightType);
+  if (leftArray || rightArray) {
+    return leftArray !== undefined
+      && rightArray !== undefined
+      && leftArray.dimensions.every((extent) => extent !== undefined)
+      && rightArray.dimensions.every((extent) => extent !== undefined)
+      && canonicalTypeName(leftType) === canonicalTypeName(rightType);
+  }
+  return canonicalTypeName(leftType) === canonicalTypeName(rightType);
 }
 
 function resolveSwizzleType(ownerType: string, selection: string): string | undefined {
@@ -1517,13 +1529,7 @@ function arrayExtent(expression: ParserNode | undefined): ArrayExtent {
   if (!expression || expression.type !== "int_constant" || typeof expression.token !== "string") {
     return undefined;
   }
-  const token = expression.token.replace(/[uU]$/, "");
-  if (!/^(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9]\d*)$/.test(token)) {
-    return undefined;
-  }
-  const radix = /^0[xX]/.test(token) ? 16 : /^0[0-7]+$/.test(token) ? 8 : 10;
-  const extent = Number.parseInt(token.replace(/^0[xX]/, ""), radix);
-  return Number.isSafeInteger(extent) && extent >= 0 ? extent : undefined;
+  return parseArrayExtentToken(expression.token);
 }
 
 function encodeArrayType(elementType: string, dimensions: readonly ArrayExtent[]): string {
@@ -1572,6 +1578,10 @@ function encodeParserArrayType(typeName: string | undefined): string | undefined
 }
 
 function parserArrayExtent(value: string): ArrayExtent {
+  return parseArrayExtentToken(value);
+}
+
+function parseArrayExtentToken(value: string): ArrayExtent {
   const token = value.trim().replace(/[uU]$/, "");
   if (!/^(?:0[xX][0-9a-fA-F]+|0[0-7]*|[1-9]\d*)$/.test(token)) {
     return undefined;

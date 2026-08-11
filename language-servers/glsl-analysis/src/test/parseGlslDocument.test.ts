@@ -260,6 +260,69 @@ describe("parseGlslDocument", () => {
     expect(document.symbols.find((symbol) => symbol.name === "pick")?.references).toEqual([]);
   });
 
+  it("does not equate independently unknown array extents in overloads or equality", () => {
+    const source = [
+      "const int N = 2;",
+      "const int M = 3;",
+      "int pick(int values[N]) { return 1; }",
+      "bool choose(bool value) { return value; }",
+      "int expected[N];",
+      "int actual[M];",
+      "void exercise() {",
+      "  int selected = pick(actual);",
+      "  bool equal = choose(expected == actual);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///independent-unknown-extents.glsl", source, "fragment");
+
+    expect(document.diagnostics).toEqual([]);
+    expect(symbolAtPosition(document, { line: 7, character: 18 })).toBeNull();
+    expect(symbolAtPosition(document, { line: 8, character: 17 })).toBeNull();
+    expect(document.symbols.find((symbol) => symbol.name === "pick")?.references).toEqual([]);
+    expect(document.symbols.find((symbol) => symbol.name === "choose")?.references).toEqual([]);
+  });
+
+  it("normalizes supported array extent literals and rejects malformed or unsafe tokens", () => {
+    const source = [
+      "int pick(int values[10]) { return 1; }",
+      "int decimal[10];",
+      "int unsignedDecimal[10u];",
+      "int octal[012];",
+      "int hexadecimal[0xA];",
+      "void exercise() {",
+      "  int fromDecimal = pick(decimal);",
+      "  int fromUnsigned = pick(unsignedDecimal);",
+      "  int fromOctal = pick(octal);",
+      "  int fromHexadecimal = pick(hexadecimal);",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///array-extent-literals.glsl", source, "fragment");
+    const pick = document.symbols.find((symbol) => symbol.name === "pick");
+
+    for (const line of [6, 7, 8, 9]) {
+      const character = source.split("\n")[line]!.indexOf("pick") + 2;
+      expect(symbolAtPosition(document, { line, character })?.id).toBe(pick?.id);
+    }
+    expect(pick?.references).toHaveLength(4);
+
+    const malformed = parseGlslDocument(
+      "file:///malformed-array-extent.glsl",
+      "int malformed[08];\n",
+      "fragment",
+    );
+    expect(malformed.parsedSuccessfully).toBe(false);
+    expect(malformed.diagnostics).toHaveLength(1);
+
+    const unsafeSource = [
+      "int pick(int values[10]) { return 1; }",
+      "int unsafe[9007199254740993];",
+      "void exercise() { int selected = pick(unsafe); }",
+    ].join("\n");
+    const unsafe = parseGlslDocument("file:///unsafe-array-extent.glsl", unsafeSource, "fragment");
+    expect(unsafe.parsedSuccessfully).toBe(true);
+    expect(symbolAtPosition(unsafe, { line: 2, character: 35 })).toBeNull();
+  });
+
   it("retains array extents through function returns and struct fields", () => {
     const source = [
       "int pick(int values[2]) { return 2; }",

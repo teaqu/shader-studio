@@ -120,6 +120,49 @@ void main() {
     expect(rejected.error).toMatch(/wrong operand types/);
   });
 
+  it("rejects independently symbolic mismatched extents in calls and equality", () => {
+    const rejectedCall = compile(fragment(`
+const int N = 2;
+const int M = 3;
+int pick(int values[N]) { return 1; }
+int actual[M];
+void main() {
+  int selected = pick(actual);
+  fragColor = vec4(float(selected));
+}`));
+    const rejectedEquality = compile(fragment(`
+const int N = 2;
+const int M = 3;
+int expected[N];
+int actual[M];
+void main() {
+  bool equal = expected == actual;
+  fragColor = vec4(float(equal));
+}`));
+
+    expect(rejectedCall.success).toBe(false);
+    expect(rejectedCall.error).toMatch(/no matching overloaded function/);
+    expect(rejectedEquality.success).toBe(false);
+    expect(rejectedEquality.error).toMatch(/wrong operand types/);
+  });
+
+  it.each([
+    ["decimal", "10", true],
+    ["unsigned decimal", "10u", true],
+    ["octal", "012", true],
+    ["hexadecimal", "0xA", true],
+    ["malformed octal", "08", false],
+    ["unsafe integer", "9007199254740993", false],
+  ])("%s array extents have the expected compiler result", (_name, extent, accepted) => {
+    const result = compile(fragment(`
+int values[${extent}];
+void main() {
+  fragColor = vec4(float(values[0]));
+}`));
+
+    expect(result.success, result.error).toBe(accepted);
+  });
+
   it("rejects multidimensional indexing in GLSL ES 300", () => {
     const result = compile(fragment(`
 int grid[2][3];
