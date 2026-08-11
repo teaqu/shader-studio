@@ -69,6 +69,14 @@ const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
   "float2x2", "float3x3", "float4x4", "Atomic<uint>", "Atomic<int>",
 ]);
 const FORBIDDEN_STORAGE_ELEMENT_TYPE_TOKENS = new Set(["uniform"]);
+const SLANG_BASE_GENERATED_TYPE_DEPENDENCIES = new Set([
+  "float", "float2", "float3", "float4", "int",
+]);
+const SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES = {
+  "texture-2d": "Texture2D",
+  "texture-cube": "TextureCube",
+  "texture-3d": "Texture3D",
+} as const;
 
 function isReservedShaderStudioIdentifier(
   name: string,
@@ -98,6 +106,61 @@ function isValidStorageElementType(
   return !inner
     || (outer === "Atomic" && (inner === "uint" || inner === "int"))
     || (!FORBIDDEN_STORAGE_ELEMENT_TYPE_TOKENS.has(inner) && !isShaderLanguageReservedTerm(languageId, inner));
+}
+
+function collectSlangGeneratedTypeDependencies(
+  environment: ShaderAuthoringEnvironment,
+): ReadonlySet<string> {
+  const dependencies = new Set(SLANG_BASE_GENERATED_TYPE_DEPENDENCIES);
+  if (environment.customUniforms.some((uniform) => (
+    uniform.type === "bool"
+    && uniform.name !== "bool"
+    && isValidShaderIdentifier(uniform.name)
+  ))) {
+    dependencies.add("bool");
+  }
+
+  for (const { resource, slot } of resolveAuthoringChannelBindings(environment.resources)) {
+    if (!isValidShaderIdentifier(resource.name) || resource.kind === "storage") {
+      continue;
+    }
+    const resourceType = SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES[resource.kind];
+    const metadataUsesResourceType = resource.kind !== "texture-3d" && slot < 4;
+    if (resource.name !== resourceType || metadataUsesResourceType) {
+      dependencies.add(resourceType);
+    }
+    dependencies.add("SamplerState");
+  }
+
+  for (const resource of environment.resources) {
+    if (
+      resource.kind !== "storage"
+      || !isValidShaderIdentifier(resource.name)
+      || /^iChannel\d+$/.test(resource.name)
+    ) {
+      continue;
+    }
+    const bufferType = environment.stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
+    if (resource.name !== bufferType) {
+      dependencies.add(bufferType);
+    }
+    const elementType = resource.elementType ?? "float4";
+    if (!isValidStorageElementType(elementType, "slang")) {
+      continue;
+    }
+    const renderedElementType = environment.stage !== "compute" && elementType === "Atomic<uint>"
+      ? "uint"
+      : environment.stage !== "compute" && elementType === "Atomic<int>"
+        ? "int"
+        : elementType;
+    for (const token of renderedElementType.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []) {
+      if (resource.name !== token) {
+        dependencies.add(token);
+      }
+    }
+  }
+
+  return dependencies;
 }
 
 export interface SlangChannelGeneratedIdentifiers {
@@ -155,6 +218,9 @@ export function validateShaderAuthoringEnvironment(
 ): ShaderAuthoringEnvironmentValidationIssue[] {
   const issues: ShaderAuthoringEnvironmentValidationIssue[] = [];
   const names = new Map<string, "custom uniform" | "resource">();
+  const generatedTypeDependencies = environment.languageId === "slang"
+    ? collectSlangGeneratedTypeDependencies(environment)
+    : new Set<string>();
   const validate = (name: string, noun: "custom uniform" | "resource", allowChannelName = false): boolean => {
     const displayName = noun === "custom uniform" ? "Custom uniform" : "Resource";
     if (!isValidShaderIdentifier(name)) {
@@ -164,7 +230,10 @@ export function validateShaderAuthoringEnvironment(
       });
       return false;
     }
-    if (isReservedShaderStudioIdentifier(name, environment.languageId) && !allowChannelName) {
+    if (
+      (isReservedShaderStudioIdentifier(name, environment.languageId) || generatedTypeDependencies.has(name))
+      && !allowChannelName
+    ) {
       issues.push({
         code: "reserved-identifier",
         message: `${displayName} "${name}" conflicts with a Shader Studio built-in.`,

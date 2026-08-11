@@ -167,6 +167,140 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
     expect(result.error).toMatch(/syntax error|invalid operator/);
   });
 
+  it.each([
+    "float",
+    "int",
+    "float2",
+    "float3",
+    "float4",
+    "Texture2D",
+    "SamplerState",
+  ])("rejects a resource that shadows generated-module type dependency %s", (name) => {
+    const environment = {
+      ...baseEnvironment(),
+      passName: `GeneratedDependency_${name}`,
+      resources: [{ name, kind: "texture-2d" as const }],
+    };
+
+    const result = compile(environment);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/expected a type|expected a generic/);
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: `Resource "${name}" conflicts with a Shader Studio built-in.`,
+    });
+  });
+
+  it.each(["Texture2D", "SamplerState"])(
+    "allows a custom uniform named %s when the generated module does not depend on that type",
+    (name) => {
+      const environment = {
+        ...baseEnvironment(),
+        passName: `Contextual_${name}`,
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      const result = compile(environment);
+      expect(result.success, result.error).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["bool uniform", {
+      stage: "fragment" as const,
+      customUniforms: [{ name: "bool", type: "bool" as const }],
+      resources: [],
+    }],
+    ["slot-four Texture2D resource", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [{ name: "Texture2D", kind: "texture-2d" as const, slot: 4 }],
+    }],
+    ["slot-four TextureCube resource", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [{ name: "TextureCube", kind: "texture-cube" as const, slot: 4 }],
+    }],
+    ["Texture3D resource", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [{ name: "Texture3D", kind: "texture-3d" as const }],
+    }],
+    ["StructuredBuffer resource", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [{ name: "StructuredBuffer", kind: "storage" as const, elementType: "float4" }],
+    }],
+    ["RWStructuredBuffer resource", {
+      stage: "compute" as const,
+      customUniforms: [],
+      resources: [{ name: "RWStructuredBuffer", kind: "storage" as const, elementType: "float4" }],
+    }],
+    ["uint storage resource", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [{ name: "uint", kind: "storage" as const, elementType: "uint" }],
+    }],
+  ])("allows a type-name self-declaration in its compiler-usable %s context", (label, overrides) => {
+    const environment = {
+      ...baseEnvironment(),
+      ...overrides,
+      passName: `SelfDeclaration_${label}`,
+    };
+
+    const result = compile(environment);
+    expect(result.success, result.error).toBe(true);
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    ["bool", {
+      stage: "fragment" as const,
+      customUniforms: [
+        { name: "bool", type: "float" as const },
+        { name: "flag", type: "bool" as const },
+      ],
+      resources: [],
+      expectedNoun: "Custom uniform",
+    }],
+    ["Texture3D", {
+      stage: "fragment" as const,
+      customUniforms: [{ name: "Texture3D", type: "float" as const }],
+      resources: [{ name: "volume", kind: "texture-3d" as const }],
+      expectedNoun: "Custom uniform",
+    }],
+    ["StructuredBuffer", {
+      stage: "fragment" as const,
+      customUniforms: [{ name: "StructuredBuffer", type: "float" as const }],
+      resources: [{ name: "values", kind: "storage" as const, elementType: "float4" }],
+      expectedNoun: "Custom uniform",
+    }],
+    ["uint", {
+      stage: "fragment" as const,
+      customUniforms: [],
+      resources: [
+        { name: "values", kind: "storage" as const, elementType: "uint" },
+        { name: "uint", kind: "texture-2d" as const },
+      ],
+      expectedNoun: "Resource",
+    }],
+  ])("rejects %s when a different generated declaration depends on that type", (name, overrides) => {
+    const environment = {
+      ...baseEnvironment(),
+      ...overrides,
+      passName: `CrossDeclaration_${name}`,
+    };
+
+    const result = compile(environment);
+    expect(result.success).toBe(false);
+    expect(result.error).not.toBe("");
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: `${overrides.expectedNoun} "${name}" conflicts with a Shader Studio built-in.`,
+    });
+  });
+
   it("rejects same-signature helper duplicates", () => {
     const environment = {
       ...baseEnvironment(),

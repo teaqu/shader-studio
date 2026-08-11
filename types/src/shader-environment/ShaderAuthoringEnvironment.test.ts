@@ -403,7 +403,6 @@ describe("ShaderAuthoringEnvironment", () => {
     ["invariant", "a GLSL qualifier"],
     ["smooth", "a GLSL interpolation qualifier"],
     ["noperspective", "a GLSL interpolation qualifier"],
-    ["precise", "a GLSL precision qualifier"],
     ["subroutine", "a GLSL subroutine keyword"],
     ["usampler2D", "a GLSL unsigned integer sampler type"],
     ["usamplerCube", "a GLSL unsigned integer sampler type"],
@@ -419,7 +418,8 @@ describe("ShaderAuthoringEnvironment", () => {
     ["usampler3D", "a GLSL ES unsigned sampler type"],
     ["attribute", "a GLSL ES reserved word"],
     ["this", "a GLSL ES reserved word"],
-    ["operator", "a GLSL ES reserved word"],
+    ["true", "a GLSL ES boolean literal"],
+    ["false", "a GLSL ES boolean literal"],
     ["gl_FragCoord", "a reserved GLSL implementation symbol"],
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],
@@ -446,6 +446,31 @@ describe("ShaderAuthoringEnvironment", () => {
     "defer",
     "mutating",
   ])("allows the Slang-only contextual identifier %s in GLSL", (name) => {
+    const environment = {
+      ...baseEnvironment("glsl"),
+      customUniforms: [{ name, type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    "image1DArrayShadow",
+    "image1DShadow",
+    "image2DArrayShadow",
+    "image2DShadow",
+    "image2DMS",
+    "image2DMSArray",
+    "imageCubeArray",
+    "iimage2DMS",
+    "iimage2DMSArray",
+    "iimageCubeArray",
+    "operator",
+    "precise",
+    "uimage2DMS",
+    "uimage2DMSArray",
+    "uimageCubeArray",
+  ])("allows the compiler-usable GLSL ES 300 identifier %s", (name) => {
     const environment = {
       ...baseEnvironment("glsl"),
       customUniforms: [{ name, type: "float" as const }],
@@ -486,6 +511,37 @@ describe("ShaderAuthoringEnvironment", () => {
       { code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in.` },
     ]);
   });
+
+  it.each([
+    "float",
+    "int",
+    "float2",
+    "float3",
+    "float4",
+    "Texture2D",
+    "SamplerState",
+  ])("rejects the generated Slang dependency identifier %s", (name) => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      resources: [{ name, kind: "texture-2d" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([
+      { code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in.` },
+    ]);
+  });
+
+  it.each(["Texture2D", "SamplerState"])(
+    "allows the contextual Slang uniform identifier %s when no generated declaration depends on it",
+    (name) => {
+      const environment = {
+        ...baseEnvironment("slang"),
+        customUniforms: [{ name, type: "float" as const }],
+      };
+
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    },
+  );
 
   it("allows mixed-shape generated Slang overloads while rejecting identical signatures", () => {
     const mixedShape = {
