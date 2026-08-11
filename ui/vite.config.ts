@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shader-studio/debug': path.resolve(__dirname, '../debug/src'),
+      '@shader-studio/glsl-analysis': path.resolve(__dirname, '../language-servers/glsl-analysis/src'),
       '@shader-studio/monaco': path.resolve(__dirname, '../monaco/src'),
       '@shader-studio/rendering': path.resolve(__dirname, '../rendering/src'),
       '@shader-studio/types': path.resolve(__dirname, '../types/src'),

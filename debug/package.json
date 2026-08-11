@@ -15,11 +15,11 @@
     "dist"
   ],
   "dependencies": {
+    "@shader-studio/glsl-analysis": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*"
   },
   "devDependencies": {
-    "@shaderfrog/glsl-parser": "^7.0.1",
     "typescript": "*",
     "vitest": "*"
   }

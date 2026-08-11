@@ -1,5 +1,9 @@
-import { parse } from '@shaderfrog/glsl-parser';
-import { preprocess } from '@shaderfrog/glsl-parser/preprocessor/index.js';
+import {
+  parseGlslDocument,
+  type GlslAnalysisDocument,
+  type GlslScope,
+  type GlslSymbol,
+} from '@shader-studio/glsl-analysis';
 
 export interface FunctionInfo {
   name: string | null;
@@ -46,61 +50,6 @@ interface Token {
   value: string;
 }
 
-interface ShaderScopeBinding {
-  declaration?: {
-    type?: string;
-    location?: {
-      start?: { line?: number };
-      end?: { line?: number };
-    };
-    identifier?: { identifier?: string };
-    specifier?: unknown;
-    qualifier?: unknown[];
-  };
-}
-
-interface ShaderScope {
-  name: string;
-  bindings: Record<string, ShaderScopeBinding>;
-  location?: {
-    start?: { line?: number };
-    end?: { line?: number };
-  };
-}
-
-interface ShaderFunctionNode {
-  type: string;
-  prototype?: {
-    header?: {
-      name?: { identifier?: string };
-      returnType?: unknown;
-      location?: {
-        start?: { line?: number };
-      };
-    };
-    parameters?: Array<{
-      type?: string;
-      identifier?: { identifier?: string };
-      specifier?: unknown;
-      qualifier?: Array<{ token?: string }>;
-      location?: {
-        start?: { line?: number };
-      };
-    }>;
-  };
-  body?: {
-    rb?: {
-      location?: {
-        start?: { line?: number };
-      };
-    };
-  };
-  location?: {
-    start?: { line?: number };
-    end?: { line?: number };
-  };
-}
-
 interface ParsedFunctionInfo {
   name: string;
   start: number;
@@ -109,13 +58,10 @@ interface ParsedFunctionInfo {
 }
 
 interface ParsedDocument {
-  source: string;
-  originalLines: string[];
   effectiveLines: string[];
-  originalToProcessed: number[];
-  processedToOriginal: number[];
+  originalToProcessed: readonly number[];
   parsedSuccessfully: boolean;
-  scopes: ShaderScope[];
+  analysis: GlslAnalysisDocument;
   functions: ParsedFunctionInfo[];
 }
 
@@ -190,15 +136,15 @@ export class GlslParser {
 
     const visibleScopes = GlslParser.getVisibleScopes(document, functionInfo, upToLine);
     for (const scope of visibleScopes) {
-      for (const [bindingName, binding] of Object.entries(scope.bindings)) {
-        const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
-        if (declarationLine === null || declarationLine > upToLine) {
+      for (const symbol of GlslParser.getScopeVariables(document, scope)) {
+        const declarationLine = symbol.declaration.start.line;
+        if (declarationLine > upToLine) {
           continue;
         }
 
-        const type = GlslParser.getBindingType(document, bindingName, binding, functionInfo.start);
+        const type = GlslParser.getCompatibilitySymbolType(document, symbol, functionInfo.start);
         if (type) {
-          varTypes.set(bindingName, type);
+          varTypes.set(symbol.name, type);
         }
       }
     }
@@ -222,10 +168,10 @@ export class GlslParser {
     if (functionInfo.name && functionInfo.start >= 0) {
       const visibleScopes = GlslParser.getVisibleScopes(document, functionInfo, upToLine);
       for (const scope of visibleScopes) {
-        for (const [bindingName, binding] of Object.entries(scope.bindings)) {
-          const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
-          if (declarationLine !== null && declarationLine <= upToLine) {
-            varLines.set(bindingName, declarationLine);
+        for (const symbol of GlslParser.getScopeVariables(document, scope)) {
+          const declarationLine = symbol.declaration.start.line;
+          if (declarationLine <= upToLine) {
+            varLines.set(symbol.name, declarationLine);
           }
         }
       }
@@ -516,206 +462,77 @@ export class GlslParser {
     }
 
     const originalLines = [...lines];
-    const processedSource = GlslParser.preprocessSource(source);
-    const processedLines = processedSource.split('\n');
-    const { originalToProcessed, processedToOriginal } = GlslParser.buildLineMapping(originalLines, processedLines);
+    const analysis = parseGlslDocument('debug:///shader.glsl', source, 'fragment');
+    const processedLines = analysis.processedSource.split('\n');
 
     const effectiveLines = new Array(originalLines.length).fill('');
     for (let processedLine = 0; processedLine < processedLines.length; processedLine++) {
-      const originalLine = processedToOriginal[processedLine];
+      const originalLine = analysis.processedToOriginal[processedLine];
       if (originalLine >= 0 && originalLine < effectiveLines.length) {
         effectiveLines[originalLine] = processedLines[processedLine];
       }
     }
 
-    let ast: { scopes?: ShaderScope[]; program?: ShaderFunctionNode[] } = {};
-    let parsedSuccessfully = true;
-    try {
-      ast = parse(processedSource, {
-        includeLocation: true,
-        quiet: true,
-        stage: 'either',
-      }) as { scopes?: ShaderScope[]; program?: ShaderFunctionNode[] };
-    } catch {
-      ast = {};
-      parsedSuccessfully = false;
-    }
-
     const document: ParsedDocument = {
-      source,
-      originalLines,
       effectiveLines,
-      originalToProcessed,
-      processedToOriginal,
-      parsedSuccessfully,
-      scopes: ast.scopes ?? [],
-      functions: GlslParser.extractFunctions(ast.program ?? [], processedToOriginal),
+      originalToProcessed: analysis.originalToProcessed,
+      parsedSuccessfully: analysis.parsedSuccessfully,
+      analysis,
+      functions: GlslParser.extractFunctions(analysis),
     };
 
     DOC_CACHE.set(source, document);
     return document;
   }
 
-  private static preprocessSource(source: string): string {
-    if (!/^\s*#/m.test(source)) {
-      return source;
-    }
-
-    try {
-      return preprocess(source);
-    } catch {
-      return source;
-    }
-  }
-
-  private static buildLineMapping(originalLines: string[], processedLines: string[]) {
-    if (originalLines.join('\n') === processedLines.join('\n')) {
-      const originalToProcessed = originalLines.map((_, index) => index);
-      const processedToOriginal = processedLines.map((_, index) => index);
-      return { originalToProcessed, processedToOriginal };
-    }
-
-    const originalNorm = originalLines.map(line => GlslParser.normalizeLine(line));
-    const processedNorm = processedLines.map(line => GlslParser.normalizeLine(line));
-    const dp: number[][] = Array.from({ length: originalNorm.length + 1 }, () =>
-      new Array(processedNorm.length + 1).fill(0)
-    );
-
-    for (let i = originalNorm.length - 1; i >= 0; i--) {
-      for (let j = processedNorm.length - 1; j >= 0; j--) {
-        if (originalNorm[i] === processedNorm[j]) {
-          dp[i][j] = dp[i + 1][j + 1] + 1;
-        } else {
-          dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
-        }
-      }
-    }
-
-    const originalToProcessed = new Array(originalNorm.length).fill(-1);
-    const processedToOriginal = new Array(processedNorm.length).fill(-1);
-
-    let i = 0;
-    let j = 0;
-    while (i < originalNorm.length && j < processedNorm.length) {
-      if (originalNorm[i] === processedNorm[j]) {
-        originalToProcessed[i] = j;
-        processedToOriginal[j] = i;
-        i++;
-        j++;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        i++;
-      } else {
-        j++;
-      }
-    }
-
-    const isMappableOriginal = (index: number) =>
-      originalToProcessed[index] === -1 &&
-      originalNorm[index] !== '' &&
-      !originalNorm[index].startsWith('#');
-    const isMappableProcessed = (index: number) =>
-      processedToOriginal[index] === -1 &&
-      processedNorm[index] !== '';
-
-    const anchors = [
-      { original: -1, processed: -1 },
-      ...originalToProcessed
-        .map((processed, original) => ({ original, processed }))
-        .filter(anchor => anchor.processed !== -1),
-      { original: originalNorm.length, processed: processedNorm.length },
-    ];
-
-    for (let anchorIndex = 0; anchorIndex < anchors.length - 1; anchorIndex++) {
-      const current = anchors[anchorIndex];
-      const next = anchors[anchorIndex + 1];
-      const originalCandidates: number[] = [];
-      const processedCandidates: number[] = [];
-
-      for (let originalLine = current.original + 1; originalLine < next.original; originalLine++) {
-        if (isMappableOriginal(originalLine)) {
-          originalCandidates.push(originalLine);
-        }
-      }
-
-      for (let processedLine = current.processed + 1; processedLine < next.processed; processedLine++) {
-        if (isMappableProcessed(processedLine)) {
-          processedCandidates.push(processedLine);
-        }
-      }
-
-      if (originalCandidates.length === processedCandidates.length) {
-        for (let candidateIndex = 0; candidateIndex < originalCandidates.length; candidateIndex++) {
-          const originalLine = originalCandidates[candidateIndex];
-          const processedLine = processedCandidates[candidateIndex];
-          originalToProcessed[originalLine] = processedLine;
-          processedToOriginal[processedLine] = originalLine;
-        }
-      }
-    }
-
-    return { originalToProcessed, processedToOriginal };
-  }
-
-  private static extractFunctions(program: ShaderFunctionNode[], processedToOriginal: number[]): ParsedFunctionInfo[] {
+  private static extractFunctions(analysis: GlslAnalysisDocument): ParsedFunctionInfo[] {
     const functions: ParsedFunctionInfo[] = [];
+    const claimedScopes = new Set<string>();
 
-    for (const node of program) {
-      if (node.type !== 'function') {
+    for (const symbol of analysis.symbols) {
+      if (symbol.kind !== 'function') {
         continue;
       }
 
-      const name = node.prototype?.header?.name?.identifier;
-      if (!name) {
+      const scope = analysis.scopes
+        .filter(candidate =>
+          candidate.kind === 'function' &&
+          candidate.name === symbol.name &&
+          !claimedScopes.has(candidate.id) &&
+          candidate.range.start.line >= symbol.declaration.start.line
+        )
+        .sort((left, right) => left.range.start.line - right.range.start.line)[0];
+      if (!scope) {
         continue;
       }
 
-      const startProcessedLine = (node.location?.start?.line ?? node.prototype?.header?.location?.start?.line ?? 1) - 1;
-      const endProcessedLine = (node.body?.rb?.location?.start?.line ?? node.location?.end?.line ?? startProcessedLine + 1) - 1;
+      claimedScopes.add(scope.id);
       functions.push({
-        name,
-        start: GlslParser.mapProcessedLine(processedToOriginal, startProcessedLine),
-        end: GlslParser.mapProcessedLine(processedToOriginal, endProcessedLine),
-        returnType: GlslParser.extractTypeName(node.prototype?.header?.returnType),
+        name: symbol.name,
+        start: symbol.declaration.start.line,
+        end: scope.range.end.line,
+        returnType: symbol.typeName && GLSL_TYPES.has(symbol.typeName) ? symbol.typeName : null,
       });
     }
 
     return functions;
   }
 
-  private static mapProcessedLine(processedToOriginal: number[], processedLine: number): number {
-    if (processedLine < 0) {
-      return -1;
-    }
-    if (processedLine < processedToOriginal.length && processedToOriginal[processedLine] !== -1) {
-      return processedToOriginal[processedLine];
-    }
-
-    for (let i = processedLine; i >= 0; i--) {
-      if (i < processedToOriginal.length && processedToOriginal[i] !== -1) {
-        return processedToOriginal[i];
-      }
-    }
-
-    return processedLine;
-  }
-
   private static isInsideFunction(functions: ParsedFunctionInfo[], line: number): boolean {
     return functions.some((fn) => line >= fn.start && line <= fn.end);
   }
 
-  private static getVisibleScopes(document: ParsedDocument, functionInfo: FunctionInfo, upToLine: number): ShaderScope[] {
+  private static getVisibleScopes(document: ParsedDocument, functionInfo: FunctionInfo, upToLine: number): GlslScope[] {
     const processedLine = GlslParser.resolveProcessedLine(document, upToLine, functionInfo.start);
 
-    return document.scopes
+    return document.analysis.scopes
       .filter(scope => scope.name !== 'global')
       .map(scope => {
-        const start = GlslParser.scopeStartLine(document, scope);
-        const end = GlslParser.scopeEndLine(document, scope);
+        const start = scope.range.start.line;
+        const end = scope.range.end.line;
         return { scope, start, end };
       })
       .filter(entry =>
-        entry.start !== null &&
-        entry.end !== null &&
         entry.start >= functionInfo.start &&
         entry.end <= functionInfo.end &&
         processedLine >= GlslParser.resolveProcessedLine(document, entry.start, functionInfo.start) &&
@@ -723,6 +540,36 @@ export class GlslParser {
       )
       .sort((a, b) => a.start! - b.start!)
       .map(entry => entry.scope);
+  }
+
+  private static getScopeVariables(document: ParsedDocument, scope: GlslScope): GlslSymbol[] {
+    const symbolIds = new Set(scope.symbolIds);
+    return document.analysis.symbols.filter(symbol =>
+      symbolIds.has(symbol.id) &&
+      (symbol.kind === 'variable' || symbol.kind === 'parameter')
+    );
+  }
+
+  private static getCompatibilitySymbolType(
+    document: ParsedDocument,
+    symbol: GlslSymbol,
+    functionStart: number,
+  ): string | null {
+    if (symbol.kind === 'parameter') {
+      return symbol.typeName && GLSL_TYPES.has(symbol.typeName) ? symbol.typeName : null;
+    }
+
+    const declarationLine = symbol.declaration.start.line;
+    if (declarationLine < 0 || declarationLine >= document.effectiveLines.length) {
+      return null;
+    }
+
+    const signatureLine = declarationLine === functionStart
+      ? GlslParser.getFullFunctionSignature(document.effectiveLines, functionStart)
+      : document.effectiveLines[declarationLine];
+
+    return GlslParser.extractDeclarationsFromLine(signatureLine)
+      .find(declaration => declaration.name === symbol.name)?.type ?? null;
   }
 
   private static resolveProcessedLine(document: ParsedDocument, originalLine: number, floorLine = 0): number {
@@ -745,77 +592,9 @@ export class GlslParser {
     return Math.max(0, Math.min(originalLine, document.effectiveLines.length - 1));
   }
 
-  private static scopeStartLine(document: ParsedDocument, scope: ShaderScope): number | null {
-    const processedLine = scope.location?.start?.line;
-    if (!processedLine) {
-      return null;
-    }
-    return GlslParser.mapProcessedLine(document.processedToOriginal, processedLine - 1);
-  }
-
-  private static scopeEndLine(document: ParsedDocument, scope: ShaderScope): number | null {
-    const processedLine = scope.location?.end?.line;
-    if (!processedLine) {
-      return null;
-    }
-    return GlslParser.mapProcessedLine(document.processedToOriginal, processedLine - 1);
-  }
-
-  private static getDeclarationOriginalLine(document: ParsedDocument, binding: ShaderScopeBinding): number | null {
-    const processedLine = binding.declaration?.location?.start?.line;
-    if (!processedLine) {
-      return null;
-    }
-    return GlslParser.mapProcessedLine(document.processedToOriginal, processedLine - 1);
-  }
-
-  private static getBindingType(
-    document: ParsedDocument,
-    bindingName: string,
-    binding: ShaderScopeBinding,
-    functionStart: number,
-  ): string | null {
-    const declaration = binding.declaration;
-    if (!declaration) {
-      return null;
-    }
-
-    if (declaration.type === 'parameter_declaration') {
-      return GlslParser.extractTypeName(declaration.specifier);
-    }
-
-    const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
-    if (declarationLine === null || declarationLine < 0 || declarationLine >= document.effectiveLines.length) {
-      return null;
-    }
-
-    const signatureLine = declarationLine === functionStart
-      ? GlslParser.getFullFunctionSignature(document.effectiveLines, functionStart)
-      : document.effectiveLines[declarationLine];
-
-    for (const declarationInfo of GlslParser.extractDeclarationsFromLine(signatureLine)) {
-      if (declarationInfo.name === bindingName) {
-        return declarationInfo.type;
-      }
-    }
-
-    return null;
-  }
-
-  private static extractTypeName(typeNode: unknown): string | null {
-    const specifier =
-      (typeNode as { specifier?: { specifier?: { token?: string } } })?.specifier?.specifier?.token ??
-      (typeNode as { specifier?: { token?: string } })?.specifier?.token;
-    return specifier && GLSL_TYPES.has(specifier) ? specifier : null;
-  }
-
   private static resolveClosingBraceLine(lines: string[], lineNum: number): number {
     const strippedCursor = GlslParser.stripLineComments(lines[lineNum] ?? '').trim();
     return strippedCursor === '}' && lineNum > 0 ? lineNum - 1 : lineNum;
-  }
-
-  private static normalizeLine(line: string): string {
-    return GlslParser.stripLineComments(line).trim().replace(/\s+/g, ' ');
   }
 
   private static stripLineComments(line: string | undefined | null): string {

@@ -274,6 +274,52 @@ describe("GlslParser", () => {
 
       expect(varTypes.get("ctrlPts")).toBe("CtrlPts");
     });
+
+    it("should resolve shadowed bindings from the innermost active scope", () => {
+      const lines = [
+        "float shade(float tint) {",
+        "  float result = tint;",
+        "  {",
+        "    vec3 tint = vec3(result);",
+        "    result += tint.x;",
+        "  }",
+        "  return result + tint;",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 4);
+
+      expect(GlslParser.buildVariableTypeMap(lines, 4, functionInfo).get("tint")).toBe("vec3");
+      expect(GlslParser.buildVariableTypeMap(lines, 6, functionInfo).get("tint")).toBe("float");
+    });
+
+    it("should retain declaration heuristics when malformed syntax forces parser fallback", () => {
+      const lines = [
+        "float shade(float input) {",
+        "  float result = input",
+        "  return result;",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 2);
+
+      expect(functionInfo).toEqual({ name: "shade", start: 0, end: 3 });
+      expect(GlslParser.buildVariableTypeMap(lines, 2, functionInfo)).toEqual(new Map([
+        ["input", "float"],
+        ["result", "return"],
+      ]));
+    });
+
+    it("should preserve the first-declarator heuristic for comma-separated declarations", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  float first = 1.0, second = 2.0;",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 1);
+      const varTypes = GlslParser.buildVariableTypeMap(lines, 1, functionInfo);
+
+      expect(varTypes.get("first")).toBe("float");
+      expect(varTypes.has("second")).toBe(false);
+    });
   });
 
   describe("global variable analysis", () => {
@@ -330,6 +376,22 @@ describe("GlslParser", () => {
     it("should exclude shadowed globals from used globals", () => {
       const functionInfo = GlslParser.findEnclosingFunction(shader, 10);
       expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([]);
+    });
+
+    it("should retain raw source when preprocessing fails", () => {
+      expect(GlslParser.getGlobalVariables(["#if", "float kept;", ""])).toEqual([
+        { name: "kept", type: "float", declarationLine: 1 },
+      ]);
+    });
+
+    it("should preserve unmapped multiline macro expansions", () => {
+      const lines = [
+        "#define X float alpha; \\",
+        "  float beta;",
+        "X",
+      ];
+
+      expect(GlslParser.getGlobalVariables(lines)).toEqual([]);
     });
   });
 
@@ -578,6 +640,24 @@ describe("GlslParser", () => {
         "    }",
       ];
       expect(GlslParser.findFunctionReturnType(lines, "indented")).toBe("vec3");
+    });
+
+    it("should preserve source-order behavior for overloaded return types", () => {
+      const lines = [
+        "float convert(float value) { return value; }",
+        "vec3 convert(vec3 value) { return value; }",
+      ];
+
+      expect(GlslParser.findFunctionReturnType(lines, "convert")).toBe("float");
+    });
+
+    it("should preserve the built-in-only return type heuristic", () => {
+      const lines = [
+        "struct Light { vec3 color; };",
+        "Light makeLight() { Light light; return light; }",
+      ];
+
+      expect(GlslParser.findFunctionReturnType(lines, "makeLight")).toBeNull();
     });
   });
 
