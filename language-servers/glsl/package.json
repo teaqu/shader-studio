@@ -1,0 +1,18 @@
+{
+  "name": "@shader-studio/glsl-language-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@shader-studio/glsl-analysis": "*",
+    "@shader-studio/language-server-core": "*",
+    "@shader-studio/types": "*",
+    "vscode-languageserver-protocol": "3.18.2"
+  }
+}

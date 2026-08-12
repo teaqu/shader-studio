@@ -11,6 +11,10 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 |---------|------|---------|-----------------|-------------|
 | `shader-studio.webServerPort` | number | `3000` | No | HTTP port for the [web server](../features/web-server.md). Range: 1024–65535. |
 | `shader-studio.enableSnippets` | boolean | `true` | Yes | Enable bundled [GLSL and Slang code snippets](../features/code-snippets.md). |
+| `shader-studio.languageServers.glsl.enabled` | boolean | `true` | No | Enable GLSL completion, hover, navigation, symbols, diagnostics, and colors. |
+| `shader-studio.languageServers.slang.enabled` | boolean | `true` | No | Enable Slang completion, hover, navigation, symbols, diagnostics, and colors. |
+| `shader-studio.editor.colorDecorators` | boolean | `true` | No | Show editable color swatches for literal shader color constructors. |
+| `shader-studio.languageServers.trace` | string | `off` | No | Set language-service logging to `off`, `messages`, or `verbose`. |
 | `shader-studio.navigateOnBufferSwitch` | boolean | `true` | No | When enabled, switching buffers in the config panel or editor overlay syncs the active file in the VS Code editor. Works in combination with shader lock. |
 | `shader-studio.lockEditorGroup` | boolean | `true` | No | Lock the editor group when opening a shader panel, preventing other editors from opening in it. |
 

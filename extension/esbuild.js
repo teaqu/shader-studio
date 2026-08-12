@@ -1,4 +1,6 @@
 const esbuild = require('esbuild');
+const fs = require('fs');
+const path = require('path');
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -44,6 +46,9 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
+		fs.mkdirSync('dist', { recursive: true });
+		fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
+		fs.copyFileSync(path.resolve(__dirname, '../language-servers/slang/THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'dist/SLANG_THIRD_PARTY_NOTICES.md'));
 	}
 }
 

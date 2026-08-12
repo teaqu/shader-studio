@@ -20,6 +20,10 @@ import type {
   SlangDependencyDiagnostic,
   SlangSourceModule,
 } from "@shader-studio/types";
+import {
+  clearCustomUniformSnapshot,
+  publishCustomUniformSnapshot,
+} from "../language-services/ShaderAuthoringEnvironmentProvider";
 
 interface ActiveAnalysisContext {
   generation: number;
@@ -294,6 +298,7 @@ export class ShaderProvider {
         return false;
       }
       this.scriptEvaluator.dispose();
+      clearCustomUniformSnapshot(shaderPath);
       return isCurrentPreparation();
     }
 
@@ -327,6 +332,7 @@ export class ShaderProvider {
     // Send declarations and type info (not the bundle) to the webview
     message.customUniformDeclarations = loadResult.declarations;
     message.customUniformInfo = loadResult.uniforms;
+    publishCustomUniformSnapshot(shaderPath, loadResult.uniforms);
     return true;
   }
 

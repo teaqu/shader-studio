@@ -6,6 +6,11 @@
   import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl, setupMonacoSlang } from "@shader-studio/monaco";
+  import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
+  import { isAuthoringValueType } from "@shader-studio/types";
+  import { createLanguageServiceController } from "../editor/createLanguageServiceController";
+  import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
+  import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -22,6 +27,9 @@
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
     compileMode?: CompileMode;
+    config?: ShaderConfig | null;
+    customUniformInfo?: { name: string; type: string }[];
+    slangModules?: SlangSourceModule[];
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
 
@@ -50,12 +58,17 @@
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
     compileMode = "hot",
+    config = null,
+    customUniformInfo = [],
+    slangModules = [],
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
 
   let containerEl = $state<HTMLDivElement | null>(null);
   let statusBarEl = $state<HTMLDivElement | null>(null);
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let languageServiceController = $state<LanguageServiceController | null>(null);
+  let environmentGeneration = 0;
   let vimModeInstance: any = null;
   let editorReady = $state(false);
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -411,6 +424,7 @@
     };
 
     editor = monaco.editor.create(containerEl, editorOptions);
+    languageServiceController = createLanguageServiceController(monaco);
 
     if (shaderPath && savedViewStates.has(shaderPath)) {
       editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
@@ -524,6 +538,8 @@
       cursorChangeDisposable = null;
     }
     disableVim();
+    languageServiceController?.dispose();
+    languageServiceController = null;
     if (containerEl) {
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
     }
@@ -545,6 +561,35 @@
     if (!isVisible && editor) {
       destroyEditor();
     }
+  });
+
+  $effect(() => {
+    const controller = languageServiceController;
+    const model = editor?.getModel();
+    const language = languageForShaderPath(shaderPath);
+    const currentConfig = config;
+    const uniforms = customUniformInfo;
+    const modules = slangModules;
+    const bufferName = activeBufferName;
+    const passName = bufferName.startsWith("__shader_studio_vertex__:")
+      ? bufferName.slice("__shader_studio_vertex__:".length)
+      : bufferName;
+    if (!controller || !model?.uri || (language !== "glsl" && language !== "slang")) {
+      return;
+    }
+    environmentGeneration += 1;
+    void controller.syncEnvironment({
+      documentUri: model.uri.toString(),
+      languageId: language,
+      generation: environmentGeneration,
+      passName,
+      stage: bufferName.startsWith("__shader_studio_vertex__:") ? "vertex" : authoringStage(currentConfig, passName),
+      customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
+      resources: authoringResources(currentConfig, passName),
+      virtualFiles: language === "slang"
+        ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
+        : [],
+    });
   });
 
   $effect(() => {
@@ -673,6 +718,25 @@
   onDestroy(() => {
     destroyEditor();
   });
+
+  function authoringStage(shaderConfig: ShaderConfig | null, passName: string): ShaderStage {
+    const pass = shaderConfig?.passes?.[passName];
+    return pass && "type" in pass && pass.type === "compute" ? "compute" : "fragment";
+  }
+
+  function authoringResources(shaderConfig: ShaderConfig | null, passName: string): AuthoringResource[] {
+    const pass = shaderConfig?.passes?.[passName];
+    const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
+    const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
+      name,
+      kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
+      slot,
+    }));
+    for (const [name, storage] of Object.entries(shaderConfig?.storage ?? {})) {
+      resources.push({ name, kind: "storage", elementType: storage.elementType });
+    }
+    return resources;
+  }
 </script>
 
 {#if isVisible}

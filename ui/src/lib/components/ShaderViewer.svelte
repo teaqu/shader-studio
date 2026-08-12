@@ -45,12 +45,13 @@
   import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
-  import type { AspectRatioMode, ShaderConfig } from "@shader-studio/types";
+  import type { AspectRatioMode, ShaderConfig, SlangSourceModule } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
+  import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -68,7 +69,7 @@
 
   function writeSlotClaims(claims: Record<string, number>): void {
     try {
-      localStorage.setItem(WEB_SLOT_CLAIMS_KEY, JSON.stringify(claims)); 
+      localStorage.setItem(WEB_SLOT_CLAIMS_KEY, JSON.stringify(claims));
     } catch { /* best-effort */ }
   }
 
@@ -99,7 +100,7 @@
       Object.entries(readSlotClaims()).filter(([, ts]) => now - ts < WEB_SLOT_STALE_MS),
     );
     if (existing) {
-      claims[existing] = now; writeSlotClaims(claims); return existing; 
+      claims[existing] = now; writeSlotClaims(claims); return existing;
     }
     let i = 1;
     while (claims[`web:${i}`]) {
@@ -207,6 +208,8 @@
   // Script info for config panel
   let scriptInfo = $state<{ filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null>(null);
   let customUniformValues = $state<Record<string, number | number[] | boolean>>({});
+  let authoringUniformInfo = $state<{ name: string; type: string }[]>([]);
+  let slangModules = $state<SlangSourceModule[]>([]);
   let actualPollFps = $state(0);
   let pollTimestamps: number[] = [];
   let uniformTimestamps = $state<Record<string, number[]>>({});
@@ -226,10 +229,10 @@
   // Resolution controller — created at component level so setContext works synchronously
   const resolutionController = new ResolutionSessionController({
     get currentConfig() {
-      return currentConfig; 
+      return currentConfig;
     },
     get debugState() {
-      return debugState; 
+      return debugState;
     },
     setCurrentConfig: (config) => {
       currentConfig = config;
@@ -963,6 +966,8 @@
         renderingEngine.togglePause();
       }
       customUniformValues = {};
+      authoringUniformInfo = event.data.customUniformInfo ?? [];
+      slangModules = event.data.slangModules ?? [];
       uniformTimestamps = {};
       uniformActualFps = {};
       if (shaderPath !== prevShaderPath) {
@@ -993,6 +998,11 @@
       const payload = event.data.payload;
       errors = Array.isArray(payload) ? payload : [payload];
       warnings = [];
+      return;
+    }
+
+    if (type === 'languageServiceSettings') {
+      setLanguageServiceSettings(event.data.payload);
       return;
     }
 
@@ -1079,7 +1089,8 @@
         if (result) {
           applyCompilationResult(result);
           if (result.success && scriptInfo) {
-            scriptInfo = { ...scriptInfo, uniforms: renderingEngine.getCustomUniformInfo() };
+            authoringUniformInfo = renderingEngine.getCustomUniformInfo();
+            scriptInfo = { ...scriptInfo, uniforms: authoringUniformInfo };
           }
         }
         isLocked = shaderLocker.isLocked();
@@ -1141,6 +1152,7 @@
       }
 
       transport.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
+      transport.postMessage({ type: 'languageServiceReady' });
       transport.postMessage({ type: 'refresh' });
 
       editorOverlayManager = new EditorOverlayManager(
@@ -1175,7 +1187,7 @@
           });
         },
         (rec) => {
-          isRecording = rec; 
+          isRecording = rec;
         },
       );
 
@@ -1218,16 +1230,16 @@
       editorBufferNames = state.bufferNames;
     },
     onShaderCodeChanged: (code) => {
-      currentShaderCode = code; 
+      currentShaderCode = code;
     },
     onErrors: (errs) => {
-      errors = errs; 
+      errors = errs;
     },
     onClearErrors: () => {
-      errors = []; 
+      errors = [];
     },
     onStartRenderLoop: () => {
-      renderingEngine.startRenderLoop(); 
+      renderingEngine.startRenderLoop();
     },
     getLastShaderEvent: () => pipeline.getLastEvent(),
     handleShaderMessage: (event) => {
@@ -1436,6 +1448,9 @@
           {transport}
           onCodeChange={handleEditorCodeChange}
           compileMode={$compileModeStore.mode}
+          config={currentConfig}
+          customUniformInfo={authoringUniformInfo}
+          {slangModules}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}

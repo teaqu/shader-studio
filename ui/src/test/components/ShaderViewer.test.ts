@@ -75,21 +75,21 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
     }
     startRenderLoop() {}
     getCurrentFPS() {
-      return 60.0; 
+      return 60.0;
     }
     getUniforms() {
-      return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] }; 
+      return { res: [800, 600, 1.333], time: 0, timeDelta: 0, frameRate: 60, mouse: [0, 0, 0, 0], frame: 0, date: [2026, 1, 21, 0] };
     }
     getTimeManager() {
-      return mockTimeManager; 
+      return mockTimeManager;
     }
     dispose() {}
     readPixel() {
-      return { r: 255, g: 128, b: 64, a: 255 }; 
+      return { r: 255, g: 128, b: 64, a: 255 };
     }
     render() {}
     updateBufferAndRecompile() {
-      return Promise.resolve({ success: true }); 
+      return Promise.resolve({ success: true });
     }
     cleanup() {}
     compileShaderPipeline() {
@@ -105,7 +105,7 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
       return mockSetGlobalVolume(...args);
     }
     resumeAudioContext() {
-      return Promise.resolve(); 
+      return Promise.resolve();
     }
     resumeAllAudio() {
       return mockResumeAllAudio();
@@ -141,37 +141,37 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
         setCompileContext() {},
         clearLastError() {},
         getLastError() {
-          return null; 
+          return null;
         },
         issueCaptureAtPixel() {
-          return 0; 
+          return 0;
         },
         issueCaptureGrid() {
-          return 0; 
+          return 0;
         },
         collectResults() {
-          return []; 
+          return [];
         },
         dispose() {},
       };
     }
     getVariableCaptureCompileContext() {
-      return { commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] }; 
+      return { commonCode: '', slotAssignments: [], channelTypes: ['2D', '2D', '2D', '2D'] };
     }
     getCaptureUniforms() {
-      return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] }; 
+      return { time: 0, timeDelta: 0, frameRate: 60, frame: 0, res: [800, 600], mouse: [0, 0, 0, 0], date: [2026, 1, 21, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1] };
     }
     getCustomUniformDeclarations() {
-      return ''; 
+      return '';
     }
     getCurrentCustomUniforms() {
-      return []; 
+      return [];
     }
     getCustomUniformInfo() {
-      return []; 
+      return [];
     }
     getCanvas() {
-      return this._canvas; 
+      return this._canvas;
     }
     setCustomUniformValues() {}
     updateCustomUniformValues() {}
@@ -441,10 +441,10 @@ const { mockVCMFactory } = vi.hoisted(() => {
     refreshMode: 'polling',
     pollingMs: 500,
     inject(vars: any[]) {
-      this._callback?.(vars); 
+      this._callback?.(vars);
     },
     emitSampleSettings() {
-      this._sampleSettingsCallback?.(); 
+      this._sampleSettingsCallback?.();
     },
     reset() {
       this._callback = null;
@@ -470,10 +470,10 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
       mockVCMFactory._instances.push(this._instance);
     }
     get sampleSize() {
-      return mockVCMFactory.sampleSize; 
+      return mockVCMFactory.sampleSize;
     }
     setSampleSettingsCallback(cb: () => void) {
-      mockVCMFactory._sampleSettingsCallback = cb; 
+      mockVCMFactory._sampleSettingsCallback = cb;
     }
     notifyStateChange(params: any) {
       mockVCMFactory._lastNotifyParams = params;
@@ -503,22 +503,22 @@ vi.mock('../../lib/VariableCaptureManager', () => ({
     setErrorCallback(_cb: any) {}
     setInputBindings(_config: any) {}
     getActiveRefreshMode() {
-      return mockVCMFactory.refreshMode; 
+      return mockVCMFactory.refreshMode;
     }
     getActivePollingMs() {
-      return mockVCMFactory.pollingMs; 
+      return mockVCMFactory.pollingMs;
     }
     get gridRefreshMode() {
-      return mockVCMFactory.refreshMode; 
+      return mockVCMFactory.refreshMode;
     }
     get gridPollingMs() {
-      return mockVCMFactory.pollingMs; 
+      return mockVCMFactory.pollingMs;
     }
     get pixelRefreshMode() {
-      return mockVCMFactory.refreshMode; 
+      return mockVCMFactory.refreshMode;
     }
     get pixelPollingMs() {
-      return mockVCMFactory.pollingMs; 
+      return mockVCMFactory.pollingMs;
     }
   },
 }));
@@ -2031,7 +2031,7 @@ describe('ShaderViewer', () => {
 
   it('should call onInitialized callback after initialization', async () => {
     const onInitialized = vi.fn();
-    
+
     render(ShaderViewer, {
       onInitialized
     });
@@ -2044,7 +2044,7 @@ describe('ShaderViewer', () => {
 
   it('should render MenuBar when initialized', async () => {
     const onInitialized = vi.fn();
-    
+
     const { container } = render(ShaderViewer, {
       onInitialized
     });
@@ -2059,7 +2059,7 @@ describe('ShaderViewer', () => {
 
   it('should initialize correctly', async () => {
     const onInitialized = vi.fn();
-    
+
     render(ShaderViewer, {
       onInitialized
     });
@@ -2079,7 +2079,7 @@ describe('ShaderViewer', () => {
     });
 
     // Only layout-related and initialization messages should be sent on mount
-    const allowedTypes = new Set(['requestLayout', 'debug', 'refresh', 'setCompileMode']);
+    const allowedTypes = new Set(['requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady']);
     const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
     const unexpectedCalls = calls.filter((c: any[]) => !allowedTypes.has(c[0]?.type));
     expect(unexpectedCalls).toHaveLength(0);
@@ -2087,7 +2087,7 @@ describe('ShaderViewer', () => {
 
   it('should handle initialization without errors', async () => {
     const onInitialized = vi.fn();
-    
+
     const { container } = render(ShaderViewer, {
       onInitialized
     });
@@ -5897,7 +5897,7 @@ describe('ShaderViewer', () => {
       // Verify store reflects closed state
       let storeState: any;
       performancePanelStore.subscribe((s) => {
-        storeState = s; 
+        storeState = s;
       })();
       expect(storeState.isVisible).toBe(false);
     });
@@ -5985,7 +5985,7 @@ describe('ShaderViewer', () => {
       // Enable fps column
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
       if (checkbox) {
-        fireEvent.click(checkbox); await tick(); 
+        fireEvent.click(checkbox); await tick();
       }
 
       // Send some updates to build per-uniform timestamps
@@ -6056,7 +6056,7 @@ describe('ShaderViewer', () => {
       // Enable fps display
       const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
       if (checkbox) {
-        fireEvent.click(checkbox); await tick(); 
+        fireEvent.click(checkbox); await tick();
       }
 
       // Send 4 updates for uFast only, spread within 1s window
@@ -6082,14 +6082,14 @@ describe('ShaderViewer', () => {
         const nameEl = row.querySelector('.uniform-name');
         const fpsEl = row.querySelector('.uniform-fps');
         if (!nameEl || !fpsEl) {
-          return; 
+          return;
         }
         const fps = parseInt(fpsEl.textContent ?? '0');
         if (nameEl.textContent?.includes('uFast')) {
-          fastFps = fps; 
+          fastFps = fps;
         }
         if (nameEl.textContent?.includes('uStatic')) {
-          staticFps = fps; 
+          staticFps = fps;
         }
       });
       expect(fastFps).toBeGreaterThan(0);

@@ -15,6 +15,11 @@
   "devDependencies": {
     "vitest": "*"
   },
+  "dependencies": {
+    "@shader-studio/language-server-core": "*",
+    "@shader-studio/types": "*",
+    "vscode-languageserver-protocol": "3.18.2"
+  },
   "peerDependencies": {
     "monaco-editor": ">=0.40.0"
   }

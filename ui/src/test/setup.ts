@@ -215,6 +215,12 @@ vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', (
 vi.mock('@shader-studio/monaco', () => ({
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoLanguageServices: vi.fn(() => ({
+    setEnabled: vi.fn(),
+    setColorDecoratorsEnabled: vi.fn(),
+    syncEnvironment: vi.fn(),
+    dispose: vi.fn(),
+  })),
   glslLanguageDefinition: {},
   shaderStudioTheme: {},
   shaderStudioTransparentTheme: {},

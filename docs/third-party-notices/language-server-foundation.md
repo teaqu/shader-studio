@@ -66,6 +66,12 @@ reserved identifiers are compiler-probed behavior, not copied documentation.
 No Shader Sense catalogue or GPL-licensed `glsl_analyzer` code or data is
 present in this foundation.
 
+The completed Slang language service reuses Shader Studio's pinned official
+Slang 2026.10.2 browser runtime. Slang is licensed under Apache-2.0 WITH the
+LLVM exception. Its distribution notice is retained at
+`language-servers/slang/THIRD_PARTY_NOTICES.md` and copied beside the WASM in
+the packaged extension. No native Slang executable is distributed.
+
 ## ISC notice for `@shaderfrog/glsl-parser`
 
 Copyright (c) Andrew Ray

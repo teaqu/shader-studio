@@ -1,0 +1,309 @@
+import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api";
+import type {
+  DocumentRevision,
+  LanguageService,
+  ShaderLanguage,
+} from "@shader-studio/language-server-core";
+import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+
+export type LanguageServiceFactory = () => Promise<LanguageService>;
+export type MonacoLanguageServiceFactories = Record<ShaderLanguage, LanguageServiceFactory>;
+
+interface ServiceState {
+  service?: Promise<LanguageService>;
+  readonly opened: Set<string>;
+}
+
+export class MonacoLanguageServiceManager {
+  private readonly environments = new Map<string, ShaderAuthoringEnvironment>();
+  private readonly enabled: Record<ShaderLanguage, boolean> = { glsl: true, slang: true };
+  private colorDecoratorsEnabled = true;
+  private readonly states: Record<ShaderLanguage, ServiceState> = {
+    glsl: { opened: new Set() },
+    slang: { opened: new Set() },
+  };
+  private readonly disposables: Monaco.IDisposable[] = [];
+  private readonly modelDisposables = new Map<string, Monaco.IDisposable>();
+  private readonly virtualUrisByDocument = new Map<string, Set<string>>();
+  private readonly virtualOwners = new Map<string, Set<string>>();
+  private readonly managedVirtualModels = new Map<string, Monaco.editor.ITextModel>();
+
+  constructor(
+    private readonly monaco: typeof Monaco,
+    private readonly factories: MonacoLanguageServiceFactories,
+  ) {
+    for (const language of ["glsl", "slang"] as const) this.registerProviders(language);
+    for (const model of monaco.editor.getModels()) this.attachModel(model);
+    this.disposables.push(monaco.editor.onDidCreateModel((model) => this.attachModel(model)));
+    this.disposables.push(monaco.editor.onWillDisposeModel((model) => { void this.closeModel(model); }));
+  }
+
+  async syncEnvironment(environment: ShaderAuthoringEnvironment): Promise<void> {
+    this.syncVirtualModels(environment);
+    this.environments.set(environment.documentUri, environment);
+    if (!this.enabled[environment.languageId]) return;
+    const model = this.monaco.editor.getModels().find((candidate) => candidate.uri.toString() === environment.documentUri);
+    if (model) await this.ensureModel(model);
+  }
+
+  async setEnabled(language: ShaderLanguage, enabled: boolean): Promise<void> {
+    if (this.enabled[language] === enabled) return;
+    this.enabled[language] = enabled;
+    if (!enabled) {
+      const state = this.states[language];
+      const service = await state.service;
+      await service?.dispose();
+      state.service = undefined;
+      state.opened.clear();
+      for (const model of this.modelsFor(language)) this.monaco.editor.setModelMarkers(model, markerOwner(language), []);
+      return;
+    }
+    for (const model of this.modelsFor(language)) await this.ensureModel(model);
+  }
+
+  setColorDecoratorsEnabled(enabled: boolean): void {
+    this.colorDecoratorsEnabled = enabled;
+  }
+
+  dispose(): void {
+    for (const disposable of this.disposables.splice(0)) disposable.dispose();
+    for (const disposable of this.modelDisposables.values()) disposable.dispose();
+    this.modelDisposables.clear();
+    for (const model of this.managedVirtualModels.values()) model.dispose();
+    this.managedVirtualModels.clear();
+    this.virtualOwners.clear();
+    this.virtualUrisByDocument.clear();
+    for (const language of ["glsl", "slang"] as const) {
+      void this.states[language].service?.then((service) => service.dispose());
+      this.states[language].service = undefined;
+      this.states[language].opened.clear();
+    }
+  }
+
+  private registerProviders(language: ShaderLanguage): void {
+    const languages = this.monaco.languages;
+    this.disposables.push(languages.registerCompletionItemProvider(language, {
+      triggerCharacters: ["."],
+      provideCompletionItems: async (model, position) => {
+        const result = await this.request(model, (service, revision) => service.completion({ document: revision, position: toLspPosition(position) }), []);
+        const word = model.getWordUntilPosition(position);
+        return { suggestions: result.map((item) => ({
+          label: item.label,
+          kind: (item.kind ?? this.monaco.languages.CompletionItemKind.Variable) as Monaco.languages.CompletionItemKind,
+          detail: item.detail,
+          documentation: markdownValue(item.documentation),
+          insertText: item.textEdit?.newText ?? (typeof item.insertText === "string" ? item.insertText : item.label),
+          range: item.textEdit && "range" in item.textEdit
+            ? toMonacoRange(this.monaco, item.textEdit.range)
+            : new this.monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+        })) };
+      },
+    }));
+    this.disposables.push(languages.registerHoverProvider(language, {
+      provideHover: async (model, position) => {
+        const result = await this.request(model, (service, revision) => service.hover({ document: revision, position: toLspPosition(position) }), null);
+        return result ? { contents: [{ value: hoverValue(result.contents) }], range: result.range ? toMonacoRange(this.monaco, result.range) : undefined } : null;
+      },
+    }));
+    this.disposables.push(languages.registerDefinitionProvider(language, {
+      provideDefinition: async (model, position) => this.request(model, async (service, revision) => (
+        (await service.definition({ document: revision, position: toLspPosition(position) })).map((location) => ({
+          uri: this.monaco.Uri.parse(location.uri),
+          range: toMonacoRange(this.monaco, location.range),
+        }))
+      ), []),
+    }));
+    this.disposables.push(languages.registerSignatureHelpProvider(language, {
+      signatureHelpTriggerCharacters: ["(", ","],
+      provideSignatureHelp: async (model, position) => {
+        const result = await this.request(model, (service, revision) => service.signatureHelp({ document: revision, position: toLspPosition(position) }), null);
+        if (!result) return null;
+        return {
+          value: {
+            signatures: result.signatures.map((signature) => ({
+              label: signature.label,
+              documentation: markdownValue(signature.documentation),
+              parameters: signature.parameters?.map((parameter) => ({ label: parameter.label, documentation: markdownValue(parameter.documentation) })) ?? [],
+            })),
+            activeSignature: result.activeSignature ?? 0,
+            activeParameter: result.activeParameter ?? 0,
+          },
+          dispose() {},
+        };
+      },
+    }));
+    this.disposables.push(languages.registerDocumentSymbolProvider(language, {
+      provideDocumentSymbols: async (model) => this.request(model, async (service, revision) => (
+        (await service.documentSymbols({ document: revision })).map((symbol) => ({
+          name: symbol.name,
+          detail: symbol.detail ?? "",
+          kind: symbol.kind as Monaco.languages.SymbolKind,
+          range: toMonacoRange(this.monaco, symbol.range),
+          selectionRange: toMonacoRange(this.monaco, symbol.selectionRange),
+          tags: [],
+          children: symbol.children?.map((child) => ({
+            name: child.name,
+            detail: child.detail ?? "",
+            kind: child.kind as Monaco.languages.SymbolKind,
+            range: toMonacoRange(this.monaco, child.range),
+            selectionRange: toMonacoRange(this.monaco, child.selectionRange),
+            tags: [],
+          })),
+        }))
+      ), []),
+    }));
+    this.disposables.push(languages.registerColorProvider(language, {
+      provideDocumentColors: async (model) => {
+        if (!this.colorDecoratorsEnabled) return [];
+        return this.request(model, async (service, revision) => (
+          (await service.documentColors({ document: revision })).map((color) => ({ color: color.color, range: toMonacoRange(this.monaco, color.range) }))
+        ), []);
+      },
+      provideColorPresentations: async (model, colorInfo) => this.request(model, async (service, revision) => (
+        (await service.colorPresentations({ document: revision, color: colorInfo.color, range: toLspRange(colorInfo.range) })).map((item) => ({
+          label: item.label,
+          textEdit: item.textEdit ? { range: toMonacoRange(this.monaco, item.textEdit.range), text: item.textEdit.newText } : undefined,
+        }))
+      ), []),
+    }));
+  }
+
+  private attachModel(model: Monaco.editor.ITextModel): void {
+    const language = shaderLanguage(model.getLanguageId());
+    if (!language) return;
+    const uri = model.uri.toString();
+    this.modelDisposables.get(uri)?.dispose();
+    this.modelDisposables.set(uri, model.onDidChangeContent(() => { void this.changeModel(model); }));
+    if (this.environments.has(uri) && this.enabled[language]) void this.ensureModel(model);
+  }
+
+  private async changeModel(model: Monaco.editor.ITextModel): Promise<void> {
+    const language = shaderLanguage(model.getLanguageId());
+    if (!language || !this.enabled[language]) return;
+    const environment = this.environments.get(model.uri.toString());
+    if (!environment) return;
+    const service = await this.service(language);
+    const uri = model.uri.toString();
+    if (!this.states[language].opened.has(uri)) await this.ensureModel(model);
+    else await service.changeDocument({ uri, languageId: language, version: model.getVersionId(), text: model.getValue() });
+    await this.publishDiagnostics(model, service, environment);
+  }
+
+  private async ensureModel(model: Monaco.editor.ITextModel): Promise<LanguageService | undefined> {
+    const language = shaderLanguage(model.getLanguageId());
+    const environment = this.environments.get(model.uri.toString());
+    if (!language || !environment || !this.enabled[language]) return undefined;
+    const service = await this.service(language);
+    await service.syncEnvironment(environment);
+    const uri = model.uri.toString();
+    if (!this.states[language].opened.has(uri)) {
+      await service.openDocument({ uri, languageId: language, version: model.getVersionId(), text: model.getValue() });
+      this.states[language].opened.add(uri);
+    }
+    await this.publishDiagnostics(model, service, environment);
+    return service;
+  }
+
+  private async closeModel(model: Monaco.editor.ITextModel): Promise<void> {
+    const uri = model.uri.toString();
+    this.modelDisposables.get(uri)?.dispose();
+    this.modelDisposables.delete(uri);
+    const language = shaderLanguage(model.getLanguageId());
+    if (!language || !this.states[language].opened.delete(uri)) return;
+    await (await this.states[language].service)?.closeDocument(uri);
+  }
+
+  private async service(language: ShaderLanguage): Promise<LanguageService> {
+    const state = this.states[language];
+    state.service ??= this.factories[language]().then(async (service) => { await service.initialize(); return service; });
+    return state.service;
+  }
+
+  private async request<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<T> {
+    const language = shaderLanguage(model.getLanguageId());
+    const environment = this.environments.get(model.uri.toString());
+    if (!language || !environment || !this.enabled[language]) return fallback;
+    const service = await this.ensureModel(model);
+    if (!service) return fallback;
+    const revision = revisionFor(model, language, environment);
+    const result = await run(service, revision);
+    const current = this.environments.get(model.uri.toString());
+    return model.getVersionId() === revision.version && current?.generation === revision.environmentGeneration ? result : fallback;
+  }
+
+  private async publishDiagnostics(model: Monaco.editor.ITextModel, service: LanguageService, environment: ShaderAuthoringEnvironment): Promise<void> {
+    const language = shaderLanguage(model.getLanguageId());
+    if (!language) return;
+    const revision = revisionFor(model, language, environment);
+    const diagnostics = await service.diagnostics({ document: revision });
+    if (model.getVersionId() !== revision.version || this.environments.get(revision.uri)?.generation !== revision.environmentGeneration) return;
+    this.monaco.editor.setModelMarkers(model, markerOwner(language), diagnostics.map((item) => ({
+      ...toMonacoRange(this.monaco, item.range),
+      message: typeof item.message === "string" ? item.message : item.message.value,
+      severity: markerSeverity(item.severity),
+      source: item.source,
+      code: item.code === undefined ? undefined : String(item.code),
+    })));
+  }
+
+  private modelsFor(language: ShaderLanguage): Monaco.editor.ITextModel[] {
+    return this.monaco.editor.getModels().filter((model) => model.getLanguageId() === language);
+  }
+
+  private syncVirtualModels(environment: ShaderAuthoringEnvironment): void {
+    const owner = environment.documentUri;
+    const nextUris = new Set(environment.virtualFiles.map((file) => file.uri));
+    for (const uri of this.virtualUrisByDocument.get(owner) ?? []) {
+      if (nextUris.has(uri)) continue;
+      const owners = this.virtualOwners.get(uri);
+      owners?.delete(owner);
+      if (owners?.size) continue;
+      this.virtualOwners.delete(uri);
+      this.managedVirtualModels.get(uri)?.dispose();
+      this.managedVirtualModels.delete(uri);
+    }
+    for (const file of environment.virtualFiles) {
+      const owners = this.virtualOwners.get(file.uri) ?? new Set<string>();
+      owners.add(owner);
+      this.virtualOwners.set(file.uri, owners);
+      const uri = this.monaco.Uri.parse(file.uri);
+      const existing = this.monaco.editor.getModel(uri);
+      if (!existing) {
+        this.managedVirtualModels.set(file.uri, this.monaco.editor.createModel(file.text, environment.languageId, uri));
+      } else if (this.managedVirtualModels.get(file.uri) === existing && existing.getValue() !== file.text) {
+        existing.setValue(file.text);
+      }
+    }
+    this.virtualUrisByDocument.set(owner, nextUris);
+  }
+}
+
+export function setupMonacoLanguageServices(monaco: typeof Monaco, factories: MonacoLanguageServiceFactories): MonacoLanguageServiceManager {
+  return new MonacoLanguageServiceManager(monaco, factories);
+}
+
+function revisionFor(model: Monaco.editor.ITextModel, languageId: ShaderLanguage, environment: ShaderAuthoringEnvironment): DocumentRevision {
+  return { uri: model.uri.toString(), languageId, version: model.getVersionId(), environmentGeneration: environment.generation };
+}
+function shaderLanguage(language: string): ShaderLanguage | undefined { return language === "glsl" || language === "slang" ? language : undefined; }
+function markerOwner(language: ShaderLanguage): string { return `shader-studio-${language}-ls`; }
+function toLspPosition(position: Monaco.Position) { return { line: position.lineNumber - 1, character: position.column - 1 }; }
+function toLspRange(range: Monaco.IRange) { return { start: { line: range.startLineNumber - 1, character: range.startColumn - 1 }, end: { line: range.endLineNumber - 1, character: range.endColumn - 1 } }; }
+function toMonacoRange(monaco: typeof Monaco, range: { start: { line: number; character: number }; end: { line: number; character: number } }) {
+  return new monaco.Range(range.start.line + 1, range.start.character + 1, range.end.line + 1, range.end.character + 1);
+}
+function markdownValue(value: unknown): string | Monaco.IMarkdownString | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "value" in value) return { value: String((value as { value: unknown }).value) };
+  return undefined;
+}
+function hoverValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(hoverValue).join("\n\n");
+  if (value && typeof value === "object" && "value" in value) return String((value as { value: unknown }).value);
+  if (value && typeof value === "object" && "language" in value && "value" in value) return `\`\`\`${String((value as { language: unknown }).language)}\n${String((value as { value: unknown }).value)}\n\`\`\``;
+  return "";
+}
+function markerSeverity(severity: number | undefined): Monaco.MarkerSeverity {
+  return severity === 2 ? 4 : severity === 3 ? 2 : severity === 4 ? 1 : 8;
+}

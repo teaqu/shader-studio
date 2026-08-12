@@ -27,6 +27,14 @@ export class PanelManager {
     this.logger = Logger.getInstance();
     this.webviewTransport = new WebviewTransport();
     this.messenger.addTransport(this.webviewTransport);
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration("shader-studio.languageServers")
+        || event.affectsConfiguration("shader-studio.editor.colorDecorators")
+      ) {
+        this.webviewTransport.send(this.languageServiceSettingsMessage());
+      }
+    }));
 
     this.clientHandler = new ClientMessageHandler(
       context,
@@ -172,6 +180,19 @@ export class PanelManager {
     return slot;
   }
 
+  private languageServiceSettingsMessage() {
+    const configuration = vscode.workspace.getConfiguration("shader-studio");
+    return {
+      type: "languageServiceSettings" as const,
+      payload: {
+        glslEnabled: configuration.get("languageServers.glsl.enabled", true),
+        slangEnabled: configuration.get("languageServers.slang.enabled", true),
+        colorDecorators: configuration.get("editor.colorDecorators", true),
+        trace: configuration.get<"off" | "messages" | "verbose">("languageServers.trace", "off"),
+      },
+    };
+  }
+
   private async lockPanelEditorGroup(panel: vscode.WebviewPanel): Promise<void> {
     // Wait for the panel to settle in its editor group, then reveal to ensure focus
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -187,6 +208,11 @@ export class PanelManager {
 
   private async handleWebviewMessage(message: any, panel: vscode.WebviewPanel): Promise<void> {
     this.logger.debug(`Webview message received: ${message.type}`);
+
+    if (message.type === "languageServiceReady") {
+      await panel.webview.postMessage(this.languageServiceSettingsMessage());
+      return;
+    }
 
     // Handle moveToNewWindow directly — it needs the panel reference and is not shared
     if (message.type === 'extensionCommand' && message.payload?.command === 'moveToNewWindow') {

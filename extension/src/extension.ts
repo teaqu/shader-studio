@@ -4,9 +4,12 @@ import { applySnippetContributionSetting } from "./app/SnippetContributionSettin
 
 import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
+import { VscodeLanguageServiceController } from "./language-services/VscodeLanguageServiceController";
+import { createExtensionLanguageServiceFactories } from "./language-services/createExtensionLanguageServices";
 
 
 let shaderExtension: ShaderStudio | undefined;
+let languageServices: VscodeLanguageServiceController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   const isDevMode = process.env.NODE_ENV === "dev";
@@ -19,6 +22,9 @@ export function activate(context: vscode.ExtensionContext) {
     "shader-studio",
   );
   context.subscriptions.push(diagnosticCollection);
+
+  languageServices = new VscodeLanguageServiceController(createExtensionLanguageServiceFactories(context));
+  languageServices.start(context);
 
   // Listen for configuration changes that require restart
   context.subscriptions.push(
@@ -108,6 +114,8 @@ async function updateSnippetsContribution(): Promise<void> {
 }
 
 export function deactivate() {
+  languageServices?.dispose();
+  languageServices = undefined;
   if (shaderExtension) {
     shaderExtension.dispose();
     shaderExtension = undefined;

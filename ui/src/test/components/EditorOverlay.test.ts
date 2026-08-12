@@ -6,6 +6,12 @@ import type { Transport } from '../../lib/transport/MessageTransport';
 vi.mock('@shader-studio/monaco', () => ({
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoLanguageServices: vi.fn(() => ({
+    setEnabled: vi.fn(),
+    setColorDecoratorsEnabled: vi.fn(),
+    syncEnvironment: vi.fn(),
+    dispose: vi.fn(),
+  })),
 }));
 
 const mockTransport = {
@@ -61,10 +67,10 @@ function createMockEditorWithCallbacks() {
     executeEdits: vi.fn(),
     hasTextFocus: vi.fn(() => false),
     onDidChangeModelContent: vi.fn((cb: any) => {
-      contentChangeCallback = cb; 
+      contentChangeCallback = cb;
     }),
     onDidScrollChange: vi.fn((cb: any) => {
-      scrollChangeCallback = cb; 
+      scrollChangeCallback = cb;
     }),
     onKeyDown: vi.fn((cb: any) => {
       keyDownCallback = cb;

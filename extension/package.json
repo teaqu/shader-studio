@@ -179,6 +179,27 @@
           "type": "boolean",
           "default": true,
           "description": "Lock the editor group when opening a shader panel, preventing other editors from opening in it."
+        },
+        "shader-studio.languageServers.glsl.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Shader Studio GLSL completion, hover, navigation, diagnostics, symbols, and colors."
+        },
+        "shader-studio.languageServers.slang.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Shader Studio Slang completion, hover, navigation, diagnostics, symbols, and colors."
+        },
+        "shader-studio.editor.colorDecorators": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show editable color swatches for literal GLSL vec3/vec4 and Slang float3/float4 colors."
+        },
+        "shader-studio.languageServers.trace": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Controls Shader Studio language-service logging."
         }
       }
     },
@@ -275,7 +296,7 @@
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
-    "build:deps": "cd ../types && npm run build && cd ../language-servers/core && npm run build && cd ../glsl-analysis && npm run build && cd ../../debug && npm run build && cd ../rendering && npm run build && cd ../utils && npm run build",
+    "build:deps": "cd ../types && npm run build && cd ../language-servers/core && npm run build && cd ../glsl-analysis && npm run build && cd ../glsl && npm run build && cd ../slang && npm run build && cd ../../debug && npm run build && cd ../rendering && npm run build && cd ../utils && npm run build",
     "build:force": "npm run package",
     "build": "npm run package",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
@@ -307,6 +328,9 @@
     "webdriverio": "^9.30.1"
   },
   "dependencies": {
+    "@shader-studio/glsl-language-server": "*",
+    "@shader-studio/language-server-core": "*",
+    "@shader-studio/slang-language-server": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
     "entities": "^6.0.1",

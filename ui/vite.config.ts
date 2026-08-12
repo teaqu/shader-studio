@@ -11,8 +11,11 @@ export default defineConfig({
     alias: {
       '@shader-studio/debug': path.resolve(__dirname, '../debug/src'),
       '@shader-studio/glsl-analysis': path.resolve(__dirname, '../language-servers/glsl-analysis/src'),
+      '@shader-studio/glsl-language-server': path.resolve(__dirname, '../language-servers/glsl/src'),
+      '@shader-studio/language-server-core': path.resolve(__dirname, '../language-servers/core/src'),
       '@shader-studio/monaco': path.resolve(__dirname, '../monaco/src'),
       '@shader-studio/rendering': path.resolve(__dirname, '../rendering/src'),
+      '@shader-studio/slang-language-server': path.resolve(__dirname, '../language-servers/slang/src'),
       '@shader-studio/types': path.resolve(__dirname, '../types/src'),
     },
   },

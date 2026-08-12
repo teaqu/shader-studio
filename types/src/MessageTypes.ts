@@ -2,6 +2,7 @@
 
 import type { ProfileIndex, ProfileData } from './ProfileTypes';
 import type { SlangDependencyDiagnostic, SlangSourceModule } from './SlangSourceModule';
+import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuthoringEnvironment';
 
 export interface BaseMessage {
   type: string;
@@ -174,6 +175,21 @@ export interface CustomUniformValuesMessage extends BaseMessage {
   };
 }
 
+export interface LanguageServiceSettingsMessage extends BaseMessage {
+  type: "languageServiceSettings";
+  payload: {
+    glslEnabled: boolean;
+    slangEnabled: boolean;
+    colorDecorators: boolean;
+    trace: "off" | "messages" | "verbose";
+  };
+}
+
+export interface ShaderAuthoringEnvironmentMessage extends BaseMessage {
+  type: "shaderAuthoringEnvironment";
+  payload: ShaderAuthoringEnvironment;
+}
+
 export interface GoToLineMessage extends BaseMessage {
   type: "goToLine";
   payload: {
@@ -277,4 +293,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

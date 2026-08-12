@@ -5,6 +5,14 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 
 suite('Extension Bundle Test Suite', () => {
+  test('packages one shared Slang WASM for the webview and direct language service', () => {
+    const extensionRoot = path.resolve(__dirname, '..', '..', '..');
+    const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'ui-dist', 'slang-assets.json'), 'utf8')) as { wasm: string };
+    assert.match(manifest.wasm, /^assets\/[^/]+\.wasm$/);
+    assert.ok(fs.existsSync(path.join(extensionRoot, 'ui-dist', manifest.wasm)));
+    assert.strictEqual(fs.existsSync(path.join(extensionRoot, 'dist', 'slang-wasm.wasm')), false);
+  });
+
   test('loads without runtime-only bundler dependencies installed', () => {
     const repoRoot = path.resolve(__dirname, '..', '..', '..');
     const bundlePath = path.join(repoRoot, 'dist', 'extension.js');
