@@ -11,4 +11,11 @@ suite("language service manifest", () => {
     assert.strictEqual(properties["shader-studio.editor.colorDecorators"].default, true);
     assert.strictEqual(properties["shader-studio.languageServers.trace"].default, "off");
   });
+
+  test("opens shader color pickers only when their swatches are clicked", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../package.json"), "utf8"));
+    const defaults = manifest.contributes.configurationDefaults;
+    assert.strictEqual(defaults["[glsl]"]["editor.colorDecoratorsActivatedOn"], "click");
+    assert.strictEqual(defaults["[slang]"]["editor.colorDecoratorsActivatedOn"], "click");
+  });
 });

@@ -203,6 +203,14 @@
         }
       }
     },
+    "configurationDefaults": {
+      "[glsl]": {
+        "editor.colorDecoratorsActivatedOn": "click"
+      },
+      "[slang]": {
+        "editor.colorDecoratorsActivatedOn": "click"
+      }
+    },
     "languages": [
       {
         "id": "glsl",
