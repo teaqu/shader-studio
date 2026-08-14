@@ -44,4 +44,22 @@ suite("VS Code language-service revisions", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  test("starts the packaged Slang language service through VS Code completion", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const document = await vscode.workspace.openTextDocument({
+      language: "slang",
+      content: "float4 mainImage(float2 fragCoord) { return nor; }",
+    });
+    await vscode.window.showTextDocument(document);
+
+    const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+      "vscode.executeCompletionItemProvider",
+      document.uri,
+      new vscode.Position(0, 46),
+    );
+
+    assert.ok(completions.items.some((item) => item.label === "normalize"));
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
 });

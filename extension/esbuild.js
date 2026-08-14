@@ -48,6 +48,7 @@ async function main() {
 		await ctx.dispose();
 		fs.mkdirSync('dist', { recursive: true });
 		fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
+		fs.copyFileSync(path.resolve(__dirname, '../ui/src/slang/slang-wasm.js'), path.resolve(__dirname, 'dist/slang-wasm.mjs'));
 		fs.copyFileSync(path.resolve(__dirname, '../language-servers/slang/THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'dist/SLANG_THIRD_PARTY_NOTICES.md'));
 	}
 }

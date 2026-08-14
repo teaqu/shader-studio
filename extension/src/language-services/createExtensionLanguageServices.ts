@@ -1,4 +1,5 @@
 import { readFileSync } from "fs";
+import { pathToFileURL } from "url";
 import * as vscode from "vscode";
 import type { LanguageService, ShaderLanguage } from "@shader-studio/language-server-core";
 
@@ -12,10 +13,10 @@ export function createExtensionLanguageServiceFactories(
     },
     slang: async () => {
       const { SlangLanguageService } = await import("@shader-studio/slang-language-server");
-      // The generated Emscripten JavaScript is paired with interface.d.ts but TypeScript
-      // does not associate that sibling declaration across this package boundary.
-      // @ts-expect-error generated Slang module has no directly resolvable declaration here
-      const runtime = await import("../../../ui/src/slang/slang-wasm.js") as {
+      // Keep Emscripten's ESM runtime external to the CommonJS extension bundle:
+      // it uses import.meta.url when creating its Node require function.
+      const runtimeUrl = pathToFileURL(context.asAbsolutePath("dist/slang-wasm.mjs")).href;
+      const runtime = await import(runtimeUrl) as {
         default(options: { wasmBinary: Uint8Array }): Promise<unknown>;
       };
       const assetManifest = JSON.parse(readFileSync(context.asAbsolutePath("ui-dist/slang-assets.json"), "utf8")) as { wasm?: unknown };
