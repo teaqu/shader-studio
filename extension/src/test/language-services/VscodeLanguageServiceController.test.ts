@@ -49,7 +49,12 @@ suite("VS Code language-service revisions", () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({
       language: "slang",
-      content: "float3 n = normalize(float3(1));\nfloat3 m = nor;",
+      content: [
+        "float3 n = normalize(float3(1));",
+        "float3 m = nor;",
+        "float x = fmod(3.0, 2.0);",
+        "float4 c = sampleIChannel0(float2(0.5));",
+      ].join("\n"),
     });
     await vscode.window.showTextDocument(document);
 
@@ -69,6 +74,18 @@ suite("VS Code language-service revisions", () => {
       const value = typeof content === "string" ? content : content.value;
       return value.includes("unit length");
     })));
+    const fmodHovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      document.uri,
+      new vscode.Position(2, 12),
+    );
+    assert.ok(hoverText(fmodHovers).includes("floating-point remainder"));
+    const channelHovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      document.uri,
+      new vscode.Position(3, 20),
+    );
+    assert.ok(hoverText(channelHovers).includes("input channel 0"));
     const signature = await vscode.commands.executeCommand<vscode.SignatureHelp>(
       "vscode.executeSignatureHelpProvider",
       document.uri,
@@ -104,4 +121,10 @@ async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vsco
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(`Timed out waiting for diagnostic containing: ${message}`);
+}
+
+function hoverText(hovers: readonly vscode.Hover[]): string {
+  return hovers.flatMap((hover) => hover.contents.map((content) => (
+    typeof content === "string" ? content : content.value
+  ))).join("\n");
 }

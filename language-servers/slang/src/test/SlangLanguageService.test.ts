@@ -102,6 +102,30 @@ describe("SlangLanguageService", () => {
       .toContain("normalize");
   });
 
+  it("documents broader Slang intrinsics and generated channel sampling helpers", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    server.signatureHelp.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      resources: [{ name: "noise", kind: "texture-2d" }],
+    });
+    const text = "float x = fmod(3.0, 2.0);\nfloat4 c = sampleIChannel0(float2(0.5));\nfloat4 d = sampleNoise(float2(0.5));";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 12 } }))?.contents))
+      .toContain("floating-point remainder");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 1, character: 20 } }))?.contents))
+      .toContain("input channel 0");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 2, character: 20 } }))?.contents))
+      .toContain("noise");
+    expect((await service.signatureHelp({ document: revision, position: { line: 1, character: 38 } }))?.signatures[0]?.label)
+      .toBe("float4 sampleIChannel0(float2 uv)");
+    const completions = await service.completion({ document: revision, position: { line: 2, character: 20 } });
+    expect(JSON.stringify(completions.find((item) => item.label === "sampleNoise")?.documentation)).toContain("input channel 0");
+  });
+
   it("drops official ranges that point into the generated prelude", async () => {
     const { module, server } = fixture();
     server.getDiagnostics.mockReturnValue(list([{

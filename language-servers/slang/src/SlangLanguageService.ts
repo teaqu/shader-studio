@@ -25,6 +25,9 @@ import {
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
+  deriveSlangChannelGeneratedIdentifiers,
+  isValidShaderIdentifier,
+  resolveAuthoringChannelBindings,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
@@ -36,7 +39,7 @@ import type {
   SlangLanguageServerModule,
   SlangList,
 } from "./slangLanguageServerTypes.js";
-import { findSlangIntrinsics, SLANG_INTRINSICS } from "./intrinsics.js";
+import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -110,12 +113,13 @@ export class SlangLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
+    const documentedFunctions = documentedSlangFunctions(state.environment);
     const official = consumeList(this.server.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
       triggerKind: 1,
       triggerCharacter: "",
     }), (item) => {
       const editRange = item.textEdit ? userRange(item.textEdit.range, state.offset, state.document.text) : undefined;
-      const intrinsic = findSlangIntrinsics(item.label)[0];
+      const intrinsic = documentedFunctions.find((entry) => entry.name === item.label);
       return {
         label: item.label,
         kind: item.kind as CompletionItemKind,
@@ -127,7 +131,7 @@ export class SlangLanguageService implements LanguageService {
     });
     const items = new Map<string, CompletionItem>(official.map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
     const officialLabels = new Set(official.map((item) => item.label));
-    for (const intrinsic of SLANG_INTRINSICS) {
+    for (const intrinsic of documentedFunctions) {
       if (officialLabels.has(intrinsic.name)) {
         continue;
       }
@@ -175,7 +179,7 @@ export class SlangLanguageService implements LanguageService {
     if (uniform) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${slangType(uniform.type)} ${uniform.name}\n\`\`\`\n\nShader Studio custom uniform.` } };
     }
-    const intrinsic = word ? findSlangIntrinsics(word)[0] : undefined;
+    const intrinsic = word ? documentedSlangFunctions(state.environment).find((item) => item.name === word) : undefined;
     if (intrinsic) {
       return { contents: intrinsicMarkup(intrinsic) };
     }
@@ -223,7 +227,7 @@ export class SlangLanguageService implements LanguageService {
       return null;
     }
     const signatures = findSlangDeclarations(state.document.text).filter((item) => item.kind === SymbolKind.Function && item.name === call.name);
-    const intrinsics = findSlangIntrinsics(call.name);
+    const intrinsics = documentedSlangFunctions(state.environment).filter((item) => item.name === call.name);
     const labels = [...signatures.map((item) => item.detail), ...intrinsics.flatMap((item) => item.signatures)];
     return labels.length > 0 ? { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter } : null;
   }
@@ -550,7 +554,59 @@ function callAt(source: string, position: { line: number; character: number }): 
   return undefined;
 }
 
-function completionForIntrinsic(intrinsic: import("./intrinsics.js").SlangIntrinsic): CompletionItem {
+function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): readonly SlangIntrinsic[] {
+  const functions = new Map(SLANG_INTRINSICS.map((item) => [item.name, item]));
+  const bindings = resolveAuthoringChannelBindings(environment.resources)
+    .filter(({ resource }) => isValidShaderIdentifier(resource.name));
+  const claimedSlots = new Set(bindings.map(({ slot }) => slot));
+  for (const binding of bindings) {
+    const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
+    if (!identifiers.slotHelper || !identifiers.slotVertexHelper || !identifiers.samplingParameterType) {
+      continue;
+    }
+    const parameter = identifiers.samplingParameterType === "float3" ? "float3 dir" : "float2 uv";
+    const coordinates = identifiers.samplingParameterType === "float3"
+      ? "a cube-map direction"
+      : "normalized UV coordinates; Shader Studio flips the V coordinate to match texture orientation";
+    const description = `Samples Shader Studio input channel ${binding.slot} (${binding.resource.name}) using ${coordinates}.`;
+    functions.set(identifiers.slotHelper, intrinsic(identifiers.slotHelper, `float4 ${identifiers.slotHelper}(${parameter})`, description));
+    functions.set(identifiers.slotVertexHelper, intrinsic(
+      identifiers.slotVertexHelper,
+      `float4 ${identifiers.slotVertexHelper}(${parameter})`,
+      `${description} This vertex-stage variant samples mip level zero.`,
+    ));
+    if (identifiers.aliasHelper && identifiers.aliasVertexHelper) {
+      functions.set(identifiers.aliasHelper, intrinsic(
+        identifiers.aliasHelper,
+        `float4 ${identifiers.aliasHelper}(${parameter})`,
+        `Named sampling helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}.`,
+      ));
+      functions.set(identifiers.aliasVertexHelper, intrinsic(
+        identifiers.aliasVertexHelper,
+        `float4 ${identifiers.aliasVertexHelper}(${parameter})`,
+        `Named vertex-stage helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}. It samples mip level zero.`,
+      ));
+    }
+  }
+  for (let slot = 0; slot < 4; slot++) {
+    if (claimedSlots.has(slot)) {
+      continue;
+    }
+    const name = `sampleIChannel${slot}`;
+    functions.set(name, intrinsic(
+      name,
+      `float4 ${name}(float2 uv)`,
+      `Samples Shader Studio input channel ${slot}. With no resource assigned to this slot, it returns opaque black.`,
+    ));
+  }
+  return [...functions.values()];
+}
+
+function intrinsic(name: string, signature: string, description: string): SlangIntrinsic {
+  return { name, signatures: [signature], description };
+}
+
+function completionForIntrinsic(intrinsic: SlangIntrinsic): CompletionItem {
   return {
     label: intrinsic.name,
     kind: CompletionItemKind.Function,
@@ -559,7 +615,7 @@ function completionForIntrinsic(intrinsic: import("./intrinsics.js").SlangIntrin
   };
 }
 
-function intrinsicMarkup(intrinsic: import("./intrinsics.js").SlangIntrinsic) {
+function intrinsicMarkup(intrinsic: SlangIntrinsic) {
   return {
     kind: MarkupKind.Markdown,
     value: `${intrinsic.signatures.map((signature) => `\`\`\`slang\n${signature}\n\`\`\``).join("\n\n")}\n\n${intrinsic.description}`,
