@@ -12,6 +12,7 @@ suite('Shader Studio Test Suite', () => {
   let sendShaderSpy: sinon.SinonSpy;
   let activeEditorChangeListener: ((editor: vscode.TextEditor | undefined) => void) | undefined;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
+  let selectionChangeListener: ((event: vscode.TextEditorSelectionChangeEvent) => void) | undefined;
 
   setup(() => {
     sandbox = sinon.createSandbox();
@@ -95,6 +96,7 @@ suite('Shader Studio Test Suite', () => {
       return { dispose: sandbox.stub(), _listener: listener, _event: 'onDidChangeTextDocument' } as any;
     });
     sandbox.stub(vscode.window, 'onDidChangeTextEditorSelection').callsFake((listener: any) => {
+      selectionChangeListener = listener;
       return { dispose: sandbox.stub() } as any;
     });
     sandbox.stub(vscode.window, 'registerWebviewViewProvider').returns({
@@ -764,6 +766,19 @@ suite('Shader Studio Test Suite', () => {
       mockEditor.selection = new vscode.Selection(5, 10, 5, 10);
 
       messengerSendSpy = sandbox.spy(shaderStudio['messenger'], 'send');
+    });
+
+    test('does not broadcast cursor positions without an active preview client', () => {
+      selectionChangeListener?.({ textEditor: mockEditor, selections: mockEditor.selections } as vscode.TextEditorSelectionChangeEvent);
+      clock.tick(150);
+      sinon.assert.notCalled(messengerSendSpy);
+    });
+
+    test('does not broadcast cursor positions while variable debugging is disabled', () => {
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      selectionChangeListener?.({ textEditor: mockEditor, selections: mockEditor.selections } as vscode.TextEditorSelectionChangeEvent);
+      clock.tick(150);
+      sinon.assert.notCalled(messengerSendSpy);
     });
 
     teardown(() => {

@@ -30,11 +30,13 @@ import {
 } from "@shader-studio/types";
 import type {
   SlangDiagnostic,
+  SlangCompilerGlobalSession,
   SlangDocumentSymbol,
   SlangLanguageServer,
   SlangLanguageServerModule,
   SlangList,
 } from "./slangLanguageServerTypes.js";
+import { findSlangIntrinsics, SLANG_INTRINSICS } from "./intrinsics.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -52,8 +54,10 @@ export class SlangLanguageService implements LanguageService {
   private readonly lineOffsets = new Map<string, number>();
   private readonly opened = new Set<string>();
   private readonly virtualOpened = new Set<string>();
+  private compilerGlobalSession: SlangCompilerGlobalSession | undefined;
+  private compilerTarget: number | undefined;
 
-  constructor(module: SlangLanguageServerModule) {
+  constructor(private readonly module: SlangLanguageServerModule) {
     const server = module.createLanguageServer();
     if (!server) {
       throw new Error("Slang createLanguageServer returned null");
@@ -109,16 +113,25 @@ export class SlangLanguageService implements LanguageService {
     const official = consumeList(this.server.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
       triggerKind: 1,
       triggerCharacter: "",
-    }), (item) => ({
-      label: item.label,
-      kind: item.kind as CompletionItemKind,
-      detail: item.detail,
-      documentation: item.documentation ? markup(item.documentation) : undefined,
-      textEdit: item.textEdit ? { range: shiftedRange(item.textEdit.range, -state.offset), newText: item.textEdit.text } : undefined,
-      data: item.data,
-    }));
+    }), (item) => {
+      const editRange = item.textEdit ? userRange(item.textEdit.range, state.offset, state.document.text) : undefined;
+      const intrinsic = findSlangIntrinsics(item.label)[0];
+      return {
+        label: item.label,
+        kind: item.kind as CompletionItemKind,
+        detail: item.detail,
+        documentation: item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
+        textEdit: item.textEdit && editRange ? { range: editRange, newText: item.textEdit.text } : undefined,
+        data: item.data,
+      };
+    });
     const items = new Map<string, CompletionItem>(official.map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
-    for (const item of SLANG_FALLBACK_COMPLETIONS) {
+    const officialLabels = new Set(official.map((item) => item.label));
+    for (const intrinsic of SLANG_INTRINSICS) {
+      if (officialLabels.has(intrinsic.name)) {
+        continue;
+      }
+      const item = completionForIntrinsic(intrinsic);
       items.set(`${item.label}:${item.detail}`, item);
     }
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
@@ -162,9 +175,13 @@ export class SlangLanguageService implements LanguageService {
     if (uniform) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${slangType(uniform.type)} ${uniform.name}\n\`\`\`\n\nShader Studio custom uniform.` } };
     }
+    const intrinsic = word ? findSlangIntrinsics(word)[0] : undefined;
+    if (intrinsic) {
+      return { contents: intrinsicMarkup(intrinsic) };
+    }
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
-      return { contents: markup(result.contents), range: shiftedRange(result.range, -state.offset) };
+      return { contents: markup(result.contents), range: userRange(result.range, state.offset, state.document.text) };
     }
     const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
     return local ? { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${local.detail}\n\`\`\`` }, range: local.selectionRange } : null;
@@ -176,8 +193,8 @@ export class SlangLanguageService implements LanguageService {
       return [];
     }
     const official = consumeList(this.server.gotoDefinition(params.document.uri, shiftedPosition(params.position, state.offset)), (item) => {
-      const range = item.uri === params.document.uri ? shiftedRange(item.range, -state.offset) : item.range;
-      return range.start.line < 0 ? undefined : { uri: item.uri, range };
+      const range = item.uri === params.document.uri ? userRange(item.range, state.offset, state.document.text) : item.range;
+      return range ? { uri: item.uri, range } : undefined;
     }).filter((item): item is Location => item !== undefined);
     if (official.length > 0) {
       return official;
@@ -206,7 +223,9 @@ export class SlangLanguageService implements LanguageService {
       return null;
     }
     const signatures = findSlangDeclarations(state.document.text).filter((item) => item.kind === SymbolKind.Function && item.name === call.name);
-    return signatures.length > 0 ? { signatures: signatures.map((item) => ({ label: item.detail })), activeSignature: 0, activeParameter: call.parameter } : null;
+    const intrinsics = findSlangIntrinsics(call.name);
+    const labels = [...signatures.map((item) => item.detail), ...intrinsics.flatMap((item) => item.signatures)];
+    return labels.length > 0 ? { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter } : null;
   }
 
   async documentSymbols(params: DocumentParams): Promise<DocumentSymbol[]> {
@@ -214,7 +233,7 @@ export class SlangLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
-    const official = consumeList(this.server.documentSymbol(params.document.uri), (item) => convertDocumentSymbol(item, state.offset))
+    const official = consumeList(this.server.documentSymbol(params.document.uri), (item) => convertDocumentSymbol(item, state.offset, state.document.text))
       .filter((item): item is DocumentSymbol => item !== undefined);
     return official.length > 0 ? official : findSlangDeclarations(state.document.text).map((item) => ({
       name: item.name,
@@ -230,7 +249,7 @@ export class SlangLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
-    const official = consumeList(this.server.getDiagnostics(params.document.uri), (item) => convertDiagnostic(item, state.offset))
+    const official = consumeList(this.server.getDiagnostics(params.document.uri), (item) => convertDiagnostic(item, state.offset, state.document.text))
       .filter((item): item is Diagnostic => item !== undefined);
     const environment = validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
@@ -239,7 +258,8 @@ export class SlangLanguageService implements LanguageService {
       code: issue.code,
       message: issue.message,
     }));
-    return [...official, ...environment];
+    const compiler = official.length === 0 ? this.compilerDiagnostics(state) : [];
+    return [...official, ...compiler, ...environment];
   }
 
   async documentColors(params: DocumentParams) {
@@ -260,6 +280,9 @@ export class SlangLanguageService implements LanguageService {
     }
     this.opened.clear();
     this.virtualOpened.clear();
+    this.compilerGlobalSession?.delete?.();
+    this.compilerGlobalSession = undefined;
+    this.compilerTarget = undefined;
     this.server.delete?.();
   }
 
@@ -288,6 +311,61 @@ export class SlangLanguageService implements LanguageService {
     const offset = this.lineOffsets.get(params.document.uri);
     return document && environment && offset !== undefined ? { document, environment, offset } : undefined;
   }
+
+  private compilerDiagnostics(state: NonNullable<ReturnType<SlangLanguageService["current"]>>): Diagnostic[] {
+    const compiler = this.compiler();
+    if (!compiler) {
+      return [];
+    }
+    const session = compiler.globalSession.createSession(compiler.target);
+    if (!session) {
+      return [];
+    }
+    try {
+      for (const file of state.environment.virtualFiles) {
+        const dependency = session.loadModuleFromSource(
+          stripEditorImport(file.text),
+          moduleName(file.text, file.uri),
+          sourcePath(file.uri),
+        );
+        if (!dependency) {
+          return parseCompilerDiagnostics(this.module.getLastError?.().message ?? "", sourcePath(state.document.uri), state.offset, state.document.text);
+        }
+      }
+      const prelude = buildSlangAuthoringModule(state.environment).text;
+      const source = prelude ? `${prelude}\n${stripEditorImport(state.document.text)}` : stripEditorImport(state.document.text);
+      const compiled = session.loadModuleFromSource(source, moduleName(state.document.text, state.document.uri), sourcePath(state.document.uri));
+      if (compiled) {
+        compiled.delete?.();
+        return [];
+      }
+      return parseCompilerDiagnostics(this.module.getLastError?.().message ?? "", sourcePath(state.document.uri), state.offset, state.document.text);
+    } finally {
+      session.delete?.();
+    }
+  }
+
+  private compiler(): { globalSession: SlangCompilerGlobalSession; target: number } | undefined {
+    if (this.compilerGlobalSession && this.compilerTarget !== undefined) {
+      return { globalSession: this.compilerGlobalSession, target: this.compilerTarget };
+    }
+    if (!this.module.createGlobalSession || !this.module.getCompileTargets) {
+      return undefined;
+    }
+    const globalSession = this.module.createGlobalSession();
+    if (!globalSession) {
+      return undefined;
+    }
+    const targets = consumeCompilerTargets(this.module.getCompileTargets());
+    const target = targets.find((item) => /wgsl/i.test(item.name))?.value;
+    if (target === undefined) {
+      globalSession.delete?.();
+      return undefined;
+    }
+    this.compilerGlobalSession = globalSession;
+    this.compilerTarget = target;
+    return { globalSession, target };
+  }
 }
 
 function consumeList<T, U>(list: SlangList<T> | undefined, convert: (value: T) => U): U[] {
@@ -308,16 +386,16 @@ function consumeList<T, U>(list: SlangList<T> | undefined, convert: (value: T) =
   }
 }
 
-function convertDocumentSymbol(item: SlangDocumentSymbol, offset: number): DocumentSymbol | undefined {
-  const range = shiftedRange(item.range, -offset);
-  const selectionRange = shiftedRange(item.selectionRange, -offset);
-  const children = consumeList(item.children, (child) => convertDocumentSymbol(child, offset)).filter((child): child is DocumentSymbol => child !== undefined);
-  return range.start.line < 0 ? undefined : { name: item.name, detail: item.detail, kind: item.kind as SymbolKind, range, selectionRange, children };
+function convertDocumentSymbol(item: SlangDocumentSymbol, offset: number, source: string): DocumentSymbol | undefined {
+  const range = userRange(item.range, offset, source);
+  const selectionRange = userRange(item.selectionRange, offset, source);
+  const children = consumeList(item.children, (child) => convertDocumentSymbol(child, offset, source)).filter((child): child is DocumentSymbol => child !== undefined);
+  return range && selectionRange ? { name: item.name, detail: item.detail, kind: item.kind as SymbolKind, range, selectionRange, children } : undefined;
 }
 
-function convertDiagnostic(item: SlangDiagnostic, offset: number): Diagnostic | undefined {
-  const range = shiftedRange(item.range, -offset);
-  return range.start.line < 0 ? undefined : { code: item.code, range, severity: item.severity as DiagnosticSeverity, message: item.message, source: "shader-studio-slang-ls" };
+function convertDiagnostic(item: SlangDiagnostic, offset: number, source: string): Diagnostic | undefined {
+  const range = userRange(item.range, offset, source);
+  return range ? { code: item.code, range, severity: item.severity as DiagnosticSeverity, message: item.message, source: "shader-studio-slang-ls" } : undefined;
 }
 
 function shiftedPosition(position: { line: number; character: number }, lines: number) {
@@ -326,8 +404,71 @@ function shiftedPosition(position: { line: number; character: number }, lines: n
 function shiftedRange(range: Range, lines: number): Range {
   return { start: shiftedPosition(range.start, lines), end: shiftedPosition(range.end, lines) };
 }
+function userRange(range: Range, offset: number, source: string): Range | undefined {
+  const shifted = shiftedRange(range, -offset);
+  const lines = source.split("\n");
+  const valid = (position: { line: number; character: number }) => (
+    position.line >= 0
+    && position.line < lines.length
+    && position.character >= 0
+    && position.character <= (lines[position.line]?.length ?? 0)
+  );
+  return valid(shifted.start) && valid(shifted.end) ? shifted : undefined;
+}
 function zeroRange(): Range {
   return { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+}
+
+function consumeCompilerTargets(targets: import("./slangLanguageServerTypes.js").SlangCompileTarget[] | SlangList<import("./slangLanguageServerTypes.js").SlangCompileTarget>) {
+  return Array.isArray(targets) ? targets : consumeList(targets, (item) => item);
+}
+
+function stripEditorImport(source: string): string {
+  return source.replace(/^\s*import\s+(?:shader_studio|"shader-studio\.slang")\s*;?.*$/gm, (line) => `//${" ".repeat(Math.max(0, line.length - 2))}`);
+}
+
+function sourcePath(uri: string): string {
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === "file:" ? decodeURIComponent(parsed.pathname) : `/${parsed.pathname || "shader.slang"}`;
+  } catch {
+    return uri.startsWith("/") ? uri : `/${uri}`;
+  }
+}
+
+function moduleName(source: string, uri: string): string {
+  return source.match(/^\s*module\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/m)?.[1]
+    ?? sourcePath(uri).split("/").pop()?.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_")
+    ?? "shader";
+}
+
+function parseCompilerDiagnostics(error: string, rootPath: string, offset: number, source: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const expression = /error(?:\[([^\]]+)\])?: ([^\n]+)\n\s*--> ([^\n]+):(\d+):(\d+)([\s\S]*?)(?=\n(?:error|fatal error)(?:\[|:)|$)/g;
+  for (const match of error.matchAll(expression)) {
+    if (match[3] !== rootPath) {
+      continue;
+    }
+    const line = Number(match[4]) - 1 - offset;
+    const character = Number(match[5]) - 1;
+    const sourceLine = source.split("\n")[line];
+    if (line < 0 || sourceLine === undefined || character < 0 || character > sourceLine.length) {
+      continue;
+    }
+    const caretLength = match[6]?.match(/\^+/)?.[0].length ?? 1;
+    const detail = match[6]?.match(/\^+\s+([^\n]+)/)?.[1]?.trim();
+    diagnostics.push({
+      code: match[1],
+      range: {
+        start: { line, character },
+        end: { line, character: Math.min(sourceLine.length, character + caretLength) },
+      },
+      severity: DiagnosticSeverity.Error,
+      source: "shader-studio-slang-compiler",
+      message: detail || match[2] || "Slang compilation error",
+    });
+  }
+  return diagnostics;
 }
 function slangType(type: string) {
   return type === "vec2" ? "float2" : type === "vec3" ? "float3" : type === "vec4" ? "float4" : type;
@@ -409,20 +550,18 @@ function callAt(source: string, position: { line: number; character: number }): 
   return undefined;
 }
 
-const SLANG_FALLBACK_COMPLETIONS: readonly CompletionItem[] = [
-  ["abs", "Returns the component-wise absolute value."],
-  ["clamp", "Constrains values to a range."],
-  ["cross", "Returns the cross product."],
-  ["dot", "Returns the dot product."],
-  ["lerp", "Linearly interpolates between values."],
-  ["normalize", "Returns a vector with length one."],
-  ["saturate", "Constrains values to zero through one."],
-  ["sin", "Returns the sine of an angle."],
-  ["cos", "Returns the cosine of an angle."],
-  ["sqrt", "Returns the square root."],
-].map(([label, description]) => Object.freeze({
-  label,
-  kind: CompletionItemKind.Function,
-  detail: `${label}(...)`,
-  documentation: { kind: MarkupKind.Markdown, value: description },
-}));
+function completionForIntrinsic(intrinsic: import("./intrinsics.js").SlangIntrinsic): CompletionItem {
+  return {
+    label: intrinsic.name,
+    kind: CompletionItemKind.Function,
+    detail: intrinsic.signatures[0],
+    documentation: intrinsicMarkup(intrinsic),
+  };
+}
+
+function intrinsicMarkup(intrinsic: import("./intrinsics.js").SlangIntrinsic) {
+  return {
+    kind: MarkupKind.Markdown,
+    value: `${intrinsic.signatures.map((signature) => `\`\`\`slang\n${signature}\n\`\`\``).join("\n\n")}\n\n${intrinsic.description}`,
+  };
+}

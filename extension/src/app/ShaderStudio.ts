@@ -435,6 +435,10 @@ export class ShaderStudio {
   private handleCursorPositionChange(event: vscode.TextEditorSelectionChangeEvent): void {
     const editor = event.textEditor;
 
+    if (!this.isDebugModeEnabled || !this.messenger.hasActiveClients()) {
+      return;
+    }
+
     // Only track GLSL editors
     if (!this.glslFileTracker.isGlslEditor(editor)) {
       return;

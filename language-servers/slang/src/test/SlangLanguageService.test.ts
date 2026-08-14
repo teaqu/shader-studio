@@ -12,7 +12,13 @@ function fixture() {
     didOpenTextDocument: vi.fn(),
     didCloseTextDocument: vi.fn(),
     didChangeTextDocument: vi.fn(),
-    completion: vi.fn(() => list([{ label: "normalize", kind: 3, detail: "float3 normalize(float3)", data: "" }])),
+    completion: vi.fn(() => list([{
+      label: "normalize",
+      kind: 3,
+      detail: "float3 normalize(float3)",
+      data: "",
+      textEdit: { range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } }, text: "normalize" },
+    }])),
     hover: vi.fn(() => ({ contents: { kind: "markdown", value: "normalizes a vector" }, range: { start: { line: 3, character: 0 }, end: { line: 3, character: 9 } } })),
     gotoDefinition: vi.fn(() => list([{ uri: "file:///image.slang", range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } } }])),
     signatureHelp: vi.fn(() => undefined),
@@ -58,16 +64,18 @@ describe("SlangLanguageService", () => {
     expect(server.didOpenTextDocument.mock.calls.map((call) => call[0])).toEqual(["file:///common.slang", uri]);
   });
 
-  it("converts results, offsets positions, and releases vectors", async () => {
+  it("offsets positions, releases vectors, and filters generated symbol ranges", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);
     await service.syncEnvironment(environment);
     await service.openDocument({ uri, languageId: "slang", version: 1, text: "normalize(float3(1));" });
     const result = await service.completion({ document: revision, position: { line: 0, character: 2 } });
     expect(result[0]?.label).toBe("normalize");
+    expect(result.filter((item) => item.label === "normalize")).toHaveLength(1);
+    expect(JSON.stringify(result.find((item) => item.label === "normalize")?.documentation)).toContain("unit length");
     expect(server.completion.mock.calls[0]?.[1].line).toBeGreaterThan(0);
     expect(server.completion.mock.results[0]?.value.delete).toHaveBeenCalledOnce();
-    expect((await service.documentSymbols({ document: revision }))[0]?.range.start.line).toBeLessThan(100);
+    expect(await service.documentSymbols({ document: revision })).toEqual([]);
   });
 
   it("provides Shader Studio docs and Slang literal colors", async () => {
@@ -78,6 +86,38 @@ describe("SlangLanguageService", () => {
     expect(await service.documentColors({ document: revision })).toHaveLength(1);
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 50 } }))?.contents))
       .toContain("Canvas dimensions");
+  });
+
+  it("provides documentation and signatures for common Slang functions", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    server.signatureHelp.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float3 n = normalize(float3(1));" });
+
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 14 } }))?.contents))
+      .toContain("unit length");
+    expect((await service.signatureHelp({ document: revision, position: { line: 0, character: 30 } }))?.signatures[0]?.label)
+      .toContain("normalize");
+  });
+
+  it("drops official ranges that point into the generated prelude", async () => {
+    const { module, server } = fixture();
+    server.getDiagnostics.mockReturnValue(list([{
+      code: "bad-range",
+      range: { start: { line: 3, character: 0 }, end: { line: 3, character: 4 } },
+      severity: 1,
+      message: "generated prelude diagnostic",
+    }]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "normalize(float3(1));" });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: 2 } });
+    expect(completions.find((item) => item.label === "normalize")?.textEdit).toBeUndefined();
+    expect(await service.definition({ document: revision, position: { line: 0, character: 2 } })).toEqual([]);
+    expect(await service.diagnostics({ document: revision })).toEqual([]);
   });
 
   it("falls back to local symbols, definitions, and signatures when the WASM server returns none", async () => {

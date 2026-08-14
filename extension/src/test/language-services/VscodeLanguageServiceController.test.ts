@@ -49,17 +49,59 @@ suite("VS Code language-service revisions", () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({
       language: "slang",
-      content: "float4 mainImage(float2 fragCoord) { return nor; }",
+      content: "float3 n = normalize(float3(1));\nfloat3 m = nor;",
     });
     await vscode.window.showTextDocument(document);
 
     const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
       "vscode.executeCompletionItemProvider",
       document.uri,
-      new vscode.Position(0, 46),
+      new vscode.Position(1, 14),
     );
 
     assert.ok(completions.items.some((item) => item.label === "normalize"));
+    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      document.uri,
+      new vscode.Position(0, 14),
+    );
+    assert.ok(hovers.some((hover) => hover.contents.some((content) => {
+      const value = typeof content === "string" ? content : content.value;
+      return value.includes("unit length");
+    })));
+    const signature = await vscode.commands.executeCommand<vscode.SignatureHelp>(
+      "vscode.executeSignatureHelpProvider",
+      document.uri,
+      new vscode.Position(0, 30),
+    );
+    assert.ok(signature.signatures.some((item) => item.label.includes("normalize")));
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
+  test("publishes bundled Slang compiler diagnostics in VS Code", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const document = await vscode.workspace.openTextDocument({
+      language: "slang",
+      content: "float4 mainImage(float2 p) { return badName; }",
+    });
+    await vscode.window.showTextDocument(document);
+
+    const diagnostic = await waitForDiagnostic(document.uri, "undefined identifier");
+
+    assert.strictEqual(diagnostic.source, "shader-studio-slang-compiler");
+    assert.deepStrictEqual(diagnostic.range.start, new vscode.Position(0, 36));
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 });
+
+async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const diagnostic = vscode.languages.getDiagnostics(uri).find((item) => item.message.includes(message));
+    if (diagnostic) {
+      return diagnostic;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for diagnostic containing: ${message}`);
+}

@@ -54,4 +54,18 @@ export interface SlangLanguageServer {
 
 export interface SlangLanguageServerModule {
   createLanguageServer(): SlangLanguageServer | null;
+  createGlobalSession?(): SlangCompilerGlobalSession | null;
+  getCompileTargets?(): SlangCompileTarget[] | SlangList<SlangCompileTarget>;
+  getLastError?(): { message?: string };
+}
+
+export interface SlangCompileTarget { name: string; value: number }
+export interface SlangCompilerModule { delete?(): void }
+export interface SlangCompilerSession {
+  loadModuleFromSource(source: string, moduleName: string, sourcePath: string): SlangCompilerModule | null;
+  delete?(): void;
+}
+export interface SlangCompilerGlobalSession {
+  createSession(target: number): SlangCompilerSession | null;
+  delete?(): void;
 }

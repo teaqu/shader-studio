@@ -26,6 +26,11 @@ describe("SlangLanguageService with bundled WASM", () => {
     const completions = await service.completion({ document, position: { line: 0, character: 48 } });
     expect(completions.some((item) => item.label === "normalize")).toBe(true);
     expect(await service.diagnostics({ document })).toEqual([]);
+    await service.changeDocument({ uri, languageId: "slang", version: 2, text: "float4 mainImage(float2 p) { return badName; }" });
+    const invalidDocument = { ...document, version: 2 };
+    const diagnostics = await service.diagnostics({ document: invalidDocument });
+    expect(diagnostics[0]?.message).toContain("undefined identifier");
+    expect(diagnostics[0]?.range.start).toEqual({ line: 0, character: 36 });
     await service.dispose();
   }, 20_000);
 });
