@@ -49,6 +49,13 @@ describe("SlangLanguageService", () => {
     expect(SLANG_INTRINSICS.filter((item) => /^returns?\b/i.test(item.description))).toEqual([]);
   });
 
+  it("documents integer exponent parameters with their compiler types", () => {
+    expect(SLANG_INTRINSICS.find((item) => item.name === "frexp")?.signatures)
+      .toContain("T frexp(T value, out int exponent)");
+    expect(SLANG_INTRINSICS.find((item) => item.name === "ldexp")?.signatures)
+      .toContain("T ldexp(T value, int exponent)");
+  });
+
   it("loads generated Shader Studio declarations before user source", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);
