@@ -126,6 +126,29 @@ describe("SlangLanguageService", () => {
     expect(JSON.stringify(completions.find((item) => item.label === "sampleNoise")?.documentation)).toContain("input channel 0");
   });
 
+  it("documents generally useful math, bit, conversion, and packing helpers", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float x = copysign(1.0, -1.0);" });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: 12 } });
+    const expected = [
+      "bit_cast", "bitfieldExtract", "bitfieldInsert", "copysign", "cospi", "f16tof32", "f32tof16",
+      "fdim", "fract", "nextafter", "packHalf2x16", "packSnorm2x16", "packSnorm4x8", "packUnorm2x16",
+      "packUnorm4x8", "powr", "rint", "select", "sinpi", "tanpi", "unpackHalf2x16ToFloat",
+      "unpackSnorm2x16ToFloat", "unpackSnorm4x8ToFloat", "unpackUnorm2x16ToFloat", "unpackUnorm4x8ToFloat",
+    ];
+    for (const name of expected) {
+      const item = completions.find((completion) => completion.label === name);
+      expect(item, name).toBeDefined();
+      expect(JSON.stringify(item?.documentation), name).not.toBe("");
+    }
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 15 } }))?.contents))
+      .toContain("magnitude");
+  });
+
   it("drops official ranges that point into the generated prelude", async () => {
     const { module, server } = fixture();
     server.getDiagnostics.mockReturnValue(list([{
