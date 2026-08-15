@@ -47,6 +47,9 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
     const document = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
     const completions = await service.completion({ document, position: { line: 20, character: 48 } });
     expect(completions.some((item) => item.label === "normalize")).toBe(true);
+    const localHover = await service.hover({ document, position: { line: 1, character: 10 } });
+    expect(JSON.stringify(localHover?.contents)).toContain("Defined in image.slang(2)");
+    expect(JSON.stringify(localHover?.contents)).not.toMatch(/Defined in [0-9a-f]{32,64}\(/i);
     expect(await service.diagnostics({ document })).toEqual([]);
     await service.changeDocument({ uri, languageId: "slang", version: 2, text: "float4 mainImage(float2 p) { return badName; }" });
     const invalidDocument = { ...document, version: 2 };

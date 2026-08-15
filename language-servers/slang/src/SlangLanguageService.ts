@@ -229,11 +229,15 @@ export class SlangLanguageService implements LanguageService {
     if (vertexFeature) {
       return { contents: vertexHookMarkup(vertexFeature) };
     }
+    const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
-      return { contents: markup(result.contents), range: userRange(result.range, state.offset, state.document.text) };
+      const contents = markup(result.contents);
+      if (local) {
+        contents.value = localSourceHover(contents.value, params.document.uri, local.selectionRange.start.line + 1);
+      }
+      return { contents, range: userRange(result.range, state.offset, state.document.text) };
     }
-    const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
     return local ? { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${local.detail}\n\`\`\`` }, range: local.selectionRange } : null;
   }
 
@@ -573,6 +577,11 @@ function slangType(type: string) {
 }
 function markup(value: { kind: string; value: string }) {
   return { kind: value.kind === "plaintext" ? MarkupKind.PlainText : MarkupKind.Markdown, value: value.value };
+}
+
+function localSourceHover(value: string, uri: string, line: number): string {
+  const filename = sourcePath(uri).split("/").pop() || "shader.slang";
+  return value.replace(/Defined in [0-9a-f]{32,64}\(\d+\)/gi, `Defined in ${filename}(${line})`);
 }
 
 function wordAt(source: string, position: { line: number; character: number }): string | undefined {

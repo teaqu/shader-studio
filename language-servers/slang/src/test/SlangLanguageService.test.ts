@@ -246,4 +246,24 @@ void computeMain(
     expect(await service.definition({ document: revision, position: { line: 1, character: 17 } })).toHaveLength(1);
     expect((await service.signatureHelp({ document: revision, position: { line: 1, character: 24 } }))?.signatures[0]?.label).toContain("twice");
   });
+
+  it("replaces generated module hashes in local function hovers with the source filename and line", async () => {
+    const { module, server } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `${"\n".repeat(11)}uint gosperGliderGun(uint2 cell) { return cell.x; }`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    server.hover.mockReturnValue({
+      contents: {
+        kind: "markdown",
+        value: "func gosperGliderGun(uint2 cell) -> uint\nDefined in 20bb898b269d06c72678cfc208b07589bca28d9f(79)",
+      },
+      range: { start: { line: 12, character: 5 }, end: { line: 12, character: 22 } },
+    });
+
+    const hover = await service.hover({ document: revision, position: { line: 11, character: 8 } });
+    const contents = JSON.stringify(hover?.contents);
+    expect(contents).toContain("Defined in image.slang(12)");
+    expect(contents).not.toContain("20bb898b269d06c72678cfc208b07589bca28d9f");
+  });
 });
