@@ -6,6 +6,7 @@ export interface GlslIntrinsic {
   readonly parameters: readonly { readonly name: string; readonly type: string }[];
   readonly description: string;
   readonly minVersion: 100 | 300;
+  readonly maxVersion: 100 | 300;
   readonly stages: readonly ("fragment" | "vertex")[];
 }
 
@@ -19,6 +20,7 @@ function fn(
   description: string,
   minVersion: 100 | 300 = 100,
   stages: readonly ("fragment" | "vertex")[] = ALL_STAGES,
+  maxVersion: 100 | 300 = 300,
 ): GlslIntrinsic {
   return Object.freeze({
     name,
@@ -28,6 +30,7 @@ function fn(
     parameters: Object.freeze(parameters.map(([type, parameter]) => Object.freeze({ name: parameter, type }))),
     description,
     minVersion,
+    maxVersion,
     stages,
   });
 }
@@ -60,8 +63,8 @@ export const GLSL_INTRINSICS: readonly GlslIntrinsic[] = Object.freeze([
   fn("step", "genType", [["genType", "edge"], ["genType", "x"]], "Zero below edge and one otherwise."),
   fn("texture", "vec4", [["sampler2D", "sampler"], ["vec2", "coordinate"]], "Samples a 2D texture.", 300),
   fn("texture", "vec4", [["samplerCube", "sampler"], ["vec3", "direction"]], "Samples a cube texture.", 300),
-  fn("texture2D", "vec4", [["sampler2D", "sampler"], ["vec2", "coordinate"]], "Samples a 2D texture.", 100),
-  fn("textureCube", "vec4", [["samplerCube", "sampler"], ["vec3", "direction"]], "Samples a cube texture.", 100),
+  fn("texture2D", "vec4", [["sampler2D", "sampler"], ["vec2", "coordinate"]], "Samples a 2D texture.", 100, ALL_STAGES, 100),
+  fn("textureCube", "vec4", [["samplerCube", "sampler"], ["vec3", "direction"]], "Samples a cube texture.", 100, ALL_STAGES, 100),
 ].sort((a, b) => a.name.localeCompare(b.name) || a.signature.localeCompare(b.signature)));
 
 export function findGlslIntrinsics(
@@ -69,5 +72,8 @@ export function findGlslIntrinsics(
   version: 100 | 300,
   stage: "fragment" | "vertex",
 ): readonly GlslIntrinsic[] {
-  return GLSL_INTRINSICS.filter((item) => item.name === name && item.minVersion <= version && item.stages.includes(stage));
+  return GLSL_INTRINSICS.filter((item) => item.name === name
+    && item.minVersion <= version
+    && item.maxVersion >= version
+    && item.stages.includes(stage));
 }

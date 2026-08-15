@@ -34,7 +34,23 @@ describe("GlslLanguageService", () => {
   it("completes standard, Shader Studio, custom uniform, and resource symbols", async () => {
     const labels = (await (await service()).completion({ document: revision, position: { line: 2, character: 10 } }))
       .map((item) => item.label);
-    expect(labels).toEqual(expect.arrayContaining(["normalize", "iResolution", "tint", "sky", "shade"]));
+    expect(labels).toEqual(expect.arrayContaining(["normalize", "texture", "iResolution", "tint", "sky", "shade"]));
+    expect(labels).not.toContain("texture2D");
+  });
+
+  it("retains legacy texture names for explicitly versioned GLSL ES 1.00 documents", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    await instance.openDocument({
+      uri,
+      languageId: "glsl",
+      version: 1,
+      text: "#version 100\nvoid mainImage(out vec4 color, in vec2 coord) {}",
+    });
+    const labels = (await instance.completion({ document: revision, position: { line: 1, character: 10 } }))
+      .map((item) => item.label);
+    expect(labels).toContain("texture2D");
+    expect(labels).not.toContain("texture");
   });
 
   it("returns docs, local definitions, signatures, and document symbols", async () => {

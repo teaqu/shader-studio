@@ -296,11 +296,13 @@ function documentSymbolKind(symbol: GlslSymbol): SymbolKind {
 function visibleIntrinsics(source: string, stage: ShaderAuthoringEnvironment["stage"]) {
   const version = glslVersion(source);
   const glsl = glslStage(stage);
-  return GLSL_INTRINSICS.filter((item) => item.minVersion <= version && item.stages.includes(glsl));
+  return GLSL_INTRINSICS.filter((item) => item.minVersion <= version
+    && item.maxVersion >= version
+    && item.stages.includes(glsl));
 }
 
 function glslVersion(source: string): 100 | 300 {
-  return /^\s*#version\s+300\s+es/m.test(source) ? 300 : 100;
+  return /^\s*#version\s+100\b/m.test(source) ? 100 : 300;
 }
 function glslStage(stage: ShaderAuthoringEnvironment["stage"]): "fragment" | "vertex" {
   return stage === "vertex" ? "vertex" : "fragment";

@@ -79,7 +79,7 @@ suite("VS Code language-service revisions", () => {
       document.uri,
       new vscode.Position(2, 12),
     );
-    assert.ok(hoverText(fmodHovers).includes("floating-point remainder"));
+    assert.ok(hoverText(fmodHovers).includes("Floating-point remainder"));
     const channelHovers = await vscode.commands.executeCommand<vscode.Hover[]>(
       "vscode.executeHoverProvider",
       document.uri,
