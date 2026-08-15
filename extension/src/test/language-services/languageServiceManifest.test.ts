@@ -19,9 +19,21 @@ suite("language service manifest", () => {
     assert.strictEqual(defaults["[slang]"]["editor.colorDecoratorsActivatedOn"], "click");
   });
 
-  test("teaches Code Spell Checker the Slang compute attribute spelling", () => {
+  test("teaches Code Spell Checker stable GLSL and Slang shader vocabulary", () => {
     const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../package.json"), "utf8"));
-    const slangDefaults = manifest.contributes.configurationDefaults["[slang]"];
-    assert.ok(slangDefaults["cSpell.words"].includes("numthreads"));
+    const defaults = manifest.contributes.configurationDefaults;
+    const glslWords = defaults["[glsl]"]["cSpell.words"] as string[];
+    const slangWords = defaults["[slang]"]["cSpell.words"] as string[];
+
+    for (const word of ["GLSL", "bvec", "faceforward", "inversesqrt", "ivec", "snorm", "texel", "unorm"]) {
+      assert.ok(glslWords.includes(word), `missing GLSL cSpell word: ${word}`);
+    }
+    for (const word of [
+      "WGSL", "asuint", "bitfield", "countbits", "firstbithigh", "fmod", "groupshared", "numthreads", "snorm", "unorm",
+    ]) {
+      assert.ok(slangWords.includes(word), `missing Slang cSpell word: ${word}`);
+    }
+    assert.ok(!glslWords.includes("gosperGliderGun"));
+    assert.ok(!slangWords.includes("gosperGliderGun"));
   });
 });
