@@ -18,4 +18,10 @@ suite("language service manifest", () => {
     assert.strictEqual(defaults["[glsl]"]["editor.colorDecoratorsActivatedOn"], "click");
     assert.strictEqual(defaults["[slang]"]["editor.colorDecoratorsActivatedOn"], "click");
   });
+
+  test("teaches Code Spell Checker the Slang compute attribute spelling", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../package.json"), "utf8"));
+    const slangDefaults = manifest.contributes.configurationDefaults["[slang]"];
+    assert.ok(slangDefaults["cSpell.words"].includes("numthreads"));
+  });
 });

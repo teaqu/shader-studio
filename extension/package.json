@@ -208,7 +208,10 @@
         "editor.colorDecoratorsActivatedOn": "click"
       },
       "[slang]": {
-        "editor.colorDecoratorsActivatedOn": "click"
+        "editor.colorDecoratorsActivatedOn": "click",
+        "cSpell.words": [
+          "numthreads"
+        ]
       }
     },
     "languages": [

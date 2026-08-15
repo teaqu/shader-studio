@@ -71,23 +71,57 @@ export class ShaderAuthoringEnvironmentProvider {
 }
 
 function readConfig(shaderPath: string): { config: ShaderConfig; path: string } | null {
-  const candidates = [shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json")];
-  const directory = path.dirname(shaderPath);
-  try {
-    candidates.push(...fs.readdirSync(directory).filter((name) => name.endsWith(".sha.json")).map((name) => path.join(directory, name)));
-  } catch { /* untitled or unavailable directory */ }
-  for (const candidate of [...new Set(candidates)]) {
+  const companion = shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json");
+  const direct = parseConfig(companion);
+  if (direct) {
+    return direct;
+  }
+  const workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath))?.uri.fsPath;
+  const searchRoot = path.resolve(workspaceRoot ?? path.parse(shaderPath).root);
+  let directory = path.dirname(path.resolve(shaderPath));
+  while (isWithinDirectory(searchRoot, directory)) {
     try {
-      return { config: JSON.parse(fs.readFileSync(candidate, "utf8")) as ShaderConfig, path: candidate };
-    } catch { /* try next config */ }
+      const candidates = fs.readdirSync(directory)
+        .filter((name) => name.endsWith(".sha.json"))
+        .map((name) => path.join(directory, name))
+        .filter((candidate) => candidate !== companion)
+        .sort();
+      for (const candidate of candidates) {
+        const loaded = parseConfig(candidate);
+        if (loaded && findExplicitPass(loaded.config, shaderPath, loaded.path)) {
+          return loaded;
+        }
+      }
+    } catch { /* unavailable directory */ }
+    if (directory === searchRoot) {
+      break;
+    }
+    directory = path.dirname(directory);
   }
   return null;
+}
+
+function isWithinDirectory(parent: string, candidate: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function parseConfig(configPath: string): { config: ShaderConfig; path: string } | null {
+  try {
+    return { config: JSON.parse(fs.readFileSync(configPath, "utf8")) as ShaderConfig, path: configPath };
+  } catch {
+    return null;
+  }
 }
 
 function findPass(config: ShaderConfig | null, shaderPath: string, configPath?: string) {
   if (!config) {
     return undefined;
   }
+  return findExplicitPass(config, shaderPath, configPath) ?? { name: "Image", value: config.passes.Image };
+}
+
+function findExplicitPass(config: ShaderConfig, shaderPath: string, configPath?: string) {
   const resolved = path.resolve(shaderPath);
   const configDirectory = path.dirname(configPath ?? shaderPath);
   for (const [name, value] of Object.entries(config.passes)) {
@@ -101,7 +135,7 @@ function findPass(config: ShaderConfig | null, shaderPath: string, configPath?: 
       return { name, value, vertex: true };
     }
   }
-  return { name: "Image", value: config.passes.Image };
+  return undefined;
 }
 
 function stageFor(shaderPath: string, pass: ShaderConfig["passes"][string]): ShaderStage {

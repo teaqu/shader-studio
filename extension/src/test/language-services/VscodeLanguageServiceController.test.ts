@@ -47,16 +47,22 @@ suite("VS Code language-service revisions", () => {
 
   test("provides the configured compute output-layer count to Slang authoring", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-ls-"));
-    const shaderPath = path.join(directory, "compute.slang");
+    const shaderDirectory = path.join(directory, "compute-lab", "passes");
+    const shaderPath = path.join(shaderDirectory, "compute.slang");
     const configPath = path.join(directory, "compute.sha.json");
     try {
+      fs.mkdirSync(shaderDirectory, { recursive: true });
       fs.writeFileSync(shaderPath, "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() {}");
+      fs.writeFileSync(path.join(shaderDirectory, "decoy.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: { Image: {} },
+      }));
       fs.writeFileSync(configPath, JSON.stringify({
         version: "1.0",
         passes: {
           Compute: {
             type: "compute",
-            path: "./compute.slang",
+            path: "./compute-lab/passes/compute.slang",
             entryPoint: "computeMain",
             outputLayers: 3,
           },
@@ -68,6 +74,58 @@ suite("VS Code language-service revisions", () => {
 
       assert.strictEqual(environment?.stage, "compute");
       assert.strictEqual(environment?.outputLayers, 3);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("uses Shader Studio compute docs and declarations for a nested Slang pass", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-hover-"));
+    const shaderDirectory = path.join(directory, "compute-lab", "passes");
+    const shaderPath = path.join(shaderDirectory, "compute.slang");
+    try {
+      fs.mkdirSync(shaderDirectory, { recursive: true });
+      fs.writeFileSync(shaderPath, [
+        "[shader(\"compute\")]",
+        "[numthreads(1, 1, 1)]",
+        "void computeMain(uint3 dispatchId : SV_DispatchThreadID)",
+        "{",
+        "    writeOutput(dispatchId.xy, float4(1.0));",
+        "}",
+      ].join("\n"));
+      fs.writeFileSync(path.join(directory, "compute.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: {
+          Compute: {
+            type: "compute",
+            path: "./compute-lab/passes/compute.slang",
+            entryPoint: "computeMain",
+          },
+        },
+      }));
+      await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+      const document = await vscode.workspace.openTextDocument(shaderPath);
+      await vscode.window.showTextDocument(document);
+
+      const attributeHover = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider",
+        document.uri,
+        new vscode.Position(1, 3),
+      );
+      const outputHover = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider",
+        document.uri,
+        new vscode.Position(4, 10),
+      );
+
+      assert.ok(hoverText(attributeHover).includes("number of threads in each compute workgroup"));
+      assert.ok(!hoverText(attributeHover).includes("Defined in core"));
+      assert.ok(hoverText(outputHover).includes("current compute pass output texture"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.ok(!vscode.languages.getDiagnostics(document.uri).some((diagnostic) => (
+        diagnostic.message.includes("undefined identifier 'writeOutput'")
+      )));
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
