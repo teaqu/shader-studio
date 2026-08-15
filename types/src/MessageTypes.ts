@@ -45,6 +45,7 @@ export interface ShowConfigMessage extends BaseMessage {
   type: "showConfig";
   payload: {
     shaderPath?: string;
+    sourcePath?: string;
   };
 }
 
@@ -204,7 +205,11 @@ export type FileDialogFileType =
   | 'glsl'
   | 'glsl-buffer'
   | 'glsl-common'
+  | 'glsl-vertex'
+  | 'slang-buffer'
+  | 'slang-common'
   | 'slang-compute'
+  | 'slang-vertex'
   | 'model'
   | 'texture'
   | 'video'

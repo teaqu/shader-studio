@@ -128,6 +128,21 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'Slang files': ['slang'] });
     });
 
+    test('passes Slang filters when fileType is slang-buffer or slang-common', async () => {
+      const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.slang', fileType: 'slang-buffer', requestId: 'buffer' },
+        respondFn,
+      );
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.slang', fileType: 'slang-common', requestId: 'common' },
+        respondFn,
+      );
+
+      assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'Slang files': ['slang'] });
+      assert.deepStrictEqual(showOpenStub.secondCall.args[0]!.filters, { 'Slang files': ['slang'] });
+    });
+
     test('calls writeWorkspaceTypeDefs when a .ts script file is selected', async () => {
       const WorkspaceTypeDefs = require('../../../app/WorkspaceTypeDefs');
       const writeStub = sandbox.stub(WorkspaceTypeDefs, 'writeWorkspaceTypeDefs');
@@ -308,6 +323,22 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(writeStub.calledOnce);
       const content: string = writeStub.firstCall.args[1];
       assert.ok(content.includes('Common functions'));
+    });
+
+    test('writes a Slang mainImage template for slang-buffer fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/buffer.slang'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.slang', suggestedPath: 'buffer.slang', fileType: 'slang-buffer', requestId: 'slang-buffer' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('float4 mainImage(float2 fragCoord)'));
+      assert.ok(!content.includes('out vec4'));
     });
 
     test('writes a Slang mainVertex template for slang-vertex fileType', async () => {
@@ -669,6 +700,18 @@ suite('FileDialogHandler Test Suite', () => {
       assert.strictEqual(copyStub.callCount, 2);
       sinon.assert.calledWith(copyStub, '/test/shader.slang', '/test/shader.1.slang');
       sinon.assert.calledWith(copyStub, '/test/shader.sha.json', '/test/shader.1.sha.json');
+    });
+
+    test('uses a Slang save filter when forking a Slang shader', async () => {
+      const fs = require('fs');
+      const existsStub = sandbox.stub(fs, 'existsSync');
+      existsStub.withArgs('/test/shader.slang').returns(true);
+      existsStub.withArgs('/test/shader.1.slang').returns(false);
+      const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await handler.handleForkShader({ shaderPath: '/test/shader.slang' });
+
+      assert.deepStrictEqual(showSaveStub.firstCall.args[0]!.filters, { 'Slang Shader': ['slang'] });
     });
 
     test('increments counter to find a free filename', async () => {

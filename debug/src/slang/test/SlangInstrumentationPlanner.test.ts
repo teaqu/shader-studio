@@ -166,7 +166,7 @@ describe("planSlangInstrumentation", () => {
     expect(execIndex).toBeLessThan(ifIndex);
   });
 
-  it("declines native output-writing compute variable inspection", () => {
+  it("wraps native output-writing compute code as a side-effect-bounded debug preview", () => {
     const source = [
       '[shader("compute")]',
       '[numthreads(8, 8, 1)]',
@@ -190,9 +190,13 @@ describe("planSlangInstrumentation", () => {
     if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
 
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [analysis.analysis.previewValueId!], "preview");
-    expect(result).toMatchObject({
-      ok: false,
-      diagnostics: [{ message: "Compute variable inspection is not available yet. Your shader will continue running normally." }],
-    });
+    expect(result).toMatchObject({ ok: true, plan: { captureSlots: [{ hidden: true }, { name: "value" }] } });
+    if (!result.ok) return;
+    const output = result.plan.files[0].source;
+    expect(output).not.toContain('[shader("compute")]');
+    expect(output).not.toContain('SV_DispatchThreadID');
+    expect(output).toContain('void _ssdbg_ce567800_userMain(uint3 tid)');
+    expect(output).toContain('_ssdbg_ce567800_userMain(uint3(uint2(fragCoord), 0));');
+    expect(output).toContain('void writeOutput(uint2 coord, float4 color) {}');
   });
 });

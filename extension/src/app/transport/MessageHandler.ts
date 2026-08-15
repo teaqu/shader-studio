@@ -138,7 +138,8 @@ export class MessageHandler {
         // Config doesn't exist, generate it
         this.outputChannel.info(`Config file not found: ${configPath}, generating new config`);
         // Convert config path back to shader path
-        const shaderPath = configPath.replace(/\.sha\.json$/, '.glsl');
+        const shaderPath = message.payload.sourcePath
+          ?? configPath.replace(/\.sha\.json$/, '.glsl');
         vscode.commands.executeCommand('shader-studio.generateConfigFromUI', vscode.Uri.file(shaderPath));
       }
     } else {

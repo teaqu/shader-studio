@@ -105,7 +105,6 @@ export function parseSlangStructure(
     scopes,
     declarations,
     statements,
-    declarationDiagnostics,
   );
   for (const declaration of parameterDeclarations.values()) {
     declarations.set(declaration.id, declaration);
@@ -400,11 +399,12 @@ function parseParameter(
     cursor += 1;
   }
   const equalsIndex = findTokenInRange(tokens, cursor, endIndex, "=") ?? endIndex;
-  const nameIndex = findDeclarationName(tokens, cursor, equalsIndex);
+  const semanticIndex = findTopLevelToken(tokens, cursor, equalsIndex, ":") ?? equalsIndex;
+  const nameIndex = findDeclarationName(tokens, cursor, semanticIndex);
   if (nameIndex === undefined || nameIndex <= cursor) {
     return undefined;
   }
-  const suffix = arraySuffixText(document, tokens, nameIndex + 1, equalsIndex);
+  const suffix = arraySuffixText(document, tokens, nameIndex + 1, semanticIndex);
   if (suffix === null) {
     return undefined;
   }
@@ -454,18 +454,9 @@ function parseStatementsAndDeclarations(
       statements.set(statement.id, statement);
       continue;
     }
-    if (findTopLevelToken(tokens, start, index, ",") !== undefined) {
-      diagnostics.push({
-        code: "slang-debug-unsupported-syntax",
-        message: "Multiple declarators in one statement are unsupported.",
-        sourceUri: document.sourceUri,
-        range,
-      });
-      continue;
-    }
-    const declaration = parseDirectStatementDeclaration(document, tokens, start, index, scope.id, range);
-    if (declaration) {
-      declarations.set(declaration.id, declaration);
+    const parsedDeclarations = parseDirectStatementDeclarations(document, tokens, start, index, scope.id, range);
+    if (parsedDeclarations.length > 0) {
+      for (const declaration of parsedDeclarations) declarations.set(declaration.id, declaration);
       const statement = createStatement(tokens[start], "declaration", range, scope.id);
       statements.set(statement.id, statement);
       continue;
@@ -588,6 +579,56 @@ function parseDirectStatementDeclaration(
   );
 }
 
+function parseDirectStatementDeclarations(
+  document: SlangTokenDocument,
+  tokens: SlangToken[],
+  startIndex: number,
+  endIndex: number,
+  scopeId: string,
+  statementRange: DebugSourceRange,
+): SlangDeclarationNode[] {
+  const segments: Array<{ start: number; end: number }> = [];
+  let segmentStart = startIndex;
+  while (segmentStart < endIndex) {
+    const comma = findTopLevelToken(tokens, segmentStart, endIndex, ",");
+    segments.push({ start: segmentStart, end: comma ?? endIndex });
+    if (comma === undefined) break;
+    segmentStart = comma + 1;
+  }
+  const firstSegment = segments[0];
+  if (!firstSegment) return [];
+  const first = parseDirectStatementDeclaration(
+    document,
+    tokens,
+    firstSegment.start,
+    firstSegment.end,
+    scopeId,
+    statementRange,
+  );
+  if (!first) return [];
+  if (segments.length === 1) return [first];
+
+  const baseTypeName = first.typeName.replace(/(?:\[[^\]]*\])+$/, "");
+  const declarations = [first];
+  for (const segment of segments.slice(1)) {
+    const equalsIndex = findTokenInRange(tokens, segment.start, segment.end, "=") ?? segment.end;
+    const nameToken = tokens[segment.start];
+    if (!nameToken || nameToken.kind !== "identifier") return [];
+    const suffix = arraySuffixText(document, tokens, segment.start + 1, equalsIndex);
+    if (suffix === null) return [];
+    declarations.push(directDeclaration(
+      document,
+      nameToken,
+      `${baseTypeName}${suffix}`,
+      statementRange,
+      scopeId,
+      "readwrite",
+      first.modifiers,
+    ));
+  }
+  return declarations;
+}
+
 function appendForInitializerDeclarations(
   document: SlangTokenDocument,
   tokens: SlangToken[],
@@ -595,7 +636,6 @@ function appendForInitializerDeclarations(
   scopes: Map<string, SlangScopeNode>,
   declarations: Map<string, SlangDeclarationNode>,
   statements: Map<string, SlangStatementNode>,
-  diagnostics: DebugDiagnostic[],
 ): void {
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index].text !== "for" || tokens[index + 1]?.text !== "(") {
@@ -613,16 +653,7 @@ function appendForInitializerDeclarations(
     const scope = scopes.get(stableId("scope", tokens[index]))
       ?? innermostScope(scopes, tokens[index].startOffset, document, tokens);
     const range = { start: tokens[startIndex].range.start, end: tokens[semicolonIndex].range.end };
-    if (findTopLevelToken(tokens, startIndex, semicolonIndex, ",") !== undefined) {
-      diagnostics.push({
-        code: "slang-debug-unsupported-syntax",
-        message: "Multiple declarators in one statement are unsupported.",
-        sourceUri: document.sourceUri,
-        range,
-      });
-      continue;
-    }
-    const declaration = parseDirectStatementDeclaration(
+    const parsedDeclarations = parseDirectStatementDeclarations(
       document,
       tokens,
       startIndex,
@@ -630,10 +661,10 @@ function appendForInitializerDeclarations(
       scope.id,
       range,
     );
-    if (!declaration) {
+    if (parsedDeclarations.length === 0) {
       continue;
     }
-    declarations.set(declaration.id, declaration);
+    for (const declaration of parsedDeclarations) declarations.set(declaration.id, declaration);
     const statement = createStatement(tokens[startIndex], "declaration", range, scope.id);
     statements.set(statement.id, statement);
   }

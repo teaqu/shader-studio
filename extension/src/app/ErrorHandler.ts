@@ -8,7 +8,7 @@ export class ErrorHandler {
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
-  private lastChangedGlslUri: vscode.Uri | null = null;
+  private lastChangedShaderUri: vscode.Uri | null = null;
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
@@ -33,12 +33,12 @@ export class ErrorHandler {
   }
 
   private setupEditorChangeListener(): void {
-    // Clear diagnostics when a GLSL file is edited, since recompilation will
+    // Clear diagnostics when a shader file is edited, since recompilation will
     // produce fresh errors. Don't clear on editor switch — errors on other
     // files (e.g. common buffer) must remain visible.
     this.textChangeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
-      if (this.isGlslDocument(event.document)) {
-        this.lastChangedGlslUri = event.document.uri;
+      if (this.isShaderDocument(event.document)) {
+        this.lastChangedShaderUri = event.document.uri;
         this.clearPersistentErrors();
       }
     });
@@ -266,8 +266,8 @@ export class ErrorHandler {
   }
 
   private getDefaultTargetUri(): vscode.Uri | null {
-    if (this.lastChangedGlslUri) {
-      return this.lastChangedGlslUri;
+    if (this.lastChangedShaderUri) {
+      return this.lastChangedShaderUri;
     }
 
     if (this.currentShaderConfig?.shaderPath) {
@@ -275,7 +275,7 @@ export class ErrorHandler {
     }
 
     const activeDocument = vscode.window.activeTextEditor?.document;
-    if (activeDocument && this.isGlslDocument(activeDocument)) {
+    if (activeDocument && this.isShaderDocument(activeDocument)) {
       return activeDocument.uri;
     }
 
@@ -308,11 +308,13 @@ export class ErrorHandler {
     };
   }
 
-  private isGlslDocument(document: vscode.TextDocument): boolean {
+  private isShaderDocument(document: vscode.TextDocument): boolean {
     return document.languageId === 'glsl'
       || document.languageId === 'frag'
+      || document.languageId === 'slang'
       || document.fileName.endsWith('.glsl')
-      || document.fileName.endsWith('.frag');
+      || document.fileName.endsWith('.frag')
+      || document.fileName.endsWith('.slang');
   }
 
   private normalizeErrorMessage(errorText: string): string {

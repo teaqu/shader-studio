@@ -134,6 +134,22 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(expect.stringContaining('mainImage'), null, '/main.slang', {}, undefined, undefined);
   });
 
+  it('compiles full-shader Slang normalize output when native line planning is unavailable', async () => {
+    (mockShaderDebugManager as any).getLanguage = vi.fn(() => 'slang');
+    (mockShaderDebugManager.getState as any).mockReturnValue({
+      isEnabled: true, isActive: false, currentLine: null, lineContent: null, activeBufferName: 'Image',
+    });
+    (mockShaderDebugManager.applyFullShaderPostProcessing as any).mockReturnValue('float4 mainImage(float2 c) { return normalized; }');
+
+    await shaderProcessor.processMainShaderCompilation({
+      type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {},
+    });
+
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+      expect.stringContaining('return normalized'), null, '/main.slang', {}, undefined, undefined,
+    );
+  });
+
   describe('isCurrentlyProcessing', () => {
     it('should return false initially', () => {
       expect(shaderProcessor.isCurrentlyProcessing()).toBe(false);

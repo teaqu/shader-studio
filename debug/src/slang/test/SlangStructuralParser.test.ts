@@ -656,23 +656,18 @@ describe("parseSlangStructure", () => {
     expect(structure.diagnostics).toEqual([]);
   });
 
-  // Mutation caught: recording only the first name silently misrepresents a comma-separated loop initializer.
-  it("diagnoses unsupported multiple declarators in a for initializer", () => {
+  it("records every declarator in a comma-separated for initializer", () => {
     const structure = parse("file:///workspace/for-multiple.slang", "float f() {\n"
       + "  for (int i = 0, j = 0; i < 2; i++) {\n"
       + "  }\n"
       + "}\n");
 
-    expect([...structure.declarations.values()]).toEqual([]);
-    expect([...structure.statements.values()]).toEqual([]);
-    expect(structure.diagnostics).toEqual([
-      {
-        code: "slang-debug-unsupported-syntax",
-        message: "Multiple declarators in one statement are unsupported.",
-        sourceUri: "file:///workspace/for-multiple.slang",
-        range: { start: { line: 1, character: 7 }, end: { line: 1, character: 24 } },
-      },
+    expect([...structure.declarations.values()].map(({ name, typeName }) => ({ name, typeName }))).toEqual([
+      { name: "i", typeName: "int" },
+      { name: "j", typeName: "int" },
     ]);
+    expect([...structure.statements.values()]).toHaveLength(1);
+    expect(structure.diagnostics).toEqual([]);
   });
 
   // Mutations caught: treating expressions as declarations, flattening array types to scalars, retaining comments,
@@ -697,19 +692,22 @@ describe("parseSlangStructure", () => {
         range: { start: { line: 3, character: 8 }, end: { line: 3, character: 14 } },
       },
       {
+        name: "left",
+        typeName: "float",
+        range: { start: { line: 4, character: 8 }, end: { line: 4, character: 12 } },
+      },
+      {
+        name: "right",
+        typeName: "float",
+        range: { start: { line: 4, character: 14 }, end: { line: 4, character: 19 } },
+      },
+      {
         name: "value",
         typeName: "float",
         range: { start: { line: 5, character: 17 }, end: { line: 5, character: 22 } },
       },
     ]);
-    expect(structure.diagnostics).toEqual([
-      {
-        code: "slang-debug-unsupported-syntax",
-        message: "Multiple declarators in one statement are unsupported.",
-        sourceUri: "file:///workspace/declarations.slang",
-        range: { start: { line: 4, character: 2 }, end: { line: 4, character: 20 } },
-      },
-    ]);
+    expect(structure.diagnostics).toEqual([]);
   });
 
   // Mutation caught: globally guessing angle pairs either turns comparisons into generics or pairs a later comparison with a broken header.

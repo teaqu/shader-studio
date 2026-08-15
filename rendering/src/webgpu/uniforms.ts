@@ -1,5 +1,7 @@
 import {
   SHADERTOY_UNIFORM_SIZE,
+  SHADERTOY_CHANNEL_COUNT,
+  UNIFORM_OFFSETS,
   isSlangCustomUniformType,
   type SlangCustomUniformInfo,
   type SlangCustomUniformType,
@@ -62,7 +64,7 @@ export interface ShaderToyUniformInput {
   channelLoaded: ArrayLike<number>;
   sampleRate: number;
   date: ArrayLike<number>;
-  /** Four tightly packed xyz vectors. The GPU block pads each to float4. */
+  /** Sixteen tightly packed xyz vectors. The GPU block pads each to float4. */
   channelResolution: ArrayLike<number>;
   cameraPos: ArrayLike<number>;
   cameraDir: ArrayLike<number>;
@@ -92,23 +94,23 @@ export function packShaderToyUniforms(
   f32[10] = input.frameRate;
   i32[11] = input.frame | 0;
 
-  for (let channel = 0; channel < 4; channel++) {
-    f32[12 + channel] = input.channelTime[channel] ?? 0;
-    f32[16 + channel] = input.channelLoaded[channel] ?? 0;
+  for (let channel = 0; channel < SHADERTOY_CHANNEL_COUNT; channel++) {
+    f32[(UNIFORM_OFFSETS.iChannelTime + channel * 16) / 4] = input.channelTime[channel] ?? 0;
+    f32[(UNIFORM_OFFSETS.iChannelLoaded + channel * 16) / 4] = input.channelLoaded[channel] ?? 0;
   }
-  f32[20] = input.sampleRate;
+  f32[UNIFORM_OFFSETS.iSampleRate / 4] = input.sampleRate;
 
   for (let component = 0; component < 4; component++) {
-    f32[24 + component] = input.date[component] ?? 0;
+    f32[UNIFORM_OFFSETS.iDate / 4 + component] = input.date[component] ?? 0;
   }
-  for (let channel = 0; channel < 4; channel++) {
+  for (let channel = 0; channel < SHADERTOY_CHANNEL_COUNT; channel++) {
     for (let component = 0; component < 3; component++) {
-      f32[28 + channel * 4 + component] = input.channelResolution[channel * 3 + component] ?? 0;
+      f32[(UNIFORM_OFFSETS.iChannelResolution + channel * 16) / 4 + component] = input.channelResolution[channel * 3 + component] ?? 0;
     }
   }
   for (let component = 0; component < 3; component++) {
-    f32[44 + component] = input.cameraPos[component] ?? 0;
-    f32[48 + component] = input.cameraDir[component] ?? 0;
+    f32[UNIFORM_OFFSETS.iCameraPos / 4 + component] = input.cameraPos[component] ?? 0;
+    f32[UNIFORM_OFFSETS.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
   }
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));

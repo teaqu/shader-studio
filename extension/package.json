@@ -1,7 +1,7 @@
 {
   "name": "shader-studio",
   "displayName": "Shader Studio",
-  "description": "Live GLSL shader preview, editor, and visual debugger for Shadertoy-style shaders.",
+  "description": "Live GLSL and Slang shader preview, editor, and visual debugger with WebGL and WebGPU pipelines.",
   "version": "1.0.2",
   "publisher": "teaqu",
   "repository": {
@@ -17,7 +17,9 @@
   "keywords": [
     "shader",
     "glsl",
+    "slang",
     "webgl",
+    "webgpu",
     "graphics",
     "shadertoy",
     "shader toy",
@@ -80,7 +82,7 @@
       },
       {
         "command": "shader-studio.generateConfig",
-        "title": "Shader Studio: Generate Config for GLSL File"
+        "title": "Shader Studio: Generate Config for Shader File"
       },
       {
         "command": "shader-studio.newShader",

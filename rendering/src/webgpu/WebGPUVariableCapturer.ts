@@ -249,11 +249,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         frameRate: uniforms.frameRate,
         frame: uniforms.frame,
         mouse: uniforms.mouse,
-        channelTime: uniforms.channelTime ?? [0, 0, 0, 0],
-        channelLoaded: uniforms.channelLoaded ?? [0, 0, 0, 0],
+        channelTime: uniforms.channelTime ?? new Array<number>(16).fill(0),
+        channelLoaded: uniforms.channelLoaded ?? new Array<number>(16).fill(0),
         sampleRate: uniforms.sampleRate ?? 44100,
         date: uniforms.date,
-        channelResolution: uniforms.channelResolution ?? new Array<number>(12).fill(0),
+        channelResolution: uniforms.channelResolution ?? new Array<number>(48).fill(0),
         cameraPos: uniforms.cameraPos,
         cameraDir: uniforms.cameraDir,
       }, this.customUniforms, this.customUniforms),
@@ -422,16 +422,26 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     captureCounters.pipelineCompiles++;
+    const selectedPlanSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
+    const selectedPlanIsCommon = Boolean(
+      slangPlan
+      && selectedPlanSource
+      && selectedPlanSource.uri !== slangPlan.rootUri
+      && selectedPlanSource.moduleName === ""
+      && selectedPlanSource.path === this.compileContext.slangSourcePath,
+    );
     const compileResult = await this.compiler.compile(captureShader, {
       passName: "capture",
-      commonCode,
+      commonCode: selectedPlanIsCommon ? selectedPlanSource!.source : commonCode,
       channels,
       storage,
       passKind: "render",
       captureMode: true,
       customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
       ...(slangPlan
-        ? { modules: slangPlan.files.filter((file) => file.uri !== slangPlan.rootUri).map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
+        ? { modules: slangPlan.files
+          .filter((file) => file.uri !== slangPlan.rootUri && (!selectedPlanIsCommon || file.uri !== selectedPlanSource?.uri))
+          .map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
         : this.compileContext.slangModules?.length
           ? { modules: this.compileContext.slangModules }
           : {}),

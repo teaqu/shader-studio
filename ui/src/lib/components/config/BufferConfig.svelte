@@ -75,6 +75,10 @@
   const fileType = $derived(
     language === 'slang' && passType === 'compute'
       ? 'slang-compute' as const
+      : language === 'slang' && bufferName === 'common'
+      ? 'slang-common' as const
+      : language === 'slang'
+      ? 'slang-buffer' as const
       : bufferName === 'common'
       ? 'glsl-common' as const
       : 'glsl-buffer' as const,
@@ -403,7 +407,9 @@
           onPathChange={handlePathChange}
           hasError={!validation.isValid}
           note="Relative, absolute, or @ for workspace root"
-          placeholder={suggestedPath || (bufferName === 'common' ? 'e.g., ./common.glsl' : 'e.g., ./buffer.glsl')}
+          placeholder={suggestedPath || (bufferName === 'common'
+            ? `e.g., ./common.${language === 'slang' ? 'slang' : 'glsl'}`
+            : `e.g., ./buffer.${language === 'slang' ? 'slang' : 'glsl'}`)}
           {fileType}
           {shaderPath}
           {suggestedPath}

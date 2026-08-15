@@ -103,7 +103,7 @@ describe('VariableCaptureManager - Slang engine', () => {
     manager.dispose();
   });
 
-  it('explains that compute variable inspection is not available instead of compiling it as GLSL', async () => {
+  it('reports a native Slang capture planning failure instead of compiling it as GLSL', async () => {
     const { engine, capturer } = mockEngine('slang');
     const errors = vi.fn();
     const manager = new VariableCaptureManager(engine, () => {});
@@ -113,11 +113,11 @@ describe('VariableCaptureManager - Slang engine', () => {
       ...captureParams(slangShader),
       activeBufferName: 'ComputeLife',
       slangCapture: null,
-      slangCaptureError: 'Compute variable inspection is not available yet. Your shader will continue running normally.',
+      slangCaptureError: 'Native Slang capture planning failed.',
     });
 
     await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(
-      'Compute variable inspection is not available yet. Your shader will continue running normally.',
+      'Native Slang capture planning failed.',
     ));
     expect(capturer.issueCaptureGrid).not.toHaveBeenCalled();
     manager.dispose();

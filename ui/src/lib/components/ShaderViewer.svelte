@@ -591,7 +591,10 @@
     }
     transport.postMessage({
       type: 'showConfig',
-      payload: { shaderPath: path.replace(/\.glsl$/, '.sha.json') }
+      payload: {
+        shaderPath: path.replace(/\.(?:glsl|frag|slang)$/i, '.sha.json'),
+        sourcePath: path,
+      }
     });
   }
 

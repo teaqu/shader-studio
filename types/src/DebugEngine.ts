@@ -94,9 +94,14 @@ export interface DebugAnalysisRequest {
   sourceUri: string;
   position: DebugSourcePosition;
 }
-export interface DebugPreviewOptions { normalizeMode: "off" | "soft" | "abs"; stepEdge: number | null; }
+export interface DebugPreviewOptions {
+  normalizeMode: "off" | "soft" | "abs";
+  stepEdge: number | null;
+  customParameters?: ReadonlyMap<number, string>;
+  loopMaxIterations?: ReadonlyMap<number, number>;
+}
 export interface ShaderDebugEngine {
   analyze(request: DebugAnalysisRequest): DebugAnalysisResult;
   planPreview(request: DebugAnalysisRequest, options: DebugPreviewOptions): DebugPlanResult;
-  planCapture(request: DebugAnalysisRequest, valueIds: string[]): DebugPlanResult;
+  planCapture(request: DebugAnalysisRequest, valueIds: string[], options?: DebugPreviewOptions): DebugPlanResult;
 }

@@ -1066,6 +1066,11 @@ describe('ConfigManager', () => {
       configManager.setShaderPath('C:\\shaders\\cool.glsl');
       expect(configManager.generateScriptPath()).toBe('./cool.uniforms.ts');
     });
+
+    it('generateScriptPath should strip the Slang extension', () => {
+      configManager.setShaderPath('/path/to/myshader.slang');
+      expect(configManager.generateScriptPath()).toBe('./myshader.uniforms.ts');
+    });
   });
 
   describe('compute and storage configuration', () => {

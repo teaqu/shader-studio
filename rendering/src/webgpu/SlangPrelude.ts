@@ -31,7 +31,8 @@ export function stripShaderStudioEditorImport(source: string): string {
 // Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
 // full vec4 each; iResolution only uses xyz. Script fields are appended after
 // this prefix, and the total allocation is rounded to a multiple of 16.
-export const SHADERTOY_UNIFORM_SIZE = 208;
+export const SHADERTOY_CHANNEL_COUNT = 16;
+export const SHADERTOY_UNIFORM_SIZE = 880;
 export const DISPATCH_UNIFORM_SIZE = 16;
 export const UNIFORM_OFFSETS = {
   iResolution: 0, // float4 (xyz used)
@@ -40,13 +41,13 @@ export const UNIFORM_OFFSETS = {
   iTimeDelta: 36, // float
   iFrameRate: 40, // float
   iFrame: 44, // int
-  iChannelTime: 48, // float4
-  iChannelLoaded: 64, // float4
-  iSampleRate: 80, // float
-  iDate: 96, // float4
-  iChannelResolution: 112, // float4[4] (xyz used)
-  iCameraPos: 176, // float4 (xyz used)
-  iCameraDir: 192, // float4 (xyz used)
+  iChannelTime: 48, // float[16], 16-byte array stride
+  iChannelLoaded: 304, // float[16], 16-byte array stride
+  iSampleRate: 560, // float
+  iDate: 576, // float4
+  iChannelResolution: 592, // float4[16] (xyz used)
+  iCameraPos: 848, // float4 (xyz used)
+  iCameraDir: 864, // float4 (xyz used)
 } as const;
 
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
@@ -91,11 +92,11 @@ struct ShaderToyUniforms
     float timeDelta;
     float frameRate;
     int frame;
-    float4 channelTime;
-    float4 channelLoaded;
+    float channelTime[16];
+    float channelLoaded[16];
     float sampleRate;
     float4 date;
-    float3 channelResolution[4];
+    float3 channelResolution[16];
     float4 cameraPos;
     float4 cameraDir;
 ${fields}
@@ -298,7 +299,7 @@ function buildChannelPrelude(
   stage: "fragment" | "compute" = "fragment",
 ): string {
   const sortedChannels = [...channels].sort((a, b) => a.slot - b.slot);
-  const objectChannels = sortedChannels.filter(({ slot }) => slot < 4);
+  const objectChannels = sortedChannels;
   const has2DObject = objectChannels.some(({ kind }) => kind !== "cubemap");
   const hasCubeObject = objectChannels.some(({ kind }) => kind === "cubemap");
   const objectSampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
@@ -355,8 +356,7 @@ struct ShaderToyChannelCube
       const customHelperName = channel.key === `iChannel${channel.slot}`
         ? null
         : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
-      const objectAccessor = channel.slot < 4
-        ? `
+      const objectAccessor = `
 ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
 {
     ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} channel;
@@ -368,8 +368,7 @@ ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.s
     return channel;
 }
 #define iCh${channel.slot} (_getICh${channel.slot}())
-`
-        : "";
+`;
       if (channel.kind === "cubemap") {
         return `[[vk::binding(${textureBinding}, 0)]]
 TextureCube<float4> ${channel.key};

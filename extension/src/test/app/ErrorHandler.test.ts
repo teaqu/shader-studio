@@ -422,4 +422,23 @@ suite('ErrorHandler Test Suite', () => {
     assert.ok(diagnosticUri, 'Should set a diagnostic URI');
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
   });
+
+  test('should target the last changed Slang document when focus is elsewhere', () => {
+    const shaderUri = vscode.Uri.file('/test/overlay-shader.slang');
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: { document: { languageId: 'plaintext', uri: vscode.Uri.file('/test/readme.txt') } },
+      writable: true,
+    });
+    let diagnosticUri: vscode.Uri | undefined;
+    mockDiagnosticCollection.set = ((uriOrEntries: vscode.Uri | readonly [vscode.Uri, readonly vscode.Diagnostic[] | undefined][]) => {
+      diagnosticUri = uriOrEntries instanceof vscode.Uri ? uriOrEntries : uriOrEntries[0]?.[0];
+    }) as typeof mockDiagnosticCollection.set;
+
+    textDocumentChangeListener?.({
+      document: { languageId: 'slang', fileName: shaderUri.fsPath, uri: shaderUri },
+    } as vscode.TextDocumentChangeEvent);
+    errorHandler.handlePersistentError({ type: 'error', payload: ['Slang compilation failed'] });
+
+    assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
+  });
 });

@@ -117,8 +117,7 @@ describe("buildSlangPreprocessorModel", () => {
     ]);
   });
 
-  // Mutation caught: silently treating unsupported #if expressions as false conceals a non-Slang-complete branch decision.
-  it("models #ifdef and #ifndef while diagnosing conditions outside the bounded subset", () => {
+  it("models #ifdef, #ifndef, and undefined identifiers in conditions", () => {
     const source = "#define ENABLED\n"
       + "#ifdef ENABLED\n"
       + "float enabled;\n"
@@ -139,18 +138,10 @@ describe("buildSlangPreprocessorModel", () => {
       { start: { line: 5, character: 0 }, end: { line: 6, character: 0 } },
       { start: { line: 10, character: 0 }, end: { line: 11, character: 0 } },
     ]);
-    expect(model.diagnostics).toEqual([
-      {
-        code: "slang-debug-unsupported-syntax",
-        message: "Unsupported #if condition.",
-        sourceUri: "file:///workspace/conditions.slang",
-        range: { start: { line: 9, character: 0 }, end: { line: 10, character: 0 } },
-      },
-    ]);
+    expect(model.diagnostics).toEqual([]);
   });
 
-  // Mutation caught: treating unsupported branch directives as supported changes active source without a bounded-model diagnostic.
-  it("retains nested branch state while diagnosing #elif and #include", () => {
+  it("selects exactly one #if/#elif/#else branch and accepts include directives", () => {
     const source = "#if 1\n"
       + "#if 0\n"
       + "float innerHidden;\n"
@@ -164,24 +155,31 @@ describe("buildSlangPreprocessorModel", () => {
     const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/unsupported.slang", source));
 
     expect(model.activeTokens.map((token) => token.text).join(""))
-      .toBe("float innerVisible;\nfloat stillActive;\n");
+      .toBe("float innerVisible;\n");
     expect(model.inactiveRanges).toEqual([
       { start: { line: 2, character: 0 }, end: { line: 3, character: 0 } },
+      { start: { line: 7, character: 0 }, end: { line: 8, character: 0 } },
     ]);
-    expect(model.diagnostics).toEqual([
-      {
-        code: "slang-debug-unsupported-syntax",
-        message: "Unsupported #elif directive.",
-        sourceUri: "file:///workspace/unsupported.slang",
-        range: { start: { line: 6, character: 0 }, end: { line: 7, character: 0 } },
-      },
-      {
-        code: "slang-debug-unsupported-syntax",
-        message: "Unsupported #include directive.",
-        sourceUri: "file:///workspace/unsupported.slang",
-        range: { start: { line: 9, character: 0 }, end: { line: 10, character: 0 } },
-      },
-    ]);
+    expect(model.diagnostics).toEqual([]);
+  });
+
+  it("evaluates integer macro expressions and removes macros with #undef", () => {
+    const source = "#define LEVEL 2\n"
+      + "#if defined(LEVEL) && LEVEL >= 2\n"
+      + "float selected;\n"
+      + "#elif LEVEL == 1\n"
+      + "float fallback;\n"
+      + "#endif\n"
+      + "#undef LEVEL\n"
+      + "#if !defined(LEVEL)\n"
+      + "float removed;\n"
+      + "#endif\n";
+    const model = buildSlangPreprocessorModel(tokenizeSlang("file:///workspace/expressions.slang", source));
+
+    expect(model.activeTokens.map((token) => token.text).join(""))
+      .toBe("float selected;\nfloat removed;\n");
+    expect(model.macros.has("LEVEL")).toBe(false);
+    expect(model.diagnostics).toEqual([]);
   });
 
   // Mutation caught: dropping unmatched opening frames at EOF loses the source range needed to explain unsupported scope.

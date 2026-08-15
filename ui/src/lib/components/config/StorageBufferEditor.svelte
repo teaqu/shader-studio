@@ -36,8 +36,8 @@
 
   const dirty = $derived(
     draftName !== name ||
-    count !== String(declaration.count) ||
-    elementType !== declaration.elementType,
+      count !== String(declaration.count) ||
+      elementType !== declaration.elementType,
   );
 
   function draft(): StorageBufferConfig | null {
@@ -55,13 +55,17 @@
       nextErrors.elementType = 'Element type is required';
     }
     errors = nextErrors;
-    if (Object.keys(nextErrors).length > 0) return null;
+    if (Object.keys(nextErrors).length > 0) {
+      return null;
+    }
     return { count: nextCount, elementType: elementType.trim() };
   }
 
   function apply() {
     const next = draft();
-    if (!next) return;
+    if (!next) {
+      return;
+    }
     errors = onApply(name, draftName, next);
   }
 

@@ -3,8 +3,6 @@
 
   import type { FileDialogFileType } from '@shader-studio/types';
 
-  type FileType = FileDialogFileType | 'glsl-vertex' | 'slang-vertex';
-
   interface Props {
     value: string;
     label?: string;
@@ -16,7 +14,7 @@
     note?: string;
     shaderPath?: string;
     suggestedPath?: string;
-    fileType?: FileType;
+    fileType?: FileDialogFileType;
     allowCreate?: boolean;
     postMessage?: (msg: any) => void;
     onMessage?: (handler: (event: MessageEvent) => void) => void;

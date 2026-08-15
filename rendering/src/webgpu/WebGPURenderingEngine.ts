@@ -2670,12 +2670,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     sampleRate: number;
     channelResolution: number[];
   } {
-    const channelTime = [0, 0, 0, 0];
-    const channelLoaded = [0, 0, 0, 0];
-    const channelResolution = new Array<number>(12).fill(0);
+    const channelTime = new Array<number>(16).fill(0);
+    const channelLoaded = new Array<number>(16).fill(0);
+    const channelResolution = new Array<number>(48).fill(0);
 
     for (const channel of pass.channels) {
-      if (channel.slot > 3) {
+      if (channel.slot > 15) {
         continue;
       }
 
@@ -2896,12 +2896,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!root) {
       return { success: false, errors: ["Slang debug plan root is missing"] };
     }
+    const previous = this.lastCompile;
+    const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
+    const selectedIsCommon = Boolean(
+      selectedSource && previous?.slangSourcePaths?.common === selectedSource.path,
+    );
     const planModules: SlangSourceModule[] = plan.files
-      .filter((file) => file.uri !== root.uri)
+      .filter((file) => file.uri !== root.uri && (!selectedIsCommon || file.uri !== selectedSource?.uri))
       // A debug plan always compiles its generated wrapper as Image, even
       // when the selected source belongs to a compute pass.
       .map((file) => ({ ...file, ownerPass: "Image" }));
-    const previous = this.lastCompile;
     const planModulePaths = new Set(planModules.map((module) => module.path));
     const modules = [
       ...(previous?.slangModules.filter((module) => !planModulePaths.has(module.path)) ?? []),
@@ -2911,7 +2915,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       root.source,
       previous?.config ?? this.currentConfig,
       previous?.path ?? root.path,
-      previous?.buffers ?? {},
+      selectedIsCommon && selectedSource
+        ? { ...(previous?.buffers ?? {}), common: selectedSource.source }
+        : previous?.buffers ?? {},
       previous?.customUniformDeclarations ?? this.customUniformManager.getDeclarations(),
       previous?.customUniformInfo ?? this.customUniformManager.getUniformInfo(),
       modules,
@@ -2922,7 +2928,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return result;
     }
 
-    const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
     const selectedLabel = selectedSource?.path ?? plan.selectedSourceUri;
     return {
       ...result,
@@ -3055,9 +3060,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       mouse: Array.from(this.mouseManager.getMouse()),
       frame: this.timeManager.getFrame(),
       date: Array.from(this.timeManager.getCurrentDate()),
-      channelTime: [0, 0, 0, 0],
+      channelTime: new Array<number>(16).fill(0),
       sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
-      channelLoaded: [0, 0, 0, 0],
+      channelLoaded: new Array<number>(16).fill(0),
       cameraPos: Array.from(this.cameraManager.getCameraPos()),
       cameraDir: Array.from(this.cameraManager.getCameraDir()),
     };
@@ -3327,10 +3332,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const channelUniforms = pass
       ? this.getChannelUniforms(pass)
       : {
-        channelTime: [0, 0, 0, 0],
-        channelLoaded: [0, 0, 0, 0],
+        channelTime: new Array<number>(16).fill(0),
+        channelLoaded: new Array<number>(16).fill(0),
         sampleRate: u.sampleRate,
-        channelResolution: new Array<number>(12).fill(0),
+        channelResolution: new Array<number>(48).fill(0),
       };
     return {
       time: u.time,

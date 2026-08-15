@@ -522,7 +522,7 @@ export class ConfigManager {
     }
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.glsl$/, '');
+    const baseName = filename.replace(/\.(?:glsl|frag|slang)$/i, '');
     return `./${baseName}.uniforms.ts`;
   }
 

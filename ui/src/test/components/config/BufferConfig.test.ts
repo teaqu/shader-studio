@@ -226,6 +226,32 @@ describe('BufferConfig', () => {
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
     });
 
+    it('should create Slang fragment buffers with a Slang file type', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA', config, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        shaderPath: '/shaders/image.slang', language: 'slang',
+        suggestedPath: 'image.buffera.slang',
+      });
+
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('slang-buffer');
+    });
+
+    it('should create Slang common files with a Slang file type', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'common', config, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        shaderPath: '/shaders/image.slang', language: 'slang',
+        suggestedPath: 'image.common.slang',
+      });
+
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('slang-common');
+    });
+
     it('should not show create file button when no postMessage handler', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
@@ -340,10 +366,7 @@ describe('BufferConfig', () => {
       });
     });
 
-    it.each([
-      { language: 'glsl' as const, passType: 'compute' as const },
-      { language: 'slang' as const, passType: 'render' as const },
-    ])('should preserve GLSL buffer selection for $language $passType passes', async ({ language, passType }) => {
+    it('should preserve GLSL buffer selection for GLSL compute passes', async () => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
       const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
@@ -351,8 +374,8 @@ describe('BufferConfig', () => {
         onUpdate: mockOnUpdate,
         getWebviewUri: mockGetWebviewUri,
         postMessage: mockPostMessage,
-        language,
-        passType,
+        language: 'glsl',
+        passType: 'compute',
       });
 
       await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);

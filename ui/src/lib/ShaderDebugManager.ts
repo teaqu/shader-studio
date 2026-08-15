@@ -1,5 +1,10 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
-import { ShaderDebugger, SlangDebugEngine } from "@shader-studio/debug";
+import {
+  applySlangFullShaderPostProcessing,
+  extractSlangFunctionContext,
+  ShaderDebugger,
+  SlangDebugEngine,
+} from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
 import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
 import type { DebugAnalysisRequest, DebugInstrumentationPlan, DebugVisibleValue } from "@shader-studio/types";
@@ -165,6 +170,9 @@ export class ShaderDebugManager {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
+    if (!this.state.isInlineRenderingEnabled && !this.variablePreview) {
+      return null;
+    }
     const request = this.createSlangDebugRequest(imageCode, config, lineOffset);
     if (!request) {
       return null;
@@ -172,6 +180,8 @@ export class ShaderDebugManager {
     const options = {
       normalizeMode: this.state.normalizeMode,
       stepEdge: this.state.isStepEnabled ? this.state.stepEdge : null,
+      customParameters: this.getEffectiveSlangParameters(),
+      loopMaxIterations: this.loopMaxIterations,
     };
     const preview = this.variablePreview;
     const result = preview
@@ -196,7 +206,16 @@ export class ShaderDebugManager {
     if (!analysis.ok) {
       return { error: analysis.diagnostics[0]?.message ?? 'Slang capture analysis failed' };
     }
-    const result = this.slangDebugEngine.planCapture(request, analysis.analysis.visibleValues.map((value) => value.id));
+    const result = this.slangDebugEngine.planCapture(
+      request,
+      analysis.analysis.visibleValues.map((value) => value.id),
+      {
+        normalizeMode: 'off',
+        stepEdge: null,
+        customParameters: this.getEffectiveSlangParameters(),
+        loopMaxIterations: this.loopMaxIterations,
+      },
+    );
     if (!result.ok) {
       return { error: result.diagnostics[0]?.message ?? 'Slang capture planning failed' };
     }
@@ -208,24 +227,33 @@ export class ShaderDebugManager {
       return null;
     }
     const target = this.getDebugTarget(imageCode, config);
-    const rootPath = target.passName === 'Image' ? this.imagePassPath : this.bufferPathMap[target.passName];
+    const isCommonTarget = target.passName === 'common';
+    const ownerPassName = isCommonTarget ? 'Image' : target.passName;
+    const rootPath = ownerPassName === 'Image' ? this.imagePassPath : this.bufferPathMap[ownerPassName];
     if (!rootPath) {
       return null;
     }
-    const rootSource = target.passName === 'Image' ? imageCode : this.bufferCodes[target.passName] ?? imageCode;
+    const rootSource = ownerPassName === 'Image' ? imageCode : this.bufferCodes[ownerPassName] ?? imageCode;
+    const commonPath = this.bufferPathMap.common;
+    const commonSource = this.bufferCodes.common;
     const files = [
-      { uri: rootPath, path: rootPath, source: rootSource, version: 1, moduleName: '', ownerPass: target.passName },
-      ...this.slangModules.filter((module) => module.ownerPass === target.passName).map((module) => ({ ...module, uri: module.path, version: 1 })),
+      { uri: rootPath, path: rootPath, source: rootSource, version: 1, moduleName: '', ownerPass: ownerPassName },
+      ...(isCommonTarget && commonPath && commonSource !== undefined
+        ? [{ uri: commonPath, path: commonPath, source: commonSource, version: 1, moduleName: '', ownerPass: ownerPassName }]
+        : []),
+      ...this.slangModules.filter((module) => module.ownerPass === ownerPassName).map((module) => ({ ...module, uri: module.path, version: 1 })),
     ];
     const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
     const rawLine = this.variablePreview?.debugLine ?? this.state.currentLine;
     const selectedLine = rawLine + lineOffset;
     const selectedSource = selectedPath === rootPath
       ? rootSource
-      : this.findSlangModule(selectedPath)?.source ?? '';
+      : isCommonTarget && commonPath && this.pathsEqual(selectedPath, commonPath)
+        ? commonSource ?? ''
+        : this.findSlangModule(selectedPath)?.source ?? '';
     const selectedLineContent = selectedSource.split('\n')[selectedLine] ?? this.state.lineContent ?? '';
     return {
-      workspace: { rootUri: rootPath, rootPath, passName: target.passName, files, contentHash: this.slangWorkspaceHash(files) },
+      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, contentHash: this.slangWorkspaceHash(files) },
       sourceUri: selectedPath,
       position: { line: selectedLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
     };
@@ -234,7 +262,12 @@ export class ShaderDebugManager {
   private planSlangInspectorPreview(
     request: DebugAnalysisRequest,
     preview: VariablePreviewState,
-    options: { normalizeMode: NormalizeMode; stepEdge: number | null },
+    options: {
+      normalizeMode: NormalizeMode;
+      stepEdge: number | null;
+      customParameters?: ReadonlyMap<number, string>;
+      loopMaxIterations?: ReadonlyMap<number, number>;
+    },
   ) {
     const analysis = this.slangDebugEngine.analyze(request);
     if (!analysis.ok) {
@@ -620,6 +653,19 @@ export class ShaderDebugManager {
     this.syncContextParameters(this.state.functionContext, this.customParameters);
   }
 
+  private getEffectiveSlangParameters(): ReadonlyMap<number, string> {
+    const effective = new Map<number, string>();
+    if (this.state.functionContext?.isFunction) {
+      this.state.functionContext.parameters.forEach((parameter, index) => {
+        effective.set(index, parameter.defaultExpression);
+      });
+    }
+    for (const [index, expression] of this.customParameters) {
+      effective.set(index, expression);
+    }
+    return effective;
+  }
+
   private notifyStateChange(): void {
     if (this.stateCallback) {
       this.stateCallback(this.getState());
@@ -632,7 +678,10 @@ export class ShaderDebugManager {
    */
   public applyFullShaderPostProcessing(originalCode: string): string | null {
     if (this.language === 'slang') {
-      return null;
+      return applySlangFullShaderPostProcessing(originalCode, {
+        normalizeMode: this.state.normalizeMode,
+        stepEdge: this.state.isStepEnabled ? this.state.stepEdge : null,
+      });
     }
     const stepEdge = this.state.isStepEnabled ? this.state.stepEdge : null;
     if (this.state.normalizeMode === 'off' && stepEdge === null) {
@@ -721,7 +770,9 @@ export class ShaderDebugManager {
     }
 
     try {
-      return this.language === 'slang' ? null : ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
+      return this.language === 'slang'
+        ? extractSlangFunctionContext(codeToAnalyse, line)
+        : ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
     } catch {
       return null;
     }

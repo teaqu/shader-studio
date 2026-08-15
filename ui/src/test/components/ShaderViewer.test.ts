@@ -3915,9 +3915,39 @@ describe('ShaderViewer', () => {
         await fireEvent.click(configFileButton);
         expect(mockTransport.postMessage).toHaveBeenCalledWith({
           type: 'showConfig',
-          payload: { shaderPath: expect.stringContaining('.sha.json') }
+          payload: {
+            shaderPath: expect.stringContaining('.sha.json'),
+            sourcePath: expect.any(String),
+          }
         });
       }
+    });
+
+    it('should derive the config path from a Slang shader and retain its source path', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await sendMessage({
+        type: 'shaderSource',
+        path: '/test/shader.slang',
+        language: 'slang',
+        code: 'float4 mainImage(float2 p) { return 1; }',
+        config: { passes: { Image: {} } },
+        pathMap: { Image: '/test/shader.slang' },
+      });
+      vi.clearAllMocks();
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      await tick();
+      await fireEvent.click(screen.getByLabelText('Open config'));
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'showConfig',
+        payload: {
+          shaderPath: '/test/shader.sha.json',
+          sourcePath: '/test/shader.slang',
+        },
+      });
     });
 
     it('should send generateConfig when no shader path is available', async () => {

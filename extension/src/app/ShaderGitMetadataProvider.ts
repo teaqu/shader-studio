@@ -6,7 +6,8 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
-const SHADER_GLOBS = ["*.glsl", "*.frag", "*.vert"];
+const SHADER_GLOBS = ["*.glsl", "*.frag", "*.vert", "*.slang"];
+const SHADER_EXTENSION_PATTERN = /\.(?:glsl|frag|vert|slang)$/;
 
 export interface ShaderGitMetadata {
   createdTime?: number;
@@ -196,7 +197,7 @@ export class ShaderGitMetadataProvider {
       }
       const rawPath = rawLine.slice(3).trim();
       const filePath = normalizePath(rawPath);
-      if (/\.(glsl|frag|vert)$/.test(filePath)) {
+      if (SHADER_EXTENSION_PATTERN.test(filePath)) {
         const basename = filePath.split("/").pop()!;
         if (!deletedByBasename.has(basename)) {
           deletedByBasename.set(basename, filePath);
@@ -223,7 +224,7 @@ export class ShaderGitMetadataProvider {
           ? rawPath.slice(rawPath.lastIndexOf(renameSep) + renameSep.length)
           : rawPath,
       );
-      if (/\.(glsl|frag|vert)$/.test(filePath)) {
+      if (SHADER_EXTENSION_PATTERN.test(filePath)) {
         dirtyPaths.add(filePath);
       }
     }

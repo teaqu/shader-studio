@@ -79,4 +79,35 @@ describe("SlangDebugEngine", () => {
       plan: { captureSlots: [{ index: 0, hidden: true }, { index: 1, name: "value" }] },
     });
   });
+
+  it("applies normalize and step options to Slang previews", () => {
+    const engine = new SlangDebugEngine();
+    const result = engine.planPreview(request, { normalizeMode: "soft", stepEdge: 0.25 });
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    const output = result.plan.files[0]?.source ?? "";
+    expect(output).toContain("/ (abs(");
+    expect(output).toContain("* 0.5 + 0.5");
+    expect(output).toContain("step(float3(0.2500)");
+  });
+
+  it("applies absolute normalization to explicitly selected Slang values", () => {
+    const engine = new SlangDebugEngine();
+    const analysis = engine.analyze({ ...request, position: { line: 2, character: 2 } });
+    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    const value = analysis.analysis.visibleValues.find((candidate) => candidate.name === "value");
+    if (!value) throw new Error("Expected value to be visible");
+
+    const result = engine.planPreviewValue(
+      { ...request, position: { line: 2, character: 2 } },
+      value.id,
+      { normalizeMode: "abs", stepEdge: null },
+    );
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    const output = result.plan.files[0]?.source ?? "";
+    expect(output).toContain("abs(");
+    expect(output).toContain("/ (abs(");
+  });
 });

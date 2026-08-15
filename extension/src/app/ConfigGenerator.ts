@@ -4,6 +4,8 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { Messenger } from "./transport/Messenger";
+import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { isShaderDocument } from "./GlslFileTracker";
 
 export class ConfigGenerator {
   private logger: Logger;
@@ -18,22 +20,23 @@ export class ConfigGenerator {
 
   public async generateConfig(uri?: vscode.Uri, showConfirmation: boolean = false): Promise<void> {
     try {
-      let glslFilePath: string;
+      let shaderFilePath: string;
       
       if (uri) {
         // URI was provided (e.g., from Shader Explorer or UI)
-        glslFilePath = uri.fsPath;
+        shaderFilePath = uri.fsPath;
       } else {
-        glslFilePath = await this.resolveGlslFilePath();
+        shaderFilePath = await this.resolveShaderFilePath();
       }
 
       // Show confirmation dialog if requested (e.g., when called from UI)
       if (showConfirmation) {
-        const fileName = require('path').basename(glslFilePath, '.glsl');
+        const fileName = path.basename(shaderFilePath, path.extname(shaderFilePath));
+        const extension = path.extname(shaderFilePath);
         
         // Show confirmation for creating new config
         const confirm = await vscode.window.showInformationMessage(
-          `Generate config file for ${fileName}.glsl?`,
+          `Generate config file for ${fileName}${extension}?`,
           "Yes",
           "No"
         );
@@ -43,17 +46,17 @@ export class ConfigGenerator {
       }
 
       // Generate the config file
-      await this.createConfigFile(glslFilePath);
+      await this.createConfigFile(shaderFilePath);
     } catch (error) {
       this.logger.error(`Failed to generate config: ${error}`);
       vscode.window.showErrorMessage(`Failed to generate config: ${error}`);
     }
   }
 
-  private async resolveGlslFilePath(): Promise<string> {
+  private async resolveShaderFilePath(): Promise<string> {
     const activeEditor = vscode.window.activeTextEditor;
 
-    if (activeEditor && activeEditor.document.fileName.endsWith(".glsl")) {
+    if (activeEditor && isShaderDocument(activeEditor.document)) {
       return activeEditor.document.fileName;
     }
 
@@ -77,9 +80,9 @@ export class ConfigGenerator {
       canSelectFolders: false,
       canSelectMany: false,
       filters: {
-        "GLSL Files": ["glsl"],
+        "Shader files": ["glsl", "frag", "slang"],
       },
-      title: "Select GLSL file to generate config for",
+      title: "Select shader file to generate config for",
     });
 
     if (!fileUri || fileUri.length === 0) {
@@ -89,13 +92,9 @@ export class ConfigGenerator {
     return fileUri[0].fsPath;
   }
 
-  private async createConfigFile(glslFilePath: string): Promise<void> {
-    // Get the base name without extension
-    const baseName = path.basename(glslFilePath, ".glsl");
-    const dirName = path.dirname(glslFilePath);
-
-    // Create the config file path
-    const configFilePath = path.join(dirName, `${baseName}.sha.json`);
+  private async createConfigFile(shaderFilePath: string): Promise<void> {
+    const configFilePath = getConfigPathForShaderPath(shaderFilePath);
+    const baseName = path.basename(configFilePath, ".sha.json");
 
     // Check if config file already exists
     if (fs.existsSync(configFilePath)) {
@@ -109,11 +108,6 @@ export class ConfigGenerator {
       }
     }
 
-    // Create base config
-    const relativeGlslPath = path.relative(dirName, glslFilePath).replace(
-      /\\/g,
-      "/",
-    );
     const baseConfig = {
       version: "1.0",
       passes: {
@@ -138,7 +132,7 @@ export class ConfigGenerator {
     if (this.messenger.hasActiveClients()) {
       await vscode.commands.executeCommand(
         "shader-studio.refreshSpecificShaderByPath",
-        glslFilePath,
+        shaderFilePath,
       );
     }
   }

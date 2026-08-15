@@ -131,6 +131,41 @@ describe("WebGPURenderingEngine", () => {
     expect(result).toEqual({ success: false, errors: ["/helper.slang: unexpected token"] });
   });
 
+  it("compiles a selected common file as common code while retaining Image as the debug root", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const previous = {
+      code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
+      config: { version: "1.0", passes: { Image: {}, common: { path: "common.slang" } } },
+      path: "/image.slang",
+      buffers: { common: "float shared(float x) { return x; }" },
+      slangModules: [],
+      slangSourcePath: "/image.slang",
+      slangSourcePaths: { Image: "/image.slang", common: "/common.slang" },
+    };
+    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+
+    await engine.compileSlangDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///image.slang", selectedSourceUri: "file:///common.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: "file:///image.slang", path: "/image.slang", source: "instrumented image", version: 2, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///common.slang", path: "/common.slang", source: "instrumented common", version: 2, moduleName: "", ownerPass: "Image" },
+      ],
+    });
+
+    expect(compile).toHaveBeenCalledWith(
+      "instrumented image",
+      previous.config,
+      "/image.slang",
+      { common: "instrumented common" },
+      "",
+      [],
+      [],
+      "/image.slang",
+      previous.slangSourcePaths,
+    );
+  });
+
   it("preserves the installed compute workspace while compiling an image debug wrapper", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
@@ -657,7 +692,22 @@ describe("WebGPURenderingEngine", () => {
     const u = engine.getUniforms();
     expect(u.res).toEqual([800, 600, 1]);
     expect(u.mouse).toHaveLength(4);
-    expect(u.channelLoaded).toEqual([0, 0, 0, 0]);
+    expect(u.channelLoaded).toEqual(new Array(16).fill(0));
+  });
+
+  it("collects loaded state and resolution metadata for channel 15", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    (engine as any).resourceManager = {
+      getImageTextureCache: () => ({ high: { width: 4096, height: 2048 } }),
+      getAudioSampleRate: () => 48000,
+    };
+
+    const uniforms = (engine as any).getChannelUniforms({
+      channels: [{ slot: 15, key: 'iChannel15', kind: 'texture', path: 'high' }],
+    });
+
+    expect(uniforms.channelLoaded[15]).toBe(1);
+    expect(uniforms.channelResolution.slice(45, 48)).toEqual([4096, 2048, 1]);
   });
 
   it("stubs unsupported features with safe defaults", () => {
@@ -1386,10 +1436,10 @@ describe("WebGPURenderingEngine", () => {
         { name: "enabled", type: "bool", value: true },
       ]);
       const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
-      expect(packed.byteLength).toBe(224);
+      expect(packed.byteLength).toBe(896);
       const view = new DataView(packed);
-      expect(view.getFloat32(208, true)).toBeCloseTo(0.5);
-      expect(view.getInt32(212, true)).toBe(1);
+      expect(view.getFloat32(880, true)).toBeCloseTo(0.5);
+      expect(view.getInt32(884, true)).toBe(1);
     });
 
     it("preserves values that arrive before custom declarations compile", async () => {

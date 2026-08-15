@@ -20,3 +20,5 @@ export * from './slang/SlangDebugAnalyzer';
 export * from './slang/SlangEmitter';
 export * from './slang/SlangInstrumentationPlanner';
 export * from './slang/SlangDebugEngine';
+export * from './slang/SlangFunctionContext';
+export * from './slang/SlangFullShaderPostProcessing';

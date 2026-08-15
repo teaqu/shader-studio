@@ -18,6 +18,8 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'audio':    return { 'Audio files': AUDIO_EXTENSIONS };
     case 'cubemap':  return { 'Cubemap files': CUBEMAP_EXTENSIONS };
     case 'slang-vertex':
+    case 'slang-buffer':
+    case 'slang-common':
     case 'slang-compute': return { 'Slang files': ['slang'] };
     case 'model': return { 'GLB models': ['glb'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
@@ -103,12 +105,16 @@ export class FileDialogHandler {
             : `export function uniforms(ctx) {\n  return {\n    // iDayOfWeek: new Date().getDay(),\n  };\n}\n`;
         } else if (payload.fileType === 'glsl-common') {
           template = `// Common functions shared across all passes\n`;
+        } else if (payload.fileType === 'slang-common') {
+          template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'glsl-vertex') {
           template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
           template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
+        } else if (payload.fileType === 'slang-buffer') {
+          template = `float4 mainImage(float2 fragCoord) {\n    float2 uv = fragCoord / iResolution.xy;\n    return float4(uv, 0.0, 1.0);\n}\n`;
         } else {
           template = `void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord / iResolution.xy;\n    fragColor = vec4(uv, 0.0, 1.0);\n}\n`;
         }
@@ -174,9 +180,10 @@ export class FileDialogHandler {
         counter++;
       }
 
+      const isSlang = sourceExt.toLowerCase() === '.slang';
       const result = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(sourceDir, `${rootBase}.${counter}${sourceExt}`)),
-        filters: { 'GLSL Shader': ['glsl'] },
+        filters: isSlang ? { 'Slang Shader': ['slang'] } : { 'GLSL Shader': ['glsl'] },
       });
 
       if (!result) {

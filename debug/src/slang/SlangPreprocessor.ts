@@ -31,7 +31,8 @@ export interface SlangPreprocessorModel {
 
 interface ConditionalFrame {
   parentActive: boolean;
-  condition: boolean;
+  currentActive: boolean;
+  branchTaken: boolean;
   sawElse: boolean;
   openingToken: SlangToken;
 }
@@ -50,7 +51,7 @@ export function buildSlangPreprocessorModel(document: SlangTokenDocument): Slang
   const frames: ConditionalFrame[] = [];
   let inactiveStart: DebugSourcePosition | null = null;
 
-  const isActive = (): boolean => frames.every((frame) => frame.parentActive && (frame.sawElse ? !frame.condition : frame.condition));
+  const isActive = (): boolean => frames.every((frame) => frame.currentActive);
   const closeInactiveRange = (end: DebugSourcePosition): void => {
     if (inactiveStart) {
       inactiveRanges.push({ start: inactiveStart, end: { ...end } });
@@ -107,23 +108,45 @@ function applyDirective(
 
   const name = match[1];
   const expression = logicalDirective.slice(match[0].length).trim();
-  const active = frames.every((frame) => frame.parentActive && (frame.sawElse ? !frame.condition : frame.condition));
+  const active = frames.every((frame) => frame.currentActive);
   if (name === "if") {
     const condition = evaluateCondition(expression, macros);
     if (condition === null) {
       diagnostics.push(unsupportedDirectiveDiagnostic(token, "Unsupported #if condition."));
     }
-    frames.push({ parentActive: active, condition: condition ?? false, sawElse: false, openingToken: token });
+    frames.push({
+      parentActive: active,
+      currentActive: active && (condition ?? false),
+      branchTaken: condition ?? false,
+      sawElse: false,
+      openingToken: token,
+    });
     return;
   }
   if (name === "ifdef" || name === "ifndef") {
     const isDefined = macros.has(expression);
     frames.push({
       parentActive: active,
-      condition: name === "ifdef" ? isDefined : !isDefined,
+      currentActive: active && (name === "ifdef" ? isDefined : !isDefined),
+      branchTaken: name === "ifdef" ? isDefined : !isDefined,
       sawElse: false,
       openingToken: token,
     });
+    return;
+  }
+  if (name === "elif") {
+    const frame = frames[frames.length - 1];
+    if (!frame || frame.sawElse) {
+      diagnostics.push(unsupportedDirectiveDiagnostic(token, "Unmatched #elif directive."));
+      return;
+    }
+    const condition = evaluateCondition(expression, macros);
+    if (condition === null) {
+      diagnostics.push(unsupportedDirectiveDiagnostic(token, "Unsupported #elif condition."));
+    }
+    const matches = condition ?? false;
+    frame.currentActive = frame.parentActive && !frame.branchTaken && matches;
+    frame.branchTaken ||= matches;
     return;
   }
   if (name === "else") {
@@ -133,6 +156,8 @@ function applyDirective(
       return;
     }
     frame.sawElse = true;
+    frame.currentActive = frame.parentActive && !frame.branchTaken;
+    frame.branchTaken = true;
     return;
   }
   if (name === "endif") {
@@ -152,18 +177,92 @@ function applyDirective(
     }
     return;
   }
+  if (name === "undef") {
+    if (active && /^[A-Za-z_][A-Za-z0-9_]*$/.test(expression)) {
+      macros.delete(expression);
+    } else if (active) {
+      diagnostics.push(unsupportedDirectiveDiagnostic(token, "Malformed #undef directive."));
+    }
+    return;
+  }
+  if (["include", "import", "pragma", "line"].includes(name)) {
+    return;
+  }
   diagnostics.push(unsupportedDirectiveDiagnostic(token, `Unsupported #${name} directive.`));
 }
 
 function evaluateCondition(expression: string, macros: Map<string, SlangMacroDefinition>): boolean | null {
-  if (expression === "0") {
-    return false;
+  const expandedDefined = expression.replace(
+    /defined\s*(?:\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)|([A-Za-z_][A-Za-z0-9_]*))/g,
+    (_match, parenthesized: string | undefined, bare: string | undefined) => macros.has(parenthesized ?? bare ?? "") ? "1" : "0",
+  );
+  const tokens = expandedDefined.match(/&&|\|\||==|!=|<=|>=|[()!<>]|0[xX][0-9a-fA-F]+|\d+|[A-Za-z_][A-Za-z0-9_]*/g);
+  if (!tokens || tokens.join("").length !== expandedDefined.replace(/\s+/g, "").length) return null;
+  const conditionTokens = tokens;
+  let cursor = 0;
+  const macroValue = (name: string, seen = new Set<string>()): number | null => {
+    if (seen.has(name)) return null;
+    const macro = macros.get(name);
+    if (!macro || macro.functionLike) return 0;
+    const body = macro.bodyTokens.map((token) => token.text).join("").trim();
+    if (!body) return 1;
+    const numeric = Number(body);
+    if (Number.isFinite(numeric)) return numeric;
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(body)) return macroValue(body, new Set([...seen, name]));
+    return null;
+  };
+  const primary = (): number | null => {
+    const token = tokens[cursor++];
+    if (token === "(") {
+      const value = orExpression();
+      if (tokens[cursor++] !== ")") return null;
+      return value;
+    }
+    if (token === "!") {
+      const value = primary();
+      return value === null ? null : Number(!value);
+    }
+    if (/^0[xX]/.test(token ?? "")) return Number.parseInt(token, 16);
+    if (/^\d+$/.test(token ?? "")) return Number(token);
+    return token && /^[A-Za-z_]/.test(token) ? macroValue(token) : null;
+  };
+  const comparison = (): number | null => {
+    let left = primary();
+    while (["==", "!=", "<", ">", "<=", ">="].includes(tokens[cursor])) {
+      const operator = tokens[cursor++];
+      const right = primary();
+      if (left === null || right === null) return null;
+      if (operator === "==") left = Number(left === right);
+      else if (operator === "!=") left = Number(left !== right);
+      else if (operator === "<") left = Number(left < right);
+      else if (operator === ">") left = Number(left > right);
+      else if (operator === "<=") left = Number(left <= right);
+      else left = Number(left >= right);
+    }
+    return left;
+  };
+  const andExpression = (): number | null => {
+    let left = comparison();
+    while (tokens[cursor] === "&&") {
+      cursor += 1;
+      const right = comparison();
+      if (left === null || right === null) return null;
+      left = Number(Boolean(left) && Boolean(right));
+    }
+    return left;
+  };
+  function orExpression(): number | null {
+    let left = andExpression();
+    while (conditionTokens[cursor] === "||") {
+      cursor += 1;
+      const right = andExpression();
+      if (left === null || right === null) return null;
+      left = Number(Boolean(left) || Boolean(right));
+    }
+    return left;
   }
-  if (expression === "1") {
-    return true;
-  }
-  const defined = /^defined\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)$/.exec(expression);
-  return defined ? macros.has(defined[1]) : null;
+  const value = orExpression();
+  return value !== null && cursor === tokens.length ? Boolean(value) : null;
 }
 
 function parseMacroDefinition(token: SlangToken, document: SlangTokenDocument): SlangMacroDefinition | null {

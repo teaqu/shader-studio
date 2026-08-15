@@ -55,6 +55,11 @@ suite('ShaderGitMetadataProvider Test Suite', () => {
       assert.ok(result.has('shaders/added.glsl'));
     });
 
+    test('includes modified Slang shaders', () => {
+      const result = ShaderGitMetadataProvider.parseDirtyPaths(' M shaders/modified.slang');
+      assert.ok(result.has('shaders/modified.slang'));
+    });
+
     test('excludes non-shader extensions', () => {
       const output = 'M  shaders/config.json\n M README.md\nA  shaders/script.js';
       const result = ShaderGitMetadataProvider.parseDirtyPaths(output);
@@ -105,6 +110,11 @@ suite('ShaderGitMetadataProvider Test Suite', () => {
       const output = 'D  src/draw/circle.glsl\n';
       const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(output);
       assert.strictEqual(result.get('circle.glsl'), 'src/draw/circle.glsl');
+    });
+
+    test('detects deleted Slang shaders', () => {
+      const result = ShaderGitMetadataProvider.parseDeletedShadersByBasename(' D src/draw/circle.slang\n');
+      assert.strictEqual(result.get('circle.slang'), 'src/draw/circle.slang');
     });
 
     test('ignores untracked files', () => {

@@ -154,7 +154,18 @@ export class ShaderProcessor {
       return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
     }
     if (this.shaderDebugManager.getLanguage?.() === 'slang') {
-      return { code: imageShaderCode, config, passName: 'Image' };
+      const postProcessed = debugState.isEnabled
+        ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode)
+        : null;
+      return postProcessed
+        ? {
+          code: postProcessed,
+          config: debugConfig,
+          passName: debugTarget.passName,
+          slangModules: debugTarget.slangModules,
+          sourcePath: debugTarget.sourcePath,
+        }
+        : { code: imageShaderCode, config, passName: 'Image' };
     }
 
     if (debugState.isActive && debugState.currentLine !== null) {

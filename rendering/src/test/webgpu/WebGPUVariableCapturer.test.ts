@@ -163,8 +163,8 @@ describe("WebGPUVariableCapturer", () => {
     expect(values.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(512);
     expect(values.getFloat32(UNIFORM_OFFSETS.iCameraPos + 8, true)).toBe(3);
     expect(values.getFloat32(UNIFORM_OFFSETS.iCameraDir + 8, true)).toBe(-0.75);
-    expect(values.getFloat32(208, true)).toBeCloseTo(0.25);
-    expect(values.getInt32(220, true)).toBe(1);
+    expect(values.getFloat32(880, true)).toBeCloseTo(0.25);
+    expect(values.getInt32(892, true)).toBe(1);
   });
 
   it("packs provided channel timing, loaded state, and sample rate", async () => {
@@ -181,8 +181,8 @@ describe("WebGPUVariableCapturer", () => {
 
     const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
     const view = new DataView(packed);
-    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelTime + 4, true)).toBeCloseTo(1.75);
-    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 4, true)).toBe(1);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelTime + 16, true)).toBeCloseTo(1.75);
+    expect(view.getFloat32(UNIFORM_OFFSETS.iChannelLoaded + 16, true)).toBe(1);
     expect(view.getFloat32(UNIFORM_OFFSETS.iSampleRate, true)).toBe(48000);
   });
 
@@ -441,6 +441,36 @@ describe("WebGPUVariableCapturer", () => {
     expect(capturer.getLastError()).toBe("/shaders/helper.slang: unexpected token");
   });
 
+  it("compiles a selected common debug file as common code instead of a module", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      commonCode: "",
+      slangSourcePath: "/shaders/common.slang",
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "common-hash",
+      rootUri: "file:///shaders/image.slang",
+      selectedSourceUri: "file:///shaders/common.slang",
+      executionMarkerSlot: 0,
+      captureSlots: [],
+      files: [
+        { uri: "file:///shaders/image.slang", path: "/shaders/image.slang", source: "instrumented root", version: 2, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///shaders/common.slang", path: "/shaders/common.slang", source: "instrumented common", version: 2, moduleName: "", ownerPass: "Image" },
+      ],
+    };
+
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented root", slangPlan: plan }], uniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(
+      "instrumented root",
+      expect.objectContaining({
+        commonCode: "instrumented common",
+        modules: [],
+        sourcePath: "/shaders/image.slang",
+      }),
+    );
+  });
+
   it("collectResults returns only captures whose mapping resolved, with tight rows", async () => {
     // 8 wide → 128 bytes/row padded to 256; fill row starts with row index.
     const gpu = mockGpu((size) => {
@@ -511,7 +541,7 @@ describe("WebGPUVariableCapturer", () => {
     await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
     capturer.cancelPendingCaptures();
 
-    const readbacks = gpu.createdBuffers.filter((b) => b.size >= 256);
+    const readbacks = gpu.createdBuffers.filter((buffer) => buffer.mapAsync.mock.calls.length > 0);
     expect(readbacks.length).toBeGreaterThan(0);
     for (const buffer of readbacks) {
       expect(buffer.destroy).toHaveBeenCalled();

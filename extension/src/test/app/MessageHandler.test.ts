@@ -102,6 +102,27 @@ suite('MessageHandler Test Suite', () => {
     sinon.assert.calledWith(executeCommandStub, 'shader-studio.generateConfigFromUI', vscode.Uri.file('/mock/path/shader.glsl'));
   });
 
+  test('should regenerate a missing Slang config from its source path', () => {
+    const fs = require('fs');
+    sandbox.stub(fs, 'existsSync').returns(false);
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    const message: ShowConfigMessage = {
+      type: 'showConfig',
+      payload: {
+        shaderPath: '/mock/path/shader.sha.json',
+        sourcePath: '/mock/path/shader.slang',
+      },
+    };
+
+    messageHandler.handleMessage(message);
+
+    sinon.assert.calledWith(
+      executeCommandStub,
+      'shader-studio.generateConfigFromUI',
+      vscode.Uri.file('/mock/path/shader.slang'),
+    );
+  });
+
   test('should handle generateConfig message with shader path', () => {
     // Mock vscode commands
     const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();

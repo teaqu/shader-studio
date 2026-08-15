@@ -604,15 +604,15 @@
           onmouseleave={handlePauseTooltipLeave}
         >
           <div class="error-tooltip-content">
-          <button
-            class="error-tooltip-copy"
-            onclick={copyErrors}
-            aria-label="Copy error to clipboard"
-          >
-            <i class="codicon codicon-copy"></i>
-          </button>
-          {errorMessage}
-        </div>
+            <button
+              class="error-tooltip-copy"
+              onclick={copyErrors}
+              aria-label="Copy error to clipboard"
+            >
+              <i class="codicon codicon-copy"></i>
+            </button>
+            {errorMessage}
+          </div>
         </div>
       {/if}
     </div>
@@ -844,6 +844,15 @@
         <span>Show Preview</span>
       </button>
     {/if}
+    <button
+      class="options-menu-item"
+      onclick={handleConfig}
+      aria-label="Open config"
+      disabled={!hasShader}
+    >
+      <i class="codicon codicon-json"></i>
+      <span>Open Config File</span>
+    </button>
     {#if showLockInOptions}
       <button
         class="options-menu-item"

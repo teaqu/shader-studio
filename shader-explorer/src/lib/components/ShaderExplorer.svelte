@@ -345,7 +345,7 @@
         {#if shaders.length === 0}
           <div class="empty-icon">🎨</div>
           <h2>No Shaders Found</h2>
-          <p>No .glsl or .frag files found in the workspace.</p>
+          <p>No GLSL or Slang shaders found in the workspace.</p>
         {:else}
           <div class="empty-icon">🔍</div>
           <h2>No Results</h2>

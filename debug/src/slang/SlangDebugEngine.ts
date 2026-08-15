@@ -16,7 +16,7 @@ export class SlangDebugEngine implements ShaderDebugEngine {
     return resolved.ok ? analyzeSlangSite(resolved.file, request.position) : { ok: false, diagnostics: resolved.diagnostics };
   }
 
-  planPreview(request: DebugAnalysisRequest, _options: DebugPreviewOptions): DebugPlanResult {
+  planPreview(request: DebugAnalysisRequest, options: DebugPreviewOptions): DebugPlanResult {
     const resolved = this.resolve(request);
     if (!resolved.ok) return { ok: false, diagnostics: resolved.diagnostics };
     const analysis = analyzeSlangSite(resolved.file, request.position);
@@ -24,28 +24,28 @@ export class SlangDebugEngine implements ShaderDebugEngine {
     if (!analysis.analysis.previewValueId) {
       return { ok: false, diagnostics: [{ code: "slang-debug-non-capturable-type", message: "No explicit Slang preview value is available here.", sourceUri: resolved.file.source.uri, range: analysis.analysis.selectedRange }] };
     }
-    return planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [analysis.analysis.previewValueId], "preview");
+    return planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [analysis.analysis.previewValueId], "preview", options);
   }
 
   /**
    * Build an inline preview for an explicit visible value, such as a value
    * selected from the variable inspector rather than inferred from the cursor.
    */
-  planPreviewValue(request: DebugAnalysisRequest, valueId: string, _options: DebugPreviewOptions): DebugPlanResult {
+  planPreviewValue(request: DebugAnalysisRequest, valueId: string, options: DebugPreviewOptions): DebugPlanResult {
     const resolved = this.resolve(request);
     if (!resolved.ok) return { ok: false, diagnostics: resolved.diagnostics };
     const analysis = analyzeSlangSite(resolved.file, request.position);
     return analysis.ok
-      ? planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [valueId], "preview")
+      ? planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, [valueId], "preview", options)
       : analysis;
   }
 
-  planCapture(request: DebugAnalysisRequest, valueIds: string[]): DebugPlanResult {
+  planCapture(request: DebugAnalysisRequest, valueIds: string[], options?: DebugPreviewOptions): DebugPlanResult {
     const resolved = this.resolve(request);
     if (!resolved.ok) return { ok: false, diagnostics: resolved.diagnostics };
     const analysis = analyzeSlangSite(resolved.file, request.position);
     return analysis.ok
-      ? planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, valueIds, "capture")
+      ? planSlangInstrumentation(resolved.workspace, resolved.file, analysis.analysis, valueIds, "capture", options)
       : analysis;
   }
 

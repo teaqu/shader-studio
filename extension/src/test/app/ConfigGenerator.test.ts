@@ -340,6 +340,46 @@ suite('ConfigGenerator Test Suite', () => {
     sinon.assert.calledWith(showInfoStub, 'Generated config file: provided_shader.sha.json');
   });
 
+  test('should generate the canonical config path for a provided Slang URI', async () => {
+    const fs = require('fs');
+    const providedUri = vscode.Uri.file('/mock/path/provided_shader.slang');
+    sandbox.stub(fs, 'existsSync').returns(false);
+    const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+
+    await configGenerator.generateConfig(providedUri);
+
+    const expectedConfigPath = path.join('/mock/path', 'provided_shader.sha.json');
+    sinon.assert.calledWith(writeFileSyncStub, expectedConfigPath, sinon.match(/"version": "1.0"/));
+    sinon.assert.calledWith(executeCommandStub, 'vscode.open', vscode.Uri.file(expectedConfigPath));
+  });
+
+  test('should use an active Slang editor without opening the picker', async () => {
+    const fs = require('fs');
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: {
+        document: {
+          fileName: '/mock/path/active_shader.slang',
+          languageId: 'slang',
+          uri: vscode.Uri.file('/mock/path/active_shader.slang'),
+        },
+      } as vscode.TextEditor,
+      configurable: true,
+      writable: true,
+    });
+    sandbox.stub(fs, 'existsSync').returns(false);
+    const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
+    const showOpenDialogStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves([]);
+    sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+
+    await configGenerator.generateConfig();
+
+    sinon.assert.notCalled(showOpenDialogStub);
+    sinon.assert.calledWith(writeFileSyncStub, path.join('/mock/path', 'active_shader.sha.json'), sinon.match.string);
+  });
+
   test('should show confirmation when showConfirmation is true', async () => {
     const fs = require('fs');
     
