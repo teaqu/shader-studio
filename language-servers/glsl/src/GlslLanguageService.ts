@@ -31,6 +31,7 @@ import {
 } from "@shader-studio/types";
 import { parseGlslDocument, symbolAtPosition, type GlslAnalysisDocument, type GlslSymbol } from "@shader-studio/glsl-analysis";
 import { GLSL_INTRINSICS, findGlslIntrinsics } from "./intrinsics.js";
+import { GLSL_VERTEX_HOOK_FEATURES, type GlslVertexHookFeature } from "./vertexHook.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -93,11 +94,28 @@ export class GlslLanguageService implements LanguageService {
     }
     const items = new Map<string, CompletionItem>();
     for (const symbol of state.analysis.symbols) {
-      items.set(symbol.name, { label: symbol.name, kind: completionKind(symbol), detail: symbol.signature ?? symbol.typeName });
+      const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, symbol) : undefined;
+      items.set(symbol.name, {
+        label: symbol.name,
+        kind: completionKind(symbol),
+        detail: vertexHook?.signature ?? symbol.signature ?? symbol.typeName,
+        documentation: vertexHook ? markdownDocumentation(vertexHook.description) : undefined,
+      });
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
       for (const symbol of analysis.symbols) {
         items.set(symbol.name, { label: symbol.name, kind: completionKind(symbol), detail: symbol.signature ?? symbol.typeName });
+      }
+    }
+    if (state.environment.stage === "vertex") {
+      const hook = GLSL_VERTEX_HOOK_FEATURES[0];
+      if (hook) {
+        items.set(hook.name, {
+          label: hook.name,
+          kind: CompletionItemKind.Function,
+          detail: hook.signature,
+          documentation: markdownDocumentation(hook.description),
+        });
       }
     }
     for (const intrinsic of visibleIntrinsics(state.document.text, state.environment.stage)) {
@@ -136,6 +154,10 @@ export class GlslLanguageService implements LanguageService {
     const userSymbol = symbolAtPosition(state.analysis, params.position)
       ?? state.analysis.symbols.find((symbol) => symbol.name === word);
     if (userSymbol) {
+      const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, userSymbol) : undefined;
+      if (vertexHook) {
+        return markdownHover(vertexHook.signature, vertexHook.description);
+      }
       return markdownHover(userSymbol.signature ?? `${userSymbol.typeName ?? userSymbol.kind} ${userSymbol.name}`, "Declared in this shader.");
     }
     const included = (this.includeAnalyses.get(params.document.uri) ?? []).flatMap((analysis) => analysis.symbols).find((symbol) => symbol.name === word);
@@ -272,7 +294,11 @@ export class GlslLanguageService implements LanguageService {
 }
 
 function completionFromDoc(name: string, detail: string | undefined, description: string): CompletionItem {
-  return { label: name, kind: CompletionItemKind.Variable, detail, documentation: { kind: MarkupKind.Markdown, value: description } };
+  return { label: name, kind: CompletionItemKind.Variable, detail, documentation: markdownDocumentation(description) };
+}
+
+function markdownDocumentation(description: string) {
+  return { kind: MarkupKind.Markdown, value: description } as const;
 }
 
 function markdownHover(signature: string, description: string): Hover {
@@ -291,6 +317,24 @@ function documentSymbolKind(symbol: GlslSymbol): SymbolKind {
     : symbol.kind === "type" ? SymbolKind.Struct
       : symbol.kind === "field" ? SymbolKind.Field
         : SymbolKind.Variable;
+}
+
+function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): GlslVertexHookFeature | undefined {
+  const feature = GLSL_VERTEX_HOOK_FEATURES.find((item) => item.name === symbol.name);
+  if (!feature || feature.kind !== symbol.kind) {
+    return undefined;
+  }
+  if (feature.kind === "function") {
+    return feature;
+  }
+  let scope = analysis.scopes.find((item) => item.id === symbol.scopeId);
+  while (scope) {
+    if (scope.kind === "function") {
+      return scope.name === "mainVertex" ? feature : undefined;
+    }
+    scope = scope.parentId ? analysis.scopes.find((item) => item.id === scope?.parentId) : undefined;
+  }
+  return undefined;
 }
 
 function visibleIntrinsics(source: string, stage: ShaderAuthoringEnvironment["stage"]) {

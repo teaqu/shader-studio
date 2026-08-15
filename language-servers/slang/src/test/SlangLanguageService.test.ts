@@ -86,6 +86,29 @@ void computeMain(
       .toContain("one layer");
   });
 
+  it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "vertex" });
+    const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: 5 } });
+    expect(completions.filter((item) => item.label === "mainVertex")).toHaveLength(1);
+    expect(completions.filter((item) => item.label === "position")).toHaveLength(1);
+    expect(completions.find((item) => item.label === "mainVertex")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex hook") }));
+    expect(completions.find((item) => item.label === "position")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))
+      .toContain("vertex hook");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 31 } }))?.contents))
+      .toContain("object-space");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 74 } }))?.contents))
+      .toContain("texture coordinate");
+  });
+
   it("loads generated Shader Studio declarations before user source", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);
@@ -114,6 +137,7 @@ void computeMain(
     const result = await service.completion({ document: revision, position: { line: 0, character: 2 } });
     expect(result[0]?.label).toBe("normalize");
     expect(result.filter((item) => item.label === "normalize")).toHaveLength(1);
+    expect(result.map((item) => item.label)).not.toContain("mainVertex");
     expect(JSON.stringify(result.find((item) => item.label === "normalize")?.documentation)).toContain("unit length");
     expect(server.completion.mock.calls[0]?.[1].line).toBeGreaterThan(0);
     expect(server.completion.mock.results[0]?.value.delete).toHaveBeenCalledOnce();

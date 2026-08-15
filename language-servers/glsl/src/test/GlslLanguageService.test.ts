@@ -36,6 +36,7 @@ describe("GlslLanguageService", () => {
       .map((item) => item.label);
     expect(labels).toEqual(expect.arrayContaining(["normalize", "texture", "iResolution", "tint", "sky", "shade"]));
     expect(labels).not.toContain("texture2D");
+    expect(labels).not.toContain("mainVertex");
   });
 
   it("retains legacy texture names for explicitly versioned GLSL ES 1.00 documents", async () => {
@@ -91,5 +92,26 @@ describe("GlslLanguageService", () => {
     expect((await instance.definition({ document: revision, position: { line: 1, character: 48 } }))[0]?.uri)
       .toBe("file:///workspace/common.glsl");
     expect(await instance.diagnostics({ document: revision })).not.toContainEqual(expect.objectContaining({ code: "include-not-found" }));
+  });
+
+  it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    const vertexSource = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal; }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text: vertexSource });
+    const labels = await instance.completion({ document: revision, position: { line: 0, character: 5 } });
+
+    expect(labels.find((item) => item.label === "mainVertex")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex hook") }));
+    expect(labels.find((item) => item.label === "position")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
+    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))
+      .toContain("vertex hook");
+    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 29 } }))?.contents))
+      .toContain("object-space");
+    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 51 } }))?.contents))
+      .toContain("normal");
+    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 68 } }))?.contents))
+      .toContain("texture coordinate");
   });
 });
