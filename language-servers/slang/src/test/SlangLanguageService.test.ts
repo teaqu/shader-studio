@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
+import { SLANG_INTRINSICS } from "../intrinsics";
 import type { SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
 
 function list<T>(items: T[]): SlangList<T> {
@@ -44,6 +45,10 @@ const environment: ShaderAuthoringEnvironment = {
 const revision = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
 
 describe("SlangLanguageService", () => {
+  it("uses concise intrinsic descriptions without return-value boilerplate", () => {
+    expect(SLANG_INTRINSICS.filter((item) => /^returns?\b/i.test(item.description))).toEqual([]);
+  });
+
   it("loads generated Shader Studio declarations before user source", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);
@@ -115,7 +120,7 @@ describe("SlangLanguageService", () => {
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 12 } }))?.contents))
-      .toContain("floating-point remainder");
+      .toContain("Floating-point remainder");
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 1, character: 20 } }))?.contents))
       .toContain("input channel 0");
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 2, character: 20 } }))?.contents))
