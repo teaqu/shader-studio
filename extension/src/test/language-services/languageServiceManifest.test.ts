@@ -19,20 +19,21 @@ suite("language service manifest", () => {
     assert.strictEqual(defaults["[slang]"]["editor.colorDecoratorsActivatedOn"], "click");
   });
 
-  test("teaches Code Spell Checker stable GLSL and Slang shader vocabulary", () => {
+  test("packages additive GLSL and Slang dictionaries for Code Spell Checker", () => {
     const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../package.json"), "utf8"));
     const defaults = manifest.contributes.configurationDefaults;
-    const glslWords = defaults["[glsl]"]["cSpell.words"] as string[];
-    const slangWords = defaults["[slang]"]["cSpell.words"] as string[];
+    assert.strictEqual(defaults["[glsl]"]["cSpell.words"], undefined);
+    assert.strictEqual(defaults["[slang]"]["cSpell.words"], undefined);
 
-    for (const word of ["GLSL", "bvec", "faceforward", "inversesqrt", "ivec", "snorm", "texel", "unorm"]) {
-      assert.ok(glslWords.includes(word), `missing GLSL cSpell word: ${word}`);
-    }
-    for (const word of [
-      "WGSL", "asuint", "bitfield", "countbits", "firstbithigh", "fmod", "groupshared", "numthreads", "snorm", "unorm",
-    ]) {
-      assert.ok(slangWords.includes(word), `missing Slang cSpell word: ${word}`);
-    }
+    const extensionRoot = path.resolve(__dirname, "../../..");
+    const config = JSON.parse(fs.readFileSync(path.join(extensionRoot, "cspell-ext.json"), "utf8"));
+    assert.deepStrictEqual(config.languageSettings.map((setting: { languageId: string }) => setting.languageId), ["glsl", "slang"]);
+    const glslWords = fs.readFileSync(path.join(extensionRoot, "dictionaries/glsl.txt"), "utf8").split(/\s+/);
+    const slangWords = fs.readFileSync(path.join(extensionRoot, "dictionaries/slang.txt"), "utf8").split(/\s+/);
+    assert.ok(glslWords.includes("faceforward"));
+    assert.ok(glslWords.includes("texel"));
+    assert.ok(slangWords.includes("groupshared"));
+    assert.ok(slangWords.includes("numthreads"));
     assert.ok(!glslWords.includes("gosperGliderGun"));
     assert.ok(!slangWords.includes("gosperGliderGun"));
   });

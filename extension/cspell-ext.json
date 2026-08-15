@@ -1,0 +1,26 @@
+{
+  "version": "0.2",
+  "readonly": true,
+  "dictionaryDefinitions": [
+    {
+      "name": "shader-studio-glsl",
+      "path": "./dictionaries/glsl.txt",
+      "addWords": false
+    },
+    {
+      "name": "shader-studio-slang",
+      "path": "./dictionaries/slang.txt",
+      "addWords": false
+    }
+  ],
+  "languageSettings": [
+    {
+      "languageId": "glsl",
+      "dictionaries": ["shader-studio-glsl"]
+    },
+    {
+      "languageId": "slang",
+      "dictionaries": ["shader-studio-slang"]
+    }
+  ]
+}

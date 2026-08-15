@@ -6,17 +6,19 @@ import * as path from "path";
 import { GlslToJsTranspiler } from "./app/Transpiler";
 import { VscodeLanguageServiceController } from "./language-services/VscodeLanguageServiceController";
 import { createExtensionLanguageServiceFactories } from "./language-services/createExtensionLanguageServices";
+import { registerCSpellDictionary } from "./language-services/CSpellIntegration";
 
 
 let shaderExtension: ShaderStudio | undefined;
 let languageServices: VscodeLanguageServiceController | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   const isDevMode = process.env.NODE_ENV === "dev";
   const outputChannel = vscode.window.createOutputChannel("Shader Studio", {
     log: true,
   });
   outputChannel.debug("Output channel initialized");
+  await registerCSpellDictionary(context);
 
   const diagnosticCollection = vscode.languages.createDiagnosticCollection(
     "shader-studio",
