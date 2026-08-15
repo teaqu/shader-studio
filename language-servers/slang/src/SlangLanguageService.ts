@@ -40,6 +40,7 @@ import type {
   SlangList,
 } from "./slangLanguageServerTypes.js";
 import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
+import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -114,17 +115,21 @@ export class SlangLanguageService implements LanguageService {
       return [];
     }
     const documentedFunctions = documentedSlangFunctions(state.environment);
+    const computeFeatures = state.environment.stage === "compute" ? SLANG_COMPUTE_FEATURES : [];
     const official = consumeList(this.server.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
       triggerKind: 1,
       triggerCharacter: "",
     }), (item) => {
       const editRange = item.textEdit ? userRange(item.textEdit.range, state.offset, state.document.text) : undefined;
       const intrinsic = documentedFunctions.find((entry) => entry.name === item.label);
+      const computeFeature = computeFeatures.find((entry) => entry.name === item.label);
       return {
         label: item.label,
         kind: item.kind as CompletionItemKind,
         detail: item.detail,
-        documentation: item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
+        documentation: computeFeature
+          ? computeFeatureMarkup(computeFeature)
+          : item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
         textEdit: item.textEdit && editRange ? { range: editRange, newText: item.textEdit.text } : undefined,
         data: item.data,
       };
@@ -137,6 +142,17 @@ export class SlangLanguageService implements LanguageService {
       }
       const item = completionForIntrinsic(intrinsic);
       items.set(`${item.label}:${item.detail}`, item);
+    }
+    for (const feature of computeFeatures) {
+      if (officialLabels.has(feature.name)) {
+        continue;
+      }
+      items.set(`${feature.name}:${feature.syntax}`, {
+        label: feature.name,
+        kind: feature.kind === "attribute" ? CompletionItemKind.Keyword : CompletionItemKind.Variable,
+        detail: feature.syntax,
+        documentation: computeFeatureMarkup(feature),
+      });
     }
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
       if (!doc.languages.includes("slang") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
@@ -182,6 +198,12 @@ export class SlangLanguageService implements LanguageService {
     const intrinsic = word ? documentedSlangFunctions(state.environment).find((item) => item.name === word) : undefined;
     if (intrinsic) {
       return { contents: intrinsicMarkup(intrinsic) };
+    }
+    const computeFeature = state.environment.stage === "compute"
+      ? SLANG_COMPUTE_FEATURES.find((item) => item.name === word)
+      : undefined;
+    if (computeFeature) {
+      return { contents: computeFeatureMarkup(computeFeature) };
     }
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
@@ -372,6 +394,10 @@ export class SlangLanguageService implements LanguageService {
   }
 }
 
+function computeFeatureMarkup(feature: SlangComputeFeature) {
+  return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${feature.syntax}\n\`\`\`\n\n${feature.description}` } as const;
+}
+
 function consumeList<T, U>(list: SlangList<T> | undefined, convert: (value: T) => U): U[] {
   if (!list) {
     return [];
@@ -556,6 +582,18 @@ function callAt(source: string, position: { line: number; character: number }): 
 
 function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): readonly SlangIntrinsic[] {
   const functions = new Map(SLANG_INTRINSICS.map((item) => [item.name, item]));
+  if (environment.stage === "compute") {
+    const layered = environment.outputLayers !== undefined && environment.outputLayers > 1;
+    functions.set("writeOutput", intrinsic(
+      "writeOutput",
+      layered
+        ? "void writeOutput(uint2 coord, uint layer, float4 color)"
+        : "void writeOutput(uint2 coord, float4 color)",
+      layered
+        ? "Writes a color to one layer of the current compute pass output texture."
+        : "Writes a color to the current compute pass output texture.",
+    ));
+  }
   const bindings = resolveAuthoringChannelBindings(environment.resources)
     .filter(({ resource }) => isValidShaderIdentifier(resource.name));
   const claimedSlots = new Set(bindings.map(({ slot }) => slot));

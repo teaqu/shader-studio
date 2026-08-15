@@ -45,6 +45,34 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
+  test("provides the configured compute output-layer count to Slang authoring", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-ls-"));
+    const shaderPath = path.join(directory, "compute.slang");
+    const configPath = path.join(directory, "compute.sha.json");
+    try {
+      fs.writeFileSync(shaderPath, "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() {}");
+      fs.writeFileSync(configPath, JSON.stringify({
+        version: "1.0",
+        passes: {
+          Compute: {
+            type: "compute",
+            path: "./compute.slang",
+            entryPoint: "computeMain",
+            outputLayers: 3,
+          },
+        },
+      }));
+      const document = await vscode.workspace.openTextDocument(shaderPath);
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+      assert.strictEqual(environment?.stage, "compute");
+      assert.strictEqual(environment?.outputLayers, 3);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("starts the packaged Slang language service through VS Code completion", async () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({

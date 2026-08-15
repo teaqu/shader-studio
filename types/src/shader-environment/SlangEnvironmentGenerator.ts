@@ -192,6 +192,11 @@ export function buildSlangAuthoringModule(
       return [];
     });
   const channelLines = buildSlangChannelDeclarations(channelBindings, environment.stage);
+  const computeOutputLines = environment.stage !== "compute"
+    ? []
+    : environment.outputLayers && environment.outputLayers > 1
+      ? ["void writeOutput(uint2 coord, uint layer, float4 color)\n{\n}"]
+      : ["void writeOutput(uint2 coord, float4 color)\n{\n}"];
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
       .flatMap((uniform) => (
@@ -213,6 +218,7 @@ export function buildSlangAuthoringModule(
     ...resourceLines,
     ...channelLines,
     ...buildSlangChannelMetadata(channelBindings, environment.stage),
+    ...computeOutputLines,
   ];
 
   const text = lines.join("\n");

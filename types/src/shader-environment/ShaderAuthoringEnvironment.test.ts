@@ -317,6 +317,24 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(compute.text).toContain("return iChannel0.SampleLevel(iChannel0Sampler, dir, 0.0);");
   });
 
+  it("models the renderer writeOutput helper for single and layered compute outputs", () => {
+    const single = buildSlangAuthoringModule({
+      ...baseEnvironment("slang"),
+      stage: "compute",
+      outputLayers: 1,
+    }).text;
+    const layered = buildSlangAuthoringModule({
+      ...baseEnvironment("slang"),
+      stage: "compute",
+      outputLayers: 2,
+    }).text;
+
+    expect(single).toContain("void writeOutput(uint2 coord, float4 color)");
+    expect(single).not.toContain("void writeOutput(uint2 coord, uint layer, float4 color)");
+    expect(layered).toContain("void writeOutput(uint2 coord, uint layer, float4 color)");
+    expect(layered).not.toContain("void writeOutput(uint2 coord, float4 color)");
+  });
+
   it.each([
     "sampleIChannel0",
     "sampleIChannel0Vertex",

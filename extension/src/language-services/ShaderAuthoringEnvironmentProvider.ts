@@ -48,7 +48,10 @@ export class ShaderAuthoringEnvironmentProvider {
     const stage = pass && "vertex" in pass && pass.vertex ? "vertex" : stageFor(document.uri.fsPath, pass?.value);
     const resources = resourcesFor(config, pass?.value);
     const uniforms = customUniforms.get(path.resolve(mainShaderPath(document.uri.fsPath, languageId, loadedConfig?.path))) ?? [];
-    const semantic = { languageId, passName: pass?.name ?? "Image", stage, resources, uniforms };
+    const outputLayers = pass?.value && "type" in pass.value && pass.value.type === "compute"
+      ? pass.value.outputLayers ?? 1
+      : undefined;
+    const semantic = { languageId, passName: pass?.name ?? "Image", stage, outputLayers, resources, uniforms };
     const fingerprint = JSON.stringify(semantic);
     const current = this.generations.get(document.uri.toString());
     const generation = current?.fingerprint === fingerprint ? current.generation : (current?.generation ?? 0) + 1;
@@ -59,6 +62,7 @@ export class ShaderAuthoringEnvironmentProvider {
       generation,
       passName: semantic.passName,
       stage,
+      outputLayers,
       customUniforms: uniforms,
       resources,
       virtualFiles: collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, semantic.passName),

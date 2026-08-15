@@ -104,7 +104,7 @@ export class GlslLanguageService implements LanguageService {
       const key = `${intrinsic.name}:${intrinsic.signature}`;
       items.set(key, {
         label: intrinsic.name,
-        kind: CompletionItemKind.Function,
+        kind: intrinsic.kind === "function" ? CompletionItemKind.Function : CompletionItemKind.Variable,
         detail: intrinsic.signature,
         documentation: { kind: MarkupKind.Markdown, value: intrinsic.description },
       });

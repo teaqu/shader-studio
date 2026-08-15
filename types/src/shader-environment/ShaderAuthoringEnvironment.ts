@@ -48,6 +48,8 @@ export interface ShaderAuthoringEnvironment {
   readonly passName: string;
   readonly stage: ShaderStage;
   readonly entryPoint?: string;
+  /** Compute output texture layer count; omitted and one select the 2D output helper. */
+  readonly outputLayers?: number;
   readonly customUniforms: readonly Readonly<CustomUniformDeclaration>[];
   readonly resources: readonly Readonly<AuthoringResource>[];
   readonly virtualFiles: readonly Readonly<VirtualShaderFile>[];
@@ -87,6 +89,7 @@ function collectFixedRendererNames(
     for (const name of SLANG_RUNTIME_INTERNAL_NAMES) {
       names.add(name);
     }
+    names.add("writeOutput");
   }
   for (const builtin of SHADER_STUDIO_BUILTIN_UNIFORMS) {
     if (builtin.languages.includes(languageId) && !DOCUMENTATION_ONLY_BUILTIN_NAMES.has(builtin.name)) {

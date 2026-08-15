@@ -125,6 +125,26 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
   });
 
   it.each([
+    [1, "writeOutput(dispatchId.xy, float4(1.0));"],
+    [3, "writeOutput(dispatchId.xy, 2u, float4(1.0));"],
+  ] as const)("compiles the renderer compute output helper for %i output layers", (outputLayers, call) => {
+    const result = compile({
+      ...baseEnvironment(),
+      passName: `ComputeOutput${outputLayers}`,
+      stage: "compute",
+      outputLayers,
+    }, `
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeMain(uint3 dispatchId : SV_DispatchThreadID)
+{
+    ${call}
+}`);
+
+    expect(result.success, result.error).toBe(true);
+  });
+
+  it.each([
     "protected",
     "internal",
     "extension",
