@@ -66,6 +66,22 @@ describe("GlslLanguageService", () => {
       .toEqual(expect.arrayContaining(["shade", "mainImage"]));
   });
 
+  it("does not provide hovers for words inside comments", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `// texture iResolution tint
+/* normalize */
+void mainImage(out vec4 color, in vec2 coord) { color = texture(sky, coord); }`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    expect(await instance.hover({ document: revision, position: { line: 0, character: 5 } })).toBeNull();
+    expect(await instance.hover({ document: revision, position: { line: 0, character: 13 } })).toBeNull();
+    expect(await instance.hover({ document: revision, position: { line: 0, character: 25 } })).toBeNull();
+    expect(await instance.hover({ document: revision, position: { line: 1, character: 5 } })).toBeNull();
+    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 60 } }))?.contents))
+      .toContain("texture");
+  });
+
   it("returns syntax/include diagnostics and colors without throwing on stale requests", async () => {
     const instance = await service();
     await instance.changeDocument({ uri, languageId: "glsl", version: 2, text: '#include "missing.glsl"\nvoid mainImage( {' });

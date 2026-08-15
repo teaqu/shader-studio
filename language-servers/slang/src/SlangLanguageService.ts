@@ -15,6 +15,7 @@ import {
   DocumentStore,
   createLiteralColorPresentations,
   findLiteralConstructorColors,
+  isPositionInComment,
   type ColorPresentationParams,
   type DocumentParams,
   type DocumentPositionParams,
@@ -202,6 +203,9 @@ export class SlangLanguageService implements LanguageService {
   async hover(params: DocumentPositionParams): Promise<Hover | null> {
     const state = this.current(params);
     if (!state) {
+      return null;
+    }
+    if (isPositionInComment(state.document.text, params.position)) {
       return null;
     }
     const word = wordAt(state.document.text, params.position);

@@ -86,6 +86,25 @@ void computeMain(
       .toContain("one layer");
   });
 
+  it("does not provide fallback hovers for words inside comments", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "compute" });
+    const text = `// numthreads fmod iResolution
+/* numthreads */
+[numthreads(1, 1, 1)]
+void computeMain() {}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    expect(await service.hover({ document: revision, position: { line: 0, character: 5 } })).toBeNull();
+    expect(await service.hover({ document: revision, position: { line: 0, character: 16 } })).toBeNull();
+    expect(await service.hover({ document: revision, position: { line: 0, character: 21 } })).toBeNull();
+    expect(await service.hover({ document: revision, position: { line: 1, character: 5 } })).toBeNull();
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 2, character: 5 } }))?.contents))
+      .toContain("workgroup");
+  });
+
   it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);
