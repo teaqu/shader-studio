@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": { "type": "buffer", "source": "BufferA" },
+        "iChannel1": { "type": "buffer", "source": "ComputePattern" },
+        "iChannel15": { "type": "texture", "path": "./orientation-texture.svg" }
+      }
+    },
+    "ComputePattern": {
+      "type": "compute",
+      "path": "./passes/pattern.compute.slang",
+      "resolution": { "scale": 0.5 },
+      "entryPoint": "buildPattern"
+    },
+    "BufferA": {
+      "path": "./passes/feedback.slang",
+      "inputs": {
+        "iChannel0": { "type": "buffer", "source": "BufferA" },
+        "iChannel1": { "type": "buffer", "source": "ComputePattern" }
+      }
+    },
+    "common": {
+      "path": "./common.slang"
+    }
+  }
+}

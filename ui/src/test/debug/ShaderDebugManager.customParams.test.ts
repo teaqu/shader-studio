@@ -52,6 +52,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
       expect(manager.getState().functionContext?.parameters[1].expression).toBe('0.5');
     });
+
+    it('publishes a new function-context snapshot when parameters reset', () => {
+      manager.setCustomParameter(1, '2.0');
+      const overriddenContext = manager.getState().functionContext;
+
+      manager.resetCustomParameters();
+      const resetContext = manager.getState().functionContext;
+
+      expect(resetContext).not.toBe(overriddenContext);
+      expect(overriddenContext?.parameters[1].expression).toBe('2.0');
+      expect(resetContext?.parameters[1].expression).toBe('0.5');
+    });
   });
 
   describe('setLoopMaxIterations', () => {

@@ -156,6 +156,49 @@ describe("native Slang debug acceptance", () => {
     expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
   });
 
+  it("compiles compute capture that writes output and uses shared common helpers", () => {
+    const source = [
+      '[shader("compute")]',
+      '[numthreads(8, 8, 1)]',
+      'void buildPattern(uint3 dispatchThreadID : SV_DispatchThreadID)',
+      '{',
+      '  uint2 pixel = dispatchThreadID.xy;',
+      '  float2 uv = (float2(pixel) + 0.5) / iResolution.xy;',
+      '  float wave = 0.5 + 0.5 * sin(uv.x + iTime);',
+      '  float3 color = parityPalette(wave) * kParityAccent;',
+      '  writeOutput(pixel, float4(color, 1.0));',
+      '}',
+      '',
+    ].join("\n");
+    const commonCode = [
+      'static const float3 kParityAccent = float3(0.1, 0.85, 1.0);',
+      'float3 parityPalette(float value)',
+      '{',
+      '  return float3(value);',
+      '}',
+    ].join("\n");
+    const workspace = { rootUri: "/pattern.compute.slang", rootPath: "/pattern.compute.slang", passName: "ComputePattern", contentHash: "pattern123", files: [{ uri: "/pattern.compute.slang", path: "/pattern.compute.slang", source, version: 1, moduleName: "", ownerPass: "ComputePattern" }] };
+    const request = { workspace, sourceUri: "/pattern.compute.slang", position: { line: 7, character: 9 } };
+    const engine = new SlangDebugEngine();
+    const analysis = engine.analyze(request);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
+    const plan = engine.planCapture(request, analysis.analysis.visibleValues.map((value) => value.id));
+    if (!plan.ok) {
+      throw new Error(plan.diagnostics[0].message);
+    }
+    const root = plan.plan.files.find((file) => file.uri === plan.plan.rootUri)!;
+
+    const result = compiler.compileImagePass(root.source, {
+      passName: "Image",
+      sourcePath: root.path,
+      commonCode,
+      captureMode: true,
+    });
+    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+  });
+
   it("compiles compute inspection selected in an imported module", () => {
     const root = [
       "import helper;",

@@ -650,7 +650,10 @@ export class ShaderDebugManager {
   }
 
   private syncFunctionContextParameters(): void {
-    this.syncContextParameters(this.state.functionContext, this.customParameters);
+    this.state.functionContext = this.syncContextParameters(
+      this.state.functionContext,
+      this.customParameters,
+    );
   }
 
   private getEffectiveSlangParameters(): ReadonlyMap<number, string> {
@@ -786,10 +789,12 @@ export class ShaderDebugManager {
       return null;
     }
 
-    context.parameters = context.parameters.map((param, index) => ({
-      ...param,
-      expression: params.get(index) ?? param.defaultExpression,
-    }));
-    return context;
+    return {
+      ...context,
+      parameters: context.parameters.map((param, index) => ({
+        ...param,
+        expression: params.get(index) ?? param.defaultExpression,
+      })),
+    };
   }
 }

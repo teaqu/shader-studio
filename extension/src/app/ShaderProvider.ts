@@ -526,6 +526,9 @@ export class ShaderProvider {
         }
       }
       for (const root of roots) {
+        if (path.normalize(root.rootPath) === normalizedFilePath) {
+          return shaderPath;
+        }
         // Check import dependencies
         const result = collectSlangDependencies({
           rootPath: root.rootPath,

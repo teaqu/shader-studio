@@ -171,6 +171,61 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(sendSpy.firstCall.args[0].config, null);
     });
 
+    test('resends the locked owner when navigating to one of its configured Slang pass roots', async () => {
+      const shaderPath = '/path/to/main.slang';
+      const computePath = '/path/to/sim.slang';
+      const commonPath = '/path/to/common.slang';
+      const imageSource = 'float4 mainImage(float2 p) { return float4(1); }';
+      const computeSource = '[shader("compute")] [numthreads(8, 8, 1)] void update(uint3 tid : SV_DispatchThreadID) {}';
+      const commonSource = 'float sharedValue() { return 1.0; }';
+      const config = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          ComputeSim: { type: 'compute', path: 'sim.slang', inputs: {} },
+          common: { path: 'common.slang' },
+        },
+      };
+      const lockedProvider = new ShaderProvider(
+        mockMessenger,
+        () => true,
+        new ConfigChangeClassifier(),
+        () => shaderPath,
+      );
+      (lockedProvider as any).activeShaders.add(shaderPath);
+      sandbox.stub(lockedProvider as any, 'readShaderSource').callsFake((filePath: unknown) => ({
+        [shaderPath]: imageSource,
+        [computePath]: computeSource,
+        [commonPath]: commonSource,
+      })[String(filePath)] ?? null);
+      loadAndProcessConfigStub.callsFake((_path: string, buffers: Record<string, string>) => {
+        buffers.ComputeSim = computeSource;
+        buffers.common = commonSource;
+        return config as any;
+      });
+      sandbox.stub(PathResolver, 'resolvePath').callsFake((_shaderPath: string, targetPath: string) =>
+        `/path/to/${targetPath}`,
+      );
+
+      await lockedProvider.sendShaderFromEditor({
+        document: {
+          getText: () => computeSource,
+          uri: { fsPath: computePath },
+          fileName: computePath,
+          languageId: 'slang',
+          lineAt: () => ({ text: computeSource }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.path, shaderPath);
+      assert.strictEqual(message.cursorPosition?.filePath, computePath);
+      assert.strictEqual(message.buffers.ComputeSim, computeSource);
+      assert.strictEqual(message.buffers.common, commonSource);
+    });
+
     test('keeps a configured Slang vertex cursor on its own source', async () => {
       const vertexPath = '/path/to/main.image.vert.slang';
       const vertexSource = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}';
