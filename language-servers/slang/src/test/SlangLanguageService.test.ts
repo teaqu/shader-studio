@@ -285,4 +285,30 @@ void computeMain() {}`;
     expect(contents).toContain("Defined in image.slang(12)");
     expect(contents).not.toContain("20bb898b269d06c72678cfc208b07589bca28d9f");
   });
+
+  it("replaces generated module hashes in local parameter hovers", async () => {
+    const { module, server } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = "float exercise(float input) { return input; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const openedSource = server.didOpenTextDocument.mock.calls.at(-1)?.[1] as string;
+    const offset = openedSource.slice(0, openedSource.lastIndexOf(text)).split("\n").length - 1;
+    server.hover.mockReturnValue({
+      contents: {
+        kind: "markdown",
+        value: `(parameter) float input\nDefined in 163822878836dd49609d813a83756631d58ad921(${offset + 1})`,
+      },
+      range: { start: { line: offset, character: 21 }, end: { line: offset, character: 26 } },
+    });
+    server.gotoDefinition.mockReturnValue(list([{
+      uri,
+      range: { start: { line: offset, character: 21 }, end: { line: offset, character: 26 } },
+    }]));
+
+    const hover = await service.hover({ document: revision, position: { line: 0, character: 23 } });
+    const contents = JSON.stringify(hover?.contents);
+    expect(contents).toContain("Defined in image.slang(1)");
+    expect(contents).not.toContain("163822878836dd49609d813a83756631d58ad921");
+  });
 });

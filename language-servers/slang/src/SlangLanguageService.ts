@@ -237,8 +237,19 @@ export class SlangLanguageService implements LanguageService {
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
       const contents = markup(result.contents);
-      if (local) {
-        contents.value = localSourceHover(contents.value, params.document.uri, local.selectionRange.start.line + 1);
+      if (/Defined in [0-9a-f]{32,64}\(\d+\)/i.test(contents.value)) {
+        const line = local?.selectionRange.start.line !== undefined
+          ? local.selectionRange.start.line + 1
+          : currentDocumentDefinitionLine(
+            this.server,
+            params.document.uri,
+            shiftedPosition(params.position, state.offset),
+            state.offset,
+            state.document.text,
+          ) ?? generatedLocalDefinitionLine(contents.value, word, state.offset, state.document.text);
+        if (line !== undefined) {
+          contents.value = localSourceHover(contents.value, params.document.uri, line);
+        }
       }
       return { contents, range: userRange(result.range, state.offset, state.document.text) };
     }
@@ -586,6 +597,38 @@ function markup(value: { kind: string; value: string }) {
 function localSourceHover(value: string, uri: string, line: number): string {
   const filename = sourcePath(uri).split("/").pop() || "shader.slang";
   return value.replace(/Defined in [0-9a-f]{32,64}\(\d+\)/gi, `Defined in ${filename}(${line})`);
+}
+
+function currentDocumentDefinitionLine(
+  server: SlangLanguageServer,
+  uri: string,
+  position: { line: number; character: number },
+  offset: number,
+  source: string,
+): number | undefined {
+  const locations = consumeList(server.gotoDefinition(uri, position), (location) => location);
+  const local = locations.find((location) => location.uri === uri);
+  const range = local ? userRange(local.range, offset, source) : undefined;
+  return range ? range.start.line + 1 : undefined;
+}
+
+function generatedLocalDefinitionLine(
+  hover: string,
+  word: string | undefined,
+  offset: number,
+  source: string,
+): number | undefined {
+  const generatedLine = Number(hover.match(/Defined in [0-9a-f]{32,64}\((\d+)\)/i)?.[1]);
+  const line = generatedLine - offset;
+  const authoredLine = source.split("\n")[line - 1];
+  if (!word || !Number.isSafeInteger(line) || line < 1 || authoredLine === undefined) {
+    return undefined;
+  }
+  return new RegExp(`\\b${escapeRegExp(word)}\\b`).test(authoredLine) ? line : undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function wordAt(source: string, position: { line: number; character: number }): string | undefined {
