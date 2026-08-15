@@ -45,6 +45,25 @@ const environment: ShaderAuthoringEnvironment = {
 const revision = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
 
 describe("SlangLanguageService", () => {
+  it("documents the mainImage contract with a renamed coordinate parameter", async () => {
+    const { module } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = "float4 mainImage(float2 pixelPosition) { return float4(pixelPosition, 0.0, 1.0); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 10 } }))?.contents))
+      .toContain("float4 mainImage(float2 pixelPosition)");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 10 } }))?.contents))
+      .toContain("fragment entry point");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 10 } }))?.contents))
+      .toContain("Defined in image.slang(1)");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 30 } }))?.contents))
+      .toContain("lower-left");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 62 } }))?.contents))
+      .toContain("Pixel-space");
+  });
+
   it("uses concise intrinsic descriptions without return-value boilerplate", () => {
     expect(SLANG_INTRINSICS.filter((item) => /^returns?\b/i.test(item.description))).toEqual([]);
   });

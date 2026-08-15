@@ -181,6 +181,38 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("provides mainImage contract hovers for renamed GLSL and Slang parameters", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const glslSource = "void mainImage(out vec4 rendered, in vec2 pixelPosition) { rendered = vec4(pixelPosition, 0.0, 1.0); }";
+    const glslDocument = await vscode.workspace.openTextDocument({ language: "glsl", content: glslSource });
+    await vscode.window.showTextDocument(glslDocument);
+
+    const glslOutput = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      glslDocument.uri,
+      new vscode.Position(0, glslSource.indexOf("rendered") + 1),
+    );
+    const glslCoordinate = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      glslDocument.uri,
+      new vscode.Position(0, glslSource.indexOf("pixelPosition") + 1),
+    );
+    assert.ok(hoverText(glslOutput).includes("RGBA output"), hoverText(glslOutput));
+    assert.ok(hoverText(glslCoordinate).includes("lower-left"), hoverText(glslCoordinate));
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+
+    const slangSource = "float4 mainImage(float2 pixelPosition) { return float4(pixelPosition, 0.0, 1.0); }";
+    const slangDocument = await vscode.workspace.openTextDocument({ language: "slang", content: slangSource });
+    await vscode.window.showTextDocument(slangDocument);
+    const slangCoordinate = await vscode.commands.executeCommand<vscode.Hover[]>(
+      "vscode.executeHoverProvider",
+      slangDocument.uri,
+      new vscode.Position(0, slangSource.indexOf("pixelPosition") + 1),
+    );
+    assert.ok(hoverText(slangCoordinate).includes("lower-left"), hoverText(slangCoordinate));
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
   test("publishes bundled Slang compiler diagnostics in VS Code", async () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({

@@ -31,6 +31,36 @@ async function service(): Promise<GlslLanguageService> {
 const revision = { uri, languageId: "glsl" as const, version: 1, environmentGeneration: 1 };
 
 describe("GlslLanguageService", () => {
+  it("documents the mainImage contract by parameter role instead of parameter name", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `void mainImage(out vec4 rendered, in vec2 pixelPosition) {
+  rendered = vec4(pixelPosition / iResolution.xy, 0.0, 1.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const hoverAt = async (needle: string, occurrence = 0) => {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) {
+        offset = text.indexOf(needle, offset + 1);
+      }
+      const prefix = text.slice(0, offset);
+      const lines = prefix.split("\n");
+      return instance.hover({
+        document: revision,
+        position: { line: lines.length - 1, character: (lines.at(-1)?.length ?? 0) + 1 },
+      });
+    };
+
+    expect(JSON.stringify((await hoverAt("mainImage"))?.contents)).toContain("void mainImage(out vec4 rendered, in vec2 pixelPosition)");
+    expect(JSON.stringify((await hoverAt("mainImage"))?.contents)).toContain("fragment entry point");
+    expect(JSON.stringify((await hoverAt("rendered"))?.contents)).toContain("out vec4 rendered");
+    expect(JSON.stringify((await hoverAt("rendered"))?.contents)).toContain("RGBA output");
+    expect(JSON.stringify((await hoverAt("rendered", 1))?.contents)).toContain("RGBA output");
+    expect(JSON.stringify((await hoverAt("pixelPosition"))?.contents)).toContain("lower-left");
+    expect(JSON.stringify((await hoverAt("pixelPosition", 1))?.contents)).toContain("Pixel-space");
+  });
+
   it("completes standard, Shader Studio, custom uniform, and resource symbols", async () => {
     const labels = (await (await service()).completion({ document: revision, position: { line: 2, character: 10 } }))
       .map((item) => item.label);

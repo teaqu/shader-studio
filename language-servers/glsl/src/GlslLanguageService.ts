@@ -33,6 +33,11 @@ import {
 import { parseGlslDocument, symbolAtPosition, type GlslAnalysisDocument, type GlslSymbol } from "@shader-studio/glsl-analysis";
 import { GLSL_INTRINSICS, findGlslIntrinsics } from "./intrinsics.js";
 import { GLSL_VERTEX_HOOK_FEATURES, type GlslVertexHookFeature } from "./vertexHook.js";
+import {
+  GLSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
+  GLSL_MAIN_IMAGE_DESCRIPTION,
+  GLSL_MAIN_IMAGE_OUTPUT_DESCRIPTION,
+} from "./fragmentHook.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -96,11 +101,13 @@ export class GlslLanguageService implements LanguageService {
     const items = new Map<string, CompletionItem>();
     for (const symbol of state.analysis.symbols) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, symbol) : undefined;
+      const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(state.analysis, symbol) : undefined;
+      const hook = vertexHook ?? fragmentHook;
       items.set(symbol.name, {
         label: symbol.name,
         kind: completionKind(symbol),
-        detail: vertexHook?.signature ?? symbol.signature ?? symbol.typeName,
-        documentation: vertexHook ? markdownDocumentation(vertexHook.description) : undefined,
+        detail: hook?.signature ?? symbol.signature ?? symbol.typeName,
+        documentation: hook ? markdownDocumentation(hook.description) : undefined,
       });
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
@@ -161,6 +168,10 @@ export class GlslLanguageService implements LanguageService {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, userSymbol) : undefined;
       if (vertexHook) {
         return markdownHover(vertexHook.signature, vertexHook.description);
+      }
+      const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(state.analysis, userSymbol) : undefined;
+      if (fragmentHook) {
+        return markdownHover(fragmentHook.signature, fragmentHook.description);
       }
       return markdownHover(userSymbol.signature ?? `${userSymbol.typeName ?? userSymbol.kind} ${userSymbol.name}`, "Declared in this shader.");
     }
@@ -339,6 +350,81 @@ function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): 
     scope = scope.parentId ? analysis.scopes.find((item) => item.id === scope?.parentId) : undefined;
   }
   return undefined;
+}
+
+interface GlslMainImageFeature {
+  readonly signature: string;
+  readonly description: string;
+}
+
+function mainImageFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): GlslMainImageFeature | undefined {
+  const scope = symbol.kind === "function"
+    ? analysis.scopes.find((item) => (
+      item.kind === "function"
+      && item.name === "mainImage"
+      && rangeContains(symbol.definition, item.range)
+    ))
+    : analysis.scopes.find((item) => item.id === symbol.scopeId && item.kind === "function" && item.name === "mainImage");
+  if (!scope) {
+    return undefined;
+  }
+  const parameters = scope.symbolIds
+    .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
+    .filter((candidate): candidate is GlslSymbol => candidate?.kind === "parameter");
+  const [output, coordinate] = parameters;
+  const functionSymbol = analysis.symbols.find((candidate) => (
+    candidate.kind === "function"
+    && candidate.name === "mainImage"
+    && candidate.typeName === "void"
+    && candidate.signature === "void mainImage(vec4, vec2)"
+    && rangeContains(candidate.definition, scope.range)
+  ));
+  const definitionText = sourceForRange(analysis.source, functionSymbol?.definition);
+  if (
+    !functionSymbol
+    || parameters.length !== 2
+    || output?.typeName !== "vec4"
+    || coordinate?.typeName !== "vec2"
+    || !/\bvoid\s+mainImage\s*\(\s*out\s+vec4\b[\s\S]*,\s*(?:in\s+)?vec2\b/.test(definitionText)
+  ) {
+    return undefined;
+  }
+  if (symbol.id === functionSymbol.id) {
+    return {
+      signature: `void mainImage(out vec4 ${output.name}, in vec2 ${coordinate.name})`,
+      description: GLSL_MAIN_IMAGE_DESCRIPTION,
+    };
+  }
+  if (symbol.id === output.id) {
+    return { signature: `out vec4 ${output.name}`, description: GLSL_MAIN_IMAGE_OUTPUT_DESCRIPTION };
+  }
+  return symbol.id === coordinate.id
+    ? { signature: `in vec2 ${coordinate.name}`, description: GLSL_MAIN_IMAGE_COORDINATE_DESCRIPTION }
+    : undefined;
+}
+
+function rangeContains(outer: import("vscode-languageserver-protocol").Range, inner: import("vscode-languageserver-protocol").Range): boolean {
+  return comparePosition(outer.start, inner.start) <= 0 && comparePosition(outer.end, inner.end) >= 0;
+}
+
+function comparePosition(left: Position, right: Position): number {
+  return left.line === right.line ? left.character - right.character : left.line - right.line;
+}
+
+function sourceForRange(source: string, range: import("vscode-languageserver-protocol").Range | undefined): string {
+  if (!range) {
+    return "";
+  }
+  const lines = source.split("\n");
+  return lines.slice(range.start.line, range.end.line + 1).map((line, index, selected) => (
+    index === 0 && index === selected.length - 1
+      ? line.slice(range.start.character, range.end.character)
+      : index === 0
+        ? line.slice(range.start.character)
+        : index === selected.length - 1
+          ? line.slice(0, range.end.character)
+          : line
+  )).join("\n");
 }
 
 function visibleIntrinsics(source: string, stage: ShaderAuthoringEnvironment["stage"]) {

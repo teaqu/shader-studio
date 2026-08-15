@@ -43,6 +43,7 @@ import type {
 import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
+import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -232,6 +233,12 @@ export class SlangLanguageService implements LanguageService {
       : undefined;
     if (vertexFeature) {
       return { contents: vertexHookMarkup(vertexFeature) };
+    }
+    const fragmentFeature = state.environment.stage === "fragment" && word
+      ? mainImageFeatureAt(state.document.text, params.position, word)
+      : undefined;
+    if (fragmentFeature) {
+      return { contents: mainImageMarkup(fragmentFeature, params.document.uri) };
     }
     const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
@@ -442,7 +449,71 @@ function computeFeatureMarkup(feature: SlangComputeFeature) {
 }
 
 function vertexHookMarkup(feature: SlangVertexHookFeature) {
-  return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${feature.signature}\n\`\`\`\n\n${feature.description}` } as const;
+  return contractMarkup(feature.signature, feature.description);
+}
+
+function contractMarkup(signature: string, description: string) {
+  return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${signature}\n\`\`\`\n\n${description}` } as const;
+}
+
+interface SlangMainImageFeature {
+  readonly signature: string;
+  readonly description: string;
+  readonly line: number;
+}
+
+function mainImageMarkup(feature: SlangMainImageFeature, uri: string) {
+  const filename = sourcePath(uri).split("/").pop() || "shader.slang";
+  const contents = contractMarkup(feature.signature, feature.description);
+  return { ...contents, value: `${contents.value}\n\nDefined in ${filename}(${feature.line})` };
+}
+
+function mainImageFeatureAt(
+  source: string,
+  position: { line: number; character: number },
+  word: string,
+): SlangMainImageFeature | undefined {
+  const offset = offsetAtPosition(source, position);
+  for (const match of source.matchAll(/\bfloat4\s+(mainImage)\s*\(\s*float2\s+([A-Za-z_]\w*)\s*\)/g)) {
+    const parameter = match[2];
+    if (!parameter) {
+      continue;
+    }
+    const nameStart = match.index + match[0].indexOf("mainImage");
+    if (word === "mainImage" && offset >= nameStart && offset <= nameStart + "mainImage".length) {
+      return {
+        signature: `float4 mainImage(float2 ${parameter})`,
+        description: SLANG_MAIN_IMAGE_DESCRIPTION,
+        line: positionAtOffset(source, nameStart).line + 1,
+      };
+    }
+    const bodyStart = source.indexOf("{", match.index + match[0].length);
+    const bodyEnd = bodyStart >= 0 ? matchingBrace(source, bodyStart) : -1;
+    if (word === parameter && bodyStart >= 0 && bodyEnd >= offset && offset >= match.index) {
+      return {
+        signature: `float2 ${parameter}`,
+        description: SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION,
+        line: positionAtOffset(source, match.index + match[0].lastIndexOf(parameter)).line + 1,
+      };
+    }
+  }
+  return undefined;
+}
+
+function offsetAtPosition(source: string, position: { line: number; character: number }): number {
+  return source.split("\n").slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.character;
+}
+
+function matchingBrace(source: string, start: number): number {
+  let depth = 0;
+  for (let index = start; index < source.length; index++) {
+    if (source[index] === "{") {
+      depth++;
+    } else if (source[index] === "}" && --depth === 0) {
+      return index;
+    }
+  }
+  return source.length;
 }
 
 function hasCanonicalVertexHookParameter(source: string, feature: SlangVertexHookFeature): boolean {
