@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { DebugSourcePosition } from "@shader-studio/types";
 import { analyzeSlangSite } from "../SlangDebugAnalyzer";
 import { createSlangWorkspace } from "../SlangWorkspace";
-import * as fs from "fs";
 
 const source = "float4 main(float2 uv) {\n"
   + "  float value = uv.x;\n"
@@ -223,53 +222,6 @@ describe("line offset computation", () => {
     const orig = "// header\nfloat4 fn()\n{\n  if (x)\n  {\n    x = 1;\n  }\n  return float4(1);\n}\n";
     const proc = "// header\n// expanded\n// expanded\nfloat4 fn()\n{\n  if (x)\n  {\n    x = 1;\n  }\n  return float4(1);\n}\n";
     expect(computeOffset(proc, orig)).toBe(2);
-  });
-});
-
-// ===== INTEGRATION: REAL file from disk (has trailing newline!) =====
-const DISK = "/Users/calum/Projects/slang-multipass-test/video_audio.slang";
-const diskSrc = fs.readFileSync(DISK, "utf-8");
-
-describe("integration: video_audio.slang from disk", () => {
-  it("disk file has trailing newline (critical for line counting)", () => {
-    expect(diskSrc.endsWith("\n")).toBe(true);
-  });
-
-  it("offset is 0 for identical sources even with trailing newline", () => {
-    expect(computeOffset(diskSrc, diskSrc)).toBe(0);
-  });
-
-  it("offset is 0 comparing disk vs trimmed (trailing newline difference)", () => {
-    // The disk source has trailing \n, vaShader template literal doesn't.
-    // Make sure the offset still works when sources differ only in trailing whitespace.
-    expect(computeOffset(diskSrc, diskSrc.trim())).toBe(0);
-  });
-
-  it("no negative cursor positions", () => {
-    const o = computeOffset(diskSrc, diskSrc);
-    diskSrc.split("\n").forEach((_, i) => expect(i + o).toBeGreaterThanOrEqual(0));
-  });
-
-  it("line 0: 'Select a line' for function signature", () => {
-    const ws = createSlangWorkspace({ rootUri:DISK,rootPath:DISK,passName:"Image",contentHash:"di",files:[{uri:DISK,path:DISK,source:diskSrc,version:1,moduleName:"",ownerPass:"Image"}]});
-    if(!ws.ok)throw new Error(ws.diagnostics[0].message);
-    const f=ws.workspace.filesByUri.get(ws.workspace.rootUri)!;
-    const r=analyzeSlangSite(f,{line:0,character:0});
-    expect(r.ok).toBe(false);
-    expect(r.diagnostics?.[0]?.message).toBe("Select a line to inspect variables");
-  });
-
-  it("every executable line in the disk file is debuggable", () => {
-    const ws = createSlangWorkspace({ rootUri:DISK,rootPath:DISK,passName:"Image",contentHash:"di",files:[{uri:DISK,path:DISK,source:diskSrc,version:1,moduleName:"",ownerPass:"Image"}]});
-    if(!ws.ok)throw new Error(ws.diagnostics[0].message);
-    const f=ws.workspace.filesByUri.get(ws.workspace.rootUri)!;
-    diskSrc.split("\n").forEach((line,i) => {
-      const exp = vaExp[i];
-      if (!exp?.ok) return; // only check lines that should be debuggable
-      const r = analyzeSlangSite(f, { line: i, character: Math.max(0, line.search(/\S/)) });
-      expect(r.ok).toBe(true);
-      if (r.ok && exp.vars) expect(r.analysis.visibleValues.map(v => v.name)).toEqual(exp.vars);
-    });
   });
 });
 
