@@ -88,6 +88,25 @@ describe("SlangLanguageService", () => {
     expect(SLANG_INTRINSICS.filter((item) => /^returns?\b/i.test(item.description))).toEqual([]);
   });
 
+  it("fills empty official completion fields with Shader Studio intrinsic docs", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([{
+      label: "fmod",
+      kind: 3,
+      detail: "",
+      documentation: { kind: "markdown", value: "" },
+      data: "",
+    }]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float value = fmod(2.0, 1.5);" });
+
+    const completion = (await service.completion({ document: revision, position: { line: 0, character: 15 } }))
+      .find((item) => item.label === "fmod");
+    expect(completion?.detail).toContain("fmod");
+    expect(JSON.stringify(completion?.documentation)).toContain("remainder");
+  });
+
   it("documents integer exponent parameters with their compiler types", () => {
     expect(SLANG_INTRINSICS.find((item) => item.name === "frexp")?.signatures)
       .toContain("T frexp(T value, out int exponent)");
@@ -213,6 +232,7 @@ void computeMain() {}`;
 
   it("opens virtual import files before the user document", async () => {
     const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
     const service = new SlangLanguageService(module);
     await service.syncEnvironment({
       ...environment,
@@ -220,6 +240,29 @@ void computeMain() {}`;
     });
     await service.openDocument({ uri, languageId: "slang", version: 1, text: "import common;" });
     expect(server.didOpenTextDocument.mock.calls.map((call) => call[0])).toEqual(["file:///common.slang", uri]);
+    expect((await service.completion({ document: revision, position: { line: 0, character: 13 } })).map((item) => item.label))
+      .toContain("twice");
+  });
+
+  it("navigates imported symbols when the official server points back into the caller", async () => {
+    const { module, server } = fixture();
+    server.gotoDefinition.mockReturnValue(list([{
+      uri,
+      range: { start: { line: 100, character: 7 }, end: { line: 100, character: 12 } },
+    }]));
+    server.documentSymbol.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      virtualFiles: [{ uri: "file:///common.slang", version: 1, text: "module common;\npublic float twice(float x) { return x * 2.0; }" }],
+    });
+    const text = "import common;\nfloat4 mainImage(float2 p) { return float4(twice(1.0)); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const definitions = await service.definition({ document: revision, position: { line: 1, character: 44 } });
+    expect(definitions[0]?.uri).toBe("file:///common.slang");
+    expect(definitions[0]?.range.start.line).toBe(1);
+    expect((await service.documentSymbols({ document: revision })).map((item) => item.name)).not.toContain("twice");
   });
 
   it("offsets positions, releases vectors, and filters generated symbol ranges", async () => {

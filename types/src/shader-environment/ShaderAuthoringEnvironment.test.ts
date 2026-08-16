@@ -771,7 +771,7 @@ describe("ShaderAuthoringEnvironment", () => {
   it("marks the Slang-only channel loaded state as unavailable in GLSL", () => {
     expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iChannelLoaded")).toMatchObject({
       name: "iChannelLoaded",
-      slangType: "float4",
+      slangType: "float[16]",
       languages: ["slang"],
     });
     expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iChannelLoaded")?.glslType).toBeUndefined();

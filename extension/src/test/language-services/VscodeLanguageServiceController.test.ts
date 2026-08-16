@@ -284,6 +284,30 @@ suite("VS Code language-service revisions", () => {
     assert.deepStrictEqual(diagnostic.range.start, new vscode.Position(0, 36));
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
+
+  test("disables and re-enables a loaded Slang language service", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const configuration = vscode.workspace.getConfiguration("shader-studio");
+    const document = await vscode.workspace.openTextDocument({ language: "slang", content: "float value;" });
+    const completionLabels = async () => {
+      const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        document.uri,
+        new vscode.Position(0, 0),
+      );
+      return completions.items.map((item) => typeof item.label === "string" ? item.label : item.label.label);
+    };
+
+    try {
+      assert.ok((await completionLabels()).includes("iTimeDelta"));
+      await configuration.update("languageServers.slang.enabled", false, vscode.ConfigurationTarget.Global);
+      assert.ok(!(await completionLabels()).includes("iTimeDelta"));
+      await configuration.update("languageServers.slang.enabled", true, vscode.ConfigurationTarget.Global);
+      assert.ok((await completionLabels()).includes("iTimeDelta"));
+    } finally {
+      await configuration.update("languageServers.slang.enabled", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
 });
 
 async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {

@@ -132,15 +132,18 @@ export class SlangLanguageService implements LanguageService {
       const fragmentFeature = state.environment.stage === "fragment"
         ? mainImageCompletionFeature(state.document.text, params.position, item.label)
         : undefined;
+      const officialDocumentation = item.documentation ? markup(item.documentation) : undefined;
       return {
         label: item.label,
         kind: item.kind as CompletionItemKind,
-        detail: fragmentFeature?.signature ?? item.detail,
+        detail: fragmentFeature?.signature ?? (item.detail?.trim() || intrinsic?.signatures[0]),
         documentation: computeFeature
           ? computeFeatureMarkup(computeFeature)
           : fragmentFeature
             ? contractMarkup(fragmentFeature.signature, fragmentFeature.description)
-            : item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
+            : officialDocumentation?.value.trim()
+              ? officialDocumentation
+              : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
         textEdit: item.textEdit && editRange ? { range: editRange, newText: item.textEdit.text } : undefined,
         data: item.data,
       };
@@ -181,6 +184,15 @@ export class SlangLanguageService implements LanguageService {
     }
     for (const resource of state.environment.resources) {
       items.set(`${resource.name}:${resource.kind}`, { label: resource.name, kind: CompletionItemKind.Variable, detail: resource.kind });
+    }
+    for (const file of state.environment.virtualFiles) {
+      for (const declaration of findSlangDeclarations(file.text)) {
+        items.set(`${declaration.name}:${declaration.detail}`, {
+          label: declaration.name,
+          kind: declaration.kind === SymbolKind.Function ? CompletionItemKind.Function : CompletionItemKind.Struct,
+          detail: declaration.detail,
+        });
+      }
     }
     for (const declaration of findSlangDeclarations(state.document.text)) {
       const fragmentFeature = state.environment.stage === "fragment"
@@ -291,12 +303,20 @@ export class SlangLanguageService implements LanguageService {
       const range = item.uri === params.document.uri ? userRange(item.range, state.offset, state.document.text) : item.range;
       return range ? { uri: item.uri, range } : undefined;
     }).filter((item): item is Location => item !== undefined);
-    if (official.length > 0) {
+    if (official.some((location) => location.uri !== params.document.uri)) {
       return official;
     }
     const word = wordAt(state.document.text, params.position);
     const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
-    return local ? [{ uri: params.document.uri, range: local.selectionRange }] : [];
+    if (local) {
+      return official.length > 0 ? official : [{ uri: params.document.uri, range: local.selectionRange }];
+    }
+    const imported = word ? state.environment.virtualFiles.flatMap((file) => (
+      findSlangDeclarations(file.text)
+        .filter((item) => item.name === word)
+        .map((item) => ({ uri: file.uri, range: item.selectionRange }))
+    )) : [];
+    return imported.length > 0 ? imported : official;
   }
 
   async signatureHelp(params: DocumentPositionParams): Promise<SignatureHelp | null> {
@@ -820,7 +840,12 @@ function findSlangDeclarations(source: string): SlangDeclaration[] {
   for (const { expression, kind } of patterns) {
     for (const match of source.matchAll(expression)) {
       const name = kind === SymbolKind.Struct ? match[1] : match[2];
-      if (!name || ["if", "for", "while", "switch"].includes(name)) {
+      const typeName = kind === SymbolKind.Function ? match[1]?.replace(/\s*<[^>]+>$/, "") : undefined;
+      if (
+        !name
+        || ["if", "for", "while", "switch"].includes(name)
+        || typeName === "return"
+      ) {
         continue;
       }
       const nameOffset = match.index + match[0].indexOf(name);

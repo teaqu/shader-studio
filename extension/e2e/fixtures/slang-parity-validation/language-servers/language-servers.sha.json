@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "passes": {
+    "GlslImage": {
+      "path": "./image.glsl",
+      "vertex": "./vertex.glsl",
+      "inputs": {
+        "iChannel0": { "type": "texture", "path": "../orientation-texture.svg" }
+      }
+    },
+    "SlangImage": {
+      "path": "./image.slang",
+      "vertex": "./vertex.slang",
+      "inputs": {
+        "iChannel0": { "type": "texture", "path": "../orientation-texture.svg" }
+      }
+    },
+    "Compute": {
+      "type": "compute",
+      "path": "./compute.slang",
+      "entryPoint": "computeMain"
+    }
+  }
+}

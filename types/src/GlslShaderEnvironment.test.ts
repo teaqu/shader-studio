@@ -22,7 +22,7 @@ describe("GLSL shader environment", () => {
       "uniform vec4 iMouse;",
       "uniform int iFrame;",
       "uniform vec4 iDate;",
-      "uniform float iChannelTime[4];",
+      "uniform float iChannelTime[16];",
       "uniform float iSampleRate;",
       "uniform vec3 iCameraPos;",
       "uniform vec3 iCameraDir;",

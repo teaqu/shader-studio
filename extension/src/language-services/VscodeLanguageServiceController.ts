@@ -230,14 +230,11 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
         continue;
       }
       if (!enabled(language)) {
-        await (await this.services[language])?.dispose();
-        delete this.services[language];
-        this.opened[language].clear();
         this.diagnostics[language].clear();
       } else {
         for (const document of vscode.workspace.textDocuments) {
           if (shaderLanguage(document) === language) {
-            await this.open(document);
+            await this.change(document);
           }
         }
       }
