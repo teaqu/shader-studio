@@ -173,4 +173,41 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       await service.dispose();
     }
   }, 20_000);
+
+  it("compiles a configured buffer against implicit Shader Studio Common", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///workspace/buffer-a.slang";
+    const source = "float4 mainImage(float2 p) { return float4(sharedTone(p.x)); }";
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "BufferA",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [{
+        uri: "file:///workspace/shared/lib/math.slang",
+        version: 1,
+        text: "float halfValue(float value) { return value * 0.5; }",
+      }],
+      commonFile: {
+        uri: "file:///workspace/shared/common.slang",
+        version: 1,
+        text: '#include "lib/math.slang"\nfloat sharedTone(float value) { return halfValue(value); }',
+      },
+    };
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: source });
+
+      expect(await service.diagnostics({
+        document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
+      })).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
 });

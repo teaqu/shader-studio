@@ -81,7 +81,7 @@ export class SlangLanguageService implements LanguageService {
     if (environment.languageId !== "slang" || !this.store.syncEnvironment(environment)) {
       return;
     }
-    for (const file of environment.virtualFiles) {
+    for (const file of contextualFiles(environment)) {
       if (this.virtualOpened.has(file.uri)) {
         this.server.didCloseTextDocument(file.uri);
       }
@@ -186,7 +186,7 @@ export class SlangLanguageService implements LanguageService {
     for (const resource of state.environment.resources) {
       items.set(`${resource.name}:${resource.kind}`, { label: resource.name, kind: CompletionItemKind.Variable, detail: resource.kind });
     }
-    for (const file of state.environment.virtualFiles) {
+    for (const file of contextualFiles(state.environment)) {
       for (const declaration of findSlangDeclarations(file.text)) {
         items.set(`${declaration.name}:${declaration.detail}`, {
           label: declaration.name,
@@ -272,6 +272,18 @@ export class SlangLanguageService implements LanguageService {
     if (fragmentFeature) {
       return { contents: mainImageMarkup(fragmentFeature, params.document.uri) };
     }
+    const common = state.environment.commonFile;
+    const commonDeclaration = common && word
+      ? findSlangDeclarations(common.text).find((item) => item.name === word)
+      : undefined;
+    if (commonDeclaration) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `\`\`\`slang\n${commonDeclaration.detail}\n\`\`\`\n\nDeclared in Shader Studio Common.`,
+        },
+      };
+    }
     const local = findSlangDeclarations(state.document.text).find((item) => item.name === word);
     const result = this.server.hover(params.document.uri, shiftedPosition(params.position, state.offset));
     if (result) {
@@ -312,7 +324,7 @@ export class SlangLanguageService implements LanguageService {
     if (local) {
       return official.length > 0 ? official : [{ uri: params.document.uri, range: local.selectionRange }];
     }
-    const imported = word ? state.environment.virtualFiles.flatMap((file) => (
+    const imported = word ? contextualFiles(state.environment).flatMap((file) => (
       findSlangDeclarations(file.text)
         .filter((item) => item.name === word)
         .map((item) => ({ uri: file.uri, range: item.selectionRange }))
@@ -339,8 +351,15 @@ export class SlangLanguageService implements LanguageService {
       return null;
     }
     const signatures = findSlangDeclarations(state.document.text).filter((item) => item.kind === SymbolKind.Function && item.name === call.name);
+    const contextual = contextualFiles(state.environment).flatMap((file) => (
+      findSlangDeclarations(file.text).filter((item) => item.kind === SymbolKind.Function && item.name === call.name)
+    ));
     const intrinsics = documentedSlangFunctions(state.environment).filter((item) => item.name === call.name);
-    const labels = [...signatures.map((item) => item.detail), ...intrinsics.flatMap((item) => item.signatures)];
+    const labels = [
+      ...signatures.map((item) => item.detail),
+      ...contextual.map((item) => item.detail),
+      ...intrinsics.flatMap((item) => item.signatures),
+    ];
     return labels.length > 0 ? { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter } : null;
   }
 
@@ -412,9 +431,17 @@ export class SlangLanguageService implements LanguageService {
       this.server.didCloseTextDocument(uri);
     }
     const prelude = buildSlangAuthoringModule(environment).text;
-    const offset = prelude ? prelude.split("\n").length : 0;
+    const commonSource = environment.commonFile
+      ? resolveCompilerDependencies(
+        stripEditorImport(environment.commonFile.text),
+        environment.commonFile.uri,
+        environment.virtualFiles,
+      )
+      : "";
+    const prefix = [prelude, commonSource].filter(Boolean).join("\n");
+    const offset = prefix ? prefix.split("\n").length : 0;
     this.lineOffsets.set(uri, offset);
-    this.server.didOpenTextDocument(uri, prelude ? `${prelude}\n${document.text}` : document.text);
+    this.server.didOpenTextDocument(uri, prefix ? `${prefix}\n${document.text}` : document.text);
     this.opened.add(uri);
   }
 
@@ -439,18 +466,27 @@ export class SlangLanguageService implements LanguageService {
     }
     try {
       const prelude = buildSlangAuthoringModule(state.environment).text;
+      const commonSource = state.environment.commonFile
+        ? resolveCompilerDependencies(
+          stripEditorImport(state.environment.commonFile.text),
+          state.environment.commonFile.uri,
+          state.environment.virtualFiles,
+        )
+        : "";
       const authoredSource = resolveCompilerDependencies(
         stripEditorImport(state.document.text),
         state.document.uri,
         state.environment.virtualFiles,
       );
-      const source = prelude ? `${prelude}\n${authoredSource}` : authoredSource;
+      const prefix = [prelude, commonSource].filter(Boolean).join("\n");
+      const source = prefix ? `${prefix}\n${authoredSource}` : authoredSource;
+      const offset = prefix ? prefix.split("\n").length : 0;
       const compiled = session.loadModuleFromSource(source, moduleName(state.document.text, state.document.uri), sourcePath(state.document.uri));
       if (compiled) {
         compiled.delete?.();
         return [];
       }
-      return parseCompilerDiagnostics(this.module.getLastError?.().message ?? "", sourcePath(state.document.uri), state.offset, state.document.text);
+      return parseCompilerDiagnostics(this.module.getLastError?.().message ?? "", sourcePath(state.document.uri), offset, state.document.text);
     } finally {
       session.delete?.();
     }
@@ -477,6 +513,12 @@ export class SlangLanguageService implements LanguageService {
     this.compilerTarget = target;
     return { globalSession, target };
   }
+}
+
+function contextualFiles(environment: ShaderAuthoringEnvironment) {
+  return environment.commonFile
+    ? [environment.commonFile, ...environment.virtualFiles]
+    : environment.virtualFiles;
 }
 
 function computeFeatureMarkup(feature: SlangComputeFeature) {

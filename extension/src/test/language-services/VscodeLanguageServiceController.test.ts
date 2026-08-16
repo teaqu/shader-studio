@@ -4,8 +4,12 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { DocumentRevision } from "@shader-studio/language-server-core";
+import { Messenger } from "../../app/transport/Messenger";
 import { isCurrentRevision } from "../../language-services/VscodeLanguageServiceController";
-import { ShaderAuthoringEnvironmentProvider } from "../../language-services/ShaderAuthoringEnvironmentProvider";
+import {
+  ShaderAuthoringEnvironmentProvider,
+  clearLoadedShaderProjectSnapshots,
+} from "../../language-services/ShaderAuthoringEnvironmentProvider";
 
 suite("VS Code language-service revisions", () => {
   const uri = vscode.Uri.file("/workspace/shader.glsl");
@@ -78,6 +82,210 @@ suite("VS Code language-service revisions", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  for (const language of ["glsl", "slang"] as const) {
+    test(`provides configured Common source to a nested ${language} buffer`, async () => {
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-common-`));
+      const passesDirectory = path.join(directory, "passes");
+      const bufferPath = path.join(passesDirectory, `buffer-a.${language}`);
+      const commonPath = path.join(directory, `shared.${language}`);
+      const commonSource = "float sharedTone(float value) { return value * 0.5; }";
+      try {
+        fs.mkdirSync(passesDirectory, { recursive: true });
+        fs.writeFileSync(bufferPath, language === "glsl"
+          ? "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }"
+          : "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }");
+        fs.writeFileSync(commonPath, commonSource);
+        fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: { path: language === "glsl" ? `@/shared.${language}` : `shared.${language}` },
+            BufferA: { path: language === "glsl" ? `@/passes/buffer-a.${language}` : `passes/buffer-a.${language}` },
+          },
+        }));
+        const document = await vscode.workspace.openTextDocument(bufferPath);
+        const provider = new ShaderAuthoringEnvironmentProvider();
+
+        const first = provider.environmentFor(document);
+
+        assert.strictEqual(first?.passName, "BufferA");
+        assert.deepStrictEqual(first?.commonFile, {
+          uri: vscode.Uri.file(commonPath).toString(),
+          text: commonSource,
+          version: 1,
+        });
+
+        fs.writeFileSync(commonPath, `${commonSource}\n// changed`);
+        const changed = provider.environmentFor(document);
+        assert.strictEqual(changed?.generation, (first?.generation ?? 0) + 1);
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("does not inject configured Common into the Common document itself", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-self-"));
+    const commonPath = path.join(directory, "common.glsl");
+    try {
+      fs.writeFileSync(commonPath, "float sharedTone(float value) { return value; }");
+      fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: { Image: {}, common: { path: "common.glsl" } },
+      }));
+      const document = await vscode.workspace.openTextDocument(commonPath);
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+      assert.strictEqual(environment?.passName, "common");
+      assert.strictEqual(environment?.commonFile, undefined);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("advances the environment when a configured Common dependency changes", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-dependency-"));
+    const bufferPath = path.join(directory, "buffer-a.glsl");
+    const commonPath = path.join(directory, "common.glsl");
+    const dependencyDirectory = path.join(directory, "lib");
+    const dependencyPath = path.join(dependencyDirectory, "math.glsl");
+    try {
+      fs.mkdirSync(dependencyDirectory);
+      fs.writeFileSync(bufferPath, "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }");
+      fs.writeFileSync(commonPath, '#include "lib/math.glsl"\nfloat sharedTone(float value) { return halfValue(value); }');
+      fs.writeFileSync(dependencyPath, "float halfValue(float value) { return value * 0.5; }");
+      fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: { Image: {}, common: { path: "common.glsl" }, BufferA: { path: "buffer-a.glsl" } },
+      }));
+      const document = await vscode.workspace.openTextDocument(bufferPath);
+      const provider = new ShaderAuthoringEnvironmentProvider();
+      const first = provider.environmentFor(document);
+
+      fs.writeFileSync(dependencyPath, "float halfValue(float value) { return value * 0.25; }");
+      const changed = provider.environmentFor(document);
+
+      assert.strictEqual(changed?.generation, (first?.generation ?? 0) + 1);
+      assert.ok(changed?.virtualFiles.some((file) => file.text.includes("0.25")));
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to a project configuration loaded by an active Shader Studio client", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-loaded-project-"));
+    const imagePath = path.join(directory, "image.slang");
+    const bufferPath = path.join(directory, "passes", "buffer-a.slang");
+    const commonPath = path.join(directory, "common.slang");
+    try {
+      fs.mkdirSync(path.dirname(bufferPath));
+      fs.writeFileSync(imagePath, "float4 mainImage(float2 coord) { return float4(coord, 0, 1); }");
+      fs.writeFileSync(bufferPath, "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }");
+      fs.writeFileSync(commonPath, "float sharedTone(float value) { return value * 0.5; }");
+      const transport = {
+        send: () => {},
+        close: () => {},
+        onMessage: () => {},
+        hasActiveClients: () => true,
+      };
+      const errorHandler = {
+        setShaderConfig: () => {},
+        clearErrors: () => {},
+        clearPersistentError: () => {},
+        handleError: () => {},
+        handlePersistentError: () => {},
+        dispose: () => {},
+      };
+      const output = { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} };
+      const messenger = new Messenger(output as unknown as vscode.LogOutputChannel, errorHandler as never);
+      messenger.addTransport(transport);
+      messenger.send({
+        type: "shaderSource",
+        path: imagePath,
+        code: fs.readFileSync(imagePath, "utf8"),
+        config: {
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: { path: "common.slang" },
+            BufferA: { path: "passes/buffer-a.slang" },
+          },
+        },
+        buffers: {},
+        language: "slang",
+      });
+      const document = await vscode.workspace.openTextDocument(bufferPath);
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+      assert.strictEqual(environment?.passName, "BufferA");
+      assert.strictEqual(environment?.commonFile?.uri, vscode.Uri.file(commonPath).toString());
+    } finally {
+      clearLoadedShaderProjectSnapshots();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  for (const language of ["glsl", "slang"] as const) {
+    test(`connects configured Common to ${language} IntelliSense for a buffer`, async function() {
+      this.timeout(20_000);
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-common-e2e-`));
+      const bufferPath = path.join(directory, `buffer-a.${language}`);
+      const commonPath = path.join(directory, `common.${language}`);
+      const text = language === "glsl"
+        ? "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }"
+        : "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }";
+      try {
+        fs.writeFileSync(bufferPath, text);
+        fs.writeFileSync(commonPath, "float sharedTone(float value) { return value * 0.5; }");
+        fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
+          version: "1.0",
+          passes: {
+            Image: {},
+            common: { path: `common.${language}` },
+            BufferA: { path: `buffer-a.${language}` },
+          },
+        }));
+        await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+        const document = await vscode.workspace.openTextDocument(bufferPath);
+        const position = new vscode.Position(0, text.indexOf("sharedTone") + 3);
+
+        const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+          "vscode.executeCompletionItemProvider", document.uri, position,
+        );
+        const hover = await vscode.commands.executeCommand<vscode.Hover[]>(
+          "vscode.executeHoverProvider", document.uri, position,
+        );
+        const definitions = await vscode.commands.executeCommand<vscode.Location[]>(
+          "vscode.executeDefinitionProvider", document.uri, position,
+        );
+
+        assert.ok(completions.items.some((item) => item.label === "sharedTone"));
+        assert.ok(hoverText(hover).includes("Shader Studio Common"), hoverText(hover));
+        assert.strictEqual(definitions[0]?.uri.fsPath, commonPath);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.ok(!vscode.languages.getDiagnostics(document.uri).some((diagnostic) => (
+          diagnostic.message.includes("undefined identifier 'sharedTone'")
+        )));
+        if (language === "slang") {
+          const commonDocument = await vscode.workspace.openTextDocument(commonPath);
+          const edit = new vscode.WorkspaceEdit();
+          edit.replace(
+            commonDocument.uri,
+            new vscode.Range(commonDocument.positionAt(0), commonDocument.positionAt(commonDocument.getText().length)),
+            "float renamedTone(float value) { return value * 0.5; }",
+          );
+          assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+          await waitForDiagnostic(document.uri, "undefined identifier 'sharedTone'");
+          assert.strictEqual(await commonDocument.save(), true);
+        }
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
 
   test("uses Shader Studio compute docs and declarations for a nested Slang pass", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-hover-"));

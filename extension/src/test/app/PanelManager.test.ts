@@ -41,6 +41,7 @@ suite('PanelManager Test Suite', () => {
       send: sandbox.stub(),
       addTransport: sandbox.stub().returns(undefined),
       removeTransport: sandbox.stub().returns(undefined),
+      hasActiveClients: sandbox.stub().returns(false),
       getErrorHandler: sandbox.stub().returns({
         handleError: sandbox.stub(),
         handlePersistentError: sandbox.stub(),

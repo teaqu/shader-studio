@@ -61,6 +61,7 @@ function freezeEnvironment(environment: ShaderAuthoringEnvironment): Readonly<Sh
     ...environment,
     customUniforms: Object.freeze(environment.customUniforms.map((uniform) => Object.freeze({ ...uniform }))),
     resources: Object.freeze(environment.resources.map((resource) => Object.freeze({ ...resource }))),
+    commonFile: environment.commonFile ? Object.freeze({ ...environment.commonFile }) : undefined,
     virtualFiles: Object.freeze(environment.virtualFiles.map((file) => Object.freeze({ ...file }))),
   });
 }

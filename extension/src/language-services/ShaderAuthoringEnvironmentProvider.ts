@@ -13,6 +13,22 @@ import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDepe
 
 const customUniforms = new Map<string, readonly CustomUniformDeclaration[]>();
 const snapshotListeners = new Set<(shaderPath: string) => void>();
+const loadedShaderProjects = new Map<string, { config: ShaderConfig; configPath: string; shaderPath: string }>();
+
+/** Makes the exact project configuration sent to an active Shader Studio client available to authoring services. */
+export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: ShaderConfig): void {
+  const normalizedShaderPath = path.resolve(shaderPath);
+  loadedShaderProjects.delete(normalizedShaderPath);
+  loadedShaderProjects.set(normalizedShaderPath, {
+    config: JSON.parse(JSON.stringify(config)) as ShaderConfig,
+    configPath: shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json"),
+    shaderPath: normalizedShaderPath,
+  });
+}
+
+export function clearLoadedShaderProjectSnapshots(): void {
+  loadedShaderProjects.clear();
+}
 
 /** Shares trusted ScriptEvaluator type snapshots without exposing values or code. */
 export function publishCustomUniformSnapshot(shaderPath: string, values: readonly { name: string; type: string }[]): void {
@@ -51,7 +67,13 @@ export class ShaderAuthoringEnvironmentProvider {
     const outputLayers = pass?.value && "type" in pass.value && pass.value.type === "compute"
       ? pass.value.outputLayers ?? 1
       : undefined;
-    const semantic = { languageId, passName: pass?.name ?? "Image", stage, outputLayers, resources, uniforms };
+    const passName = pass?.name ?? "Image";
+    const commonFile = configuredCommonFile(config, loadedConfig?.path, passName);
+    const virtualFiles = mergeVirtualFiles(
+      collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, passName),
+      commonFile ? collectVirtualFiles(commonFile.text, vscode.Uri.parse(commonFile.uri).fsPath, languageId, "common") : [],
+    );
+    const semantic = { languageId, passName, stage, outputLayers, resources, uniforms, commonFile, virtualFiles };
     const fingerprint = JSON.stringify(semantic);
     const current = this.generations.get(document.uri.toString());
     const generation = current?.fingerprint === fingerprint ? current.generation : (current?.generation ?? 0) + 1;
@@ -65,9 +87,54 @@ export class ShaderAuthoringEnvironmentProvider {
       outputLayers,
       customUniforms: uniforms,
       resources,
-      virtualFiles: collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, semantic.passName),
+      commonFile,
+      virtualFiles,
     };
   }
+}
+
+function configuredCommonFile(
+  config: ShaderConfig | null,
+  configPath: string | undefined,
+  passName: string,
+): { uri: string; text: string; version: number } | undefined {
+  if (!config || !configPath || passName.toLowerCase() === "common") {
+    return undefined;
+  }
+  const passes = config.passes as ShaderConfig["passes"] & Record<string, ShaderConfig["passes"][string]>;
+  const common = passes.common ?? passes.Common;
+  if (!common || !("path" in common) || !common.path) {
+    return undefined;
+  }
+  const commonPath = resolveConfiguredPath(configPath, common.path);
+  const openDocument = vscode.workspace.textDocuments.find((document) => (
+    path.normalize(document.uri.fsPath) === path.normalize(commonPath)
+  ));
+  try {
+    return {
+      uri: vscode.Uri.file(commonPath).toString(),
+      text: openDocument?.getText() ?? fs.readFileSync(commonPath, "utf8"),
+      version: openDocument?.version ?? 1,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveConfiguredPath(configPath: string, configuredPath: string): string {
+  if (configuredPath.startsWith("@/")) {
+    const workspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(configPath));
+    return path.resolve(workspace?.uri.fsPath ?? path.dirname(configPath), configuredPath.slice(2));
+  }
+  return path.isAbsolute(configuredPath)
+    ? path.normalize(configuredPath)
+    : path.resolve(path.dirname(configPath), configuredPath);
+}
+
+function mergeVirtualFiles(
+  ...groups: readonly { uri: string; text: string; version: number }[][]
+): { uri: string; text: string; version: number }[] {
+  return [...new Map(groups.flat().map((file) => [file.uri, file])).values()];
 }
 
 function readConfig(shaderPath: string): { config: ShaderConfig; path: string } | null {
@@ -75,6 +142,10 @@ function readConfig(shaderPath: string): { config: ShaderConfig; path: string } 
   const direct = parseConfig(companion);
   if (direct) {
     return direct;
+  }
+  const loaded = findLoadedShaderProject(shaderPath);
+  if (loaded) {
+    return { config: loaded.config, path: loaded.configPath };
   }
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath))?.uri.fsPath;
   const searchRoot = path.resolve(workspaceRoot ?? path.parse(shaderPath).root);
@@ -101,6 +172,15 @@ function readConfig(shaderPath: string): { config: ShaderConfig; path: string } 
   return null;
 }
 
+function findLoadedShaderProject(shaderPath: string) {
+  const normalizedShaderPath = path.resolve(shaderPath);
+  const projects = [...loadedShaderProjects.values()].reverse();
+  return projects.find((project) => (
+    project.shaderPath === normalizedShaderPath
+    || Boolean(findExplicitPass(project.config, normalizedShaderPath, project.configPath))
+  ));
+}
+
 function isWithinDirectory(parent: string, candidate: string): boolean {
   const relative = path.relative(parent, candidate);
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
@@ -123,15 +203,15 @@ function findPass(config: ShaderConfig | null, shaderPath: string, configPath?: 
 
 function findExplicitPass(config: ShaderConfig, shaderPath: string, configPath?: string) {
   const resolved = path.resolve(shaderPath);
-  const configDirectory = path.dirname(configPath ?? shaderPath);
+  const owningConfigPath = configPath ?? shaderPath;
   for (const [name, value] of Object.entries(config.passes)) {
     if (!value) {
       continue;
     }
-    if ("path" in value && value.path && path.resolve(configDirectory, value.path) === resolved) {
+    if ("path" in value && value.path && resolveConfiguredPath(owningConfigPath, value.path) === resolved) {
       return { name, value };
     }
-    if ("vertex" in value && value.vertex && path.resolve(configDirectory, value.vertex) === resolved) {
+    if ("vertex" in value && value.vertex && resolveConfiguredPath(owningConfigPath, value.vertex) === resolved) {
       return { name, value, vertex: true };
     }
   }

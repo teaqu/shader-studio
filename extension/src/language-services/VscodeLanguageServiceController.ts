@@ -167,6 +167,27 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       this.opened[language].add(document.uri.toString());
     }
     await this.publishDiagnostics(document, service, environment.generation);
+    if (environment.passName.toLowerCase() === "common") {
+      await this.refreshCommonDependents(document, language);
+    }
+  }
+
+  private async refreshCommonDependents(
+    commonDocument: vscode.TextDocument,
+    language: ShaderLanguage,
+  ): Promise<void> {
+    for (const document of vscode.workspace.textDocuments) {
+      if (document.uri.toString() === commonDocument.uri.toString() || shaderLanguage(document) !== language) {
+        continue;
+      }
+      const environment = this.environments.environmentFor(document);
+      if (environment?.commonFile?.uri !== commonDocument.uri.toString()) {
+        continue;
+      }
+      const service = await this.service(language);
+      await service.syncEnvironment(environment);
+      await this.publishDiagnostics(document, service, environment.generation);
+    }
   }
 
   private async close(document: vscode.TextDocument): Promise<void> {

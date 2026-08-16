@@ -9,6 +9,7 @@ import { Logger } from "./services/Logger";
 import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
+import { clearLoadedShaderProjectSnapshots } from "../language-services/ShaderAuthoringEnvironmentProvider";
 
 export class PanelManager {
   private panels: Set<vscode.WebviewPanel> = new Set();
@@ -160,6 +161,9 @@ export class PanelManager {
       this.panelSlots.delete(panel);
       if (this.panels.size === 0) {
         this.messenger.getErrorHandler().clearPersistentErrors();
+        if (!this.messenger.hasActiveClients()) {
+          clearLoadedShaderProjectSnapshots();
+        }
       }
     });
 

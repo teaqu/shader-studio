@@ -52,6 +52,8 @@ export interface ShaderAuthoringEnvironment {
   readonly outputLayers?: number;
   readonly customUniforms: readonly Readonly<CustomUniformDeclaration>[];
   readonly resources: readonly Readonly<AuthoringResource>[];
+  /** Shader Studio Common source implicitly prepended to configured render passes. */
+  readonly commonFile?: Readonly<VirtualShaderFile>;
   readonly virtualFiles: readonly Readonly<VirtualShaderFile>[];
 }
 

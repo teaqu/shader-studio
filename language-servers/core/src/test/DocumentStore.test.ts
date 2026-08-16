@@ -89,12 +89,14 @@ describe("DocumentStore", () => {
       customUniforms: [{ name: "tint", type: "vec3" as const }],
       resources: [{ name: "sky", kind: "texture-cube" as const }],
       virtualFiles: [{ uri: "file:///common.glsl", text: "float helper() { return 0.; }", version: 2 }],
+      commonFile: { uri: "file:///shared.glsl", text: "float shared() { return 1.; }", version: 3 },
     };
 
     store.syncEnvironment(authoringEnvironment);
     authoringEnvironment.customUniforms[0]!.name = "changed";
     authoringEnvironment.resources.push({ name: "extra", kind: "texture-2d" });
     authoringEnvironment.virtualFiles[0]!.text = "changed";
+    authoringEnvironment.commonFile.text = "changed";
 
     const stored = store.getEnvironment(URI)!;
     expect(stored.customUniforms).toEqual([{ name: "tint", type: "vec3" }]);
@@ -102,12 +104,17 @@ describe("DocumentStore", () => {
     expect(stored.virtualFiles).toEqual([
       { uri: "file:///common.glsl", text: "float helper() { return 0.; }", version: 2 },
     ]);
+    expect(stored.commonFile).toEqual({
+      uri: "file:///shared.glsl", text: "float shared() { return 1.; }", version: 3,
+    });
     expect(Object.isFrozen(stored.customUniforms)).toBe(true);
     expect(Object.isFrozen(stored.customUniforms[0])).toBe(true);
     expect(Object.isFrozen(stored.resources)).toBe(true);
     expect(Object.isFrozen(stored.virtualFiles[0])).toBe(true);
+    expect(Object.isFrozen(stored.commonFile)).toBe(true);
     expect(Reflect.set(stored.customUniforms[0]!, "name", "stored changed")).toBe(false);
     expect(Reflect.set(stored.virtualFiles[0]!, "text", "stored changed")).toBe(false);
+    expect(Reflect.set(stored.commonFile!, "text", "stored changed")).toBe(false);
   });
 
   it("removes document and environment together", () => {

@@ -63,8 +63,11 @@ export class GlslLanguageService implements LanguageService {
     if (environment.languageId !== "glsl" || !this.store.syncEnvironment(environment)) {
       return;
     }
-    this.files.replaceEnvironment(environment.virtualFiles);
-    this.includeAnalyses.set(environment.documentUri, environment.virtualFiles.map((file) => (
+    const contextFiles = environment.commonFile
+      ? [environment.commonFile, ...environment.virtualFiles]
+      : environment.virtualFiles;
+    this.files.replaceEnvironment(contextFiles);
+    this.includeAnalyses.set(environment.documentUri, contextFiles.map((file) => (
       parseGlslDocument(file.uri, stripIncludeDirectives(file.text), environment.stage)
     )));
     this.rebuild(environment.documentUri);
@@ -175,9 +178,14 @@ export class GlslLanguageService implements LanguageService {
       }
       return markdownHover(userSymbol.signature ?? `${userSymbol.typeName ?? userSymbol.kind} ${userSymbol.name}`, "Declared in this shader.");
     }
-    const included = (this.includeAnalyses.get(params.document.uri) ?? []).flatMap((analysis) => analysis.symbols).find((symbol) => symbol.name === word);
-    if (included) {
-      return markdownHover(included.signature ?? `${included.typeName ?? included.kind} ${included.name}`, "Declared in an included shader file.");
+    for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
+      const included = analysis.symbols.find((symbol) => symbol.name === word);
+      if (included) {
+        const description = analysis.uri === state.environment.commonFile?.uri
+          ? "Declared in Shader Studio Common."
+          : "Declared in an included shader file.";
+        return markdownHover(included.signature ?? `${included.typeName ?? included.kind} ${included.name}`, description);
+      }
     }
     const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("glsl"));
     if (doc) {
@@ -225,8 +233,15 @@ export class GlslLanguageService implements LanguageService {
       return null;
     }
     const user = state.analysis.symbols.filter((symbol) => symbol.kind === "function" && symbol.name === call.name && symbol.signature);
+    const contextual = (this.includeAnalyses.get(params.document.uri) ?? []).flatMap((analysis) => (
+      analysis.symbols.filter((symbol) => symbol.kind === "function" && symbol.name === call.name && symbol.signature)
+    ));
     const intrinsic = findGlslIntrinsics(call.name, glslVersion(state.document.text), glslStage(state.environment.stage));
-    const labels = [...user.map((symbol) => symbol.signature!), ...intrinsic.map((item) => item.signature)];
+    const labels = [
+      ...user.map((symbol) => symbol.signature!),
+      ...contextual.map((symbol) => symbol.signature!),
+      ...intrinsic.map((item) => item.signature),
+    ];
     if (labels.length === 0) {
       return null;
     }

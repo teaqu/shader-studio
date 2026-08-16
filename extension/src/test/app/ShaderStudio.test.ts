@@ -430,6 +430,7 @@ suite('Shader Studio Test Suite', () => {
   test('compile controller respects client connection status for active editor changes', () => {
     const mockEditor = createMockGLSLEditor();
     shaderStudio['compileController'].setMode('hot');
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
 
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), false);
     shaderStudio['compileController'].handleActiveEditorChange(mockEditor);
@@ -482,6 +483,7 @@ suite('Shader Studio Test Suite', () => {
   });
 
   test('should process .glsl file even when languageId is not glsl', () => {
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
     const mockWebviewPanel = {
       reveal: sandbox.stub(),
       webview: {

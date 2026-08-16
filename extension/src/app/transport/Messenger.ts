@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { MessageHandler } from "./MessageHandler";
 import { MessageTransport } from "./MessageTransport";
 import { ErrorHandler } from "../ErrorHandler";
+import { publishLoadedShaderProjectSnapshot } from "../../language-services/ShaderAuthoringEnvironmentProvider";
 
 export class Messenger {
   private messageHandler: MessageHandler;
@@ -36,6 +37,9 @@ export class Messenger {
           shaderPath: message.path,
           bufferPathMap: message.bufferPathMap,
         });
+        if (message.config && message.path && this.hasActiveClients()) {
+          publishLoadedShaderProjectSnapshot(message.path, message.config);
+        }
       }
 
       // Send to all transports

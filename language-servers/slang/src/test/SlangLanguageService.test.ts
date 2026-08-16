@@ -268,6 +268,35 @@ void computeMain() {}`;
     expect((await service.documentSymbols({ document: revision })).map((item) => item.name)).not.toContain("twice");
   });
 
+  it("provides completion, hover, signatures, and navigation for implicit Shader Studio Common", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    server.hover.mockReturnValue(undefined);
+    server.gotoDefinition.mockReturnValue(list([]));
+    server.signatureHelp.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.slang",
+        version: 1,
+        text: "float sharedTone(float value) { return value * 0.5; }",
+      },
+    });
+    const text = "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const position = { line: 0, character: text.indexOf("sharedTone") + 3 };
+
+    expect((await service.completion({ document: revision, position })).map((item) => item.label)).toContain("sharedTone");
+    expect(JSON.stringify((await service.hover({ document: revision, position }))?.contents)).toContain("Shader Studio Common");
+    expect((await service.definition({ document: revision, position }))[0]?.uri).toBe("file:///workspace/common.slang");
+    expect((await service.signatureHelp({
+      document: revision,
+      position: { line: 0, character: text.indexOf("coord.x") + "coord.x".length },
+    }))?.signatures.map((item) => item.label)).toContain("float sharedTone(float value)");
+  });
+
   it("offsets positions, releases vectors, and filters generated symbol ranges", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);

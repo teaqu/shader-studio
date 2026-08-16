@@ -140,6 +140,30 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(sky, coord); }`;
     expect(await instance.diagnostics({ document: revision })).not.toContainEqual(expect.objectContaining({ code: "include-not-found" }));
   });
 
+  it("provides completion, hover, signatures, and navigation for implicit Shader Studio Common", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: "float sharedTone(float value) { return value * 0.5; }",
+      },
+    });
+    const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const position = { line: 0, character: text.indexOf("sharedTone") + 3 };
+
+    expect((await instance.completion({ document: revision, position })).map((item) => item.label)).toContain("sharedTone");
+    expect(JSON.stringify((await instance.hover({ document: revision, position }))?.contents)).toContain("Shader Studio Common");
+    expect((await instance.definition({ document: revision, position }))[0]?.uri).toBe("file:///workspace/common.glsl");
+    expect((await instance.signatureHelp({
+      document: revision,
+      position: { line: 0, character: text.indexOf("coord.x") + "coord.x".length },
+    }))?.signatures.map((item) => item.label)).toContain("float sharedTone(float)");
+  });
+
   it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });
