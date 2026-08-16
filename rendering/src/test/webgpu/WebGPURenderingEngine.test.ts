@@ -907,16 +907,15 @@ describe("WebGPURenderingEngine", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-          BufferA: { path: "buffer-a.slang", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
       },
       "/image.slang",
-      {}, // BufferA source missing -> pass graph reports an error
+      {}, // Referencing no configured pass -> pass graph reports an error
     );
 
     expect(result?.success).toBe(false);
-    expect(result?.errors?.[0]).toMatch(/BufferA/);
+    expect(result?.errors?.[0]).toMatch(/MissingPass/);
     expect(compiler.compile).not.toHaveBeenCalled();
     expect(device.createShaderModule).not.toHaveBeenCalled();
     expect(engine.getPasses()).toEqual([]);

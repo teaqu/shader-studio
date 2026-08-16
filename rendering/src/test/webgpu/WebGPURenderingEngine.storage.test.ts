@@ -803,8 +803,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
         version: "1",
         storage: { b: { count: 2, stride: 4, elementType: "uint" } },
         passes: {
-          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-          BufferA: { path: "missing.slang", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
       },
       "/image.slang",
@@ -812,7 +811,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect(result?.errors?.join("\n")).toMatch(/BufferA/);
+    expect(result?.errors?.join("\n")).toMatch(/MissingPass/);
     expect(createdStorageBuffers(device)).toEqual([firstBuffer]);
     expect(firstBuffer.destroy).not.toHaveBeenCalled();
     expect(compiler.compile).not.toHaveBeenCalled();
@@ -1013,8 +1012,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
         version: "1",
         storage: { a: { count: 2, stride: 4, elementType: "uint" } },
         passes: {
-          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-          BufferA: { path: "missing.slang", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
       },
       "/image.slang",
@@ -1061,8 +1059,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       {
         version: "1",
         passes: {
-          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
-          BufferA: { path: "missing.slang", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "MissingPass" } } },
         },
       },
       "/image.slang",
