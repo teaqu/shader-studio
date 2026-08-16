@@ -192,7 +192,6 @@ export class PanelManager {
         glslEnabled: configuration.get("languageServers.glsl.enabled", true),
         slangEnabled: configuration.get("languageServers.slang.enabled", true),
         colorDecorators: configuration.get("editor.colorDecorators", true),
-        trace: configuration.get<"off" | "messages" | "verbose">("languageServers.trace", "off"),
       },
     };
   }

@@ -9,7 +9,7 @@ suite("language service manifest", () => {
     assert.strictEqual(properties["shader-studio.languageServers.glsl.enabled"].default, true);
     assert.strictEqual(properties["shader-studio.languageServers.slang.enabled"].default, true);
     assert.strictEqual(properties["shader-studio.editor.colorDecorators"].default, true);
-    assert.strictEqual(properties["shader-studio.languageServers.trace"].default, "off");
+    assert.strictEqual(properties["shader-studio.languageServers.trace"], undefined);
   });
 
   test("opens shader color pickers only when their swatches are clicked", () => {

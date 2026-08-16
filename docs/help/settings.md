@@ -14,7 +14,6 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 | `shader-studio.languageServers.glsl.enabled` | boolean | `true` | No | Enable [GLSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
 | `shader-studio.languageServers.slang.enabled` | boolean | `true` | No | Enable [Slang completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
 | `shader-studio.editor.colorDecorators` | boolean | `true` | No | Show [editable color swatches](../features/language-servers.md#color-picker) for literal shader color constructors. |
-| `shader-studio.languageServers.trace` | string | `off` | No | Set language-service logging to `off`, `messages`, or `verbose`. |
 | `shader-studio.navigateOnBufferSwitch` | boolean | `true` | No | When enabled, switching buffers in the config panel or editor overlay syncs the active file in the VS Code editor. Works in combination with shader lock. |
 | `shader-studio.lockEditorGroup` | boolean | `true` | No | Lock the editor group when opening a shader panel, preventing other editors from opening in it. |
 

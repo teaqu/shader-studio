@@ -13,17 +13,15 @@ describe("languageServiceState", () => {
       glslEnabled: true,
       slangEnabled: true,
       colorDecorators: true,
-      trace: "off",
     });
   });
 
   it("updates languages independently without discarding other settings", () => {
-    setLanguageServiceSettings({ glslEnabled: false, trace: "verbose" });
+    setLanguageServiceSettings({ glslEnabled: false });
     expect(getLanguageServiceSettings()).toEqual({
       glslEnabled: false,
       slangEnabled: true,
       colorDecorators: true,
-      trace: "verbose",
     });
   });
 });

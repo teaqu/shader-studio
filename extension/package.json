@@ -194,12 +194,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show editable color swatches for literal GLSL vec3/vec4 and Slang float3/float4 colors."
-        },
-        "shader-studio.languageServers.trace": {
-          "type": "string",
-          "enum": ["off", "messages", "verbose"],
-          "default": "off",
-          "description": "Controls Shader Studio language-service logging."
         }
       }
     },
