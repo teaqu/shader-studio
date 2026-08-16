@@ -150,6 +150,9 @@ export class PanelManager {
       this.webviewTransport.removePanel(panel);
       this.panels.delete(panel);
       this.panelSlots.delete(panel);
+      if (this.panels.size === 0) {
+        this.messenger.getErrorHandler().clearPersistentErrors();
+      }
     });
 
     this.logger.info("Webview panel created");

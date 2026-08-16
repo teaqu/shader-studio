@@ -43,7 +43,8 @@ suite('PanelManager Test Suite', () => {
       removeTransport: sandbox.stub().returns(undefined),
       getErrorHandler: sandbox.stub().returns({
         handleError: sandbox.stub(),
-        handlePersistentError: sandbox.stub()
+        handlePersistentError: sandbox.stub(),
+        clearPersistentErrors: sandbox.stub(),
       }),
     } as any;
 
@@ -207,6 +208,56 @@ suite('PanelManager Test Suite', () => {
     );
     sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub);
     sinon.assert.calledWithExactly(mockShaderProvider.sendShaderFromEditor as sinon.SinonStub, mockEditor);
+  });
+
+  test('closing the final panel clears shader diagnostics', () => {
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+      get: sandbox.stub().returns(false),
+    } as any);
+    const mockWebviewPanel = createMockWebviewPanel();
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({
+      all: [{ tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One }],
+    });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    const errorHandler = mockMessenger.getErrorHandler();
+    const clearPersistentErrors = errorHandler.clearPersistentErrors as sinon.SinonStub;
+
+    panelManager.createPanel();
+    for (const call of mockWebviewPanel.onDidDispose.getCalls()) {
+      call.args[0]();
+    }
+
+    sinon.assert.calledOnce(clearPersistentErrors);
+  });
+
+  test('closing one of multiple panels preserves shader diagnostics', () => {
+    sandbox.stub(vscode.workspace, 'getConfiguration').returns({
+      get: sandbox.stub().returns(false),
+    } as any);
+    const firstPanel = createMockWebviewPanel();
+    const secondPanel = createMockWebviewPanel();
+    sandbox.stub(vscode.window, 'createWebviewPanel')
+      .onFirstCall().returns(firstPanel as any)
+      .onSecondCall().returns(secondPanel as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({
+      all: [{ tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One }],
+    });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+    const errorHandler = mockMessenger.getErrorHandler();
+    const clearPersistentErrors = errorHandler.clearPersistentErrors as sinon.SinonStub;
+
+    panelManager.createPanel();
+    panelManager.createPanel();
+    for (const call of firstPanel.onDidDispose.getCalls()) {
+      call.args[0]();
+    }
+
+    sinon.assert.notCalled(clearPersistentErrors);
   });
 
   test('createPanel uses empty tab group when available and locking is disabled', () => {
