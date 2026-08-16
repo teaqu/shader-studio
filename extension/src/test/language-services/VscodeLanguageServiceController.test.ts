@@ -221,6 +221,55 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("provides vertex-hook hovers for renamed GLSL and Slang parameters", async function() {
+    this.timeout(10_000);
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-vertex-hover-"));
+    const glslPath = path.join(directory, "mesh.glsl");
+    const slangPath = path.join(directory, "mesh.slang");
+    const glslSource = "void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const slangSource = "void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    try {
+      fs.writeFileSync(glslPath, glslSource);
+      fs.writeFileSync(slangPath, slangSource);
+      fs.writeFileSync(path.join(directory, "vertex.sha.json"), JSON.stringify({
+        version: "1.0",
+        passes: {
+          Glsl: { path: "fragment.glsl", vertex: "mesh.glsl" },
+          Slang: { path: "fragment.slang", vertex: "mesh.slang" },
+        },
+      }));
+      await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+
+      const glslDocument = await vscode.workspace.openTextDocument(glslPath);
+      await vscode.window.showTextDocument(glslDocument);
+      const glslPosition = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider",
+        glslDocument.uri,
+        new vscode.Position(0, glslSource.indexOf("deformed") + 1),
+      );
+      assert.ok(hoverText(glslPosition).includes("vertex position"), hoverText(glslPosition));
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+
+      const slangDocument = await vscode.workspace.openTextDocument(slangPath);
+      await vscode.window.showTextDocument(slangDocument);
+      const slangPosition = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider",
+        slangDocument.uri,
+        new vscode.Position(0, slangSource.indexOf("deformed") + 1),
+      );
+      const slangUv = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider",
+        slangDocument.uri,
+        new vscode.Position(0, slangSource.indexOf("textureUv") + 1),
+      );
+      assert.ok(hoverText(slangPosition).includes("vertex position"), hoverText(slangPosition));
+      assert.ok(hoverText(slangUv).includes("texture coordinate"), hoverText(slangUv));
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("publishes bundled Slang compiler diagnostics in VS Code", async () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({
