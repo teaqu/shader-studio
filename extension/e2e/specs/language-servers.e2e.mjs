@@ -261,11 +261,12 @@ describe('Shader language servers in VS Code', () => {
     assert.ok(!slangVertex.labels.includes('mainImage'));
     assert.ok(!slangVertex.labels.includes('writeOutput'));
 
-    const compute = await stageSnapshot(join(fixturePath, 'compute.slang'), ['numthreads', 'SV_DispatchThreadID', 'writeOutput']);
+    const compute = await stageSnapshot(join(fixturePath, 'compute.slang'), ['numthreads', 'SV_DispatchThreadID', 'iDispatch', 'writeOutput']);
     assert.match(compute.hovers.numthreads, /workgroup/i);
     assert.match(compute.hovers.SV_DispatchThreadID, /Global dispatch/i);
+    assert.match(compute.hovers.iDispatch, /repetition index/i);
     assert.match(compute.hovers.writeOutput, /compute pass output texture/i);
-    for (const label of ['numthreads', 'SV_DispatchThreadID', 'writeOutput']) {
+    for (const label of ['numthreads', 'SV_DispatchThreadID', 'iDispatch', 'writeOutput']) {
       assert.ok(compute.labels.includes(label), `Missing compute completion ${label}`);
     }
     assert.ok(!compute.labels.includes('mainImage'));

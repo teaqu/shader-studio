@@ -335,6 +335,22 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(layered).not.toContain("void writeOutput(uint2 coord, float4 color)");
   });
 
+  it("exposes the renderer compute repetition index only to compute authoring", () => {
+    const compute = buildSlangAuthoringModule({
+      ...baseEnvironment("slang"),
+      stage: "compute",
+    }).text;
+    const fragment = buildSlangAuthoringModule(baseEnvironment("slang")).text;
+
+    expect(compute).toContain("int iDispatch;");
+    expect(fragment).not.toContain("iDispatch");
+    expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iDispatch")).toMatchObject({
+      slangType: "int",
+      languages: ["slang"],
+      stages: ["compute"],
+    });
+  });
+
   it.each([
     "sampleIChannel0",
     "sampleIChannel0Vertex",

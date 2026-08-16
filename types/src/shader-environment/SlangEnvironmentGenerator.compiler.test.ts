@@ -138,6 +138,7 @@ describe.runIf(hasBundledSlangWasm)("Slang authoring modules with bundled slang-
 [numthreads(1, 1, 1)]
 void computeMain(uint3 dispatchId : SV_DispatchThreadID)
 {
+    int repeatIndex = iDispatch;
     ${call}
 }`);
 

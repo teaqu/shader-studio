@@ -126,13 +126,14 @@ void computeMain(
     uint3 groupId : SV_GroupID,
     uint3 localId : SV_GroupThreadID,
     uint groupIndex : SV_GroupIndex) {
+    int repeatIndex = iDispatch;
     writeOutput(dispatchId.xy, 0u, float4(1.0));
 }`;
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     const completions = await service.completion({ document: revision, position: { line: 1, character: 5 } });
     expect(completions.map((item) => item.label)).toEqual(expect.arrayContaining([
-      "shader", "numthreads", "SV_DispatchThreadID", "SV_GroupID", "SV_GroupThreadID", "SV_GroupIndex", "writeOutput",
+      "shader", "numthreads", "SV_DispatchThreadID", "SV_GroupID", "SV_GroupThreadID", "SV_GroupIndex", "iDispatch", "writeOutput",
     ]));
     expect(completions.find((item) => item.label === "writeOutput")?.detail)
       .toBe("void writeOutput(uint2 coord, uint layer, float4 color)");
@@ -140,7 +141,9 @@ void computeMain(
       .toContain("workgroup");
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 3, character: 28 } }))?.contents))
       .toContain("Global dispatch");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 7, character: 8 } }))?.contents))
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 7, character: 26 } }))?.contents))
+      .toContain("repetition index");
+    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 8, character: 8 } }))?.contents))
       .toContain("one layer");
   });
 

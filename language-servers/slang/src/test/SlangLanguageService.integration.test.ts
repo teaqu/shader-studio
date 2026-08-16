@@ -135,4 +135,42 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       await service.dispose();
     }
   }, 20_000);
+
+  it("recognizes the Shader Studio compute repetition index", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///workspace/substep.slang";
+    const source = [
+      '[shader("compute")]',
+      "[numthreads(1, 1, 1)]",
+      "void simulateSubstep(uint3 tid : SV_DispatchThreadID)",
+      "{",
+      "    bool readA = (iDispatch % 2) == 0;",
+      "}",
+    ].join("\n");
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "ComputeSubsteps",
+      stage: "compute",
+      outputLayers: 1,
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [],
+    };
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: source });
+
+      const diagnostics = await service.diagnostics({
+        document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
+      });
+
+      expect(diagnostics).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
 });
