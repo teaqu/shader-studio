@@ -47,10 +47,6 @@ vec4 accent = vec4(1.0, 0.5, 0.0, 1.0);
 float4 accent = float4(1.0, 0.5, 0.0, 1.0);
 ```
 
-Click the swatch to open VS Code's built-in color picker. Shader Studio sets the
-GLSL and Slang default to activate color decorators on click, so hovering the
-rest of the constructor continues to show normal shader hover information.
-
 ## Spell Checking
 
 If you use the optional **Code Spell Checker**
