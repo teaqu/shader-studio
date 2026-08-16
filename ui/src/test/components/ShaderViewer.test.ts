@@ -318,14 +318,14 @@ vi.mock('../../lib/ShaderPipeline', () => {
       getLockedShaderPath(): string | undefined;
     };
     private _lastEvent: any = null;
-    private _compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null = null;
+    private _compilationState: { setResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void } | null = null;
 
     constructor(
       _transport: any,
       _engine: any,
       locker: any,
       shaderDebugManager: any,
-      compilationState?: { setResult(result: { success: boolean; errors?: string[] }): void },
+      compilationState?: { setResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void },
     ) {
       this._locker = locker;
       this._shaderDebugManager = shaderDebugManager;
@@ -417,7 +417,7 @@ vi.mock('../../lib/ShaderPipeline', () => {
       }
     }
 
-    setCompilationState(compilationState: { setResult(result: { success: boolean; errors?: string[] }): void } | null): void {
+    setCompilationState(compilationState: { setResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void } | null): void {
       this._compilationState = compilationState;
     }
   };
@@ -2991,6 +2991,38 @@ describe('ShaderViewer', () => {
 
     // Error should be cleared
     expect(pauseButton.classList.contains('error')).toBe(false);
+  });
+
+  it('should show compilation warnings as an orange pause state', async () => {
+    const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+    const originalHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+    ShaderPipeline.prototype.handleShaderMessage = vi.fn(async function (
+      this: {
+        _compilationState?: {
+          setResult(result: { success: boolean; warnings?: string[] }): void;
+        };
+      },
+    ) {
+      const result = {
+        success: true,
+        warnings: ['BufferA: Buffer source file is not configured'],
+      };
+      this._compilationState?.setResult(result);
+      return result;
+    });
+
+    try {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await loadShader();
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).toHaveClass('warning');
+      expect(pauseButton).not.toHaveClass('error');
+      expect(screen.getByText('BufferA: Buffer source file is not configured')).toBeInTheDocument();
+    } finally {
+      ShaderPipeline.prototype.handleShaderMessage = originalHandleShaderMessage;
+    }
   });
 
   it('should ignore toggleEditorOverlay message when no shader is active', async () => {

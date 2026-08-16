@@ -458,6 +458,64 @@ describe('ShaderPipeline — overlay cursor gate', () => {
         5, 'float x = 1.0;', '/project/palette.slang',
       );
     });
+
+    it('accepts a locked configured-pass cursor from the current shader message while the renderer is rebuilding', () => {
+      vi.mocked(getEditorOverlayVisible).mockReturnValue(false);
+      vi.mocked(mocks.shaderLocker.isLocked).mockReturnValue(true);
+      vi.mocked(mocks.shaderLocker.getLockedShaderPath).mockReturnValue('/project/image.slang');
+      vi.mocked(mocks.renderEngine.getCurrentConfig).mockReturnValue(null);
+      (pipeline as any).lastEvent = {
+        data: {
+          type: 'shaderSource',
+          path: '/project/image.slang',
+          config: {
+            passes: {
+              Image: {},
+              ComputePattern: { type: 'compute', path: './passes/pattern.compute.slang' },
+            },
+          },
+          buffers: { ComputePattern: 'void buildPattern() {}' },
+        },
+      } as MessageEvent;
+
+      pipeline.handleCursorPositionMessage(cursorMsg('/project/passes/pattern.compute.slang'));
+
+      expect(mocks.shaderDebugManager.updateDebugLine).toHaveBeenCalledWith(
+        5, 'float x = 1.0;', '/project/passes/pattern.compute.slang',
+      );
+    });
+  });
+
+  describe('embedded cursor ordering', () => {
+    it('applies a queued shader cursor when the message arrives, not after compilation', () => {
+      (pipeline as unknown as {
+        shaderProcessor: { isCurrentlyProcessing(): boolean };
+      }).shaderProcessor = {
+        isCurrentlyProcessing: () => true,
+      };
+      const message = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: null,
+        path: '/project/image.slang',
+        buffers: {},
+        cursorPosition: {
+          line: 0,
+          character: 0,
+          lineContent: 'void mainImage() {}',
+          filePath: '/project/image.slang',
+        },
+      } satisfies ShaderSourceMessage;
+
+      void pipeline.handleShaderMessage({ data: message } as MessageEvent<ShaderSourceMessage>);
+
+      expect(mocks.shaderDebugManager.updateDebugLine).toHaveBeenCalledWith(
+        0,
+        'void mainImage() {}',
+        '/project/image.slang',
+        false,
+      );
+    });
   });
 
   describe('handleOverlayCursor', () => {

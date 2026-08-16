@@ -833,6 +833,46 @@ describe('ConfigPanel', () => {
       });
     });
 
+    it('suggests a Slang extension when creating a render buffer for a Slang shader', async () => {
+      const bufferConfig: ShaderConfig = {
+        version: '1.0',
+        passes: {
+          Image: { inputs: {} },
+          BufferA: { path: '', inputs: {} },
+        },
+      };
+      const mockManager = createMockConfigManager(['BufferA']);
+      mockManager.generateBufferPath.mockImplementation(
+        (_bufferName, language = 'glsl') => `image.buffera.${language}`,
+      );
+      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+
+      const { getAllByText } = render(ConfigPanel, {
+        config: bufferConfig,
+        language: 'slang',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.slang',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'BufferA',
+      });
+      await tick();
+
+      await fireEvent.click(getAllByText('Create')[0]);
+
+      expect(mockManager.generateBufferPath).toHaveBeenCalledWith('BufferA', 'slang');
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'createFile',
+        payload: {
+          shaderPath: '/test/image.slang',
+          suggestedPath: 'image.buffera.slang',
+          fileType: 'slang-buffer',
+          requestId: expect.any(String),
+        },
+      });
+    });
+
     it('does nothing when the manager cannot add a compute pass', async () => {
       const mockManager = createMockConfigManager([]);
       mockManager.addComputePass.mockReturnValue(null);

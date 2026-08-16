@@ -823,7 +823,7 @@
           {getWebviewUri}
           suggestedPath={configManager?.generateBufferPath(
             getActualBufferName(activeTab),
-            isComputeTab(activeTab) && language === 'slang' ? 'slang' : 'glsl',
+            language === 'slang' ? 'slang' : 'glsl',
           ) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}

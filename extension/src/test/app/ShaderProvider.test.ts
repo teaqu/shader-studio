@@ -676,6 +676,53 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(message.cursorPosition.lineContent, line3Text);
     });
 
+    test('refreshes an embedded cursor after async shader preparation', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const lines = [
+        'void mainImage(out vec4 color, in vec2 fragCoord) {',
+        '  vec2 uv = fragCoord / iResolution.xy;',
+        '  color = vec4(uv, 0.0, 1.0);',
+        '}',
+      ];
+      const providerWithDebug = new ShaderProvider(mockMessenger, () => true);
+      let releasePreparation!: () => void;
+      const preparationBlocked = new Promise<void>((resolve) => {
+        releasePreparation = resolve;
+      });
+      sandbox.stub(providerWithDebug as any, 'bundleScript').callsFake(async () => {
+        await preparationBlocked;
+        return true;
+      });
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      const editor = {
+        document: {
+          getText: () => lines.join('\n'),
+          uri: vscode.Uri.file(shaderPath),
+          fileName: shaderPath,
+          languageId: 'glsl',
+          lineCount: lines.length,
+          lineAt: (line: number) => ({ text: lines[line] }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any;
+      sandbox.stub(vscode.window, 'visibleTextEditors').value([editor]);
+
+      const sendPromise = providerWithDebug.sendShaderFromEditor(editor);
+      await Promise.resolve();
+      editor.selection.active = { line: 2, character: 4 };
+      releasePreparation();
+      await sendPromise;
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.deepStrictEqual(sendSpy.firstCall.args[0].cursorPosition, {
+        line: 2,
+        character: 4,
+        lineContent: lines[2],
+        filePath: shaderPath,
+      });
+    });
+
     for (const fixture of [
       {
         label: 'GLSL',
@@ -1054,7 +1101,7 @@ suite('ShaderProvider Test Suite', () => {
       } as any;
 
       sandbox.stub(vscode.window, 'visibleTextEditors').value([{
-        document: { uri: vscode.Uri.file(shaderPath) },
+        document,
         selection: {
           active: { line: 3, character: 12 },
         },
@@ -1092,7 +1139,7 @@ suite('ShaderProvider Test Suite', () => {
       } as any;
 
       sandbox.stub(vscode.window, 'visibleTextEditors').value([{
-        document: { uri: vscode.Uri.file(shaderPath) },
+        document,
         selection: { active: { line: 50, character: 0 } },
       } as any]);
 

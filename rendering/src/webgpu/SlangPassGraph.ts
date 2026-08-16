@@ -127,8 +127,9 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     const path = "path" in passConfig ? passConfig.path : undefined;
     const source = options.buffers[name] ?? "";
     if (source.trim() === "") {
-      const pathInfo = path ? ` (path: "${path}")` : "";
-      errors.push(`${name}: Buffer file not found or is empty${pathInfo}`);
+      warnings.push(path
+        ? `${name}: Buffer file not found or is empty (path: "${path}")`
+        : `${name}: Buffer source file is not configured`);
       continue;
     }
 

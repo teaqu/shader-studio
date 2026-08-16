@@ -209,6 +209,45 @@ suite('ShaderConfigProcessor Test Suite', () => {
     });
   });
 
+  test('reports a missing buffer source as a warning', () => {
+    fsExistsSyncStub.returns(false);
+
+    configProcessor.processConfig({
+      version: '1.0',
+      passes: {
+        Image: {},
+        BufferA: { path: './missing-buffer.glsl' },
+      },
+    }, '/path/to/shader.glsl', {});
+
+    sinon.assert.calledOnce(mockErrorHandler.handlePersistentError);
+    assert.deepStrictEqual(mockErrorHandler.handlePersistentError.firstCall.args[0], {
+      type: 'warning',
+      payload: ['Buffer file not found: /path/to/missing-buffer.glsl'],
+    });
+  });
+
+  test('reports an unreadable buffer source as a warning', () => {
+    fsExistsSyncStub.returns(true);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').throws(new Error('permission denied'));
+
+    configProcessor.processConfig({
+      version: '1.0',
+      passes: {
+        Image: {},
+        BufferA: { path: './unreadable-buffer.glsl' },
+      },
+    }, '/path/to/shader.glsl', {});
+
+    sinon.assert.notCalled(mockErrorHandler.handleError);
+    sinon.assert.calledOnce(mockErrorHandler.handlePersistentError);
+    assert.deepStrictEqual(mockErrorHandler.handlePersistentError.firstCall.args[0], {
+      type: 'warning',
+      payload: ['Failed to read buffer file: /path/to/unreadable-buffer.glsl'],
+    });
+  });
+
   suite('constructor injection', () => {
     test('should use injected error handler for errors', () => {
       fsExistsSyncStub.returns(false);

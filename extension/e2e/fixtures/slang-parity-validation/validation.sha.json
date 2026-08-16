@@ -5,6 +5,19 @@
       "inputs": {
         "iChannel0": { "type": "buffer", "source": "BufferA" },
         "iChannel1": { "type": "buffer", "source": "ComputePattern" },
+        "iChannel2": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel3": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel4": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel5": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel6": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel7": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel8": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel9": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel10": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel11": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel12": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel13": { "type": "texture", "path": "./orientation-texture.svg" },
+        "iChannel14": { "type": "texture", "path": "./orientation-texture.svg" },
         "iChannel15": { "type": "texture", "path": "./orientation-texture.svg" }
       }
     },

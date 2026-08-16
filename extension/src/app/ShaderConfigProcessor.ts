@@ -146,15 +146,15 @@ export class ShaderConfigProcessor {
         this.logger.warn(
           `Failed to read buffer content for ${passName}: ${bufferPath}`,
         );
-        this.errorHandler.handleError({
-          type: 'error',
+        this.errorHandler.handlePersistentError({
+          type: 'warning',
           payload: [`Failed to read buffer file: ${bufferPath}`]
         });
       }
     } else {
       // File not found
       this.errorHandler.handlePersistentError({
-        type: 'error',
+        type: 'warning',
         payload: [`Buffer file not found: ${bufferPath}`]
       });
     }

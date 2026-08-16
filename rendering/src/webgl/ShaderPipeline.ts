@@ -120,7 +120,7 @@ export class ShaderPipeline {
 
     this.applyCompiledPipeline(
       path,
-      nextPasses,
+      nextPasses.filter((pass) => pass.name === "common" || compilation.passShaders![pass.name]),
       compilation.passShaders,
       pathChanged,
     );
@@ -157,14 +157,6 @@ export class ShaderPipeline {
       .map(passName => {
         const pass = config?.passes?.[passName];
         const shaderSrc = buffers[passName] || (passName === "Image" ? code : "");
-
-        // Skip buffer passes with no path (not yet configured)
-        if (passName !== "Image") {
-          const bufferPath = (pass as BufferPass)?.path;
-          if (!bufferPath && !shaderSrc) {
-            return null;
-          }
-        }
 
         // Skip common buffer if there's no meaningful content
         if (passName === "common") {
@@ -212,6 +204,7 @@ export class ShaderPipeline {
     passShaders?: Record<string, PiShader>;
   }> {
     const newPassShaders: Record<string, PiShader> = {};
+    const warnings: string[] = [];
 
     // Extract common code if it exists
     const commonBufferPass = candidatePasses.find(pass => pass.name === "common");
@@ -225,12 +218,10 @@ export class ShaderPipeline {
 
       // Check if buffer pass has empty shader source (likely missing or invalid file)
       if (!pass.shaderSrc || pass.shaderSrc.trim() === "") {
-        this.cleanupPartialShaders(newPassShaders);
-        const pathInfo = pass.path ? ` (path: "${pass.path}")` : "";
-        return {
-          success: false,
-          errors: [`${pass.name}: Buffer file not found or is empty${pathInfo}. Please check that the file exists and contains valid shader code.`],
-        };
+        warnings.push(pass.path
+          ? `${pass.name}: Buffer file not found or is empty (path: "${pass.path}")`
+          : `${pass.name}: Buffer source file is not configured`);
+        continue;
       }
 
       const slotAssignments = assignInputSlots(pass.inputs);
@@ -303,6 +294,7 @@ export class ShaderPipeline {
     return {
       success: true,
       passShaders: newPassShaders,
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
 

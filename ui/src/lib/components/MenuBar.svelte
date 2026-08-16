@@ -40,6 +40,7 @@
     isLocked?: boolean;
     canvasElement?: HTMLCanvasElement | null;
     errors?: string[];
+    warnings?: string[];
     onReset?: () => void;
     onRefresh?: () => void;
     onTogglePause?: () => void;
@@ -83,6 +84,7 @@
     isLocked = false,
     canvasElement = null,
     errors = [],
+    warnings = [],
     onReset = () => {},
     onRefresh = () => {},
     onTogglePause = () => {},
@@ -135,7 +137,9 @@
 
 
   const hasErrors = $derived(errors.length > 0);
+  const hasWarnings = $derived(warnings.length > 0);
   const errorMessage = $derived(hasErrors ? errors.join('\n') : '');
+  const statusMessage = $derived(hasErrors ? errorMessage : warnings.join('\n'));
 
   let currentTime = $state(0.0);
   let timeUpdateHandle: number | null = null;
@@ -444,7 +448,7 @@
 
   async function copyErrors() {
     try {
-      await navigator.clipboard.writeText(errorMessage);
+      await navigator.clipboard.writeText(statusMessage);
     } catch {
     // clipboard write failed — silently ignore
     }
@@ -585,6 +589,7 @@
         onclick={onTogglePause}
         aria-label="Toggle pause"
         class:error={hasErrors}
+        class:warning={!hasErrors && hasWarnings}
         disabled={!hasShader}
         onmouseenter={handlePauseTooltipTriggerEnter}
         onmouseleave={handlePauseTooltipTriggerLeave}
@@ -595,9 +600,10 @@
           <i class="codicon codicon-debug-pause"></i>
         {/if}
       </button>
-      {#if hasErrors}
+      {#if hasErrors || hasWarnings}
         <div
           class="error-tooltip"
+          class:warning={!hasErrors && hasWarnings}
           class:visible={isPauseTooltipVisible}
           role="presentation"
           onmouseenter={handlePauseTooltipEnter}
@@ -611,7 +617,7 @@
             >
               <i class="codicon codicon-copy"></i>
             </button>
-            {errorMessage}
+            {statusMessage}
           </div>
         </div>
       {/if}

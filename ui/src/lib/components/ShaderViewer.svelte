@@ -135,6 +135,7 @@
   let isLocked = $state(false);
   let hasShader = $state(false);
   let errors = $state<string[]>([]);
+  let warnings = $state<string[]>([]);
   let currentFPS = $state(0);
   let canvasWidth = $state(0);
   let canvasHeight = $state(0);
@@ -305,6 +306,7 @@
     canvasHeight,
     isLocked,
     errors,
+    warnings,
     canvasElement: glCanvas,
     onReset: handleReset,
     onRefresh: handleRefresh,
@@ -981,6 +983,7 @@
 
   function applyCompilationResult(result: CompilationResult) {
     errors = result.success ? [] : (result.errors && result.errors.length > 0 ? result.errors : []);
+    warnings = result.warnings ?? [];
   }
 
   async function handleMessage(event: MessageEvent): Promise<void> {
@@ -989,6 +992,7 @@
     if (type === 'error') {
       const payload = event.data.payload;
       errors = Array.isArray(payload) ? payload : [payload];
+      warnings = [];
       return;
     }
 

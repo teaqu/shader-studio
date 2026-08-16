@@ -7,6 +7,11 @@ const defaultWorkspacePath = join(extensionPath, 'e2e', 'fixtures', 'slang-parit
 const workspacePath = resolve(process.env.SHADER_STUDIO_E2E_WORKSPACE ?? defaultWorkspacePath);
 const outputDir = join(extensionPath, '.wdio');
 
+// The extension development host exports this for its own child processes. If
+// inherited here, the VS Code Electron binary starts as plain Node and rejects
+// every WebDriver browser flag before a test session can be created.
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 process.env.SHADER_STUDIO_E2E_WORKSPACE = workspacePath;
 
 export const config = {

@@ -349,9 +349,8 @@ describe("buildSlangPassGraph", () => {
       canvasHeight: 64,
     });
 
-    expect(graph.errors).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
+    expect(graph.warnings).toContain("BufferA: Buffer file not found or is empty (path: \"buffer-a.slang\")");
     expect(graph.errors).toContain("Image: iChannel1 references missing buffer \"MissingPass\"");
-    expect(graph.warnings).toEqual([]);
     expect(graph.passes.find((pass) => pass.name === "Image")?.channels).toContainEqual({
       kind: "audio", slot: 0, key: "iChannel0", path: "noise.mp3",
     });
@@ -1218,7 +1217,7 @@ describe("Slang compute passes", () => {
     expect(graph.passes[0].outputLayers).toBe(1);
   });
 
-  it("reports a missing compute source with its configured path", () => {
+  it("warns about a missing compute source with its configured path", () => {
     const graph = build({
       version: "1",
       passes: {
@@ -1227,7 +1226,22 @@ describe("Slang compute passes", () => {
       },
     }, { ComputeMain: "" });
 
-    expect(graph.errors).toContain('ComputeMain: Buffer file not found or is empty (path: "compute.slang")');
+    expect(graph.errors).toEqual([]);
+    expect(graph.warnings).toContain('ComputeMain: Buffer file not found or is empty (path: "compute.slang")');
+    expect(graph.passes.map(({ name }) => name)).toEqual(["Image"]);
+  });
+
+  it("treats a newly added render buffer without a source path as a warning", () => {
+    const graph = build({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        BufferA: { path: "", inputs: {} },
+      },
+    }, {});
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.warnings).toContain("BufferA: Buffer source file is not configured");
     expect(graph.passes.map(({ name }) => name)).toEqual(["Image"]);
   });
 });

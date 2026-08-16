@@ -1494,6 +1494,21 @@ describe('MenuBar Component', () => {
   // Inspector toggle has been moved to DebugPanel
 
   describe('Error Tooltip Display', () => {
+    it('shows an orange warning state on the pause button without marking it as an error', () => {
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          errors: [],
+          warnings: ['BufferA: Buffer source file is not configured'],
+        },
+      });
+
+      const pauseButton = screen.getByLabelText('Toggle pause');
+      expect(pauseButton).toHaveClass('warning');
+      expect(pauseButton).not.toHaveClass('error');
+      expect(screen.getByText('BufferA: Buffer source file is not configured')).toBeInTheDocument();
+    });
+
     it('should not show error class on pause button when no errors', () => {
       renderMenuBar({
         props: {

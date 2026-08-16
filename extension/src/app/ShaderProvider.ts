@@ -565,6 +565,27 @@ export class ShaderProvider {
     }
   }
 
+  private refreshPreparedCursorPosition(
+    cursorPosition: ShaderSourceMessage["cursorPosition"],
+  ): ShaderSourceMessage["cursorPosition"] {
+    if (!cursorPosition || !this.getDebugModeEnabled()) {
+      return cursorPosition;
+    }
+    const editor = vscode.window.visibleTextEditors.find(
+      (candidate) => path.normalize(candidate.document.uri.fsPath) === path.normalize(cursorPosition.filePath),
+    );
+    if (!editor) {
+      return cursorPosition;
+    }
+    const line = Math.max(0, Math.min(editor.selection.active.line, editor.document.lineCount - 1));
+    return {
+      line,
+      character: editor.selection.active.character,
+      lineContent: editor.document.lineAt(line).text,
+      filePath: cursorPosition.filePath,
+    };
+  }
+
   private async sendMainImageShader(
     shaderPath: string,
     code: string,
@@ -629,6 +650,7 @@ export class ShaderProvider {
     ) {
       return;
     }
+    message.cursorPosition = this.refreshPreparedCursorPosition(message.cursorPosition);
     this.messenger.send(message);
     this.startScriptPolling(config);
     this.logger.debug("Shader message sent to webview");

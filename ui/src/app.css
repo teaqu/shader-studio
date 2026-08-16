@@ -39,6 +39,9 @@
   --vscode-inputValidation-errorBackground: #f1d8d8;
   --vscode-inputValidation-errorBorder: #a1260d;
   --vscode-inputValidation-errorForeground: #a1260d;
+  --shader-studio-warning-foreground: #c24100;
+  --shader-studio-warning-background: #ffdfc2;
+  --shader-studio-warning-border: #c24100;
 }
 
 :root[data-theme="dark"] {
@@ -67,6 +70,9 @@
   --vscode-inputValidation-errorBackground: #5a1d1d;
   --vscode-inputValidation-errorBorder: #f48771;
   --vscode-inputValidation-errorForeground: #f48771;
+  --shader-studio-warning-foreground: #ff7a00;
+  --shader-studio-warning-background: #7a3000;
+  --shader-studio-warning-border: #ff7a00;
 }
 
 a {
@@ -298,6 +304,16 @@ canvas {
   color: var(--vscode-button-foreground);
 }
 
+.menu-bar button.warning {
+  color: var(--shader-studio-warning-foreground);
+  background-color: var(--shader-studio-warning-background);
+}
+
+.menu-bar button.warning:hover {
+  background-color: var(--shader-studio-warning-border);
+  color: var(--vscode-button-foreground);
+}
+
 .pause-button-container {
   position: relative;
   display: inline-flex;
@@ -327,6 +343,12 @@ canvas {
   user-select: text;
   cursor: text;
   transition: opacity 0.1s ease-in;
+}
+
+.error-tooltip.warning {
+  color: var(--shader-studio-warning-foreground);
+  background-color: var(--shader-studio-warning-background);
+  border-color: var(--shader-studio-warning-border);
 }
 
 .error-tooltip-content {

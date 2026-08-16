@@ -36,6 +36,7 @@ export class ShaderPipeline {
   private pendingShaderEvent: {
     event: MessageEvent;
     resolve: (result: CompilationResult | undefined) => void;
+    cursorHandled: boolean;
   } | null = null;
   private compilationState: Pick<ShaderCompilationState, 'setResult'> | null = null;
   private debugCompileInFlight = false;
@@ -67,6 +68,13 @@ export class ShaderPipeline {
   public async handleShaderMessage(
     event: MessageEvent,
   ): Promise<CompilationResult | undefined> {
+    return this.processShaderMessage(event, false);
+  }
+
+  private async processShaderMessage(
+    event: MessageEvent,
+    cursorHandled: boolean,
+  ): Promise<CompilationResult | undefined> {
     try {
       const message = event.data as ShaderSourceMessage;
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
@@ -80,23 +88,23 @@ export class ShaderPipeline {
         return undefined;
       }
 
-      if (this.shaderProcessor.isCurrentlyProcessing()) {
-        this.pendingShaderEvent?.resolve(undefined);
-        return await new Promise<CompilationResult | undefined>((resolve) => {
-          this.pendingShaderEvent = { event, resolve };
-        });
-      }
-
-      // Update cursor position if provided. Don't notify capture here: the
-      // currentShaderCode reactive change fires the $effect, and the paired
-      // standalone cursorPosition message handles the capture trigger.
-      if (cursorPosition) {
+      // Apply cursors in message-arrival order. Compilation can queue a shader
+      // message for later, but a newer standalone cursor must remain newer than
+      // the embedded cursor on that queued message.
+      if (!cursorHandled && cursorPosition) {
         const { line, lineContent, filePath } = cursorPosition;
 
         // If shader is locked, accept cursors from the locked file and its buffer files
         if (this.isCursorFileAccepted(filePath, message)) {
           this.shaderDebugManager.updateDebugLine(line, lineContent, filePath, false);
         }
+      }
+
+      if (this.shaderProcessor.isCurrentlyProcessing()) {
+        this.pendingShaderEvent?.resolve(undefined);
+        return await new Promise<CompilationResult | undefined>((resolve) => {
+          this.pendingShaderEvent = { event, resolve, cursorHandled: true };
+        });
       }
 
       if (messageTarget.kind === 'buffer') {
@@ -208,7 +216,7 @@ export class ShaderPipeline {
     if (this.pendingShaderEvent) {
       const pending = this.pendingShaderEvent;
       this.pendingShaderEvent = null;
-      void this.handleShaderMessage(pending.event).then(pending.resolve);
+      void this.processShaderMessage(pending.event, pending.cursorHandled).then(pending.resolve);
     }
 
     if (result.superseded) {
@@ -477,15 +485,15 @@ export class ShaderPipeline {
 
   private isCursorFileAccepted(filePath: string, message?: ShaderSourceMessage): boolean {
     const lockedPath = this.shaderLocker.getLockedShaderPath();
+    const currentMessage = message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined);
     if (this.shaderLocker.isLocked()) {
       return !lockedPath
         || filePath === lockedPath
         || this.bufferPathResolver.bufferFileExistsInCurrentShader(filePath)
-        || this.messageContainsSlangModule(message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined), filePath)
-        || this.messageContainsBufferFile(message, filePath);
+        || this.messageContainsSlangModule(currentMessage, filePath)
+        || this.messageContainsBufferFile(currentMessage, filePath);
     }
 
-    const currentMessage = message ?? (this.lastEvent?.data as ShaderSourceMessage | undefined);
     if (!currentMessage?.path) {
       return true;
     }

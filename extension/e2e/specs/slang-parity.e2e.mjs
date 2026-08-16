@@ -83,14 +83,17 @@ async function expressionText(name) {
 }
 
 async function isActive(selector) {
-  return browser.execute((targetSelector) =>
-    document.querySelector(targetSelector)?.classList.contains('active') ?? false,
-  selector);
+  return browser.execute((targetSelector) => {
+    const element = Array.from(document.querySelectorAll(targetSelector))
+      .find((candidate) => candidate.getClientRects().length > 0);
+    return element?.classList.contains('active') ?? false;
+  }, selector);
 }
 
 async function activate(selector) {
   await browser.execute((targetSelector) => {
-    const element = document.querySelector(targetSelector);
+    const element = Array.from(document.querySelectorAll(targetSelector))
+      .find((candidate) => candidate.getClientRects().length > 0);
     if (!(element instanceof HTMLElement)) {
       throw new Error(`Missing control: ${targetSelector}`);
     }
@@ -101,13 +104,14 @@ async function activate(selector) {
 }
 
 async function ensureButtonState(selector, active) {
-  const button = await $(selector);
-  await button.waitForDisplayed();
+  await browser.waitUntil(() => browser.execute((targetSelector) =>
+    Array.from(document.querySelectorAll(targetSelector))
+      .some((candidate) => candidate.getClientRects().length > 0),
+  selector), { timeoutMsg: `No visible control matched ${selector}` });
   if (await isActive(selector) !== active) {
     await activate(selector);
   }
   await browser.waitUntil(async () => await isActive(selector) === active);
-  return button;
 }
 
 describe('Slang parity in the VS Code webview', () => {
