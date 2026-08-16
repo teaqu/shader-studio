@@ -722,6 +722,21 @@ describe("GlslParser", () => {
       expect(lineMap.get('col')).toBe(3);
     });
 
+    it("should preserve declaration locations for parameters and locals", () => {
+      const lines = [
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  vec2 uv = fragCoord / iResolution.xy;",
+        "  fragColor = vec4(uv, 0.0, 1.0);",
+        "}",
+      ];
+      const functionInfo = GlslParser.findEnclosingFunction(lines, 2);
+      const declarationLines = GlslParser.buildVariableDeclarationLineMap(lines, 2, functionInfo);
+
+      expect(declarationLines.get("fragColor")).toBe(0);
+      expect(declarationLines.get("fragCoord")).toBe(0);
+      expect(declarationLines.get("uv")).toBe(1);
+    });
+
     it("should track reassignments as closest occurrence", () => {
       const lines = [
         "float foo(vec3 p, float r) {",

@@ -215,14 +215,13 @@ export class GlslParser {
 
     if (document.parsedSuccessfully && functionInfo.name && functionInfo.start >= 0) {
       for (const scope of GlslParser.getVisibleScopes(document, functionInfo, upToLine)) {
-        for (const [bindingName, binding] of Object.entries(scope.bindings)) {
-          const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
+        for (const symbol of GlslParser.getScopeVariables(document, scope)) {
+          const declarationLine = GlslParser.getCompatibilityDeclarationLine(symbol);
           if (
-            declarationLine !== null
-            && declarationLine <= upToLine
-            && (!knownVars || knownVars.has(bindingName))
+            declarationLine <= upToLine
+            && (!knownVars || knownVars.has(symbol.name))
           ) {
-            declarationLines.set(bindingName, declarationLine);
+            declarationLines.set(symbol.name, declarationLine);
           }
         }
       }

@@ -298,7 +298,7 @@
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
-    "build:deps": "cd ../types && npm run build && cd ../language-servers/core && npm run build && cd ../glsl-analysis && npm run build && cd ../glsl && npm run build && cd ../slang && npm run build && cd ../../debug && npm run build && cd ../rendering && npm run build && cd ../utils && npm run build",
+    "build:deps": "cd ../types && npm run build && cd ../language-servers/core && npm run build && cd ../glsl-analysis && npm run build && cd ../glsl && npm run build && cd ../slang && npm run build && cd ../../utils && npm run build && cd ../debug && npm run build && cd ../rendering && npm run build",
     "build:force": "npm run package",
     "build": "npm run package",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
