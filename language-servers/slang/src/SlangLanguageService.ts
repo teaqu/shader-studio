@@ -13,6 +13,7 @@ import {
 } from "vscode-languageserver-protocol";
 import {
   DocumentStore,
+  VirtualFileSystem,
   createLiteralColorPresentations,
   findLiteralConstructorColors,
   isPositionInComment,
@@ -448,7 +449,12 @@ export class SlangLanguageService implements LanguageService {
         }
       }
       const prelude = buildSlangAuthoringModule(state.environment).text;
-      const source = prelude ? `${prelude}\n${stripEditorImport(state.document.text)}` : stripEditorImport(state.document.text);
+      const authoredSource = resolveCompilerIncludes(
+        stripEditorImport(state.document.text),
+        state.document.uri,
+        state.environment.virtualFiles,
+      );
+      const source = prelude ? `${prelude}\n${authoredSource}` : authoredSource;
       const compiled = session.loadModuleFromSource(source, moduleName(state.document.text, state.document.uri), sourcePath(state.document.uri));
       if (compiled) {
         compiled.delete?.();
@@ -724,6 +730,39 @@ function consumeCompilerTargets(targets: import("./slangLanguageServerTypes.js")
 
 function stripEditorImport(source: string): string {
   return source.replace(/^\s*import\s+(?:shader_studio|"shader-studio\.slang")\s*;?.*$/gm, (line) => `//${" ".repeat(Math.max(0, line.length - 2))}`);
+}
+
+const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
+const INCLUDE_IDENT_PATTERN = /^[ \t]*__include[ \t]+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)[ \t]*;?[ \t]*$/gm;
+
+function resolveCompilerIncludes(
+  source: string,
+  ownerUri: string,
+  files: ShaderAuthoringEnvironment["virtualFiles"],
+): string {
+  const fileSystem = new VirtualFileSystem();
+  fileSystem.replaceEnvironment(files);
+  const visited = new Set<string>();
+
+  const resolveNested = (text: string, containingUri: string): string => {
+    const include = (match: string, reference: string): string => {
+      const uri = fileSystem.resolve(containingUri, reference);
+      const file = uri ? fileSystem.read(uri) : undefined;
+      if (!uri || !file || visited.has(uri)) {
+        return match;
+      }
+      visited.add(uri);
+      return resolveNested(file.text, uri);
+    };
+    const strings = text.replace(INCLUDE_STRING_PATTERN, (match: string, hashPath: string, includePath: string) => (
+      include(match, hashPath || includePath)
+    ));
+    return strings.replace(INCLUDE_IDENT_PATTERN, (match: string, identifier: string) => (
+      include(match, `${identifier.replace(/_/g, "-").replace(/\./g, "/")}.slang`)
+    ));
+  };
+
+  return resolveNested(source, ownerUri);
 }
 
 function sourcePath(uri: string): string {
