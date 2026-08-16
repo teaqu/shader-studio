@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "texture",
+          "path": "./assets/orientation-texture.svg",
+          "filter": "nearest",
+          "wrap": "clamp",
+          "vflip": true
+        },
+        "iChannel1": {
+          "type": "audio",
+          "path": "./assets/audio-channel-test.wav",
+          "muted": true
+        },
+        "iChannel2": {
+          "type": "keyboard"
+        },
+        "iChannel3": {
+          "type": "cubemap",
+          "path": "./assets/cubemap-cross.svg",
+          "filter": "nearest",
+          "wrap": "clamp",
+          "vflip": false
+        }
+      }
+    }
+  }
+}

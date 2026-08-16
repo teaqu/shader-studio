@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel3": {
+          "type": "texture",
+          "path": "./assets/orientation-texture.svg",
+          "filter": "nearest",
+          "wrap": "clamp",
+          "vflip": true
+        }
+      },
+      "vertex": "./vertex_glsl_vertex.glsl"
+    }
+  }
+}

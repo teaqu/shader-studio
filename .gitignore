@@ -25,6 +25,8 @@ coverage/
 .vscode/
 !.vscode/tasks.json
 !.vscode/launch.json
+!rendering/src/test/fixtures/shader-corpus/.vscode/
+!rendering/src/test/fixtures/shader-corpus/.vscode/**
 .history/
 .github/*
 !.github/workflows/

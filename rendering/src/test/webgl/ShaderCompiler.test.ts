@@ -121,6 +121,18 @@ describe("ShaderCompiler", () => {
       expect(vertexSource).toContain("mainVertex(_vertexPosition, _vertexNormal, _vertexUv);");
     });
 
+    it("does not duplicate sparse built-in channel names used as slot aliases", () => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        slotAssignments: [{ slot: 0, key: "iChannel3", isCustomName: true }],
+        channelTypes: ["2D", "2D", "2D", "2D"],
+        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
+      });
+
+      expect(vertexSource.match(/uniform sampler2D iChannel3;/g)).toHaveLength(1);
+      expect(vertexSource.match(/vec4 sampleIChannel3\(vec2 uv\)/g)).toHaveLength(1);
+      expect(vertexSource).toContain("return textureLod(iChannel3, uv, 0.0);");
+    });
+
     it("provides explicit-LOD cubemap and custom-name helpers to vertex hooks", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         slotAssignments: [{ slot: 1, key: "environment", isCustomName: true }],

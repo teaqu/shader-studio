@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "passes": {
+    "BufferA": {
+      "path": "./cat-head.glsl",
+      "geometry": {
+        "type": "model",
+        "path": "./two-meshes.glb",
+        "mesh": "CatHead"
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      },
+      "geometry": {
+        "type": "model",
+        "path": "./two-meshes.glb",
+        "mesh": "CatBody"
+      }
+    }
+  }
+}

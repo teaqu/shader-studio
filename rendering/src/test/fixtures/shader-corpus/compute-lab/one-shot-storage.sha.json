@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "storage": {
+    "seed": {
+      "count": 1,
+      "stride": 16,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "./passes/one-shot-init.slang",
+      "dispatch": {
+        "cover": "seed"
+      },
+      "dispatchOnce": false,
+      "dispatchCount": 1
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

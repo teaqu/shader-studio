@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeRaw": {
+      "type": "compute",
+      "path": "./passes/raw-workgroups.slang",
+      "resolution": {
+        "width": 256,
+        "height": 128
+      },
+      "dispatch": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeRaw"
+        }
+      },
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

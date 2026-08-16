@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {},
+      "geometry": {
+        "type": "sphere"
+      },
+      "resolution": {
+        "scale": 1
+      }
+    },
+    "CompA": {
+      "type": "compute",
+      "path": "./shadertoy2.computea.slang",
+      "inputs": {}
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        },
+        "iChannel1": {
+          "type": "buffer",
+          "source": "BufferB"
+        },
+        "iChannel2": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      },
+      "geometry": {
+        "type": "model",
+        "path": "./two-meshes.glb",
+        "mesh": "CatHead"
+      }
+    },
+    "BufferA": {
+      "path": "./buffers/buffer_a.slang",
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    },
+    "BufferB": {
+      "path": "./buffers/buffer_b.slang",
+      "resolution": {
+        "scale": 0.5
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    },
+    "common": {
+      "path": "./common.slang"
+    }
+  }
+}

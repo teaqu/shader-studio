@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "storage": {
+    "vertexTransform": {
+      "count": 1,
+      "stride": 16,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "./vertex_init.slang",
+      "dispatch": {
+        "cover": "vertexTransform"
+      },
+      "dispatchOnce": true
+    },
+    "Image": {
+      "inputs": {
+        "iChannel3": {
+          "type": "texture",
+          "path": "@/assets/cubemap-cross.svg"
+        }
+      },
+      "vertex": "./vertex_vertex.slang"
+    }
+  }
+}

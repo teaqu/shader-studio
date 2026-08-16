@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeCoverage": {
+      "type": "compute",
+      "path": "./passes/workgroup-coverage.slang",
+      "resolution": {
+        "width": 320,
+        "height": 96
+      },
+      "dispatch": {
+        "x": 153,
+        "y": 100,
+        "z": 1
+      },
+      "dispatchCount": 1,
+      "outputLayers": 1
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeCoverage"
+        }
+      },
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

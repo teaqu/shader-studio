@@ -294,6 +294,29 @@ export class CodeGenerator {
     return { lines: result, shadowVarName };
   }
 
+  static insertBlockShadowVariable(
+    lines: string[],
+    debugLineIndex: number,
+    blockHeaderLine: number,
+    varInfo: VarInfo,
+  ): { lines: string[]; shadowVarName: string } {
+    const shadowVarName = '_dbgShadow';
+    const insertionLine = CodeGenerator.extendForMultiLine(lines, debugLineIndex);
+    const result: string[] = [];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      if (lineIndex === blockHeaderLine) {
+        const indent = lines[lineIndex].match(/^(\s*)/)?.[1] ?? '  ';
+        result.push(`${indent}${varInfo.type} ${shadowVarName};`);
+      }
+      result.push(lines[lineIndex]);
+      if (lineIndex === insertionLine) {
+        const indent = lines[lineIndex].match(/^(\s*)/)?.[1] ?? '    ';
+        result.push(`${indent}${shadowVarName} = ${varInfo.name};`);
+      }
+    }
+    return { lines: result, shadowVarName };
+  }
+
   static generateDefaultParameters(
     lines: string[],
     functionInfo: FunctionInfo,

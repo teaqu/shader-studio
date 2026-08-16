@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeLife": {
+      "type": "compute",
+      "path": "./passes/game-of-life.slang",
+      "resolution": {
+        "width": 96,
+        "height": 54
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeLife"
+        }
+      }
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeLife"
+        }
+      }
+    }
+  }
+}

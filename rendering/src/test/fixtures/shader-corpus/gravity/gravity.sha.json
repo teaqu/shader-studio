@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "storage": {
+    "bodies": {
+      "count": 256,
+      "elementType": "Body"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "init.slang",
+      "entryPoint": "initBodies",
+      "dispatch": { "cover": "bodies" },
+      "dispatchOnce": true
+    },
+    "ComputeSim": {
+      "type": "compute",
+      "path": "sim.slang",
+      "entryPoint": "simulateBodies",
+      "dispatch": { "cover": "bodies" },
+      "dispatchCount": 4
+    },
+    "ComputePresent": {
+      "type": "compute",
+      "path": "present.slang",
+      "entryPoint": "renderBodies",
+      "resolution": { "scale": 0.5 },
+      "outputLayers": 1
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputePresent"
+        }
+      }
+    },
+    "common": { "path": "common.slang" }
+  }
+}

@@ -683,9 +683,28 @@ export class ShaderDebugger {
 
     // Insert shadow variable if debug line is inside a loop
     const debugLineIndex = debugLine; // index within truncatedLines = same as absolute line number
-    const { lines: withShadow, shadowVarName } = CodeGenerator.insertShadowVariable(
-      truncatedLines, debugLineIndex, varInfo, containingLoops
-    );
+    let withShadow: string[];
+    let shadowVarName: string | null;
+    const block = containingLoops.length === 0
+      ? ShaderDebugger.findClosedContainingBlock(lines, functionStart, debugLine, truncationEnd)
+      : null;
+    const declarationLine = GlslParser.buildVariableDeclarationLineMap(
+      lines,
+      debugLine,
+      { start: functionStart, end: lines.length - 1, name: 'mainImage' },
+    ).get(varInfo.name);
+    if (block && declarationLine !== undefined && declarationLine > block.openLine) {
+      ({ lines: withShadow, shadowVarName } = CodeGenerator.insertBlockShadowVariable(
+        truncatedLines,
+        debugLineIndex,
+        block.headerLine,
+        varInfo,
+      ));
+    } else {
+      ({ lines: withShadow, shadowVarName } = CodeGenerator.insertShadowVariable(
+        truncatedLines, debugLineIndex, varInfo, containingLoops
+      ));
+    }
 
     const withCappedLoops = CodeGenerator.capLoopIterations(withShadow, functionStart, loopMaxIterations);
     const closedLines = CodeGenerator.closeOpenBraces(withCappedLoops, functionStart);
@@ -700,5 +719,38 @@ export class ShaderDebugger {
     result.push(outputLine);
     result.push(...closedLines.slice(originalLength));
     return result.join('\n');
+  }
+
+  private static findClosedContainingBlock(
+    lines: string[],
+    functionStart: number,
+    line: number,
+    truncationEnd: number,
+  ): { headerLine: number; openLine: number; endLine: number } | null {
+    const openBlocks: Array<{ openLine: number }> = [];
+    const blocks: Array<{ openLine: number; endLine: number }> = [];
+    for (let lineIndex = functionStart; lineIndex <= truncationEnd; lineIndex++) {
+      for (const character of lines[lineIndex].replace(/\/\/.*$/, '')) {
+        if (character === '{') openBlocks.push({ openLine: lineIndex });
+        if (character === '}') {
+          const block = openBlocks.pop();
+          if (block) blocks.push({ ...block, endLine: lineIndex });
+        }
+      }
+    }
+    const block = blocks
+      .filter(candidate => candidate.openLine < line && line < candidate.endLine)
+      .filter(candidate => candidate.endLine <= truncationEnd)
+      .sort((left, right) => right.openLine - left.openLine)[0];
+    if (!block || block.openLine === functionStart) return null;
+
+    let headerLine = functionStart + 1;
+    for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
+      if (lines[lineIndex].replace(/\/\/.*$/, '').includes('{')) {
+        headerLine = lineIndex + 1;
+        break;
+      }
+    }
+    return { ...block, headerLine };
   }
 }

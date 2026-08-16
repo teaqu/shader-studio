@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "video",
+          "path": "assets/video-channel-test-withaudio-faded_vscode.mp4",
+          "filter": "linear",
+          "wrap": "clamp",
+          "vflip": true,
+          "muted": true
+        },
+        "iChannel1": {
+          "type": "audio",
+          "path": "@/assets/audio-channel-test.wav",
+          "muted": true
+        }
+      }
+    },
+    "common": {
+      "path": ""
+    }
+  }
+}

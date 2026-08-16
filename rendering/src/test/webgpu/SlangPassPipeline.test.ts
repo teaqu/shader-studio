@@ -278,6 +278,27 @@ describe("SlangPassPipeline", () => {
     });
   });
 
+  it("makes channel bindings visible to custom vertex hooks", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      storage: [],
+      channels: [{ slot: 3, key: "iChannel3" }],
+      vertexChannels: true,
+    });
+
+    await pass.rebuild("// wgsl");
+
+    const entries = device.createBindGroupLayout.mock.calls[0][0].entries;
+    expect(entries.slice(1)).toEqual([
+      { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+    ]);
+  });
+
   it("places read-only render storage at its exact binding after slot-sorted channel pairs", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

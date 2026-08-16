@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "albedo": { "type": "texture", "path": "../../assets/orientation-texture.svg" }
+      }
+    }
+  }
+}

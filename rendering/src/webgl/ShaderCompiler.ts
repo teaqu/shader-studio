@@ -541,8 +541,16 @@ ${this.buildChannelMetadataDeclarations(types)}${options.customUniformDeclaratio
     const channelCount = !slotAssignments || slotAssignments.length === 0
       ? 4
       : Math.max(4, slotAssignments.length);
+    const aliasedHelperNames = new Set(
+      (slotAssignments ?? [])
+        .filter(({ isCustomName }) => isCustomName)
+        .map(({ key }) => `sample${key[0].toUpperCase()}${key.slice(1)}`),
+    );
     let helpers = "";
     for (let slot = 0; slot < channelCount; slot++) {
+      if (aliasedHelperNames.has(`sampleIChannel${slot}`)) {
+        continue;
+      }
       const type = types[slot] || '2D';
       const coordinateType = type === '2D' ? 'vec2' : 'vec3';
       const coordinateName = type === '2D' ? 'uv' : 'dir';
@@ -604,9 +612,17 @@ uniform struct {
       ? 4
       : Math.max(4, slotAssignments.length);
 
+    const aliasedNames = new Set(
+      (slotAssignments ?? [])
+        .filter(({ isCustomName }) => isCustomName)
+        .map(({ key }) => key),
+    );
     let decl = "";
-    // Always declare iChannel0 through iChannel{N-1} — these are the slot uniforms
+    // Declare slot uniforms unless a sparse built-in name aliases another slot.
     for (let i = 0; i < channelCount; i++) {
+      if (aliasedNames.has(`iChannel${i}`)) {
+        continue;
+      }
       const samplerType = this.getSamplerType(types[i] || '2D');
       decl += `uniform ${samplerType} iChannel${i};\n`;
     }

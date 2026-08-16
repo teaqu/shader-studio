@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeIntellisense": {
+      "type": "compute",
+      "path": "./compute-lab/passes/intellisense-compute.slang",
+      "entryPoint": "computeIntellisense",
+      "resolution": {
+        "width": 64,
+        "height": 64
+      },
+      "dispatch": {
+        "x": 16,
+        "y": 16,
+        "z": 1
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeIntellisense"
+        }
+      }
+    }
+  }
+}

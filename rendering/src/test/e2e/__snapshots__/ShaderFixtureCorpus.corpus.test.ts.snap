@@ -1,0 +1,151 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`slang-multipass-test shader corpus > backend-differences/precision/precision.slang 1`] = `"32:13eed94a9805861a3a54312f31e9526aeca57d59d22708903de318a5235207b3"`;
+
+exports[`slang-multipass-test shader corpus > backend-differences/precision/precision_glsl.glsl 1`] = `"32:13eed94a9805861a3a54312f31e9526aeca57d59d22708903de318a5235207b3"`;
+
+exports[`slang-multipass-test shader corpus > cat-glsl.glsl 1`] = `"128:dddbb7cdda1a50160da653ef304cf5233c1be5c13c12e986ee7b95fd4bb91f66"`;
+
+exports[`slang-multipass-test shader corpus > cat-head.glsl 1`] = `"128:ff94294fbef8e99e6bf602b051085564265e37daeec11fbe924ad8f97d454535"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/channel-cover.slang 1`] = `"64:337f3ed5e999e414a61a7e21c5a81d36da4fdb2f4ba9299a836709a424f20c41"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/count-dispatch.slang 1`] = `"64:e4186fe8e769601d9bab9983f2f33f1fe708b668a8f168549460d653d9d4406d"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/dispatch-modes.slang 1`] = `"64:fb429e2e2f83b10fb0d4c9bf19232aef8580f451b5b8407a10fb7e9f8468ec7c"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/game-of-life.slang 1`] = `"64:82618ef8586491d920719359b92d6a735e553fbf891d68f91cf3d142eec5401f"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/layered-output.slang 1`] = `"64:cbf3e5cade44180dfc08e85ef4bb68ea4a120f75717bb7942bc9aa94237f5098"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/multi-entry.slang 1`] = `"64:6648eac08f9369a6d36321c23859e818226d4554d80671d6e066d96b5153685f"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/one-shot-storage.slang 1`] = `"64:7446486c8cccc972f9a41858cbee82a986d39f5145f3b4776a009e5cf359f3de"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/raw-workgroups.slang 1`] = `"64:9202e68fbe5587e30738f2f118e87e10202a6eabd7297e1299978ed53c3a8f46"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/repeated-substeps.slang 1`] = `"64:35304194bc2c10744a7c7448febb70ff013f0493b97a8884f4244681b4e06e6a"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/storage-edit-colours.slang 1`] = `"64:044d97098ffcb96cd2d2bfc192022b38fe8e5459a917f0604b527727ada4b226"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/system-values.slang 1`] = `"64:b4707bbcc6c2f775c4e2c72cd4a335589f27b6ab5693bce66e83ce7e58ea5cb0"`;
+
+exports[`slang-multipass-test shader corpus > compute-lab/workgroup-coverage.slang 1`] = `"64:c286453a651080a6ae8fdb1478be6b4e4c9f6d9ed672e802835fa6a2099f0e14"`;
+
+exports[`slang-multipass-test shader corpus > cubemap.slang 1`] = `"96:a42c220038f37da84e2e9802b8d3fac36bacc578e153083f58b8980db41f1702"`;
+
+exports[`slang-multipass-test shader corpus > cubemap_glsl.glsl 1`] = `"96:a42c220038f37da84e2e9802b8d3fac36bacc578e153083f58b8980db41f1702"`;
+
+exports[`slang-multipass-test shader corpus > custom-uniforms.slang 1`] = `"32:843bf3098b95c385480c6f38023921a45a938d25f17e83e8e44c8e653d8fa8eb"`;
+
+exports[`slang-multipass-test shader corpus > custom-uniforms_glsl.glsl 1`] = `"32:843bf3098b95c385480c6f38023921a45a938d25f17e83e8e44c8e653d8fa8eb"`;
+
+exports[`slang-multipass-test shader corpus > feature-coverage.slang 1`] = `"64:7909c249f6933c0800463ac9599ca25e6b08c7e4eb29cf78b66f3ccf07250bb1"`;
+
+exports[`slang-multipass-test shader corpus > feature-coverage_glsl.glsl 1`] = `"64:4375c70c0fce90e1e5e6efdeba2cbdd9eb96e908c8b07d7ff33584dc7911ee96"`;
+
+exports[`slang-multipass-test shader corpus > flow.slang 1`] = `"128:1aead7ad7b5a3790bdf40f3ad94fd84fb58816ec8e251a4ab3dec86ff8b9782c"`;
+
+exports[`slang-multipass-test shader corpus > flow_glsl.glsl 1`] = `"128:b81343af47ab1c6dd45c8f02d6c9bbe6e3c49efa41882d3f5632ba8c12f828d6"`;
+
+exports[`slang-multipass-test shader corpus > foundation/debugging/debug-coverage.slang 1`] = `"64:3689dcd72a18dc125094d2b69151717bb6c8ec38467a652a793d58ee1cb17e44"`;
+
+exports[`slang-multipass-test shader corpus > foundation/debugging/debug-coverage_glsl.glsl 1`] = `"64:b69d1e4732d2339e12325f73cfd29e2186ad93a690e04d21f061fca44827736e"`;
+
+exports[`slang-multipass-test shader corpus > foundation/debugging/passes/history.slang 1`] = `"64:12aa5f81e8e574fe7679a10ff4a787b712216c0f8c530c2a6444078b2ae4442b"`;
+
+exports[`slang-multipass-test shader corpus > foundation/debugging/passes/history_glsl.glsl 1`] = `"64:12aa5f81e8e574fe7679a10ff4a787b712216c0f8c530c2a6444078b2ae4442b"`;
+
+exports[`slang-multipass-test shader corpus > foundation/includes/include-preview.slang 1`] = `"64:0ab1fa454e5eed993f9657db4e79d80b19847273a5b65d2b9834be9174e17d5a"`;
+
+exports[`slang-multipass-test shader corpus > foundation/modules/import-preview.slang 1`] = `"64:102d99b682f2ff2c7de74bf1aebe67af5010353c075eee03ce50e568eaa77dfe"`;
+
+exports[`slang-multipass-test shader corpus > foundation/versions/latest/preview.slang 1`] = `"32:532090157173c1b7c4c17ca44ab13cc3a925e6d80f62195451b3bc6c81ce9b99"`;
+
+exports[`slang-multipass-test shader corpus > foundation/versions/legacy/preview.slang 1`] = `"32:7b51188cc3e0f81f6573dd1e44d4efa4a7461412a4eaccb1aadfad01d835a49c"`;
+
+exports[`slang-multipass-test shader corpus > foundation/versions/slang-2025/preview.slang 1`] = `"32:de28f657838245999fb2211ffac2bca726a2280c766e059c4588061d5fc03d92"`;
+
+exports[`slang-multipass-test shader corpus > foundation/versions/slang-2026/preview.slang 1`] = `"32:2e251928e64e784f9084ddedcd516daa2d67eaf8180f99ab5a29513348431170"`;
+
+exports[`slang-multipass-test shader corpus > foundation/versions/version-mismatch/preview.slang 1`] = `"32:8b03bd69d8feea238ad3c7a3cd3ffff5e66f428b699704748cefe130bae38de1"`;
+
+exports[`slang-multipass-test shader corpus > foundation/workspace/foundation.slang 1`] = `"64:2c6fd67cd3623d51945e2d20c7ba81a03b3565b75276f5fb44fa8a4af1c31194"`;
+
+exports[`slang-multipass-test shader corpus > fullscreen-vertex.slang 1`] = `"128:0ccb6f04a4a6cf6057bdd08af8925533d3b5cfa9c026ad7286bffece290e9902"`;
+
+exports[`slang-multipass-test shader corpus > fullscreen-vertex_glsl.glsl 1`] = `"128:0ccb6f04a4a6cf6057bdd08af8925533d3b5cfa9c026ad7286bffece290e9902"`;
+
+exports[`slang-multipass-test shader corpus > gravity/gravity.slang 1`] = `"128:7dd765affc12fe7eaa1c15e82479482131b5eca339049501d503f90b46240317"`;
+
+exports[`slang-multipass-test shader corpus > ich.slang 1`] = `"96:b3aeb804ed59a2d12fa8073f347e2faa88994bbba2c89afe97717bd0dd0c1481"`;
+
+exports[`slang-multipass-test shader corpus > ich_glsl.glsl 1`] = `"96:4631b20ebb25012e1b38ecffeaee2edcc598b3bb78522c81f3d2711f9c3eb6a4"`;
+
+exports[`slang-multipass-test shader corpus > intellisense.slang 1`] = `"96:5c81706f5bc737e7c5a1d05a6be3a1dbd8269d85d11f502b40b653d54c6a572b"`;
+
+exports[`slang-multipass-test shader corpus > intellisense_compute.slang 1`] = `"32:3caa7bb1acab50b5e8f9c54a6b4e67fa3cedb083d0bb91ecbd8f5f8860a49990"`;
+
+exports[`slang-multipass-test shader corpus > intellisense_glsl.glsl 1`] = `"96:0529ea3aa6346e6a261a2cf7c9ce38e0709586c3fb330988d6f003fa33cec834"`;
+
+exports[`slang-multipass-test shader corpus > keyboard.slang 1`] = `"32:ef232afa49a71f7fa6ba4830a954181467cc313257ffce7a02dd35f9f8e47eda"`;
+
+exports[`slang-multipass-test shader corpus > keyboard_glsl.glsl 1`] = `"32:ef232afa49a71f7fa6ba4830a954181467cc313257ffce7a02dd35f9f8e47eda"`;
+
+exports[`slang-multipass-test shader corpus > parity/channels/named.slang 1`] = `"64:64785d0feba038e621d481674c128226ede49d1c0697570370a7f5a4072f48d6"`;
+
+exports[`slang-multipass-test shader corpus > parity/channels/named_glsl.glsl 1`] = `"64:014caae50433a1b53d3eeed9cd577ea1ff2a66a6be0fe539dcad1437a1132750"`;
+
+exports[`slang-multipass-test shader corpus > parity/pass-timing/b.slang 1`] = `"64:c0da2260e06e2210231d45fcdb93964ac164cdd7d532bbbc02184d23c36efb3d"`;
+
+exports[`slang-multipass-test shader corpus > parity/pass-timing/b_glsl.glsl 1`] = `"64:f09f4d11e0982f6c2fd9bea4851489414cc2535adf8e27fe317857f0e2dd4928"`;
+
+exports[`slang-multipass-test shader corpus > parity/pass-timing/timing.slang 1`] = `"64:5458ad6dd8c5883da3c3e398d9e1c52bf0471b96bf88ff88639555869b0042c6"`;
+
+exports[`slang-multipass-test shader corpus > parity/pass-timing/timing_glsl.glsl 1`] = `"64:f09f4d11e0982f6c2fd9bea4851489414cc2535adf8e27fe317857f0e2dd4928"`;
+
+exports[`slang-multipass-test shader corpus > parity/reset-feedback/reset.slang 1`] = `"64:c32e319f6ebad6af6ed8396f9f05a9269c63ec05fd2597d8e21c23a4b95a6173"`;
+
+exports[`slang-multipass-test shader corpus > parity/reset-feedback/reset_glsl.glsl 1`] = `"64:c32e319f6ebad6af6ed8396f9f05a9269c63ec05fd2597d8e21c23a4b95a6173"`;
+
+exports[`slang-multipass-test shader corpus > parity/resize-feedback/resize.slang 1`] = `"64:d09b570c078d9b2c4dbe11082403520718f9098d7f99b703720af6bcc3db82d6"`;
+
+exports[`slang-multipass-test shader corpus > parity/resize-feedback/resize_glsl.glsl 1`] = `"64:d09b570c078d9b2c4dbe11082403520718f9098d7f99b703720af6bcc3db82d6"`;
+
+exports[`slang-multipass-test shader corpus > particles.slang 1`] = `"128:ae756b1d4074de9f87e4fb79087c67b5ac4911e66eb8844033c2af0dd0a82b71"`;
+
+exports[`slang-multipass-test shader corpus > plane.slang 1`] = `"128:135864298466b3e536f7f2936cafbc61d81d891c96ecee01a627de29de1da0e0"`;
+
+exports[`slang-multipass-test shader corpus > plane_glsl.glsl 1`] = `"128:135864298466b3e536f7f2936cafbc61d81d891c96ecee01a627de29de1da0e0"`;
+
+exports[`slang-multipass-test shader corpus > shadertoy2.slang 1`] = `"128:915b6a62ccaed03f78f89281e91d77df1f120c83c523bd133bbd63289e83dfe5"`;
+
+exports[`slang-multipass-test shader corpus > structs/structs.slang 1`] = `"64:171e7bca9d81d79dbaadfc2e6e21007f270961c6a500ea2ba0a901bae12a362c"`;
+
+exports[`slang-multipass-test shader corpus > test.slang 1`] = `"32:4c9ba1b2f1857eec963d5c3fac326e1ba5c4d4e68a88bfcd8e55a7e61f87b1e2"`;
+
+exports[`slang-multipass-test shader corpus > test_glsl.glsl 1`] = `"64:e472668e0db8df38f562f079cbccfc5e61f8b08b4aa099975a3d1157ed85c644"`;
+
+exports[`slang-multipass-test shader corpus > texture.slang 1`] = `"64:35f7728b2c5a23d2214d91d519d74c4916126508e224f830e313df45b4acb2c7"`;
+
+exports[`slang-multipass-test shader corpus > texture_glsl.glsl 1`] = `"64:33affdc723e5a4b0d50dbb9815ea97bc32f4f53070f9b40661c83a31e5b1f26e"`;
+
+exports[`slang-multipass-test shader corpus > two-meshes.slang 1`] = `"128:0228cb917a665206af9cc98782fd98469565026c833fcda0ec54ff6602be8f9a"`;
+
+exports[`slang-multipass-test shader corpus > two-meshes_glsl.glsl 1`] = `"128:31c1a2b46cf2f4fa95bc5591500a04507e3bab92a9953de19a3ab03846aca310"`;
+
+exports[`slang-multipass-test shader corpus > uniforms.slang 1`] = `"96:3a04b562fe7228900dffcce9e41cc6ecad432750431967af60c23fc8a3cec8ec"`;
+
+exports[`slang-multipass-test shader corpus > uniforms_glsl.glsl 1`] = `"96:b19e4c97ca9d54cff8bbae8c83a2d6c290338a95fa9fb2590be81e6876e40c29"`;
+
+exports[`slang-multipass-test shader corpus > vertex.slang 1`] = `"64:f60750ef5630d0fb0c99c1173eb1c13ec2d0a41feacaeca64e0e2a85f4c41ca5"`;
+
+exports[`slang-multipass-test shader corpus > vertex_glsl.glsl 1`] = `"64:c64a679bd9864dad4f9c75b58adf7a13928b291246d0897b96dac1d5186bdb31"`;
+
+exports[`slang-multipass-test shader corpus > video.slang 1`] = `"96:d32e303f55dd4dc75945cda513e8cb5b467be03b83c73fb465120a70dfe4900b"`;
+
+exports[`slang-multipass-test shader corpus > video_audio.slang 1`] = `"96:d62e9f8831bc4a97e22d6c2014b4975fd41238446c0caa7444844b15b94c30ea"`;
+
+exports[`slang-multipass-test shader corpus > video_audio_glsl.glsl 1`] = `"96:d62e9f8831bc4a97e22d6c2014b4975fd41238446c0caa7444844b15b94c30ea"`;
+
+exports[`slang-multipass-test shader corpus > video_glsl.glsl 1`] = `"96:d32e303f55dd4dc75945cda513e8cb5b467be03b83c73fb465120a70dfe4900b"`;

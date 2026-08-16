@@ -1,0 +1,102 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "keyboard"
+        },
+        "iChannel1": {
+          "type": "keyboard"
+        },
+        "iChannel2": {
+          "type": "keyboard"
+        },
+        "iChannel3": {
+          "type": "keyboard"
+        },
+        "iChannel4": {
+          "type": "keyboard"
+        },
+        "iChannel5": {
+          "type": "keyboard"
+        },
+        "iChannel6": {
+          "type": "keyboard"
+        },
+        "iChannel7": {
+          "type": "keyboard"
+        },
+        "iChannel8": {
+          "type": "keyboard"
+        },
+        "iChannel9": {
+          "type": "keyboard"
+        },
+        "iChannel10": {
+          "type": "keyboard"
+        },
+        "iChannel11": {
+          "type": "keyboard"
+        },
+        "iChannel12": {
+          "type": "keyboard"
+        },
+        "iChannel13": {
+          "type": "keyboard"
+        },
+        "iChannel14": {
+          "type": "keyboard"
+        },
+        "iChannel15": {
+          "type": "keyboard"
+        },
+        "iChannel16": {
+          "type": "keyboard"
+        },
+        "iChannel17": {
+          "type": "keyboard"
+        },
+        "iChannel18": {
+          "type": "keyboard"
+        },
+        "iChannel19": {
+          "type": "keyboard"
+        },
+        "iChannel20": {
+          "type": "keyboard"
+        },
+        "iChannel21": {
+          "type": "keyboard"
+        },
+        "iChannel22": {
+          "type": "keyboard"
+        },
+        "iChannel23": {
+          "type": "keyboard"
+        },
+        "iChannel24": {
+          "type": "keyboard"
+        },
+        "iChannel25": {
+          "type": "keyboard"
+        },
+        "iChannel26": {
+          "type": "keyboard"
+        },
+        "iChannel27": {
+          "type": "keyboard"
+        },
+        "iChannel28": {
+          "type": "keyboard"
+        },
+        "iChannel29": {
+          "type": "keyboard"
+        },
+        "iChannel30": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}

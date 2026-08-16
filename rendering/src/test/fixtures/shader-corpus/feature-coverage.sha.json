@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "script": "./uniforms.ts",
+  "passes": {
+    "BufferA": {
+      "path": "./feature-coverage.buffer.slang",
+      "inputs": {
+        "patternTex": {
+          "type": "texture",
+          "path": "./assets/orientation-texture.svg",
+          "filter": "nearest",
+          "wrap": "clamp",
+          "vflip": true
+        }
+      }
+    },
+    "Image": {
+      "inputs": {
+        "patternTex": {
+          "type": "texture",
+          "path": "./assets/orientation-texture.svg",
+          "filter": "nearest",
+          "wrap": "clamp",
+          "vflip": true
+        },
+        "historyBuffer": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      },
+      "vertex": "./feature-coverage.vert.slang"
+    },
+    "common": {
+      "path": "./feature-coverage.common.slang"
+    }
+  }
+}

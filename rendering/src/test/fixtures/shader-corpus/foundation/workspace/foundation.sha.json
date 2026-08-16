@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        },
+        "iChannel1": {
+          "type": "buffer",
+          "source": "BufferB"
+        }
+      }
+    },
+    "BufferA": {
+      "path": "./passes/history.slang",
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    },
+    "BufferB": {
+      "path": "./passes/glow.slang",
+      "resolution": {
+        "scale": 0.5
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    }
+  }
+}

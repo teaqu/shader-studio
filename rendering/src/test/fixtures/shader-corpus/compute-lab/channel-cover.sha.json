@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeSource": {
+      "type": "compute",
+      "path": "./passes/channel-source.slang",
+      "resolution": {
+        "width": 320,
+        "height": 180
+      }
+    },
+    "ComputeCovered": {
+      "type": "compute",
+      "path": "./passes/channel-covered.slang",
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeSource"
+        }
+      },
+      "dispatch": {
+        "cover": "iChannel0"
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeCovered"
+        }
+      },
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

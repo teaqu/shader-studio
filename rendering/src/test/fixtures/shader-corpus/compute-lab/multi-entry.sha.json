@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "storage": {
+    "samples": {
+      "count": 256,
+      "stride": 4,
+      "elementType": "float"
+    }
+  },
+  "passes": {
+    "ComputeInitialize": {
+      "type": "compute",
+      "path": "./passes/multi-entry-kernels.slang",
+      "entryPoint": "clearSamples",
+      "dispatch": {
+        "count": 256
+      },
+      "dispatchOnce": true
+    },
+    "ComputeAnimate": {
+      "type": "compute",
+      "path": "./passes/multi-entry-kernels.slang",
+      "entryPoint": "animateSamples",
+      "dispatch": {
+        "count": 256
+      }
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

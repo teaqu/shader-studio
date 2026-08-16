@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "video",
+          "path": "./assets/video-channel-test.mp4",
+          "filter": "linear",
+          "wrap": "clamp",
+          "vflip": true,
+          "muted": false
+        }
+      }
+    }
+  }
+}

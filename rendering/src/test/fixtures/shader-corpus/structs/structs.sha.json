@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "storage": {
+    "particles": {
+      "count": 64,
+      "elementType": "Particle"
+    },
+    "colored": {
+      "count": 32,
+      "elementType": "ColoredParticle"
+    },
+    "mixed": {
+      "count": 16,
+      "elementType": "MixedLayout"
+    },
+    "transforms": {
+      "count": 16,
+      "elementType": "Transform"
+    },
+    "rigid": {
+      "count": 8,
+      "elementType": "RigidBody"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "init.slang",
+      "entryPoint": "initStructs",
+      "dispatch": {
+        "cover": "particles"
+      },
+      "dispatchOnce": true
+    },
+    "ComputePresent": {
+      "type": "compute",
+      "path": "present.slang",
+      "entryPoint": "renderStructs",
+      "resolution": {
+        "scale": 0.5
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputePresent"
+        }
+      }
+    },
+    "common": {
+      "path": "common.slang"
+    }
+  }
+}

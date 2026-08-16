@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./fullscreen-vertex_glsl.vert.glsl"
+    }
+  }
+}

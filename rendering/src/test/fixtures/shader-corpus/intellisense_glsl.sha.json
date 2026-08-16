@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./intellisense_glsl.vert.glsl",
+      "inputs": {
+        "iChannel0": {
+          "type": "texture",
+          "path": "./assets/orientation-texture.svg",
+          "filter": "linear",
+          "wrap": "repeat",
+          "vflip": true
+        },
+        "iChannel1": {
+          "type": "cubemap",
+          "path": "./assets/cubemap-cross.svg",
+          "filter": "linear",
+          "wrap": "clamp",
+          "vflip": false
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {},
+      "geometry": {
+        "type": "model",
+        "path": "./two-meshes.glb",
+        "mesh": "CatHead"
+      }
+    }
+  }
+}

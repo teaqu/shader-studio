@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "storage": {
+    "laneA": {
+      "count": 128,
+      "stride": 16,
+      "elementType": "float4"
+    },
+    "laneB": {
+      "count": 128,
+      "stride": 16,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "./passes/substep-init.slang",
+      "dispatch": {
+        "cover": "laneA"
+      },
+      "dispatchOnce": true,
+      "dispatchCount": 1
+    },
+    "ComputeSubsteps": {
+      "type": "compute",
+      "path": "./passes/substep.slang",
+      "dispatchCount": 3,
+      "outputLayers": 1,
+      "dispatchOnce": false,
+      "dispatch": {
+        "cover": "laneA"
+      }
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

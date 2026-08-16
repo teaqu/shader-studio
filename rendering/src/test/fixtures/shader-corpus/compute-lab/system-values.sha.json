@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "passes": {
+    "ComputeSystemValues": {
+      "type": "compute",
+      "path": "./passes/system-values.slang",
+      "entryPoint": "systemValues",
+      "resolution": {
+        "width": 256,
+        "height": 144
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeSystemValues"
+        }
+      }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeSystemValues"
+        }
+      }
+    }
+  }
+}

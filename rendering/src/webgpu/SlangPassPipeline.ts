@@ -9,6 +9,7 @@ export interface SlangPassPipelineDescriptor {
   height: number;
   output: "texture" | "canvas";
   channels: Array<{ slot: number; key: string; kind?: string }>;
+  vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
   uniformBufferSize?: number;
@@ -385,6 +386,9 @@ export class SlangPassPipeline {
       buffer: { type: "uniform" },
     }];
     const sorted = [...this.descriptor.channels].sort((a, b) => a.slot - b.slot);
+    const channelVisibility = this.descriptor.vertexChannels
+      ? GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT
+      : GPUShaderStage.FRAGMENT;
     for (let index = 0; index < sorted.length; index++) {
       const textureEntry: GPUTextureBindingLayout = { sampleType: "float" };
       if (sorted[index].kind === "cubemap") {
@@ -392,12 +396,12 @@ export class SlangPassPipeline {
       }
       entries.push({
         binding: 1 + index * 2,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: channelVisibility,
         texture: textureEntry,
       });
       entries.push({
         binding: 2 + index * 2,
-        visibility: GPUShaderStage.FRAGMENT,
+        visibility: channelVisibility,
         sampler: { type: "filtering" },
       });
     }

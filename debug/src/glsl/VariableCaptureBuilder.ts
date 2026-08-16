@@ -210,12 +210,22 @@ export class VariableCaptureBuilder {
 
     const truncatedLines = lines.slice(0, truncationEnd + 1);
 
+    const declarationLines = GlslParser.buildVariableDeclarationLineMap(
+      lines,
+      resolvedLine,
+      functionInfo,
+      varTypes,
+    );
+    const scopeVars = vars.map(captureVar => ({
+      ...captureVar,
+      declarationLine: declarationLines.get(captureVar.varName) ?? captureVar.declarationLine,
+    }));
     const { lines: shadowedLines, vars: outputVars } = VariableCaptureBuilder.insertSelectorShadows(
       truncatedLines,
       lines,
       functionInfo.start,
       truncationEnd,
-      vars,
+      scopeVars,
     );
     const withCappedLoops = CodeGenerator.capLoopIterations(shadowedLines, functionInfo.start, loopMaxIterations);
     const closedLines = CodeGenerator.closeOpenBraces(withCappedLoops, functionInfo.start);
@@ -346,12 +356,21 @@ export class VariableCaptureBuilder {
       functionLines.push(line);
     }
 
-    const relativeVars = vars.map(captureVar => ({
-      ...captureVar,
-      declarationLine: captureVar.declarationLine >= functionInfo.start
-        ? captureVar.declarationLine - functionInfo.start
-        : captureVar.declarationLine,
-    }));
+    const declarationLines = GlslParser.buildVariableDeclarationLineMap(
+      lines,
+      debugLine,
+      functionInfo,
+      varTypes,
+    );
+    const relativeVars = vars.map(captureVar => {
+      const declarationLine = declarationLines.get(captureVar.varName) ?? captureVar.declarationLine;
+      return {
+        ...captureVar,
+        declarationLine: declarationLine >= functionInfo.start
+          ? declarationLine - functionInfo.start
+          : declarationLine,
+      };
+    });
     const varsNeedingEndCapture = relativeVars.filter(captureVar => captureVar.varName !== '_dbgReturn');
     const { lines: shadowedLines, vars: outputVars } = VariableCaptureBuilder.insertSelectorShadows(
       functionLines,
@@ -542,13 +561,28 @@ export class VariableCaptureBuilder {
       }
     }
 
-    return closedBlocks
+    const containingBlock = closedBlocks
       .filter(block =>
         block.lineNumber < declarationLine
         && declarationLine < block.endLine
         && block.endLine <= truncationEnd
       )
-      .sort((first, second) => second.lineNumber - first.lineNumber)[0] ?? null;
+      .sort((first, second) => second.lineNumber - first.lineNumber)[0];
+    if (!containingBlock) return null;
+
+    return {
+      ...containingBlock,
+      lineNumber: VariableCaptureBuilder.findFunctionBodyInsertionLine(lines, functionStart),
+    };
+  }
+
+  private static findFunctionBodyInsertionLine(lines: string[], functionStart: number): number {
+    for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
+      if (lines[lineIndex].replace(/\/\/.*$/, '').includes('{')) {
+        return lineIndex + 1;
+      }
+    }
+    return functionStart + 1;
   }
 
   private static findSelectorShadowAssignmentLine(

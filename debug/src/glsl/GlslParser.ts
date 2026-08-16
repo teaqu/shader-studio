@@ -257,6 +257,55 @@ export class GlslParser {
     return varLines;
   }
 
+  /** Returns declaration locations only; later assignments do not move them. */
+  static buildVariableDeclarationLineMap(
+    lines: string[],
+    upToLine: number,
+    functionInfo: FunctionInfo,
+    knownVars?: Map<string, string>,
+  ): Map<string, number> {
+    const document = GlslParser.getDocument(lines);
+    const declarationLines = new Map<string, number>();
+
+    if (document.parsedSuccessfully && functionInfo.name && functionInfo.start >= 0) {
+      for (const scope of GlslParser.getVisibleScopes(document, functionInfo, upToLine)) {
+        for (const [bindingName, binding] of Object.entries(scope.bindings)) {
+          const declarationLine = GlslParser.getDeclarationOriginalLine(document, binding);
+          if (
+            declarationLine !== null
+            && declarationLine <= upToLine
+            && (!knownVars || knownVars.has(bindingName))
+          ) {
+            declarationLines.set(bindingName, declarationLine);
+          }
+        }
+      }
+      return declarationLines;
+    }
+
+    if (functionInfo.name && functionInfo.start >= 0) {
+      for (const parameter of GlslParser.parseFunctionParametersLegacy(lines, functionInfo.start)) {
+        if (!knownVars || knownVars.has(parameter.name)) {
+          declarationLines.set(parameter.name, functionInfo.start);
+        }
+      }
+    }
+
+    const scanStart = functionInfo.start >= 0 ? functionInfo.start : 0;
+    for (let lineIndex = scanStart; lineIndex <= upToLine && lineIndex < document.effectiveLines.length; lineIndex++) {
+      if (!functionInfo.name && GlslParser.isInsideFunction(document.functions, lineIndex)) {
+        continue;
+      }
+      for (const declaration of GlslParser.extractDeclarationsFromLine(document.effectiveLines[lineIndex])) {
+        if (!knownVars || knownVars.has(declaration.name)) {
+          declarationLines.set(declaration.name, lineIndex);
+        }
+      }
+    }
+
+    return declarationLines;
+  }
+
   static getGlobalVariables(lines: string[], upToLine?: number): ScopedVarInfo[] {
     const document = GlslParser.getDocument(lines);
     const globals: ScopedVarInfo[] = [];

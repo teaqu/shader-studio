@@ -1,0 +1,84 @@
+{
+  "version": "1.0",
+  "storage": {
+    "coverageItems": {
+      "count": 128,
+      "stride": 4,
+      "elementType": "float"
+    }
+  },
+  "passes": {
+    "ComputeTexel": {
+      "type": "compute",
+      "path": "./passes/dispatch-modes-kernels.slang",
+      "entryPoint": "texelMode",
+      "resolution": {
+        "width": 256,
+        "height": 64
+      }
+    },
+    "ComputeCount": {
+      "type": "compute",
+      "path": "./passes/dispatch-modes-kernels.slang",
+      "entryPoint": "countMode",
+      "resolution": {
+        "width": 256,
+        "height": 64
+      },
+      "dispatch": {
+        "count": 1
+      },
+      "dispatchCount": 1
+    },
+    "ComputeWorkgroups": {
+      "type": "compute",
+      "path": "./passes/dispatch-modes-kernels.slang",
+      "entryPoint": "workgroupsMode",
+      "resolution": {
+        "width": 256,
+        "height": 64
+      },
+      "dispatch": {
+        "x": 16,
+        "y": 8,
+        "z": 1
+      }
+    },
+    "ComputeStorageCover": {
+      "type": "compute",
+      "path": "./passes/dispatch-modes-kernels.slang",
+      "entryPoint": "coverStorageMode",
+      "resolution": {
+        "width": 256,
+        "height": 64
+      },
+      "dispatch": {
+        "cover": "coverageItems"
+      },
+      "dispatchCount": 1
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      },
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputeTexel"
+        },
+        "iChannel1": {
+          "type": "buffer",
+          "source": "ComputeCount"
+        },
+        "iChannel2": {
+          "type": "buffer",
+          "source": "ComputeWorkgroups"
+        },
+        "iChannel3": {
+          "type": "buffer",
+          "source": "ComputeStorageCover"
+        }
+      }
+    }
+  }
+}

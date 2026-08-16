@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "storage": {
+    "samples": {
+      "count": 256,
+      "stride": 4,
+      "elementType": "float"
+    }
+  },
+  "passes": {
+    "ComputeGradient": {
+      "type": "compute",
+      "path": "./passes/count-gradient.slang",
+      "dispatch": {
+        "count": 256
+      }
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

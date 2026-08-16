@@ -2120,6 +2120,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
         channels,
+        vertexChannels: Boolean(pass.vertexSrc),
         storage,
         uniformBufferSize,
       });

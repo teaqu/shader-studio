@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    },
+    "BufferA": {
+      "path": "./passes/history.slang",
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    },
+    "common": {
+      "path": "./common.slang"
+    }
+  }
+}
