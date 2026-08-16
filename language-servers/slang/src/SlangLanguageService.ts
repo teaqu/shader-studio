@@ -127,13 +127,18 @@ export class SlangLanguageService implements LanguageService {
       const editRange = item.textEdit ? userRange(item.textEdit.range, state.offset, state.document.text) : undefined;
       const intrinsic = documentedFunctions.find((entry) => entry.name === item.label);
       const computeFeature = computeFeatures.find((entry) => entry.name === item.label);
+      const fragmentFeature = state.environment.stage === "fragment"
+        ? mainImageCompletionFeature(state.document.text, params.position, item.label)
+        : undefined;
       return {
         label: item.label,
         kind: item.kind as CompletionItemKind,
-        detail: item.detail,
+        detail: fragmentFeature?.signature ?? item.detail,
         documentation: computeFeature
           ? computeFeatureMarkup(computeFeature)
-          : item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
+          : fragmentFeature
+            ? contractMarkup(fragmentFeature.signature, fragmentFeature.description)
+            : item.documentation ? markup(item.documentation) : intrinsic ? intrinsicMarkup(intrinsic) : undefined,
         textEdit: item.textEdit && editRange ? { range: editRange, newText: item.textEdit.text } : undefined,
         data: item.data,
       };
@@ -176,11 +181,26 @@ export class SlangLanguageService implements LanguageService {
       items.set(`${resource.name}:${resource.kind}`, { label: resource.name, kind: CompletionItemKind.Variable, detail: resource.kind });
     }
     for (const declaration of findSlangDeclarations(state.document.text)) {
+      const fragmentFeature = state.environment.stage === "fragment"
+        ? mainImageCompletionFeature(state.document.text, params.position, declaration.name)
+        : undefined;
       items.set(`${declaration.name}:${declaration.detail}`, {
         label: declaration.name,
         kind: declaration.kind === SymbolKind.Function ? CompletionItemKind.Function : CompletionItemKind.Struct,
-        detail: declaration.detail,
+        detail: fragmentFeature?.signature ?? declaration.detail,
+        documentation: fragmentFeature ? contractMarkup(fragmentFeature.signature, fragmentFeature.description) : undefined,
       });
+    }
+    if (state.environment.stage === "fragment") {
+      const coordinate = mainImageCoordinateCompletion(state.document.text, params.position);
+      if (coordinate) {
+        items.set(`${coordinate.name}:${coordinate.feature.signature}`, {
+          label: coordinate.name,
+          kind: CompletionItemKind.Variable,
+          detail: coordinate.feature.signature,
+          documentation: contractMarkup(coordinate.feature.signature, coordinate.feature.description),
+        });
+      }
     }
     for (const feature of vertexFeatures) {
       if (feature.kind === "parameter" && !hasCanonicalVertexHookParameter(state.document.text, feature)) {
@@ -495,6 +515,47 @@ function mainImageFeatureAt(
         description: SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION,
         line: positionAtOffset(source, match.index + match[0].lastIndexOf(parameter)).line + 1,
       };
+    }
+  }
+  return undefined;
+}
+
+function mainImageCompletionFeature(
+  source: string,
+  position: { line: number; character: number },
+  label: string,
+): SlangMainImageFeature | undefined {
+  if (label !== "mainImage") {
+    return mainImageFeatureAt(source, position, label);
+  }
+  const match = source.match(/\bfloat4\s+(mainImage)\s*\(\s*float2\s+([A-Za-z_]\w*)\s*\)/);
+  const parameter = match?.[2];
+  if (!match || !parameter || match.index === undefined) {
+    return undefined;
+  }
+  const nameStart = match.index + match[0].indexOf("mainImage");
+  return {
+    signature: `float4 mainImage(float2 ${parameter})`,
+    description: SLANG_MAIN_IMAGE_DESCRIPTION,
+    line: positionAtOffset(source, nameStart).line + 1,
+  };
+}
+
+function mainImageCoordinateCompletion(
+  source: string,
+  position: { line: number; character: number },
+): { name: string; feature: SlangMainImageFeature } | undefined {
+  const offset = offsetAtPosition(source, position);
+  for (const match of source.matchAll(/\bfloat4\s+mainImage\s*\(\s*float2\s+([A-Za-z_]\w*)\s*\)/g)) {
+    const name = match[1];
+    if (!name) {
+      continue;
+    }
+    const bodyStart = source.indexOf("{", match.index + match[0].length);
+    const bodyEnd = bodyStart >= 0 ? matchingBrace(source, bodyStart) : -1;
+    if (bodyStart >= 0 && offset >= bodyStart && offset <= bodyEnd) {
+      const feature = mainImageFeatureAt(source, position, name);
+      return feature ? { name, feature } : undefined;
     }
   }
   return undefined;

@@ -46,7 +46,10 @@ const revision = { uri, languageId: "slang" as const, version: 1, environmentGen
 
 describe("SlangLanguageService", () => {
   it("documents the mainImage contract with a renamed coordinate parameter", async () => {
-    const { module } = fixture();
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([
+      { label: "mainImage", kind: 3, detail: "float4 mainImage(float2)", data: "" },
+    ]));
     const service = new SlangLanguageService(module);
     await service.syncEnvironment(environment);
     const text = "float4 mainImage(float2 pixelPosition) { return float4(pixelPosition, 0.0, 1.0); }";
@@ -62,6 +65,23 @@ describe("SlangLanguageService", () => {
       .toContain("lower-left");
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 62 } }))?.contents))
       .toContain("Pixel-space");
+    const completions = await service.completion({ document: revision, position: { line: 0, character: 62 } });
+    expect(completions.find((item) => item.label === "mainImage")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("fragment entry point") }));
+    expect(completions.find((item) => item.label === "pixelPosition")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("lower-left") }));
+  });
+
+  it("does not offer the mainImage coordinate parameter outside its function body", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = "float4 mainImage(float2 pixelPosition) { return float4(pixelPosition, 0.0, 1.0); }\nfloat helper() { return 1.0; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 1, character: 25 } });
+    expect(completions.map((item) => item.label)).not.toContain("pixelPosition");
   });
 
   it("uses concise intrinsic descriptions without return-value boilerplate", () => {

@@ -181,7 +181,8 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
-  test("provides mainImage contract hovers for renamed GLSL and Slang parameters", async () => {
+  test("provides mainImage contract hovers for renamed GLSL and Slang parameters", async function() {
+    this.timeout(10_000);
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const glslSource = "void mainImage(out vec4 rendered, in vec2 pixelPosition) { rendered = vec4(pixelPosition, 0.0, 1.0); }";
     const glslDocument = await vscode.workspace.openTextDocument({ language: "glsl", content: glslSource });
@@ -210,6 +211,13 @@ suite("VS Code language-service revisions", () => {
       new vscode.Position(0, slangSource.indexOf("pixelPosition") + 1),
     );
     assert.ok(hoverText(slangCoordinate).includes("lower-left"), hoverText(slangCoordinate));
+    const slangCompletions = await vscode.commands.executeCommand<vscode.CompletionList>(
+      "vscode.executeCompletionItemProvider",
+      slangDocument.uri,
+      new vscode.Position(0, slangSource.lastIndexOf("pixelPosition") + 5),
+    );
+    assert.ok(completionDocumentation(slangCompletions, "mainImage").includes("fragment entry point"));
+    assert.ok(completionDocumentation(slangCompletions, "pixelPosition").includes("lower-left"));
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
@@ -245,4 +253,9 @@ function hoverText(hovers: readonly vscode.Hover[]): string {
   return hovers.flatMap((hover) => hover.contents.map((content) => (
     typeof content === "string" ? content : content.value
   ))).join("\n");
+}
+
+function completionDocumentation(completions: vscode.CompletionList, label: string): string {
+  const documentation = completions.items.find((item) => item.label === label)?.documentation;
+  return typeof documentation === "string" ? documentation : documentation?.value ?? "";
 }
