@@ -30,6 +30,7 @@ See the [Quick Start guide](https://teaqu.github.io/shader-studio/quick-start/) 
 | [Resolution](https://teaqu.github.io/shader-studio/features/resolution/) | Scale the canvas, set custom dimensions, or change aspect ratio |
 | [Editor Overlay](https://teaqu.github.io/shader-studio/features/editor-overlay/) | Edit shader code inline over a full-screen preview |
 | [Shader Explorer](https://teaqu.github.io/shader-studio/features/shader-explorer/) | Browse and switch between your shaders |
+| [GLSL and Slang IntelliSense](https://teaqu.github.io/shader-studio/features/language-servers/) | Completion, hover documentation, diagnostics, navigation, Common/import awareness, and color editing |
 | [GLSL and Slang Code Snippets](https://teaqu.github.io/shader-studio/features/code-snippets/) | Insert bundled GLSL or Slang patterns through native VS Code completion |
 | [Compile Modes](https://teaqu.github.io/shader-studio/features/compile-modes/) | Compile on every keystroke, on save, or manually |
 | [Locking](https://teaqu.github.io/shader-studio/features/locking/) | Pin the preview to a shader while you edit buffer files |
