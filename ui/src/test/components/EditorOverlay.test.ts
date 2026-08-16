@@ -1472,6 +1472,112 @@ describe('EditorOverlay', () => {
       expect(markers[0].startLineNumber).toBe(2);
       expect(markers[0].message).toBe('shared syntax error');
     });
+
+    it('should map multiline Slang compiler diagnostics for the active buffer', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      model.getLineCount.mockReturnValue(3);
+      model.getLineMaxColumn.mockReturnValue(31);
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/workspace/image.slang',
+          shaderCode: 'float4 mainImage(float2 p) {\n  return unknownValue;\n}',
+          activeBufferName: 'Image',
+          errors: [
+            'Image: error[E30015]: undefined identifier\n'
+              + ' --> /workspace/image.slang:2:10\n'
+              + '   |\n'
+              + " 2 |   return unknownValue;\n"
+              + "   |          ^^^^^^^^^^^^ undefined identifier 'unknownValue'.\n"
+              + "--'\n"
+              + 'error[E39999]: import failed due to compilation error\n'
+              + 'fatal error[E40003]: compilation ceased\n',
+          ],
+        },
+      });
+
+      const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+      const markers = calls[calls.length - 1][2];
+      expect(markers).toHaveLength(1);
+      expect(markers[0]).toMatchObject({
+        startLineNumber: 2,
+        startColumn: 10,
+        message: 'undefined identifier',
+        severity: monaco.MarkerSeverity.Error,
+      });
+    });
+
+    it('should filter, clamp, and ignore incomplete multiline Slang diagnostics', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      model.getLineCount.mockReturnValue(3);
+      model.getLineMaxColumn.mockReturnValue(12);
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/workspace/image.slang',
+          shaderCode: 'one\ntwo\nthree',
+          activeBufferName: 'Image',
+          errors: [
+            "Buffer A: error[E30015]: undefined identifier 'elsewhere'\n"
+              + '  --> /workspace/buffer-a.slang:2:4\n',
+            "Image: error[E30015]: first error\n"
+              + '  --> /workspace/image.slang:99:99\n'
+              + 'error[E20001]: second error\n'
+              + '  --> /workspace/image.slang:1:2\n'
+              + 'error[E99999]: missing location\n',
+          ],
+        },
+      });
+
+      const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+      const markers = calls[calls.length - 1][2];
+      expect(markers).toHaveLength(2);
+      expect(markers[0]).toMatchObject({
+        startLineNumber: 3,
+        startColumn: 12,
+        message: 'first error',
+      });
+      expect(markers[1]).toMatchObject({
+        startLineNumber: 1,
+        startColumn: 2,
+        message: 'second error',
+      });
+    });
+
+    it('should apply existing compiler diagnostics when the overlay editor opens later', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { rerender } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          isVisible: false,
+          activeBufferName: 'Image',
+          errors: ['Image: ERROR: 0:2: existing compiler error'],
+        },
+      });
+      vi.mocked(monaco.editor.setModelMarkers).mockClear();
+
+      await rerender({
+        ...defaultProps,
+        isVisible: true,
+        activeBufferName: 'Image',
+        errors: ['Image: ERROR: 0:2: existing compiler error'],
+      });
+
+      expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
+        mockEditor.getModel(),
+        'glsl',
+        [expect.objectContaining({ message: 'existing compiler error' })],
+      );
+    });
   });
 
   // Test group: External shader code changes

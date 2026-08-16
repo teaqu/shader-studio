@@ -517,6 +517,7 @@
     editor.focus();
     requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
+    updateErrorMarkers(errors);
     editorReady = true;
   }
 
@@ -662,6 +663,34 @@
           endLineNumber: line,
           endColumn: model.getLineMaxColumn(line),
           message,
+        });
+        continue;
+      }
+
+      const passName = err.match(/^([^:\n]+):\s*(?=error(?:\[[^\]]+\])?:)/i)?.[1];
+      if (passName && passName.trim().toLowerCase() !== activeBufferKey) {
+        continue;
+      }
+      const headings = [...err.matchAll(/(?:^|\n)(?:[^:\n]+:\s*)?error(?:\[[^\]]+\])?:\s*([^\n]+)/gi)];
+      for (let index = 0; index < headings.length; index++) {
+        const heading = headings[index];
+        const nextHeading = headings[index + 1];
+        const blockStart = (heading.index ?? 0) + heading[0].length;
+        const blockEnd = nextHeading?.index ?? err.length;
+        const location = err.slice(blockStart, blockEnd).match(/^\s*-->\s+.+?:(\d+):(\d+)\s*$/m);
+        if (!location) {
+          continue;
+        }
+        const line = Math.min(Math.max(1, Number(location[1])), model.getLineCount());
+        const maxColumn = model.getLineMaxColumn(line);
+        const column = Math.min(Math.max(1, Number(location[2])), maxColumn);
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: line,
+          startColumn: column,
+          endLineNumber: line,
+          endColumn: maxColumn,
+          message: heading[1]?.trim() ?? "Slang compiler error",
         });
       }
     }

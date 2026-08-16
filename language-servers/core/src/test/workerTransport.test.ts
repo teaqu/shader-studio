@@ -18,6 +18,27 @@ function linkedPorts(): [WorkerPort, WorkerPort] {
 }
 
 describe("worker transport", () => {
+  it("correlates lifecycle requests and responses", async () => {
+    const [clientPort, serverPort] = linkedPorts();
+    const capabilities = {
+      completion: true,
+      hover: true,
+      definition: true,
+      signatureHelp: true,
+      documentSymbols: true,
+      diagnostics: true,
+      documentColors: true,
+    };
+    const service = { initialize: vi.fn().mockResolvedValue(capabilities) } as unknown as LanguageService;
+    const stop = runLanguageServiceWorker(serverPort, service);
+    const client = new WorkerLanguageServiceClient(clientPort);
+
+    await expect(client.request("initialize", undefined)).resolves.toEqual(capabilities);
+
+    client.dispose();
+    stop();
+  }, 1_000);
+
   it("correlates requests and echoes analysis revisions", async () => {
     const [clientPort, serverPort] = linkedPorts();
     const service = { completion: vi.fn().mockResolvedValue([{ label: "mix" }]) } as unknown as LanguageService;
