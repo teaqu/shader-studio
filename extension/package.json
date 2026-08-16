@@ -283,7 +283,8 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "test:e2e:vscode": "npm run compile && wdio run ./e2e/wdio.conf.mjs"
+    "test:e2e:vscode": "npm run compile && npm run test:e2e:vscode:run",
+    "test:e2e:vscode:run": "wdio run ./e2e/wdio.conf.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

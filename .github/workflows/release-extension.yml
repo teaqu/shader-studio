@@ -74,6 +74,21 @@ jobs:
       - name: Run extension tests
         run: xvfb-run -a npm test -w extension
 
+      - name: Run VS Code webview E2E tests
+        id: vscode-e2e
+        run: xvfb-run -a npm run test:e2e:vscode:run -w extension
+        env:
+          SHADER_STUDIO_E2E_GREP: 'parameter overrides|inline rendering'
+
+      - name: Upload VS Code webview E2E failure screenshots
+        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: vscode-webview-e2e-failures
+          path: extension/.wdio/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Package VSIX
         working-directory: extension
         run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
