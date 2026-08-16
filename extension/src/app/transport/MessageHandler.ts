@@ -39,9 +39,22 @@ export class MessageHandler {
         case "debug":
           this.handleDebugMessage(message);
           break;
-        case "error":
-          this.errorHandler.handleError(message as ErrorMessage);
+        case "error": {
+          const errorMessage = message as ErrorMessage;
+          const errors = Array.isArray(errorMessage.payload)
+            ? errorMessage.payload
+            : [errorMessage.payload];
+          const reportableErrors = errors.filter(
+            (error) => !isMissingMainImageRenderabilityError(error),
+          );
+          if (reportableErrors.length > 0) {
+            this.errorHandler.handleError({
+              ...errorMessage,
+              payload: reportableErrors,
+            });
+          }
           break;
+        }
         case "warning":
           this.errorHandler.handlePersistentError(message as WarningMessage);
           break;
@@ -164,4 +177,12 @@ export class MessageHandler {
     );
     this.onShaderLockChanged?.(lockedShaderPath);
   }
+}
+
+function isMissingMainImageRenderabilityError(errorText: string): boolean {
+  const text = errorText.trim();
+  return /(?:^|:\s*)missing mainImage function$/i.test(text)
+    || /(?:^|:\s*)entry points? not found \(is [`'"]?mainImage[`'"]? defined\?\)$/i.test(text)
+    || /(?:^|:\s*)the Slang workspace root has no mainImage or supported compute entry function\.$/i.test(text)
+    || /^(?:[^:\n]+:\s*)*(?:ERROR:\s*)?(?:\d+:\d+:\s*)?[`'"]?mainImage[`'"]?\s*:\s*no matching overloaded function found$/i.test(text);
 }

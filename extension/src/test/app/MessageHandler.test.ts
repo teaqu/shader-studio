@@ -249,6 +249,58 @@ suite('MessageHandler Test Suite', () => {
     assert.deepStrictEqual(setCall.args[1][0].range, new vscode.Range(0, 0, 0, 0));
   });
 
+  test('should keep missing-mainImage errors out of VS Code diagnostics', () => {
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/helper.slang'),
+      fileName: '/test/helper.slang',
+      languageId: 'slang',
+      lineCount: 5,
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0),
+      }),
+    } as any;
+    sandbox.stub(vscode.window, 'activeTextEditor').value({ document: mockDocument });
+
+    messageHandler.handleMessage({
+      type: 'error',
+      payload: [
+        'Image: Missing mainImage function',
+        'Slang: entry points not found (is `mainImage` defined?)',
+        'The Slang workspace root has no mainImage or supported compute entry function.',
+        "ERROR: 'mainImage' : no matching overloaded function found",
+      ],
+    });
+
+    sinon.assert.notCalled(mockDiagnosticCollection.set as sinon.SinonStub);
+    sinon.assert.notCalled(mockOutputChannel.error as sinon.SinonStub);
+  });
+
+  test('should still report genuine compilation errors alongside missing-mainImage errors', () => {
+    const mockDocument = {
+      uri: vscode.Uri.file('/test/helper.slang'),
+      fileName: '/test/helper.slang',
+      languageId: 'slang',
+      lineCount: 5,
+      lineAt: sandbox.stub().returns({
+        range: new vscode.Range(0, 0, 0, 0),
+      }),
+    } as any;
+    sandbox.stub(vscode.window, 'activeTextEditor').value({ document: mockDocument });
+
+    messageHandler.handleMessage({
+      type: 'error',
+      payload: [
+        'Image: Missing mainImage function',
+        'Image: ERROR: 0:3: syntax error',
+      ],
+    });
+
+    sinon.assert.calledOnce(mockDiagnosticCollection.set as sinon.SinonStub);
+    const diagnostics = (mockDiagnosticCollection.set as sinon.SinonStub).firstCall.args[1];
+    assert.strictEqual(diagnostics.length, 1);
+    assert.strictEqual(diagnostics[0].message, 'Image: ERROR: 0:3: syntax error');
+  });
+
   test('should show various non-line-number errors at line 1', () => {
     // Mock active editor and document
     const mockDocument = {
