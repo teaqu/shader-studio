@@ -16,4 +16,17 @@ suite("workspace dependency build order", () => {
       "utils must be built before debug because debug imports @shader-studio/utils",
     );
   });
+
+  test("excludes end-to-end test assets from the release package", () => {
+    const ignorePath = path.resolve(__dirname, "../../.vscodeignore");
+    const ignoredPaths = fs.readFileSync(ignorePath, "utf8").split(/\r?\n/);
+
+    assert.ok(ignoredPaths.includes("e2e/**"));
+    assert.ok(ignoredPaths.includes(".wdio/**"));
+    assert.ok(ignoredPaths.includes("tsconfig.test.json"));
+    assert.ok(ignoredPaths.includes("**/test/**"));
+    assert.ok(ignoredPaths.includes("**/tests/**"));
+    assert.ok(ignoredPaths.includes("**/*.test.*"));
+    assert.ok(ignoredPaths.includes("**/*.spec.*"));
+  });
 });

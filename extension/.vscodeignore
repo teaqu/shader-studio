@@ -2,6 +2,8 @@
 .vscode-test/**
 src/**
 out/**
+e2e/**
+.wdio/**
 electron-app/**
 .turbo/**
 esbuild.js
@@ -10,9 +12,14 @@ webpack.config.js
 .yarnrc
 vsc-extension-quickstart.md
 **/tsconfig.json
+tsconfig.test.json
 **/eslint.config.mjs
 **/*.map
 **/*.ts
+**/test/**
+**/tests/**
+**/*.test.*
+**/*.spec.*
 !assets/shader-studio-script.d.ts
 **/.vscode-test.*
 scripts
