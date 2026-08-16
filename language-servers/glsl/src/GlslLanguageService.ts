@@ -117,7 +117,7 @@ export class GlslLanguageService implements LanguageService {
     }
     if (state.environment.stage === "vertex") {
       const hook = GLSL_VERTEX_HOOK_FEATURES[0];
-      if (hook) {
+      if (hook && !items.has(hook.name)) {
         items.set(hook.name, {
           label: hook.name,
           kind: CompletionItemKind.Function,
@@ -335,21 +335,50 @@ function documentSymbolKind(symbol: GlslSymbol): SymbolKind {
 }
 
 function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): GlslVertexHookFeature | undefined {
-  const feature = GLSL_VERTEX_HOOK_FEATURES.find((item) => item.name === symbol.name);
-  if (!feature || feature.kind !== symbol.kind) {
+  const scope = symbol.kind === "function"
+    ? analysis.scopes.find((item) => (
+      item.kind === "function"
+      && item.name === "mainVertex"
+      && rangeContains(symbol.definition, item.range)
+    ))
+    : analysis.scopes.find((item) => item.id === symbol.scopeId && item.kind === "function" && item.name === "mainVertex");
+  if (!scope) {
     return undefined;
   }
-  if (feature.kind === "function") {
-    return feature;
+  const parameters = scope.symbolIds
+    .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
+    .filter((candidate): candidate is GlslSymbol => candidate?.kind === "parameter");
+  const functionSymbol = analysis.symbols.find((candidate) => (
+    candidate.kind === "function"
+    && candidate.name === "mainVertex"
+    && candidate.typeName === "void"
+    && candidate.signature === "void mainVertex(vec3, vec3, vec2)"
+    && rangeContains(candidate.definition, scope.range)
+  ));
+  const definitionText = sourceForRange(analysis.source, functionSymbol?.definition);
+  if (
+    !functionSymbol
+    || parameters.length !== 3
+    || parameters[0]?.typeName !== "vec3"
+    || parameters[1]?.typeName !== "vec3"
+    || parameters[2]?.typeName !== "vec2"
+    || !/\bvoid\s+mainVertex\s*\(\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec2\b/.test(definitionText)
+  ) {
+    return undefined;
   }
-  let scope = analysis.scopes.find((item) => item.id === symbol.scopeId);
-  while (scope) {
-    if (scope.kind === "function") {
-      return scope.name === "mainVertex" ? feature : undefined;
-    }
-    scope = scope.parentId ? analysis.scopes.find((item) => item.id === scope?.parentId) : undefined;
+  const functionFeature = GLSL_VERTEX_HOOK_FEATURES[0];
+  if (symbol.id === functionSymbol.id && functionFeature) {
+    return {
+      ...functionFeature,
+      signature: `void mainVertex(inout vec3 ${parameters[0].name}, inout vec3 ${parameters[1].name}, inout vec2 ${parameters[2].name})`,
+    };
   }
-  return undefined;
+  const parameterIndex = parameters.findIndex((parameter) => parameter.id === symbol.id);
+  const role = GLSL_VERTEX_HOOK_FEATURES[parameterIndex + 1];
+  const parameter = parameters[parameterIndex];
+  return role && parameter
+    ? { ...role, name: parameter.name, signature: `inout ${parameter.typeName} ${parameter.name}` }
+    : undefined;
 }
 
 interface GlslMainImageFeature {

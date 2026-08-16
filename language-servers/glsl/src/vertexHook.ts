@@ -1,5 +1,5 @@
 export interface GlslVertexHookFeature {
-  readonly name: "mainVertex" | "position" | "normal" | "uv";
+  readonly name: string;
   readonly kind: "function" | "parameter";
   readonly signature: string;
   readonly description: string;

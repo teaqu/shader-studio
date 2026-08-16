@@ -119,7 +119,9 @@ export class SlangLanguageService implements LanguageService {
     }
     const documentedFunctions = documentedSlangFunctions(state.environment);
     const computeFeatures = state.environment.stage === "compute" ? SLANG_COMPUTE_FEATURES : [];
-    const vertexFeatures = state.environment.stage === "vertex" ? SLANG_VERTEX_HOOK_FEATURES : [];
+    const vertexFeatures = state.environment.stage === "vertex"
+      ? vertexHookCompletionFeatures(state.document.text)
+      : [];
     const official = consumeList(this.server.completion(params.document.uri, shiftedPosition(params.position, state.offset), {
       triggerKind: 1,
       triggerCharacter: "",
@@ -203,9 +205,6 @@ export class SlangLanguageService implements LanguageService {
       }
     }
     for (const feature of vertexFeatures) {
-      if (feature.kind === "parameter" && !hasCanonicalVertexHookParameter(state.document.text, feature)) {
-        continue;
-      }
       for (const [key, item] of items) {
         if (item.label === feature.name) {
           items.delete(key);
@@ -577,44 +576,75 @@ function matchingBrace(source: string, start: number): number {
   return source.length;
 }
 
-function hasCanonicalVertexHookParameter(source: string, feature: SlangVertexHookFeature): boolean {
-  if (feature.kind !== "parameter") {
-    return true;
-  }
-  return vertexHookParameterLists(source).some((parameters) => parameterListHasFeature(parameters, feature));
-}
-
-function parameterListHasFeature(parameters: string, feature: SlangVertexHookFeature): boolean {
-  return new RegExp(`\\b${feature.signature.replace(/\s+/g, "\\s+")}\\b`).test(parameters);
-}
-
 function vertexHookFeatureAt(
   source: string,
   position: { line: number; character: number },
   word: string,
 ): SlangVertexHookFeature | undefined {
-  const feature = SLANG_VERTEX_HOOK_FEATURES.find((item) => item.name === word);
-  if (!feature) {
-    return undefined;
+  const offset = offsetAtPosition(source, position);
+  for (const match of vertexHookMatches(source)) {
+    if (word === "mainVertex" && offset >= match.nameStart && offset <= match.nameEnd) {
+      return match.features[0];
+    }
+    if (offset < match.start || offset > match.end) {
+      continue;
+    }
+    const feature = match.features.slice(1).find((item) => item.name === word);
+    if (feature) {
+      return feature;
+    }
   }
-  if (feature.kind === "function") {
-    return feature;
-  }
-  const lines = source.split("\n");
-  const offset = lines.slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.character;
-  return vertexHookParameterMatches(source).some((match) => (
-    offset >= match.start && offset <= match.end && parameterListHasFeature(match.parameters, feature)
-  )) ? feature : undefined;
+  return undefined;
 }
 
-function vertexHookParameterLists(source: string): string[] {
-  return vertexHookParameterMatches(source).map((match) => match.parameters);
+function vertexHookCompletionFeatures(source: string): readonly SlangVertexHookFeature[] {
+  return vertexHookMatches(source)[0]?.features ?? [SLANG_VERTEX_HOOK_FEATURES[0]];
 }
 
-function vertexHookParameterMatches(source: string): { start: number; end: number; parameters: string }[] {
-  return [...source.matchAll(/\bvoid\s+mainVertex\s*\(([^)]*)\)/g)].flatMap((match) => match[1] === undefined
-    ? []
-    : [{ start: match.index, end: match.index + match[0].length, parameters: match[1] }]);
+interface SlangVertexHookMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly nameStart: number;
+  readonly nameEnd: number;
+  readonly features: readonly SlangVertexHookFeature[];
+}
+
+function vertexHookMatches(source: string): SlangVertexHookMatch[] {
+  const pattern = /\bvoid\s+(mainVertex)\s*\(\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float3\s+([A-Za-z_]\w*)\s*,\s*inout\s+float2\s+([A-Za-z_]\w*)\s*\)/g;
+  return [...source.matchAll(pattern)].flatMap((match) => {
+    const functionName = match[1];
+    const parameterNames = match.slice(2, 5);
+    if (!functionName || parameterNames.some((name) => !name)) {
+      return [];
+    }
+    const nameStart = match.index + match[0].indexOf(functionName);
+    const signatureEnd = match.index + match[0].length;
+    const bodyStart = signatureEnd + (source.slice(signatureEnd).match(/^\s*/)?.[0].length ?? 0);
+    if (source[bodyStart] !== "{") {
+      return [];
+    }
+    const bodyEnd = matchingBrace(source, bodyStart);
+    const types = ["float3", "float3", "float2"] as const;
+    const parameters = parameterNames.map((name, index): SlangVertexHookFeature => ({
+      name: name!,
+      kind: "parameter",
+      signature: `inout ${types[index]} ${name}`,
+      description: SLANG_VERTEX_HOOK_FEATURES[index + 1]!.description,
+    }));
+    const signature = `void mainVertex(${parameters.map((feature) => feature.signature).join(", ")})`;
+    return [{
+      start: match.index,
+      end: bodyEnd,
+      nameStart,
+      nameEnd: nameStart + functionName.length,
+      features: [{
+        name: functionName,
+        kind: "function",
+        signature,
+        description: SLANG_VERTEX_HOOK_FEATURES[0]!.description,
+      }, ...parameters],
+    }];
+  });
 }
 
 function consumeList<T, U>(list: SlangList<T> | undefined, convert: (value: T) => U): U[] {

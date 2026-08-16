@@ -167,6 +167,41 @@ void computeMain() {}`;
       .toContain("texture coordinate");
   });
 
+  it("documents and completes renamed Slang vertex-hook parameters by role", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "vertex" });
+    const text = "void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const hoverAt = (name: string, occurrence = 0) => {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) {
+        offset = text.indexOf(name, offset + 1);
+      }
+      return service.hover({ document: revision, position: { line: 0, character: offset + 1 } });
+    };
+    expect(JSON.stringify((await hoverAt("deformed"))?.contents))
+      .toContain("vertex position");
+    expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents))
+      .toContain("vertex normal");
+    expect(JSON.stringify((await hoverAt("textureUv"))?.contents))
+      .toContain("texture coordinate");
+    expect(JSON.stringify((await hoverAt("deformed", 1))?.contents))
+      .toContain("vertex position");
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.length - 3 } });
+    expect(completions.find((item) => item.label === "mainVertex")?.detail)
+      .toBe("void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
+    expect(completions.find((item) => item.label === "deformed")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex position") }));
+    expect(completions.find((item) => item.label === "surfaceNormal")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex normal") }));
+    expect(completions.find((item) => item.label === "textureUv")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("texture coordinate") }));
+  });
+
   it("loads generated Shader Studio declarations before user source", async () => {
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);

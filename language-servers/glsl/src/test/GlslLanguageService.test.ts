@@ -160,4 +160,32 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(sky, coord); }`;
     expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 68 } }))?.contents))
       .toContain("texture coordinate");
   });
+
+  it("documents renamed GLSL vertex-hook parameters by role", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    const text = "void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const hoverAt = (name: string, occurrence = 0) => {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) {
+        offset = text.indexOf(name, offset + 1);
+      }
+      return instance.hover({ document: revision, position: { line: 0, character: offset + 1 } });
+    };
+
+    expect(JSON.stringify((await hoverAt("deformed"))?.contents)).toContain("vertex position");
+    expect(JSON.stringify((await hoverAt("deformed", 1))?.contents)).toContain("object-space");
+    expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents)).toContain("vertex normal");
+    expect(JSON.stringify((await hoverAt("textureUv"))?.contents)).toContain("texture coordinate");
+    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.length - 3 } });
+    expect(completions.find((item) => item.label === "mainVertex")?.detail)
+      .toBe("void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv)");
+    expect(completions.find((item) => item.label === "deformed")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex position") }));
+    expect(completions.find((item) => item.label === "surfaceNormal")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex normal") }));
+    expect(completions.find((item) => item.label === "textureUv")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("texture coordinate") }));
+  });
 });
