@@ -438,18 +438,8 @@ export class SlangLanguageService implements LanguageService {
       return [];
     }
     try {
-      for (const file of state.environment.virtualFiles) {
-        const dependency = session.loadModuleFromSource(
-          stripEditorImport(file.text),
-          moduleName(file.text, file.uri),
-          sourcePath(file.uri),
-        );
-        if (!dependency) {
-          return parseCompilerDiagnostics(this.module.getLastError?.().message ?? "", sourcePath(state.document.uri), state.offset, state.document.text);
-        }
-      }
       const prelude = buildSlangAuthoringModule(state.environment).text;
-      const authoredSource = resolveCompilerIncludes(
+      const authoredSource = resolveCompilerDependencies(
         stripEditorImport(state.document.text),
         state.document.uri,
         state.environment.virtualFiles,
@@ -734,31 +724,53 @@ function stripEditorImport(source: string): string {
 
 const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
 const INCLUDE_IDENT_PATTERN = /^[ \t]*__include[ \t]+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)[ \t]*;?[ \t]*$/gm;
+const IMPORT_PATTERN = /^[ \t]*(?:__exported[ \t]+)?import[ \t]+(?:"([^"]+)"|([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))[ \t]*;?[ \t]*$/gm;
+const MODULE_DECL_PATTERN = /^[ \t]*module\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
+const IMPLEMENTING_DECL_PATTERN = /^[ \t]*implementing\s+[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*;[ \t]*[\r\n]*/m;
 
-function resolveCompilerIncludes(
+function resolveCompilerDependencies(
   source: string,
   ownerUri: string,
   files: ShaderAuthoringEnvironment["virtualFiles"],
 ): string {
   const fileSystem = new VirtualFileSystem();
   fileSystem.replaceEnvironment(files);
-  const visited = new Set<string>();
+  const imported = new Set<string>();
+  const resolving = new Set<string>();
 
   const resolveNested = (text: string, containingUri: string): string => {
-    const include = (match: string, reference: string): string => {
+    const dependency = (match: string, reference: string, once: boolean): string => {
       const uri = fileSystem.resolve(containingUri, reference);
       const file = uri ? fileSystem.read(uri) : undefined;
-      if (!uri || !file || visited.has(uri)) {
+      if (!uri || !file) {
         return match;
       }
-      visited.add(uri);
-      return resolveNested(file.text, uri);
+      if (resolving.has(uri) || (once && imported.has(uri))) {
+        return "";
+      }
+      if (once) {
+        imported.add(uri);
+      }
+      resolving.add(uri);
+      const resolved = resolveNested(
+        once ? file.text.replace(MODULE_DECL_PATTERN, "").replace(IMPLEMENTING_DECL_PATTERN, "") : file.text,
+        uri,
+      );
+      resolving.delete(uri);
+      return resolved;
     };
     const strings = text.replace(INCLUDE_STRING_PATTERN, (match: string, hashPath: string, includePath: string) => (
-      include(match, hashPath || includePath)
+      dependency(match, hashPath || includePath, false)
     ));
-    return strings.replace(INCLUDE_IDENT_PATTERN, (match: string, identifier: string) => (
-      include(match, `${identifier.replace(/_/g, "-").replace(/\./g, "/")}.slang`)
+    const identifiers = strings.replace(INCLUDE_IDENT_PATTERN, (match: string, identifier: string) => (
+      dependency(match, `${identifier.replace(/_/g, "-").replace(/\./g, "/")}.slang`, false)
+    ));
+    return identifiers.replace(IMPORT_PATTERN, (match: string, quotedPath: string, moduleName: string) => (
+      dependency(
+        match,
+        quotedPath || `${moduleName.replace(/_/g, "-").replace(/\./g, "/")}.slang`,
+        true,
+      )
     ));
   };
 

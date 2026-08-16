@@ -1,4 +1,4 @@
-import common;
+import lib.palette;
 
 float shade(float value) {
     return twice(value) * 0.5;

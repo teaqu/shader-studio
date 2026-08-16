@@ -98,4 +98,41 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       await service.dispose();
     }
   }, 20_000);
+
+  it("resolves a dotted import whose file declares only its basename", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///workspace/foundation.slang";
+    const source = [
+      "import lib.palette;",
+      "float4 mainImage(float2 p) { return float4(paletteColor(), 1.0); }",
+    ].join("\n");
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [{
+        uri: "file:///workspace/lib/palette.slang",
+        version: 1,
+        text: "module palette;\npublic float3 paletteColor() { return float3(1.0, 0.5, 0.0); }",
+      }],
+    };
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: source });
+
+      const diagnostics = await service.diagnostics({
+        document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
+      });
+
+      expect(diagnostics).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
 });

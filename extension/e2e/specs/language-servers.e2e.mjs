@@ -237,7 +237,7 @@ describe('Shader language servers in VS Code', () => {
     assert.match(result.channelHover, /input channel/i);
     assert.match(result.hookHover, /fragment entry point/i);
     assert.match(result.coordinateHover, /lower-left/i);
-    assert.ok(result.definitions.some((item) => item.path.endsWith('common.slang')), JSON.stringify(result.definitions));
+    assert.ok(result.definitions.some((item) => item.path.endsWith('palette.slang')), JSON.stringify(result.definitions));
     assert.ok(result.signatures.some((item) => item.includes('shade')));
     assert.ok(result.symbols.includes('shade'));
     assert.ok(result.symbols.includes('mainImage'));
