@@ -1359,7 +1359,7 @@ describe('EditorOverlay', () => {
       expect(monaco.editor.setModelMarkers).toHaveBeenCalled();
       const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
       const lastCall = calls[calls.length - 1];
-      expect(lastCall[1]).toBe('glsl');
+      expect(lastCall[1]).toBe('shader-studio-renderer-compiler');
       const markers = lastCall[2];
       expect(markers.length).toBe(1);
       expect(markers[0].startLineNumber).toBe(5);
@@ -1574,7 +1574,7 @@ describe('EditorOverlay', () => {
 
       expect(monaco.editor.setModelMarkers).toHaveBeenCalledWith(
         mockEditor.getModel(),
-        'glsl',
+        'shader-studio-renderer-compiler',
         [expect.objectContaining({ message: 'existing compiler error' })],
       );
     });

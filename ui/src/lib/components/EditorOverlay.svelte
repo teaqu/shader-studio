@@ -81,6 +81,7 @@
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
+  const RENDERER_COMPILER_MARKER_OWNER = "shader-studio-renderer-compiler";
 
   function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
     const lower = path.toLowerCase();
@@ -695,7 +696,7 @@
       }
     }
 
-    monaco.editor.setModelMarkers(model, 'glsl', markers);
+    monaco.editor.setModelMarkers(model, RENDERER_COMPILER_MARKER_OWNER, markers);
   }
 
   $effect(() => {

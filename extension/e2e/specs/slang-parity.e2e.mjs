@@ -83,11 +83,17 @@ async function expressionText(name) {
 }
 
 async function isActive(selector) {
-  return browser.execute((targetSelector) => {
-    const element = Array.from(document.querySelectorAll(targetSelector))
-      .find((candidate) => candidate.getClientRects().length > 0);
-    return element?.classList.contains('active') ?? false;
-  }, selector);
+  return browser.execute((targetSelector) =>
+    Array.from(document.querySelectorAll(targetSelector))
+      .some((candidate) => candidate.classList.contains('active')),
+  selector);
+}
+
+async function hasVisibleControl(selector) {
+  return browser.execute((targetSelector) =>
+    Array.from(document.querySelectorAll(targetSelector))
+      .some((candidate) => candidate.getClientRects().length > 0),
+  selector);
 }
 
 async function activate(selector) {
@@ -104,10 +110,12 @@ async function activate(selector) {
 }
 
 async function ensureButtonState(selector, active) {
-  await browser.waitUntil(() => browser.execute((targetSelector) =>
-    Array.from(document.querySelectorAll(targetSelector))
-      .some((candidate) => candidate.getClientRects().length > 0),
-  selector), { timeoutMsg: `No visible control matched ${selector}` });
+  if (!await hasVisibleControl(selector)) {
+    await activate('[aria-label="Open options menu"]');
+  }
+  await browser.waitUntil(() => hasVisibleControl(selector), {
+    timeoutMsg: `No visible control matched ${selector}`,
+  });
   if (await isActive(selector) !== active) {
     await activate(selector);
   }
