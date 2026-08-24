@@ -14,6 +14,7 @@ import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDepe
 const customUniforms = new Map<string, readonly CustomUniformDeclaration[]>();
 const snapshotListeners = new Set<(shaderPath: string) => void>();
 const loadedShaderProjects = new Map<string, { config: ShaderConfig; configPath: string; shaderPath: string }>();
+type AuthoringDocument = Pick<vscode.TextDocument, "uri" | "languageId" | "getText">;
 
 /** Makes the exact project configuration sent to an active Shader Studio client available to authoring services. */
 export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: ShaderConfig): void {
@@ -53,7 +54,7 @@ export function onDidChangeCustomUniformSnapshot(listener: (shaderPath: string) 
 export class ShaderAuthoringEnvironmentProvider {
   private readonly generations = new Map<string, { fingerprint: string; generation: number }>();
 
-  environmentFor(document: vscode.TextDocument): ShaderAuthoringEnvironment | undefined {
+  environmentFor(document: AuthoringDocument): ShaderAuthoringEnvironment | undefined {
     const languageId = document.languageId === "slang" ? "slang" : document.languageId === "glsl" ? "glsl" : undefined;
     if (!languageId) {
       return undefined;

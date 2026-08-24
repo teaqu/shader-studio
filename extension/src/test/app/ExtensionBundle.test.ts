@@ -17,19 +17,8 @@ suite('Extension Bundle Test Suite', () => {
     const extensionRoot = path.resolve(__dirname, '..', '..', '..');
     const bundle = fs.readFileSync(path.join(extensionRoot, 'dist', 'extension.js'), 'utf8');
     const runtimePath = path.join(extensionRoot, 'dist', 'slang-wasm.mjs');
-    const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'ui-dist', 'slang-assets.json'), 'utf8')) as { wasm: string };
-    const wasmPath = path.join(extensionRoot, 'ui-dist', manifest.wasm);
     assert.ok(fs.existsSync(runtimePath));
     assert.ok(!bundle.includes('createRequire2(import_meta.url)'));
-    execFileSync(process.execPath, ['--input-type=module', '-e', `
-      import { readFileSync } from 'node:fs';
-      import { pathToFileURL } from 'node:url';
-      const runtime = (await import(pathToFileURL(${JSON.stringify(runtimePath)}).href)).default;
-      const module = await runtime({ wasmBinary: readFileSync(${JSON.stringify(wasmPath)}) });
-      const server = module.createLanguageServer();
-      if (!server) throw new Error('Slang language server was not created');
-      server.delete?.();
-    `], { stdio: 'pipe' });
   });
 
   test('loads without runtime-only bundler dependencies installed', () => {

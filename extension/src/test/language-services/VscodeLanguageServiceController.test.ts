@@ -84,17 +84,18 @@ suite("VS Code language-service revisions", () => {
   });
 
   for (const language of ["glsl", "slang"] as const) {
-    test(`provides configured Common source to a nested ${language} buffer`, async () => {
+    test(`provides configured Common source to a nested ${language} buffer`, () => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-common-`));
       const passesDirectory = path.join(directory, "passes");
       const bufferPath = path.join(passesDirectory, `buffer-a.${language}`);
       const commonPath = path.join(directory, `shared.${language}`);
       const commonSource = "float sharedTone(float value) { return value * 0.5; }";
+      const bufferSource = language === "glsl"
+        ? "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }"
+        : "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }";
       try {
         fs.mkdirSync(passesDirectory, { recursive: true });
-        fs.writeFileSync(bufferPath, language === "glsl"
-          ? "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }"
-          : "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }");
+        fs.writeFileSync(bufferPath, bufferSource);
         fs.writeFileSync(commonPath, commonSource);
         fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
           version: "1.0",
@@ -104,7 +105,11 @@ suite("VS Code language-service revisions", () => {
             BufferA: { path: language === "glsl" ? `@/passes/buffer-a.${language}` : `passes/buffer-a.${language}` },
           },
         }));
-        const document = await vscode.workspace.openTextDocument(bufferPath);
+        const document = {
+          uri: vscode.Uri.file(bufferPath),
+          languageId: language,
+          getText: () => bufferSource,
+        };
         const provider = new ShaderAuthoringEnvironmentProvider();
 
         const first = provider.environmentFor(document);
