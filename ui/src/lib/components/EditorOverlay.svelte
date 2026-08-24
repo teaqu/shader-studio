@@ -785,6 +785,7 @@
   <div class="editor-wrapper" class:ready={editorReady} style={`bottom: ${bottomInset}px;`}>
     <div
       class="editor-overlay"
+      data-active-buffer={activeBufferName}
       bind:this={containerEl}
     ></div>
     {#if vimMode}

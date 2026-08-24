@@ -1343,6 +1343,15 @@ describe('EditorOverlay', () => {
     });
   });
 
+  it('exposes the active buffer name for diagnostics', () => {
+    const { container } = render(EditorOverlay, {
+      props: { ...defaultProps, activeBufferName: 'BufferA' },
+    });
+
+    const overlay = container.querySelector('.editor-overlay');
+    expect(overlay?.getAttribute('data-active-buffer')).toBe('BufferA');
+  });
+
   // Test group: Error markers
   describe('error markers', () => {
     it('should set Monaco markers for matching buffer errors', async () => {

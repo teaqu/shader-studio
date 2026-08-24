@@ -131,11 +131,30 @@ describe('Shader language servers in the Monaco overlay', () => {
         timeoutMsg: 'Monaco did not render the Shader Studio Slang compiler marker',
       });
     } catch (error) {
-      const diagnostics = await browser.execute(() => ({
-        rendererError: document.querySelector('.error-tooltip-content')?.textContent?.trim() ?? null,
-        pauseHasError: document.querySelector('button[aria-label="Toggle pause"]')?.classList.contains('error'),
-        overlayText: document.querySelector('.editor-overlay')?.textContent?.slice(0, 500) ?? null,
-      }));
+      const diagnostics = await browser.execute(() => {
+        const overlay = document.querySelector('.editor-overlay');
+        return {
+          rendererError: document.querySelector('.error-tooltip-content')?.textContent?.trim() ?? null,
+          pauseHasError: document.querySelector('button[aria-label="Toggle pause"]')?.classList.contains('error'),
+          overlayText: overlay?.textContent?.slice(0, 300) ?? null,
+          // Which buffer the marker parser filters against: a mismatch with the
+          // "Image:" prefix on the renderer error drops every marker silently.
+          activeBuffer: overlay?.getAttribute('data-active-buffer') ?? null,
+          // Marker rendering: any severity, not just error.
+          squigglyClasses: Array.from(
+            document.querySelectorAll('.editor-overlay [class*="squiggly"]'),
+            (element) => element.className,
+          ).slice(0, 10),
+          viewLines: document.querySelectorAll('.editor-overlay .view-line').length,
+          editorReady: document.querySelector('.editor-wrapper')?.classList.contains('ready') ?? null,
+          // Did the Slang toolchain actually load in this webview?
+          slangResources: performance.getEntriesByType('resource')
+            .map((entry) => entry.name.split('/').pop())
+            .filter((name) => /languageService|slang|wasm/i.test(name))
+            .slice(0, 10),
+          overlayErrors: window.__shaderStudioOverlayErrors ?? [],
+        };
+      });
       throw new Error(`${error.message}\nRenderer diagnostics: ${JSON.stringify(diagnostics, null, 2)}`);
     }
     const hover = await hoverTextForToken('unknownValue', /undefined identifier/i);
