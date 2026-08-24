@@ -125,6 +125,15 @@ export const config = {
         'disable-workspace-trust': true,
         'enable-unsafe-webgpu': true,
         'skip-welcome': true,
+        // The webview drives variable capture from requestAnimationFrame, and
+        // rAF does not fire while a document is hidden. Chromium marks a window
+        // hidden when the OS occludes it, so any window covering the test
+        // window stalls the capture loop and makes dockview measure 0 (which
+        // collapses the toolbar behind its container queries). Neither has
+        // anything to do with the behaviour under test.
+        'disable-backgrounding-occluded-windows': true,
+        'disable-renderer-backgrounding': true,
+        'disable-background-timer-throttling': true,
       },
       // Must stay false. wdio-vscode-service launches VS Code through a
       // wrapper that uses child_process.execFile with Node's default 1 MiB
