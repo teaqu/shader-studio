@@ -608,6 +608,23 @@ describe('ShaderPipeline — overlay cursor gate', () => {
       expect(debugCompileSpy).toHaveBeenCalled();
     });
 
+    it('does not recompile for a duplicate cursor position', () => {
+      mocks.shaderDebugManager.updateDebugLine = vi.fn(() => false as never);
+      mocks.shaderDebugManager.getState = vi.fn(() => ({ ...mocks.debugState, isActive: true }));
+      (pipeline as any).shaderProcessor = {
+        getImageShaderCode: vi.fn(() => 'void mainImage() {}'),
+      };
+      (pipeline as any).lastEvent = {
+        data: { type: 'shader', code: '', path: '/my.glsl', config: { passes: { Image: {} } }, buffers: {} },
+      } as MessageEvent;
+      const debugCompileSpy = vi.fn();
+      (pipeline as any).debugCompile = debugCompileSpy;
+
+      pipeline.handleOverlayCursor(5, 'float x = 1.0;', 'Image');
+
+      expect(debugCompileSpy).not.toHaveBeenCalled();
+    });
+
     it('does not trigger debugCompile when debug is inactive', () => {
       mocks.shaderDebugManager.getState = vi.fn(() => ({ ...mocks.debugState, isActive: false }));
       (pipeline as any).shaderProcessor = {

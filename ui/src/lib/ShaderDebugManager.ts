@@ -397,12 +397,12 @@ export class ShaderDebugManager {
     this.notifyStateChange();
   }
 
-  public updateDebugLine(line: number, lineContent: string, filePath: string, notifyCapture = true): void {
+  public updateDebugLine(line: number, lineContent: string, filePath: string, notifyCapture = true): boolean {
     // Line lock logic
     if (this.state.isLineLocked) {
       if (filePath === this.lockedFilePath) {
         // Same file, locked — ignore the update
-        return;
+        return false;
       }
       // Different file — auto-unlock
       this.state.isLineLocked = false;
@@ -410,6 +410,9 @@ export class ShaderDebugManager {
     }
 
     const positionUnchanged = this.state.currentLine === line && this.state.filePath === filePath;
+    if (positionUnchanged && this.state.lineContent === lineContent) {
+      return false;
+    }
 
     this.state.currentLine = line;
     this.state.lineContent = lineContent;
@@ -424,6 +427,7 @@ export class ShaderDebugManager {
     if (notifyCapture && !positionUnchanged) {
       this.onCaptureStateChanged?.();
     }
+    return true;
   }
 
   public setVariablePreview(request: VariablePreviewRequest): boolean {

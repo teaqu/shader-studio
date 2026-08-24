@@ -351,7 +351,10 @@ export class ShaderPipeline {
       return;
     }
 
-    this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+    const debugLineChanged = this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+    if (debugLineChanged === false) {
+      return;
+    }
 
     // If debug mode is active, recompile shader
     if (this.shaderDebugManager.getState().isActive && this.shaderProcessor.getImageShaderCode() && this.lastEvent) {
@@ -385,7 +388,10 @@ export class ShaderPipeline {
       }
     }
 
-    this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+    const debugLineChanged = this.shaderDebugManager.updateDebugLine(line, lineContent, filePath);
+    if (debugLineChanged === false) {
+      return;
+    }
 
     if (
       this.shaderDebugManager.getState().isActive
