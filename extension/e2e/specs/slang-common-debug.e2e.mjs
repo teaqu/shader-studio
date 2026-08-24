@@ -120,7 +120,9 @@ describe('Slang common-module debugging in the VS Code webview', () => {
       timeoutMsg: 'Shader Studio did not finish loading the Slang shader',
     });
     if (!(await debugButton.getAttribute('class')).split(/\s+/).includes('active')) {
-      await activate('button.collapse-debug[aria-label="Toggle debug mode"]');
+      await browser.execute(() => {
+        document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]')?.click();
+      });
     }
     await $('.debug-panel').waitForDisplayed({ timeout: 30_000 });
     await ensureActiveControl('[aria-label="Toggle lock"]');
