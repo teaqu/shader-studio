@@ -1,13 +1,25 @@
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 
+const chromiumArgs = process.platform === 'linux'
+  ? [
+      '--enable-unsafe-webgpu',
+      '--enable-webgpu-developer-features',
+      '--use-gpu-in-tests',
+      '--enable-accelerated-2d-canvas',
+      '--use-webgpu-power-preference=default-high-performance',
+    ]
+  : ['--enable-unsafe-webgpu'];
+
 export default defineConfig({
   test: {
     browser: {
       enabled: true,
       provider: playwright({
         launchOptions: {
-          args: ['--enable-unsafe-webgpu'],
+          // Headless Linux needs explicit GPU-test opt-in for WebGPU canvas
+          // command submission and readback. Keep local browser defaults.
+          args: chromiumArgs,
         },
       }),
       instances: [
@@ -16,9 +28,5 @@ export default defineConfig({
     },
     include: ['src/test/**/*.e2e.test.ts'],
     globals: true,
-    // WebGPU devices and readback buffers are scarce on hosted runners.
-    // Run browser test files serially so concurrent Slang canvases cannot
-    // starve one another before their capture requests are submitted.
-    fileParallelism: false,
   },
 });
