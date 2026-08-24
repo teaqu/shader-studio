@@ -160,7 +160,7 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("advances the environment when a configured Common dependency changes", async () => {
+  test("advances the environment when a configured Common dependency changes", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-dependency-"));
     const bufferPath = path.join(directory, "buffer-a.glsl");
     const commonPath = path.join(directory, "common.glsl");
@@ -175,7 +175,11 @@ suite("VS Code language-service revisions", () => {
         version: "1.0",
         passes: { Image: {}, common: { path: "common.glsl" }, BufferA: { path: "buffer-a.glsl" } },
       }));
-      const document = await vscode.workspace.openTextDocument(bufferPath);
+      const document = {
+        uri: vscode.Uri.file(bufferPath),
+        languageId: "glsl",
+        getText: () => fs.readFileSync(bufferPath, "utf8"),
+      };
       const provider = new ShaderAuthoringEnvironmentProvider();
       const first = provider.environmentFor(document);
 
