@@ -322,6 +322,22 @@ describe('VariableCaptureManager', () => {
       expect(rafCallbacks).toHaveLength(1); // loop continues
     });
 
+    it('does not schedule another frame while capture issuance is unresolved', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      let resolveIssue!: (issued: number) => void;
+      mockIssueCaptureGrid.mockReturnValue(new Promise<number>((resolve) => {
+        resolveIssue = resolve;
+      }));
+
+      manager.notifyStateChange(BASE_PARAMS);
+      await flushRAF();
+
+      expect(rafCallbacks).toHaveLength(0);
+
+      resolveIssue(1);
+      await Promise.resolve();
+    });
+
     it('loop does not double-schedule when onUpdate triggers notifyStateChange', async () => {
       (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
       mockIssueCaptureGrid.mockResolvedValue(1);

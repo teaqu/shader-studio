@@ -510,7 +510,13 @@ export class VariableCaptureManager {
 
     // Continue loop while there's pending work; otherwise stop (or schedule poll/realtime).
     const mode = this.lastParams?.refreshMode ?? 'manual';
-    if (this.dirty || this.collecting || this.issuing) {
+    if (this.issuing) {
+      // issueCaptures() schedules the next tick in its completion handler.
+      // Scheduling here too permits parallel loop ticks while a GPU request
+      // still refers to the previous debug pipeline.
+      return;
+    }
+    if (this.dirty || this.collecting) {
       this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
     } else if (mode === 'realtime') {
       // Realtime: keep rAF loop running, re-mark dirty each frame
