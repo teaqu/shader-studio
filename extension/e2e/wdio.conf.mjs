@@ -52,8 +52,10 @@ function reportStderrBudget() {
   try {
     logs = readdirSync(outputDir).filter((name) => name.endsWith('-chromedriver.log'));
   } catch {
+    console.log(`[stderr budget] no driver logs under ${outputDir} to measure`);
     return;
   }
+  const measured = [];
   for (const name of logs) {
     let bytes;
     try {
@@ -64,6 +66,20 @@ function reportStderrBudget() {
     } catch {
       continue;
     }
+    measured.push({ name, bytes });
+  }
+  // Always report, even when healthy. A check that only speaks up on trouble
+  // cannot be told apart from one that is not running at all.
+  if (measured.length === 0) {
+    console.log('[stderr budget] no driver log from this run was measured');
+  } else {
+    const summary = measured
+      .map(({ name, bytes }) => `${name} ${Math.round(bytes / 1024)} KiB `
+        + `(${Math.round((bytes / CHILD_STDERR_LIMIT) * 100)}% of cap)`)
+      .join(', ');
+    console.log(`[stderr budget] ${summary}`);
+  }
+  for (const { name, bytes } of measured) {
     if (bytes < CHILD_STDERR_LIMIT * CHILD_STDERR_WARN_RATIO) {
       continue;
     }
