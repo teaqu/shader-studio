@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +13,80 @@ const outputDir = join(extensionPath, '.wdio');
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 process.env.SHADER_STUDIO_E2E_WORKSPACE = workspacePath;
+
+// wdio-vscode-service starts VS Code through a wrapper that shells out with
+// child_process.execFile, which caps the child's stderr at Node's default 1 MiB
+// maxBuffer. On overflow Node SIGTERMs VS Code mid-run. Electron then shuts down
+// gracefully, so there is no crash report, no crash dump and no error in any
+// log — the run just reports "invalid session id: session deleted as the
+// browser has closed the connection". This scan turns that silent kill into a
+// named diagnosis.
+// Driver logs from earlier runs linger in the output directory; only this
+// run's logs say anything about this run's stderr budget.
+const runStartedAt = Date.now();
+const CHILD_STDERR_LIMIT = 1024 * 1024;
+const CHILD_STDERR_WARN_RATIO = 0.6;
+const WRAPPER_PREFIX = '[FAKE VSCode Binary]';
+const WRAPPER_STDERR_PREFIX = `${WRAPPER_PREFIX} STDERR: `;
+
+/** Bytes of VS Code stderr the launcher wrapper forwarded into a driver log. */
+function forwardedStderrBytes(logPath) {
+  let total = 0;
+  let inStderrChunk = false;
+  for (const line of readFileSync(logPath, 'utf8').split('\n')) {
+    if (line.startsWith(WRAPPER_STDERR_PREFIX)) {
+      total += Buffer.byteLength(line) - WRAPPER_STDERR_PREFIX.length + 1;
+      inStderrChunk = true;
+    } else if (line.startsWith(WRAPPER_PREFIX)) {
+      inStderrChunk = false;
+    } else if (inStderrChunk) {
+      // Continuation lines of a multi-line stderr chunk carry no prefix.
+      total += Buffer.byteLength(line) + 1;
+    }
+  }
+  return total;
+}
+
+function reportStderrBudget() {
+  let logs;
+  try {
+    logs = readdirSync(outputDir).filter((name) => name.endsWith('-chromedriver.log'));
+  } catch {
+    return;
+  }
+  for (const name of logs) {
+    let bytes;
+    try {
+      if (statSync(join(outputDir, name)).mtimeMs < runStartedAt) {
+        continue;
+      }
+      bytes = forwardedStderrBytes(join(outputDir, name));
+    } catch {
+      continue;
+    }
+    if (bytes < CHILD_STDERR_LIMIT * CHILD_STDERR_WARN_RATIO) {
+      continue;
+    }
+    const used = `${Math.round(bytes / 1024)} KiB of ${CHILD_STDERR_LIMIT / 1024} KiB`;
+    const banner = bytes >= CHILD_STDERR_LIMIT
+      ? `VS Code stderr EXCEEDED the launcher wrapper's execFile maxBuffer (${used}).`
+      : `VS Code stderr is nearing the launcher wrapper's execFile maxBuffer (${used}).`;
+    console.error([
+      '',
+      '='.repeat(78),
+      banner,
+      `  driver log: ${join(outputDir, name)}`,
+      '  At the limit Node SIGTERMs VS Code mid-run. The session then dies with',
+      '  "invalid session id: session deleted as the browser has closed the',
+      '  connection" and leaves no crash report - it is not a renderer crash.',
+      '  Fix by reducing VS Code console output, not by retrying: keep',
+      '  wdio:vscodeOptions.verboseLogging false (it adds --verbose and',
+      '  --log-extension-host-communication) and check for chatty new logging.',
+      '='.repeat(78),
+      '',
+    ].join('\n'));
+  }
+}
 
 export const config = {
   runner: 'local',
@@ -52,7 +126,15 @@ export const config = {
         'enable-unsafe-webgpu': true,
         'skip-welcome': true,
       },
-      verboseLogging: true,
+      // Must stay false. wdio-vscode-service launches VS Code through a
+      // wrapper that uses child_process.execFile with Node's default 1 MiB
+      // maxBuffer. verboseLogging adds --verbose --log-extension-host-
+      // communication, which pushes VS Code's stderr past 1 MiB partway
+      // through a long spec; Node then SIGTERMs VS Code, Electron shuts down
+      // gracefully, and WebDriver reports "session deleted as the browser has
+      // closed the connection" with no crash report. VS Code still writes its
+      // trace logs to <user-data-dir>/logs for post-mortem analysis.
+      verboseLogging: false,
       vscodeProxyOptions: {
         enable: true,
         connectionTimeout: 30_000,
@@ -72,5 +154,8 @@ export const config = {
     } catch {
       // The extension host can replace its webview while reporting a failure.
     }
+  },
+  onComplete: () => {
+    reportStderrBudget();
   },
 };
