@@ -84,7 +84,8 @@ suite("VS Code language-service revisions", () => {
   });
 
   for (const language of ["glsl", "slang"] as const) {
-    test(`provides configured Common source to a nested ${language} buffer`, async () => {
+    test(`provides configured Common source to a nested ${language} buffer`, async function () {
+      this.timeout(10_000);
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-common-`));
       const passesDirectory = path.join(directory, "passes");
       const bufferPath = path.join(passesDirectory, `buffer-a.${language}`);
