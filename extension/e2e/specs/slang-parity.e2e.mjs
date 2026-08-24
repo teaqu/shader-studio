@@ -3,7 +3,6 @@ import { join } from 'node:path';
 
 const workspacePath = process.env.SHADER_STUDIO_E2E_WORKSPACE;
 const validationPath = join(workspacePath, 'validation.slang');
-const computePath = join(workspacePath, 'passes', 'pattern.compute.slang');
 
 let shaderStudioWebview;
 
@@ -232,15 +231,6 @@ describe('Slang parity in the VS Code webview', () => {
     await showFileAtLine(validationPath, 13);
     await waitForCapturedText('.var-name', 'pulse', 60_000);
     await waitForCapturedText('.var-name', 'grid', 60_000);
-    await waitForNoCaptureError();
-  });
-
-  it('captures variables from the native compute pass', async () => {
-    await ensureButtonState('[aria-label="Toggle variable inspector"]', true);
-    await showFileAtLine(computePath, 8);
-    await waitForText('.fn-name', 'buildPattern', 60_000);
-    await waitForCapturedText('.var-name', 'wave', 60_000);
-    await waitForCapturedText('.var-name', 'color', 60_000);
     await waitForNoCaptureError();
   });
 

@@ -49,14 +49,15 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("provides the configured compute output-layer count to Slang authoring", async () => {
+  test("provides the configured compute output-layer count to Slang authoring", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-ls-"));
     const shaderDirectory = path.join(directory, "compute-lab", "passes");
     const shaderPath = path.join(shaderDirectory, "compute.slang");
     const configPath = path.join(directory, "compute.sha.json");
+    const shaderSource = "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() {}";
     try {
       fs.mkdirSync(shaderDirectory, { recursive: true });
-      fs.writeFileSync(shaderPath, "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() {}");
+      fs.writeFileSync(shaderPath, shaderSource);
       fs.writeFileSync(path.join(shaderDirectory, "decoy.sha.json"), JSON.stringify({
         version: "1.0",
         passes: { Image: {} },
@@ -72,7 +73,11 @@ suite("VS Code language-service revisions", () => {
           },
         },
       }));
-      const document = await vscode.workspace.openTextDocument(shaderPath);
+      const document = {
+        uri: vscode.Uri.file(shaderPath),
+        languageId: "slang",
+        getText: () => shaderSource,
+      };
 
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 

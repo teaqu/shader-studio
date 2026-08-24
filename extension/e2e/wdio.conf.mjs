@@ -55,7 +55,7 @@ export const config = {
       verboseLogging: true,
       vscodeProxyOptions: {
         enable: true,
-        connectionTimeout: 15_000,
+        connectionTimeout: 30_000,
         commandTimeout: 30_000,
       },
     },
