@@ -1352,6 +1352,26 @@ describe('EditorOverlay', () => {
     expect(overlay?.getAttribute('data-active-buffer')).toBe('BufferA');
   });
 
+  it('exposes marker pipeline counters for diagnostics', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(5);
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    const { container } = render(EditorOverlay, {
+      props: {
+        ...defaultProps,
+        activeBufferName: 'Image',
+        errors: ['Image: ERROR: 0:2: syntax error'],
+      },
+    });
+
+    const overlay = container.querySelector('.editor-overlay');
+    expect(Number(overlay?.getAttribute('data-marker-updates'))).toBeGreaterThan(0);
+    expect(overlay?.getAttribute('data-marker-count')).toBe('1');
+    expect(overlay?.getAttribute('data-errors-count')).toBe('1');
+  });
+
   const CI_SLANG_ERROR = [
     'Image: error[E30015]: undefined identifier',
     ' --> /runner/overlay-language-service.slang:4:19',

@@ -82,6 +82,11 @@
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
   const RENDERER_COMPILER_MARKER_OWNER = "shader-studio-renderer-compiler";
+  // Observability for the marker pipeline. updateCount separates "never ran"
+  // from "ran and produced nothing", which the DOM alone cannot distinguish.
+  // Plain counters written straight onto the element: updateErrorMarkers runs
+  // inside effects, where mutating $state is not allowed.
+  let markerUpdateCount = 0;
 
   function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
     const lower = path.toLowerCase();
@@ -700,6 +705,10 @@
       }
     }
 
+    markerUpdateCount += 1;
+    containerEl?.setAttribute("data-marker-updates", String(markerUpdateCount));
+    containerEl?.setAttribute("data-marker-count", String(markers.length));
+    containerEl?.setAttribute("data-errors-count", String(errs.length));
     monaco.editor.setModelMarkers(model, RENDERER_COMPILER_MARKER_OWNER, markers);
   }
 

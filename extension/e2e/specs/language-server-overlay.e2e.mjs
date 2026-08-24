@@ -140,6 +140,11 @@ describe('Shader language servers in the Monaco overlay', () => {
           // Which buffer the marker parser filters against: a mismatch with the
           // "Image:" prefix on the renderer error drops every marker silently.
           activeBuffer: overlay?.getAttribute('data-active-buffer') ?? null,
+          // markerUpdates 0 means the marker pass never ran at all; non-zero
+          // with markerCount 0 means it ran and produced nothing.
+          markerUpdates: overlay?.getAttribute('data-marker-updates') ?? null,
+          markerCount: overlay?.getAttribute('data-marker-count') ?? null,
+          errorsCount: overlay?.getAttribute('data-errors-count') ?? null,
           // Marker rendering: any severity, not just error.
           squigglyClasses: Array.from(
             document.querySelectorAll('.editor-overlay [class*="squiggly"]'),
