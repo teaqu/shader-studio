@@ -434,6 +434,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(textures).toHaveLength(2);
     for (const texture of textures) {
       expect(texture.descriptor).toEqual({
+        label: "ComputeSim compute output",
         size: { width: 320, height: 180, depthOrArrayLayers: 3 },
         format: "rgba16float",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,

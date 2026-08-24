@@ -179,6 +179,7 @@ describe("SlangComputePipeline", () => {
     expect(device.createTexture).toHaveBeenCalledTimes(2);
     for (const [textureDescriptor] of device.createTexture.mock.calls) {
       expect(textureDescriptor).toEqual({
+        label: "ComputeA compute output",
         size: { width: 320, height: 180, depthOrArrayLayers: 1 },
         format: BUFFER_TEXTURE_FORMAT,
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
@@ -652,6 +653,189 @@ describe("SlangComputePipeline", () => {
     }
     expect(device.createShaderModule).toHaveBeenCalledTimes(1);
     expect(device.createComputePipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps replaced output textures alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.resize(640, 360);
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("rebuild() keeps the previous output textures alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    await compute.rebuild("// next wgsl");
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("resetOutputTextures() keeps the previous feedback targets alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.resetOutputTextures();
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("dispose() keeps output textures alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.dispose();
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("still destroys output textures when the submitted-work promise rejects", async () => {
+    const device = fakeDevice();
+    let rejectWork!: (reason: unknown) => void;
+    const rejectable = new Promise<void>((_, reject) => {
+      rejectWork = reject;
+    });
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => rejectable),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.dispose();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    rejectWork(new Error("device lost"));
+    await rejectable.catch(() => undefined);
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("destroys output textures immediately when the queue throws asking for submitted work", async () => {
+    const device = fakeDevice();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => {
+        throw new Error("device lost");
+      }),
+    });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.dispose();
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("does not re-retire textures that are already awaiting destruction", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    const onSubmittedWorkDone = vi.fn(() => submittedWork.promise);
+    Object.assign(device.queue, { onSubmittedWorkDone });
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.dispose();
+    // A second dispose has no live textures left to retire.
+    compute.dispose();
+    expect(onSubmittedWorkDone).toHaveBeenCalledTimes(1);
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("destroys output textures immediately when the queue cannot report submitted work", async () => {
+    const device = fakeDevice();
+    const compute = new SlangComputePipeline(device, descriptor());
+    await compute.rebuild("// wgsl");
+    const originalTextures = device.createTexture.mock.results
+      .map((result) => result.value as FakeTexture);
+
+    compute.dispose();
+
+    for (const texture of originalTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("resizes an output-free pass without textures and preserves groups on a no-op", async () => {

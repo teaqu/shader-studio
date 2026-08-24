@@ -53,6 +53,7 @@ export class SlangPassPipeline {
   private outputViews: GPUTextureView[] = [];
   private textureIndex = 0;
   private rebuildGeneration = 0;
+  private pendingTextureRetirements = new Set<GPUTexture>();
 
   constructor(
     private readonly device: GPUDevice,
@@ -192,7 +193,7 @@ export class SlangPassPipeline {
 
   /**
    * Record a texture resize into a caller-owned encoder. The returned callback
-   * releases the old textures and must run only after the commands are
+   * retires the old textures and must run only after the commands are
    * submitted, allowing an engine resize to batch several pass migrations.
    */
   encodeResize(width: number, height: number, encoder: GPUCommandEncoder): (() => void) | null {
@@ -242,9 +243,7 @@ export class SlangPassPipeline {
       this.textureIndex = oldTextureIndex;
       this.resizeDepthTexture(width, height);
       return () => {
-        for (const texture of oldTextures) {
-          texture.destroy?.();
-        }
+        this.retireTexturesAfterSubmittedWork(oldTextures);
       };
     }
     this.descriptor = { ...this.descriptor, width, height };
@@ -432,6 +431,7 @@ export class SlangPassPipeline {
     height = this.descriptor.height,
   ): GPUTexture {
     return this.device.createTexture({
+      label: `${this.descriptor.name} output`,
       size: { width, height },
       format: this.targetFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT
@@ -446,6 +446,7 @@ export class SlangPassPipeline {
       return;
     }
     const nextDepthTexture = this.device.createTexture({
+      label: `${this.descriptor.name} depth`,
       size: { width, height },
       format: "depth24plus",
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
@@ -483,10 +484,47 @@ export class SlangPassPipeline {
   }
 
   private destroyTextures(): void {
-    SlangPassPipeline.destroyTextureList(this.textures);
+    // Rebuild, feedback reset and dispose all replace the live ping-pong
+    // targets. A frame encoded before this call may still be in flight, so the
+    // textures only die once the queue reports its submitted work complete.
+    this.retireTexturesAfterSubmittedWork(this.textures);
     this.textures = [];
     this.outputViews = [];
     this.textureIndex = 0;
+  }
+
+  private retireTexturesAfterSubmittedWork(textures: GPUTexture[]): void {
+    const pending = textures.filter((texture) => !this.pendingTextureRetirements.has(texture));
+    if (pending.length === 0) {
+      return;
+    }
+    for (const texture of pending) {
+      this.pendingTextureRetirements.add(texture);
+    }
+    const onSubmittedWorkDone = this.device.queue.onSubmittedWorkDone;
+    if (!onSubmittedWorkDone) {
+      this.destroyRetiredTextures(pending);
+      return;
+    }
+    let completion: Promise<void>;
+    try {
+      completion = onSubmittedWorkDone.call(this.device.queue);
+    } catch {
+      this.destroyRetiredTextures(pending);
+      return;
+    }
+    void completion.then(
+      () => this.destroyRetiredTextures(pending),
+      () => this.destroyRetiredTextures(pending),
+    );
+  }
+
+  private destroyRetiredTextures(textures: GPUTexture[]): void {
+    for (const texture of textures) {
+      if (this.pendingTextureRetirements.delete(texture)) {
+        texture.destroy?.();
+      }
+    }
   }
 
   private static destroyTextureList(textures: GPUTexture[]): void {

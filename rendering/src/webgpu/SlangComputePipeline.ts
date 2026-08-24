@@ -42,6 +42,7 @@ export class SlangComputePipeline {
   private layerOutputViews: GPUTextureView[][] = [];
   private textureIndex = 0;
   private rebuildGeneration = 0;
+  private pendingTextureRetirements = new Set<GPUTexture>();
 
   constructor(
     private readonly device: GPUDevice,
@@ -146,7 +147,7 @@ export class SlangComputePipeline {
       this.fullOutputViews = nextViews.full;
       this.layerOutputViews = nextViews.layers;
       this.textureIndex = 0;
-      SlangComputePipeline.destroyTextureList(previousTextures);
+      this.retireTexturesAfterSubmittedWork(previousTextures);
       return;
     }
     this.descriptor = nextDescriptor;
@@ -313,7 +314,7 @@ export class SlangComputePipeline {
     this.layerOutputViews = nextViews.layers;
     this.textureIndex = 0;
     this.invalidateBindGroups();
-    SlangComputePipeline.destroyTextureList(previousTextures);
+    this.retireTexturesAfterSubmittedWork(previousTextures);
   }
 
   dispose(): void {
@@ -382,6 +383,7 @@ export class SlangComputePipeline {
     height = this.descriptor.height,
   ): GPUTexture {
     return this.device.createTexture({
+      label: `${this.descriptor.name} compute output`,
       size: {
         width,
         height,
@@ -437,11 +439,48 @@ export class SlangComputePipeline {
   }
 
   private destroyTextures(): void {
-    SlangComputePipeline.destroyTextureList(this.textures);
+    // Rebuild, feedback reset and dispose all replace the live ping-pong
+    // targets. A frame encoded before this call may still be in flight, so the
+    // textures only die once the queue reports its submitted work complete.
+    this.retireTexturesAfterSubmittedWork(this.textures);
     this.textures = [];
     this.fullOutputViews = [];
     this.layerOutputViews = [];
     this.textureIndex = 0;
+  }
+
+  private retireTexturesAfterSubmittedWork(textures: GPUTexture[]): void {
+    const pending = textures.filter((texture) => !this.pendingTextureRetirements.has(texture));
+    if (pending.length === 0) {
+      return;
+    }
+    for (const texture of pending) {
+      this.pendingTextureRetirements.add(texture);
+    }
+    const onSubmittedWorkDone = this.device.queue.onSubmittedWorkDone;
+    if (!onSubmittedWorkDone) {
+      this.destroyRetiredTextures(pending);
+      return;
+    }
+    let completion: Promise<void>;
+    try {
+      completion = onSubmittedWorkDone.call(this.device.queue);
+    } catch {
+      this.destroyRetiredTextures(pending);
+      return;
+    }
+    void completion.then(
+      () => this.destroyRetiredTextures(pending),
+      () => this.destroyRetiredTextures(pending),
+    );
+  }
+
+  private destroyRetiredTextures(textures: GPUTexture[]): void {
+    for (const texture of textures) {
+      if (this.pendingTextureRetirements.delete(texture)) {
+        texture.destroy?.();
+      }
+    }
   }
 
   private invalidateBindGroups(): void {

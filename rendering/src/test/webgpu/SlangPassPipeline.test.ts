@@ -3,6 +3,14 @@ import type { StorageBindingNode } from "../../types/PassGraph";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 function fakeDevice(compilationMessages: Array<{ type: string; lineNum: number; linePos: number; message: string }> = []) {
   const pipeline = {
     getBindGroupLayout: vi.fn(() => ({})),
@@ -906,8 +914,12 @@ describe("SlangPassPipeline", () => {
     );
   });
 
-  it("encodeResize() records migration without submitting or destroying textures early", async () => {
+  it("encodeResize() keeps replaced textures alive until submitted GPU work completes", async () => {
     const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "BufferA",
       width: 320,
@@ -927,7 +939,213 @@ describe("SlangPassPipeline", () => {
       expect(texture.destroy).not.toHaveBeenCalled();
     }
 
+    device.queue.submit([encoder.finish()]);
     finishResize?.();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("rebuild() keeps the previous output textures alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    await pass.rebuild("// next wgsl");
+
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("resetOutputTextures() keeps the previous feedback targets alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.resetOutputTextures();
+
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("dispose() keeps output textures alive until submitted GPU work completes", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => submittedWork.promise),
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.dispose();
+
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("still destroys output textures when the submitted-work promise rejects", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    let rejectWork!: (reason: unknown) => void;
+    const rejectable = new Promise<void>((_, reject) => {
+      rejectWork = reject;
+    });
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => rejectable),
+    });
+    void submittedWork;
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.dispose();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).not.toHaveBeenCalled();
+    }
+
+    rejectWork(new Error("device lost"));
+    await rejectable.catch(() => undefined);
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("destroys output textures immediately when the queue throws asking for submitted work", async () => {
+    const device = fakeDevice();
+    Object.assign(device.queue, {
+      onSubmittedWorkDone: vi.fn(() => {
+        throw new Error("device lost");
+      }),
+    });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.dispose();
+
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("retires the same textures once when a resize completion runs twice", async () => {
+    const device = fakeDevice();
+    const submittedWork = deferred<void>();
+    const onSubmittedWorkDone = vi.fn(() => submittedWork.promise);
+    Object.assign(device.queue, { onSubmittedWorkDone });
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+    const encoder = device.createCommandEncoder();
+
+    const finishResize = pass.encodeResize(640, 360, encoder);
+    finishResize?.();
+    // An engine that batches migrations may run a completion callback twice;
+    // the second retirement must not queue a second destroy of the same texture.
+    finishResize?.();
+    expect(onSubmittedWorkDone).toHaveBeenCalledTimes(1);
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+    for (const texture of oldTextures) {
+      expect(texture.destroy).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("destroys output textures immediately when the queue cannot report submitted work", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "BufferA",
+      width: 320,
+      height: 180,
+      output: "texture",
+      channels: [],
+    });
+    await pass.rebuild("// wgsl");
+    const oldTextures = device.createTexture.mock.results.map((result) => result.value);
+
+    pass.dispose();
+
     for (const texture of oldTextures) {
       expect(texture.destroy).toHaveBeenCalledTimes(1);
     }
