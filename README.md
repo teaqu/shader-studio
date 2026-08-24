@@ -63,6 +63,19 @@ cd extension
 npm run vsce-package
 ```
 
+### Linux browser E2E tests
+
+Use the same Node and Playwright environment as Linux CI without replacing your
+local dependencies:
+
+```bash
+npm run test:e2e:linux
+```
+
+This requires Docker. It uses the same x86_64 Linux architecture as GitHub
+Actions, keeps Linux `node_modules` in a Docker volume, and leaves the host
+installation untouched.
+
 ## Docs
 
 https://teaqu.github.io/shader-studio/
