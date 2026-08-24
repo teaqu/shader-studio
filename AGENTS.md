@@ -104,6 +104,7 @@ When a bug is reported:
 1. **Write a failing test first.** Before touching the bug, add a test that reproduces it and confirm it fails. This proves the bug exists and defines done.
 2. **Then fix the bug.** Run tests again to confirm the new test passes and nothing else broke.
 3. **Never skip step 1.** Fixing first and testing after risks writing a test that passes regardless of the fix.
+4. **Do not apply band-aids.** Do not widen timeouts, add retries, skip assertions, serialize work, or change CI environments merely to make a failure disappear. First identify and fix the underlying race, state leak, or product defect. Make an exception only when evidence establishes that the previous limit or execution policy was invalid; document that evidence in the change.
 
 ## Releases
 
