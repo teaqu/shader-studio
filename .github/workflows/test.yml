@@ -58,10 +58,7 @@ jobs:
 
       - name: Run VS Code webview E2E tests
         id: vscode-e2e
-        if: github.event_name != 'pull_request'
         run: xvfb-run -a npm run test:e2e:vscode:run -w extension
-        env:
-          SHADER_STUDIO_E2E_GREP: "Shader language servers|parameter overrides|inline rendering"
 
       - name: Upload VS Code webview E2E failure screenshots
         if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
