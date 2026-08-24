@@ -56,19 +56,6 @@ jobs:
       - name: Run extension tests
         run: xvfb-run -a npm test -w extension
 
-      - name: Run VS Code webview E2E tests
-        id: vscode-e2e
-        run: xvfb-run -a npm run test:e2e:vscode:run -w extension
-
-      - name: Upload VS Code webview E2E failure screenshots
-        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: vscode-webview-e2e-failures
-          path: extension/.wdio/
-          if-no-files-found: ignore
-          retention-days: 7
-
   rendering-e2e:
     runs-on: macos-15
     timeout-minutes: 45
@@ -103,3 +90,39 @@ jobs:
 
       - name: Run shader fixture corpus E2E tests
         run: npm run test:e2e:corpus -w rendering
+
+  vscode-e2e:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned Slang WASM test binary
+        run: |
+          curl -fsSL https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-wasm.zip -o /tmp/slang-wasm.zip
+          echo "bff18e4a0a0f1d377d4f8ac8bc0e9c631351f2e223a0482a279c1742f3d5bcc6  /tmp/slang-wasm.zip" | shasum -a 256 --check
+          unzip -j /tmp/slang-wasm.zip slang-wasm.wasm -d ui/src/slang
+
+      - name: Run full VS Code webview E2E suite
+        id: vscode-e2e
+        run: npm run test:e2e:vscode -w extension
+
+      - name: Upload VS Code webview E2E failure screenshots
+        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-webview-e2e-failures
+          path: extension/.wdio/
+          if-no-files-found: ignore
+          retention-days: 7
