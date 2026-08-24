@@ -2075,7 +2075,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       sandbox.stub(vscode.window, 'showInputBox').resolves('renamed.glsl');
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
-      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html') && !filePath.includes('renamed'));
 
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'renameShader', path: '/test/shader.glsl' });
@@ -2106,7 +2106,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       sandbox.stub(vscode.window, 'showInputBox').resolves('renamed.glsl');
       const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
-      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html') && !filePath.includes('renamed'));
 
       const messageHandler = setupMessageHandler(mockPanel);
       await messageHandler({ type: 'renameShader', path: '/test/shader.glsl' });

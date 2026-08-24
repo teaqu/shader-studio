@@ -63,20 +63,6 @@ cd extension
 npm run vsce-package
 ```
 
-### Linux browser E2E tests
-
-Reproduce Chromium's Linux software-WebGPU path without replacing local
-dependencies:
-
-```bash
-npm run test:e2e:linux
-```
-
-This requires Docker. It uses x86_64 Linux, runs Chromium under Xvfb with
-SwiftShader, keeps Linux `node_modules` in a Docker volume, and leaves the
-host installation untouched. GitHub Actions runs the rendering E2E suite on
-native Apple Silicon WebGPU instead.
-
 ## Docs
 
 https://teaqu.github.io/shader-studio/

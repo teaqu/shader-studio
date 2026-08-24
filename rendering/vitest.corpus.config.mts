@@ -9,24 +9,9 @@ const fixtureRoot =
   process.env.SHADER_STUDIO_SHADER_FIXTURES ??
   path.resolve(directory, "src/test/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
-const chromiumArgs =
-  process.env.SHADER_STUDIO_SOFTWARE_WEBGPU === "1"
-    ? [
-        "--enable-unsafe-webgpu",
-        "--ignore-gpu-blocklist",
-        "--enable-gpu",
-        "--enable-features=Vulkan",
-        "--use-angle=swiftshader",
-        "--use-vulkan=swiftshader",
-        "--enable-unsafe-swiftshader",
-      ]
-    : ["--enable-unsafe-webgpu"];
-
 export default defineConfig({
   define: {
-    __SHADER_STUDIO_SOFTWARE_WEBGPU__: JSON.stringify(
-      process.env.SHADER_STUDIO_SOFTWARE_WEBGPU === "1",
-    ),
+    __SHADER_STUDIO_CI__: JSON.stringify(Boolean(process.env.CI)),
   },
   plugins: [
     {
@@ -44,7 +29,7 @@ export default defineConfig({
   test: {
     browser: {
       enabled: true,
-      provider: playwright({ launchOptions: { args: chromiumArgs } }),
+      provider: playwright({ launchOptions: { args: ["--enable-unsafe-webgpu"] } }),
       instances: [{ browser: "chromium" }],
     },
     include: ["src/test/e2e/ShaderFixtureCorpus.corpus.test.ts"],
