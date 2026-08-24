@@ -16,5 +16,9 @@ export default defineConfig({
     },
     include: ['src/test/**/*.e2e.test.ts'],
     globals: true,
+    // WebGPU devices and readback buffers are scarce on hosted runners.
+    // Run browser test files serially so concurrent Slang canvases cannot
+    // starve one another before their capture requests are submitted.
+    fileParallelism: false,
   },
 });
