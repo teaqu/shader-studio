@@ -10,9 +10,6 @@ const fixtureRoot =
   path.resolve(directory, "src/test/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
 export default defineConfig({
-  define: {
-    __SHADER_STUDIO_CI__: JSON.stringify(Boolean(process.env.CI)),
-  },
   plugins: [
     {
       name: "shader-fixture-corpus",

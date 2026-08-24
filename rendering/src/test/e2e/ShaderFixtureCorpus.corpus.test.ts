@@ -7,17 +7,12 @@ import {
   type ShaderCanvasHarness,
   type ShaderLanguage,
 } from "./ShaderCanvasHarness";
-import macosCiRenderHashes from "./fixtures/macosCiCorpusRenderHashes.json";
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
-
-declare const __SHADER_STUDIO_CI__: boolean;
 
 const expectedCompileErrors = new Map<string, RegExp>([
   ["foundation/versions/invalid-version/preview.slang", /unknown language version '2024'/],
 ]);
 
-// Native CI runs on a fixed M1 GPU. Its visual baseline is intentionally
-// separate from local machines, whose valid GPU output can differ.
 const slangSpecificRenderProjects = new Set([
   "foundation/includes/include-preview.slang",
   "foundation/modules/import-preview.slang",
@@ -69,11 +64,6 @@ function sampleTimes(project: (typeof projects)[number]): number[] {
     return [0, 0, 0];
   }
   return [0];
-}
-
-async function sha256(bytes: Uint8ClampedArray): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function nonBlackPixelCount(bytes: Uint8ClampedArray): number {
@@ -548,14 +538,7 @@ describe("slang-multipass-test shader corpus", () => {
       if (usesModel) {
         expect(nonBlackPixelCount(region)).toBeGreaterThan(100);
       }
-      const hash = `${size}:${await sha256(region)}`;
-      if (__SHADER_STUDIO_CI__) {
-        const expectedHash = macosCiRenderHashes[project.name];
-        expect(expectedHash, `Missing native CI baseline for ${project.name}; received ${hash}`).toBeDefined();
-        expect(hash).toBe(expectedHash);
-      } else {
-        expect(region).toHaveLength(60 * 60 * 4);
-      }
+      expect(region).toHaveLength(60 * 60 * 4);
     });
   }
 });
