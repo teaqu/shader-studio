@@ -9,9 +9,10 @@ docker volume inspect "$volume" >/dev/null 2>&1 || docker volume create "$volume
 
 docker run --rm --platform linux/amd64 --ipc=host \
   -e CI=1 \
+  -e SHADER_STUDIO_SOFTWARE_WEBGPU=1 \
   -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
   -v "$repo_root:/work" \
   -v "$volume:/work/node_modules" \
   -w /work \
   "$image" \
-  sh -lc 'npm ci && npm run test:e2e -w rendering'
+  sh -lc 'npm ci && xvfb-run -a npm run test:e2e -w rendering'

@@ -5,26 +5,46 @@ import { defineConfig } from "vitest/config";
 import { loadShaderFixtureCorpus } from "./scripts/shaderFixtureCorpus.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const fixtureRoot = process.env.SHADER_STUDIO_SHADER_FIXTURES
-  ?? path.resolve(directory, "src/test/fixtures/shader-corpus");
+const fixtureRoot =
+  process.env.SHADER_STUDIO_SHADER_FIXTURES ??
+  path.resolve(directory, "src/test/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
+const chromiumArgs =
+  process.env.SHADER_STUDIO_SOFTWARE_WEBGPU === "1"
+    ? [
+        "--enable-unsafe-webgpu",
+        "--ignore-gpu-blocklist",
+        "--enable-gpu",
+        "--enable-features=Vulkan",
+        "--use-angle=swiftshader",
+        "--use-vulkan=swiftshader",
+        "--enable-unsafe-swiftshader",
+      ]
+    : ["--enable-unsafe-webgpu"];
 
 export default defineConfig({
-  plugins: [{
-    name: "shader-fixture-corpus",
-    resolveId(id) {
-      return id === "virtual:shader-fixture-corpus" ? `\0${id}` : undefined;
+  define: {
+    __SHADER_STUDIO_SOFTWARE_WEBGPU__: JSON.stringify(
+      process.env.SHADER_STUDIO_SOFTWARE_WEBGPU === "1",
+    ),
+  },
+  plugins: [
+    {
+      name: "shader-fixture-corpus",
+      resolveId(id) {
+        return id === "virtual:shader-fixture-corpus" ? `\0${id}` : undefined;
+      },
+      load(id) {
+        return id === "\0virtual:shader-fixture-corpus"
+          ? `export default ${JSON.stringify(projects)};`
+          : undefined;
+      },
     },
-    load(id) {
-      return id === "\0virtual:shader-fixture-corpus"
-        ? `export default ${JSON.stringify(projects)};`
-        : undefined;
-    },
-  }],
+  ],
   test: {
     browser: {
       enabled: true,
-      provider: playwright({ launchOptions: { args: ["--enable-unsafe-webgpu"] } }),
+      provider: playwright({ launchOptions: { args: chromiumArgs } }),
       instances: [{ browser: "chromium" }],
     },
     include: ["src/test/e2e/ShaderFixtureCorpus.corpus.test.ts"],
