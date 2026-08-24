@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
@@ -1365,6 +1366,48 @@ describe('EditorOverlay', () => {
       expect(markers[0].startLineNumber).toBe(5);
       expect(markers[0].message).toBe('syntax error');
       expect(markers[0].severity).toBe(monaco.MarkerSeverity.Error);
+    });
+
+    it('re-applies markers after a file change replaces the editor content', async () => {
+      const monaco = await import('monaco-editor');
+
+      const { rerender } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/first.slang',
+          shaderCode: 'float4 a() {}',
+          activeBufferName: 'Image',
+          errors: [],
+        },
+      });
+
+      const editor = await getLatestMockEditor();
+      vi.mocked(monaco.editor.setModelMarkers).mockClear();
+      editor.setValue.mockClear();
+
+      // A slow host delivers the new file and its compile errors in the same
+      // flush. setValue() replaces the model content and drops any markers
+      // already on it, so markers applied before it must be re-applied after.
+      await rerender({
+        ...defaultProps,
+        shaderPath: '/second.slang',
+        shaderCode: 'float4 b() {}',
+        activeBufferName: 'Image',
+        errors: ['Image: ERROR: 0:2: undefined identifier'],
+      });
+      await tick();
+
+      const setValueOrder = Math.max(...editor.setValue.mock.invocationCallOrder);
+      const markerCalls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+      const markerOrders = vi.mocked(monaco.editor.setModelMarkers).mock.invocationCallOrder;
+
+      const lastNonEmpty = markerCalls
+        .map((call, index) => ({ markers: call[2], order: markerOrders[index] }))
+        .filter((entry) => entry.markers.length > 0)
+        .pop();
+
+      expect(lastNonEmpty, 'expected markers to be applied for the new file').toBeDefined();
+      expect(lastNonEmpty!.order).toBeGreaterThan(setValueOrder);
     });
 
     it('should not set markers for errors from a different buffer', async () => {

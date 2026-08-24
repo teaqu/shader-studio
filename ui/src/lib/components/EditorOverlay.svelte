@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
   import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
@@ -703,6 +703,12 @@
     if (editor && shaderCode !== undefined) {
       const fileChanged = shaderPath !== lastShaderPath;
       const currentValue = editor.getValue();
+      // setValue() replaces the model content and drops the markers already on
+      // it. When new content and new errors arrive in the same flush the marker
+      // effect above runs first, so its markers would be lost; re-apply them
+      // after any content replacement. Untracked so this effect keeps reacting
+      // to content alone rather than re-running on every error change.
+      let contentReplaced = false;
 
       if (fileChanged) {
         if (lastShaderPath) {
@@ -713,6 +719,7 @@
           monaco.editor.setModelLanguage(model, languageForShaderPath(shaderPath));
         }
         editor.setValue(shaderCode);
+        contentReplaced = true;
         const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
         if (nextViewState) {
           editor.restoreViewState(nextViewState);
@@ -730,11 +737,16 @@
         const position = editor.getPosition();
         const scrollTop = editor.getScrollTop();
         editor.setValue(shaderCode);
+        contentReplaced = true;
         if (position) {
           editor.setPosition(position);
         }
         editor.setScrollTop(scrollTop);
         lastSentCode = null;
+      }
+
+      if (contentReplaced) {
+        untrack(() => updateErrorMarkers(errors));
       }
     }
   });
