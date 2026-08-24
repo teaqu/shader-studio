@@ -1401,6 +1401,40 @@ describe('EditorOverlay', () => {
     expect(markers[0].message).toBe('undefined identifier');
   });
 
+  it('applies markers that arrive after the editor is created', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(5);
+    vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+    // Hidden first, so the marker effect runs while `editor` is still null.
+    // If the effect short-circuits before reading `errors`, it never registers
+    // errors as a dependency and stops reacting to compile results entirely.
+    const { rerender } = render(EditorOverlay, {
+      props: { ...defaultProps, isVisible: false, activeBufferName: 'Image', errors: [] },
+    });
+
+    await rerender({ ...defaultProps, isVisible: true, activeBufferName: 'Image', errors: [] });
+    await tick();
+
+    vi.mocked(monaco.editor.setModelMarkers).mockClear();
+
+    // The shader compiles and fails only now.
+    await rerender({
+      ...defaultProps,
+      isVisible: true,
+      activeBufferName: 'Image',
+      errors: ['Image: ERROR: 0:4: undefined identifier'],
+    });
+    await tick();
+
+    const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+    expect(calls.length, 'marker pass never re-ran for the new errors').toBeGreaterThan(0);
+    const markers = calls[calls.length - 1][2];
+    expect(markers.length).toBe(1);
+    expect(markers[0].startLineNumber).toBe(4);
+  });
+
   it('re-applies markers once content reaches an initially empty model', async () => {
     const monaco = await import('monaco-editor');
     const { mockEditor, model, getContentChangeCallback } = createMockEditorWithCallbacks();

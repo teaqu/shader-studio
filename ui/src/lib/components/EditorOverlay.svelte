@@ -639,8 +639,14 @@
   });
 
   $effect(() => {
+    // Read errors before the editor guard. `editor` is a plain variable, so if
+    // this effect first runs before the editor exists the guard short-circuits,
+    // errors is never read, and the effect ends up with no dependencies at all
+    // - it would never react to another compile result. Editor creation applies
+    // the current errors itself, so skipping the call here is safe.
+    const currentErrors = errors;
     if (editor) {
-      updateErrorMarkers(errors);
+      updateErrorMarkers(currentErrors);
     }
   });
 
