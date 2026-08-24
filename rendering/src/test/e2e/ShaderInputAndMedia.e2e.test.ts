@@ -104,6 +104,23 @@ async function waitFor(
   throw new Error(message);
 }
 
+async function waitForRenderedRegionToChange(
+  harness: ShaderCanvasHarness,
+  initialRegion: Uint8ClampedArray,
+  message: string,
+  timeout = 3_000,
+): Promise<Uint8ClampedArray> {
+  const deadline = performance.now() + timeout;
+  while (performance.now() < deadline) {
+    const region = await harness.renderAndReadRegion();
+    if (!region.every((value, index) => value === initialRegion[index])) {
+      return region;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(message);
+}
+
 function interactionPixels(key: Pixel, mouse: Pixel): Pixel[] {
   return [key, mouse, key, mouse];
 }
@@ -154,6 +171,12 @@ describe.each(["glsl", "slang"] as const)("%s input and media progression", (lan
         `${language} video did not advance`,
       );
 
+      const advancedRegion = await waitForRenderedRegionToChange(
+        harness,
+        initialRegion,
+        `${language} video frame did not reach the rendered texture`,
+      );
+
       harness.engine.controlVideo(videoPath, "pause");
       const audioTarget = Math.min(0.5, initialAudio!.duration / 2);
       harness.engine.seekAudio(audioPath, audioTarget);
@@ -167,7 +190,6 @@ describe.each(["glsl", "slang"] as const)("%s input and media progression", (lan
       expect(advancedAudio).toMatchObject({ paused: true, muted: true });
       expect(advancedVideo!.currentTime).toBeGreaterThan(initialVideo!.currentTime + 0.05);
       expect(advancedAudio!.currentTime).toBeGreaterThan(initialAudio!.currentTime + 0.05);
-      const advancedRegion = await harness.renderAndReadRegion();
       expect(advancedRegion).not.toEqual(initialRegion);
     } finally {
       harness.dispose();

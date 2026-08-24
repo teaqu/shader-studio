@@ -13,8 +13,7 @@ suite('Extension Bundle Test Suite', () => {
     assert.strictEqual(fs.existsSync(path.join(extensionRoot, 'dist', 'slang-wasm.wasm')), false);
   });
 
-  test('keeps the generated Slang ESM runtime outside the CommonJS extension bundle', function () {
-    this.timeout(10_000);
+  test('keeps the generated Slang ESM runtime outside the CommonJS extension bundle', () => {
     const extensionRoot = path.resolve(__dirname, '..', '..', '..');
     const bundle = fs.readFileSync(path.join(extensionRoot, 'dist', 'extension.js'), 'utf8');
     const runtimePath = path.join(extensionRoot, 'dist', 'slang-wasm.mjs');
