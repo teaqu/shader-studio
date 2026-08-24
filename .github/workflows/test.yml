@@ -114,6 +114,9 @@ jobs:
           echo "bff18e4a0a0f1d377d4f8ac8bc0e9c631351f2e223a0482a279c1742f3d5bcc6  /tmp/slang-wasm.zip" | shasum -a 256 --check
           unzip -j /tmp/slang-wasm.zip slang-wasm.wasm -d ui/src/slang
 
+      - name: Build workspace test dependencies
+        run: npm run build:deps -w extension
+
       - name: Run full VS Code webview E2E suite
         id: vscode-e2e
         run: npm run test:e2e:vscode -w extension

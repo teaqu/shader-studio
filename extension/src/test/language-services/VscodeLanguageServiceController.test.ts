@@ -130,16 +130,21 @@ suite("VS Code language-service revisions", () => {
     });
   }
 
-  test("does not inject configured Common into the Common document itself", async () => {
+  test("does not inject configured Common into the Common document itself", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-self-"));
     const commonPath = path.join(directory, "common.glsl");
+    const commonSource = "float sharedTone(float value) { return value; }";
     try {
-      fs.writeFileSync(commonPath, "float sharedTone(float value) { return value; }");
+      fs.writeFileSync(commonPath, commonSource);
       fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
         version: "1.0",
         passes: { Image: {}, common: { path: "common.glsl" } },
       }));
-      const document = await vscode.workspace.openTextDocument(commonPath);
+      const document = {
+        uri: vscode.Uri.file(commonPath),
+        languageId: "glsl",
+        getText: () => commonSource,
+      };
 
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 

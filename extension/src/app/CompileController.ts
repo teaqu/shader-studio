@@ -8,7 +8,7 @@ export type CompileMode = "hot" | "save" | "manual";
 
 export class CompileController {
   private compileMode: CompileMode;
-  private lastActiveGlslPath: string | null = null;
+  private lastSentGlslPath: string | null = null;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -41,15 +41,21 @@ export class CompileController {
 
     const shaderPath = editor.document.uri.fsPath;
     const switchedShader =
-      this.lastActiveGlslPath === null || this.lastActiveGlslPath !== shaderPath;
+      this.lastSentGlslPath === null || this.lastSentGlslPath !== shaderPath;
 
     this.glslFileTracker.setLastViewedGlslFile(shaderPath);
 
-    if (this.compileMode === "hot" || switchedShader) {
-      this.performShaderUpdate(editor, true);
+    // Editor activation also emits a cursor message, which is sufficient for
+    // debugging linked files in a locked project. Source edits still recompile
+    // through handleTextDocumentChange(); avoid rebuilding unchanged GPU state
+    // merely because focus moved between the editor and preview.
+    if (
+      !this.shaderProvider.isLockedToDifferentShader(shaderPath)
+      && switchedShader
+      && this.performShaderUpdate(editor, true)
+    ) {
+      this.lastSentGlslPath = shaderPath;
     }
-
-    this.lastActiveGlslPath = shaderPath;
   }
 
   public handleTextDocumentChange(
@@ -139,13 +145,15 @@ export class CompileController {
     return stored === "save" || stored === "manual" ? stored : "hot";
   }
 
-  private performShaderUpdate(editor: vscode.TextEditor, claimActiveAnalysisContext: boolean): void {
-    if (this.messenger.hasActiveClients()) {
-      if (claimActiveAnalysisContext) {
-        this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
-      }
-      void this.shaderProvider.sendShaderFromEditor(editor);
+  private performShaderUpdate(editor: vscode.TextEditor, claimActiveAnalysisContext: boolean): boolean {
+    if (!this.messenger.hasActiveClients()) {
+      return false;
     }
+    if (claimActiveAnalysisContext) {
+      this.shaderProvider.claimActiveAnalysisContext(editor.document.uri.fsPath);
+    }
+    void this.shaderProvider.sendShaderFromEditor(editor);
+    return true;
   }
 
   private performShaderDocumentUpdate(document: vscode.TextDocument): void {

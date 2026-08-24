@@ -49,6 +49,7 @@ suite('CompileController Test Suite', () => {
 
     mockShaderProvider = {
       claimActiveAnalysisContext: sandbox.stub(),
+      isLockedToDifferentShader: sandbox.stub().returns(false),
       sendShaderFromEditor: sandbox.stub().resolves(),
       sendShaderFromDocument: sandbox.stub().resolves(),
       sendShaderFromPath: sandbox.stub().resolves(),
@@ -115,6 +116,48 @@ suite('CompileController Test Suite', () => {
     mockShaderProvider.sendShaderFromEditor.resetHistory();
     controller.handleActiveEditorChange(editor);
 
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
+  });
+
+  test('handleActiveEditorChange does not recompile an unchanged shader when focus returns in hot mode', () => {
+    const editor = createMockGLSLEditor();
+    mockGlslFileTracker.isGlslEditor.returns(true);
+    mockMessenger.hasActiveClients.returns(true);
+
+    controller.handleActiveEditorChange(editor);
+    mockShaderProvider.claimActiveAnalysisContext.resetHistory();
+    mockShaderProvider.sendShaderFromEditor.resetHistory();
+    controller.handleActiveEditorChange(editor);
+
+    sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
+  });
+
+  test('handleActiveEditorChange compiles after a viewer connects if the earlier update was not sent', () => {
+    const editor = createMockGLSLEditor();
+    mockGlslFileTracker.isGlslEditor.returns(true);
+    mockMessenger.hasActiveClients.returns(false);
+
+    controller.handleActiveEditorChange(editor);
+    sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
+
+    mockMessenger.hasActiveClients.returns(true);
+    controller.handleActiveEditorChange(editor);
+
+    sinon.assert.calledOnce(mockShaderProvider.claimActiveAnalysisContext);
+    sinon.assert.calledOnce(mockShaderProvider.sendShaderFromEditor);
+  });
+
+  test('handleActiveEditorChange does not recompile the locked project when a linked editor is activated', () => {
+    const editor = createMockGLSLEditor('/mock/path/passes/compute.slang');
+    mockGlslFileTracker.isGlslEditor.returns(true);
+    mockMessenger.hasActiveClients.returns(true);
+    mockShaderProvider.isLockedToDifferentShader.returns(true);
+
+    controller.handleActiveEditorChange(editor);
+
+    assert.ok(mockGlslFileTracker.setLastViewedGlslFile.calledWith('/mock/path/passes/compute.slang'));
+    sinon.assert.notCalled(mockShaderProvider.claimActiveAnalysisContext);
     sinon.assert.notCalled(mockShaderProvider.sendShaderFromEditor);
   });
 

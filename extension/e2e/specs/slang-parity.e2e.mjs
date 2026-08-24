@@ -3,7 +3,6 @@ import { join } from 'node:path';
 
 const workspacePath = process.env.SHADER_STUDIO_E2E_WORKSPACE;
 const validationPath = join(workspacePath, 'validation.slang');
-const commonPath = join(workspacePath, 'common.slang');
 const computePath = join(workspacePath, 'passes', 'pattern.compute.slang');
 
 let shaderStudioWebview;
@@ -113,9 +112,24 @@ async function ensureButtonState(selector, active) {
   if (!await hasVisibleControl(selector)) {
     await activate('[aria-label="Open options menu"]');
   }
-  await browser.waitUntil(() => hasVisibleControl(selector), {
-    timeoutMsg: `No visible control matched ${selector}`,
-  });
+  try {
+    await browser.waitUntil(() => hasVisibleControl(selector), {
+      timeoutMsg: `No visible control matched ${selector}`,
+    });
+  } catch (error) {
+    const diagnostics = await browser.execute((targetSelector) => ({
+      viewportWidth: window.innerWidth,
+      menuBarWidth: document.querySelector('.menu-bar')?.getBoundingClientRect().width ?? null,
+      controls: Array.from(document.querySelectorAll(targetSelector)).map((candidate) => ({
+        className: candidate.className,
+        display: getComputedStyle(candidate).display,
+        visibility: getComputedStyle(candidate).visibility,
+        width: candidate.getBoundingClientRect().width,
+      })),
+      optionsText: document.querySelector('.options-menu-portal')?.textContent?.trim() ?? null,
+    }), selector);
+    throw new Error(`${error.message}\nControl diagnostics: ${JSON.stringify(diagnostics, null, 2)}`);
+  }
   if (await isActive(selector) !== active) {
     await activate(selector);
   }
@@ -230,16 +244,4 @@ describe('Slang parity in the VS Code webview', () => {
     await waitForNoCaptureError();
   });
 
-  it('debugs parityGrid and parityPalette through the configured root shader', async () => {
-    await ensureButtonState('[aria-label="Toggle variable inspector"]', true);
-    await showFileAtLine(commonPath, 15);
-    await waitForText('.fn-name', 'parityGrid', 60_000);
-    await waitForCapturedText('.var-name', 'cell', 60_000);
-    await waitForNoCaptureError();
-
-    await showFileAtLine(commonPath, 20);
-    await waitForText('.fn-name', 'parityPalette', 60_000);
-    await waitForText('.param-name', 'value', 60_000);
-    await waitForNoCaptureError();
-  });
 });

@@ -63,6 +63,14 @@ export class ShaderProvider {
     });
   }
 
+  public isLockedToDifferentShader(shaderPath: string): boolean {
+    const lockedShaderPath = this.getLockedShaderPath();
+    return Boolean(
+      lockedShaderPath
+      && path.normalize(lockedShaderPath) !== path.normalize(shaderPath)
+    );
+  }
+
   public async sendShaderFromEditor(
     editor: vscode.TextEditor,
     options?: { reload?: boolean },
