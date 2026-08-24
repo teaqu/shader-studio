@@ -35,6 +35,7 @@ interface PendingCapture {
   bytesPerRow: number;
   resolved: boolean;
   discarded: boolean;
+  destroyed: boolean;
   rgba: Float32Array | null;
   hidden?: boolean;
 }
@@ -51,6 +52,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private pipelineCache = new Map<string, CachedPipeline>();
   private pipelineCacheOrder: string[] = [];
   private pendingCaptures: PendingCapture[] = [];
+  private pendingCaptureTargets = new Set<GPUTexture>();
   private compileContext: CaptureCompileContext = {};
   private compileContextGeneration = 0;
   private compileContextKey: string;
@@ -168,22 +170,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   cancelPendingCaptures(): void {
-    let destroyed = 0;
     for (const pending of this.pendingCaptures) {
-      // Skip buffers already destroyed on successful readback.
       if (pending.resolved || pending.discarded) {
         continue;
       }
       pending.discarded = true;
-      // destroy() is safe while a mapAsync is outstanding — it rejects the map.
-      pending.buffer.destroy?.();
-      captureCounters.gpuBuffersDestroyed++;
-      destroyed++;
     }
     if (this.pendingCaptures.length > 0) {
       captureDiagTick("capturer.cancel", {
         cancelledPending: this.pendingCaptures.length,
-        buffersDestroyedNow: destroyed,
+        buffersDestroyedNow: 0,
       });
     }
     this.pendingCaptures = [];
@@ -203,6 +199,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     this.captureUniformBuffer = null;
     this.pipelineCache.clear();
     this.pipelineCacheOrder = [];
+    for (const target of [...this.pendingCaptureTargets]) {
+      this.destroyCaptureTarget(target);
+    }
   }
 
   private async issue(
@@ -261,6 +260,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
     const bytesPerRow = Math.ceil((gridWidth * RGBA_CHANNELS * FLOAT_BYTES) / ROW_ALIGNMENT) * ROW_ALIGNMENT;
     const target = this.device.createTexture({
+      label: "variable-capture target",
       size: { width: gridWidth, height: gridHeight },
       format: "rgba32float",
       usage: (globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10) | (globalThis.GPUTextureUsage?.COPY_SRC ?? 0x01),
@@ -299,9 +299,19 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         if (!storageBuffers) {
           continue;
         }
+        // Re-resolve after the compile await: a pass rebuild or feedback reset
+        // during it retires the textures behind the views captured above, and
+        // submitting those views is a destroyed-texture validation error.
+        const currentChannelResources = channels.length > 0
+          ? this.getChannelResources?.(this.compileContext) ?? null
+          : [];
+        if (currentChannelResources === null) {
+          this.lastError = "Capture channels are not resolvable yet";
+          continue;
+        }
         const bindGroup = this.buildBindGroup(
           cached.bindGroupLayout,
-          channelResources ?? [],
+          currentChannelResources,
           storage,
           storageBuffers,
         );
@@ -346,6 +356,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           bytesPerRow,
           resolved: false,
           discarded: false,
+          destroyed: false,
           rgba: null,
           hidden: capture.hidden,
         };
@@ -354,8 +365,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         issued++;
       }
     } finally {
-      target.destroy?.();
-      captureCounters.gpuTexturesDestroyed++;
+      if (issued > 0) {
+        this.destroyCaptureTargetAfterSubmittedWork(target);
+      } else {
+        target.destroy?.();
+        captureCounters.gpuTexturesDestroyed++;
+      }
     }
 
     captureCounters.capturesIssued += issued;
@@ -375,12 +390,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     pending.buffer.mapAsync(MAP_READ_MODE)
       .then(() => {
         if (pending.discarded) {
+          pending.buffer.unmap();
+          this.destroyReadbackBuffer(pending);
           return;
         }
         const mapped = new Uint8Array(pending.buffer.getMappedRange()).slice();
         pending.buffer.unmap();
-        pending.buffer.destroy?.();
-        captureCounters.gpuBuffersDestroyed++;
+        this.destroyReadbackBuffer(pending);
         captureCounters.readbacksResolved++;
         // Strip the 256-byte row alignment into tight rows.
         const rowFloats = pending.gridWidth * RGBA_CHANNELS;
@@ -395,7 +411,42 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       })
       .catch(() => {
         pending.discarded = true;
+        this.destroyReadbackBuffer(pending);
       });
+  }
+
+  private destroyReadbackBuffer(pending: PendingCapture): void {
+    if (pending.destroyed) {
+      return;
+    }
+    pending.buffer.destroy?.();
+    pending.destroyed = true;
+    captureCounters.gpuBuffersDestroyed++;
+  }
+
+  private destroyCaptureTargetAfterSubmittedWork(target: GPUTexture): void {
+    this.pendingCaptureTargets.add(target);
+    try {
+      const submittedWork = this.device.queue.onSubmittedWorkDone?.();
+      if (!submittedWork) {
+        this.destroyCaptureTarget(target);
+        return;
+      }
+      void submittedWork.then(
+        () => this.destroyCaptureTarget(target),
+        () => this.destroyCaptureTarget(target),
+      );
+    } catch {
+      this.destroyCaptureTarget(target);
+    }
+  }
+
+  private destroyCaptureTarget(target: GPUTexture): void {
+    if (!this.pendingCaptureTargets.delete(target)) {
+      return;
+    }
+    target.destroy?.();
+    captureCounters.gpuTexturesDestroyed++;
   }
 
   private async getOrCompilePipeline(

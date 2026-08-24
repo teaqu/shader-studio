@@ -202,6 +202,26 @@ describe("WebGPUVariableCapturer", () => {
     expect(gpu.copyTextureToBuffer).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the capture target alive until its submitted draws complete", async () => {
+    const gpu = mockGpu();
+    const submittedWork = deferred<void>();
+    gpu.device.queue.onSubmittedWorkDone = vi.fn(() => submittedWork.promise);
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    const target = (gpu.device.createTexture as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(gpu.submit).toHaveBeenCalledTimes(2);
+    expect(gpu.device.queue.onSubmittedWorkDone).toHaveBeenCalledTimes(1);
+    expect(target.destroy).not.toHaveBeenCalled();
+
+    submittedWork.resolve();
+    await submittedWork.promise;
+    await Promise.resolve();
+
+    expect(target.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it("compiles captures with imported modules and the selected source path", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
@@ -262,6 +282,61 @@ describe("WebGPUVariableCapturer", () => {
       visibility: 2,
       texture: { sampleType: "float", viewDimension: "cube" },
     });
+  });
+
+  it("re-resolves channel views after the capture pipeline compile", async () => {
+    const gpu = mockGpu();
+    const staleView = { tag: "stale" } as unknown as GPUTextureView;
+    const freshView = { tag: "fresh" } as unknown as GPUTextureView;
+    let currentView = staleView;
+    const compileGate = deferred<void>();
+    gpu.compiler.compile.mockImplementation(async () => {
+      await compileGate.promise;
+      return { success: true as const, wgsl: "// wgsl" };
+    });
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { commonCode: "", slangChannels: [{ slot: 0, key: "iChannel0" }] },
+      () => [{ slot: 0, textureView: currentView }],
+    );
+
+    const issued = capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+    // A pass rebuild replaces its output textures while the capture pipeline
+    // is still compiling; the stale view now points at a destroyed texture.
+    currentView = freshView;
+    compileGate.resolve();
+    await issued;
+
+    for (const [descriptor] of gpu.createBindGroup.mock.calls) {
+      expect(descriptor.entries).toContainEqual({ binding: 1, resource: freshView });
+    }
+  });
+
+  it("reports an error and skips the submit when channels stop resolving during the compile", async () => {
+    const gpu = mockGpu();
+    let resources: Array<{ slot: number; textureView: GPUTextureView }> | null =
+      [{ slot: 0, textureView: {} as GPUTextureView }];
+    const compileGate = deferred<void>();
+    gpu.compiler.compile.mockImplementation(async () => {
+      await compileGate.promise;
+      return { success: true as const, wgsl: "// wgsl" };
+    });
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { commonCode: "", slangChannels: [{ slot: 0, key: "iChannel0" }] },
+      () => resources,
+    );
+
+    const issued = capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+    resources = null;
+    compileGate.resolve();
+    const count = await issued;
+
+    expect(count).toBe(0);
+    expect(gpu.submit).not.toHaveBeenCalled();
+    expect(capturer.getLastError()).toBe("Capture channels are not resolvable yet");
   });
 
   it("binds a channel resource's own sampler when provided", async () => {
@@ -534,7 +609,7 @@ describe("WebGPUVariableCapturer", () => {
     expect(i32[5]).toBe(1);
   });
 
-  it("cancelPendingCaptures destroys outstanding readback buffers", async () => {
+  it("waits for outstanding readback maps before destroying cancelled buffers", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {});
 
@@ -544,9 +619,12 @@ describe("WebGPUVariableCapturer", () => {
     const readbacks = gpu.createdBuffers.filter((buffer) => buffer.mapAsync.mock.calls.length > 0);
     expect(readbacks.length).toBeGreaterThan(0);
     for (const buffer of readbacks) {
-      expect(buffer.destroy).toHaveBeenCalled();
+      expect(buffer.destroy).not.toHaveBeenCalled();
     }
     await gpu.flushMaps();
+    for (const buffer of readbacks) {
+      expect(buffer.destroy).toHaveBeenCalledOnce();
+    }
     expect(capturer.collectResults()).toEqual([]);
   });
 
