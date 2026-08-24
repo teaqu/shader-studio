@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 const workspacePath = process.env.SHADER_STUDIO_E2E_WORKSPACE;
 const validationPath = join(workspacePath, 'validation.slang');
+const computePath = join(workspacePath, 'passes', 'pattern.compute.slang');
+const commonPath = join(workspacePath, 'common.slang');
 
 let shaderStudioWebview;
 
@@ -145,7 +147,9 @@ describe('Slang parity in the VS Code webview', () => {
         preserveFocus: false,
         preview: false,
       });
-      const position = new vscode.Position(6, 0);
+      // Start away from the first assertion's target so selecting that line
+      // always emits a cursor change, even on a fresh VS Code profile.
+      const position = new vscode.Position(0, 0);
       editor.selection = new vscode.Selection(position, position);
       await vscode.commands.executeCommand('shader-studio.view');
     }, validationPath);
@@ -231,6 +235,25 @@ describe('Slang parity in the VS Code webview', () => {
     await showFileAtLine(validationPath, 13);
     await waitForCapturedText('.var-name', 'pulse', 60_000);
     await waitForCapturedText('.var-name', 'grid', 60_000);
+    await waitForNoCaptureError();
+  });
+
+  it('debugs native compute and linked common-module functions in the same VS Code window', async () => {
+    await ensureButtonState('[aria-label="Toggle variable inspector"]', true);
+    await showFileAtLine(computePath, 8);
+    await waitForText('.fn-name', 'buildPattern', 60_000);
+    await waitForCapturedText('.var-name', 'wave', 60_000);
+    await waitForCapturedText('.var-name', 'color', 60_000);
+    await waitForNoCaptureError();
+
+    await showFileAtLine(commonPath, 15);
+    await waitForText('.fn-name', 'parityGrid', 60_000);
+    await waitForCapturedText('.var-name', 'cell', 60_000);
+
+    await showFileAtLine(commonPath, 20);
+    await waitForText('.fn-name', 'parityPalette', 60_000);
+    await waitForText('.param-name', 'value', 60_000);
+    await waitForCapturedText('.var-name', 'value', 60_000);
     await waitForNoCaptureError();
   });
 
