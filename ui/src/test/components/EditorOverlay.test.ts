@@ -1352,6 +1352,58 @@ describe('EditorOverlay', () => {
     expect(overlay?.getAttribute('data-active-buffer')).toBe('BufferA');
   });
 
+  const CI_SLANG_ERROR = [
+    'Image: error[E30015]: undefined identifier',
+    ' --> /runner/overlay-language-service.slang:4:19',
+    '  |',
+    '4 | return float4(unknownValue + remainder);',
+    "  |               ^^^^^^^^^^^^ undefined identifier 'unknownValue'.",
+    "--'",
+    'error[E39999]: import failed due to compilation error',
+    'fatal error[E40003]: compilation ceased',
+  ].join('\n');
+
+  it('produces a marker for the Slang compiler error format seen on CI', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(5);
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    render(EditorOverlay, {
+      props: { ...defaultProps, activeBufferName: 'Image', errors: [CI_SLANG_ERROR] },
+    });
+
+    const calls = vi.mocked(monaco.editor.setModelMarkers).mock.calls;
+    const markers = calls[calls.length - 1][2];
+    expect(markers.length).toBe(1);
+    expect(markers[0].startLineNumber).toBe(4);
+    expect(markers[0].startColumn).toBe(19);
+    expect(markers[0].message).toBe('undefined identifier');
+  });
+
+  it('re-applies markers once content reaches an initially empty model', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model, getContentChangeCallback } = createMockEditorWithCallbacks();
+    // Errors arrive while the model is still empty: every marker line clamps to
+    // 0 and Monaco discards it.
+    model.getLineCount.mockReturnValue(0);
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    render(EditorOverlay, {
+      props: { ...defaultProps, activeBufferName: 'Image', errors: [CI_SLANG_ERROR] },
+    });
+
+    const clamped = vi.mocked(monaco.editor.setModelMarkers).mock.calls.at(-1)![2];
+    expect(clamped[0]?.startLineNumber, 'precondition: clamped to an unrenderable line').toBe(0);
+
+    model.getLineCount.mockReturnValue(5);
+    getContentChangeCallback()?.();
+
+    const recomputed = vi.mocked(monaco.editor.setModelMarkers).mock.calls.at(-1)![2];
+    expect(recomputed.length).toBe(1);
+    expect(recomputed[0].startLineNumber).toBe(4);
+  });
+
   // Test group: Error markers
   describe('error markers', () => {
     it('should set Monaco markers for matching buffer errors', async () => {

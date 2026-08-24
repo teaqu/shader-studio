@@ -463,6 +463,10 @@
         return;
       }
       updateBlankLineDecorations();
+      // Marker lines are clamped to the model's line count. If errors arrive
+      // while the model is still empty every marker collapses to line 0, which
+      // Monaco discards, and nothing recomputes them once the content lands.
+      updateErrorMarkers(errors);
       const code = editor.getValue();
       if (code === undefined || !shaderPath) {
         return;
