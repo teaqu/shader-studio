@@ -20,6 +20,7 @@ export default defineConfig({
           // Headless Linux needs explicit GPU-test opt-in for WebGPU canvas
           // command submission and readback. Keep local browser defaults.
           args: chromiumArgs,
+          headless: process.platform !== 'linux',
         },
       }),
       instances: [
