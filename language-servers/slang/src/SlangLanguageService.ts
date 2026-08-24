@@ -118,6 +118,9 @@ export class SlangLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
+    if (isPositionInComment(state.document.text, params.position)) {
+      return [];
+    }
     const documentedFunctions = documentedSlangFunctions(state.environment);
     const computeFeatures = state.environment.stage === "compute" ? SLANG_COMPUTE_FEATURES : [];
     const vertexFeatures = state.environment.stage === "vertex"
@@ -150,6 +153,9 @@ export class SlangLanguageService implements LanguageService {
       };
     });
     const items = new Map<string, CompletionItem>(official.map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
+    if (isMemberAccess(state.document.text, params.position)) {
+      return [...items.values()];
+    }
     const officialLabels = new Set(official.map((item) => item.label));
     for (const intrinsic of documentedFunctions) {
       if (officialLabels.has(intrinsic.name)) {
@@ -335,6 +341,9 @@ export class SlangLanguageService implements LanguageService {
   async signatureHelp(params: DocumentPositionParams): Promise<SignatureHelp | null> {
     const state = this.current(params);
     if (!state) {
+      return null;
+    }
+    if (isPositionInComment(state.document.text, params.position)) {
       return null;
     }
     const result = this.server.signatureHelp(params.document.uri, shiftedPosition(params.position, state.offset));
@@ -914,6 +923,15 @@ function wordAt(source: string, position: { line: number; character: number }): 
   const left = line.slice(0, position.character).match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0] ?? "";
   const right = line.slice(position.character).match(/^[A-Za-z0-9_]*/)?.[0] ?? "";
   return `${left}${right}` || undefined;
+}
+
+function isMemberAccess(source: string, position: { line: number; character: number }): boolean {
+  const line = source.split("\n")[position.line];
+  if (line === undefined || position.character < 0 || position.character > line.length) {
+    return false;
+  }
+  const wordStart = position.character - (line.slice(0, position.character).match(/[A-Za-z0-9_]*$/)?.[0].length ?? 0);
+  return line[wordStart - 1] === ".";
 }
 
 interface SlangDeclaration {

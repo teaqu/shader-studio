@@ -593,6 +593,72 @@ describe('ResolutionSessionController — handleConfigUpdated does not post', ()
     expect(deps.recompileCurrentShader).toHaveBeenCalledTimes(1);
   });
 
+  it('recompiles an active inline render when a texture input changes', () => {
+    const deps = makeDeps({
+      get debugState() {
+        return {
+          ...defaultDebugState,
+          isEnabled: true,
+          isActive: true,
+          isInlineRenderingEnabled: true,
+        };
+      },
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'texture', path: 'before.png' },
+            },
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'texture', path: 'after.png' },
+          },
+        },
+      },
+    });
+
+    expect(deps.recompileCurrentShader).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not recompile a texture input change when inline rendering is inactive', () => {
+    const deps = makeDeps({
+      currentConfig: {
+        version: '1.0',
+        passes: {
+          Image: {
+            inputs: {
+              iChannel0: { type: 'texture', path: 'before.png' },
+            },
+          },
+        },
+      },
+    });
+    const ctrl = new ResolutionSessionController(deps);
+
+    ctrl.handleConfigUpdated({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            iChannel0: { type: 'texture', path: 'after.png' },
+          },
+        },
+      },
+    });
+
+    expect(deps.recompileCurrentShader).not.toHaveBeenCalled();
+  });
+
   it('does not recompile for config edits that leave all geometry unchanged', () => {
     const deps = makeDeps();
     const ctrl = new ResolutionSessionController(deps);

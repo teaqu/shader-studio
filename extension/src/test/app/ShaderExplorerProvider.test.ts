@@ -2067,6 +2067,55 @@ suite('ShaderExplorerProvider Test Suite', () => {
     });
   });
 
+  suite('Message Handling - renameShader', () => {
+    test('should rename the shader and its companion config, then refresh the explorer', async () => {
+      const renameStub = sandbox.stub().resolves();
+      const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ rename: renameStub } as any);
+      sandbox.stub(vscode.window, 'showInputBox').resolves('renamed.glsl');
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'renameShader', path: '/test/shader.glsl' });
+
+      assert.ok(renameStub.calledWith(vscode.Uri.file('/test/shader.glsl'), vscode.Uri.file('/test/renamed.glsl')));
+      assert.ok(renameStub.calledWith(vscode.Uri.file('/test/shader.sha.json'), vscode.Uri.file('/test/renamed.sha.json')));
+      assert.ok(executeCommandStub.calledWith('shader-studio.refreshCurrentShader'));
+    });
+
+    test('should leave files unchanged when the rename prompt is cancelled', async () => {
+      const renameStub = sandbox.stub().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ rename: renameStub } as any);
+      sandbox.stub(vscode.window, 'showInputBox').resolves(undefined);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'renameShader', path: '/test/shader.glsl' });
+
+      assert.ok(renameStub.notCalled);
+    });
+
+    test('should restore the shader when renaming its companion config fails', async () => {
+      const renameStub = sandbox.stub();
+      renameStub.onFirstCall().resolves();
+      renameStub.onSecondCall().rejects(new Error('Config is locked'));
+      renameStub.onThirdCall().resolves();
+      sandbox.stub(vscode.workspace, 'fs').value({ rename: renameStub } as any);
+      sandbox.stub(vscode.window, 'showInputBox').resolves('renamed.glsl');
+      const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage');
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      existsSyncStub.callsFake((filePath: string) => !filePath.includes('index.html'));
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'renameShader', path: '/test/shader.glsl' });
+
+      assert.ok(renameStub.calledWith(vscode.Uri.file('/test/renamed.glsl'), vscode.Uri.file('/test/shader.glsl')));
+      assert.ok(showErrorStub.calledWithMatch('Failed to rename shader'));
+    });
+  });
+
   suite('Message Handling - Edge Cases', () => {
     test('should ignore unknown message types', async () => {
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);

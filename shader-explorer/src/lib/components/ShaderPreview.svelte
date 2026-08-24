@@ -1,9 +1,46 @@
+<script module lang="ts">
+  let sharedGlslThumbnailCanvas: HTMLCanvasElement | null = null;
+  let sharedGlslHoverCanvas: HTMLCanvasElement | null = null;
+  let activeSharedGlslHoverCleanup: (() => void) | null = null;
+
+  function getSharedGlslThumbnailCanvas(width: number, height: number): HTMLCanvasElement {
+    if (sharedGlslThumbnailCanvas?.getContext('webgl2')?.isContextLost?.()) {
+      sharedGlslThumbnailCanvas = null;
+    }
+    sharedGlslThumbnailCanvas ??= document.createElement('canvas');
+    sharedGlslThumbnailCanvas.width = width;
+    sharedGlslThumbnailCanvas.height = height;
+    return sharedGlslThumbnailCanvas;
+  }
+
+  function isLostSharedGlslThumbnailCanvas(canvas: HTMLCanvasElement): boolean {
+    return canvas === sharedGlslThumbnailCanvas
+      && Boolean(canvas.getContext('webgl2')?.isContextLost?.());
+  }
+
+  function discardSharedGlslThumbnailCanvas(canvas: HTMLCanvasElement): void {
+    if (canvas === sharedGlslThumbnailCanvas) {
+      sharedGlslThumbnailCanvas = null;
+    }
+  }
+
+  function getSharedGlslHoverCanvas(width: number, height: number): HTMLCanvasElement {
+    if (sharedGlslHoverCanvas?.getContext('webgl2')?.isContextLost?.()) {
+      sharedGlslHoverCanvas = null;
+    }
+    sharedGlslHoverCanvas ??= document.createElement('canvas');
+    sharedGlslHoverCanvas.width = width;
+    sharedGlslHoverCanvas.height = height;
+    return sharedGlslHoverCanvas;
+  }
+</script>
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { ShaderFile } from '../types/ShaderFile';
   import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
   import type { SlangSourceModule } from '@shader-studio/types';
-  import { renderQueue } from '../stores/shaderStore';
+  import { hoverRenderQueue, thumbnailRenderQueue } from '../stores/shaderStore';
   import { requestShaderCode, type ShaderLanguage } from '../shaderCodeRequest';
   import { observeNearViewport } from '../shaderPreviewVisibility';
   import { createEngineForLanguage } from '../engineFactory';
@@ -49,6 +86,7 @@
   let useCache: boolean = $state(true); // Flag to control whether to use cached thumbnail
   let prevWidth: number = 0;
   let prevHeight: number = 0;
+  let resizeGeneration = 0;
   let resizeTimeout: number | null = null;
   let previewContainer: HTMLDivElement;
   let hasStartedLoading = false;
@@ -61,45 +99,46 @@
   const getRenderingOwnership = () => renderingOwnership;
   const getHoverOwnership = () => hoverOwnership;
 
-  // Re-render when dimensions change (card size slider)
+  // Thumbnails are rendered at their actual card resolution. Coalesce slider
+  // changes and keep the existing image visible until the replacement has
+  // rendered, so a resize cannot turn a transient rendering error into a
+  // permanently failed card.
   $effect(() => {
     const w = width;
     const h = height;
 
     if (prevWidth === 0) {
-      // First run, just record initial size
       prevWidth = w;
       prevHeight = h;
       return;
     }
 
-    if (w !== prevWidth || h !== prevHeight) {
-      prevWidth = w;
-      prevHeight = h;
+    if (w === prevWidth && h === prevHeight) return;
 
-      if (!shaderCode) return;
-
-      if (resizeTimeout !== null) {
-        window.clearTimeout(resizeTimeout);
-      }
-
-      resizeTimeout = window.setTimeout(async () => {
-        // Clear captured image so canvas reappears in DOM
-        capturedImage = '';
-        compilationFailed = false;
-        // Wait a tick for Svelte to render the canvas element
-        await new Promise(r => requestAnimationFrame(r));
-        if (canvas && shaderCode) {
-          await renderQueue.enqueue(`${queueId}-resize`, async () => {
-            await initializeRendering();
-          });
-        }
-      }, 500);
+    prevWidth = w;
+    prevHeight = h;
+    const generation = ++resizeGeneration;
+    if (resizeTimeout !== null) {
+      window.clearTimeout(resizeTimeout);
     }
+
+    resizeTimeout = window.setTimeout(async () => {
+      resizeTimeout = null;
+      if (destroyed || generation !== resizeGeneration || !shaderCode) return;
+
+      await thumbnailRenderQueue.enqueue(queueId, async () => {
+        if (destroyed || generation !== resizeGeneration) return;
+        await initializeRendering({
+          keepPreviousImage: Boolean(capturedImage),
+          isCurrent: () => generation === resizeGeneration,
+        });
+      });
+    }, 500);
 
     return () => {
       if (resizeTimeout !== null) {
         window.clearTimeout(resizeTimeout);
+        resizeTimeout = null;
       }
     };
   });
@@ -110,6 +149,8 @@
   let hoverCanvas: HTMLCanvasElement | null = null;
   let hoverOwnership: RendererOwnership | null = null;
   let hoverCanvasWrapper: HTMLDivElement | null = null;
+  let hoverQueueId = '';
+  let sharedHoverCleanup: (() => void) | null = null;
 
   onMount(async () => {
     queueId = `${shader.path}-${Date.now()}`;
@@ -152,7 +193,7 @@
     if (!vscodeApi || !isCurrent()) return;
 
     if (renderThumbnail && canvas) {
-      await renderQueue.enqueue(queueId, async () => {
+      await thumbnailRenderQueue.enqueue(queueId, async () => {
         await fetchShaderCode(isCurrent);
         if (!isCurrent()) return;
         await initializeRendering();
@@ -229,6 +270,7 @@
       }
 
       engine.initialize(targetCanvas, true); // Always preserve drawing buffer for capture
+      engine.setInputEnabled(false);
 
       const result = await engine.compileShaderPipeline(
         shaderCode,
@@ -280,7 +322,12 @@
       console.error('Failed to dispose renderer:', err);
     }
 
-    if (language !== 'glsl' || !targetCanvas) return;
+    if (
+      language !== 'glsl'
+      || !targetCanvas
+      || targetCanvas === sharedGlslThumbnailCanvas
+      || targetCanvas === sharedGlslHoverCanvas
+    ) return;
 
     try {
       // Force WebGL context to be lost to free resources
@@ -291,15 +338,27 @@
     }
   }
 
-  async function initializeRendering() {
+  async function initializeRendering({
+    keepPreviousImage = false,
+    isCurrent: isResizeCurrent = () => true,
+    retryLostContext = true,
+  }: {
+    keepPreviousImage?: boolean;
+    isCurrent?: () => boolean;
+    retryLostContext?: boolean;
+  } = {}) {
     if (!shaderCode || !canvas || destroyed) return;
 
-    const targetCanvas = canvas;
+    const displayCanvas = canvas;
+    const targetCanvas = shaderLanguage === 'glsl'
+      ? getSharedGlslThumbnailCanvas(width, height)
+      : displayCanvas;
     const generation = ++thumbnailGeneration;
     const isCurrent = () => (
       !destroyed
       && generation === thumbnailGeneration
-      && canvas === targetCanvas
+      && canvas === displayCanvas
+      && isResizeCurrent()
     );
 
     // Clean up existing rendering engine if any
@@ -331,6 +390,25 @@
       const { ownership, result } = renderer;
       const { engine } = ownership;
 
+      if (
+        !result?.success
+        && retryLostContext
+        && shaderLanguage === 'glsl'
+        && isLostSharedGlslThumbnailCanvas(targetCanvas)
+      ) {
+        ownership.dispose();
+        if (getRenderingOwnership() === ownership) {
+          renderingOwnership = null;
+        }
+        discardSharedGlslThumbnailCanvas(targetCanvas);
+        await initializeRendering({
+          keepPreviousImage,
+          isCurrent: isResizeCurrent,
+          retryLostContext: false,
+        });
+        return;
+      }
+
       if (result?.success) {
         // Let next frame render to ensure it's fully initialized
         await new Promise((resolve) => setTimeout(resolve, 16));
@@ -353,9 +431,11 @@
           }
         } catch (err) {
           console.error('Failed to capture image for shader:', shader.name, err);
-          capturedImage = '';
-          compilationFailed = true;
-          onCompilationFailed?.();
+          if (!keepPreviousImage) {
+            capturedImage = '';
+            compilationFailed = true;
+            onCompilationFailed?.();
+          }
         }
         
         // Clean up rendering resources
@@ -367,9 +447,11 @@
         // Keep shader code and buffers for hover rendering - don't clear them
       } else {
         console.error('Failed to compile shader:', shader.name, result?.errors);
-        capturedImage = '';
-        compilationFailed = true;
-        onCompilationFailed?.();
+        if (!keepPreviousImage) {
+          capturedImage = '';
+          compilationFailed = true;
+          onCompilationFailed?.();
+        }
         // Still clean up on failure
         ownership.dispose();
         if (getRenderingOwnership() === ownership) {
@@ -384,9 +466,11 @@
       if (!isCurrent()) return;
 
       console.error('Failed to initialize rendering:', err);
-      capturedImage = '';
-      compilationFailed = true;
-      onCompilationFailed?.();
+      if (!keepPreviousImage) {
+        capturedImage = '';
+        compilationFailed = true;
+        onCompilationFailed?.();
+      }
     }
   }
 
@@ -414,12 +498,28 @@
       }
     }
 
-    // Create a completely new canvas for hover rendering
-    const targetCanvas = document.createElement('canvas');
+    if (shaderLanguage === 'glsl') {
+      activeSharedGlslHoverCleanup?.();
+    }
+
+    const targetCanvas = shaderLanguage === 'glsl'
+      ? getSharedGlslHoverCanvas(width, height)
+      : document.createElement('canvas');
     targetCanvas.width = width;
     targetCanvas.height = height;
     targetCanvas.className = 'shader-preview hover-canvas';
+    targetCanvas.style.pointerEvents = 'none';
+    targetCanvas.tabIndex = -1;
     hoverCanvas = targetCanvas;
+
+    if (shaderLanguage === 'glsl') {
+      sharedHoverCleanup = () => {
+        if (hoverCanvas === targetCanvas) {
+          cleanupHoverRendering();
+        }
+      };
+      activeSharedGlslHoverCleanup = sharedHoverCleanup;
+    }
 
     // Append the canvas to the wrapper
     hoverCanvasWrapper.appendChild(targetCanvas);
@@ -427,19 +527,33 @@
     try {
       // Create a completely new rendering engine and pipeline, start the render loop
       const ownershipSlot: { current: RendererOwnership | null } = { current: null };
-      const renderer = await createShaderRenderer(
-        targetCanvas,
-        false,
-        () => isCurrent() && hoverCanvas === targetCanvas,
-        (ownership) => {
-          ownershipSlot.current = ownership;
-          if (isCurrent() && hoverCanvas === targetCanvas) {
-            hoverOwnership = ownership;
-          } else {
-            ownership.dispose();
-          }
-        },
-      );
+      hoverQueueId = `${queueId}-hover-${generation}`;
+      const rendererSlot: {
+        current: Awaited<ReturnType<typeof createShaderRenderer>>;
+      } = { current: null };
+      let rendererError: unknown;
+      await hoverRenderQueue.enqueue(hoverQueueId, async () => {
+        if (!isCurrent() || hoverCanvas !== targetCanvas) return;
+        try {
+          rendererSlot.current = await createShaderRenderer(
+            targetCanvas,
+            false,
+            () => isCurrent() && hoverCanvas === targetCanvas,
+            (ownership) => {
+              ownershipSlot.current = ownership;
+              if (isCurrent() && hoverCanvas === targetCanvas) {
+                hoverOwnership = ownership;
+              } else {
+                ownership.dispose();
+              }
+            },
+          );
+        } catch (error) {
+          rendererError = error;
+        }
+      });
+      if (rendererError) throw rendererError;
+      const renderer = rendererSlot.current;
       if (!renderer || !isCurrent() || hoverCanvas !== targetCanvas) {
         if (getHoverOwnership() === ownershipSlot.current) hoverOwnership = null;
         return;
@@ -475,6 +589,16 @@
     hoverGeneration++;
     isHovering = false;
     hoverVisible = false;
+
+    if (hoverQueueId) {
+      hoverRenderQueue.remove(hoverQueueId);
+      hoverQueueId = '';
+    }
+
+    if (activeSharedGlslHoverCleanup === sharedHoverCleanup) {
+      activeSharedGlslHoverCleanup = null;
+    }
+    sharedHoverCleanup = null;
     
     hoverOwnership?.dispose();
     hoverOwnership = null;
@@ -491,6 +615,10 @@
   onDestroy(() => {
     destroyed = true;
     thumbnailGeneration++;
+    resizeGeneration++;
+    if (resizeTimeout !== null) {
+      window.clearTimeout(resizeTimeout);
+    }
     for (const controller of pendingShaderRequests) {
       controller.abort();
     }
@@ -499,7 +627,7 @@
 
     // Remove from queue if still waiting
     if (queueId) {
-      renderQueue.remove(queueId);
+      thumbnailRenderQueue.remove(queueId);
     }
     
     renderingOwnership?.dispose();
@@ -562,6 +690,7 @@
     height: 100%;
     display: block;
     object-fit: cover;
+    pointer-events: none;
   }
   
   .loading-placeholder {
@@ -626,6 +755,7 @@
     left: 0;
     z-index: 10;
     background: #000;
+    pointer-events: none;
   }
   
   .hover-canvas-wrapper.visible {
@@ -636,5 +766,6 @@
     width: 100%;
     height: 100%;
     display: block;
+    pointer-events: none;
   }
 </style>

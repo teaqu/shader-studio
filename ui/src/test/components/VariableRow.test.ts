@@ -203,7 +203,6 @@ describe('VariableRow', () => {
     render(VariableRow, { props: { variable: v, isPixelMode: false, enableRowPreview: true } });
     const canvas = document.querySelector('canvas') as HTMLCanvasElement;
     expect(canvas).toBeInTheDocument();
-    // Width should be maxSize (32), height proportionally shorter
     expect(canvas.style.width).toBe('32px');
     const expectedHeight = Math.round(32 * (24 / 43));
     expect(canvas.style.height).toBe(`${expectedHeight}px`);
@@ -425,6 +424,15 @@ describe('VariableRow', () => {
     expect(thumbCol).toBeInTheDocument();
     expect(thumbCol.querySelector('canvas')).toBeInTheDocument();
     expect(thumbCol.nextElementSibling).toHaveClass('var-body');
+  });
+
+  it('reserves the rendered width of a native-size thumbnail', () => {
+    const thumb = new Uint8ClampedArray(64 * 36 * 4).fill(128);
+    const v = { ...makeGridVecVar(), thumbnail: thumb, gridWidth: 64, gridHeight: 36 };
+    render(VariableRow, { props: { variable: v, isPixelMode: false } });
+
+    const thumbCol = document.querySelector('.thumb-col') as HTMLElement;
+    expect(thumbCol.style.width).toBe('64px');
   });
 
   it('keeps the preview box vertically centered beside wrapped variable text', () => {

@@ -166,14 +166,18 @@ export class ShaderDebugManager {
     };
   }
 
-  public getSlangPreviewPlan(imageCode: string, config: ShaderConfig | null, lineOffset = 0): DebugInstrumentationPlan | null {
+  public getSlangPreviewPlan(
+    imageCode: string,
+    config: ShaderConfig | null,
+    originalImageCode = imageCode,
+  ): DebugInstrumentationPlan | null {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
     if (!this.state.isInlineRenderingEnabled && !this.variablePreview) {
       return null;
     }
-    const request = this.createSlangDebugRequest(imageCode, config, lineOffset);
+    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode);
     if (!request) {
       return null;
     }
@@ -194,8 +198,12 @@ export class ShaderDebugManager {
     return result.plan;
   }
 
-  public getSlangCapturePlan(imageCode: string, config: ShaderConfig | null, lineOffset = 0): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | { error: string } | null {
-    const request = this.createSlangDebugRequest(imageCode, config, lineOffset);
+  public getSlangCapturePlan(
+    imageCode: string,
+    config: ShaderConfig | null,
+    originalImageCode = imageCode,
+  ): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | { error: string } | null {
+    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode);
     if (!request) {
       if (this.language === 'slang' && this.state.isActive && this.state.currentLine !== null) {
         return { error: 'Slang debug source path could not be resolved' };
@@ -222,7 +230,11 @@ export class ShaderDebugManager {
     return { plan: result.plan, values: analysis.analysis.visibleValues };
   }
 
-  private createSlangDebugRequest(imageCode: string, config: ShaderConfig | null, lineOffset = 0): DebugAnalysisRequest | null {
+  private createSlangDebugRequest(
+    imageCode: string,
+    config: ShaderConfig | null,
+    originalImageCode = imageCode,
+  ): DebugAnalysisRequest | null {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
@@ -245,7 +257,11 @@ export class ShaderDebugManager {
     ];
     const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
     const rawLine = this.variablePreview?.debugLine ?? this.state.currentLine;
-    const selectedLine = rawLine + lineOffset;
+    const selectedLine = rawLine + (
+      selectedPath === rootPath && this.pathsEqual(rootPath, this.imagePassPath ?? '')
+        ? computeSlangLineOffset(imageCode, originalImageCode)
+        : 0
+    );
     const selectedSource = selectedPath === rootPath
       ? rootSource
       : isCommonTarget && commonPath && this.pathsEqual(selectedPath, commonPath)
@@ -797,4 +813,20 @@ export class ShaderDebugManager {
       })),
     };
   }
+}
+
+function computeSlangLineOffset(processed: string, original: string): number {
+  const processedLines = processed.split('\n');
+  const originalLines = original.split('\n');
+  for (let index = 0; index < originalLines.length; index++) {
+    const trimmed = originalLines[index].trim();
+    if (!trimmed || originalLines.filter((line) => line.trim() === trimmed).length !== 1) {
+      continue;
+    }
+    const processedIndex = processedLines.findIndex((line) => line.trim() === trimmed);
+    if (processedIndex >= 0 && processedIndex !== index) {
+      return processedIndex - index;
+    }
+  }
+  return 0;
 }

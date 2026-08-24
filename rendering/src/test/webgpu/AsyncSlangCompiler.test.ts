@@ -42,6 +42,18 @@ describe("MainThreadSlangCompiler", () => {
     expect(result).toEqual({ success: true, wgsl: "w" });
     expect(inner.compileImagePass).toHaveBeenCalledWith("src", options);
   });
+
+  it("disposes the wrapped compiler to release its WASM global session", () => {
+    const inner = {
+      compileImagePass: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const compiler = new MainThreadSlangCompiler(inner as unknown as SlangCompiler);
+
+    compiler.dispose();
+
+    expect(inner.dispose).toHaveBeenCalledExactlyOnceWith();
+  });
 });
 
 describe("WorkerSlangCompiler", () => {

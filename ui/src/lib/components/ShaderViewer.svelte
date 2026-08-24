@@ -863,12 +863,9 @@
     if (!state.isEnabled || !state.isVariableInspectorEnabled) {
       return;
     }
-    const lineOffset = engineLanguage === 'slang' && originalShaderCode
-      ? computeSlangLineOffset(currentShaderCode, originalShaderCode)
-      : 0;
     const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
     const slangResult = engineLanguage === 'slang'
-      ? shaderDebugManager.getSlangCapturePlan(currentShaderCode, currentConfig, lineOffset)
+      ? shaderDebugManager.getSlangCapturePlan(currentShaderCode, currentConfig, originalShaderCode)
       : null;
     const slangPlan = slangResult && 'plan' in slangResult ? slangResult : null;
     const slangPlanError = slangResult && 'error' in slangResult ? slangResult.error : null;
@@ -901,35 +898,6 @@
 
   function shaderPathsEqual(firstPath: string, secondPath: string) {
     return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
-  }
-
-  /**
-   * Compute the line offset between the processed source (with #include/import
-   * expanded) and the original source. The processed source has directives
-   * replaced with inlined content, shifting subsequent line numbers.
-   * Returns the delta: processedLine = originalLine + offset.
-   */
-  function computeSlangLineOffset(processed: string, original: string): number {
-    const processedLines = processed.split('\n');
-    const originalLines = original.split('\n');
-    // Find a unique anchor line — one that appears exactly once in each
-    // source but at different positions. This avoids false matches on
-    // duplicate lines like "{" or "}".
-    for (let i = 0; i < originalLines.length; i++) {
-      const trimmed = originalLines[i].trim();
-      if (!trimmed) {
-        continue;
-      }
-      // Only use lines that are unique in the original source
-      if (originalLines.filter((l: string) => l.trim() === trimmed).length !== 1) {
-        continue;
-      }
-      const processedIdx = processedLines.findIndex((l: string) => l.trim() === trimmed);
-      if (processedIdx >= 0 && processedIdx !== i) {
-        return processedIdx - i;
-      }
-    }
-    return 0;
   }
 
   function handleShaderSource(event: MessageEvent) {

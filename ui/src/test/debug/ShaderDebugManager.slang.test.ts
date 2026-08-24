@@ -38,6 +38,29 @@ describe('ShaderDebugManager - Slang language mode', () => {
     expect(plan?.files[0].source).toContain('_ssdbg_');
   });
 
+  it('maps an original editor line into dependency-expanded Slang source', () => {
+    const original = `float4 mainImage(float2 fragCoord)
+{
+    float value = fragCoord.x;
+    return float4(value, 0.0, 0.0, 1.0);
+}`;
+    const processed = `// expanded dependency
+// with an extra line
+float4 mainImage(float2 fragCoord)
+{
+    float value = fragCoord.x;
+    return float4(value, 0.0, 0.0, 1.0);
+}`;
+    manager.setImageShaderCode(processed);
+    manager.setShaderContext(null, '/flow.slang', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(2, '    float value = fragCoord.x;', '/flow.slang');
+
+    const plan = manager.getSlangPreviewPlan(processed, null, original);
+
+    expect(plan?.files[0].source).toContain('float _ssdbg_');
+  });
+
   it('does not build a Slang line preview while inline rendering is disabled', () => {
     manager.setShaderContext(null, '/flow.slang', {});
     manager.toggleEnabled();

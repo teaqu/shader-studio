@@ -166,6 +166,60 @@ void computeMain() {}`;
       .toContain("workgroup");
   });
 
+  it("does not offer completions inside line or block comments", async () => {
+    const { module, server } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `// iChannel0
+/* iChannel0 */
+float value = iChannel0;`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    await expect(service.completion({ document: revision, position: { line: 0, character: 11 } })).resolves.toEqual([]);
+    await expect(service.completion({ document: revision, position: { line: 1, character: 11 } })).resolves.toEqual([]);
+    expect(server.completion).not.toHaveBeenCalled();
+
+    await expect(service.completion({ document: revision, position: { line: 2, character: 16 } }))
+      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ label: "iChannel0" })]));
+  });
+
+  it("keeps official member completions without adding global symbols", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([{
+      label: "Sample",
+      kind: 3,
+      detail: "float4 Texture2D.Sample(SamplerState sampler, float2 location)",
+      data: "",
+    }]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = "float4 color = iChannel0.sam;";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({
+      document: revision,
+      position: { line: 0, character: text.indexOf("sam") + 3 },
+    });
+    expect(completions.map((item) => item.label)).toEqual(["Sample"]);
+  });
+
+  it("does not show signature help inside comments", async () => {
+    const { module, server } = fixture();
+    server.signatureHelp.mockReturnValue({
+      signatures: list([{ label: "float3 normalize(float3 value)", documentation: { kind: "markdown", value: "" }, parameters: list([]) }]),
+      activeSignature: 0,
+      activeParameter: 0,
+    });
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = "// normalize(\n/* normalize( */";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    await expect(service.signatureHelp({ document: revision, position: { line: 0, character: 12 } })).resolves.toBeNull();
+    await expect(service.signatureHelp({ document: revision, position: { line: 1, character: 12 } })).resolves.toBeNull();
+    expect(server.signatureHelp).not.toHaveBeenCalled();
+  });
+
   it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);
@@ -213,7 +267,7 @@ void computeMain() {}`;
       .toContain("texture coordinate");
     expect(JSON.stringify((await hoverAt("deformed", 1))?.contents))
       .toContain("vertex position");
-    const completions = await service.completion({ document: revision, position: { line: 0, character: text.length - 3 } });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.length } });
     expect(completions.find((item) => item.label === "mainVertex")?.detail)
       .toBe("void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
     expect(completions.find((item) => item.label === "deformed")?.documentation)

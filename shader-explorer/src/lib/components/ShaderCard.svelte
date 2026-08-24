@@ -1,6 +1,12 @@
 <script lang="ts">
   import type { ShaderFile } from '../types/ShaderFile';
   import ShaderPreview from './ShaderPreview.svelte';
+  import {
+    closeContextMenu,
+    getOpenContextMenu,
+    openContextMenu,
+    positionContextMenu,
+  } from '../state/contextMenuState.svelte';
 
   let { shader, vscodeApi, cardSize = 280, refreshAll = false, forceFresh = false, layoutMode = 'grid', onOpen, onCompilationFailed }: {
     shader: ShaderFile;
@@ -18,25 +24,43 @@
   let width = $derived(layoutMode === 'row' ? 96 : Math.round(cardSize * 2.286));
   let height = $derived(layoutMode === 'row' ? 54 : Math.round(width * 9 / 16));
 
-  let menuX = $state(0);
-  let menuY = $state(0);
-  let menuOpen = $state(false);
+  const openMenu = $derived(getOpenContextMenu());
+  let menuElement = $state<HTMLDivElement | null>(null);
+
+  $effect(() => {
+    if (openMenu?.path !== shader.path || !menuElement) {
+      return;
+    }
+
+    const { width, height } = menuElement.getBoundingClientRect();
+    if (width === 0 || height === 0) {
+      return;
+    }
+
+    const margin = 8;
+    const x = Math.max(margin, Math.min(openMenu.x, window.innerWidth - width - margin));
+    const y = Math.max(margin, Math.min(openMenu.y, window.innerHeight - height - margin));
+    positionContextMenu(x, y);
+  });
 
   function showContextMenu(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    menuX = e.clientX;
-    menuY = e.clientY;
-    menuOpen = true;
+    openContextMenu(shader.path, e.clientX, e.clientY);
   }
 
   function closeMenu() {
-    menuOpen = false;
+    closeContextMenu();
   }
 
   function deleteShader() {
     vscodeApi?.postMessage({ type: 'deleteShader', path: shader.path });
-    menuOpen = false;
+    closeContextMenu();
+  }
+
+  function renameShader() {
+    vscodeApi?.postMessage({ type: 'renameShader', path: shader.path });
+    closeContextMenu();
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -45,6 +69,16 @@
 
   function formatDate(ms: number): string {
     return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatDateTime(ms: number): string {
+    return new Date(ms).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   const createdStr = $derived(shader.createdTime ? formatDate(shader.createdTime) : null);
@@ -89,8 +123,20 @@
   </div>
 </div>
 
-{#if menuOpen}
-  <div class="context-menu" style="left: {menuX}px; top: {menuY}px;">
+{#if openMenu?.path === shader.path}
+  <div bind:this={menuElement} class="context-menu" style="left: {openMenu.x}px; top: {openMenu.y}px;">
+    {#if shader.createdTime}
+      <div class="context-menu-metadata">Created {formatDateTime(shader.createdTime)}</div>
+    {/if}
+    {#if shader.modifiedTime}
+      <div class="context-menu-metadata">Last modified {formatDateTime(shader.modifiedTime)}</div>
+    {/if}
+    {#if shader.createdTime || shader.modifiedTime}
+      <div class="context-menu-separator"></div>
+    {/if}
+    <button class="context-menu-item" onclick={renameShader}>
+      Rename
+    </button>
     <button class="context-menu-item" onclick={deleteShader}>
       🗑 Delete
     </button>
@@ -183,11 +229,13 @@
   .context-menu {
     position: fixed;
     z-index: 1000;
+    box-sizing: border-box;
     background: var(--vscode-menu-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
     border-radius: 4px;
     padding: 4px;
     min-width: 120px;
+    max-width: calc(100vw - 16px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   }
 
@@ -207,6 +255,22 @@
 
   .context-menu-item:hover {
     background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  }
+
+  .context-menu-metadata {
+    padding: 5px 12px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .context-menu-separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border));
   }
 
   .timestamp-popup {

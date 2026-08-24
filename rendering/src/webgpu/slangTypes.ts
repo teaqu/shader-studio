@@ -40,11 +40,13 @@ export interface SlangCompileTarget {
 export interface SlangEntryPoint {
   // Opaque handle passed back into createCompositeComponentType.
   readonly _entryPoint?: never;
+  delete?(): void;
 }
 
 export interface SlangComponentType {
   link(): SlangComponentType | null;
   getTargetCode(targetIndex: number): string;
+  delete?(): void;
 }
 
 export interface SlangModule extends SlangComponentType {
@@ -54,10 +56,12 @@ export interface SlangModule extends SlangComponentType {
 export interface SlangSession {
   loadModuleFromSource(source: string, name: string, path: string): SlangModule | null;
   createCompositeComponentType(components: unknown[]): SlangComponentType | null;
+  delete?(): void;
 }
 
 export interface SlangGlobalSession {
   createSession(targetValue: number): SlangSession | null;
+  delete?(): void;
 }
 
 export interface SlangError {

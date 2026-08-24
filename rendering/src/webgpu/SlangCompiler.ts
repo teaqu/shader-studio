@@ -2,6 +2,7 @@ import {
   type SlangModuleApi,
   type SlangGlobalSession,
   type SlangModule,
+  type SlangComponentType,
   type SlangCompileOptions,
   slangVectorToArray,
 } from "./slangTypes";
@@ -52,110 +53,135 @@ export class SlangCompiler {
     }
 
     const dependencyModules: SlangModule[] = [];
-    for (const dependency of options.modules ?? []) {
-      const dependencyModule = session.loadModuleFromSource(
-        stripShaderStudioEditorImport(dependency.source),
-        dependency.moduleName,
-        dependency.path,
-      );
-      if (!dependencyModule) {
-        return { success: false, errors: [this.lastError(
-          `Slang: failed to compile imported module ${dependency.moduleName} (${dependency.path})`,
-        )] };
+    let module: SlangModule | null = null;
+    let entryPoints: ReturnType<SlangModule["findEntryPointByName"]>[] = [];
+    let composite: SlangComponentType | null = null;
+    let linked: SlangComponentType | null = null;
+    try {
+      for (const dependency of options.modules ?? []) {
+        const dependencyModule = session.loadModuleFromSource(
+          stripShaderStudioEditorImport(dependency.source),
+          dependency.moduleName,
+          dependency.path,
+        );
+        if (!dependencyModule) {
+          return { success: false, errors: [this.lastError(
+            `Slang: failed to compile imported module ${dependency.moduleName} (${dependency.path})`,
+          )] };
+        }
+        dependencyModules.push(dependencyModule);
       }
-      dependencyModules.push(dependencyModule);
-    }
 
-    // The WASM cannot resolve imports from the filesystem, but it can resolve
-    // imports from modules already loaded into this session. Keep imports when
-    // the caller supplied those modules so their public declarations remain
-    // visible while compiling the root module.
-    const resolvedSource = stripImports(userSource, dependencyModules.length > 0);
+      // The WASM cannot resolve imports from the filesystem, but it can resolve
+      // imports from modules already loaded into this session. Keep imports when
+      // the caller supplied those modules so their public declarations remain
+      // visible while compiling the root module.
+      const resolvedSource = stripImports(userSource, dependencyModules.length > 0);
 
-    const isCompute = options.passKind === "compute";
-    const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(resolvedSource) : [];
-    const computeEntryPoint = options.entryPoint
-      ? nativeComputeEntryPoints.find(({ name }) => name === options.entryPoint)?.name
-      : nativeComputeEntryPoints.length === 1 ? nativeComputeEntryPoints[0]!.name : undefined;
-    if (isCompute && !computeEntryPoint) {
-      return {
-        success: false,
-        errors: ['Slang: compute source must declare a native `[shader("compute")]` entry point'],
-      };
-    }
-    const wrapped = isCompute
-      ? wrapSlangComputeSource(resolvedSource, {
-        passName: options.passName,
-        commonCode: options.commonCode,
-        channels: options.channels,
-        storage: options.storage,
-        workgroupSize: options.workgroupSize ?? [8, 8, 1],
-        outputLayers: options.outputLayers ?? 1,
-        hasOutput: options.hasOutput === true,
-        customUniforms: options.customUniforms,
-        outputImageFormat: options.outputImageFormat ?? "rgba16f",
-      })
-      : wrapSlangImageSource(resolvedSource, {
-        passName: options.passName,
-        commonCode: options.commonCode,
-        channels: options.channels,
-        storage: options.storage,
-        passKind: options.passKind ?? "render",
-        geometry: options.geometry,
-        vertexCode: options.vertexCode,
-        captureMode: options.captureMode,
-        customUniforms: options.customUniforms,
-      });
-    // Name the module after the pass so Slang diagnostics cite the right
-    // file (e.g. /buffera.slang) rather than always claiming /image.slang.
-    const sourceWithoutComments = resolvedSource
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
-    const declaredModuleName = sourceWithoutComments.match(
-      /^\s*module\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/m,
-    )?.[1];
-    const moduleName = declaredModuleName ?? (options.passName ?? "image").toLowerCase();
-    const modulePath = options.sourcePath ?? `/${moduleName}.slang`;
-    const module = session.loadModuleFromSource(wrapped, moduleName, modulePath);
-    if (!module) {
-      const error = this.lastError("Slang: failed to compile module");
-      return {
-        success: false,
-        errors: [isMissingMainImageDiagnostic(error)
-          ? "Missing mainImage function"
-          : error],
-      };
-    }
+      const isCompute = options.passKind === "compute";
+      const nativeComputeEntryPoints = isCompute ? getNativeComputeEntryPoints(resolvedSource) : [];
+      const computeEntryPoint = options.entryPoint
+        ? nativeComputeEntryPoints.find(({ name }) => name === options.entryPoint)?.name
+        : nativeComputeEntryPoints.length === 1 ? nativeComputeEntryPoints[0]!.name : undefined;
+      if (isCompute && !computeEntryPoint) {
+        return {
+          success: false,
+          errors: ['Slang: compute source must declare a native `[shader("compute")]` entry point'],
+        };
+      }
+      const wrapped = isCompute
+        ? wrapSlangComputeSource(resolvedSource, {
+          passName: options.passName,
+          commonCode: options.commonCode,
+          channels: options.channels,
+          storage: options.storage,
+          workgroupSize: options.workgroupSize ?? [8, 8, 1],
+          outputLayers: options.outputLayers ?? 1,
+          hasOutput: options.hasOutput === true,
+          customUniforms: options.customUniforms,
+          outputImageFormat: options.outputImageFormat ?? "rgba16f",
+        })
+        : wrapSlangImageSource(resolvedSource, {
+          passName: options.passName,
+          commonCode: options.commonCode,
+          channels: options.channels,
+          storage: options.storage,
+          passKind: options.passKind ?? "render",
+          geometry: options.geometry,
+          vertexCode: options.vertexCode,
+          captureMode: options.captureMode,
+          customUniforms: options.customUniforms,
+        });
+      // Name the module after the pass so Slang diagnostics cite the right
+      // file (e.g. /buffera.slang) rather than always claiming /image.slang.
+      const sourceWithoutComments = resolvedSource
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, "");
+      const declaredModuleName = sourceWithoutComments.match(
+        /^\s*module\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/m,
+      )?.[1];
+      const moduleName = declaredModuleName ?? (options.passName ?? "image").toLowerCase();
+      const modulePath = options.sourcePath ?? `/${moduleName}.slang`;
+      module = session.loadModuleFromSource(wrapped, moduleName, modulePath);
+      if (!module) {
+        const error = this.lastError("Slang: failed to compile module");
+        return {
+          success: false,
+          errors: [isMissingMainImageDiagnostic(error)
+            ? "Missing mainImage function"
+            : error],
+        };
+      }
+      const rootModule = module;
 
-    const entryPointNames = isCompute
-      ? [computeEntryPoint!]
-      : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
-    const entryPoints = entryPointNames.map((name) => module.findEntryPointByName(name));
-    if (entryPoints.some((entryPoint) => !entryPoint)) {
-      return {
-        success: false,
-        errors: [isCompute
-          ? "Slang: configured native compute entry point was not found"
-          : "Slang: entry points not found (is `mainImage` defined?)"],
-      };
-    }
+      const entryPointNames = isCompute
+        ? [computeEntryPoint!]
+        : [SLANG_ENTRY_VERTEX, SLANG_ENTRY_FRAGMENT];
+      entryPoints = entryPointNames.map((name) => rootModule.findEntryPointByName(name));
+      if (entryPoints.some((entryPoint) => !entryPoint)) {
+        return {
+          success: false,
+          errors: [isCompute
+            ? "Slang: configured native compute entry point was not found"
+            : "Slang: entry points not found (is `mainImage` defined?)"],
+        };
+      }
 
-    const composite = session.createCompositeComponentType([...dependencyModules, module, ...entryPoints]);
-    if (!composite) {
-      return { success: false, errors: [this.lastError("Slang: failed to compose program")] };
-    }
+      composite = session.createCompositeComponentType([...dependencyModules, rootModule, ...entryPoints]);
+      if (!composite) {
+        return { success: false, errors: [this.lastError("Slang: failed to compose program")] };
+      }
 
-    const linked = composite.link();
-    if (!linked) {
-      return { success: false, errors: [this.lastError("Slang: failed to link program")] };
-    }
+      linked = composite.link();
+      if (!linked) {
+        return { success: false, errors: [this.lastError("Slang: failed to link program")] };
+      }
 
-    const wgsl = linked.getTargetCode(0);
-    if (!wgsl) {
-      return { success: false, errors: [this.lastError("Slang: produced empty WGSL")] };
-    }
+      const wgsl = linked.getTargetCode(0);
+      if (!wgsl) {
+        return { success: false, errors: [this.lastError("Slang: produced empty WGSL")] };
+      }
 
-    return { success: true, wgsl };
+      return { success: true, wgsl };
+    } finally {
+      deleteSlangHandle(linked);
+      deleteSlangHandle(composite);
+      for (const entryPoint of entryPoints) {
+        deleteSlangHandle(entryPoint);
+      }
+      deleteSlangHandle(module);
+      for (const dependencyModule of dependencyModules) {
+        deleteSlangHandle(dependencyModule);
+      }
+      deleteSlangHandle(session);
+    }
+  }
+
+  /** Releases the cached global session when its owning renderer is disposed. */
+  public dispose(): void {
+    deleteSlangHandle(this.globalSession);
+    this.globalSession = null;
+    this.wgslTargetValue = null;
   }
 
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
@@ -214,4 +240,8 @@ function errMessage(e: unknown): string {
 
 function isMissingMainImageDiagnostic(error: string): boolean {
   return /undefined identifier[\s\S]*['"]mainImage['"]/i.test(error);
+}
+
+function deleteSlangHandle(handle: { delete?: () => void } | null): void {
+  handle?.delete?.();
 }

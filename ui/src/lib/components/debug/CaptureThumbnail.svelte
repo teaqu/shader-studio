@@ -15,7 +15,6 @@
     debugLine: number;
     activeBufferName: string;
     filePath: string | null;
-    maxSize?: number;
     previewEnabled?: boolean;
   }
 
@@ -28,7 +27,6 @@
     debugLine,
     activeBufferName,
     filePath,
-    maxSize = 32,
     previewEnabled = true,
   }: Props = $props();
 
@@ -37,13 +35,16 @@
   let hovered = $state(false);
   let focused = $state(false);
   let previewActive = $state(false);
+  const THUMBNAIL_SIZE = 32;
+  let displayMaxSize = $derived(Math.max(gridWidth, gridHeight) >= 64
+    ? Math.max(gridWidth, gridHeight)
+    : THUMBNAIL_SIZE);
   let displayWidth = $derived(gridWidth >= gridHeight
-    ? maxSize
-    : Math.round(maxSize * (gridWidth / gridHeight)));
+    ? displayMaxSize
+    : Math.round(displayMaxSize * (gridWidth / gridHeight)));
   let displayHeight = $derived(gridHeight >= gridWidth
-    ? maxSize
-    : Math.round(maxSize * (gridHeight / gridWidth)));
-  let canExpand = $derived(gridWidth > displayWidth || gridHeight > displayHeight);
+    ? displayMaxSize
+    : Math.round(displayMaxSize * (gridHeight / gridWidth)));
   let previewRequest: VariablePreviewRequest = $derived({
     varName,
     varType,
@@ -123,40 +124,7 @@
     style="width: {displayWidth}px; height: {displayHeight}px; image-rendering: pixelated;"
     class="thumb"
   ></canvas>
-  {#if canExpand && previewActive}
-    <canvas
-      width={gridWidth}
-      height={gridHeight}
-      style="width: {gridWidth}px; height: {gridHeight}px; image-rendering: pixelated;"
-      class="thumb-expanded"
-      use:drawExpanded={{ pixels, gridWidth, gridHeight }}
-    ></canvas>
-  {/if}
 </button>
-
-<script lang="ts" module>
-  function drawExpanded(node: HTMLCanvasElement, params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
-    render(node, params);
-    return {
-      update(params: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
-        render(node, params);
-      }
-    };
-  }
-
-  function render(canvas: HTMLCanvasElement, { pixels, gridWidth, gridHeight }: { pixels: Uint8ClampedArray; gridWidth: number; gridHeight: number }) {
-    if (gridWidth < 1 || gridHeight < 1) {
-      return;
-    }
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      return;
-    }
-    canvas.width = gridWidth;
-    canvas.height = gridHeight;
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels), gridWidth, gridHeight), 0, 0);
-  }
-</script>
 
 <style>
   .thumb-wrap {
@@ -174,11 +142,4 @@
     display: block;
   }
 
-  .thumb-expanded {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  }
 </style>

@@ -7,6 +7,7 @@ import type { ShaderFile } from '../types/ShaderFile';
 const { mockEngine, createEngineForLanguage } = vi.hoisted(() => ({
     mockEngine: {
         initialize: vi.fn(),
+        setInputEnabled: vi.fn(),
         compileShaderPipeline: vi.fn(),
         render: vi.fn(),
         renderForCapture: vi.fn(),
@@ -72,6 +73,7 @@ beforeEach(() => {
     toDataUrlMock.mockReturnValue('data:image/png;base64,rendered');
     createEngineForLanguage.mockReset().mockReturnValue(mockEngine);
     mockEngine.initialize.mockReset();
+    mockEngine.setInputEnabled.mockReset();
     mockEngine.compileShaderPipeline.mockReset().mockResolvedValue({ success: true, errors: [] });
     mockEngine.render.mockReset();
     mockEngine.renderForCapture.mockReset();
@@ -158,7 +160,149 @@ describe('ShaderPreview - loading state', () => {
     });
 });
 
+describe('ShaderPreview - thumbnail resize', () => {
+    it('serializes thumbnail rendering while sharing the GLSL canvas', async () => {
+        const firstCompile = deferred<{ success: boolean; errors: string[] }>();
+        mockEngine.compileShaderPipeline
+            .mockImplementationOnce(() => firstCompile.promise)
+            .mockResolvedValue({ success: true, errors: [] });
+
+        render(ShaderPreview, {
+            props: { shader: makeShader({ path: '/test/first.glsl' }), vscodeApi: makeVscodeApi() },
+        });
+        render(ShaderPreview, {
+            props: { shader: makeShader({ path: '/test/second.glsl' }), vscodeApi: makeVscodeApi() },
+        });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        firstCompile.resolve({ success: true, errors: [] });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2));
+        expect(mockEngine.initialize.mock.calls[1][0]).toBe(mockEngine.initialize.mock.calls[0][0]);
+        await waitFor(() => expect(toDataUrlMock).toHaveBeenCalledTimes(2));
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    it('replaces a lost shared WebGL context and retries the thumbnail once', async () => {
+        const lostContext = {
+            isContextLost: vi.fn(() => true),
+            getExtension: vi.fn(() => null),
+        } as unknown as WebGL2RenderingContext;
+        getContextMock.mockReturnValue(lostContext);
+        mockEngine.compileShaderPipeline
+            .mockResolvedValueOnce({ success: false, errors: ['Image: Compile timed out after 5000ms'] })
+            .mockResolvedValueOnce({ success: true, errors: [] });
+
+        const { container } = render(ShaderPreview, {
+            props: { shader: makeShader(), vscodeApi: makeVscodeApi() },
+        });
+
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
+        expect(mockEngine.initialize.mock.calls[1][0]).not.toBe(mockEngine.initialize.mock.calls[0][0]);
+        await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledTimes(2));
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    it('refreshes the thumbnail at the final grid card dimensions', async () => {
+        const { container, rerender } = render(ShaderPreview, {
+            props: {
+                shader: makeShader(),
+                vscodeApi: makeVscodeApi(),
+                width: 320,
+                height: 180,
+            },
+        });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+        const initialCanvas = container.querySelector('canvas');
+
+        await rerender({ width: 640, height: 360 });
+        await new Promise(resolve => setTimeout(resolve, 550));
+
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(toDataUrlMock).toHaveBeenCalledTimes(2));
+        expect(mockEngine.initialize.mock.calls[0][0]).not.toBe(initialCanvas);
+        expect(mockEngine.initialize.mock.calls[1][0]).toBe(mockEngine.initialize.mock.calls[0][0]);
+        expect(mockEngine.initialize.mock.calls[1][1]).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    it('coalesces repeated dimension changes into one refresh', async () => {
+        const { rerender } = render(ShaderPreview, {
+            props: {
+                shader: makeShader(),
+                vscodeApi: makeVscodeApi(),
+                width: 320,
+                height: 180,
+            },
+        });
+
+        await waitFor(() => expect(mockEngine.compileShaderPipeline).toHaveBeenCalledOnce());
+
+        await rerender({ width: 96, height: 54 });
+        await rerender({ width: 640, height: 360 });
+        await new Promise(resolve => setTimeout(resolve, 550));
+
+        expect(mockEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
+        await waitFor(() => expect(toDataUrlMock).toHaveBeenCalledTimes(2));
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    it('keeps the last successful thumbnail visible when its resize refresh fails', async () => {
+        const onCompilationFailed = vi.fn();
+        const { container, rerender } = render(ShaderPreview, {
+            props: {
+                shader: makeShader(),
+                vscodeApi: makeVscodeApi(),
+                width: 320,
+                height: 180,
+                onCompilationFailed,
+            },
+        });
+
+        await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+        mockEngine.compileShaderPipeline.mockResolvedValue({ success: false, errors: ['resize error'] });
+
+        await rerender({ width: 640, height: 360 });
+        await new Promise(resolve => setTimeout(resolve, 550));
+
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,rendered');
+        expect(container.querySelector('.shader-error')).toBeNull();
+        expect(onCompilationFailed).not.toHaveBeenCalled();
+        await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalledTimes(2));
+        await new Promise(resolve => setTimeout(resolve, 0));
+    });
+});
+
 describe('ShaderPreview - hover visibility', () => {
+    it('reuses one GLSL hover canvas across shader cards', async () => {
+        const first = render(ShaderPreview, {
+            props: {
+                shader: makeShader({ path: '/test/first.glsl', cachedThumbnail: 'data:image/png;base64,first' }),
+                vscodeApi: makeVscodeApi(),
+            },
+        });
+        const second = render(ShaderPreview, {
+            props: {
+                shader: makeShader({ path: '/test/second.glsl', cachedThumbnail: 'data:image/png;base64,second' }),
+                vscodeApi: makeVscodeApi(),
+            },
+        });
+
+        const firstContainer = first.container.querySelector('.shader-preview-container')!;
+        await fireEvent.mouseEnter(firstContainer);
+        await waitFor(() => expect(first.container.querySelector('.hover-canvas')).not.toBeNull());
+        const firstHoverCanvas = first.container.querySelector('.hover-canvas');
+        await fireEvent.mouseLeave(firstContainer);
+
+        await fireEvent.mouseEnter(second.container.querySelector('.shader-preview-container')!);
+        await waitFor(() => expect(second.container.querySelector('.hover-canvas')).not.toBeNull());
+
+        expect(second.container.querySelector('.hover-canvas')).toBe(firstHoverCanvas);
+    });
+
     it('hover wrapper not visible before mouseenter', async () => {
         const { container } = render(ShaderPreview, {
             props: { shader: makeShader({ cachedThumbnail: 'data:image/png;base64,abc' }), vscodeApi: makeVscodeApi(), width: 320, height: 180 },
@@ -179,6 +323,26 @@ describe('ShaderPreview - hover visibility', () => {
         await waitFor(() => {
             expect(container.querySelector('.hover-canvas-wrapper')?.classList.contains('visible')).toBe(true);
         });
+    });
+
+    it('does not let the hover canvas capture scroll, keyboard, or mouse input', async () => {
+        const { container } = render(ShaderPreview, {
+            props: {
+                shader: makeShader({ cachedThumbnail: 'data:image/png;base64,abc' }),
+                vscodeApi: makeVscodeApi(),
+            },
+        });
+
+        await fireEvent.mouseEnter(container.querySelector('.shader-preview-container')!);
+        const hoverCanvas = await waitFor(() => {
+            const element = container.querySelector('.hover-canvas');
+            expect(element).not.toBeNull();
+            return element as HTMLCanvasElement;
+        });
+
+        expect(getComputedStyle(hoverCanvas).pointerEvents).toBe('none');
+        expect(hoverCanvas.tabIndex).toBe(-1);
+        expect(mockEngine.setInputEnabled).toHaveBeenCalledWith(false);
     });
 
     it('hover wrapper hidden after mouseleave', async () => {
@@ -212,22 +376,25 @@ describe('ShaderPreview - hover visibility', () => {
 });
 
 describe('ShaderPreview - renderer selection and cleanup', () => {
-    it('selects the GLSL engine and releases its WebGL context for a thumbnail', async () => {
+    it('selects the GLSL engine and reuses the thumbnail WebGL context', async () => {
         const loseContext = vi.fn();
         const getExtension = vi.fn(() => ({ loseContext }));
         getContextMock.mockReturnValue({ getExtension } as unknown as WebGL2RenderingContext);
 
+        const vscodeApi = makeVscodeApi();
         render(ShaderPreview, {
-            props: { shader: makeShader(), vscodeApi: makeVscodeApi() },
+            props: { shader: makeShader(), vscodeApi },
         });
 
+        await waitFor(() => expect(vscodeApi.postMessage).toHaveBeenCalled());
         await waitFor(() => expect(mockEngine.dispose).toHaveBeenCalled());
 
         expect(createEngineForLanguage).toHaveBeenCalledWith('glsl');
+        expect(mockEngine.setInputEnabled).toHaveBeenCalledWith(false);
         expect(mockEngine.stopRenderLoop).toHaveBeenCalledBefore(mockEngine.dispose);
         expect(getContextMock).toHaveBeenCalledWith('webgl2');
-        expect(getExtension).toHaveBeenCalledWith('WEBGL_lose_context');
-        expect(loseContext).toHaveBeenCalledOnce();
+        expect(getExtension).not.toHaveBeenCalled();
+        expect(loseContext).not.toHaveBeenCalled();
     });
 
     it('selects the Slang engine for a Slang thumbnail', async () => {
@@ -676,4 +843,3 @@ describe('ShaderPreview - forceFresh', () => {
         }));
     });
 });
-

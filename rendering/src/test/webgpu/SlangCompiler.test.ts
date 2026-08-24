@@ -52,23 +52,30 @@ function makeFakeSlang(opts: {
   onLoad?: (source: string, name?: string, path?: string) => void;
   onFindEntryPoint?: (name: string) => void;
   onComposite?: (components: unknown[]) => void;
+  onDelete?: (handle: string) => void;
 } = {}): SlangModuleApi {
   const wgsl = opts.wgsl ?? "// wgsl output";
   const linked = {
     link: () => linked,
     getTargetCode: () => wgsl,
+    delete: () => opts.onDelete?.("linked"),
   };
   const composite = {
     link: () => (opts.linkNull ? null : linked),
     getTargetCode: () => wgsl,
+    delete: () => opts.onDelete?.("composite"),
   };
   const module = {
     findEntryPointByName: (name: string) => {
       opts.onFindEntryPoint?.(name);
-      return opts.missingEntryPoint === name ? null : { name };
+      return opts.missingEntryPoint === name ? null : {
+        name,
+        delete: () => opts.onDelete?.(`entryPoint:${name}`),
+      };
     },
     link: () => null,
     getTargetCode: () => "",
+    delete: () => opts.onDelete?.("module"),
   };
   const session = {
     loadModuleFromSource: (source: string, name?: string, path?: string) => {
@@ -79,9 +86,11 @@ function makeFakeSlang(opts: {
       opts.onComposite?.(components);
       return opts.compositeNull ? null : composite;
     },
+    delete: () => opts.onDelete?.("session"),
   };
   const globalSession = {
     createSession: () => (opts.sessionNull ? null : session),
+    delete: () => opts.onDelete?.("globalSession"),
   };
 
   return {
@@ -97,6 +106,48 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("releases every per-compile WASM handle after compiling", () => {
+    const onDelete = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete }));
+
+    expect(compiler.compileImagePass("float4 mainImage(float2 c) { return 0; }")).toEqual({
+      success: true,
+      wgsl: "// wgsl output",
+    });
+
+    expect(onDelete.mock.calls.map(([handle]) => handle)).toEqual([
+      "linked",
+      "composite",
+      `entryPoint:${SLANG_ENTRY_VERTEX}`,
+      `entryPoint:${SLANG_ENTRY_FRAGMENT}`,
+      "module",
+      "session",
+    ]);
+  });
+
+  it("releases the session when loading the root module fails", () => {
+    const onDelete = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ moduleNull: true, onDelete }));
+
+    expect(compiler.compileImagePass("float4 mainImage(float2 c) { return 0; }")).toEqual({
+      success: false,
+      errors: ["Slang: failed to compile module"],
+    });
+
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith("session");
+  });
+
+  it("releases the cached global WASM session when disposed", () => {
+    const onDelete = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onDelete }));
+
+    compiler.compileImagePass("float4 mainImage(float2 c) { return 0; }");
+    compiler.dispose();
+    compiler.dispose();
+
+    expect(onDelete.mock.calls.filter(([handle]) => handle === "globalSession")).toHaveLength(1);
+  });
+
   it.each(["plane", "cube", "sphere"] as const)(
     "generates a %s mesh entry point with fragment compatibility values",
     (geometry) => {

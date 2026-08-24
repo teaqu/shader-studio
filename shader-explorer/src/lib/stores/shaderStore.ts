@@ -68,8 +68,6 @@ export class RenderQueue {
           waitMs: startedAt - item.enqueuedAt,
           durationMs: performance.now() - startedAt,
         });
-        // Process next items in queue
-        void this.processQueue();
       }
     }
   }
@@ -102,3 +100,11 @@ export class RenderQueue {
 }
 
 export const renderQueue = new RenderQueue();
+
+// A single WebGL context renders all GLSL thumbnails. Serialize work so a
+// thumbnail never replaces another shader's in-progress capture.
+export const thumbnailRenderQueue = new RenderQueue(1);
+
+// Hover previews share a second WebGL canvas. Keep their renderer lifecycles
+// ordered so a new hover cannot reuse it while the previous compile is active.
+export const hoverRenderQueue = new RenderQueue(1);

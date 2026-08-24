@@ -44,6 +44,14 @@
   let isVecConstant = $derived(isVec && variable.channelStats !== null
     && variable.channelStats.every(s => s.min === s.max));
 
+  const COMPACT_THUMBNAIL_SIZE = 32;
+  let thumbnailMaxSize = $derived(Math.max(variable.gridWidth, variable.gridHeight) >= 64
+    ? Math.max(variable.gridWidth, variable.gridHeight)
+    : COMPACT_THUMBNAIL_SIZE);
+  let thumbnailDisplayWidth = $derived(variable.gridWidth >= variable.gridHeight
+    ? thumbnailMaxSize
+    : Math.round(thumbnailMaxSize * (variable.gridWidth / variable.gridHeight)));
+
   let hasPixelData = $derived(isPixelMode && variable.value !== null);
   let showThumbnail = $derived(!hasPixelData && variable.thumbnail !== null);
 
@@ -101,7 +109,7 @@
   onfocusout={deactivatePreview}
 >
   {#if showThumbnail}
-    <div class="thumb-col" class:expanded={isExpanded}>
+    <div class="thumb-col" class:expanded={isExpanded} style:width={`${thumbnailDisplayWidth}px`}>
       <CaptureThumbnail
         pixels={variable.thumbnail!}
         gridWidth={variable.gridWidth}
@@ -111,7 +119,6 @@
         debugLine={variable.captureLine}
         activeBufferName={variable.captureBufferName}
         filePath={variable.captureFilePath}
-        maxSize={32}
         previewEnabled={!enableRowPreview}
       />
     </div>

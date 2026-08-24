@@ -110,6 +110,9 @@ export class ShaderExplorerBackend {
       case "deleteShader":
         await this.deleteShader(message.path);
         break;
+      case "renameShader":
+        await this.renameShader(message.path);
+        break;
       case "togglePanel":
         await vscode.commands.executeCommand("shader-studio.view");
         break;
@@ -906,6 +909,68 @@ export class ShaderExplorerBackend {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to delete shader: ${error}`);
+    }
+  }
+
+  private async renameShader(shaderPath: string): Promise<void> {
+    let destinationPath: string | undefined;
+    let shaderRenamed = false;
+    try {
+      const currentName = path.basename(shaderPath);
+      const extension = path.extname(currentName);
+      const newName = await vscode.window.showInputBox({
+        prompt: 'Rename shader',
+        value: currentName,
+        validateInput: value => {
+          const name = value.trim();
+          if (!name) {
+            return 'A shader name is required';
+          }
+          if (name !== path.basename(name) || name === '.' || name === '..') {
+            return 'Enter a filename without a path';
+          }
+          if (path.extname(name).toLowerCase() !== extension.toLowerCase()) {
+            return `Keep the ${extension} extension`;
+          }
+          if (name === currentName) {
+            return 'Enter a different name';
+          }
+          return undefined;
+        },
+      });
+
+      if (!newName) {
+        return;
+      }
+
+      const trimmedName = newName.trim();
+      destinationPath = path.join(path.dirname(shaderPath), trimmedName);
+      const currentConfigPath = this.getConfigPath(shaderPath);
+      const destinationConfigPath = this.getConfigPath(destinationPath);
+
+      if (fs.existsSync(destinationPath) || (fs.existsSync(currentConfigPath) && fs.existsSync(destinationConfigPath))) {
+        vscode.window.showErrorMessage(`Cannot rename shader: "${trimmedName}" already exists`);
+        return;
+      }
+
+      await vscode.workspace.fs.rename(vscode.Uri.file(shaderPath), vscode.Uri.file(destinationPath));
+      shaderRenamed = true;
+      if (fs.existsSync(currentConfigPath)) {
+        await vscode.workspace.fs.rename(vscode.Uri.file(currentConfigPath), vscode.Uri.file(destinationConfigPath));
+      }
+
+      this.logger.info(`Renamed shader: ${shaderPath} -> ${destinationPath}`);
+      await this.sendShaderList();
+      await vscode.commands.executeCommand('shader-studio.refreshCurrentShader');
+    } catch (error) {
+      if (shaderRenamed && destinationPath) {
+        try {
+          await vscode.workspace.fs.rename(vscode.Uri.file(destinationPath), vscode.Uri.file(shaderPath));
+        } catch (rollbackError) {
+          this.logger.error(`Failed to restore shader after rename failure: ${rollbackError}`);
+        }
+      }
+      vscode.window.showErrorMessage(`Failed to rename shader: ${error}`);
     }
   }
 

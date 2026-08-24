@@ -64,15 +64,40 @@ describe('ShaderProcessor', () => {
   });
 
   it('routes a Slang debug plan to the structured rendering entry point', async () => {
+    const config = { version: '1.0', passes: { Image: { inputs: { iChannel0: { type: 'texture' as const, path: 'current.png' } } } } };
     (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue({
       workspaceHash: 'hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang', executionMarkerSlot: 0, captureSlots: [], files: [],
     });
     (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: true });
 
-    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {} });
+    await shaderProcessor.processMainShaderCompilation({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config, path: '/main.slang', buffers: {} });
 
-    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledTimes(1);
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledWith(expect.any(Object), config);
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
+  it('uses the original Slang source to map an editor cursor after dependency expansion', async () => {
+    const processedSource = [
+      '// expanded dependency',
+      'float4 mainImage(float2 c) {',
+      '  return 1;',
+      '}',
+    ].join('\n');
+    const originalSource = [
+      'float4 mainImage(float2 c) {',
+      '  return 1;',
+      '}',
+    ].join('\n');
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn().mockReturnValue(null);
+
+    await shaderProcessor.processMainShaderCompilation({
+      type: 'shaderSource', code: processedSource, originalCode: originalSource,
+      config: null, path: '/main.slang', buffers: {}, language: 'slang',
+    });
+
+    expect((mockShaderDebugManager as any).getSlangPreviewPlan).toHaveBeenCalledWith(
+      processedSource, null, originalSource,
+    );
   });
 
   it('routes a cursor-triggered Slang inline preview through the structured rendering entry point', async () => {
@@ -86,7 +111,7 @@ describe('ShaderProcessor', () => {
     const result = await shaderProcessor.debugCompile({ type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null, path: '/main.slang', buffers: {}, language: 'slang' });
 
     expect(result).toMatchObject({ success: true });
-    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledWith(plan);
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledWith(plan, null);
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 

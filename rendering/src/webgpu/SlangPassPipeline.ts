@@ -179,6 +179,7 @@ export class SlangPassPipeline {
     }
     if (this.descriptor.output !== "texture" || this.textures.length === 0) {
       this.descriptor = { ...this.descriptor, width, height };
+      this.resizeDepthTexture(width, height);
       return;
     }
     const encoder = this.device.createCommandEncoder();
@@ -239,6 +240,7 @@ export class SlangPassPipeline {
       this.textures = newTextures;
       this.outputViews = newViews;
       this.textureIndex = oldTextureIndex;
+      this.resizeDepthTexture(width, height);
       return () => {
         for (const texture of oldTextures) {
           texture.destroy?.();
@@ -246,6 +248,7 @@ export class SlangPassPipeline {
       };
     }
     this.descriptor = { ...this.descriptor, width, height };
+    this.resizeDepthTexture(width, height);
     return null;
   }
 
@@ -436,6 +439,19 @@ export class SlangPassPipeline {
         | GPUTextureUsage.COPY_SRC
         | GPUTextureUsage.COPY_DST,
     });
+  }
+
+  private resizeDepthTexture(width: number, height: number): void {
+    if (!this.isMesh()) {
+      return;
+    }
+    const nextDepthTexture = this.device.createTexture({
+      size: { width, height },
+      format: "depth24plus",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.depthTexture?.destroy?.();
+    this.depthTexture = nextDepthTexture;
   }
 
   private resetResources(): void {

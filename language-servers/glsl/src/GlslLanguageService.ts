@@ -101,6 +101,9 @@ export class GlslLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
+    if (isPositionInComment(state.document.text, params.position)) {
+      return [];
+    }
     const items = new Map<string, CompletionItem>();
     for (const symbol of state.analysis.symbols) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, symbol) : undefined;
@@ -226,6 +229,9 @@ export class GlslLanguageService implements LanguageService {
   async signatureHelp(params: DocumentPositionParams): Promise<SignatureHelp | null> {
     const state = this.current(params);
     if (!state) {
+      return null;
+    }
+    if (isPositionInComment(state.document.text, params.position)) {
       return null;
     }
     const call = callAt(state.document.text, params.position);

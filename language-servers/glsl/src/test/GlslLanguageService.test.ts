@@ -112,6 +112,30 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(sky, coord); }`;
       .toContain("texture");
   });
 
+  it("does not offer completions inside line or block comments", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `// iChannel0
+/* iChannel0 */
+void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord); }`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    await expect(instance.completion({ document: revision, position: { line: 0, character: 11 } })).resolves.toEqual([]);
+    await expect(instance.completion({ document: revision, position: { line: 1, character: 11 } })).resolves.toEqual([]);
+    await expect(instance.completion({ document: revision, position: { line: 2, character: 61 } }))
+      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ label: "iChannel0" })]));
+  });
+
+  it("does not show signature help inside comments", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = "// normalize(\n/* normalize( */";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    await expect(instance.signatureHelp({ document: revision, position: { line: 0, character: 12 } })).resolves.toBeNull();
+    await expect(instance.signatureHelp({ document: revision, position: { line: 1, character: 12 } })).resolves.toBeNull();
+  });
+
   it("returns syntax/include diagnostics and colors without throwing on stale requests", async () => {
     const instance = await service();
     await instance.changeDocument({ uri, languageId: "glsl", version: 2, text: '#include "missing.glsl"\nvoid mainImage( {' });

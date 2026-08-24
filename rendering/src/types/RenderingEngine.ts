@@ -19,7 +19,7 @@ export interface RenderingEngine {
     slangSourcePaths?: Record<string, string>,
   ): Promise<CompilationResult | undefined>;
   /** Compile a complete, in-place Slang debug workspace when the backend supports Slang. */
-  compileSlangDebugPlan?(plan: DebugInstrumentationPlan): Promise<CompilationResult | undefined>;
+  compileSlangDebugPlan?(plan: DebugInstrumentationPlan, config?: ShaderConfig | null): Promise<CompilationResult | undefined>;
   getCurrentConfig(): ShaderConfig | null;
   readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot>;
   writeStorageBuffer(name: string, start: number, data: ArrayBuffer): Promise<void>;

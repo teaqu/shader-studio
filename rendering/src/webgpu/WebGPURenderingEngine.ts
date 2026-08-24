@@ -2892,7 +2892,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.resourceManager;
   }
 
-  async compileSlangDebugPlan(plan: DebugInstrumentationPlan): Promise<CompilationResult | undefined> {
+  async compileSlangDebugPlan(
+    plan: DebugInstrumentationPlan,
+    config?: ShaderConfig | null,
+  ): Promise<CompilationResult | undefined> {
     const root = plan.files.find((file) => file.uri === plan.rootUri);
     if (!root) {
       return { success: false, errors: ["Slang debug plan root is missing"] };
@@ -2914,7 +2917,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ];
     const result = await this.compileShaderPipeline(
       root.source,
-      previous?.config ?? this.currentConfig,
+      config ?? previous?.config ?? this.currentConfig,
       previous?.path ?? root.path,
       selectedIsCommon && selectedSource
         ? { ...(previous?.buffers ?? {}), common: selectedSource.source }

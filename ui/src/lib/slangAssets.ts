@@ -10,10 +10,13 @@ import type { SlangAssetUrls } from "../../../rendering/src/webgpu/WebGPURenderi
  * to main-thread compilation if constructing the worker fails (e.g. CSP).
  */
 export function getSlangAssetUrls(): SlangAssetUrls {
+  const diagnosticsGlobal = globalThis as typeof globalThis & { __slangPerf?: boolean };
+
   return {
     scriptUrl: slangScriptUrl,
     wasmUrl: slangWasmUrl,
     workerUrl: slangWorkerUrl,
-    debugTimings: true,
+    // Set `window.__slangPerf = true` before creating the renderer to trace compilation.
+    debugTimings: diagnosticsGlobal.__slangPerf === true,
   };
 }

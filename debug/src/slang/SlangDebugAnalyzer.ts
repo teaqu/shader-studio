@@ -40,7 +40,7 @@ export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSource
     return failure(file.source.uri, position, "slang-debug-site-not-executed", "Select a line to inspect variables");
   }
   const sourceLine = file.source.source.split("\n")[position.line]?.trim() ?? "(unknown)";
-  return failure(file.source.uri, position, "slang-debug-site-not-executed", `Not an executable statement (L${position.line}: "${sourceLine.slice(0, 40)}" in ${file.source.uri})`);
+  return failure(file.source.uri, position, "slang-debug-site-not-executed", `Not an executable statement (L${position.line + 1}: "${sourceLine.slice(0, 40)}" in ${file.source.uri})`);
 }
 
 function analyzeStatementSite(

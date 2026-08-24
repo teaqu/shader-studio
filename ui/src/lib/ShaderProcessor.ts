@@ -62,10 +62,10 @@ export class ShaderProcessor {
         slangModules: debugSlangModules,
         sourcePath: debugSourcePath,
         debugPlan,
-      } = this.getDebugCompileArgs(code, config ?? null);
+      } = this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
       const result = debugPlan && this.renderEngine.compileSlangDebugPlan
-        ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+        ? await this.renderEngine.compileSlangDebugPlan(debugPlan, config ?? null)
         : await this.compileWithSlangContext(
           codeToCompile,
           configToCompile,
@@ -136,6 +136,7 @@ export class ShaderProcessor {
   private getDebugCompileArgs(
     imageShaderCode: string,
     config: ShaderConfig | null,
+    originalImageShaderCode = imageShaderCode,
   ): {
     code: string;
     config: ShaderConfig | null;
@@ -149,7 +150,11 @@ export class ShaderProcessor {
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
 
-    const slangPlan = this.shaderDebugManager.getSlangPreviewPlan?.(imageShaderCode, config);
+    const slangPlan = this.shaderDebugManager.getSlangPreviewPlan?.(
+      imageShaderCode,
+      config,
+      originalImageShaderCode,
+    );
     if (slangPlan) {
       return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
     }
@@ -333,6 +338,7 @@ export class ShaderProcessor {
     } = this.getDebugCompileArgs(
       this.imageShaderCode,
       config ?? null,
+      message.originalCode ?? this.imageShaderCode,
     );
     const buffersToCompile = this.getCompileBuffers(
       buffers,
@@ -344,7 +350,7 @@ export class ShaderProcessor {
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.
     const structuredResult = debugPlan && this.renderEngine.compileSlangDebugPlan
-      ? await this.renderEngine.compileSlangDebugPlan(debugPlan)
+      ? await this.renderEngine.compileSlangDebugPlan(debugPlan, config ?? null)
       : undefined;
     let result: CompilationResult = structuredResult ?? (debugPlan
       ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }

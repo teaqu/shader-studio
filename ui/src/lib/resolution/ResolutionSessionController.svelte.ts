@@ -52,6 +52,25 @@ function vertexChanged(previous: ShaderConfig | null, next: ShaderConfig): boole
   return [...passNames].some((passName) => previous?.passes[passName]?.vertex !== next.passes[passName]?.vertex);
 }
 
+function inputSignature(config: ShaderConfig | null): string {
+  const inputs = Object.entries(config?.passes ?? {})
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([passName, pass]) => [
+      passName,
+      pass && typeof pass === 'object' && 'inputs' in pass ? pass.inputs : undefined,
+    ]);
+  return JSON.stringify(inputs, (_key, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+    }
+    return value;
+  });
+}
+
+function inputsChanged(previous: ShaderConfig | null, next: ShaderConfig): boolean {
+  return inputSignature(previous) !== inputSignature(next);
+}
+
 export interface ControllerDeps {
   readonly currentConfig: ShaderConfig | null;
   readonly debugState: ShaderDebugState;
@@ -129,13 +148,19 @@ export class ResolutionSessionController {
   }
 
   public handleConfigUpdated(updatedConfig: ShaderConfig): void {
-    const requiresGeometryRecompile = geometryChanged(this.deps.currentConfig, updatedConfig) || vertexChanged(this.deps.currentConfig, updatedConfig);
+    const currentConfig = this.deps.currentConfig;
+    const debugState = this.deps.debugState;
+    const requiresGeometryRecompile = geometryChanged(currentConfig, updatedConfig) || vertexChanged(currentConfig, updatedConfig);
+    const requiresInlineResourceRefresh = debugState.isEnabled
+      && debugState.isActive
+      && debugState.isInlineRenderingEnabled
+      && inputsChanged(currentConfig, updatedConfig);
     this.deps.setCurrentConfig(updatedConfig);
     this.deps.setEditorConfig(updatedConfig);
     this.deps.setShaderContext(updatedConfig, this.deps.getShaderPath(), this.deps.getBufferPathMap());
     this.deps.updatePipelineConfig(updatedConfig);
     this.syncStoresToCurrentTarget(updatedConfig);
-    if (requiresGeometryRecompile) {
+    if (requiresGeometryRecompile || requiresInlineResourceRefresh) {
       this.deps.recompileCurrentShader();
     }
   }

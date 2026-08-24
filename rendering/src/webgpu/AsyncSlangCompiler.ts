@@ -19,7 +19,9 @@ export class MainThreadSlangCompiler implements AsyncSlangCompiler {
     return this.inner.compileImagePass(source, options);
   }
 
-  dispose(): void {}
+  dispose(): void {
+    this.inner.dispose();
+  }
 }
 
 type WorkerResponse =

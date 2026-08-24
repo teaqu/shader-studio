@@ -116,6 +116,39 @@ describe("WebGPURenderingEngine", () => {
     }], "/main.slang", undefined);
   });
 
+  it("uses the current config for a structured debug plan instead of the previous compile snapshot", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const previousConfig: ShaderConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { iChannel0: { type: "texture", path: "before.png" } } } },
+    };
+    const currentConfig: ShaderConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { iChannel0: { type: "texture", path: "after.png" } } } },
+    };
+    (engine as unknown as { lastCompile: unknown }).lastCompile = {
+      code: "float4 mainImage(float2 c) { return 0; }",
+      config: previousConfig,
+      path: "/main.slang",
+      buffers: {},
+      customUniformDeclarations: "",
+      customUniformInfo: [],
+      slangModules: [],
+      slangSourcePath: "/main.slang",
+    };
+
+    await (engine.compileSlangDebugPlan as unknown as (
+      plan: DebugInstrumentationPlan,
+      config: ShaderConfig,
+    ) => Promise<CompilationResult | undefined>)({
+      workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
+      files: [{ uri: "file:///main.slang", path: "/main.slang", source: "float4 mainImage(float2 c) { return 1; }", version: 1, moduleName: "", ownerPass: "Image" }],
+    }, currentConfig);
+
+    expect(compile).toHaveBeenCalledWith(expect.any(String), currentConfig, "/main.slang", {}, "", [], [], "/main.slang", undefined);
+  });
+
   it("attributes structured Slang debug failures to the selected imported module", async () => {
     const engine = new WebGPURenderingEngine(assets);
     vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
@@ -2425,6 +2458,27 @@ describe("WebGPURenderingEngine", () => {
       expect(redrawEncoder.beginRenderPass).toHaveBeenCalledTimes(1);
       expect(device.queue.submit).toHaveBeenCalledTimes(2);
       expect(swap).not.toHaveBeenCalled();
+    });
+
+    it("recreates the Image mesh depth texture to match the resized canvas", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { device } = stubEngineInternals(engine);
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: {}, geometry: { type: "sphere" } } } },
+        "/image.slang",
+      );
+      expect(result?.success).toBe(true);
+
+      const initialDepthTexture = device.createTexture.mock.results[0].value;
+      engine.handleCanvasResize(640, 360);
+
+      expect(device.createTexture).toHaveBeenCalledTimes(2);
+      expect(device.createTexture.mock.calls[1][0]).toMatchObject({
+        size: { width: 640, height: 360 },
+        format: "depth24plus",
+      });
+      expect(initialDepthTexture.destroy).toHaveBeenCalledTimes(1);
     });
 
     it("does nothing to passes when the size is unchanged", async () => {

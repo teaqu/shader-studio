@@ -33,17 +33,25 @@ function addValidMetadata(overrides: Partial<Record<keyof typeof metaNames, stri
 describe('getSlangAssetUrls', () => {
   afterEach(() => {
     document.head.replaceChildren();
+    delete (globalThis as typeof globalThis & { __slangPerf?: boolean }).__slangPerf;
   });
 
-  it('returns the canonical injected asset URLs with debug timings enabled', () => {
+  it('returns the canonical injected asset URLs with debug timings disabled by default', () => {
     addValidMetadata();
 
     expect(getSlangAssetUrls()).toEqual({
       scriptUrl: 'vscode-webview://shader-studio/assets/slang.js',
       wasmUrl: 'vscode-webview://shader-studio/assets/slang.wasm',
       workerUrl: 'vscode-webview://shader-studio/assets/slang-worker.js',
-      debugTimings: true,
+      debugTimings: false,
     });
+  });
+
+  it('enables timing diagnostics when explicitly requested', () => {
+    addValidMetadata();
+    (globalThis as typeof globalThis & { __slangPerf?: boolean }).__slangPerf = true;
+
+    expect(getSlangAssetUrls().debugTimings).toBe(true);
   });
 
   it.each([

@@ -10,10 +10,13 @@ function getMetaContent(name: string, label: string): string {
 }
 
 export function getSlangAssetUrls(): SlangAssetUrls {
+  const diagnosticsGlobal = globalThis as typeof globalThis & { __slangPerf?: boolean };
+
   return {
     scriptUrl: getMetaContent('shader-studio-slang-script-url', 'script'),
     wasmUrl: getMetaContent('shader-studio-slang-wasm-url', 'wasm'),
     workerUrl: getMetaContent('shader-studio-slang-worker-url', 'worker'),
-    debugTimings: true,
+    // Set `window.__slangPerf = true` before creating the renderer to trace compilation.
+    debugTimings: diagnosticsGlobal.__slangPerf === true,
   };
 }

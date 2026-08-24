@@ -6,7 +6,7 @@
  * Toggle at runtime from the devtools console:
  *   window.__captureDiag = true   // enable
  *   window.__captureDiag = false  // disable
- * Enabled by default so the user can reproduce without any setup.
+ * Disabled by default to keep normal inspector polling out of the console.
  *
  * REMOVE once the root cause is found.
  */
@@ -22,8 +22,7 @@ export function captureDiagEnabled(): boolean {
     return false;
   }
   const w = globalThis as unknown as DiagWindow;
-  // Default on until we've diagnosed the slowdown.
-  return w.__captureDiag !== false;
+  return w.__captureDiag === true;
 }
 
 /** Monotonic counters. Live totals reveal leaks; a value that only climbs = leak. */

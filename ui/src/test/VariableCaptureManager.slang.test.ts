@@ -103,6 +103,21 @@ describe('VariableCaptureManager - Slang engine', () => {
     manager.dispose();
   });
 
+  it('treats an unavailable Slang plan without a planning error as an empty scope', async () => {
+    const { engine, capturer } = mockEngine('slang');
+    const errors = vi.fn();
+    const updates = vi.fn();
+    const manager = new VariableCaptureManager(engine, updates);
+    manager.setErrorCallback(errors);
+
+    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: null });
+
+    await vi.waitFor(() => expect(updates).toHaveBeenCalledWith([]));
+    expect(errors).not.toHaveBeenCalledWith(expect.any(String));
+    expect(capturer.issueCaptureGrid).not.toHaveBeenCalled();
+    manager.dispose();
+  });
+
   it('reports a native Slang capture planning failure instead of compiling it as GLSL', async () => {
     const { engine, capturer } = mockEngine('slang');
     const errors = vi.fn();

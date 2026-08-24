@@ -34,6 +34,14 @@ describe("analyzeSlangSite", () => {
   it("does not infer a standalone expression", () => {
     expect(analyze({ line: 5, character: 14 })).toMatchObject({ ok: true, analysis: { previewValueId: "declaration:file:///work/main.slang:4:10" } });
   });
+  it("reports non-executable lines using editor-style line numbers", () => {
+    const result = analyze({ line: 9, character: 0 });
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: [{ message: expect.stringContaining('L10: ""') }],
+    });
+  });
   it("reports variables at braced if header", () => {
     expect(analyze({ line: 3, character: 6 })).toMatchObject({ ok: true, analysis: { visibleValues: [{ name: "uv", typeName: "float2" }, { name: "value", typeName: "float" }], controlFlow: expect.arrayContaining([expect.objectContaining({ kind: "if" })]) } });
   });
