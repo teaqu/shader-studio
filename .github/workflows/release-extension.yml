@@ -80,12 +80,12 @@ jobs:
         env:
           SHADER_STUDIO_E2E_GREP: 'Shader language servers|parameter overrides|inline rendering'
 
-      - name: Upload VS Code webview E2E failure screenshots
+      - name: Upload VS Code webview E2E traces
         if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
           name: vscode-webview-e2e-failures
-          path: extension/.wdio/
+          path: extension/.playwright/
           if-no-files-found: ignore
           retention-days: 7
 

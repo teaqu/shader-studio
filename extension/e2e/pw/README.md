@@ -1,27 +1,18 @@
-# Playwright VS Code E2E (prototype)
+# VS Code E2E suite
 
-A parallel implementation of the VS Code webview E2E suite on Playwright's
-Electron support, kept alongside the WebdriverIO suite rather than replacing it.
-
-Run it with:
-
-    npm run test:e2e:pw -w extension
-
-## Why it exists
-
-The WebdriverIO suite runs through `wdio-vscode-service`, which launches VS Code
-from a wrapper that shells out with `child_process.execFile` and no `maxBuffer`.
-Past Node's 1 MiB default it SIGTERMs VS Code mid-run with no error anywhere.
-Playwright talks to Electron over CDP directly, so that whole layer disappears,
-and its trace viewer records DOM snapshots per step - the missing capability
-that made several failures in this area expensive to diagnose.
-
-## Status
-
-The full suite, replacing the WebdriverIO one. 11 tests across 4 spec files,
-the same coverage as before.
+The VS Code webview end-to-end tests, on Playwright's Electron support.
 
     npm run test:e2e:vscode:run -w extension
+
+## Why Playwright
+
+It replaced a WebdriverIO suite that ran through `wdio-vscode-service`, which
+launched VS Code from a wrapper shelling out with `child_process.execFile` and
+no `maxBuffer`. Past Node's 1 MiB default that SIGTERMs VS Code mid-run with no
+error anywhere - the failure this suite was rewritten to stop hitting.
+Playwright talks to Electron over CDP directly, so the wrapper, chromedriver and
+the buffer limit are all gone, and failures retain a trace with a DOM snapshot
+per step.
 
 ## Design notes
 

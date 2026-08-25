@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +69,13 @@ export const test = base.extend({
   vscode: [async ({ vscodeKey }, use) => {
     const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
     const portFile = join(userDataDir, 'bridge-port');
+
+    // Seed the profile before launch. Applying these through the configuration
+    // API afterwards makes VS Code prompt that a setting changed and needs a
+    // restart - security.workspace.trust.enabled is restart-required - on every
+    // single run.
+    mkdirSync(join(userDataDir, 'User'), { recursive: true });
+    writeFileSync(join(userDataDir, 'User', 'settings.json'), JSON.stringify(USER_SETTINGS, null, 2), 'utf8');
 
     const app = await electron.launch({
       executablePath: vscodeBinary(),
@@ -141,14 +148,6 @@ export const test = base.extend({
 
     // Do not let the first real call be the one that races activation.
     await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
-
-    await evaluateInHost(async (vscode, settings) => {
-      for (const [key, value] of Object.entries(settings)) {
-        const dot = key.lastIndexOf('.');
-        await vscode.workspace.getConfiguration(key.slice(0, dot))
-          .update(key.slice(dot + 1), value, vscode.ConfigurationTarget.Global);
-      }
-    }, USER_SETTINGS);
 
     /** The frame hosting the Shader Studio app, found by content: VS Code's
      *  internal webview frame names differ across versions. */

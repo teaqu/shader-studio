@@ -22,7 +22,7 @@ suite("workspace dependency build order", () => {
     const ignoredPaths = fs.readFileSync(ignorePath, "utf8").split(/\r?\n/);
 
     assert.ok(ignoredPaths.includes("e2e/**"));
-    assert.ok(ignoredPaths.includes(".wdio/**"));
+    assert.ok(ignoredPaths.includes(".playwright/**"));
     assert.ok(ignoredPaths.includes("tsconfig.test.json"));
     assert.ok(ignoredPaths.includes("**/test/**"));
     assert.ok(ignoredPaths.includes("**/tests/**"));

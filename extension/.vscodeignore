@@ -3,7 +3,7 @@
 src/**
 out/**
 e2e/**
-.wdio/**
+.playwright/**
 electron-app/**
 .turbo/**
 esbuild.js

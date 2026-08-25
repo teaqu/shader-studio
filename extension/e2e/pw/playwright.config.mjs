@@ -20,6 +20,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [['list'], ['github']] : [['list']],
+  // The release workflow narrows the suite to a subset; honoured here so that
+  // filter keeps working now the runner has changed.
+  ...(process.env.SHADER_STUDIO_E2E_GREP
+    ? { grep: new RegExp(process.env.SHADER_STUDIO_E2E_GREP) }
+    : {}),
   use: {
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

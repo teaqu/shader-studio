@@ -54,6 +54,3 @@ Thumbs.db
 # Local planning docs
 plan.md
 progress.md
-
-# Playwright E2E artifacts
-extension/.playwright/

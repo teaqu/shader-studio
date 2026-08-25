@@ -9,5 +9,5 @@ vendor
 glsl-deps
 .smart-build/
 .vscode-test/
-.wdio/
+.playwright/
 *.vsix
