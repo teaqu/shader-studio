@@ -307,9 +307,11 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "test:e2e:vscode": "npm run compile && npm run test:e2e:vscode:run",
-    "test:e2e:vscode:run": "wdio run ./e2e/wdio.conf.mjs"
+    "test:e2e:vscode:run": "wdio run ./e2e/wdio.conf.mjs",
+    "test:e2e:pw": "playwright test --config ./e2e/pw/playwright.config.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/mocha": "^10.0.10",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.101.0",
