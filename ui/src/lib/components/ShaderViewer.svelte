@@ -3,6 +3,7 @@
   import { onMount, onDestroy, tick, setContext } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
+  import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
   import type { Transport } from "../transport/MessageTransport";
@@ -421,7 +422,7 @@
 
   async function handleCanvasReady(canvas: HTMLCanvasElement) {
     const canvasReadyAt = performance.now();
-    console.info('[ShaderSwitchTiming] canvas ready', {
+    logSwitchTiming('canvas ready', {
       engineLanguage,
       appInitialized,
       hasPendingSwap: pendingSwapMessage !== null,
@@ -437,7 +438,7 @@
       // engine on the fresh canvas, then replay the message that triggered it.
       const setupStartedAt = performance.now();
       const ok = setupRenderingEngine();
-      console.info('[ShaderSwitchTiming] remount engine setup complete', {
+      logSwitchTiming('remount engine setup complete', {
         engineLanguage,
         ok,
         setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
@@ -447,13 +448,13 @@
         const msg = pendingSwapMessage;
         pendingSwapMessage = null;
         const replayStartedAt = performance.now();
-        console.info('[ShaderSwitchTiming] replay pending shaderSource start', {
+        logSwitchTiming('replay pending shaderSource start', {
           engineLanguage,
           path: msg.data?.path ?? null,
           language: msg.data?.language ?? null,
         });
         await handleMessage(msg);
-        console.info('[ShaderSwitchTiming] replay pending shaderSource complete', {
+        logSwitchTiming('replay pending shaderSource complete', {
           engineLanguage,
           path: msg.data?.path ?? null,
           replayMs: Math.round((performance.now() - replayStartedAt) * 100) / 100,
@@ -471,7 +472,7 @@
   function setupRenderingEngine(): boolean {
     const setupStartedAt = performance.now();
     const previousLanguage = renderingEngine?.getShaderLanguage?.() ?? null;
-    console.info('[ShaderSwitchTiming] setupRenderingEngine start', {
+    logSwitchTiming('setupRenderingEngine start', {
       engineLanguage,
       previousLanguage,
       appInitialized,
@@ -488,7 +489,7 @@
     try {
       renderingEngine.initialize(glCanvas, true);
     } catch (err) {
-      console.info('[ShaderSwitchTiming] setupRenderingEngine failed', {
+      logSwitchTiming('setupRenderingEngine failed', {
         engineLanguage,
         setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
         error: err instanceof Error ? err.message : String(err),
@@ -520,7 +521,7 @@
       }
     }
 
-    console.info('[ShaderSwitchTiming] setupRenderingEngine initialized', {
+    logSwitchTiming('setupRenderingEngine initialized', {
       engineLanguage,
       setupMs: Math.round((performance.now() - setupStartedAt) * 100) / 100,
     });
@@ -1011,7 +1012,7 @@
       // updates often omit language and must stay on the locked main backend.
       const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
       const shaderMessageStartedAt = performance.now();
-      console.info('[ShaderSwitchTiming] shaderSource received', {
+      logSwitchTiming('shaderSource received', {
         path: event.data.path ?? null,
         language: msgLanguage,
         engineLanguage,
@@ -1029,7 +1030,7 @@
         renderingEngine?.stopRenderLoop?.();
         pendingSwapMessage = event;
         pendingSwapStartedAt = shaderMessageStartedAt;
-        console.info('[ShaderSwitchTiming] backend swap scheduled', {
+        logSwitchTiming('backend swap scheduled', {
           from: engineLanguage,
           to: msgLanguage,
           path: event.data.path ?? null,
@@ -1043,7 +1044,7 @@
       }
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
-        console.info('[ShaderSwitchTiming] shaderSource pipeline complete', {
+        logSwitchTiming('shaderSource pipeline complete', {
           path: event.data.path ?? null,
           language: msgLanguage,
           success: result?.success ?? null,
