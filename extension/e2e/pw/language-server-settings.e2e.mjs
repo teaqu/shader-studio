@@ -1,13 +1,14 @@
-import assert from 'node:assert/strict';
+import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 
-const workspacePath = process.env.SHADER_STUDIO_E2E_WORKSPACE;
 const fixturePath = join(workspacePath, 'language-servers');
 
-describe('Shader language servers settings in VS Code', () => {
-  it('honours independent GLSL and Slang enable settings after both servers are loaded', async () => {
-    assert.ok(workspacePath, 'SHADER_STUDIO_E2E_WORKSPACE was not configured');
-    const result = await browser.executeWorkbench(async (vscode, glslPath, slangPath) => {
+test.use({ vscodeKey: 'language-server-settings' });
+
+test.describe('Shader language servers settings in VS Code', () => {
+  test('honours independent GLSL and Slang enable settings after both servers are loaded', async ({ vscode }) => {
+    expect(workspacePath, 'SHADER_STUDIO_E2E_WORKSPACE was not configured').toBeTruthy();
+    const result = await vscode.evaluateInHost(async (vscode, glslPath, slangPath) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
       const configuration = vscode.workspace.getConfiguration('shader-studio');
       const hasIntrinsic = async (filePath) => {
@@ -48,11 +49,13 @@ describe('Shader language servers settings in VS Code', () => {
       }
     }, join(fixturePath, 'image.glsl'), join(fixturePath, 'image.slang'));
 
-    assert.equal(result.glslInitiallyEnabled, true);
-    assert.equal(result.slangInitiallyEnabled, true);
-    assert.equal(result.glslDisabled, false);
-    assert.equal(result.slangWhileGlslDisabled, true);
-    assert.equal(result.slangDisabled, false);
-    assert.equal(result.glslWhileSlangDisabled, true);
+    expect(result).toEqual({
+      glslInitiallyEnabled: true,
+      slangInitiallyEnabled: true,
+      glslDisabled: false,
+      slangWhileGlslDisabled: true,
+      slangDisabled: false,
+      glslWhileSlangDisabled: true,
+    });
   });
 });

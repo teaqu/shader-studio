@@ -18,23 +18,45 @@ that made several failures in this area expensive to diagnose.
 
 ## Status
 
-Proven viable, not finished.
+The full suite, replacing the WebdriverIO one. 11 tests across 4 spec files,
+the same coverage as before.
 
-- Electron launches, nested webview frames resolve, and **WebGPU initialises**
-  (`navigator.gpu.requestAdapter()` returns an adapter) - the critical unknown.
-- `host-bridge.cjs` replaces `browser.executeWorkbench`: loaded through
-  `--extensionTestsPath`, it serves a loopback endpoint that evaluates a
-  function against the real `vscode` module in the extension host.
-- `slang-parity.e2e.mjs`: 2 of 4 tests pass. The two capture-heavy tests fail
-  with "variable capture reported an error", undiagnosed.
-- The other three specs are not ported, and CI still runs the WebdriverIO suite.
+    npm run test:e2e:vscode:run -w extension
+
+## Design notes
+
+- `bridge-extension/` replaces `browser.executeWorkbench`. It is a real
+  test-only extension rather than an `--extensionTestsPath` module because that
+  module runs once: when VS Code restarts the extension host during startup the
+  bridge would vanish for good and the suite would talk to a dead port. As an
+  extension it re-activates with the host and republishes its port, which took
+  the parity spec from roughly half of runs failing to 6 for 6.
+- Each spec file sets its own `vscodeKey`. Changing a worker-scoped option makes
+  Playwright start a fresh worker and a fresh VS Code, so files cannot inherit
+  each other's window state - without it the language-server toggles left by one
+  spec broke another.
+- No Playwright browser download is needed. The suite drives VS Code's own
+  Electron through `_electron.launch()`; verified to run with none installed.
 
 ## Gotchas found the hard way
 
 - A VS Code extension host exports `ELECTRON_RUN_AS_NODE` and `VSCODE_*` to its
   children. Inherited, the Electron binary boots as plain Node and never opens a
   window. `fixtures.mjs` strips them.
-- The fixture must be worker-scoped. The specs build state across tests, and a
-  test-scoped fixture would launch a fresh VS Code per test.
 - Find the app frame by content, not by frame name: VS Code's internal webview
   frame names differ across versions (`#active-frame` vs `fake.html`).
+- VS Code cancels API calls while it is still activating, surfacing as
+  "Canceled". The bridge client treats that and `ECONNREFUSED` as readiness
+  signals and retries rather than failing a whole file in `beforeAll`.
+- Captures re-run as a cursor change propagates, so the inspector briefly
+  reports "statement was not executed". Assertions poll through that and report
+  only an error that outlives the wait.
+
+## Debugging
+
+Failures retain a trace. Open it with:
+
+    npx playwright show-trace extension/.playwright/<test>/trace.zip
+
+It carries a DOM snapshot per step, which is the capability the previous runner
+lacked and which several failures in this area badly needed.

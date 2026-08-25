@@ -114,15 +114,18 @@ jobs:
       - name: Build workspace test dependencies
         run: npm run build:deps -w extension
 
+      # No Playwright browser download here: the suite drives VS Code's own
+      # Electron through _electron.launch(), verified to run with none installed.
+
       - name: Run full VS Code webview E2E suite
         id: vscode-e2e
         run: npm run test:e2e:vscode -w extension
 
-      - name: Upload VS Code webview E2E failure screenshots
+      - name: Upload VS Code webview E2E traces
         if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
         with:
           name: vscode-webview-e2e-failures
-          path: extension/.wdio/
+          path: extension/.playwright/
           if-no-files-found: ignore
           retention-days: 7

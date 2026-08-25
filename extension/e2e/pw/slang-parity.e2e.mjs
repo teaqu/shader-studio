@@ -48,18 +48,32 @@ function helpers(vscode) {
     () => document.querySelector('.variables-section .error-text')?.textContent?.trim() ?? '',
   );
 
+  /**
+   * Captures re-run as a cursor change propagates, so the inspector can briefly
+   * report "statement was not executed" before settling. Poll through that and
+   * report only an error that outlives the wait; failing on first sight of one
+   * races the pipeline the assertion is meant to observe.
+   */
   async function waitForCapturedText(selector, expected) {
-    await expect.poll(async () => {
-      const [found, error] = await Promise.all([texts(selector), captureError()]);
-      return found.includes(expected) || error.length > 0;
-    }, { message: `expected captured ${selector} to contain ${expected}` }).toBe(true);
-    expect(await captureError(), 'variable capture reported an error').toBe('');
+    let lastError = '';
+    try {
+      await expect.poll(async () => {
+        const [found, error] = await Promise.all([texts(selector), captureError()]);
+        lastError = error;
+        return found.includes(expected);
+      }, { message: `expected captured ${selector} to contain ${expected}` }).toBe(true);
+    } catch (failure) {
+      throw new Error(lastError
+        ? `${failure.message}\nlast capture error: ${lastError}`
+        : failure.message);
+    }
   }
 
   async function waitForNoCaptureError() {
     await expect.poll(() => app().evaluate(
-      () => document.querySelectorAll('.variables-section .error-text').length,
-    ), { message: 'variable capture reported an error' }).toBe(0);
+      () => Array.from(document.querySelectorAll('.variables-section .error-text'),
+        (el) => el.textContent?.trim() ?? '').join(' | '),
+    )).toBe('');
   }
 
   const isActive = (selector) => app().evaluate(
@@ -116,6 +130,8 @@ function helpers(vscode) {
     isActive, hasVisibleControl, activate, ensureButtonState, setExpression, expressionText,
   };
 }
+
+test.use({ vscodeKey: 'slang-parity' });
 
 test.describe('Slang parity in the VS Code webview', () => {
   /** @type {ReturnType<typeof helpers>} */

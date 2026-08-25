@@ -1,11 +1,10 @@
-import assert from 'node:assert/strict';
+import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 
-const workspacePath = process.env.SHADER_STUDIO_E2E_WORKSPACE;
 const fixturePath = join(workspacePath, 'language-servers');
 
-async function languageSnapshot(filePath, language) {
-  return browser.executeWorkbench(async (vscode, targetPath, expectedLanguage) => {
+async function languageSnapshot(vscodeFixture, filePath, language) {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath, expectedLanguage) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     if (document.languageId !== expectedLanguage) {
       throw new Error(`Expected ${targetPath} to use ${expectedLanguage}, got ${document.languageId}`);
@@ -101,8 +100,8 @@ async function languageSnapshot(filePath, language) {
   }, filePath, language);
 }
 
-async function stageSnapshot(filePath, expectations) {
-  return browser.executeWorkbench(async (vscode, targetPath, needles) => {
+async function stageSnapshot(vscodeFixture, filePath, expectations) {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath, needles) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     const source = document.getText();
     const hover = async (needle) => {
@@ -139,8 +138,8 @@ async function stageSnapshot(filePath, expectations) {
   }, filePath, expectations);
 }
 
-async function openDiagnosticDocument(filePath) {
-  return browser.executeWorkbench(async (vscode, targetPath) => {
+async function openDiagnosticDocument(vscodeFixture, filePath) {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     await vscode.commands.executeCommand(
       'vscode.executeCompletionItemProvider',
@@ -158,29 +157,29 @@ async function openDiagnosticDocument(filePath) {
   }, filePath);
 }
 
-async function diagnosticSnapshot(uri, message) {
-  return browser.executeWorkbench(async (vscode, documentUri, expected) => {
+async function diagnosticSnapshot(vscodeFixture, uri, message) {
+  return vscodeFixture.evaluateInHost(async (vscode, documentUri, expected) => {
     const found = vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
       .find((item) => item.message.toLocaleLowerCase().includes(expected.toLocaleLowerCase()));
     return found ? { message: found.message, source: found.source, code: found.code } : null;
   }, uri, message);
 }
 
-async function waitForDiagnostic(uri, message, present = true) {
+async function waitForDiagnostic(vscodeFixture, uri, message, present = true) {
   let diagnostic = null;
-  await browser.waitUntil(async () => {
-    diagnostic = await diagnosticSnapshot(uri, message);
-    return Boolean(diagnostic) === present;
+  await expect.poll(async () => {
+    diagnostic = await diagnosticSnapshot(vscodeFixture, uri, message);
+    return Boolean(diagnostic);
   }, {
     timeout: 15_000,
-    interval: 100,
-    timeoutMsg: `Expected diagnostic ${JSON.stringify(message)} to be ${present ? 'published' : 'cleared'}`,
-  });
+    intervals: [100],
+    message: `expected diagnostic ${JSON.stringify(message)} to be ${present ? 'published' : 'cleared'}`,
+  }).toBe(present);
   return diagnostic;
 }
 
-async function replaceDiagnosticDocument(uri, content) {
-  await browser.executeWorkbench(async (vscode, documentUri, source) => {
+async function replaceDiagnosticDocument(vscodeFixture, uri, content) {
+  await vscodeFixture.evaluateInHost(async (vscode, documentUri, source) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(documentUri));
     const edit = new vscode.WorkspaceEdit();
     const end = document.positionAt(document.getText().length);
@@ -189,105 +188,110 @@ async function replaceDiagnosticDocument(uri, content) {
   }, uri, content);
 }
 
-describe('Shader language servers in VS Code', () => {
-  before(async () => {
-    assert.ok(workspacePath, 'SHADER_STUDIO_E2E_WORKSPACE was not configured');
-    await browser.executeWorkbench(async (vscode) => {
+test.use({ vscodeKey: 'language-servers' });
+
+test.describe('Shader language servers in VS Code', () => {
+  test.beforeAll(async ({ vscode }) => {
+    expect(workspacePath, 'SHADER_STUDIO_E2E_WORKSPACE was not configured').toBeTruthy();
+    await vscode.evaluateInHost(async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
     });
   });
 
-  it('provides the complete GLSL authoring feature set', async () => {
-    const result = await languageSnapshot(join(fixturePath, 'image.glsl'), 'glsl');
+  test('provides the complete GLSL authoring feature set', async ({ vscode }) => {
+    const result = await languageSnapshot(vscode, join(fixturePath, 'image.glsl'), 'glsl');
 
-    assert.ok(result.labels.includes('texture'));
-    assert.ok(result.labels.includes('iResolution'));
-    assert.ok(result.labels.includes('iChannel0'));
-    assert.ok(result.labels.includes('shade'));
-    assert.ok(result.labels.includes('twice'));
-    assert.ok(!result.labels.includes('mainVertex'));
-    assert.match(result.completionDocs.texture, /texture|samples/i);
-    assert.match(result.builtinHover, /Canvas dimensions/);
-    assert.match(result.intrinsicHover, /texture coordinate|texture/i);
-    assert.match(result.channelHover, /input channel/i);
-    assert.match(result.hookHover, /fragment entry point/i);
-    assert.match(result.coordinateHover, /lower-left/i);
-    assert.ok(result.definitions.some((item) => item.path.endsWith('common.glsl') && item.line === 0));
-    assert.ok(result.signatures.some((item) => item.includes('shade')));
-    assert.ok(result.symbols.includes('shade'));
-    assert.ok(result.symbols.includes('mainImage'));
-    assert.deepEqual(result.colors[0], { red: 1, green: 0.5, blue: 0, alpha: 1 });
-    assert.ok(result.colorPresentations.some((item) => item.includes('vec4')), JSON.stringify(result.colorPresentations));
+    expect(result.labels.includes('texture')).toBeTruthy();
+    expect(result.labels.includes('iResolution')).toBeTruthy();
+    expect(result.labels.includes('iChannel0')).toBeTruthy();
+    expect(result.labels.includes('shade')).toBeTruthy();
+    expect(result.labels.includes('twice')).toBeTruthy();
+    expect(!result.labels.includes('mainVertex')).toBeTruthy();
+    expect(result.completionDocs.texture).toMatch(/texture|samples/i);
+    expect(result.builtinHover).toMatch(/Canvas dimensions/);
+    expect(result.intrinsicHover).toMatch(/texture coordinate|texture/i);
+    expect(result.channelHover).toMatch(/input channel/i);
+    expect(result.hookHover).toMatch(/fragment entry point/i);
+    expect(result.coordinateHover).toMatch(/lower-left/i);
+    expect(result.definitions.some((item) => item.path.endsWith('common.glsl') && item.line === 0)).toBeTruthy();
+    expect(result.signatures.some((item) => item.includes('shade'))).toBeTruthy();
+    expect(result.symbols.includes('shade')).toBeTruthy();
+    expect(result.symbols.includes('mainImage')).toBeTruthy();
+    expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
+    expect(result.colorPresentations.some((item) => item.includes('vec4')), JSON.stringify(result.colorPresentations)).toBeTruthy();
   });
 
-  it('provides the complete Slang authoring feature set through bundled WASM', async () => {
-    const result = await languageSnapshot(join(fixturePath, 'image.slang'), 'slang');
+  test('provides the complete Slang authoring feature set through bundled WASM', async ({ vscode }) => {
+    const result = await languageSnapshot(vscode, join(fixturePath, 'image.slang'), 'slang');
 
     for (const label of ['normalize', 'fmod', 'sampleIChannel0', 'iResolution', 'iChannel0', 'shade', 'twice']) {
-      assert.ok(result.labels.includes(label), `Missing Slang completion ${label}`);
+      expect(result.labels.includes(label), `Missing Slang completion ${label}`).toBeTruthy();
     }
-    assert.match(result.completionDocs.normalize, /unit length/i, JSON.stringify(result.completionEntries.filter((item) => item.label === 'normalize')));
-    assert.match(result.completionDocs.fmod, /remainder/i);
-    assert.match(result.completionDocs.sampleIChannel0, /input channel 0/i);
+    expect(
+      result.completionDocs.normalize,
+      JSON.stringify(result.completionEntries.filter((item) => item.label === 'normalize')),
+    ).toMatch(/unit length/i);
+    expect(result.completionDocs.fmod).toMatch(/remainder/i);
+    expect(result.completionDocs.sampleIChannel0).toMatch(/input channel 0/i);
     for (const stageOnly of ['mainVertex', 'numthreads', 'SV_DispatchThreadID', 'writeOutput']) {
-      assert.ok(!result.labels.includes(stageOnly), `Unexpected fragment completion ${stageOnly}`);
+      expect(!result.labels.includes(stageOnly), `Unexpected fragment completion ${stageOnly}`).toBeTruthy();
     }
-    assert.match(result.builtinHover, /Canvas dimensions/);
-    assert.match(result.intrinsicHover, /remainder/i);
-    assert.match(result.channelHover, /input channel/i);
-    assert.match(result.hookHover, /fragment entry point/i);
-    assert.match(result.coordinateHover, /lower-left/i);
-    assert.ok(result.definitions.some((item) => item.path.endsWith('palette.slang')), JSON.stringify(result.definitions));
-    assert.ok(result.signatures.some((item) => item.includes('shade')));
-    assert.ok(result.symbols.includes('shade'));
-    assert.ok(result.symbols.includes('mainImage'));
-    assert.deepEqual(result.colors[0], { red: 1, green: 0.5, blue: 0, alpha: 1 });
-    assert.ok(result.colorPresentations.some((item) => item.includes('float4')), JSON.stringify(result.colorPresentations));
+    expect(result.builtinHover).toMatch(/Canvas dimensions/);
+    expect(result.intrinsicHover).toMatch(/remainder/i);
+    expect(result.channelHover).toMatch(/input channel/i);
+    expect(result.hookHover).toMatch(/fragment entry point/i);
+    expect(result.coordinateHover).toMatch(/lower-left/i);
+    expect(result.definitions.some((item) => item.path.endsWith('palette.slang')), JSON.stringify(result.definitions)).toBeTruthy();
+    expect(result.signatures.some((item) => item.includes('shade'))).toBeTruthy();
+    expect(result.symbols.includes('shade')).toBeTruthy();
+    expect(result.symbols.includes('mainImage')).toBeTruthy();
+    expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
+    expect(result.colorPresentations.some((item) => item.includes('float4')), JSON.stringify(result.colorPresentations)).toBeTruthy();
   });
 
-  it('provides vertex and compute contracts only in their configured stages', async () => {
-    const glslVertex = await stageSnapshot(join(fixturePath, 'vertex.glsl'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
-    assert.match(glslVertex.hovers.mainVertex, /vertex hook/i);
-    assert.match(glslVertex.hovers.deformed, /vertex position/i);
-    assert.match(glslVertex.hovers.surfaceNormal, /vertex normal/i);
-    assert.match(glslVertex.hovers.textureUv, /texture coordinate/i);
-    assert.ok(!glslVertex.labels.includes('mainImage'));
+  test('provides vertex and compute contracts only in their configured stages', async ({ vscode }) => {
+    const glslVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.glsl'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    expect(glslVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(glslVertex.hovers.deformed).toMatch(/vertex position/i);
+    expect(glslVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
+    expect(glslVertex.hovers.textureUv).toMatch(/texture coordinate/i);
+    expect(!glslVertex.labels.includes('mainImage')).toBeTruthy();
 
-    const slangVertex = await stageSnapshot(join(fixturePath, 'vertex.slang'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
-    assert.match(slangVertex.hovers.mainVertex, /vertex hook/i);
-    assert.match(slangVertex.hovers.deformed, /vertex position/i);
-    assert.match(slangVertex.hovers.surfaceNormal, /vertex normal/i);
-    assert.match(slangVertex.hovers.textureUv, /texture coordinate/i);
-    assert.ok(!slangVertex.labels.includes('mainImage'));
-    assert.ok(!slangVertex.labels.includes('writeOutput'));
+    const slangVertex = await stageSnapshot(vscode, join(fixturePath, 'vertex.slang'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    expect(slangVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(slangVertex.hovers.deformed).toMatch(/vertex position/i);
+    expect(slangVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
+    expect(slangVertex.hovers.textureUv).toMatch(/texture coordinate/i);
+    expect(!slangVertex.labels.includes('mainImage')).toBeTruthy();
+    expect(!slangVertex.labels.includes('writeOutput')).toBeTruthy();
 
-    const compute = await stageSnapshot(join(fixturePath, 'compute.slang'), ['numthreads', 'SV_DispatchThreadID', 'iDispatch', 'writeOutput']);
-    assert.match(compute.hovers.numthreads, /workgroup/i);
-    assert.match(compute.hovers.SV_DispatchThreadID, /Global dispatch/i);
-    assert.match(compute.hovers.iDispatch, /repetition index/i);
-    assert.match(compute.hovers.writeOutput, /compute pass output texture/i);
+    const compute = await stageSnapshot(vscode, join(fixturePath, 'compute.slang'), ['numthreads', 'SV_DispatchThreadID', 'iDispatch', 'writeOutput']);
+    expect(compute.hovers.numthreads).toMatch(/workgroup/i);
+    expect(compute.hovers.SV_DispatchThreadID).toMatch(/Global dispatch/i);
+    expect(compute.hovers.iDispatch).toMatch(/repetition index/i);
+    expect(compute.hovers.writeOutput).toMatch(/compute pass output texture/i);
     for (const label of ['numthreads', 'SV_DispatchThreadID', 'iDispatch', 'writeOutput']) {
-      assert.ok(compute.labels.includes(label), `Missing compute completion ${label}`);
+      expect(compute.labels.includes(label), `Missing compute completion ${label}`).toBeTruthy();
     }
-    assert.ok(!compute.labels.includes('mainImage'));
-    assert.ok(!compute.labels.includes('mainVertex'));
+    expect(!compute.labels.includes('mainImage')).toBeTruthy();
+    expect(!compute.labels.includes('mainVertex')).toBeTruthy();
   });
 
-  it('publishes GLSL parser and Slang compiler diagnostics', async () => {
-    const glslDocument = await openDiagnosticDocument(join(fixturePath, 'diagnostic.glsl'));
+  test('publishes GLSL parser and Slang compiler diagnostics', async ({ vscode }) => {
+    const glslDocument = await openDiagnosticDocument(vscode, join(fixturePath, 'diagnostic.glsl'));
     const glslUri = glslDocument.uri;
-    assert.ok(glslDocument.diagnostics.length > 0, JSON.stringify(glslDocument.diagnostics));
-    const glsl = await waitForDiagnostic(glslUri, 'include');
-    assert.ok(glsl, JSON.stringify(glslDocument.diagnostics));
-    assert.match(glsl.source, /shader-studio-glsl/i);
-    await replaceDiagnosticDocument(glslUri, 'void mainImage(out vec4 color, in vec2 position) { color = vec4(position, 0.0, 1.0); }');
-    await waitForDiagnostic(glslUri, 'include', false);
+    expect(glslDocument.diagnostics.length > 0, JSON.stringify(glslDocument.diagnostics)).toBeTruthy();
+    const glsl = await waitForDiagnostic(vscode, glslUri, 'include');
+    expect(glsl, JSON.stringify(glslDocument.diagnostics)).toBeTruthy();
+    expect(glsl.source).toMatch(/shader-studio-glsl/i);
+    await replaceDiagnosticDocument(vscode, glslUri, 'void mainImage(out vec4 color, in vec2 position) { color = vec4(position, 0.0, 1.0); }');
+    await waitForDiagnostic(vscode, glslUri, 'include', false);
 
-    const slangDocument = await openDiagnosticDocument(join(fixturePath, 'diagnostic.slang'));
+    const slangDocument = await openDiagnosticDocument(vscode, join(fixturePath, 'diagnostic.slang'));
     const slangUri = slangDocument.uri;
-    const slang = await waitForDiagnostic(slangUri, 'undefined identifier');
-    assert.ok(slang, JSON.stringify(slangDocument.diagnostics));
-    assert.equal(slang.source, 'shader-studio-slang-compiler');
+    const slang = await waitForDiagnostic(vscode, slangUri, 'undefined identifier');
+    expect(slang, JSON.stringify(slangDocument.diagnostics)).toBeTruthy();
+    expect(slang.source).toBe('shader-studio-slang-compiler');
   });
 
 });

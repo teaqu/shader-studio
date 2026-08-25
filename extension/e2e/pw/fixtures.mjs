@@ -49,12 +49,20 @@ async function waitFor(predicate, { timeout = 60_000, interval = 250, message })
 }
 
 export const test = base.extend({
+  /**
+   * Changing a worker-scoped option makes Playwright start a fresh worker, and
+   * with it a fresh VS Code. Each spec file sets its own key so files cannot
+   * inherit each other's window state - the language-server toggles and debug
+   * panel state the specs leave behind are not safe to share.
+   */
+  vscodeKey: ['default', { scope: 'worker', option: true }],
+
   // Worker-scoped: one VS Code window per worker, shared by every test in a
   // file. The specs build up state across tests (debug mode on, lock engaged)
   // exactly as they did under the previous runner, and a fresh window per test
   // would both break that and make the suite far slower.
-  vscode: [async ({}, use) => {
-    const userDataDir = mkdtempSync(join(tmpdir(), 'ss-pw-'));
+  vscode: [async ({ vscodeKey }, use) => {
+    const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
     const portFile = join(userDataDir, 'bridge-port');
 
     const app = await electron.launch({
@@ -68,7 +76,7 @@ export const test = base.extend({
         '--disable-workspace-trust',
         '--disable-extensions',
         `--extensionDevelopmentPath=${extensionPath}`,
-        `--extensionTestsPath=${join(extensionPath, 'e2e', 'pw', 'host-bridge.cjs')}`,
+        `--extensionDevelopmentPath=${join(extensionPath, 'e2e', 'pw', 'bridge-extension')}`,
         `--user-data-dir=${userDataDir}`,
         `--extensions-dir=${join(userDataDir, 'extensions')}`,
         '--enable-unsafe-webgpu',
@@ -91,9 +99,12 @@ export const test = base.extend({
       { timeout: 60_000, message: 'extension-host bridge never reported a port' },
     ));
 
-    /** Run a function inside the extension host with the real `vscode` module. */
-    const evaluateInHost = async (fn, ...args) => {
-      const response = await fetch(`http://127.0.0.1:${port}/`, {
+    // The extension host restarts during startup, taking the bridge server with
+    // it and leaving a stale port behind, so the port is re-read per call.
+    const currentPort = () => Number(readFileSync(portFile, 'utf8').trim());
+
+    const callHost = async (fn, ...args) => {
+      const response = await fetch(`http://127.0.0.1:${currentPort()}/`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ source: fn.toString(), args }),
@@ -102,6 +113,29 @@ export const test = base.extend({
       if (!result.ok) throw new Error(`extension host: ${result.error}`);
       return result.value;
     };
+
+    /**
+     * Run a function inside the extension host with the real `vscode` module.
+     * VS Code cancels API calls while it is still activating, surfacing as
+     * "Canceled"; that is a readiness signal rather than a real failure, so
+     * retry briefly instead of failing the whole file in beforeAll.
+     */
+    const evaluateInHost = async (fn, ...args) => {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        try {
+          return await callHost(fn, ...args);
+        } catch (error) {
+          const detail = String(error?.message ?? error) + String(error?.cause?.code ?? '');
+          const transient = /Canceled|ECONNREFUSED|ECONNRESET|fetch failed/i.test(detail);
+          if (!transient || Date.now() >= deadline) throw error;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+    };
+
+    // Do not let the first real call be the one that races activation.
+    await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
 
     await evaluateInHost(async (vscode, settings) => {
       for (const [key, value] of Object.entries(settings)) {
@@ -124,7 +158,12 @@ export const test = base.extend({
 
     await use({ app, window, evaluateInHost, shaderFrame, workspacePath });
 
-    await app.close();
+    // A wedged extension host can leave close() pending, which surfaces as a
+    // worker teardown timeout and hides whatever actually failed.
+    await Promise.race([
+      app.close(),
+      new Promise((resolve) => setTimeout(resolve, 15_000)),
+    ]).catch(() => { /* the process is going away regardless */ });
     try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
   }, { scope: 'worker' }],
 });

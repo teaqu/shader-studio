@@ -1,0 +1,11 @@
+{
+  "name": "shader-studio-pw-bridge",
+  "displayName": "Shader Studio Playwright Bridge",
+  "description": "Test-only bridge that lets the Playwright suite drive the VS Code API.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "shader-studio-tests",
+  "engines": { "vscode": "^1.101.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js"
+}
