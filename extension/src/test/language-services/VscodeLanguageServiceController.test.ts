@@ -193,7 +193,13 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("falls back to a project configuration loaded by an active Shader Studio client", async () => {
+  test("falls back to a project configuration loaded by an active Shader Studio client", async function() {
+    // Same shape of work as the sibling tests below - temp files, extension
+    // activation, a real openTextDocument - which set their own budgets. This
+    // one silently inherited mocha's 2s default and timed out on CI three times
+    // while passing locally, so it gets the same budget rather than a shorter
+    // one nobody chose.
+    this.timeout(20_000);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-loaded-project-"));
     const imagePath = path.join(directory, "image.slang");
     const bufferPath = path.join(directory, "passes", "buffer-a.slang");
