@@ -6,6 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const extensionPath = resolve(here, '..', '..');
 
 export default defineConfig({
+  globalSetup: join(here, 'global-setup.mjs'),
   testDir: here,
   testMatch: '**/*.e2e.mjs',
   outputDir: join(extensionPath, '.playwright'),

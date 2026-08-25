@@ -11,10 +11,15 @@ const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-va
 export const workspacePath = resolve(process.env.SHADER_STUDIO_E2E_WORKSPACE ?? defaultWorkspace);
 
 const VSCODE_VERSION = process.env.SHADER_STUDIO_E2E_VSCODE_VERSION ?? '1.109.5';
-const vscodeBinary = join(
-  extensionPath, '.vscode-test', `vscode-darwin-arm64-${VSCODE_VERSION}`,
-  'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron',
-);
+
+/**
+ * global-setup.mjs downloads the pinned VS Code before any worker starts and
+ * publishes the path here. Resolving it per worker instead would have every
+ * worker race to populate the same cache directory on a cold checkout.
+ */
+const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN
+  ?? join(extensionPath, '.vscode-test', `vscode-darwin-arm64-${VSCODE_VERSION}`,
+    'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
 
 const USER_SETTINGS = {
   'security.workspace.trust.enabled': false,
@@ -66,7 +71,7 @@ export const test = base.extend({
     const portFile = join(userDataDir, 'bridge-port');
 
     const app = await electron.launch({
-      executablePath: vscodeBinary,
+      executablePath: vscodeBinary(),
       env: cleanEnv({ SHADER_STUDIO_PW_PORT_FILE: portFile, SHADER_STUDIO_E2E_WORKSPACE: workspacePath }),
       args: [
         '--no-sandbox',
