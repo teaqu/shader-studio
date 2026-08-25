@@ -189,17 +189,17 @@ export class WebServer {
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ): void {
-    console.log(`WebServer: Received request for: ${req.url}`);
+    Logger.trace(`WebServer: Received request for: ${req.url}`);
     
     if (!req.url) {
-      console.log('WebServer: No URL in request');
+      Logger.trace('WebServer: No URL in request');
       res.writeHead(400);
       res.end("Bad Request");
       return;
     }
 
     if (!req.url.startsWith("/textures/")) {
-      console.log(`WebServer: Invalid texture URL: ${req.url}`);
+      Logger.trace(`WebServer: Invalid texture URL: ${req.url}`);
       res.writeHead(400);
       res.end("Invalid texture URL");
       return;
@@ -208,11 +208,11 @@ export class WebServer {
     const encodedPath = req.url.replace("/textures/", "");
     const texturePath = decodeURIComponent(encodedPath);
     
-    console.log(`WebServer: Encoded path: ${encodedPath}`);
-    console.log(`WebServer: Decoded path: ${texturePath}`);
+    Logger.trace(`WebServer: Encoded path: ${encodedPath}`);
+    Logger.trace(`WebServer: Decoded path: ${texturePath}`);
 
     if (!fs.existsSync(texturePath)) {
-      console.log(`WebServer: File not found: ${texturePath}`);
+      Logger.trace(`WebServer: File not found: ${texturePath}`);
       res.writeHead(404);
       res.end("Texture not found");
       return;
@@ -220,18 +220,18 @@ export class WebServer {
 
     const stats = fs.statSync(texturePath);
     if (!stats.isFile()) {
-      console.log(`WebServer: Not a file: ${texturePath}`);
+      Logger.trace(`WebServer: Not a file: ${texturePath}`);
       res.writeHead(403);
       res.end("Invalid texture path");
       return;
     }
 
-    console.log(`WebServer: Serving file: ${texturePath} (${stats.size} bytes)`);
+    Logger.trace(`WebServer: Serving file: ${texturePath} (${stats.size} bytes)`);
 
     // Handle range requests for video files
     const range = req.headers.range;
     if (range && this.isVideoFile(texturePath)) {
-      console.log(`WebServer: Video range request: ${range}`);
+      Logger.trace(`WebServer: Video range request: ${range}`);
       this.handleVideoRangeRequest(req, res, texturePath, stats);
       return;
     }
@@ -303,10 +303,10 @@ export class WebServer {
     stats: fs.Stats
   ): void {
     const range = req.headers.range;
-    console.log(`WebServer: Processing range request: ${range}`);
+    Logger.trace(`WebServer: Processing range request: ${range}`);
     
     if (!range) {
-      console.log('WebServer: No range header, sending entire file');
+      Logger.trace('WebServer: No range header, sending entire file');
       // No range header, send entire file
       fs.createReadStream(filePath).pipe(res);
       return;
@@ -317,7 +317,7 @@ export class WebServer {
     const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
     const chunksize = (end - start) + 1;
 
-    console.log(`WebServer: Range ${start}-${end}/${stats.size} (${chunksize} bytes)`);
+    Logger.trace(`WebServer: Range ${start}-${end}/${stats.size} (${chunksize} bytes)`);
 
     res.writeHead(206, {
       'Content-Range': `bytes ${start}-${end}/${stats.size}`,
@@ -332,12 +332,8 @@ export class WebServer {
       'Cross-Origin-Opener-Policy': 'cross-origin',
     });
 
-    console.log(`WebServer: Sending 206 response with headers:`, {
-      'Content-Range': `bytes ${start}-${end}/${stats.size}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': this.getContentType(filePath),
-    });
+    Logger.trace(`WebServer: 206 response bytes ${start}-${end}/${stats.size}, `
+      + `${chunksize} bytes, ${this.getContentType(filePath)}`);
 
     const stream = fs.createReadStream(filePath, { start, end });
     stream.on('error', (error) => {
@@ -346,7 +342,7 @@ export class WebServer {
     });
     
     stream.on('end', () => {
-      console.log(`WebServer: Stream completed for range ${start}-${end}`);
+      Logger.trace(`WebServer: Stream completed for range ${start}-${end}`);
     });
     
     stream.pipe(res);

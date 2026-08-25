@@ -28,6 +28,7 @@ suite('ConfigGenerator Test Suite', () => {
     mockOutputChannel = {
       info: sandbox.stub(),
       debug: sandbox.stub(),
+      trace: sandbox.stub(),
       warn: sandbox.stub(),
       error: sandbox.stub(),
       dispose: sandbox.stub(),

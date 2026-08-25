@@ -154,6 +154,7 @@ suite('WebSocketTransport Test Suite', () => {
     Logger.initialize({
       info: sandbox.stub(),
       debug: sandbox.stub(),
+      trace: sandbox.stub(),
       warn: sandbox.stub(),
       error: sandbox.stub(),
     } as unknown as vscode.LogOutputChannel);
@@ -497,7 +498,8 @@ suite('WebSocketTransport port binding', () => {
   setup(() => {
     if (!(Logger as any).instance) {
       const mockOutputChannel = {
-        info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, dispose: () => {},
+        info: () => {}, debug: () => {},
+        trace: () => {}, warn: () => {}, error: () => {}, dispose: () => {},
       } as any;
       Logger.initialize(mockOutputChannel);
     }

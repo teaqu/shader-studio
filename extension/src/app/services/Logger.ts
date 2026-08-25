@@ -14,6 +14,19 @@ export class Logger {
     Logger.instance = new Logger(outputChannel);
   }
 
+  /**
+   * Plumbing-level logging that must never throw. Transports and the web server
+   * are constructed directly in unit tests that do not call initialize(), and a
+   * trace line is not worth failing a test over.
+   */
+  public static trace(message: string): void {
+    Logger.instance?.trace(message);
+  }
+
+  public static debug(message: string): void {
+    Logger.instance?.debug(message);
+  }
+
   public static getInstance(): Logger {
     if (!Logger.instance) {
       throw new Error("Logger not initialized. Call Logger.initialize() first.");
@@ -27,6 +40,14 @@ export class Logger {
 
   public debug(message: string): void {
     this.outputChannel.debug(message);
+  }
+
+  /**
+   * Per-message plumbing detail: transport sends, fan-out counts, request
+   * paths. Off unless the user sets the extension's log level to Trace.
+   */
+  public trace(message: string): void {
+    this.outputChannel.trace(message);
   }
 
   public warn(message: string): void {

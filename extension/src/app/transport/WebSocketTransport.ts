@@ -8,6 +8,7 @@ import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 import { ClientMessageHandler } from "../ClientMessageHandler";
 import { ConfigChangeClassifier } from "../services/ConfigChangeClassifier";
+import { Logger } from "../services/Logger";
 
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
@@ -27,18 +28,18 @@ export class WebSocketTransport implements MessageTransport {
 
     this.wsServer.on("listening", () => {
       const actual = (this.wsServer.address() as { port: number }).port;
-      console.log(`WebSocket server listening on port ${actual}`);
+      Logger.debug(`WebSocket server listening on port ${actual}`);
       onReady?.(actual);
     });
 
     this.wsServer.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code === 'EADDRINUSE') {
-        console.log(`WebSocket port ${port} in use, falling back to dynamic port`);
+        Logger.trace(`WebSocket port ${port} in use, falling back to dynamic port`);
         this.wsServer.close();
         this.wsServer = new WebSocketServer({ port: 0, perMessageDeflate: true });
         this.wsServer.on("listening", () => {
           const actual = (this.wsServer.address() as { port: number }).port;
-          console.log(`WebSocket server (fallback) listening on port ${actual}`);
+          Logger.debug(`WebSocket server (fallback) listening on port ${actual}`);
           onReady?.(actual);
         });
         this.wsServer.on("error", (err) => {
@@ -55,7 +56,7 @@ export class WebSocketTransport implements MessageTransport {
 
   private attachConnectionHandler(): void {
     this.wsServer.on("connection", (ws: WebSocket) => {
-      console.log(`WebSocket: Client connected. Total clients: ${this.wsClients.size + 1}`);
+      Logger.trace(`WebSocket: Client connected. Total clients: ${this.wsClients.size + 1}`);
       this.wsClients.add(ws);
 
       // Create a per-connection ClientMessageHandler
@@ -79,7 +80,7 @@ export class WebSocketTransport implements MessageTransport {
 
           // Handle client identification (legacy, kept for compatibility)
           if (data.type === 'clientInfo') {
-            console.log(`WebSocket: Client connected from browser`);
+            Logger.trace(`WebSocket: Client connected from browser`);
             return;
           }
 
@@ -99,8 +100,8 @@ export class WebSocketTransport implements MessageTransport {
 
       ws.on("close", (code, reason) => {
         this.wsClients.delete(ws);
-        console.log(`WebSocket: Client disconnected. Code: ${code},
-          Reason: ${reason?.toString()}. Total clients: ${this.wsClients.size}`);
+        Logger.debug(`WebSocket: client disconnected (code ${code}, `
+          + `reason ${reason?.toString()}). Total clients: ${this.wsClients.size}`);
       });
 
       ws.on("error", (error) => {
@@ -127,7 +128,7 @@ export class WebSocketTransport implements MessageTransport {
           this.shaderProvider.claimActiveAnalysisContext(activeEditor.document.uri.fsPath);
           void this.shaderProvider.sendShaderFromEditor(activeEditor);
         }, 100);
-        console.log('WebSocket: Requested current shader to be sent to new client');
+        Logger.trace('WebSocket: Requested current shader to be sent to new client');
       }
     } catch (error) {
       console.error('WebSocket: Error sending current shader to new client:', error);
@@ -140,7 +141,7 @@ export class WebSocketTransport implements MessageTransport {
       return;
     }
 
-    console.log(`WebSocket: Sending ${message.type} to ${totalClients} clients`);
+    Logger.trace(`WebSocket: Sending ${message.type} to ${totalClients} clients`);
     this.sendMessageToAllClients(message);
   }
 

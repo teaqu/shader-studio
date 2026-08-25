@@ -217,13 +217,14 @@ export class FileDialogHandler {
     pathConverter: (absPath: string) => string,
   ): Promise<void> {
     try {
-      console.log('FileDialogHandler: Scanning workspace files for extensions:', payload.extensions);
+      Logger.trace('FileDialogHandler: scanning workspace files for '
+        + (payload.extensions?.join(', ') ?? 'any extension'));
       const files = await WorkspaceFileScanner.scanFiles(
         payload.extensions,
         payload.shaderPath,
         pathConverter,
       );
-      console.log(`FileDialogHandler: Found ${files.length} workspace files`);
+      Logger.trace(`FileDialogHandler: found ${files.length} workspace files`);
       respondFn({ type: "workspaceFiles", payload: { files } });
     } catch (error) {
       console.error(`FileDialogHandler: Failed to scan workspace files:`, error);

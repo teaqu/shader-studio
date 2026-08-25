@@ -26,6 +26,7 @@ suite('ErrorHandler Test Suite', () => {
       warn: (message: string) => { },
       info: (message: string) => { },
       debug: (message: string) => { },
+      trace: (message: string) => { },
     } as any;
 
     // Mock diagnostic collection

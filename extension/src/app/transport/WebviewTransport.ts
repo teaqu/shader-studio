@@ -3,6 +3,7 @@ import * as path from "path";
 import { MessageTransport } from "./MessageTransport";
 import { ConfigPathConverter } from "./ConfigPathConverter";
 import { PathResolver } from "../PathResolver";
+import { Logger } from "../services/Logger";
 
 export class WebviewTransport implements MessageTransport {
   private messageHandler?: (message: any) => void;
@@ -19,7 +20,7 @@ export class WebviewTransport implements MessageTransport {
 
     panel.onDidDispose(() => {
       this.panels.delete(panel);
-      console.log(`Webview panel disposed. Remaining panels: ${this.panels.size}`);
+      Logger.debug(`Webview panel disposed. Remaining panels: ${this.panels.size}`);
     });
   }
 
@@ -27,13 +28,8 @@ export class WebviewTransport implements MessageTransport {
     this.panels.delete(panel);
   }
 
-  /** High-frequency message types that should not be logged */
-  private static readonly QUIET_TYPES = new Set(['customUniformValues']);
-
   public send(message: any): void {
-    if (!WebviewTransport.QUIET_TYPES.has(message.type)) {
-      console.log(`WebviewTransport: send() called with message type: ${message.type}`);
-    }
+    Logger.trace(`WebviewTransport: send() called with message type: ${message.type}`);
 
     if (message.type === "shaderSource" && message.config) {
       // Process config paths asynchronously before posting to the webview.
@@ -45,18 +41,18 @@ export class WebviewTransport implements MessageTransport {
   }
 
   private async sendShaderSourceAsync(message: any): Promise<void> {
-    console.log(`WebviewTransport: Processing shaderSource message with config`);
+    Logger.trace(`WebviewTransport: Processing shaderSource message with config`);
     const firstPanel = this.panels.values().next().value;
     if (firstPanel?.webview) {
-      console.log(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
+      Logger.trace(`WebviewTransport: Calling ConfigPathConverter.processConfigPaths`);
       message = await ConfigPathConverter.processConfigPaths(message, firstPanel.webview);
 
       // Handle video-specific localResourceRoots for webview
       this.handleVideoResourceRoots(message);
 
-      console.log(`WebviewTransport: ConfigPathConverter returned processed message`);
+      Logger.trace(`WebviewTransport: ConfigPathConverter returned processed message`);
     } else {
-      console.log(`WebviewTransport: No webview panel available for path conversion`);
+      Logger.trace(`WebviewTransport: No webview panel available for path conversion`);
     }
 
     this.postToAllPanels(message);
@@ -66,10 +62,7 @@ export class WebviewTransport implements MessageTransport {
     let sentCount = 0;
     const totalPanels = this.panels.size;
 
-    const quiet = WebviewTransport.QUIET_TYPES.has(message.type);
-    if (!quiet) {
-      console.log(`Webview: Sending ${message.type} to ${totalPanels} panels`);
-    }
+    Logger.trace(`Webview: Sending ${message.type} to ${totalPanels} panels`);
 
     for (const panel of this.panels) {
       try {
@@ -80,14 +73,12 @@ export class WebviewTransport implements MessageTransport {
           this.panels.delete(panel); // Clean up disposed panels
         }
       } catch (error) {
-        console.log('Webview transport: panel disposed, message not sent');
+        Logger.debug('Webview transport: panel disposed, message not sent');
         this.panels.delete(panel);
       }
     }
 
-    if (!quiet) {
-      console.log(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
-    }
+    Logger.trace(`Webview: Sent to ${sentCount}/${totalPanels} panels`);
   }
 
   private handleVideoResourceRoots(message: any): void {

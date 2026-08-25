@@ -38,7 +38,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       warn: sandbox.stub(),
       error: loggerErrorStub,
       debug: sandbox.stub(),
-      trace: sandbox.stub()
+      trace: sandbox.stub(),
     } as any;
     Logger.initialize(mockOutputChannel);
 
