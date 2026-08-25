@@ -26,6 +26,10 @@ per step.
   Playwright start a fresh worker and a fresh VS Code, so files cannot inherit
   each other's window state - without it the language-server toggles left by one
   spec broke another.
+- Two workers, so spec files run in parallel while tests inside a file stay
+  serial. Measured locally: 1 worker 23.0s, 2 workers 14.7s, 4 workers 15.6s -
+  with only four spec files the extra windows buy nothing. Parallel windows
+  overlap, so the occluded-window flags below are what make this safe.
 - No Playwright browser download is needed. The suite drives VS Code's own
   Electron through `_electron.launch()`; verified to run with none installed.
 
