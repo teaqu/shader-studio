@@ -531,6 +531,8 @@ describe("ShaderAuthoringEnvironment", () => {
     ["sampler2DArrayShadow", "a GLSL ES shadow sampler type"],
     ["isamplerCube", "a GLSL ES signed sampler type"],
     ["usampler3D", "a GLSL ES unsigned sampler type"],
+    ["dmat2", "a GLSL ES future reserved double matrix type"],
+    ["samplerCubeArray", "a GLSL ES future reserved sampler type"],
     ["attribute", "a GLSL ES reserved word"],
     ["this", "a GLSL ES reserved word"],
     ["true", "a GLSL ES boolean literal"],
