@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@shaderfrog/glsl-parser": "7.0.1",
+    "@shader-studio/language-server-core": "*",
     "@shader-studio/types": "*",
     "vscode-languageserver-protocol": "3.18.2"
   }

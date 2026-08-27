@@ -20,7 +20,9 @@ import {
   VirtualFileSystem,
   createLiteralColorPresentations,
   findLiteralConstructorColors,
+  findMemberAccess,
   isPositionInComment,
+  swizzleSelections,
   type ColorPresentationParams,
   type DocumentParams,
   type DocumentPositionParams,
@@ -39,7 +41,9 @@ import {
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
 import {
+  glslVectorTypeName,
   parseGlslDocument,
+  resolveGlslExpressionType,
   symbolAtPosition,
   visibleSymbolsAtPosition,
   type GlslAnalysisDocument,
@@ -120,6 +124,17 @@ export class GlslLanguageService implements LanguageService {
     }
     if (isPositionInComment(state.document.text, params.position)) {
       return [];
+    }
+    const access = findMemberAccess(state.document.text, params.position);
+    if (access) {
+      return memberCompletions(
+        access.expression,
+        params.position,
+        state.document.text,
+        state.environment,
+        this.includeAnalyses.get(params.document.uri) ?? [],
+        params.document.uri,
+      );
     }
     const items = new Map<string, CompletionItem>();
     for (const symbol of visibleSymbolsAtPosition(state.analysis, params.position)) {
@@ -458,6 +473,65 @@ function orderedRanges(ranges: readonly Range[]): Range[] {
     );
   }
   return [...unique.values()].sort((left, right) => comparePosition(left.start, right.start));
+}
+
+/** GLSL names the components of a vector three interchangeable ways. */
+const GLSL_SWIZZLE_SETS = ["xyzw", "rgba", "stpq"] as const;
+
+/**
+ * Completions for a member selection such as `uv.`, listing the members of the selected
+ * expression only. Expressions whose type cannot be resolved offer nothing, so a selector
+ * never falls back to every symbol in scope.
+ */
+function memberCompletions(
+  expression: string,
+  position: Position,
+  source: string,
+  environment: ShaderAuthoringEnvironment,
+  includes: readonly GlslAnalysisDocument[],
+  uri: string,
+): CompletionItem[] {
+  const resolved = resolveGlslExpressionType({ uri, source, stage: environment.stage, position, expression }, {
+    includes,
+    variableType: (name) => environmentTypeName(name, source, environment),
+    functionType: (name) => visibleIntrinsics(source, environment.stage)
+      .find((item) => item.kind === "function" && item.name === name)?.returnType,
+  });
+  if (!resolved) {
+    return [];
+  }
+  const vector = resolved.vector;
+  if (vector) {
+    return swizzleSelections(vector.size, GLSL_SWIZZLE_SETS).map((selection) => ({
+      label: selection,
+      kind: CompletionItemKind.Field,
+      detail: selection.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, selection.length),
+      documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
+    }));
+  }
+  return (resolved.fields ?? []).map((field) => ({
+    label: field.name,
+    kind: CompletionItemKind.Field,
+    detail: field.type,
+    documentation: markdownDocumentation(`Field of \`${resolved.name}\`.`),
+  }));
+}
+
+/** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
+function environmentTypeName(
+  name: string,
+  source: string,
+  environment: ShaderAuthoringEnvironment,
+): string | undefined {
+  const uniform = environment.customUniforms.find((item) => item.name === name);
+  if (uniform) {
+    return uniform.type;
+  }
+  const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
+    && item.languages.includes("glsl")
+    && (!item.stages || item.stages.includes(environment.stage)));
+  return documented?.glslType
+    ?? visibleIntrinsics(source, environment.stage).find((item) => item.kind === "variable" && item.name === name)?.returnType;
 }
 
 function completionFromDoc(name: string, detail: string | undefined, description: string): CompletionItem {

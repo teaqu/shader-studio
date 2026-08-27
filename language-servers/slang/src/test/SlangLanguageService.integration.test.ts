@@ -210,4 +210,42 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       await service.dispose();
     }
   }, 20_000);
+
+  it("narrows completions to vector components after a member selector", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///image.slang";
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [],
+    };
+    try {
+      await service.syncEnvironment(environment);
+      const source = [
+        "float4 mainImage(float2 p)",
+        "{",
+        "    float2 uv = p;",
+        "    uv.",
+        "    return float4(uv, 0.0, 1.0);",
+        "}",
+        "",
+      ].join("\n");
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: source });
+      const document = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
+
+      const completions = await service.completion({ document, position: { line: 3, character: 7 } });
+
+      expect(completions.map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg", "s", "t", "st"]);
+      expect(completions.some((item) => item.label === "abs")).toBe(false);
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
 });

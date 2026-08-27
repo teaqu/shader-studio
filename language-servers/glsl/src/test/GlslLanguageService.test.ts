@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DocumentHighlightKind } from "vscode-languageserver-protocol";
+import { CompletionItemKind, DocumentHighlightKind } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
@@ -68,6 +68,96 @@ describe("GlslLanguageService", () => {
     expect(labels).toEqual(expect.arrayContaining(["normalize", "texture", "iResolution", "tint", "sky", "shade"]));
     expect(labels).not.toContain("texture2D");
     expect(labels).not.toContain("mainVertex");
+  });
+
+  it("completes vector components instead of every symbol after a member selector", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord;
+  uv.
+  color = vec4(uv, 0.0, 1.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const items = await instance.completion({ document: revision, position: { line: 2, character: 5 } });
+
+    expect(items.map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg", "s", "t", "st"]);
+    expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "float", kind: CompletionItemKind.Field }));
+    expect(items).toContainEqual(expect.objectContaining({ label: "xy", detail: "vec2" }));
+  });
+
+  it("completes struct fields declared in the document and in Shader Studio Common", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: "struct Light { vec3 color; float power; };\nLight keyLight;",
+      },
+    });
+    const text = `struct Material { vec3 albedo; float rough; };
+void mainImage(out vec4 color, in vec2 coord) {
+  Material m;
+  m.
+  keyLight.
+  color = vec4(m.albedo, 1.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const fields = await instance.completion({ document: revision, position: { line: 3, character: 4 } });
+    expect(fields).toEqual([
+      expect.objectContaining({ label: "albedo", detail: "vec3", kind: CompletionItemKind.Field }),
+      expect.objectContaining({ label: "rough", detail: "float" }),
+    ]);
+
+    const shared = await instance.completion({ document: revision, position: { line: 4, character: 11 } });
+    expect(shared.map((item) => item.label)).toEqual(["color", "power"]);
+  });
+
+  it("completes members of built-in uniforms, custom uniforms, and intrinsic results", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord / iResolution.
+  vec3 shade = tint.
+  vec4 sampled = texture(sky, uv).
+  color = vec4(uv, 0.0, 1.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const labels = async (line: number) => (await instance.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    })).map((item) => item.label);
+
+    expect(await labels(1)).toContain("xyz");
+    expect(await labels(1)).not.toContain("xyzw");
+    expect(await labels(2)).toContain("rgb");
+    expect(await labels(3)).toContain("xyzw");
+  });
+
+  it("offers no suggestions when the selected expression has no members", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord;
+  float t = uv.x;
+  missing.
+  t.
+  sky.
+  color = vec4(uv, t, 1.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const completions = async (line: number) => instance.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    });
+
+    expect(await completions(3)).toEqual([]);
+    expect(await completions(4)).toEqual([]);
+    expect(await completions(5)).toEqual([]);
   });
 
   it("retains legacy texture names for explicitly versioned GLSL ES 1.00 documents", async () => {
@@ -279,7 +369,10 @@ void mainImage(out vec4 color, in vec2 position) {
     expect(JSON.stringify((await hoverAt("deformed", 1))?.contents)).toContain("object-space");
     expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents)).toContain("vertex normal");
     expect(JSON.stringify((await hoverAt("textureUv"))?.contents)).toContain("texture coordinate");
-    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.length - 3 } });
+    const completions = await instance.completion({
+      document: revision,
+      position: { line: 0, character: text.indexOf("deformed +=") + "deformed".length },
+    });
     expect(completions.find((item) => item.label === "mainVertex")?.detail)
       .toBe("void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv)");
     expect(completions.find((item) => item.label === "deformed")?.documentation)

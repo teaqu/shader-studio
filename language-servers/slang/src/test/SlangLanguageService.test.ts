@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { CompletionItemKind } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_INTRINSICS } from "../intrinsics";
@@ -201,6 +202,96 @@ float value = iChannel0;`;
       position: { line: 0, character: text.indexOf("sam") + 3 },
     });
     expect(completions.map((item) => item.label)).toEqual(["Sample"]);
+  });
+
+  it("completes vector components instead of every symbol after a member selector", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `float4 mainImage(float2 p)
+{
+    float2 uv = p;
+    uv.
+    return float4(uv, 0.0, 1.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const items = await service.completion({ document: revision, position: { line: 3, character: 7 } });
+
+    expect(items.map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg", "s", "t", "st"]);
+    expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "float", kind: CompletionItemKind.Field }));
+    expect(items).toContainEqual(expect.objectContaining({ label: "xy", detail: "float2" }));
+  });
+
+  it("completes struct fields declared in the document, including generic vector members", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `struct Material { float3 albedo; float rough; };
+float4 mainImage(float2 p)
+{
+    Material m;
+    m.
+    vector<half, 3> tinted;
+    tinted.
+    return float4(m.albedo, 1.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const fields = await service.completion({ document: revision, position: { line: 4, character: 6 } });
+    expect(fields).toEqual([
+      expect.objectContaining({ label: "albedo", detail: "float3", kind: CompletionItemKind.Field }),
+      expect.objectContaining({ label: "rough", detail: "float" }),
+    ]);
+
+    const generic = await service.completion({ document: revision, position: { line: 6, character: 11 } });
+    expect(generic.map((item) => item.label)).toContain("xyz");
+  });
+
+  it("completes members of built-in uniforms and custom uniforms", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `float4 mainImage(float2 p)
+{
+    float2 uv = p / iResolution.
+    float3 shade = tint.
+    return float4(uv, 0.0, 1.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const labels = async (line: number) => (await service.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    })).map((item) => item.label);
+
+    expect(await labels(2)).toContain("xyz");
+    expect(await labels(3)).toContain("rgb");
+  });
+
+  it("offers no suggestions when the selected expression has no members", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `float4 mainImage(float2 p)
+{
+    float2 uv = p;
+    float t = uv.x;
+    missing.
+    t.
+    return float4(uv, t, 1.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = async (line: number) => service.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    });
+
+    expect(await completions(4)).toEqual([]);
+    expect(await completions(5)).toEqual([]);
   });
 
   it("does not show signature help inside comments", async () => {

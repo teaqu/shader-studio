@@ -18,7 +18,9 @@ import {
   VirtualFileSystem,
   createLiteralColorPresentations,
   findLiteralConstructorColors,
+  findMemberAccess,
   isPositionInComment,
+  swizzleSelections,
   type ColorPresentationParams,
   type DocumentParams,
   type DocumentPositionParams,
@@ -47,6 +49,8 @@ import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
 import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
+import { resolveSlangExpressionType } from "./expressionType.js";
+import { SLANG_SWIZZLE_SETS, slangVectorTypeName } from "./slangTypes.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -160,7 +164,14 @@ export class SlangLanguageService implements LanguageService {
       };
     });
     const items = new Map<string, CompletionItem>(official.map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
-    if (isMemberAccess(state.document.text, params.position)) {
+    const access = findMemberAccess(state.document.text, params.position);
+    if (access) {
+      for (const item of memberCompletions(access.expression, params.position, state.document.text, state.environment)) {
+        const key = `${item.label}:${item.detail ?? ""}`;
+        if (!items.has(key)) {
+          items.set(key, item);
+        }
+      }
       return [...items.values()];
     }
     const officialLabels = new Set(official.map((item) => item.label));
@@ -944,13 +955,57 @@ function wordAt(source: string, position: { line: number; character: number }): 
   return `${left}${right}` || undefined;
 }
 
-function isMemberAccess(source: string, position: { line: number; character: number }): boolean {
-  const line = source.split("\n")[position.line];
-  if (line === undefined || position.character < 0 || position.character > line.length) {
-    return false;
+/**
+ * Completions for a member selection such as `uv.`, listing the members of the selected
+ * expression only. An expression whose type cannot be resolved contributes nothing, so a
+ * selector never falls back to the full intrinsic and symbol list merged in by the caller.
+ */
+function memberCompletions(
+  expression: string,
+  position: { line: number; character: number },
+  source: string,
+  environment: ShaderAuthoringEnvironment,
+): CompletionItem[] {
+  const resolved = resolveSlangExpressionType({ source, position, expression }, {
+    includes: contextualFiles(environment).map((file) => file.text),
+    variableType: (name) => environmentTypeName(name, environment),
+    functionType: (name) => intrinsicReturnType(documentedSlangFunctions(environment).find((item) => item.name === name)?.signatures[0]),
+  });
+  if (!resolved) {
+    return [];
   }
-  const wordStart = position.character - (line.slice(0, position.character).match(/[A-Za-z0-9_]*$/)?.[0].length ?? 0);
-  return line[wordStart - 1] === ".";
+  const vector = resolved.vector;
+  if (vector) {
+    return swizzleSelections(vector.size, SLANG_SWIZZLE_SETS).map((selection) => ({
+      label: selection,
+      kind: CompletionItemKind.Field,
+      detail: selection.length === 1 ? vector.componentType : slangVectorTypeName(vector.componentType, selection.length),
+      documentation: { kind: MarkupKind.Markdown, value: `Component selection on \`${resolved.name}\`.` },
+    }));
+  }
+  return (resolved.fields ?? []).map((field) => ({
+    label: field.name,
+    kind: CompletionItemKind.Field,
+    detail: field.type,
+    documentation: { kind: MarkupKind.Markdown, value: `Field of \`${resolved.name}\`.` },
+  }));
+}
+
+/** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
+function environmentTypeName(name: string, environment: ShaderAuthoringEnvironment): string | undefined {
+  const uniform = environment.customUniforms.find((item) => item.name === name);
+  if (uniform) {
+    return slangType(uniform.type);
+  }
+  const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
+    && item.languages.includes("slang")
+    && (!item.stages || item.stages.includes(environment.stage)));
+  return documented?.slangType;
+}
+
+/** Leading type token of an intrinsic signature, such as `bool` in `bool all(T value)`. */
+function intrinsicReturnType(signature: string | undefined): string | undefined {
+  return signature === undefined ? undefined : /^\s*([A-Za-z_]\w*)\s+[A-Za-z_]/.exec(signature)?.[1];
 }
 
 interface SlangDeclaration {
