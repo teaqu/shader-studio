@@ -1038,6 +1038,34 @@ describe("parseGlslDocument", () => {
     });
   });
 
+  it("retains unresolved variable, function, and type references for language-service diagnostics", () => {
+    const source = [
+      "MissingType declaredValue;",
+      "void mainImage(out vec4 color, in vec2 position) {",
+      "  color = vec4(missingValue) + vec4(missingFunction(position.x));",
+      "}",
+    ].join("\n");
+    const document = parseGlslDocument("file:///unresolved.glsl", source, "fragment");
+
+    expect(document.unresolvedReferences).toEqual(expect.arrayContaining([
+      {
+        name: "MissingType",
+        kind: "type",
+        ranges: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 11 } }],
+      },
+      {
+        name: "missingValue",
+        kind: "variable",
+        ranges: [{ start: { line: 2, character: 15 }, end: { line: 2, character: 27 } }],
+      },
+      {
+        name: "missingFunction",
+        kind: "function",
+        ranges: [{ start: { line: 2, character: 36 }, end: { line: 2, character: 51 } }],
+      },
+    ]));
+  });
+
   it("reports preprocessing failures while retaining the raw-parser fallback", () => {
     const document = parseGlslDocument("file:///fallback.glsl", "#if\nfloat kept;\n", "compute");
 
@@ -1065,7 +1093,7 @@ describe("parseGlslDocument", () => {
   });
 
   it("returns a frozen document graph", () => {
-    const document = parseGlslDocument("file:///image.glsl", SOURCE, "fragment");
+    const document = parseGlslDocument("file:///image.glsl", `${SOURCE}\nvoid unresolved() { missingValue; }`, "fragment");
     const firstSymbol = document.symbols[0];
 
     expect(Object.isFrozen(document)).toBe(true);
@@ -1077,6 +1105,10 @@ describe("parseGlslDocument", () => {
     expect(Object.isFrozen(firstSymbol?.definition.start)).toBe(true);
     expect(Object.isFrozen(firstSymbol?.references)).toBe(true);
     expect(Object.isFrozen(document.scopes[0]?.symbolIds)).toBe(true);
+    expect(Object.isFrozen(document.unresolvedReferences)).toBe(true);
+    expect(Object.isFrozen(document.unresolvedReferences[0])).toBe(true);
+    expect(Object.isFrozen(document.unresolvedReferences[0]?.ranges)).toBe(true);
+    expect(Object.isFrozen(document.unresolvedReferences[0]?.ranges[0])).toBe(true);
     expect(() => (document.symbols as GlslSymbol[]).push(firstSymbol!)).toThrow();
   });
 

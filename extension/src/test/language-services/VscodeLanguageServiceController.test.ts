@@ -518,6 +518,21 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("publishes GLSL undefined-reference diagnostics in VS Code", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const document = await vscode.workspace.openTextDocument({
+      language: "glsl",
+      content: "void mainImage(out vec4 color, in vec2 p) { color = vec4(badName); }",
+    });
+    await vscode.window.showTextDocument(document);
+
+    const diagnostic = await waitForDiagnostic(document.uri, "Undefined identifier 'badName'");
+
+    assert.strictEqual(diagnostic.source, "shader-studio-glsl-ls");
+    assert.deepStrictEqual(diagnostic.range, new vscode.Range(0, 57, 0, 64));
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
   test("disables and re-enables a loaded Slang language service", async () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const configuration = vscode.workspace.getConfiguration("shader-studio");

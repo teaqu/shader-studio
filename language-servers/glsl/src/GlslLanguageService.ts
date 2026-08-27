@@ -282,6 +282,7 @@ export class GlslLanguageService implements LanguageService {
       code: item.code,
       message: item.message,
     }));
+    diagnostics.push(...unresolvedReferenceDiagnostics(state.analysis, state.environment, this.includeAnalyses));
     diagnostics.push(...includeDiagnostics(state.document.uri, state.document.text, this.files));
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
@@ -327,6 +328,50 @@ export class GlslLanguageService implements LanguageService {
     const analysis = this.analyses.get(params.document.uri);
     return document && environment && analysis ? { document, environment, analysis } : undefined;
   }
+}
+
+function unresolvedReferenceDiagnostics(
+  analysis: GlslAnalysisDocument,
+  environment: ShaderAuthoringEnvironment,
+  includeAnalyses: ReadonlyMap<string, readonly GlslAnalysisDocument[]>,
+): Diagnostic[] {
+  const knownNames = new Set<string>();
+  for (const symbol of (includeAnalyses.get(analysis.uri) ?? []).flatMap((included) => included.symbols)) {
+    knownNames.add(symbol.name);
+  }
+  for (const intrinsic of visibleIntrinsics(analysis.source, environment.stage)) {
+    knownNames.add(intrinsic.name);
+  }
+  for (const documentation of SHADER_STUDIO_SYMBOL_DOCS) {
+    if (
+      documentation.languages.includes("glsl")
+      && (!documentation.stages || documentation.stages.includes(environment.stage))
+    ) {
+      knownNames.add(documentation.name);
+    }
+  }
+  for (const uniform of environment.customUniforms) {
+    knownNames.add(uniform.name);
+  }
+  for (const resource of environment.resources) {
+    knownNames.add(resource.name);
+  }
+
+  return analysis.unresolvedReferences.flatMap((reference) => {
+    if (knownNames.has(reference.name)) {
+      return [];
+    }
+    const label = reference.kind === "function" ? "function"
+      : reference.kind === "type" ? "type"
+        : "identifier";
+    return reference.ranges.map((range): Diagnostic => ({
+      range,
+      severity: DiagnosticSeverity.Error,
+      source: "shader-studio-glsl-ls",
+      code: `undefined-${label}`,
+      message: `Undefined ${label} '${reference.name}'.`,
+    }));
+  });
 }
 
 function completionFromDoc(name: string, detail: string | undefined, description: string): CompletionItem {

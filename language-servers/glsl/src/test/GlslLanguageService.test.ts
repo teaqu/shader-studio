@@ -150,6 +150,54 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord
     expect(colors[0]?.color.green).toBe(0.25);
   });
 
+  it("reports unresolved GLSL symbols while accepting authoring, include, and stage built-ins", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      virtualFiles: [{
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: "float includedValue(float value) { return value; }",
+      }],
+    });
+    const text = `#include "common.glsl"
+void mainImage(out vec4 color, in vec2 position) {
+  color = texture(sky, position) + vec4(includedValue(tint.x + iResolution.x + gl_FragCoord.x + missingValue));
+  color += vec4(missingFunction(position.x));
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const diagnostics = await instance.diagnostics({ document: revision });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "undefined-identifier",
+        message: "Undefined identifier 'missingValue'.",
+        range: { start: { line: 2, character: 96 }, end: { line: 2, character: 108 } },
+      }),
+      expect.objectContaining({
+        code: "undefined-function",
+        message: "Undefined function 'missingFunction'.",
+        range: { start: { line: 3, character: 16 }, end: { line: 3, character: 31 } },
+      }),
+    ]));
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).not.toMatch(
+      /sky|includedValue|tint|iResolution|gl_FragCoord/,
+    );
+  });
+
+  it("reports built-ins that are unavailable in the current GLSL stage", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = "void mainImage(out vec4 color, in vec2 position) { color = vec4(gl_VertexID); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    await expect(instance.diagnostics({ document: revision })).resolves.toContainEqual(expect.objectContaining({
+      code: "undefined-identifier",
+      message: "Undefined identifier 'gl_VertexID'.",
+    }));
+  });
+
   it("completes and navigates into environment-provided includes", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({

@@ -31,6 +31,12 @@ export interface GlslParseDiagnostic {
   readonly severity: 1;
 }
 
+export interface GlslUnresolvedReference {
+  readonly name: string;
+  readonly kind: "variable" | "function" | "type";
+  readonly ranges: readonly Range[];
+}
+
 export interface GlslAnalysisDocument {
   readonly uri: string;
   readonly source: string;
@@ -40,6 +46,7 @@ export interface GlslAnalysisDocument {
   readonly symbols: readonly GlslSymbol[];
   readonly scopes: readonly GlslScope[];
   readonly diagnostics: readonly GlslParseDiagnostic[];
+  readonly unresolvedReferences: readonly GlslUnresolvedReference[];
   readonly originalToProcessed: readonly number[];
   readonly processedToOriginal: readonly number[];
 }

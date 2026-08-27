@@ -8,6 +8,7 @@ import type {
   GlslScope,
   GlslSymbol,
   GlslSymbolKind,
+  GlslUnresolvedReference,
 } from "./model.js";
 import { buildGlslLineMapping, mapProcessedLine } from "./sourceMap.js";
 
@@ -143,7 +144,7 @@ export function parseGlslDocument(
     ));
   }
 
-  const { symbols, scopes } = normalizeProgram(
+  const { symbols, scopes, unresolvedReferences } = normalizeProgram(
     parsed,
     originalLines,
     processedLines,
@@ -159,6 +160,7 @@ export function parseGlslDocument(
     symbols,
     scopes,
     diagnostics,
+    unresolvedReferences,
     originalToProcessed: [...lineMapping.originalToProcessed],
     processedToOriginal: [...lineMapping.processedToOriginal],
   });
@@ -232,7 +234,7 @@ function normalizeProgram(
   originalLines: readonly string[],
   processedLines: readonly string[],
   processedToOriginal: readonly number[],
-): { symbols: GlslSymbol[]; scopes: GlslScope[] } {
+): { symbols: GlslSymbol[]; scopes: GlslScope[]; unresolvedReferences: GlslUnresolvedReference[] } {
   const parserScopes = parsed.scopes ?? [];
   const metadata = new Map<number, DeclarationMetadata>();
   const fields: FieldMetadata[] = [];
@@ -266,8 +268,35 @@ function normalizeProgram(
 
   const globalScope = mutableScopes.find((scope) => scope.parentId === undefined) ?? mutableScopes[0];
   const symbols: GlslSymbol[] = [];
+  const unresolved = new Map<string, { name: string; kind: GlslUnresolvedReference["kind"]; ranges: Range[] }>();
   const characterMaps = new Map<string, readonly number[]>();
   let symbolSequence = 0;
+
+  const addUnresolved = (
+    name: string,
+    kind: GlslUnresolvedReference["kind"],
+    references: readonly ParserNode[],
+  ): void => {
+    const ranges = references
+      .map((reference) => identifierNode(reference, name)?.location)
+      .filter((location): location is ParserLocation => location !== undefined)
+      .map((location) => mapIdentifierLocation(
+        location,
+        name,
+        originalLines,
+        processedLines,
+        processedToOriginal,
+        characterMaps,
+      ))
+      .filter((range): range is Range => range !== undefined);
+    if (ranges.length === 0) {
+      return;
+    }
+    const key = `${kind}:${name}`;
+    const current = unresolved.get(key) ?? { name, kind, ranges: [] };
+    current.ranges.push(...ranges);
+    unresolved.set(key, current);
+  };
 
   const addSymbol = (
     scope: MutableScope,
@@ -338,6 +367,7 @@ function normalizeProgram(
     const scope = mutableScopes[scopeIndex];
     for (const [name, entry] of Object.entries(parserScope.bindings)) {
       if (!entry.declaration) {
+        addUnresolved(name, "variable", entry.references);
         continue;
       }
       const kind = entry.declaration.type === "parameter_declaration" ? "parameter" : "variable";
@@ -357,10 +387,16 @@ function normalizeProgram(
     for (const [name, entry] of Object.entries(parserScope.types)) {
       if (entry.declaration) {
         addSymbol(scope, name, "type", entry.declaration, entry.references, name);
+      } else {
+        addUnresolved(name, "type", entry.references);
       }
     }
 
     for (const [name, overloads] of Object.entries(parserScope.functions)) {
+      const unresolvedOverloads = Object.values(overloads).filter((definition) => !definition.declaration);
+      if (unresolvedOverloads.length > 0) {
+        addUnresolved(name, "function", unresolvedOverloads.flatMap((definition) => definition.references));
+      }
       const namedCalls = functionCalls.filter((call) => call.name === name);
       const callOffsets = new Set(namedCalls
         .map((call) => call.identifier.location?.start.offset)
@@ -439,6 +475,10 @@ function normalizeProgram(
 
   return {
     symbols,
+    unresolvedReferences: [...unresolved.values()].map((reference) => ({
+      ...reference,
+      ranges: deduplicateRanges(reference.ranges),
+    })),
     scopes: mutableScopes.map((scope) => ({
       ...scope,
       name: publicScopeName(scope.name),
@@ -1753,11 +1793,16 @@ function freezeDocument(document: GlslAnalysisDocument): GlslAnalysisDocument {
     ...diagnostic,
     range: freezeRange(diagnostic.range),
   }));
+  const unresolvedReferences = document.unresolvedReferences.map((reference) => Object.freeze({
+    ...reference,
+    ranges: Object.freeze(reference.ranges.map(freezeRange)),
+  }));
   return Object.freeze({
     ...document,
     symbols: Object.freeze(symbols),
     scopes: Object.freeze(scopes),
     diagnostics: Object.freeze(diagnostics),
+    unresolvedReferences: Object.freeze(unresolvedReferences),
     originalToProcessed: Object.freeze([...document.originalToProcessed]),
     processedToOriginal: Object.freeze([...document.processedToOriginal]),
   });
