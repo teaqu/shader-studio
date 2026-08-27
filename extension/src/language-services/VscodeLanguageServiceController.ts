@@ -14,6 +14,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
   private readonly opened: Record<ShaderLanguage, Set<string>> = { glsl: new Set(), slang: new Set() };
   private readonly diagnostics: Record<ShaderLanguage, vscode.DiagnosticCollection>;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly semanticTokensChanged = new vscode.EventEmitter<void>();
 
   constructor(
     private readonly factories: Record<ShaderLanguage, () => Promise<LanguageService>>,
@@ -26,7 +27,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
   }
 
   start(context: vscode.ExtensionContext): void {
-    this.disposables.push(this.diagnostics.glsl, this.diagnostics.slang);
+    this.disposables.push(this.diagnostics.glsl, this.diagnostics.slang, this.semanticTokensChanged);
     for (const language of ["glsl", "slang"] as const) {
       this.registerProviders(language);
     }
@@ -43,6 +44,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       void this.configurationChanged(event);
     }));
     this.disposables.push(onDidChangeCustomUniformSnapshot(() => {
+      this.semanticTokensChanged.fire();
       for (const document of vscode.workspace.textDocuments) {
         if (shaderLanguage(document)) {
           void this.change(document);
@@ -68,6 +70,23 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
 
   private registerProviders(language: ShaderLanguage): void {
     const selector: vscode.DocumentSelector = [{ language, scheme: "file" }, { language, scheme: "untitled" }];
+    const uniformSemanticLegend = new vscode.SemanticTokensLegend(["shaderUniform"], ["readonly"]);
+    this.disposables.push(vscode.languages.registerDocumentSemanticTokensProvider(selector, {
+      onDidChangeSemanticTokens: this.semanticTokensChanged.event,
+      provideDocumentSemanticTokens: (document) => {
+        const builder = new vscode.SemanticTokensBuilder(uniformSemanticLegend);
+        const environment = this.environments.environmentFor(document);
+        const names = environment?.customUniforms.map(({ name }) => name) ?? [];
+        for (const range of findUniformTokenRanges(document.getText(), names)) {
+          builder.push(
+            new vscode.Range(range.line, range.startCharacter, range.line, range.endCharacter),
+            "shaderUniform",
+            ["readonly"],
+          );
+        }
+        return builder.build();
+      },
+    }, uniformSemanticLegend));
     this.disposables.push(vscode.languages.registerCompletionItemProvider(selector, {
       provideCompletionItems: async (document, position) => (
         (await this.request(document, (service, revision) => service.completion({ document: revision, position }), [])).map(toCompletionItem)
@@ -294,6 +313,79 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       }
     }
   }
+}
+
+export interface UniformTokenRange {
+  line: number;
+  startCharacter: number;
+  endCharacter: number;
+}
+
+/** Finds exact uniform identifiers while preserving comment and string syntax colouring. */
+export function findUniformTokenRanges(source: string, uniformNames: readonly string[]): UniformTokenRange[] {
+  const names = new Set(uniformNames.filter((name) => /^[A-Za-z_]\w*$/.test(name)));
+  if (names.size === 0) {
+    return [];
+  }
+
+  const ranges: UniformTokenRange[] = [];
+  const lines = source.split("\n");
+  let inBlockComment = false;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    let character = 0;
+    while (character < line.length) {
+      if (inBlockComment) {
+        const commentEnd = line.indexOf("*/", character);
+        if (commentEnd < 0) {
+          break;
+        }
+        inBlockComment = false;
+        character = commentEnd + 2;
+        continue;
+      }
+      if (line.startsWith("//", character)) {
+        break;
+      }
+      if (line.startsWith("/*", character)) {
+        inBlockComment = true;
+        character += 2;
+        continue;
+      }
+
+      const value = line[character];
+      if (value === '"' || value === "'") {
+        const quote = value;
+        character += 1;
+        while (character < line.length) {
+          if (line[character] === "\\") {
+            character += 2;
+          } else if (line[character] === quote) {
+            character += 1;
+            break;
+          } else {
+            character += 1;
+          }
+        }
+        continue;
+      }
+
+      if (/[A-Za-z_]/.test(value)) {
+        const startCharacter = character;
+        character += 1;
+        while (character < line.length && /\w/.test(line[character])) {
+          character += 1;
+        }
+        if (names.has(line.slice(startCharacter, character))) {
+          ranges.push({ line: lineIndex, startCharacter, endCharacter: character });
+        }
+        continue;
+      }
+      character += 1;
+    }
+  }
+  return ranges;
 }
 
 export function isCurrentRevision(

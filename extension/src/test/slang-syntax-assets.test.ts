@@ -26,6 +26,8 @@ interface ExtensionManifest {
   contributes: {
     languages: LanguageContribution[];
     grammars: GrammarContribution[];
+    semanticTokenTypes: Array<{ id: string; superType?: string }>;
+    semanticTokenScopes: Array<{ scopes: Record<string, string[]> }>;
   };
 }
 
@@ -137,6 +139,17 @@ suite('Bundled Slang syntax assets', () => {
       scopeName: 'source.slang',
       path: './syntaxes/slang.tmLanguage.json',
     });
+  });
+
+  test('maps dynamic shader uniforms to the predefined-variable TextMate scope', () => {
+    const manifest = readJson<ExtensionManifest>('package.json');
+
+    assert.ok(manifest.contributes.semanticTokenTypes.some((token) => (
+      token.id === 'shaderUniform' && token.superType === 'variable'
+    )));
+    assert.ok(manifest.contributes.semanticTokenScopes.some((mapping) => (
+      mapping.scopes.shaderUniform?.includes('variable.language.uniform')
+    )));
   });
 
   test('orders all required top-level repositories for tokenization', () => {
@@ -367,7 +380,7 @@ void main() { shade(float2(0.)); }`,
     }
   });
 
-  test('keeps Shadertoy uniforms and member suffixes at the base scope', () => {
+  test('scopes Shadertoy uniforms like predefined variables while keeping members neutral', () => {
     for (const [grammar, language] of [
       [glslGrammar, 'GLSL'],
       [slangGrammar, 'Slang'],
@@ -378,12 +391,15 @@ void main() { shade(float2(0.)); }`,
       const [tokens] = tokenizeLines(source, grammar);
 
       assert.strictEqual(tokens.map((token) => token.text).join(''), source);
-      for (const token of tokens.filter((candidate) => candidate.text !== ';')) {
-        assert.deepStrictEqual(
-          token.scopes,
-          [`source.${language.toLowerCase()}`],
-          `${language} ${JSON.stringify(token.text)} must inherit the editor foreground`,
-        );
+      for (const uniform of ['iTime', 'iResolution', 'iMouse', 'iChannel0']) {
+        const token = tokens.find((candidate) => candidate.text === uniform);
+        assert.ok(token, `${language} ${uniform} must be emitted as one token`);
+        assert.ok(hasScope(token, 'variable.language.uniform'));
+      }
+      for (const member of ['.xy', '.x', '.y', '.rgba', '.stpq']) {
+        for (const token of tokens.filter((candidate) => candidate.text === member)) {
+          assert.deepStrictEqual(token.scopes, [`source.${language.toLowerCase()}`]);
+        }
       }
     }
   });

@@ -343,6 +343,7 @@
       "patterns": [
         {
           "comment": "Shadertoy built-in uniforms",
+          "name": "variable.language.uniform.glsl",
           "match": "\\b(iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iChannelTime|iChannelResolution|iMouse|iDate|iSampleRate|iChannel[0-9])\\b"
         },
         {

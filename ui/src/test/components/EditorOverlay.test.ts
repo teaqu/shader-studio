@@ -31,6 +31,10 @@ const defaultProps = {
   transport: mockTransport,
 };
 
+interface TestDecoration {
+  options: { inlineClassName?: string };
+}
+
 /** Helper: get the latest mock editor instance created by monaco.editor.create */
 async function getLatestMockEditor() {
   const monaco = await import('monaco-editor');
@@ -81,7 +85,7 @@ function createMockEditorWithCallbacks() {
     onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
     getOption: vi.fn(() => 0),
     getModel: vi.fn(() => model),
-    deltaDecorations: vi.fn(() => []),
+    deltaDecorations: vi.fn((_oldDecorations: string[], _newDecorations: TestDecoration[]): string[] => []),
     getVisibleRanges: vi.fn(() => []),
     getAction: vi.fn(() => ({ run: vi.fn() })),
     trigger: vi.fn(),
@@ -167,6 +171,117 @@ describe('EditorOverlay', () => {
 
       await rerender({ ...defaultProps, isVisible: true });
       expect(secondEditor.restoreViewState).toHaveBeenCalledWith(savedViewState);
+    });
+  });
+
+  describe('custom uniform highlighting', () => {
+    it.each([
+      { language: 'GLSL', shaderPath: '/test.glsl', shaderCode: 'vec3 color = uTint;' },
+      { language: 'Slang', shaderPath: '/test.slang', shaderCode: 'float3 color = uTint;' },
+    ])('highlights custom uniforms in $language', async ({ shaderPath, shaderCode }) => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `custom-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath,
+          shaderCode,
+          customUniformInfo: [{ name: 'uTint', type: 'vec3' }],
+        },
+      });
+      await tick();
+
+      const startColumn = shaderCode.indexOf('uTint') + 1;
+      const highlightCall = mockEditor.deltaDecorations.mock.calls.find(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+      ));
+      expect(highlightCall?.[1]).toEqual([
+        expect.objectContaining({
+          range: expect.objectContaining({
+            startLineNumber: 1,
+            startColumn,
+            endLineNumber: 1,
+            endColumn: startColumn + 'uTint'.length,
+          }),
+          options: expect.objectContaining({ inlineClassName: 'custom-uniform-token' }),
+        }),
+      ]);
+    });
+
+    it('replaces stale custom uniform decorations when uniform metadata changes', async () => {
+      const monaco = await import('monaco-editor');
+      const shaderCode = 'float value = uFirst + uSecond;';
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `custom-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const { rerender } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode,
+          customUniformInfo: [{ name: 'uFirst', type: 'float' }],
+        },
+      });
+      await tick();
+      await rerender({
+        ...defaultProps,
+        shaderCode,
+        customUniformInfo: [{ name: 'uSecond', type: 'float' }],
+      });
+
+      const highlightCalls = mockEditor.deltaDecorations.mock.calls.filter(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+      ));
+      const latestCall = highlightCalls.at(-1);
+      expect(latestCall?.[0]).toEqual(['custom-uniform-0']);
+      expect(latestCall?.[1]).toEqual([
+        expect.objectContaining({
+          range: expect.objectContaining({ startColumn: 24, endColumn: 31 }),
+        }),
+      ]);
+    });
+
+    it('refreshes highlights after edits without colouring comments, strings, or longer identifiers', async () => {
+      const monaco = await import('monaco-editor');
+      const initialCode = [
+        'float value = uTint; // uTint',
+        '/* uTint */ float uTintExtra = 0.0;',
+        'const char* label = "uTint";',
+      ].join('\n');
+      const editedCode = `${initialCode}\nvalue += uTint;`;
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(initialCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `custom-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode: initialCode,
+          customUniformInfo: [{ name: 'uTint', type: 'float' }],
+        },
+      });
+      await tick();
+
+      mockEditor.getValue.mockReturnValue(editedCode);
+      getContentChangeCallback()?.();
+
+      const highlightCalls = mockEditor.deltaDecorations.mock.calls.filter(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+      ));
+      expect(highlightCalls[0]?.[1]).toHaveLength(1);
+      expect(highlightCalls.at(-1)?.[1]).toHaveLength(2);
     });
   });
 

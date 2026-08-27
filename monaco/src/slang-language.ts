@@ -201,7 +201,7 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       }],
       [/[a-zA-Z_]\w*/, {
         cases: {
-          '@shadertoyUniforms': 'identifier',
+          '@shadertoyUniforms': 'variable.predefined',
           '@types': 'type',
           '@modifiers': 'keyword.modifier',
           '@constants': 'keyword',

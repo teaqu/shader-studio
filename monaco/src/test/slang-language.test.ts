@@ -346,9 +346,9 @@ describe('Slang Monarch language', () => {
       expect.soft(tokenAt(3, 'shade'), `${language} function call`)
         .toBe(expectedTypes[language].function);
       expect.soft(tokenAt(3, 'iTime'), `${language} iTime`)
-        .toBe(expectedTypes[language].identifier);
+        .toBe(`variable.predefined.${language}`);
       expect.soft(tokenAt(3, 'iResolution'), `${language} iResolution`)
-        .toBe(expectedTypes[language].identifier);
+        .toBe(`variable.predefined.${language}`);
       expect.soft(tokenAt(3, '.xy'), `${language} .xy`)
         .toBe(expectedTypes[language].identifier);
       expect.soft(tokenAt(3, '.rgba'), `${language} .rgba`)
@@ -399,7 +399,7 @@ describe('Slang Monarch language', () => {
     for (const [line, text] of [[6, 'gl_FragCoord']] as const) {
       expect.soft(tokenAt(line, text), text).toBe('variable.predefined.glsl');
     }
-    expect.soft(tokenAt(8, 'iChannel9'), 'iChannel9').toBe('identifier.glsl');
+    expect.soft(tokenAt(8, 'iChannel9'), 'iChannel9').toBe('variable.predefined.glsl');
     for (const [line, text] of [
       [5, 'main'],
       [7, 'imageStore'],
@@ -420,7 +420,7 @@ describe('Slang Monarch language', () => {
 
     expect(types.filter((type) => type === 'type.slang')).toHaveLength(2);
     expect(types.filter((type) => type === 'support.function.slang')).toHaveLength(4);
-    expect(iTimeToken?.type).toBe('identifier.slang');
+    expect(iTimeToken?.type).toBe('variable.predefined.slang');
     expect(types.filter((type) => type === 'keyword.slang')).toHaveLength(2);
   });
 

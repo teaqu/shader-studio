@@ -128,7 +128,7 @@ export const glslLanguageDefinition = {
       }],
       [/[a-zA-Z_]\w*/, {
         cases: {
-          '@shadertoyUniforms': 'identifier',
+          '@shadertoyUniforms': 'variable.predefined',
           '@predefinedVariables': 'variable.predefined',
           '@builtins': 'support.function',
           '@types': 'type',

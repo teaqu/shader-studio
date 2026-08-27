@@ -247,6 +247,22 @@
         "path": "./syntaxes/slang.tmLanguage.json"
       }
     ],
+    "semanticTokenTypes": [
+      {
+        "id": "shaderUniform",
+        "superType": "variable",
+        "description": "A Shader Studio built-in or custom uniform"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "scopes": {
+          "shaderUniform": [
+            "variable.language.uniform"
+          ]
+        }
+      }
+    ],
     "jsonValidation": [
       {
         "fileMatch": "*.sha.json",

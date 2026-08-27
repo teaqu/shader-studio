@@ -76,6 +76,7 @@
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  let customUniformDecorationIds: string[] = [];
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -168,6 +169,91 @@
 
   function handleContainerMouseDown() {
     focusMonacoTextInput();
+  }
+
+  function customUniformDecorations(
+    source: string,
+    uniformNames: string[],
+  ): monaco.editor.IModelDeltaDecoration[] {
+    const names = new Set(uniformNames.filter((name) => /^[A-Za-z_]\w*$/.test(name)));
+    if (names.size === 0) {
+      return [];
+    }
+
+    const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+    const lines = source.split("\n");
+    let inBlockComment = false;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      let column = 0;
+      while (column < line.length) {
+        if (inBlockComment) {
+          const commentEnd = line.indexOf("*/", column);
+          if (commentEnd < 0) {
+            break;
+          }
+          inBlockComment = false;
+          column = commentEnd + 2;
+          continue;
+        }
+
+        if (line.startsWith("//", column)) {
+          break;
+        }
+        if (line.startsWith("/*", column)) {
+          inBlockComment = true;
+          column += 2;
+          continue;
+        }
+
+        const character = line[column];
+        if (character === '"' || character === "'") {
+          const quote = character;
+          column += 1;
+          while (column < line.length) {
+            if (line[column] === "\\") {
+              column += 2;
+            } else if (line[column] === quote) {
+              column += 1;
+              break;
+            } else {
+              column += 1;
+            }
+          }
+          continue;
+        }
+
+        if (/[A-Za-z_]/.test(character)) {
+          const start = column;
+          column += 1;
+          while (column < line.length && /\w/.test(line[column])) {
+            column += 1;
+          }
+          if (names.has(line.slice(start, column))) {
+            decorations.push({
+              range: new monaco.Range(lineIndex + 1, start + 1, lineIndex + 1, column + 1),
+              options: { inlineClassName: "custom-uniform-token" },
+            });
+          }
+          continue;
+        }
+        column += 1;
+      }
+    }
+
+    return decorations;
+  }
+
+  function updateCustomUniformDecorations(uniforms: { name: string }[]) {
+    if (!editor) {
+      return;
+    }
+    const language = languageForShaderPath(shaderPath);
+    const decorations = language === "glsl" || language === "slang"
+      ? customUniformDecorations(editor.getValue(), uniforms.map(({ name }) => name))
+      : [];
+    customUniformDecorationIds = editor.deltaDecorations(customUniformDecorationIds, decorations);
   }
 
   function handleOverlaySave() {
@@ -468,6 +554,7 @@
         return;
       }
       updateBlankLineDecorations();
+      updateCustomUniformDecorations(customUniformInfo);
       // Marker lines are clamped to the model's line count. If errors arrive
       // while the model is still empty every marker collapses to line 0, which
       // Monaco discards, and nothing recomputes them once the content lands.
@@ -527,6 +614,7 @@
     editor.focus();
     requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
+    updateCustomUniformDecorations(customUniformInfo);
     updateErrorMarkers(errors);
     editorReady = true;
   }
@@ -555,6 +643,8 @@
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
     }
     if (editor) {
+      editor.deltaDecorations(customUniformDecorationIds, []);
+      customUniformDecorationIds = [];
       if (shaderPath) {
         savedViewStates.set(shaderPath, editor.saveViewState());
       }
@@ -601,6 +691,14 @@
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
         : [],
     });
+  });
+
+  $effect(() => {
+    const uniforms = customUniformInfo;
+    const ready = editorReady;
+    if (ready && editor) {
+      updateCustomUniformDecorations(uniforms);
+    }
   });
 
   $effect(() => {
@@ -926,6 +1024,10 @@
   /* Selection styling */
   .editor-overlay :global(.monaco-editor .selected-text) {
     background: rgba(255, 255, 255, 0.3) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .custom-uniform-token) {
+    color: #50f5ff !important;
   }
 
   /* Hide scrollbars */

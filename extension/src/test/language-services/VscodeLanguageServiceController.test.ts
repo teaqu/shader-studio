@@ -5,7 +5,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { DocumentRevision } from "@shader-studio/language-server-core";
 import { Messenger } from "../../app/transport/Messenger";
-import { isCurrentRevision } from "../../language-services/VscodeLanguageServiceController";
+import {
+  findUniformTokenRanges,
+  isCurrentRevision,
+} from "../../language-services/VscodeLanguageServiceController";
 import {
   ShaderAuthoringEnvironmentProvider,
   clearLoadedShaderProjectSnapshots,
@@ -26,6 +29,20 @@ suite("VS Code language-service revisions", () => {
     assert.strictEqual(isCurrentRevision({ ...document, version: 5 }, 7, revision), false);
     assert.strictEqual(isCurrentRevision(document, 8, revision), false);
     assert.strictEqual(isCurrentRevision({ ...document, uri: vscode.Uri.file("/workspace/other.glsl") }, 7, revision), false);
+  });
+
+  test("finds exact custom uniform references outside comments and strings", () => {
+    const source = [
+      "float value = uTint; // uTint",
+      "/* uTint */ float uTintExtra = 0.0;",
+      "float next = uTint;",
+      'const char* label = "uTint";',
+    ].join("\n");
+
+    assert.deepStrictEqual(findUniformTokenRanges(source, ["uTint"]), [
+      { line: 0, startCharacter: 14, endCharacter: 19 },
+      { line: 2, startCharacter: 13, endCharacter: 18 },
+    ]);
   });
 
   test("opens imported Slang modules as virtual authoring files", async () => {
