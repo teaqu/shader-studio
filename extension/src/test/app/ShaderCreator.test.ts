@@ -203,6 +203,10 @@ suite('ShaderCreator Test Suite', () => {
     const content = fs.readFileSync(filePath, 'utf-8');
     assert.ok(content.includes('void mainImage'));
     assert.ok(content.includes('fragColor'));
+    // Operators are spaced the same way as the Slang template
+    assert.ok(content.includes('vec2 uv = fragCoord / iResolution.xy;'));
+    assert.ok(content.includes('vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));'));
+    assert.ok(content.includes('fragColor = vec4(col, 1.0);'));
 
     // Clean up
     try {
