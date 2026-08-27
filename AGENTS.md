@@ -77,6 +77,8 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 ## Conventions
 
+- Never add `Co-Authored-By` trailers or any other AI-generated attribution to
+  commits or pull requests. This repository is not an AI billboard.
 - Treat `.gitignore` as authoritative. Never force-add an ignored file with
   `git add -f` (including generated artifacts and workflow planning/spec files)
   unless the user explicitly asks for that exact ignored file to be tracked.
