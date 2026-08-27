@@ -107,6 +107,39 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
         (await this.request(document, (service, revision) => service.documentSymbols({ document: revision }), [])).map(toDocumentSymbol)
       ),
     }));
+    this.disposables.push(vscode.languages.registerReferenceProvider(selector, {
+      provideReferences: async (document, position, context) => (
+        (await this.request(document, (service, revision) => service.references({
+          document: revision,
+          position,
+          includeDeclaration: context.includeDeclaration,
+        }), [])).map((location) => new vscode.Location(vscode.Uri.parse(location.uri), toVsRange(location.range)))
+      ),
+    }));
+    this.disposables.push(vscode.languages.registerDocumentHighlightProvider(selector, {
+      provideDocumentHighlights: async (document, position) => (
+        (await this.request(document, (service, revision) => service.documentHighlights({ document: revision, position }), []))
+          .map((highlight) => new vscode.DocumentHighlight(toVsRange(highlight.range), toHighlightKind(highlight.kind)))
+      ),
+    }));
+    this.disposables.push(vscode.languages.registerRenameProvider(selector, {
+      provideRenameEdits: async (document, position, newName) => {
+        const result = await this.request(
+          document,
+          (service, revision) => service.rename({ document: revision, position, newName }),
+          null,
+        );
+        const edits = result?.changes?.[document.uri.toString()] ?? [];
+        if (edits.length === 0) {
+          return null;
+        }
+        const workspaceEdit = new vscode.WorkspaceEdit();
+        for (const edit of edits) {
+          workspaceEdit.replace(document.uri, toVsRange(edit.range), edit.newText);
+        }
+        return workspaceEdit;
+      },
+    }));
     this.disposables.push(vscode.languages.registerColorProvider(selector, {
       provideDocumentColors: async (document) => {
         if (!colorDecoratorsEnabled()) {
@@ -324,6 +357,13 @@ function toMarkdown(value: unknown): vscode.MarkdownString | undefined {
   }
   return new vscode.MarkdownString(String(value));
 }
+/** LSP highlight kinds are Text=1, Read=2, Write=3. */
+function toHighlightKind(kind: number | undefined): vscode.DocumentHighlightKind {
+  return kind === 3 ? vscode.DocumentHighlightKind.Write
+    : kind === 2 ? vscode.DocumentHighlightKind.Read
+      : vscode.DocumentHighlightKind.Text;
+}
+
 function toSeverity(value: number | undefined): vscode.DiagnosticSeverity {
   return value === 2 ? vscode.DiagnosticSeverity.Warning : value === 3 ? vscode.DiagnosticSeverity.Information : value === 4 ? vscode.DiagnosticSeverity.Hint : vscode.DiagnosticSeverity.Error;
 }

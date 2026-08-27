@@ -102,6 +102,15 @@ export class WorkerLanguageServiceProxy implements LanguageService {
   documentSymbols(params: Parameters<LanguageService["documentSymbols"]>[0]) {
     return this.client.request<Awaited<ReturnType<LanguageService["documentSymbols"]>>>("documentSymbols", params);
   }
+  references(params: Parameters<LanguageService["references"]>[0]) {
+    return this.client.request<Awaited<ReturnType<LanguageService["references"]>>>("references", params);
+  }
+  documentHighlights(params: Parameters<LanguageService["documentHighlights"]>[0]) {
+    return this.client.request<Awaited<ReturnType<LanguageService["documentHighlights"]>>>("documentHighlights", params);
+  }
+  rename(params: Parameters<LanguageService["rename"]>[0]) {
+    return this.client.request<Awaited<ReturnType<LanguageService["rename"]>>>("rename", params);
+  }
   diagnostics(params: Parameters<LanguageService["diagnostics"]>[0]) {
     return this.client.request<Awaited<ReturnType<LanguageService["diagnostics"]>>>("diagnostics", params);
   }
@@ -151,6 +160,9 @@ async function invoke(service: LanguageService, method: WorkerMethod, params: un
     case "definition": return service.definition(params as Parameters<LanguageService["definition"]>[0]);
     case "signatureHelp": return service.signatureHelp(params as Parameters<LanguageService["signatureHelp"]>[0]);
     case "documentSymbols": return service.documentSymbols(params as Parameters<LanguageService["documentSymbols"]>[0]);
+    case "references": return service.references(params as Parameters<LanguageService["references"]>[0]);
+    case "documentHighlights": return service.documentHighlights(params as Parameters<LanguageService["documentHighlights"]>[0]);
+    case "rename": return service.rename(params as Parameters<LanguageService["rename"]>[0]);
     case "diagnostics": return service.diagnostics(params as Parameters<LanguageService["diagnostics"]>[0]);
     case "documentColors": return service.documentColors(params as Parameters<LanguageService["documentColors"]>[0]);
     case "colorPresentations": return service.colorPresentations(params as Parameters<LanguageService["colorPresentations"]>[0]);
@@ -171,6 +183,7 @@ function responseFor(
 
 function isAnalysisMethod(method: WorkerMethod): method is DocumentAnalysisMethod {
   return new Set<WorkerMethod>([
-    "completion", "hover", "definition", "signatureHelp", "documentSymbols", "diagnostics", "documentColors", "colorPresentations",
+    "completion", "hover", "definition", "signatureHelp", "documentSymbols", "references",
+    "documentHighlights", "rename", "diagnostics", "documentColors", "colorPresentations",
   ]).has(method);
 }

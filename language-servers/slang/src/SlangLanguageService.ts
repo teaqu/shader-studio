@@ -5,11 +5,13 @@ import {
   SymbolKind,
   type CompletionItem,
   type Diagnostic,
+  type DocumentHighlight,
   type DocumentSymbol,
   type Hover,
   type Location,
   type Range,
   type SignatureHelp,
+  type WorkspaceEdit,
 } from "vscode-languageserver-protocol";
 import {
   DocumentStore,
@@ -54,6 +56,11 @@ const CAPABILITIES: ServerCapabilities = {
   documentSymbols: true,
   diagnostics: true,
   documentColors: true,
+  // The bundled Slang language server exposes no reference index, so these
+  // stay unsupported rather than answering from a name match.
+  references: false,
+  documentHighlights: false,
+  rename: false,
 };
 
 export class SlangLanguageService implements LanguageService {
@@ -386,6 +393,18 @@ export class SlangLanguageService implements LanguageService {
       range: item.range,
       selectionRange: item.selectionRange,
     }));
+  }
+
+  async references(): Promise<Location[]> {
+    return [];
+  }
+
+  async documentHighlights(): Promise<DocumentHighlight[]> {
+    return [];
+  }
+
+  async rename(): Promise<WorkspaceEdit | null> {
+    return null;
   }
 
   async diagnostics(params: DocumentParams): Promise<Diagnostic[]> {

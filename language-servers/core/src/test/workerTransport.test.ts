@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LanguageService } from "../protocol";
+import { isWorkerMessage, type LanguageService } from "../protocol";
 import { runLanguageServiceWorker, WorkerLanguageServiceClient, type WorkerPort } from "../workerTransport";
 
 function linkedPorts(): [WorkerPort, WorkerPort] {
@@ -49,6 +49,41 @@ describe("worker transport", () => {
     expect(service.completion).toHaveBeenCalledWith(params);
     client.dispose();
     stop();
+  });
+
+  it.each([
+    ["references", { includeDeclaration: true }, [{ uri: "file:///a.glsl", range: { start: { line: 1, character: 2 }, end: { line: 1, character: 5 } } }]],
+    ["documentHighlights", {}, [{ range: { start: { line: 1, character: 2 }, end: { line: 1, character: 5 } }, kind: 2 }]],
+    ["rename", { newName: "shade" }, { changes: { "file:///a.glsl": [{ range: { start: { line: 1, character: 2 }, end: { line: 1, character: 5 } }, newText: "shade" }] } }],
+  ])("routes %s as a revision-carrying analysis method", async (method, extra, result) => {
+    const [clientPort, serverPort] = linkedPorts();
+    const handler = vi.fn().mockResolvedValue(result);
+    const service = { [method]: handler } as unknown as LanguageService;
+    const stop = runLanguageServiceWorker(serverPort, service);
+    const client = new WorkerLanguageServiceClient(clientPort);
+    const document = { uri: "file:///a.glsl", languageId: "glsl" as const, version: 2, environmentGeneration: 3 };
+    const params = { document, position: { line: 1, character: 3 }, ...extra };
+    const responses: unknown[] = [];
+    clientPort.addEventListener("message", ({ data }) => responses.push(data));
+
+    await expect(client.request(method as never, params)).resolves.toEqual(result);
+    expect(handler).toHaveBeenCalledWith(params);
+    expect(responses).toContainEqual(expect.objectContaining({ kind: "response", method, revision: document }));
+
+    client.dispose();
+    stop();
+  });
+
+  it("rejects a new analysis request that carries no document revision", () => {
+    for (const method of ["references", "documentHighlights", "rename"]) {
+      expect(isWorkerMessage({ kind: "request", id: 1, method, params: {} })).toBe(false);
+      expect(isWorkerMessage({
+        kind: "request",
+        id: 1,
+        method,
+        params: { document: { uri: "file:///a.glsl", languageId: "glsl", version: 1, environmentGeneration: 1 } },
+      })).toBe(true);
+    }
   });
 
   it("rejects pending work when disposed", async () => {

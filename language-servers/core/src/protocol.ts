@@ -4,12 +4,14 @@ import type {
   ColorPresentation,
   CompletionItem,
   Diagnostic,
+  DocumentHighlight,
   DocumentSymbol,
   Hover,
   Location,
   Position,
   Range,
   SignatureHelp,
+  WorkspaceEdit,
 } from "vscode-languageserver-protocol";
 
 export type ShaderLanguage = "glsl" | "slang";
@@ -37,6 +39,14 @@ export interface DocumentPositionParams {
   position: Position;
 }
 
+export interface ReferenceParams extends DocumentPositionParams {
+  includeDeclaration: boolean;
+}
+
+export interface RenameParams extends DocumentPositionParams {
+  newName: string;
+}
+
 export interface ColorPresentationParams {
   document: DocumentRevision;
   color: Color;
@@ -51,6 +61,9 @@ export interface ServerCapabilities {
   documentSymbols: boolean;
   diagnostics: boolean;
   documentColors: boolean;
+  references: boolean;
+  documentHighlights: boolean;
+  rename: boolean;
 }
 
 export interface LanguageService {
@@ -64,6 +77,9 @@ export interface LanguageService {
   definition(params: DocumentPositionParams): Promise<Location[]>;
   signatureHelp(params: DocumentPositionParams): Promise<SignatureHelp | null>;
   documentSymbols(params: DocumentParams): Promise<DocumentSymbol[]>;
+  references(params: ReferenceParams): Promise<Location[]>;
+  documentHighlights(params: DocumentPositionParams): Promise<DocumentHighlight[]>;
+  rename(params: RenameParams): Promise<WorkspaceEdit | null>;
   diagnostics(params: DocumentParams): Promise<Diagnostic[]>;
   documentColors(params: DocumentParams): Promise<ColorInformation[]>;
   colorPresentations(params: ColorPresentationParams): Promise<ColorPresentation[]>;
@@ -77,6 +93,9 @@ export type DocumentAnalysisMethod =
   | "definition"
   | "signatureHelp"
   | "documentSymbols"
+  | "references"
+  | "documentHighlights"
+  | "rename"
   | "diagnostics"
   | "documentColors"
   | "colorPresentations";
@@ -140,6 +159,9 @@ const DOCUMENT_ANALYSIS_METHODS = new Set<DocumentAnalysisMethod>([
   "definition",
   "signatureHelp",
   "documentSymbols",
+  "references",
+  "documentHighlights",
+  "rename",
   "diagnostics",
   "documentColors",
   "colorPresentations",

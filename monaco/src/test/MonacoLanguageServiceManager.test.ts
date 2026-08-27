@@ -18,6 +18,9 @@ function monacoFixture() {
     registerDefinitionProvider: vi.fn(() => disposable()),
     registerSignatureHelpProvider: vi.fn(() => disposable()),
     registerDocumentSymbolProvider: vi.fn(() => disposable()),
+    registerReferenceProvider: vi.fn(() => disposable()),
+    registerDocumentHighlightProvider: vi.fn(() => disposable()),
+    registerRenameProvider: vi.fn(() => disposable()),
     registerColorProvider: vi.fn(() => disposable()),
   };
   const models = [model];
@@ -72,7 +75,7 @@ describe("MonacoLanguageServiceManager", () => {
   it("registers every provider for GLSL and Slang", () => {
     const { monaco, languages } = monacoFixture();
     new MonacoLanguageServiceManager(monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture() });
-    for (const method of ["registerCompletionItemProvider", "registerHoverProvider", "registerDefinitionProvider", "registerSignatureHelpProvider", "registerDocumentSymbolProvider", "registerColorProvider"] as const) {
+    for (const method of ["registerCompletionItemProvider", "registerHoverProvider", "registerDefinitionProvider", "registerSignatureHelpProvider", "registerDocumentSymbolProvider", "registerReferenceProvider", "registerDocumentHighlightProvider", "registerRenameProvider", "registerColorProvider"] as const) {
       expect(languages[method]).toHaveBeenCalledTimes(2);
     }
   });

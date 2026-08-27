@@ -1,15 +1,19 @@
 import {
   CompletionItemKind,
   DiagnosticSeverity,
+  DocumentHighlightKind,
   MarkupKind,
   SymbolKind,
   type CompletionItem,
   type Diagnostic,
+  type DocumentHighlight,
   type DocumentSymbol,
   type Hover,
   type Location,
   type Position,
+  type Range,
   type SignatureHelp,
+  type WorkspaceEdit,
 } from "vscode-languageserver-protocol";
 import {
   DocumentStore,
@@ -21,16 +25,26 @@ import {
   type DocumentParams,
   type DocumentPositionParams,
   type LanguageService,
+  type ReferenceParams,
+  type RenameParams,
   type ServerCapabilities,
   type ShaderDocumentSnapshot,
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildGlslAuthoringPreamble,
+  isShaderLanguageReservedTerm,
+  isValidShaderIdentifier,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
-import { parseGlslDocument, symbolAtPosition, type GlslAnalysisDocument, type GlslSymbol } from "@shader-studio/glsl-analysis";
+import {
+  parseGlslDocument,
+  symbolAtPosition,
+  visibleSymbolsAtPosition,
+  type GlslAnalysisDocument,
+  type GlslSymbol,
+} from "@shader-studio/glsl-analysis";
 import { GLSL_INTRINSICS, findGlslIntrinsics } from "./intrinsics.js";
 import { GLSL_VERTEX_HOOK_FEATURES, type GlslVertexHookFeature } from "./vertexHook.js";
 import {
@@ -47,6 +61,9 @@ const CAPABILITIES: ServerCapabilities = {
   documentSymbols: true,
   diagnostics: true,
   documentColors: true,
+  references: true,
+  documentHighlights: true,
+  rename: true,
 };
 
 export class GlslLanguageService implements LanguageService {
@@ -105,7 +122,7 @@ export class GlslLanguageService implements LanguageService {
       return [];
     }
     const items = new Map<string, CompletionItem>();
-    for (const symbol of state.analysis.symbols) {
+    for (const symbol of visibleSymbolsAtPosition(state.analysis, params.position)) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, symbol) : undefined;
       const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(state.analysis, symbol) : undefined;
       const hook = vertexHook ?? fragmentHook;
@@ -169,6 +186,7 @@ export class GlslLanguageService implements LanguageService {
       return null;
     }
     const userSymbol = symbolAtPosition(state.analysis, params.position)
+      ?? visibleSymbolsAtPosition(state.analysis, params.position).find((symbol) => symbol.name === word)
       ?? state.analysis.symbols.find((symbol) => symbol.name === word);
     if (userSymbol) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, userSymbol) : undefined;
@@ -213,6 +231,7 @@ export class GlslLanguageService implements LanguageService {
     }
     const name = wordAt(state.document.text, params.position);
     const symbol = symbolAtPosition(state.analysis, params.position)
+      ?? visibleSymbolsAtPosition(state.analysis, params.position).find((candidate) => candidate.name === name)
       ?? state.analysis.symbols.find((candidate) => candidate.name === name);
     if (symbol) {
       return [{ uri: params.document.uri, range: symbol.declaration }];
@@ -270,6 +289,43 @@ export class GlslLanguageService implements LanguageService {
       }));
   }
 
+  async references(params: ReferenceParams): Promise<Location[]> {
+    const state = this.current(params);
+    const symbol = state ? symbolAtPosition(state.analysis, params.position) : null;
+    if (!symbol) {
+      return [];
+    }
+    const ranges = params.includeDeclaration
+      ? [symbol.declaration, ...symbol.references]
+      : symbol.references;
+    return orderedRanges(ranges).map((range) => ({ uri: params.document.uri, range }));
+  }
+
+  async documentHighlights(params: DocumentPositionParams): Promise<DocumentHighlight[]> {
+    const state = this.current(params);
+    const symbol = state ? symbolAtPosition(state.analysis, params.position) : null;
+    if (!symbol) {
+      return [];
+    }
+    return [
+      { range: symbol.declaration, kind: DocumentHighlightKind.Write },
+      ...orderedRanges(symbol.references).map((range) => ({ range, kind: DocumentHighlightKind.Read })),
+    ];
+  }
+
+  async rename(params: RenameParams): Promise<WorkspaceEdit | null> {
+    const state = this.current(params);
+    // symbolAtPosition only resolves symbols declared in this document, so
+    // include-provided and built-in names decline instead of renaming by name.
+    const symbol = state ? symbolAtPosition(state.analysis, params.position) : null;
+    if (!state || !symbol || !isRenameableName(params.newName) || this.nameIsTaken(state, params)) {
+      return null;
+    }
+    const edits = orderedRanges([symbol.declaration, ...symbol.references])
+      .map((range) => ({ range, newText: params.newName }));
+    return { changes: { [params.document.uri]: edits } };
+  }
+
   async diagnostics(params: DocumentParams): Promise<Diagnostic[]> {
     const state = this.current(params);
     if (!state) {
@@ -306,6 +362,20 @@ export class GlslLanguageService implements LanguageService {
   async dispose(): Promise<void> {
     this.analyses.clear();
     this.includeAnalyses.clear();
+  }
+
+  private nameIsTaken(
+    state: NonNullable<ReturnType<GlslLanguageService["current"]>>,
+    params: RenameParams,
+  ): boolean {
+    const { newName } = params;
+    return visibleSymbolsAtPosition(state.analysis, params.position).some((item) => item.name === newName)
+      || state.environment.customUniforms.some((item) => item.name === newName)
+      || state.environment.resources.some((item) => item.name === newName)
+      || SHADER_STUDIO_SYMBOL_DOCS.some((item) => item.languages.includes("glsl") && item.name === newName)
+      || visibleIntrinsics(state.document.text, state.environment.stage).some((item) => item.name === newName)
+      || (this.includeAnalyses.get(params.document.uri) ?? [])
+        .some((analysis) => analysis.symbols.some((item) => item.name === newName));
   }
 
   private rebuild(uri: string): void {
@@ -372,6 +442,22 @@ function unresolvedReferenceDiagnostics(
       message: `Undefined ${label} '${reference.name}'.`,
     }));
   });
+}
+
+function isRenameableName(name: string): boolean {
+  return isValidShaderIdentifier(name) && !isShaderLanguageReservedTerm("glsl", name);
+}
+
+/** Sorts ranges by position and drops duplicates so edits never overlap. */
+function orderedRanges(ranges: readonly Range[]): Range[] {
+  const unique = new Map<string, Range>();
+  for (const range of ranges) {
+    unique.set(
+      `${range.start.line}:${range.start.character}:${range.end.line}:${range.end.character}`,
+      range,
+    );
+  }
+  return [...unique.values()].sort((left, right) => comparePosition(left.start, right.start));
 }
 
 function completionFromDoc(name: string, detail: string | undefined, description: string): CompletionItem {

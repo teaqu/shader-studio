@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DocumentHighlightKind } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
@@ -241,7 +242,11 @@ void mainImage(out vec4 color, in vec2 position) {
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });
     const vertexSource = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal; }";
     await instance.openDocument({ uri, languageId: "glsl", version: 1, text: vertexSource });
-    const labels = await instance.completion({ document: revision, position: { line: 0, character: 5 } });
+    // Complete from inside the body: GLSL only brings the parameters into scope there.
+    const labels = await instance.completion({
+      document: revision,
+      position: { line: 0, character: vertexSource.indexOf("position +=") },
+    });
 
     expect(labels.find((item) => item.label === "mainVertex")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex hook") }));
@@ -283,5 +288,257 @@ void mainImage(out vec4 color, in vec2 position) {
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex normal") }));
     expect(completions.find((item) => item.label === "textureUv")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("texture coordinate") }));
+  });
+
+  describe("scope-aware completion", () => {
+    const scopedSource = `float tone(float amount) {
+  float level = amount * 0.5;
+  return level;
+}
+void mainImage(out vec4 color, in vec2 coord) {
+  vec2 offset = coord * 2.0;
+  color = vec4(offset, 0.0, 1.0);
+}`;
+
+    async function completeIn(text: string, position: { line: number; character: number }) {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+      const items = await instance.completion({ document: revision, position });
+      return items.map((item) => item.label);
+    }
+
+    it("omits locals and parameters that belong to another function", async () => {
+      const labels = await completeIn(scopedSource, { line: 6, character: 18 });
+
+      expect(labels).not.toContain("amount");
+      expect(labels).not.toContain("level");
+    });
+
+    it("offers locals, parameters, and functions that are in scope", async () => {
+      const labels = await completeIn(scopedSource, { line: 6, character: 18 });
+
+      expect(labels).toEqual(expect.arrayContaining(["offset", "color", "coord", "tone"]));
+    });
+
+    it("omits symbols declared after the cursor", async () => {
+      const labels = await completeIn(scopedSource, { line: 1, character: 20 });
+
+      expect(labels).toContain("amount");
+      expect(labels).not.toContain("mainImage");
+      expect(labels).not.toContain("offset");
+    });
+
+    it("keeps built-ins and environment symbols when the document does not parse", async () => {
+      const labels = await completeIn(`void mainImage(out vec4 color, in vec2 coord) {
+  color = vec4(sha`, { line: 1, character: 18 });
+
+      expect(labels).toEqual(expect.arrayContaining(["normalize", "iResolution", "tint", "sky"]));
+    });
+  });
+
+  describe("references, highlights, and rename", () => {
+    const scoped = `float tone(float amount) {
+  float level = amount * 0.5;
+  return level + amount;
+}
+void mainImage(out vec4 color, in vec2 coord) {
+  vec2 level = coord * 2.0;
+  color = vec4(level, 0.0, 1.0);
+}`;
+
+    function positionOf(text: string, needle: string, occurrence = 0) {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) {
+        offset = text.indexOf(needle, offset + 1);
+      }
+      const lines = text.slice(0, offset).split("\n");
+      return { line: lines.length - 1, character: (lines.at(-1)?.length ?? 0) + 1 };
+    }
+
+    async function open(text: string, overrides: Partial<ShaderAuthoringEnvironment> = {}) {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({ ...environment(), ...overrides });
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+      return instance;
+    }
+
+    it("lists the declaration and every use of a local", async () => {
+      const instance = await open(scoped);
+
+      const locations = await instance.references({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+        includeDeclaration: true,
+      });
+
+      expect(locations.map((item) => item.uri)).toEqual([uri, uri, uri]);
+      expect(locations.map((item) => item.range.start)).toEqual([
+        { line: 0, character: 17 },
+        { line: 1, character: 16 },
+        { line: 2, character: 17 },
+      ]);
+    });
+
+    it("omits the declaration when it is not requested", async () => {
+      const instance = await open(scoped);
+
+      const locations = await instance.references({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+        includeDeclaration: false,
+      });
+
+      expect(locations.map((item) => item.range.start)).toEqual([
+        { line: 1, character: 16 },
+        { line: 2, character: 17 },
+      ]);
+    });
+
+    it("resolves the shadowed symbol belonging to the enclosing scope", async () => {
+      const instance = await open(scoped);
+
+      const inner = await instance.references({
+        document: revision,
+        position: positionOf(scoped, "level", 2),
+        includeDeclaration: true,
+      });
+
+      expect(inner.map((item) => item.range.start.line)).toEqual([5, 6]);
+    });
+
+    it("returns no references when the cursor is not on a symbol", async () => {
+      const instance = await open(scoped);
+
+      expect(await instance.references({
+        document: revision,
+        position: { line: 3, character: 0 },
+        includeDeclaration: true,
+      })).toEqual([]);
+    });
+
+    it("highlights the declaration as a write and each use as a read", async () => {
+      const instance = await open(scoped);
+
+      const highlights = await instance.documentHighlights({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+      });
+
+      expect(highlights).toEqual([
+        { range: expect.objectContaining({ start: { line: 0, character: 17 } }), kind: DocumentHighlightKind.Write },
+        { range: expect.objectContaining({ start: { line: 1, character: 16 } }), kind: DocumentHighlightKind.Read },
+        { range: expect.objectContaining({ start: { line: 2, character: 17 } }), kind: DocumentHighlightKind.Read },
+      ]);
+    });
+
+    it("returns no highlights when the cursor is not on a symbol", async () => {
+      const instance = await open(scoped);
+
+      expect(await instance.documentHighlights({ document: revision, position: { line: 3, character: 0 } }))
+        .toEqual([]);
+    });
+
+    it("rewrites the declaration and every use in one edit set", async () => {
+      const instance = await open(scoped);
+
+      const edit = await instance.rename({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+        newName: "strength",
+      });
+
+      expect(edit?.changes?.[uri]?.map((item) => ({ line: item.range.start.line, newText: item.newText }))).toEqual([
+        { line: 0, newText: "strength" },
+        { line: 1, newText: "strength" },
+        { line: 2, newText: "strength" },
+      ]);
+    });
+
+    it.each([
+      ["an empty name", ""],
+      ["a leading digit", "2bad"],
+      ["embedded whitespace", "has space"],
+      ["a GLSL keyword", "float"],
+      ["a reserved gl_ prefix", "gl_Custom"],
+      ["a double underscore", "bad__name"],
+    ])("declines %s", async (_label, newName) => {
+      const instance = await open(scoped);
+
+      expect(await instance.rename({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+        newName,
+      })).toBeNull();
+    });
+
+    it.each([
+      ["a symbol already visible in scope", "level"],
+      ["a custom uniform", "tint"],
+      ["a shader resource", "sky"],
+      ["a Shader Studio built-in", "iResolution"],
+      ["a GLSL intrinsic", "normalize"],
+    ])("declines a name that collides with %s", async (_label, newName) => {
+      const instance = await open(scoped);
+
+      expect(await instance.rename({
+        document: revision,
+        position: positionOf(scoped, "amount", 1),
+        newName,
+      })).toBeNull();
+    });
+
+    it("declines a name already used by the common file", async () => {
+      const text = "void mainImage(out vec4 color, vec2 coord) { float local = coord.x; color = vec4(local); }";
+      const instance = await open(text, {
+        commonFile: {
+          uri: "file:///workspace/common.glsl",
+          version: 1,
+          text: "float sharedTone(float value) { return value * 0.5; }",
+        },
+      });
+
+      expect(await instance.rename({
+        document: revision,
+        position: positionOf(text, "local", 1),
+        newName: "sharedTone",
+      })).toBeNull();
+    });
+
+    it("declines to rename a symbol that the common file owns", async () => {
+      const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }";
+      const instance = await open(text, {
+        commonFile: {
+          uri: "file:///workspace/common.glsl",
+          version: 1,
+          text: "float sharedTone(float value) { return value * 0.5; }",
+        },
+      });
+
+      expect(await instance.rename({
+        document: revision,
+        position: positionOf(text, "sharedTone"),
+        newName: "toneCurve",
+      })).toBeNull();
+    });
+
+    it("declines when the cursor is not on a symbol", async () => {
+      const instance = await open(scoped);
+
+      expect(await instance.rename({
+        document: revision,
+        position: { line: 3, character: 0 },
+        newName: "strength",
+      })).toBeNull();
+    });
+
+    it("ignores requests for a stale document revision", async () => {
+      const instance = await open(scoped);
+      const stale = { ...revision, version: 99 };
+
+      expect(await instance.references({ document: stale, position: positionOf(scoped, "amount", 1), includeDeclaration: true })).toEqual([]);
+      expect(await instance.documentHighlights({ document: stale, position: positionOf(scoped, "amount", 1) })).toEqual([]);
+      expect(await instance.rename({ document: stale, position: positionOf(scoped, "amount", 1), newName: "strength" })).toBeNull();
+    });
   });
 });

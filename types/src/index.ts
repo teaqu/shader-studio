@@ -11,3 +11,4 @@ export * from './shader-environment/BuiltinUniforms';
 export * from './shader-environment/GlslEnvironmentGenerator';
 export * from './shader-environment/SlangEnvironmentGenerator';
 export * from './shader-environment/ShaderStudioDocumentation';
+export * from './shader-environment/ShaderLanguageReservedTerms';

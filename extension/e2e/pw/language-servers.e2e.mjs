@@ -2,6 +2,8 @@ import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 
 const fixturePath = join(workspacePath, 'language-servers');
+// vscode.DocumentHighlightKind.Write
+const vscodeWriteHighlight = 2;
 
 async function languageSnapshot(vscodeFixture, filePath, language) {
   return vscodeFixture.evaluateInHost(async (vscode, targetPath, expectedLanguage) => {
@@ -98,6 +100,62 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       colorPresentations: (colorPresentations ?? []).map((item) => item.label),
     };
   }, filePath, language);
+}
+
+async function navigationSnapshot(vscodeFixture, filePath) {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath) => {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
+    const source = document.getText();
+    const position = (needle, occurrence = 0, offset = 1) => {
+      let index = -1;
+      for (let count = 0; count <= occurrence; count++) {
+        index = source.indexOf(needle, index + 1);
+      }
+      if (index < 0) {
+        throw new Error(`Missing ${needle} occurrence ${occurrence} in ${targetPath}`);
+      }
+      return document.positionAt(index + offset);
+    };
+    const references = await vscode.commands.executeCommand(
+      'vscode.executeReferenceProvider',
+      document.uri,
+      position('shade(float value)'),
+    );
+    const highlights = await vscode.commands.executeCommand(
+      'vscode.executeDocumentHighlights',
+      document.uri,
+      position('literalColor', 1),
+    );
+    const renameEdit = await vscode.commands.executeCommand(
+      'vscode.executeDocumentRenameProvider',
+      document.uri,
+      position('uv = pixelPosition'),
+      'screenUv',
+    );
+    const describeEdit = (edit) => (edit?.entries() ?? []).map(([uri, edits]) => ({
+      path: uri.fsPath,
+      edits: edits.map((item) => ({ line: item.range.start.line, newText: item.newText })),
+    }));
+    let includedRenameFailed = false;
+    try {
+      const includedRename = await vscode.commands.executeCommand(
+        'vscode.executeDocumentRenameProvider',
+        document.uri,
+        position('twice(value)'),
+        'doubled',
+      );
+      includedRenameFailed = describeEdit(includedRename).length === 0;
+    } catch {
+      // VS Code surfaces a declined rename as a thrown error.
+      includedRenameFailed = true;
+    }
+    return {
+      references: (references ?? []).map((item) => ({ path: item.uri.fsPath, line: item.range.start.line })),
+      highlights: (highlights ?? []).map((item) => ({ line: item.range.start.line, kind: item.kind })),
+      rename: describeEdit(renameEdit),
+      includedRenameFailed,
+    };
+  }, filePath);
 }
 
 async function stageSnapshot(vscodeFixture, filePath, expectations) {
@@ -219,6 +277,27 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.symbols.includes('mainImage')).toBeTruthy();
     expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
     expect(result.colorPresentations.some((item) => item.includes('vec4')), JSON.stringify(result.colorPresentations)).toBeTruthy();
+  });
+
+  test('resolves GLSL references, highlights, and renames', async ({ vscode }) => {
+    const result = await navigationSnapshot(vscode, join(fixturePath, 'image.glsl'));
+
+    // `shade` is declared on line 3 and called on line 10.
+    expect(result.references.every((item) => item.path.endsWith('image.glsl'))).toBeTruthy();
+    expect(result.references.map((item) => item.line).sort((a, b) => a - b)).toEqual([2, 9]);
+
+    // `literalColor` is written on line 8 and read on line 10.
+    expect(result.highlights.map((item) => item.line).sort((a, b) => a - b)).toEqual([7, 9]);
+    expect(result.highlights.some((item) => item.kind === vscodeWriteHighlight)).toBeTruthy();
+
+    // Renaming `uv` rewrites its declaration and its single use.
+    expect(result.rename).toHaveLength(1);
+    expect(result.rename[0].path.endsWith('image.glsl')).toBeTruthy();
+    expect(result.rename[0].edits.map((item) => item.line).sort((a, b) => a - b)).toEqual([8, 9]);
+    expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
+
+    // `twice` is owned by common.glsl, so renaming it from here declines.
+    expect(result.includedRenameFailed).toBeTruthy();
   });
 
   test('provides the complete Slang authoring feature set through bundled WASM', async ({ vscode }) => {

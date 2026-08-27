@@ -152,6 +152,42 @@ export class MonacoLanguageServiceManager {
         }))
       ), []),
     }));
+    this.disposables.push(languages.registerReferenceProvider(language, {
+      provideReferences: async (model, position, context) => this.request(model, async (service, revision) => (
+        (await service.references({
+          document: revision,
+          position: toLspPosition(position),
+          includeDeclaration: context.includeDeclaration,
+        })).map((location) => ({
+          uri: this.monaco.Uri.parse(location.uri),
+          range: toMonacoRange(this.monaco, location.range),
+        }))
+      ), []),
+    }));
+    this.disposables.push(languages.registerDocumentHighlightProvider(language, {
+      provideDocumentHighlights: async (model, position) => this.request(model, async (service, revision) => (
+        (await service.documentHighlights({ document: revision, position: toLspPosition(position) })).map((highlight) => ({
+          range: toMonacoRange(this.monaco, highlight.range),
+          kind: highlightKind(highlight.kind),
+        }))
+      ), []),
+    }));
+    this.disposables.push(languages.registerRenameProvider(language, {
+      provideRenameEdits: async (model, position, newName) => this.request(model, async (service, revision) => {
+        const result = await service.rename({ document: revision, position: toLspPosition(position), newName });
+        const edits = result?.changes?.[model.uri.toString()] ?? [];
+        if (edits.length === 0) {
+          return { edits: [], rejectReason: RENAME_REJECTED };
+        }
+        return {
+          edits: edits.map((edit) => ({
+            resource: model.uri,
+            versionId: model.getVersionId(),
+            textEdit: { range: toMonacoRange(this.monaco, edit.range), text: edit.newText },
+          })),
+        };
+      }, { edits: [], rejectReason: RENAME_REJECTED }),
+    }));
     this.disposables.push(languages.registerColorProvider(language, {
       provideDocumentColors: async (model) => {
         if (!this.colorDecoratorsEnabled) return [];
@@ -287,6 +323,7 @@ function revisionFor(model: Monaco.editor.ITextModel, languageId: ShaderLanguage
 }
 function shaderLanguage(language: string): ShaderLanguage | undefined { return language === "glsl" || language === "slang" ? language : undefined; }
 function markerOwner(language: ShaderLanguage): string { return `shader-studio-${language}-ls`; }
+const RENAME_REJECTED = "This symbol cannot be renamed here.";
 function toLspPosition(position: Monaco.Position) { return { line: position.lineNumber - 1, character: position.column - 1 }; }
 function toLspRange(range: Monaco.IRange) { return { start: { line: range.startLineNumber - 1, character: range.startColumn - 1 }, end: { line: range.endLineNumber - 1, character: range.endColumn - 1 } }; }
 function toMonacoRange(monaco: typeof Monaco, range: { start: { line: number; character: number }; end: { line: number; character: number } }) {
@@ -303,6 +340,10 @@ function hoverValue(value: unknown): string {
   if (value && typeof value === "object" && "value" in value) return String((value as { value: unknown }).value);
   if (value && typeof value === "object" && "language" in value && "value" in value) return `\`\`\`${String((value as { language: unknown }).language)}\n${String((value as { value: unknown }).value)}\n\`\`\``;
   return "";
+}
+/** LSP numbers highlight kinds from 1; Monaco numbers the same order from 0. */
+function highlightKind(kind: number | undefined): Monaco.languages.DocumentHighlightKind {
+  return (kind === undefined ? 0 : kind - 1) as Monaco.languages.DocumentHighlightKind;
 }
 function markerSeverity(severity: number | undefined): Monaco.MarkerSeverity {
   return severity === 2 ? 4 : severity === 3 ? 2 : severity === 4 ? 1 : 8;
