@@ -1,15 +1,32 @@
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { ErrorMessage, WarningMessage } from '@shader-studio/types';
 import { ErrorHandler } from '../../app/ErrorHandler';
+
+function stubDocument(uri: vscode.Uri, lines: string[], languageId = 'slang'): vscode.TextDocument {
+  return {
+    languageId,
+    fileName: uri.fsPath,
+    uri,
+    lineCount: lines.length,
+    lineAt: (line: number) => ({
+      text: lines[line],
+      range: new vscode.Range(line, 0, line, lines[line].length),
+    }),
+  } as any;
+}
 
 suite('ErrorHandler Test Suite', () => {
   let mockOutputChannel: vscode.LogOutputChannel;
   let mockDiagnosticCollection: vscode.DiagnosticCollection;
   let errorHandler: ErrorHandler;
   let textDocumentChangeListener: ((event: vscode.TextDocumentChangeEvent) => void) | undefined;
+  let sandbox: sinon.SinonSandbox;
 
   setup(() => {
+    sandbox = sinon.createSandbox();
+
     // Mock output channel
     mockOutputChannel = {
       name: 'Test ErrorHandler',
@@ -74,6 +91,7 @@ suite('ErrorHandler Test Suite', () => {
 
   teardown(() => {
     errorHandler.dispose();
+    sandbox.restore();
   });
 
   // Keep only meaningful behavioral tests
@@ -294,6 +312,230 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.strictEqual(diagnostics?.length, 1);
     assert.strictEqual(diagnostics?.[0].range.start.line, 13);
+  });
+
+  test('underlines a Slang diagnostic from its reported column instead of the whole line', () => {
+    const shaderUri = vscode.Uri.file('/test/image.slang');
+    const sourceLine = 'float gridY = step(0.92, frac(uv.y * 10.0));';
+    const lines = Array.from({ length: 20 }, (_, index) => (index === 13 ? sourceLine : ''));
+    sandbox.stub(vscode.workspace, 'textDocuments').value([stubDocument(shaderUri, lines)]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        'Image: error[E30015]: undefined identifier \'step\'',
+        `  --> ${shaderUri.fsPath}:14:15`,
+        '   |',
+        `14 | ${sourceLine}`,
+        '   |               ^ undefined identifier',
+      ].join('\n')],
+    });
+
+    const range = diagnostics?.[0].range;
+    assert.strictEqual(range?.start.line, 13);
+    assert.strictEqual(range?.start.character, 14, 'Should start at the reported column');
+    assert.strictEqual(range?.end.line, 13);
+    assert.strictEqual(range?.end.character, sourceLine.length);
+  });
+
+  test('clamps a Slang column past the end of the line to the last character', () => {
+    const shaderUri = vscode.Uri.file('/test/image.slang');
+    const sourceLine = 'float gridY = 1.0;';
+    const lines = Array.from({ length: 20 }, (_, index) => (index === 13 ? sourceLine : ''));
+    sandbox.stub(vscode.workspace, 'textDocuments').value([stubDocument(shaderUri, lines)]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        'Image: error[E20002]: syntax error',
+        `  --> ${shaderUri.fsPath}:14:200`,
+        '   |',
+        `14 | ${sourceLine}`,
+      ].join('\n')],
+    });
+
+    const range = diagnostics?.[0].range;
+    assert.strictEqual(range?.start.character, sourceLine.length - 1);
+    assert.strictEqual(range?.end.character, sourceLine.length);
+  });
+
+  test('starts at the reported column even when the Slang source is not open', () => {
+    sandbox.stub(vscode.workspace, 'textDocuments').value([]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        'Image: error[E20002]: syntax error',
+        '  --> /image.slang:14:49',
+        '   |',
+        '14 | float gridY = step(0.92, frac(uv.y * 10.0));>',
+        '   |                                             ^ syntax error.',
+      ].join('\n')],
+    });
+
+    const range = diagnostics?.[0].range;
+    assert.strictEqual(range?.start.line, 13);
+    assert.strictEqual(range?.start.character, 48);
+    assert.strictEqual(range?.end.character, 49);
+  });
+
+  test('emits one diagnostic per Slang error block in a single payload string', () => {
+    const shaderUri = vscode.Uri.file('/test/image.slang');
+    const firstLine = 'float gridY = stepp(0.92, uv.y);';
+    const secondLine = '    return;';
+    const lines = Array.from({ length: 25 }, (_, index) => {
+      if (index === 13) {
+        return firstLine;
+      }
+      return index === 19 ? secondLine : '';
+    });
+    sandbox.stub(vscode.workspace, 'textDocuments').value([stubDocument(shaderUri, lines)]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        "Image: error[E30015]: undefined identifier 'stepp'",
+        `  --> ${shaderUri.fsPath}:14:15`,
+        '   |',
+        `14 | ${firstLine}`,
+        '   |               ^ undefined identifier',
+        'error[E20002]: syntax error',
+        `  --> ${shaderUri.fsPath}:20:5`,
+        '   |',
+        `20 | ${secondLine}`,
+        '   |     ^ syntax error',
+      ].join('\n')],
+    });
+
+    assert.strictEqual(diagnostics?.length, 2, 'Each Slang error block should get its own diagnostic');
+
+    assert.strictEqual(diagnostics?.[0].range.start.line, 13);
+    assert.strictEqual(diagnostics?.[0].range.start.character, 14);
+    assert.strictEqual(diagnostics?.[0].range.end.character, firstLine.length);
+    assert.ok(diagnostics?.[0].message.includes('E30015'));
+    assert.ok(!diagnostics?.[0].message.includes('E20002'), 'Blocks should not leak into each other');
+
+    assert.strictEqual(diagnostics?.[1].range.start.line, 19);
+    assert.strictEqual(diagnostics?.[1].range.start.character, 4);
+    assert.strictEqual(diagnostics?.[1].range.end.character, secondLine.length);
+    assert.ok(diagnostics?.[1].message.includes('E20002'));
+    assert.ok(!diagnostics?.[1].message.includes('E30015'), 'Blocks should not leak into each other');
+  });
+
+  test('routes each Slang error block to the file it names', () => {
+    const imageUri = vscode.Uri.file('/test/image.slang');
+    const commonUri = vscode.Uri.file('/test/common.slang');
+    const imageLine = 'float gridY = stepp(0.92, uv.y);';
+    const commonLine = 'float helper() { return; }';
+    sandbox.stub(vscode.workspace, 'textDocuments').value([
+      stubDocument(imageUri, Array.from({ length: 20 }, (_, i) => (i === 13 ? imageLine : ''))),
+      stubDocument(commonUri, Array.from({ length: 20 }, (_, i) => (i === 4 ? commonLine : ''))),
+    ]);
+
+    const setCalls: { uri: vscode.Uri; diagnostics: readonly vscode.Diagnostic[] | undefined }[] = [];
+    mockDiagnosticCollection.set = ((uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      setCalls.push({ uri, diagnostics: values });
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        "Image: error[E30015]: undefined identifier 'stepp'",
+        `  --> ${imageUri.fsPath}:14:15`,
+        '   |',
+        `14 | ${imageLine}`,
+        'error[E20002]: syntax error',
+        `  --> ${commonUri.fsPath}:5:18`,
+        '  |',
+        `5 | ${commonLine}`,
+      ].join('\n')],
+    });
+
+    assert.strictEqual(setCalls.length, 2, 'Blocks in different files need separate diagnostic sets');
+
+    const imageCall = setCalls.find((call) => call.uri.fsPath === imageUri.fsPath);
+    assert.strictEqual(imageCall?.diagnostics?.length, 1);
+    assert.strictEqual(imageCall?.diagnostics?.[0].range.start.line, 13);
+    assert.strictEqual(imageCall?.diagnostics?.[0].range.start.character, 14);
+
+    const commonCall = setCalls.find((call) => call.uri.fsPath === commonUri.fsPath);
+    assert.strictEqual(commonCall?.diagnostics?.length, 1);
+    assert.strictEqual(commonCall?.diagnostics?.[0].range.start.line, 4);
+    assert.strictEqual(commonCall?.diagnostics?.[0].range.start.character, 17);
+    assert.ok(commonCall?.diagnostics?.[0].message.includes('E20002'));
+  });
+
+  test('keeps a located Slang block precise while a block without a location falls back', () => {
+    const shaderUri = vscode.Uri.file('/test/image.slang');
+    const sourceLine = 'float gridY = stepp(0.92, uv.y);';
+    const lines = Array.from({ length: 20 }, (_, index) => (index === 13 ? sourceLine : ''));
+    sandbox.stub(vscode.workspace, 'textDocuments').value([stubDocument(shaderUri, lines)]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.setShaderConfig({ config: { passes: {} }, shaderPath: shaderUri.fsPath });
+    errorHandler.handleError({
+      type: 'error',
+      payload: [[
+        "Image: error[E30015]: undefined identifier 'stepp'",
+        `  --> ${shaderUri.fsPath}:14:15`,
+        '   |',
+        `14 | ${sourceLine}`,
+        'error[E99999]: entry point not found',
+      ].join('\n')],
+    });
+
+    assert.strictEqual(diagnostics?.length, 2, 'A block without a location must still be reported');
+    assert.strictEqual(diagnostics?.[0].range.start.line, 13);
+    assert.strictEqual(diagnostics?.[0].range.start.character, 14);
+    assert.strictEqual(diagnostics?.[1].range.start.line, 0, 'Unlocated blocks fall back to line 1');
+    assert.ok(diagnostics?.[1].message.includes('E99999'));
+  });
+
+  test('keeps GLSL compiler diagnostics spanning the whole reported line', () => {
+    const shaderUri = vscode.Uri.file('/test/shader.glsl');
+    const sourceLine = '  vec3 col = undefinedFn(uv);';
+    const lines = Array.from({ length: 20 }, (_, index) => (index === 13 ? sourceLine : ''));
+    sandbox.stub(vscode.workspace, 'textDocuments').value([stubDocument(shaderUri, lines, 'glsl')]);
+
+    let diagnostics: readonly vscode.Diagnostic[] | undefined;
+    mockDiagnosticCollection.set = ((_uri: vscode.Uri, values?: readonly vscode.Diagnostic[]) => {
+      diagnostics = values;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.setShaderConfig({ config: { passes: {} }, shaderPath: shaderUri.fsPath });
+    errorHandler.handleError({
+      type: 'error',
+      payload: ["Image: ERROR: 0:14: 'undefinedFn' : no matching overloaded function found"],
+    });
+
+    const range = diagnostics?.[0].range;
+    assert.strictEqual(range?.start.line, 13);
+    assert.strictEqual(range?.start.character, 0, 'glslang reports no column, so keep the full line');
+    assert.strictEqual(range?.end.character, sourceLine.length);
   });
 
   test('places a compute Slang diagnostic on its source file instead of the locked fragment editor', () => {

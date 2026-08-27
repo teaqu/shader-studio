@@ -65,7 +65,7 @@ export class ErrorHandler {
     const now = Date.now();
 
     // Accumulate diagnostics per URI
-    const diagnosticsMap = new Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>();
+    const diagnosticsMap: DiagnosticsByUri = new Map();
 
     for (const errorText of errors) {
       if (!errorText) {
@@ -87,32 +87,42 @@ export class ErrorHandler {
 
       this.outputChannel.error(errorText);
 
-      const reportedLocation = getReportedDiagnosticLocation(errorText);
-      const reportedLine = reportedLocation?.line;
-      if (reportedLine !== undefined) {
-        const lineNum = reportedLine - 1; // VS Code is 0-based
+      // Parse pass name from error message (format: "PassName: ERROR: ...").
+      // Slang prefixes the pass onto the whole batch, so this is read once for
+      // every block parsed out of this payload entry.
+      const passNameMatch = errorText.match(/^([^:\n]+):\s*(?:ERROR:\s*|error(?:\[[^\]]+\])?:)/i);
+      const passUri = passNameMatch && this.currentShaderConfig
+        ? this.getUriForPass(passNameMatch[1].trim(), this.currentShaderConfig)
+        : null;
 
-        // Parse pass name from error message (format: "PassName: ERROR: ...")
-        const passNameMatch = errorText.match(/^([^:\n]+):\s*(?:ERROR:\s*|error(?:\[[^\]]+\])?:)/i);
-        let targetUri: vscode.Uri | null = null;
+      const reported = parseReportedDiagnostics(errorText);
+      if (reported.length === 0) {
+        this.addFallbackDiagnostic(errorText, diagnosticsMap);
+        continue;
+      }
 
-        if (passNameMatch && this.currentShaderConfig) {
-          const passName = passNameMatch[1].trim();
-          targetUri = this.getUriForPass(passName, this.currentShaderConfig);
+      for (const entry of reported) {
+        if (entry.line === undefined) {
+          // A block the compiler didn't locate still has to surface somewhere.
+          this.addFallbackDiagnostic(entry.message, diagnosticsMap);
+          continue;
         }
+
+        const lineNum = entry.line - 1; // VS Code is 0-based
+        let targetUri: vscode.Uri | null = passUri;
 
         // Native Slang emits the source path on a separate `-->` line. Prefer
         // it when it identifies an open/configured module (not its synthetic
         // `/passname.slang` path), so imported-module diagnostics land on the
         // exact file that failed.
-        if (reportedLocation?.sourcePath) {
-          targetUri = this.getUriForReportedSlangSource(reportedLocation.sourcePath) ?? targetUri;
+        if (entry.sourcePath) {
+          targetUri = this.getUriForReportedSlangSource(entry.sourcePath) ?? targetUri;
         }
 
         // If Slang supplied a real path but it isn't open or in the active
         // shader configuration, still create a diagnostic for that file.
-        if (!targetUri && reportedLocation?.sourcePath) {
-          targetUri = vscode.Uri.file(reportedLocation.sourcePath);
+        if (!targetUri && entry.sourcePath) {
+          targetUri = vscode.Uri.file(entry.sourcePath);
         }
 
         // Fallback to active editor if we can't determine the target file
@@ -120,46 +130,20 @@ export class ErrorHandler {
           targetUri = this.getDefaultTargetUri();
         }
 
-        if (targetUri) {
-          try {
-            const document = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === targetUri!.fsPath);
-            let range: vscode.Range;
-            if (document && lineNum < document.lineCount) {
-              range = document.lineAt(lineNum).range;
-            } else {
-              range = new vscode.Range(lineNum, 0, lineNum, 0);
-            }
-            const diagnostic = new vscode.Diagnostic(
-              range,
-              errorText,
-              vscode.DiagnosticSeverity.Error,
-            );
-
-            const key = targetUri.fsPath;
-            if (!diagnosticsMap.has(key)) {
-              diagnosticsMap.set(key, { uri: targetUri, diagnostics: [] });
-            }
-            diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
-          } catch (err) {
-            this.outputChannel.error(`Failed to create diagnostic: ${err}`);
-          }
+        if (!targetUri) {
+          continue;
         }
-      } else {
-        // All non-line-number errors: show at line 1
-        const targetInfo = this.getTargetDocumentInfo();
-        if (targetInfo && targetInfo.lineCount > 0) {
-          const range = targetInfo.lineAt(0).range;
-          const diagnostic = new vscode.Diagnostic(
-            range,
-            errorText,
-            vscode.DiagnosticSeverity.Error,
-          );
 
-          const key = targetInfo.uri.fsPath;
-          if (!diagnosticsMap.has(key)) {
-            diagnosticsMap.set(key, { uri: targetInfo.uri, diagnostics: [] });
-          }
-          diagnosticsMap.get(key)!.diagnostics.push(diagnostic);
+        try {
+          const uri = targetUri;
+          const document = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === uri.fsPath);
+          addDiagnostic(diagnosticsMap, uri, new vscode.Diagnostic(
+            buildDiagnosticRange(document, lineNum, entry.column),
+            entry.message,
+            vscode.DiagnosticSeverity.Error,
+          ));
+        } catch (err) {
+          this.outputChannel.error(`Failed to create diagnostic: ${err}`);
         }
       }
     }
@@ -171,6 +155,18 @@ export class ErrorHandler {
 
     // Clean up old errors from the map (prevent memory leak)
     this.cleanupOldErrors(now);
+  }
+
+  private addFallbackDiagnostic(message: string, diagnosticsMap: DiagnosticsByUri): void {
+    // Errors without a reported location: show at line 1
+    const targetInfo = this.getTargetDocumentInfo();
+    if (targetInfo && targetInfo.lineCount > 0) {
+      addDiagnostic(diagnosticsMap, targetInfo.uri, new vscode.Diagnostic(
+        targetInfo.lineAt(0).range,
+        message,
+        vscode.DiagnosticSeverity.Error,
+      ));
+    }
   }
 
   public handlePersistentError(message: ErrorMessage | WarningMessage): void {
@@ -379,16 +375,87 @@ export class ErrorHandler {
   }
 }
 
-function getReportedDiagnosticLocation(errorText: string): { line: number; sourcePath?: string } | undefined {
+type DiagnosticsByUri = Map<string, { uri: vscode.Uri; diagnostics: vscode.Diagnostic[] }>;
+
+/** One compiler error. `line` is absent when the compiler reported no location. */
+interface ReportedDiagnostic {
+  message: string;
+  line?: number;
+  column?: number;
+  sourcePath?: string;
+}
+
+function addDiagnostic(
+  diagnosticsMap: DiagnosticsByUri,
+  uri: vscode.Uri,
+  diagnostic: vscode.Diagnostic,
+): void {
+  const existing = diagnosticsMap.get(uri.fsPath);
+  if (existing) {
+    existing.diagnostics.push(diagnostic);
+    return;
+  }
+  diagnosticsMap.set(uri.fsPath, { uri, diagnostics: [diagnostic] });
+}
+
+function parseReportedDiagnostics(errorText: string): ReportedDiagnostic[] {
+  // glslang only reports `<string>:<line>` (no column, so these stay
+  // whole-line), and the renderer already splits its log one error per payload
+  // entry. Checked first because `ERROR:` also matches the Slang heading below.
   const glslLine = errorText.match(/ERROR:\s*\d+:(\d+):/);
   if (glslLine) {
-    return { line: Number.parseInt(glslLine[1], 10) };
+    return [{ message: errorText, line: Number.parseInt(glslLine[1], 10) }];
   }
 
-  // Slang reports locations on a separate source-map-style line, for example:
-  //   --> /image.slang:14:49
-  const slangLine = errorText.match(/^\s*-->\s+(.+?):(\d+)(?::\d+)?\s*$/m);
-  return slangLine
-    ? { sourcePath: slangLine[1], line: Number.parseInt(slangLine[2], 10) }
+  // Slang batches every diagnostic for a pass into one string. Each block opens
+  // with an `error[...]:` heading (only the first carries the pass prefix) and
+  // carries its own source-map-style location line, for example:
+  //   Image: error[E30015]: undefined identifier 'stepp'
+  //     --> /image.slang:14:15
+  const headings = [...errorText.matchAll(/(?:^|\n)(?:[^:\n]+:[ \t]*)?error(?:\[[^\]]+\])?:[^\n]*/gi)];
+  return headings.map((heading, index) => {
+    const blockStart = heading.index ?? 0;
+    const blockEnd = headings[index + 1]?.index ?? errorText.length;
+    const block = errorText.slice(blockStart, blockEnd);
+    const location = block.match(/^\s*-->\s+(.+?):(\d+)(?::(\d+))?\s*$/m);
+    return {
+      message: block.trim(),
+      sourcePath: location?.[1],
+      line: location ? Number.parseInt(location[2], 10) : undefined,
+      column: location?.[3] === undefined ? undefined : Number.parseInt(location[3], 10),
+    };
+  });
+}
+
+/**
+ * Compilers that report a column (Slang) get a range from that column to the
+ * end of the line, matching the Monaco editor's markers. Compilers that don't
+ * (glslang) keep the whole line highlighted.
+ */
+function buildDiagnosticRange(
+  document: vscode.TextDocument | undefined,
+  lineNum: number,
+  column: number | undefined,
+): vscode.Range {
+  const lineEnd = document && lineNum < document.lineCount
+    ? document.lineAt(lineNum).range.end.character
     : undefined;
+
+  if (column === undefined) {
+    return lineEnd === undefined
+      ? new vscode.Range(lineNum, 0, lineNum, 0)
+      : new vscode.Range(lineNum, 0, lineNum, lineEnd);
+  }
+
+  const reportedStart = Math.max(0, column - 1);
+  if (lineEnd === undefined) {
+    // The file isn't open, so the line length is unknown: highlight the single
+    // reported character rather than an empty range.
+    return new vscode.Range(lineNum, reportedStart, lineNum, reportedStart + 1);
+  }
+
+  // A column past the end of the line (Slang points at EOL for unterminated
+  // constructs) still needs a visible squiggle on the last character.
+  const start = Math.min(reportedStart, Math.max(0, lineEnd - 1));
+  return new vscode.Range(lineNum, start, lineNum, lineEnd);
 }
