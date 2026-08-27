@@ -348,7 +348,7 @@ describe('EditorOverlay', () => {
         domReadOnly: false,
         editContext: false,
         fixedOverflowWidgets: true,
-        occurrencesHighlight: 'off',
+        occurrencesHighlight: 'singleFile',
         padding: { top: 0 },
         readOnly: false,
         selectionHighlight: false,
@@ -434,6 +434,33 @@ describe('EditorOverlay', () => {
       expect(contributionLoadState.hover).toBeGreaterThan(0);
       expect(contributionLoadState.gotoError).toBeGreaterThan(0);
     });
+
+    // Monaco's `editor.api` entrypoint carries no editor contributions: each one
+    // registers itself when its module is imported. A provider registered in
+    // MonacoLanguageServiceManager with no matching import here is called and
+    // its results are silently dropped, which is invisible at runtime.
+    const providerContributions: ReadonlyArray<readonly [provider: string, key: string]> = [
+      ['completion', 'suggest'],
+      ['signatureHelp', 'parameterHints'],
+      ['definition', 'goToCommands'],
+      ['definition (ctrl-click)', 'goToDefinitionAtPosition'],
+      ['references (peek widget)', 'referenceSearch'],
+      ['rename', 'rename'],
+      ['documentColors', 'colorPicker'],
+      ['documentSymbols', 'documentSymbols'],
+      ['documentSymbols (quick access)', 'gotoSymbolQuickAccess'],
+      ['documentHighlights', 'wordHighlighter'],
+    ];
+
+    it.each(providerContributions)(
+      'should load the Monaco contribution that renders %s results',
+      (_provider, key) => {
+        render(EditorOverlay, { props: defaultProps });
+        const contributionLoadState = (globalThis as any).__monacoContributionLoadState;
+
+        expect(contributionLoadState[key]).toBeGreaterThan(0);
+      },
+    );
 
     it('should replace the editor contents when the shader file changes while the editor is focused', async () => {
       const monaco = await import('monaco-editor');

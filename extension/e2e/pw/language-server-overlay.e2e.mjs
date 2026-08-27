@@ -42,7 +42,7 @@ function helpers(vscode) {
     return hover.innerText();
   }
 
-  return { app, refreshFrame, overlayReady, setSlangLanguageServerEnabled, hoverTextForToken };
+  return { app, refreshFrame, overlayReady, setSlangLanguageServerEnabled, hoverTextForToken, token };
 }
 
 test.use({ vscodeKey: 'language-server-overlay' });
@@ -109,5 +109,31 @@ test.describe('Shader language servers in the Monaco overlay', () => {
 
     const hover = await h.hoverTextForToken('unknownValue', /undefined identifier/i);
     expect(hover).toMatch(/undefined identifier/i);
+  });
+
+  // Last in the file on purpose: this is the only test that edits the buffer,
+  // and leaving the typed line behind cannot disturb the tests above.
+  test('opens the completion dropdown while typing', async () => {
+    await h.setSlangLanguageServerEnabled(true);
+
+    // Open a fresh line inside mainImage and type a prefix. `iResolution` is a
+    // Shader Studio built-in the language service merges into every non-member
+    // completion, and it appears nowhere in this shader's text - so Monaco's
+    // word-based suggestions cannot produce it and a hit proves the language
+    // service reached the widget.
+    // Clicking places the cursor; keys then go through the editor's own input
+    // element so they land in the webview rather than the editor behind it.
+    await h.token('remainder').click({ timeout: 30_000 });
+    const input = h.app().locator('.editor-overlay textarea.inputarea').first();
+    await input.press('End');
+    await input.press('Enter');
+    await input.pressSequentially('iResol', { delay: 120 });
+
+    const suggestion = h.app().locator('.suggest-widget .monaco-list-row')
+      .filter({ hasText: /^iResolution/ })
+      .first();
+    await expect(suggestion).toBeVisible({ timeout: 30_000 });
+
+    await input.press('Escape');
   });
 });

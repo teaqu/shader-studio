@@ -2,8 +2,22 @@
   import { onMount, onDestroy, untrack } from "svelte";
   import type { Transport } from "../transport/MessageTransport";
   import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+  // Monaco's `editor.api` entrypoint ships the API only: every editor
+  // contribution registers itself as an import side effect. Each import below
+  // is the UI half of a provider registered in MonacoLanguageServiceManager —
+  // without it the provider is called and its results are silently dropped.
   import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
   import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
+  import "monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController";
+  import "monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints";
+  import "monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands";
+  import "monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition";
+  import "monaco-editor/esm/vs/editor/standalone/browser/referenceSearch/standaloneReferenceSearch";
+  import "monaco-editor/esm/vs/editor/contrib/rename/browser/rename";
+  import "monaco-editor/esm/vs/editor/contrib/colorPicker/browser/colorPickerContribution";
+  import "monaco-editor/esm/vs/editor/contrib/documentSymbols/browser/documentSymbols";
+  import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
+  import "monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl, setupMonacoSlang } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
@@ -487,7 +501,9 @@
       hideCursorInOverviewRuler: true,
       renderLineHighlight: "line",
       selectionHighlight: false,
-      occurrencesHighlight: "off",
+      // The document-highlight provider is only reachable with this on; "off"
+      // left it registered but unused.
+      occurrencesHighlight: "singleFile",
       automaticLayout: true,
       fontSize: 14,
       lineHeight: 20,

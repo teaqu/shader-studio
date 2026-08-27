@@ -85,9 +85,22 @@ export class MonacoLanguageServiceManager {
     this.disposables.push(languages.registerCompletionItemProvider(language, {
       triggerCharacters: ["."],
       provideCompletionItems: async (model, position) => {
-        const result = await this.request(model, (service, revision) => service.completion({ document: revision, position: toLspPosition(position) }), []);
+        // Completion is the one request the model is expected to outrun: quick
+        // suggestions fire on the first keystroke and the user keeps typing
+        // while the request is in flight. Preserve useful stale results and
+        // catch up below when the stale response is empty.
+        let response: { value: Awaited<ReturnType<LanguageService["completion"]>>; stale: boolean };
+        do {
+          response = await this.requestAllowingStale(model, (service, revision) => service.completion({ document: revision, position: toLspPosition(position) }), []);
+          // Monaco closes an initial suggestion session when its provider returns
+          // no items. An empty stale response therefore cannot rely on
+          // `incomplete` to trigger another query; catch up here before the
+          // provider returns. A non-empty stale list is still useful immediately
+          // and remains marked incomplete so Monaco refines it while typing.
+        } while (response.stale && response.value.length === 0);
+        const { value: result, stale } = response;
         const word = model.getWordUntilPosition(position);
-        return { suggestions: result.map((item) => ({
+        return { incomplete: stale, suggestions: result.map((item) => ({
           label: item.label,
           kind: (item.kind ?? this.monaco.languages.CompletionItemKind.Variable) as Monaco.languages.CompletionItemKind,
           detail: item.detail,
@@ -209,35 +222,53 @@ export class MonacoLanguageServiceManager {
     if (!language) return;
     const uri = model.uri.toString();
     this.modelDisposables.get(uri)?.dispose();
-    this.modelDisposables.set(uri, model.onDidChangeContent(() => { void this.changeModel(model); }));
+    this.modelDisposables.set(uri, model.onDidChangeContent(() => { void this.ensureModel(model); }));
     if (this.environments.has(uri) && this.enabled[language]) void this.ensureModel(model);
   }
 
-  private async changeModel(model: Monaco.editor.ITextModel): Promise<void> {
-    const language = shaderLanguage(model.getLanguageId());
-    if (!language || !this.enabled[language]) return;
-    const environment = this.environments.get(model.uri.toString());
-    if (!environment) return;
-    const service = await this.service(language);
-    const uri = model.uri.toString();
-    if (!this.states[language].opened.has(uri)) await this.ensureModel(model);
-    else await service.changeDocument({ uri, languageId: language, version: model.getVersionId(), text: model.getValue() });
-    await this.publishDiagnostics(model, service, environment);
-  }
-
-  private async ensureModel(model: Monaco.editor.ITextModel): Promise<LanguageService | undefined> {
+  /**
+   * Opens or re-syncs `model` with its language service and republishes
+   * diagnostics, returning the exact version that was synced. Every request
+   * (completion, hover, ...) calls this first and must build its document
+   * revision from the returned version - not by re-reading the model - or
+   * the fix below does not hold.
+   *
+   * Content used to sync only from the onDidChangeContent listener below,
+   * firing a separate unawaited task per keystroke. A request built its
+   * document revision from the model's version immediately, so it could
+   * reach the language service before that task's changeDocument landed -
+   * the service would look up a version it had not seen yet, find nothing,
+   * and return empty. Quick suggestions felt broken because that race loses
+   * more often for completion, which fires right on the keystroke, than for
+   * hover, which fires well after typing stops.
+   *
+   * Routing every request through this same sync call removes that race, but
+   * ensureModel's own sync is itself async: more keystrokes can land while
+   * *this* call is in flight. Re-reading the model afterward to build the
+   * revision (the first fix here did exactly that) picks up a version the
+   * service was still never told about - and because that read matches the
+   * *live* model, the staleness check below sees no mismatch and reports the
+   * empty result as final, which is worse than stale: it stops Monaco from
+   * ever retrying. Returning the version this call actually synced, for the
+   * caller to build the revision from directly, closes that gap.
+   */
+  private async ensureModel(model: Monaco.editor.ITextModel): Promise<{ service: LanguageService; version: number } | undefined> {
     const language = shaderLanguage(model.getLanguageId());
     const environment = this.environments.get(model.uri.toString());
     if (!language || !environment || !this.enabled[language]) return undefined;
     const service = await this.service(language);
     await service.syncEnvironment(environment);
     const uri = model.uri.toString();
+    const version = model.getVersionId();
+    const document = { uri, languageId: language, version, text: model.getValue() };
     if (!this.states[language].opened.has(uri)) {
-      await service.openDocument({ uri, languageId: language, version: model.getVersionId(), text: model.getValue() });
+      await service.openDocument(document);
       this.states[language].opened.add(uri);
+    } else {
+      await service.changeDocument(document);
     }
     await this.publishDiagnostics(model, service, environment);
-    return service;
+    return { service, version };
   }
 
   private async closeModel(model: Monaco.editor.ITextModel): Promise<void> {
@@ -256,15 +287,22 @@ export class MonacoLanguageServiceManager {
   }
 
   private async request<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<T> {
+    const { value, stale } = await this.requestAllowingStale(model, run, fallback);
+    return stale ? fallback : value;
+  }
+
+  /** Runs a request and reports whether the document moved on while it ran. */
+  private async requestAllowingStale<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<{ value: T; stale: boolean }> {
     const language = shaderLanguage(model.getLanguageId());
     const environment = this.environments.get(model.uri.toString());
-    if (!language || !environment || !this.enabled[language]) return fallback;
-    const service = await this.ensureModel(model);
-    if (!service) return fallback;
-    const revision = revisionFor(model, language, environment);
-    const result = await run(service, revision);
+    if (!language || !environment || !this.enabled[language]) return { value: fallback, stale: false };
+    const ensured = await this.ensureModel(model);
+    if (!ensured) return { value: fallback, stale: false };
+    const revision: DocumentRevision = { uri: model.uri.toString(), languageId: language, version: ensured.version, environmentGeneration: environment.generation };
+    const result = await run(ensured.service, revision);
     const current = this.environments.get(model.uri.toString());
-    return model.getVersionId() === revision.version && current?.generation === revision.environmentGeneration ? result : fallback;
+    const stale = model.getVersionId() !== revision.version || current?.generation !== revision.environmentGeneration;
+    return { value: result, stale };
   }
 
   private async publishDiagnostics(model: Monaco.editor.ITextModel, service: LanguageService, environment: ShaderAuthoringEnvironment): Promise<void> {

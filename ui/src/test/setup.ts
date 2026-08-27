@@ -132,6 +132,16 @@ if (typeof HTMLMediaElement !== 'undefined') {
 const monacoContributionLoadState = vi.hoisted(() => ({
   gotoError: 0,
   hover: 0,
+  suggest: 0,
+  parameterHints: 0,
+  goToCommands: 0,
+  goToDefinitionAtPosition: 0,
+  referenceSearch: 0,
+  rename: 0,
+  colorPicker: 0,
+  documentSymbols: 0,
+  gotoSymbolQuickAccess: 0,
+  wordHighlighter: 0,
 }));
 
 (globalThis as any).__monacoContributionLoadState = monacoContributionLoadState;
@@ -208,6 +218,46 @@ vi.mock('monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError', () =>
 });
 vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', () => {
   monacoContributionLoadState.hover += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController', () => {
+  monacoContributionLoadState.suggest += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints', () => {
+  monacoContributionLoadState.parameterHints += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands', () => {
+  monacoContributionLoadState.goToCommands += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition', () => {
+  monacoContributionLoadState.goToDefinitionAtPosition += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/standalone/browser/referenceSearch/standaloneReferenceSearch', () => {
+  monacoContributionLoadState.referenceSearch += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/rename/browser/rename', () => {
+  monacoContributionLoadState.rename += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/colorPicker/browser/colorPickerContribution', () => {
+  monacoContributionLoadState.colorPicker += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/documentSymbols/browser/documentSymbols', () => {
+  monacoContributionLoadState.documentSymbols += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess', () => {
+  monacoContributionLoadState.gotoSymbolQuickAccess += 1;
+  return {};
+});
+vi.mock('monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter', () => {
+  monacoContributionLoadState.wordHighlighter += 1;
   return {};
 });
 
