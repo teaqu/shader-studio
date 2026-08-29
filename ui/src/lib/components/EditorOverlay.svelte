@@ -19,7 +19,7 @@
   import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl, setupMonacoSlang } from "@shader-studio/monaco";
+  import { setupMonacoGlsl, setupMonacoSlang, setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
   import { isAuthoringValueType } from "@shader-studio/types";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
@@ -108,7 +108,6 @@
   let vimCurrentMode = "normal";
   const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
   const PERSIST_DELAY_MS = 15;
-  const RENDERER_COMPILER_MARKER_OWNER = "shader-studio-renderer-compiler";
   // Observability for the marker pipeline. updateCount separates "never ran"
   // from "ran and produced nothing", which the DOM alone cannot distinguish.
   // Plain counters written straight onto the element: updateErrorMarkers runs
@@ -839,7 +838,9 @@
     containerEl?.setAttribute("data-marker-updates", String(markerUpdateCount));
     containerEl?.setAttribute("data-marker-count", String(markers.length));
     containerEl?.setAttribute("data-errors-count", String(errs.length));
-    monaco.editor.setModelMarkers(model, RENDERER_COMPILER_MARKER_OWNER, markers);
+    // Routed through the arbiter so a line the language service already
+    // reported is not squiggled twice.
+    setCompilerMarkers(monaco, model, markers);
   }
 
   $effect(() => {

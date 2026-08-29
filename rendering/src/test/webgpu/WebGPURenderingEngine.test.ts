@@ -1079,6 +1079,58 @@ describe("WebGPURenderingEngine", () => {
     }
   });
 
+  it("reports a shared module error once when every pass fails on it", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const device = {
+      createShaderModule: vi.fn(() => ({ getCompilationInfo: vi.fn(async () => ({ messages: [] })) })),
+      createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+      createBindGroupLayout: vi.fn(() => ({})),
+      createPipelineLayout: vi.fn(() => ({})),
+      createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+      createSampler: vi.fn(() => ({})),
+      createBindGroup: vi.fn(() => ({})),
+      createTexture: vi.fn(() => ({
+        createView: vi.fn(() => ({})),
+        destroy: vi.fn(),
+      })),
+      pushErrorScope: vi.fn(),
+      popErrorScope: vi.fn(async () => null),
+    };
+    const commonError = [
+      "error[E20002]: syntax error",
+      "  --> /common.slang:5:18",
+      "   |",
+      "5  | float helper() { return; }",
+    ].join("\n");
+    const compiler = {
+      compile: vi.fn(() => ({ success: false, errors: [commonError] })),
+      dispose: vi.fn(),
+    };
+
+    (engine as any).canvas = { width: 320, height: 180 };
+    (engine as any).device = device;
+    (engine as any).compiler = compiler;
+    (engine as any).format = "bgra8unorm";
+
+    const result = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(0); }",
+      {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: "buffer-a.slang", inputs: {} },
+        },
+      },
+      "/image.slang",
+      { BufferA: "float4 mainImage(float2 c) { return float4(1); }" },
+    );
+
+    expect(result?.success).toBe(false);
+    // Both passes import the broken module, so the compiler reported it twice.
+    expect(compiler.compile).toHaveBeenCalledTimes(2);
+    expect(result?.errors).toEqual([`BufferA: ${commonError}`]);
+  });
+
   it("disposes already-built pipelines when a later pass fails to compile", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {

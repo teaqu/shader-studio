@@ -14,6 +14,7 @@ import { MouseManager } from "../input/MouseManager";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
+import { dedupeCompilerErrors } from "../util/CompilerErrorDedupe";
 import { SlangCompiler } from "./SlangCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
@@ -1785,7 +1786,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.clearCanvas();
     }
 
-    return result;
+    // Every failing pass reports a shared module's error, so collapse them
+    // before the result leaves the engine.
+    return { ...result, errors: dedupeCompilerErrors(result.errors) };
   }
 
   /** Release the active shader after switching to a different shader fails. */

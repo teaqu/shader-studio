@@ -5,6 +5,7 @@ import type {
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import type { DiagnosticSink } from "../app/DiagnosticArbiter";
 import {
   ShaderAuthoringEnvironmentProvider,
   onDidChangeCustomUniformSnapshot,
@@ -14,22 +15,33 @@ import {
 export class VscodeLanguageServiceController implements vscode.Disposable {
   private readonly services: Partial<Record<ShaderLanguage, Promise<LanguageService>>> = {};
   private readonly opened: Record<ShaderLanguage, Set<string>> = { glsl: new Set(), slang: new Set() };
-  private readonly diagnostics: Record<ShaderLanguage, vscode.DiagnosticCollection>;
+  private readonly diagnostics: Record<ShaderLanguage, DiagnosticSink>;
+  private readonly ownedCollections: vscode.DiagnosticCollection[] = [];
   private readonly disposables: vscode.Disposable[] = [];
   private readonly semanticTokensChanged = new vscode.EventEmitter<void>();
 
   constructor(
     private readonly factories: Record<ShaderLanguage, () => Promise<LanguageService>>,
     private readonly environments = new ShaderAuthoringEnvironmentProvider(),
+    // Supplied by the arbiter so compiler and language service diagnostics are
+    // reconciled before they reach a collection; standalone use falls back to
+    // collections of its own.
+    sinks?: Record<ShaderLanguage, DiagnosticSink>,
   ) {
-    this.diagnostics = {
-      glsl: vscode.languages.createDiagnosticCollection("shader-studio-glsl-ls"),
-      slang: vscode.languages.createDiagnosticCollection("shader-studio-slang-ls"),
+    this.diagnostics = sinks ?? {
+      glsl: this.ownCollection("shader-studio-glsl-ls"),
+      slang: this.ownCollection("shader-studio-slang-ls"),
     };
   }
 
+  private ownCollection(name: string): vscode.DiagnosticCollection {
+    const collection = vscode.languages.createDiagnosticCollection(name);
+    this.ownedCollections.push(collection);
+    return collection;
+  }
+
   start(context: vscode.ExtensionContext): void {
-    this.disposables.push(this.diagnostics.glsl, this.diagnostics.slang, this.semanticTokensChanged);
+    this.disposables.push(...this.ownedCollections, this.semanticTokensChanged);
     for (const language of ["glsl", "slang"] as const) {
       this.registerProviders(language);
     }

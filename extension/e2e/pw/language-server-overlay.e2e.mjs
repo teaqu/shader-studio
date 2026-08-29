@@ -111,6 +111,17 @@ test.describe('Shader language servers in the Monaco overlay', () => {
     expect(hover).toMatch(/undefined identifier/i);
   });
 
+  test('reports a shared diagnostic once when the language server and the compiler agree', async () => {
+    await h.setSlangLanguageServerEnabled(true);
+
+    // Both the Slang language service and the renderer compile flag
+    // `unknownValue`; arbitration keeps the language service report, so the
+    // hover must list the diagnostic exactly once.
+    const hover = await h.hoverTextForToken('unknownValue', /undefined identifier/i);
+    const reports = hover.match(/undefined identifier/gi) ?? [];
+    expect(reports.length, `hover listed the diagnostic ${reports.length} times:\n${hover}`).toBe(1);
+  });
+
   // Last in the file on purpose: this is the only test that edits the buffer,
   // and leaving the typed line behind cannot disturb the tests above.
   test('opens the completion dropdown while typing', async () => {

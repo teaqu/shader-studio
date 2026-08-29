@@ -271,6 +271,11 @@ vi.mock('@shader-studio/monaco', () => ({
     syncEnvironment: vi.fn(),
     dispose: vi.fn(),
   })),
+  // Real arbitration lives in @shader-studio/monaco and is unit-tested there;
+  // here it only needs to reach monaco with the compiler marker owner.
+  setCompilerMarkers: vi.fn((monacoApi: any, model: any, markers: any) => {
+    monacoApi.editor.setModelMarkers(model, 'shader-studio-renderer-compiler', markers);
+  }),
   glslLanguageDefinition: {},
   shaderStudioTheme: {},
   shaderStudioTransparentTheme: {},

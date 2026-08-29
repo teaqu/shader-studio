@@ -5,6 +5,7 @@ import type {
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import { setLanguageServiceMarkers } from "./markerArbitration";
 
 export type LanguageServiceFactory = () => Promise<LanguageService>;
 export type MonacoLanguageServiceFactories = Record<ShaderLanguage, LanguageServiceFactory>;
@@ -55,7 +56,7 @@ export class MonacoLanguageServiceManager {
       await service?.dispose();
       state.service = undefined;
       state.opened.clear();
-      for (const model of this.modelsFor(language)) this.monaco.editor.setModelMarkers(model, markerOwner(language), []);
+      for (const model of this.modelsFor(language)) setLanguageServiceMarkers(this.monaco, model, []);
       return;
     }
     for (const model of this.modelsFor(language)) await this.ensureModel(model);
@@ -311,13 +312,14 @@ export class MonacoLanguageServiceManager {
     const revision = revisionFor(model, language, environment);
     const diagnostics = await service.diagnostics({ document: revision });
     if (model.getVersionId() !== revision.version || this.environments.get(revision.uri)?.generation !== revision.environmentGeneration) return;
-    this.monaco.editor.setModelMarkers(model, markerOwner(language), diagnostics.map((item) => ({
+    setLanguageServiceMarkers(this.monaco, model, diagnostics.map((item) => ({
       ...toMonacoRange(this.monaco, item.range),
       message: typeof item.message === "string" ? item.message : item.message.value,
       severity: markerSeverity(item.severity),
       source: item.source,
       code: item.code === undefined ? undefined : String(item.code),
     })));
+
   }
 
   private modelsFor(language: ShaderLanguage): Monaco.editor.ITextModel[] {
@@ -360,7 +362,6 @@ function revisionFor(model: Monaco.editor.ITextModel, languageId: ShaderLanguage
   return { uri: model.uri.toString(), languageId, version: model.getVersionId(), environmentGeneration: environment.generation };
 }
 function shaderLanguage(language: string): ShaderLanguage | undefined { return language === "glsl" || language === "slang" ? language : undefined; }
-function markerOwner(language: ShaderLanguage): string { return `shader-studio-${language}-ls`; }
 const RENAME_REJECTED = "This symbol cannot be renamed here.";
 function toLspPosition(position: Monaco.Position) { return { line: position.lineNumber - 1, character: position.column - 1 }; }
 function toLspRange(range: Monaco.IRange) { return { start: { line: range.startLineNumber - 1, character: range.startColumn - 1 }, end: { line: range.endLineNumber - 1, character: range.endColumn - 1 } }; }

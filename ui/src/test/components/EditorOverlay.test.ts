@@ -13,6 +13,11 @@ vi.mock('@shader-studio/monaco', () => ({
     syncEnvironment: vi.fn(),
     dispose: vi.fn(),
   })),
+  // Arbitration between compiler and language service markers is unit-tested in
+  // @shader-studio/monaco; here it only has to reach monaco with the owner.
+  setCompilerMarkers: vi.fn((monacoApi: any, model: any, markers: any) => {
+    monacoApi.editor.setModelMarkers(model, 'shader-studio-renderer-compiler', markers);
+  }),
 }));
 
 const mockTransport = {

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ErrorMessage, WarningMessage } from "@shader-studio/types";
+import type { DiagnosticSink } from "./DiagnosticArbiter";
 
 export class ErrorHandler {
   private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
@@ -12,7 +13,7 @@ export class ErrorHandler {
 
   constructor(
     private outputChannel: vscode.LogOutputChannel,
-    private diagnosticCollection: vscode.DiagnosticCollection,
+    private diagnosticCollection: DiagnosticSink,
   ) {
     this.setupEditorChangeListener();
   }

@@ -11,6 +11,7 @@ import { GlslFileTracker } from "./GlslFileTracker";
 import { ShaderCreator } from "./ShaderCreator";
 import { Messenger } from "./transport/Messenger";
 import { ErrorHandler } from "./ErrorHandler";
+import type { DiagnosticSink } from "./DiagnosticArbiter";
 import { ConfigGenerator } from "./ConfigGenerator";
 import { writeWorkspaceTypeDefs } from "./WorkspaceTypeDefs";
 import { CompileController, type CompileMode } from "./CompileController";
@@ -45,7 +46,7 @@ export class ShaderStudio {
   constructor(
     context: vscode.ExtensionContext,
     outputChannel: vscode.LogOutputChannel,
-    diagnosticCollection: vscode.DiagnosticCollection,
+    diagnosticCollection: DiagnosticSink,
   ) {
     this.context = context;
 

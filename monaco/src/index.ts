@@ -8,3 +8,11 @@ export {
   type LanguageServiceFactory,
   type MonacoLanguageServiceFactories,
 } from './language-services/MonacoLanguageServiceManager';
+export {
+  RENDERER_COMPILER_MARKER_OWNER,
+  markerOwner,
+  setCompilerMarkers,
+  setLanguageServiceMarkers,
+  suppressDuplicateMarkers,
+  resetMarkerArbitration,
+} from './language-services/markerArbitration';

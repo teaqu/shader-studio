@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ShaderStudio } from "./app/ShaderStudio";
+import { DiagnosticArbiter } from "./app/DiagnosticArbiter";
 import { applySnippetContributionSetting } from "./app/SnippetContributionSetting";
 
 import * as path from "path";
@@ -23,9 +24,30 @@ export async function activate(context: vscode.ExtensionContext) {
   const diagnosticCollection = vscode.languages.createDiagnosticCollection(
     "shader-studio",
   );
-  context.subscriptions.push(diagnosticCollection);
+  const glslServiceCollection = vscode.languages.createDiagnosticCollection(
+    "shader-studio-glsl-ls",
+  );
+  const slangServiceCollection = vscode.languages.createDiagnosticCollection(
+    "shader-studio-slang-ls",
+  );
+  context.subscriptions.push(diagnosticCollection, glslServiceCollection, slangServiceCollection);
 
-  languageServices = new VscodeLanguageServiceController(createExtensionLanguageServiceFactories(context));
+  // The renderer compiler and the language services report on the same lines;
+  // the arbiter keeps one diagnostic per line instead of two.
+  const diagnosticArbiter = new DiagnosticArbiter({
+    compiler: diagnosticCollection,
+    glsl: glslServiceCollection,
+    slang: slangServiceCollection,
+  });
+
+  languageServices = new VscodeLanguageServiceController(
+    createExtensionLanguageServiceFactories(context),
+    undefined,
+    {
+      glsl: diagnosticArbiter.languageServiceSink("glsl"),
+      slang: diagnosticArbiter.languageServiceSink("slang"),
+    },
+  );
   languageServices.start(context);
 
   // Listen for configuration changes that require restart
@@ -81,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext) {
     shaderExtension = new ShaderStudio(
       context,
       outputChannel,
-      diagnosticCollection,
+      diagnosticArbiter.compilerSink(),
     );
 
     outputChannel.info("Shader Studio extension activated successfully");
