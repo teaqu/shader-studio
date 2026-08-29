@@ -228,7 +228,7 @@ Each non-Image pass needs a `path` field pointing to its `.glsl` or `.slang` fil
 
 ## Channel Types
 
-Each pass can bind up to 16 input channels (`iChannel0` through `iChannel15`):
+Each pass can bind input channels (`iChannel0`, `iChannel1`, and so on). Matching metadata accessors are available for every configured slot (`iCh0`, `iCh1`, and so on):
 
 | Type | Fields | Description |
 |------|--------|-------------|
@@ -238,6 +238,8 @@ Each pass can bind up to 16 input channels (`iChannel0` through `iChannel15`):
 | `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |
 | `cubemap` | `path`, `filter`, `wrap`, `vflip` | T-cross cubemap image |
 | `keyboard` | — | Key state input texture |
+
+In GLSL, `iChN` exposes the same input as `iChannelN` together with its metadata: `.sampler`, `.size`, `.time`, and `.loaded`. For example, `iCh4.sampler` and `iChannel4` refer to the fifth configured input.
 
 ### Texture / Video / Cubemap Options
 

@@ -69,12 +69,12 @@ All standard shader uniforms are available in the vertex shader:
 | `iMouse` | `vec4` | `float4` | Mouse position and button state |
 | `iFrame` | `int` | `int` | Current frame number |
 | `iDate` | `vec4` | `float4` | Year, month, day, seconds |
-| `iChannelTime` | `float[4]` | `float[4]` | Playback time per channel |
+| `iChannelTime` | `float[N]` | `float[N]` | Playback time per configured channel |
 | `iSampleRate` | `float` | `float` | Audio sample rate |
 | `iCameraPos` | `vec3` | `float3` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | Camera forward direction |
 
-Channel samplers (e.g. `sampleIChannel0(uv)`) are also available. Vertex sampling uses mip level 0.
+Channel samplers (e.g. `sampleIChannel0(uv)`) and metadata accessors (e.g. `iCh0`) are also available. Vertex sampling uses mip level 0.
 
 ## Fragment Shader Access
 

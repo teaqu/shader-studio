@@ -19,9 +19,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 | `iFrame` | `int` | Frame counter (starts at 0) |
 | `iMouse` | `vec4` | Mouse position: xy = current, zw = click position |
 | `iResolution` | `vec3` | Canvas dimensions: xy = width/height, z = 1.0 |
-| `iChannel0–3` | `sampler2D` | Input texture channels |
-| `iChannelResolution[4]` | `vec3[]` | Resolution of each input channel |
-| `iChannelTime[4]` | `float[]` | Playback time for each audio channel |
+| `iChannelN` | sampler type follows the configured input | Input channel `N` (up to the configured channel limit) |
+| `iChannelResolution[N]` | `vec3` | Resolution of input channel `N` |
+| `iChannelTime[N]` | `float` | Playback time for input channel `N` |
+| `iChN` | metadata struct | Shader Studio accessor for channel `N`: `.sampler`, `.size`, `.time`, and `.loaded` |
 | `iDate` | `vec4` | Year, month, day, seconds since midnight |
 | `iSampleRate` | `float` | Audio sample rate (44100) |
 
