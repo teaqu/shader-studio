@@ -10,6 +10,14 @@ const fixtureRoot =
   path.resolve(directory, "src/test/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
 export default defineConfig({
+  resolve: {
+    // Browser tests must compile the workspace source, like the UI build does.
+    // Loading core's CommonJS distribution directly leaves its named exports
+    // unavailable to browser-native ESM imports from language analysis.
+    alias: {
+      "@shader-studio/language-server-core": path.resolve(directory, "../language-servers/core/src"),
+    },
+  },
   plugins: [
     {
       name: "shader-fixture-corpus",
