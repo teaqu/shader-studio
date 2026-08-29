@@ -32,27 +32,52 @@ export function stripShaderStudioEditorImport(source: string): string {
   );
 }
 
-// Fixed uniform-buffer prefix. Offsets are bytes. iResolution/iMouse occupy a
-// full vec4 each; iResolution only uses xyz. Script fields are appended after
-// this prefix, and the total allocation is rounded to a multiple of 16.
-export const SHADERTOY_CHANNEL_COUNT = 16;
-export const SHADERTOY_UNIFORM_SIZE = 880;
+// Uniform-buffer layout is pass-specific. Scalar arrays in uniform buffers
+// have a 16-byte stride; float3 arrays likewise occupy one 16-byte slot.
+export interface ShaderToyUniformLayout {
+  channelCount: number;
+  size: number;
+  offsets: {
+    iResolution: number;
+    iMouse: number;
+    iTime: number;
+    iTimeDelta: number;
+    iFrameRate: number;
+    iFrame: number;
+    iChannelTime: number;
+    iChannelLoaded: number;
+    iSampleRate: number;
+    iDate: number;
+    iChannelResolution: number;
+    iCameraPos: number;
+    iCameraDir: number;
+  };
+}
+
+export function getShaderToyChannelCount(channels: readonly { slot: number }[] = []): number {
+  return Math.max(4, ...channels.map(({ slot }) => slot + 1));
+}
+
+export function createShaderToyUniformLayout(channelCount: number): ShaderToyUniformLayout {
+  const count = Math.max(4, channelCount);
+  const iChannelTime = 48;
+  const iChannelLoaded = iChannelTime + count * 16;
+  const iSampleRate = iChannelLoaded + count * 16;
+  const iDate = iSampleRate + 16;
+  const iChannelResolution = iDate + 16;
+  const iCameraPos = iChannelResolution + count * 16;
+  const iCameraDir = iCameraPos + 16;
+  return {
+    channelCount: count,
+    size: iCameraDir + 16,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir },
+  };
+}
+
+/** Backward-compatible base layout for unconfigured passes. */
+export const SHADERTOY_UNIFORM_SIZE = createShaderToyUniformLayout(4).size;
 export const DISPATCH_UNIFORM_SIZE = 16;
-export const UNIFORM_OFFSETS = {
-  iResolution: 0, // float4 (xyz used)
-  iMouse: 16, // float4
-  iTime: 32, // float
-  iTimeDelta: 36, // float
-  iFrameRate: 40, // float
-  iFrame: 44, // int
-  iChannelTime: 48, // float[16], 16-byte array stride
-  iChannelLoaded: 304, // float[16], 16-byte array stride
-  iSampleRate: 560, // float
-  iDate: 576, // float4
-  iChannelResolution: 592, // float4[16] (xyz used)
-  iCameraPos: 848, // float4 (xyz used)
-  iCameraDir: 864, // float4 (xyz used)
-} as const;
+export const UNIFORM_OFFSETS = createShaderToyUniformLayout(4).offsets satisfies ShaderToyUniformLayout["offsets"];
 
 // Struct fields are NOT named iResolution/iTime/… on purpose: those names are
 // #define macros, and the Slang preprocessor would expand them inside the
@@ -60,8 +85,8 @@ export const UNIFORM_OFFSETS = {
 export { isSlangCustomUniformType } from "@shader-studio/types";
 export type { SlangCustomUniformInfo, SlangCustomUniformType } from "@shader-studio/types";
 
-function buildPrelude(customUniforms: SlangCustomUniformInfo[] = []): string {
-  return buildSlangRuntimePrelude(customUniforms, MESH_FRAGMENT_CONTEXT);
+function buildPrelude(channelCount: number, customUniforms: SlangCustomUniformInfo[] = []): string {
+  return buildSlangRuntimePrelude(customUniforms, MESH_FRAGMENT_CONTEXT, channelCount);
 }
 
 function buildMeshPrelude(binding: number): string {
@@ -410,7 +435,7 @@ ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
-  const prelude = buildPrelude(options.customUniforms);
+  const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
   const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = stripShaderStudioEditorImport(userSource);
@@ -516,7 +541,7 @@ export function getNativeComputeWorkgroupSize(source: string): [number, number, 
 
 /** Wrap a user compute-shader source into a full, compilable Slang module. */
 export function wrapSlangComputeSource(userSource: string, options: SlangComputeWrapOptions): string {
-  const prelude = buildPrelude(options.customUniforms);
+  const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
   const channels = options.channels ?? [];
   const storage = options.storage ?? [];
   const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();

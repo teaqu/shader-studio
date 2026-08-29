@@ -1,7 +1,7 @@
 import {
   GLSL_STABLE_NAMES,
-  SHADER_STUDIO_BUILTIN_UNIFORMS,
   SLANG_RUNTIME_INTERNAL_NAMES,
+  shaderStudioBuiltinUniformNames,
   type ShaderStudioBuiltinStage,
 } from "./BuiltinUniforms";
 import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
@@ -77,7 +77,6 @@ export interface AuthoringChannelBinding {
 export const MAX_AUTHORING_CHANNEL_SLOTS = 1024;
 
 const SHADER_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const DOCUMENTATION_ONLY_BUILTIN_NAMES = new Set(["iChannelN"]);
 
 function collectFixedRendererNames(
   languageId: ShaderAuthoringEnvironment["languageId"],
@@ -93,10 +92,8 @@ function collectFixedRendererNames(
     }
     names.add("writeOutput");
   }
-  for (const builtin of SHADER_STUDIO_BUILTIN_UNIFORMS) {
-    if (builtin.languages.includes(languageId) && !DOCUMENTATION_ONLY_BUILTIN_NAMES.has(builtin.name)) {
-      names.add(builtin.name);
-    }
+  for (const name of shaderStudioBuiltinUniformNames(languageId)) {
+    names.add(name);
   }
   return names;
 }

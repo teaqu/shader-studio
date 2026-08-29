@@ -1,7 +1,6 @@
 import {
   SHADER_STUDIO_BUILTIN_UNIFORMS,
   SHADER_STUDIO_FRAGMENT_CONTEXT,
-  SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES,
   SLANG_RUNTIME_UNIFORM_ALIAS_LINES,
   SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
 } from "./BuiltinUniforms";
@@ -197,15 +196,20 @@ export function buildSlangAuthoringModule(
     : environment.outputLayers && environment.outputLayers > 1
       ? ["void writeOutput(uint2 coord, uint layer, float4 color)\n{\n}"]
       : ["void writeOutput(uint2 coord, float4 color)\n{\n}"];
+  const channelCount = Math.max(4, ...channelBindings.map(({ slot }) => slot + 1));
   const lines = [
     ...SHADER_STUDIO_BUILTIN_UNIFORMS
-      .flatMap((uniform) => (
-        uniform.slangDeclaration
-        && uniform.languages.includes("slang")
-        && (!uniform.stages || uniform.stages.includes(environment.stage))
-          ? [uniform.slangDeclaration]
-          : []
-      )),
+      .flatMap((uniform) => {
+        const declaration = uniform.name === "iChannelTime" ? `float iChannelTime[${channelCount}];`
+          : uniform.name === "iChannelLoaded" ? `float iChannelLoaded[${channelCount}];`
+            : uniform.name === "iChannelResolution" ? `float3 iChannelResolution[${channelCount}];`
+              : uniform.slangDeclaration;
+        return declaration
+          && uniform.languages.includes("slang")
+          && (!uniform.stages || uniform.stages.includes(environment.stage))
+          ? [declaration]
+          : [];
+      }),
     ...environment.customUniforms
       .filter((uniform) => isValidShaderIdentifier(uniform.name))
       .flatMap((uniform) => {
@@ -248,6 +252,7 @@ export function buildSlangRuntimePrelude(
     normal: "_shaderStudioNormal",
     cameraPosition: "_shaderStudioCameraPosition",
   },
+  channelCount = 4,
 ): string {
   const fields = customUniforms
     .flatMap(({ name, type }) => isSlangCustomUniformType(type)
@@ -270,7 +275,19 @@ export function buildSlangRuntimePrelude(
   return `// ---- shader-studio Slang prelude (generated) ----
 struct ShaderToyUniforms
 {
-${SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES.join("\n")}
+    float4 resolution;
+    float4 mouse;
+    float time;
+    float timeDelta;
+    float frameRate;
+    int frame;
+    float channelTime[${channelCount}];
+    float channelLoaded[${channelCount}];
+    float sampleRate;
+    float4 date;
+    float3 channelResolution[${channelCount}];
+    float4 cameraPos;
+    float4 cameraDir;
 ${fields}
 };
 

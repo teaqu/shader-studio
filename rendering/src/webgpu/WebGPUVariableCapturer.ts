@@ -11,7 +11,7 @@ import type { ConfigInput, DebugInstrumentationPlan } from "@shader-studio/types
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import type { SlangChannelBinding } from "./SlangPrelude";
-import { DBG_CAPTURE_UNIFORM_SIZE } from "./SlangPrelude";
+import { DBG_CAPTURE_UNIFORM_SIZE, getShaderToyChannelCount } from "./SlangPrelude";
 import { createSlangCustomUniformLayout, packShaderToyUniforms } from "./uniforms";
 import { captureCounters, captureDiagTick } from "../capture/captureDiagnostics";
 
@@ -83,6 +83,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       this.compileContextKey = nextContextKey;
       this.pipelineCache.clear();
       this.pipelineCacheOrder = [];
+      this.uniformBuffer?.destroy?.();
+      this.uniformBuffer = null;
     }
     this.compileContext = context;
   }
@@ -236,11 +238,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       return 0;
     }
 
-    this.ensureUniformBuffers();
+    const channelCount = getShaderToyChannelCount(channels);
+    this.ensureUniformBuffers(channelCount);
     this.device.queue.writeBuffer(
       this.uniformBuffer!,
       0,
       packShaderToyUniforms({
+        channelCount,
         width: canvasWidth,
         height: canvasHeight,
         time: uniforms.time,
@@ -248,11 +252,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         frameRate: uniforms.frameRate,
         frame: uniforms.frame,
         mouse: uniforms.mouse,
-        channelTime: uniforms.channelTime ?? new Array<number>(16).fill(0),
-        channelLoaded: uniforms.channelLoaded ?? new Array<number>(16).fill(0),
+        channelTime: uniforms.channelTime ?? new Array<number>(channelCount).fill(0),
+        channelLoaded: uniforms.channelLoaded ?? new Array<number>(channelCount).fill(0),
         sampleRate: uniforms.sampleRate ?? 44100,
         date: uniforms.date,
-        channelResolution: uniforms.channelResolution ?? new Array<number>(48).fill(0),
+        channelResolution: uniforms.channelResolution ?? new Array<number>(channelCount * 3).fill(0),
         cameraPos: uniforms.cameraPos,
         cameraDir: uniforms.cameraDir,
       }, this.customUniforms, this.customUniforms),
@@ -673,12 +677,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     return buffers;
   }
 
-  private ensureUniformBuffers(): void {
+  private ensureUniformBuffers(channelCount: number): void {
     const UNIFORM = globalThis.GPUBufferUsage?.UNIFORM ?? 0x0040;
     const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
     if (!this.uniformBuffer) {
       this.uniformBuffer = this.device.createBuffer({
-        size: createSlangCustomUniformLayout(this.customUniforms).size,
+        size: createSlangCustomUniformLayout(this.customUniforms, channelCount).size,
         usage: UNIFORM | COPY_DST,
       });
       captureCounters.gpuBuffersCreated++;

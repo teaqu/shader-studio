@@ -3,7 +3,7 @@ import type { DebugInstrumentationPlan } from "@shader-studio/types";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
-import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -134,6 +134,16 @@ const storageB: StorageBindingNode = {
 };
 
 describe("WebGPUVariableCapturer", () => {
+  it("uses the captured pass's sparse channel count for its uniform buffer", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangChannels: [{ slot: 16, key: "iChannel16", kind: "texture" }],
+    }, () => [{ slot: 16, textureView: {} as GPUTextureView }]);
+
+    await capturer.issueCaptureAtPixel([{ varName: "x", varType: "float", captureShader: "float4 mainImage(float2 c) { return 0; }" }], 0, 0, 320, 180, uniforms);
+
+    expect(gpu.createdBuffers.some(({ size }) => size === createShaderToyUniformLayout(17).size)).toBe(true);
+  });
   it("packs date, channel resolutions, and custom values for capture shaders", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
@@ -163,8 +173,8 @@ describe("WebGPUVariableCapturer", () => {
     expect(values.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(512);
     expect(values.getFloat32(UNIFORM_OFFSETS.iCameraPos + 8, true)).toBe(3);
     expect(values.getFloat32(UNIFORM_OFFSETS.iCameraDir + 8, true)).toBe(-0.75);
-    expect(values.getFloat32(880, true)).toBeCloseTo(0.25);
-    expect(values.getInt32(892, true)).toBe(1);
+    expect(values.getFloat32(SHADERTOY_UNIFORM_SIZE, true)).toBeCloseTo(0.25);
+    expect(values.getInt32(SHADERTOY_UNIFORM_SIZE + 12, true)).toBe(1);
   });
 
   it("packs provided channel timing, loaded state, and sample rate", async () => {

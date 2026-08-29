@@ -32,6 +32,7 @@ import {
 } from "./SlangPassGraph";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { SlangComputePipeline } from "./SlangComputePipeline";
+import { getShaderToyChannelCount } from "./SlangPrelude";
 import {
   BUFFER_TEXTURE_FORMAT,
   HIGH_PRECISION_BUFFER_TEXTURE_FORMAT,
@@ -345,12 +346,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!adapter) {
         throw new Error("requestAdapter() returned null");
       }
-      const adapterSampledTextures = adapter.limits?.maxSampledTexturesPerShaderStage;
-      ConfigValidator.setChannelLimit(
-        typeof adapterSampledTextures === "number" && adapterSampledTextures > 0
-          ? adapterSampledTextures
-          : DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE,
-      );
+      ConfigValidator.setChannelLimit(this.resolveChannelLimit(adapter.limits));
       const deviceStartedAt = this.now();
       this.logSlangPerf("device request start", {});
       const deviceDescriptor = this.buildDeviceDescriptor(adapter);
@@ -363,6 +359,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         return;
       }
       this.device = device;
+      ConfigValidator.setChannelLimit(this.resolveChannelLimit(device.limits));
       this.meshResources = new WebGPUMeshResources(device);
       this.bufferTextureFormat = adapter.features?.has?.("float32-filterable")
         ? HIGH_PRECISION_BUFFER_TEXTURE_FORMAT
@@ -472,6 +469,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ) {
       requiredLimits.maxSampledTexturesPerShaderStage = adapterSampledTexturesLimit;
     }
+    const adapterSamplersLimit = adapter.limits?.maxSamplersPerShaderStage;
+    if (
+      typeof adapterSamplersLimit === "number" &&
+      Number.isFinite(adapterSamplersLimit) &&
+      adapterSamplersLimit > DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE
+    ) {
+      requiredLimits.maxSamplersPerShaderStage = adapterSamplersLimit;
+    }
     if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
       return undefined;
     }
@@ -484,6 +489,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
       descriptor.requiredLimits = requiredLimits;
     }
     return descriptor;
+  }
+
+  private resolveChannelLimit(limits: Pick<GPUSupportedLimits, "maxSampledTexturesPerShaderStage" | "maxSamplersPerShaderStage"> | undefined): number {
+    const sampledTextures = limits?.maxSampledTexturesPerShaderStage;
+    const samplers = limits?.maxSamplersPerShaderStage;
+    if (
+      typeof sampledTextures === "number" && Number.isFinite(sampledTextures) && sampledTextures > 0 &&
+      typeof samplers === "number" && Number.isFinite(samplers) && samplers > 0
+    ) {
+      return Math.min(sampledTextures, samplers);
+    }
+    return DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE;
   }
 
   private resolveDeviceTextureLimit(device: GPUDevice): number {
@@ -1057,7 +1074,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           pipeline = this.createPassPipeline(
             pass,
             graph.storage,
-            createSlangCustomUniformLayout(uniformInfo).size,
+            createSlangCustomUniformLayout(uniformInfo, getShaderToyChannelCount(pass.channels)).size,
           );
           if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
             break;
@@ -2086,7 +2103,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private createPassPipeline(
     pass: RenderPassNode,
     storage: StorageBindingNode[],
-    uniformBufferSize = createSlangCustomUniformLayout([]).size,
+    uniformBufferSize = createSlangCustomUniformLayout([], getShaderToyChannelCount(pass.channels)).size,
   ): SlangPassPipeline | SlangComputePipeline {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while creating pass pipeline");
@@ -2200,7 +2217,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           replacement = this.createPassPipeline(
             pass,
             graph.storage,
-            createSlangCustomUniformLayout(customUniforms).size,
+            createSlangCustomUniformLayout(customUniforms, getShaderToyChannelCount(pass.channels)).size,
           );
           if (!this.registerPipelineCandidate(candidates, replacement)) {
             return errors;
@@ -2375,6 +2392,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
 
       const data = packShaderToyUniforms({
+        channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
         ...frameInput,
@@ -2440,6 +2458,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       }
 
       const data = packShaderToyUniforms({
+        channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
         ...frameInput,
@@ -2671,15 +2690,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     sampleRate: number;
     channelResolution: number[];
   } {
-    const channelTime = new Array<number>(16).fill(0);
-    const channelLoaded = new Array<number>(16).fill(0);
-    const channelResolution = new Array<number>(48).fill(0);
+    const channelCount = getShaderToyChannelCount(pass.channels);
+    const channelTime = new Array<number>(channelCount).fill(0);
+    const channelLoaded = new Array<number>(channelCount).fill(0);
+    const channelResolution = new Array<number>(channelCount * 3).fill(0);
 
     for (const channel of pass.channels) {
-      if (channel.slot > 15) {
-        continue;
-      }
-
       if (channel.kind === "video") {
         const video = this.resourceManager?.getVideoElement?.(channel.path);
         const handle = this.resourceManager?.getVideoTexture?.(channel.path);
@@ -3064,9 +3080,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       mouse: Array.from(this.mouseManager.getMouse()),
       frame: this.timeManager.getFrame(),
       date: Array.from(this.timeManager.getCurrentDate()),
-      channelTime: new Array<number>(16).fill(0),
+      channelTime: new Array<number>(4).fill(0),
       sampleRate: this.resourceManager?.getAudioSampleRate?.() || 44100,
-      channelLoaded: new Array<number>(16).fill(0),
+      channelLoaded: new Array<number>(4).fill(0),
       cameraPos: Array.from(this.cameraManager.getCameraPos()),
       cameraDir: Array.from(this.cameraManager.getCameraDir()),
     };
@@ -3336,10 +3352,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const channelUniforms = pass
       ? this.getChannelUniforms(pass)
       : {
-        channelTime: new Array<number>(16).fill(0),
-        channelLoaded: new Array<number>(16).fill(0),
+        channelTime: new Array<number>(4).fill(0),
+        channelLoaded: new Array<number>(4).fill(0),
         sampleRate: u.sampleRate,
-        channelResolution: new Array<number>(48).fill(0),
+        channelResolution: new Array<number>(12).fill(0),
       };
     return {
       time: u.time,

@@ -809,8 +809,8 @@ describe("SlangCompiler", () => {
     compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iChannelTime[1]); }");
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("float channelTime[16];");
-    expect(wrapped).toContain("float channelLoaded[16];");
+    expect(wrapped).toContain("float channelTime[4];");
+    expect(wrapped).toContain("float channelLoaded[4];");
     expect(wrapped).toContain("float sampleRate;");
     expect(wrapped).toContain("#define iChannelTime (_st.channelTime)");
     expect(wrapped).toContain("#define iChannelLoaded (_st.channelLoaded)");
@@ -828,23 +828,27 @@ describe("SlangCompiler", () => {
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("float4 date;");
-    expect(wrapped).toContain("float3 channelResolution[16];");
+    expect(wrapped).toContain("float3 channelResolution[4];");
     expect(wrapped).toContain("#define iDate (_st.date)");
     expect(wrapped).toContain("#define iChannelResolution (_st.channelResolution)");
   });
 
-  it("exposes channel metadata for slot 15", () => {
+  it("exposes channel metadata beyond the legacy 16-slot boundary", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return iCh15.sampler.Sample(c); }", {
-      channels: [{ slot: 15, key: "iChannel15", kind: "texture" }],
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iCh16.sampler.Sample(c); }", {
+      channels: [{ slot: 16, key: "iChannel16", kind: "texture" }],
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("channel.size = _st.channelResolution[15];");
-    expect(wrapped).toContain("channel.time = _st.channelTime[15];");
-    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[15]");
+    expect(wrapped).toContain("float channelTime[17];");
+    expect(wrapped).toContain("float channelLoaded[17];");
+    expect(wrapped).toContain("float3 channelResolution[17];");
+    expect(wrapped).not.toContain("[1024]");
+    expect(wrapped).toContain("channel.size = _st.channelResolution[16];");
+    expect(wrapped).toContain("channel.time = _st.channelTime[16];");
+    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[16]");
   });
 
   it("declares the GLSL camera uniforms", () => {

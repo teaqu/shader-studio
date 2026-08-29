@@ -3,7 +3,7 @@ import type { StorageBindingNode } from "../types/PassGraph";
 import {
   type SlangChannelResource,
 } from "./SlangPassPipeline";
-import { DISPATCH_UNIFORM_SIZE, SHADERTOY_UNIFORM_SIZE } from "./SlangPrelude";
+import { createShaderToyUniformLayout, DISPATCH_UNIFORM_SIZE, getShaderToyChannelCount } from "./SlangPrelude";
 
 export interface SlangComputePipelineDescriptor {
   name: string;
@@ -90,7 +90,7 @@ export class SlangComputePipeline {
     this.bindGroupLayout = bindGroupLayout;
     this.pipeline = pipeline;
     this.uniformBuffer = this.device.createBuffer({
-      size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
+      size: this.descriptor.uniformBufferSize ?? createShaderToyUniformLayout(getShaderToyChannelCount(this.descriptor.channels)).size,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     for (let index = 0; index < this.descriptor.dispatchCount; index++) {

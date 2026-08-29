@@ -1,7 +1,7 @@
 /// <reference types="@webgpu/types" />
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { GeometryType } from "@shader-studio/types";
-import { SHADERTOY_UNIFORM_SIZE, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
+import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
 export interface SlangPassPipelineDescriptor {
   name: string;
@@ -124,7 +124,7 @@ export class SlangPassPipeline {
     this.bindGroupLayout = bindGroupLayout;
     this.pipeline = pipeline;
     this.uniformBuffer = this.device.createBuffer({
-      size: this.descriptor.uniformBufferSize ?? SHADERTOY_UNIFORM_SIZE,
+      size: this.descriptor.uniformBufferSize ?? createShaderToyUniformLayout(getShaderToyChannelCount(this.descriptor.channels)).size,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     if (this.isMesh()) {

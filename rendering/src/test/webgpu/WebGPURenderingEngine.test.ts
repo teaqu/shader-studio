@@ -6,7 +6,8 @@ import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
 import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
-import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { ConfigValidator } from "../../util/ConfigValidator";
 
 const pixelRegionCapturerMock = vi.hoisted(() => ({ constructor: vi.fn() }));
 
@@ -337,7 +338,11 @@ describe("WebGPURenderingEngine", () => {
       createTexture: vi.fn(() => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })),
       createSampler: vi.fn(() => ({})),
       queue: { writeTexture: vi.fn() },
-      limits: { maxTextureDimension2D: 16384 },
+      limits: {
+        maxTextureDimension2D: 16384,
+        maxSampledTexturesPerShaderStage: 32,
+        maxSamplersPerShaderStage: 24,
+      },
     };
     const adapter = {
       limits: {
@@ -348,6 +353,8 @@ describe("WebGPURenderingEngine", () => {
         maxComputeWorkgroupSizeX: 1024,
         maxComputeWorkgroupSizeY: 1024,
         maxComputeWorkgroupSizeZ: 128,
+        maxSampledTexturesPerShaderStage: 32,
+        maxSamplersPerShaderStage: 24,
       },
       requestDevice: vi.fn(async () => device),
     };
@@ -371,6 +378,8 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
+      expect(ConfigValidator.getChannelLimit()).toBe(24);
+
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: {
           maxTextureDimension2D: 16384,
@@ -380,9 +389,12 @@ describe("WebGPURenderingEngine", () => {
           maxComputeWorkgroupSizeX: 1024,
           maxComputeWorkgroupSizeY: 1024,
           maxComputeWorkgroupSizeZ: 128,
+          maxSampledTexturesPerShaderStage: 32,
+          maxSamplersPerShaderStage: 24,
         },
       });
     } finally {
+      ConfigValidator.setChannelLimit(32);
       vi.unstubAllGlobals();
     }
   });
@@ -725,7 +737,7 @@ describe("WebGPURenderingEngine", () => {
     const u = engine.getUniforms();
     expect(u.res).toEqual([800, 600, 1]);
     expect(u.mouse).toHaveLength(4);
-    expect(u.channelLoaded).toEqual(new Array(16).fill(0));
+    expect(u.channelLoaded).toEqual(new Array(4).fill(0));
   });
 
   it("collects loaded state and resolution metadata for channel 15", () => {
@@ -1468,10 +1480,10 @@ describe("WebGPURenderingEngine", () => {
         { name: "enabled", type: "bool", value: true },
       ]);
       const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
-      expect(packed.byteLength).toBe(896);
+      expect(packed.byteLength).toBe(SHADERTOY_UNIFORM_SIZE + 16);
       const view = new DataView(packed);
-      expect(view.getFloat32(880, true)).toBeCloseTo(0.5);
-      expect(view.getInt32(884, true)).toBe(1);
+      expect(view.getFloat32(SHADERTOY_UNIFORM_SIZE, true)).toBeCloseTo(0.5);
+      expect(view.getInt32(SHADERTOY_UNIFORM_SIZE + 4, true)).toBe(1);
     });
 
     it("preserves values that arrive before custom declarations compile", async () => {
@@ -1588,6 +1600,7 @@ describe("WebGPURenderingEngine", () => {
           { kind: "texture", slot: 0, key: "iChannel0", path: "/tex.png" },
           { kind: "audio", slot: 1, key: "iChannel1", path: "/audio.wav" },
           { kind: "keyboard", slot: 3, key: "iChannel3" },
+          { kind: "texture", slot: 16, key: "iChannel16", path: "/tex.png" },
         ],
       }];
       (engine as any).passPipelines = new Map([["Image", imagePipeline]]);
@@ -1596,13 +1609,17 @@ describe("WebGPURenderingEngine", () => {
 
       const write = (engine as any).device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
       const view = new DataView(write);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iDate, true)).toBe(2026);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution, true)).toBe(640);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 4, true)).toBe(360);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16, true)).toBe(512);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 16 + 4, true)).toBe(2);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48, true)).toBe(256);
-      expect(view.getFloat32(UNIFORM_OFFSETS.iChannelResolution + 48 + 4, true)).toBe(3);
+      const { offsets, size } = createShaderToyUniformLayout(17);
+      expect(write.byteLength).toBe(size);
+      expect(view.getFloat32(offsets.iDate, true)).toBe(2026);
+      expect(view.getFloat32(offsets.iChannelResolution, true)).toBe(640);
+      expect(view.getFloat32(offsets.iChannelResolution + 4, true)).toBe(360);
+      expect(view.getFloat32(offsets.iChannelResolution + 16, true)).toBe(512);
+      expect(view.getFloat32(offsets.iChannelResolution + 16 + 4, true)).toBe(2);
+      expect(view.getFloat32(offsets.iChannelResolution + 48, true)).toBe(256);
+      expect(view.getFloat32(offsets.iChannelResolution + 48 + 4, true)).toBe(3);
+      expect(view.getFloat32(offsets.iChannelResolution + 16 * 16, true)).toBe(640);
+      expect(view.getFloat32(offsets.iChannelResolution + 16 * 16 + 4, true)).toBe(360);
     });
 
     it("uses the selected buffer pass resources, resolution, and channel uniforms for capture", () => {

@@ -1,7 +1,5 @@
 import {
-  SHADERTOY_UNIFORM_SIZE,
-  SHADERTOY_CHANNEL_COUNT,
-  UNIFORM_OFFSETS,
+  createShaderToyUniformLayout,
   isSlangCustomUniformType,
   type SlangCustomUniformInfo,
   type SlangCustomUniformType,
@@ -36,8 +34,9 @@ function alignTo(value: number, alignment: number): number {
 
 export function createSlangCustomUniformLayout(
   uniformInfo: SlangCustomUniformInfo[] = [],
+  channelCount = 4,
 ): SlangCustomUniformLayout {
-  let offset = SHADERTOY_UNIFORM_SIZE;
+  let offset = createShaderToyUniformLayout(channelCount).size;
   const entries: SlangCustomUniformLayoutEntry[] = [];
   for (const { name, type } of uniformInfo) {
     if (!isSlangCustomUniformType(type)) {
@@ -53,6 +52,8 @@ export function createSlangCustomUniformLayout(
 
 /** The per-frame inputs the Slang ShaderToy uniform block needs. */
 export interface ShaderToyUniformInput {
+  /** Must match the channel count used when this pass's Slang source was generated. */
+  channelCount?: number;
   width: number;
   height: number;
   time: number;
@@ -64,7 +65,7 @@ export interface ShaderToyUniformInput {
   channelLoaded: ArrayLike<number>;
   sampleRate: number;
   date: ArrayLike<number>;
-  /** Sixteen tightly packed xyz vectors. The GPU block pads each to float4. */
+  /** Tightly packed xyz vectors; the GPU block pads each to float4. */
   channelResolution: ArrayLike<number>;
   cameraPos: ArrayLike<number>;
   cameraDir: ArrayLike<number>;
@@ -76,7 +77,9 @@ export function packShaderToyUniforms(
   customUniformInfo: SlangCustomUniformInfo[] = [],
   customUniformValues: SlangCustomUniformValue[] = [],
 ): ArrayBuffer {
-  const customLayout = createSlangCustomUniformLayout(customUniformInfo);
+  const layout = createShaderToyUniformLayout(input.channelCount ?? 4);
+  const { channelCount, offsets } = layout;
+  const customLayout = createSlangCustomUniformLayout(customUniformInfo, channelCount);
   const buf = new ArrayBuffer(customLayout.size);
   const f32 = new Float32Array(buf);
   const i32 = new Int32Array(buf);
@@ -94,23 +97,23 @@ export function packShaderToyUniforms(
   f32[10] = input.frameRate;
   i32[11] = input.frame | 0;
 
-  for (let channel = 0; channel < SHADERTOY_CHANNEL_COUNT; channel++) {
-    f32[(UNIFORM_OFFSETS.iChannelTime + channel * 16) / 4] = input.channelTime[channel] ?? 0;
-    f32[(UNIFORM_OFFSETS.iChannelLoaded + channel * 16) / 4] = input.channelLoaded[channel] ?? 0;
+  for (let channel = 0; channel < channelCount; channel++) {
+    f32[(offsets.iChannelTime + channel * 16) / 4] = input.channelTime[channel] ?? 0;
+    f32[(offsets.iChannelLoaded + channel * 16) / 4] = input.channelLoaded[channel] ?? 0;
   }
-  f32[UNIFORM_OFFSETS.iSampleRate / 4] = input.sampleRate;
+  f32[offsets.iSampleRate / 4] = input.sampleRate;
 
   for (let component = 0; component < 4; component++) {
-    f32[UNIFORM_OFFSETS.iDate / 4 + component] = input.date[component] ?? 0;
+    f32[offsets.iDate / 4 + component] = input.date[component] ?? 0;
   }
-  for (let channel = 0; channel < SHADERTOY_CHANNEL_COUNT; channel++) {
+  for (let channel = 0; channel < channelCount; channel++) {
     for (let component = 0; component < 3; component++) {
-      f32[(UNIFORM_OFFSETS.iChannelResolution + channel * 16) / 4 + component] = input.channelResolution[channel * 3 + component] ?? 0;
+      f32[(offsets.iChannelResolution + channel * 16) / 4 + component] = input.channelResolution[channel * 3 + component] ?? 0;
     }
   }
   for (let component = 0; component < 3; component++) {
-    f32[UNIFORM_OFFSETS.iCameraPos / 4 + component] = input.cameraPos[component] ?? 0;
-    f32[UNIFORM_OFFSETS.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
+    f32[offsets.iCameraPos / 4 + component] = input.cameraPos[component] ?? 0;
+    f32[offsets.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
   }
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));

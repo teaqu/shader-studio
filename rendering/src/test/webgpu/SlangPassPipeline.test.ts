@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
+import { createShaderToyUniformLayout } from "../../webgpu/SlangPrelude";
 import { SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "../../webgpu/SlangPrelude";
 
 function deferred<T>() {
@@ -72,6 +73,25 @@ const storageB: StorageBindingNode = {
 };
 
 describe("SlangPassPipeline", () => {
+  it("allocates a 17-entry uniform ABI for a sparse slot-16 pass", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 800,
+      height: 600,
+      output: "canvas",
+      geometry: "fullscreen",
+      storage: [],
+      channels: [{ slot: 16, key: "iChannel16", kind: "texture" }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBuffer).toHaveBeenCalledWith(expect.objectContaining({
+      size: createShaderToyUniformLayout(17).size,
+    }));
+  });
+
   it("creates a canvas pipeline without ping-pong textures", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

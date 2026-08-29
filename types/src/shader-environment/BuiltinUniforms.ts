@@ -49,7 +49,7 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform vec4 iMouse;",
   "uniform int iFrame;",
   "uniform vec4 iDate;",
-  "uniform float iChannelTime[16];",
+  "uniform float iChannelTime[1024];",
   "uniform float iSampleRate;",
   "uniform vec3 iCameraPos;",
   "uniform vec3 iCameraDir;",
@@ -67,7 +67,7 @@ export const GLSL_DEFAULT_CHANNEL_DECLARATION_LINES = Object.freeze([
   "uniform sampler2D iChannel1;",
   "uniform sampler2D iChannel2;",
   "uniform sampler2D iChannel3;",
-  "uniform vec3 iChannelResolution[16];",
+  "uniform vec3 iChannelResolution[1024];",
 ] as const);
 
 export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStudioFragmentContextSymbol>[] = deepFreezeBuiltinCatalog([
@@ -118,9 +118,9 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iMouse", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang"], description: "Mouse position in xy and click position in zw." },
   { name: "iFrame", glslType: "int", slangType: "int", slangDeclaration: "int iFrame;", languages: ["glsl", "slang"], description: "Frame counter starting at zero." },
   { name: "iDate", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang"], description: "Year, month, day, and seconds since midnight." },
-  { name: "iChannelTime", glslType: "float[16]", slangType: "float[16]", slangDeclaration: "float iChannelTime[16];", languages: ["glsl", "slang"], description: "Playback time for each input channel." },
-  { name: "iChannelLoaded", slangType: "float[16]", slangDeclaration: "float iChannelLoaded[16];", languages: ["slang"], description: "Loaded state for each input channel in Slang." },
-  { name: "iChannelResolution", glslType: "vec3[16]", slangType: "float3[16]", slangDeclaration: "float3 iChannelResolution[16];", languages: ["glsl", "slang"], description: "Resolution of each input channel." },
+  { name: "iChannelTime", glslType: "float[1024]", slangType: "float[1024]", slangDeclaration: "float iChannelTime[1024];", languages: ["glsl", "slang"], description: "Playback time for each configured input channel." },
+  { name: "iChannelLoaded", slangType: "float[1024]", slangDeclaration: "float iChannelLoaded[1024];", languages: ["slang"], description: "Loaded state for each configured input channel in Slang." },
+  { name: "iChannelResolution", glslType: "vec3[1024]", slangType: "float3[1024]", slangDeclaration: "float3 iChannelResolution[1024];", languages: ["glsl", "slang"], description: "Resolution of each configured input channel." },
   { name: "iSampleRate", glslType: "float", slangType: "float", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang"], description: "Normalised camera look direction." },
@@ -137,25 +137,44 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   ...SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS,
 ] as const satisfies readonly ShaderStudioBuiltinUniform[]);
 
+/** Catalog entries that document a family of symbols instead of naming a real one. */
+export const SHADER_STUDIO_DOCUMENTATION_ONLY_BUILTIN_NAMES: ReadonlySet<string> = new Set(["iChannelN"]);
+
+/**
+ * Channel aliases are declared per configured slot rather than from a fixed list,
+ * so editors match the index instead of enumerating names.
+ */
+export const SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE = "iChannel\\d+";
+
+/** Legacy ShaderToy channel-metadata accessors are generated per configured slot. */
+export const SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE = "iCh\\d+";
+
+function collectBuiltinUniformNames(language: "glsl" | "slang"): readonly string[] {
+  return Object.freeze(
+    SHADER_STUDIO_BUILTIN_UNIFORMS
+      .filter((uniform) => (
+        uniform.languages.includes(language)
+        && !SHADER_STUDIO_DOCUMENTATION_ONLY_BUILTIN_NAMES.has(uniform.name)
+      ))
+      .map((uniform) => uniform.name),
+  );
+}
+
+const BUILTIN_UNIFORM_NAMES_BY_LANGUAGE = {
+  glsl: collectBuiltinUniformNames("glsl"),
+  slang: collectBuiltinUniformNames("slang"),
+} as const;
+
+/** Every renderer-declared uniform an editor should colour for the language. */
+export function shaderStudioBuiltinUniformNames(
+  language: "glsl" | "slang",
+): readonly string[] {
+  return BUILTIN_UNIFORM_NAMES_BY_LANGUAGE[language];
+}
+
 export const SLANG_RUNTIME_UNIFORM_BUFFER_NAME = "_st";
 export const SLANG_RUNTIME_INTERNAL_NAMES = Object.freeze([
   SLANG_RUNTIME_UNIFORM_BUFFER_NAME,
-] as const);
-
-export const SLANG_RUNTIME_FIXED_UNIFORM_FIELD_LINES = Object.freeze([
-  "    float4 resolution;",
-  "    float4 mouse;",
-  "    float time;",
-  "    float timeDelta;",
-  "    float frameRate;",
-  "    int frame;",
-  "    float channelTime[16];",
-  "    float channelLoaded[16];",
-  "    float sampleRate;",
-  "    float4 date;",
-  "    float3 channelResolution[16];",
-  "    float4 cameraPos;",
-  "    float4 cameraDir;",
 ] as const);
 
 export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([

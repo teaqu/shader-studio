@@ -32,11 +32,11 @@ struct ShaderToyUniforms
     float timeDelta;
     float frameRate;
     int frame;
-    float channelTime[16];
-    float channelLoaded[16];
+    float channelTime[4];
+    float channelLoaded[4];
     float sampleRate;
     float4 date;
-    float3 channelResolution[16];
+    float3 channelResolution[4];
     float4 cameraPos;
     float4 cameraDir;
 
@@ -115,11 +115,11 @@ struct ShaderToyUniforms
     float timeDelta;
     float frameRate;
     int frame;
-    float channelTime[16];
-    float channelLoaded[16];
+    float channelTime[4];
+    float channelLoaded[4];
     float sampleRate;
     float4 date;
-    float3 channelResolution[16];
+    float3 channelResolution[4];
     float4 cameraPos;
     float4 cameraDir;
     float custom_gain;
