@@ -17,7 +17,7 @@
     <div class="error-content">
       <h3>Error</h3>
       {#each errors as error}
-        <p class="error-message">{error}</p>
+        <p class="error-message compiler-output">{error}</p>
       {/each}
       <button class="error-dismiss" onclick={onDismiss}>Dismiss</button>
     </div>

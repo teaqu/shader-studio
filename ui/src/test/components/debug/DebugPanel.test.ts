@@ -771,6 +771,24 @@ describe('DebugPanel', () => {
       expect(getByText('error 1: type mismatch')).toBeInTheDocument();
     });
 
+    it('preserves the line structure of a Slang caret block', () => {
+      const block = [
+        'Image: error[E20001]: unexpected token',
+        '  --> /shadertoy.slang:15:12',
+        '   |',
+        '15 | float3 tun = col * sqs;',
+        "   |        ^^^ unexpected identifier, expected ';'",
+      ].join('\n');
+
+      const { container } = render(DebugPanel, {
+        debugState: makeDebugState({ isErrorsEnabled: true }),
+        getUniforms: mockGetUniforms,
+        errors: [block],
+      });
+
+      expect(container.querySelector('.error-text')?.textContent).toBe(block);
+    });
+
     it('shows "No errors" hint when errors toggle is on but no errors exist', () => {
       const { container, getByText } = render(DebugPanel, {
         debugState: makeDebugState({ isErrorsEnabled: true }),

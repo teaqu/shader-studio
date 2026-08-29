@@ -1070,11 +1070,16 @@
     padding: 4px 0;
   }
 
+  /* Compiler diagnostics are column-aligned ASCII art: the `^^^` carets only
+     point at anything while every line keeps its exact columns. Wrapping a
+     long source line moves them, so scroll sideways instead. */
   .error-text {
+    display: block;
     color: var(--vscode-errorForeground, #f44747);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
+    white-space: pre;
+    word-break: normal;
+    overflow-x: auto;
   }
 </style>

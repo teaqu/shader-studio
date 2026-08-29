@@ -326,16 +326,25 @@ canvas {
   bottom: 100%;
   left: 0;
   transform: translateY(0);
+  /* Without this the 8px padding and 1px border are added on top of
+     max-height, so the box ends up ~18px taller than the room measured for it
+     and overruns the top of a short pane. */
+  box-sizing: border-box;
   padding: 8px 12px;
-  background-color: var(--vscode-inputValidation-errorBackground);
-  color: var(--vscode-errorForeground);
+  /* A plain editor-coloured sheet rather than the tinted error tokens: compiler
+     output is dense monospace and reads better on it, and following the editor
+     colours keeps it right in both light and dark themes. */
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
   border: 1px solid var(--vscode-inputValidation-errorBorder);
   border-radius: 4px;
   font-size: 12px;
-  white-space: pre-wrap;
+  /* Each block sets its own `pre`. Leaving `pre-wrap` here instead would turn
+     the markup whitespace around the copy button into a blank first line. */
+  white-space: normal;
   width: max-content;
-  max-width: min(700px, 70vw);
-  max-height: 300px;
+  max-width: min(1100px, 92vw);
+  max-height: min(70vh, 640px);
   overflow-y: auto;
   z-index: 1301;
   opacity: 0;
@@ -352,12 +361,43 @@ canvas {
 }
 
 .error-tooltip-content {
-  /* button sits absolutely in corner — no extra padding needed */
+  /* the copy button is pinned in the corner; only the first block sits under
+     it, so the inset lives there rather than on the whole column */
+  padding-right: 0;
+}
+
+/* One diagnostic per block, separated the way the Problems panel separates
+   them. Compiler output is column-aligned ASCII art, so the caret line only
+   points at anything while every line keeps its columns: scroll, never wrap. */
+.error-tooltip-block {
+  white-space: pre;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+/* Only the top block runs under the copy button. */
+.error-tooltip-block:first-child {
+  padding-right: 18px;
+}
+
+/* The rule between diagnostics spans the whole pane, so the negative margins
+   cancel the tooltip's own 12px horizontal padding. */
+.error-tooltip-block + .error-tooltip-block {
+  border-top: 1px solid var(--vscode-inputValidation-errorBorder);
+  margin-top: 4px;
+  margin-left: -12px;
+  margin-right: -12px;
+  padding: 8px 12px 4px;
+}
+
+.error-tooltip.warning .error-tooltip-block + .error-tooltip-block {
+  border-top-color: var(--shader-studio-warning-border);
 }
 
 .error-tooltip .error-tooltip-copy {
-  display: inline;
-  vertical-align: middle;
+  position: absolute;
+  top: 4px;
+  right: 4px;
   padding: 1px 3px;
   margin-left: 0;
   background: transparent;
@@ -372,7 +412,8 @@ canvas {
 
 .error-tooltip .error-tooltip-copy:hover {
   opacity: 1;
-  color: var(--vscode-button-foreground);
+  /* Not button-foreground: that is white, which vanishes on a light sheet. */
+  color: var(--vscode-editor-foreground);
   background: transparent;
   border-color: transparent;
 }
@@ -423,6 +464,15 @@ canvas {
   font-size: 0.9rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Compiler diagnostics are column-aligned ASCII art: the `^^^` carets only
+   point at anything while every line keeps its exact columns. Wrapping a long
+   source line moves them, so scroll sideways instead. */
+.error-message.compiler-output {
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
 }
 
 .error-dismiss {

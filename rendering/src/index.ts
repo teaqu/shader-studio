@@ -1,4 +1,6 @@
 export { ConfigValidator } from './util/ConfigValidator';
+export { dedupeCompilerErrors, splitCompilerErrorBlocks } from './util/CompilerErrorDedupe';
+export type { CompilerErrorBlock } from './util/CompilerErrorDedupe';
 export { RenderingEngine } from './webgl/RenderingEngine';
 export { ShaderCompiler } from './webgl/ShaderCompiler';
 export type { ChannelSamplerType } from './webgl/ShaderCompiler';

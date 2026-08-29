@@ -67,6 +67,29 @@ describe('ErrorDisplay', () => {
       expect(messages.length).toBe(3);
     });
 
+    it('marks every message as compiler output so caret alignment is kept', () => {
+      render(ErrorDisplay, {
+        props: { errors: ['err1', 'err2'], isVisible: true },
+      });
+      const messages = [...document.querySelectorAll('.error-message')];
+      expect(messages.length).toBe(2);
+      expect(messages.every((message) => message.classList.contains('compiler-output'))).toBe(true);
+    });
+
+    it('preserves the line structure of a Slang caret block', () => {
+      const block = [
+        'Image: error[E20001]: unexpected token',
+        '  --> /shadertoy.slang:15:12',
+        '   |',
+        '15 | float3 tun = col * sqs;',
+        "   |        ^^^ unexpected identifier, expected ';'",
+      ].join('\n');
+
+      render(ErrorDisplay, { props: { errors: [block], isVisible: true } });
+
+      expect(document.querySelector('.error-message')?.textContent).toBe(block);
+    });
+
     it('should display the heading "Error"', () => {
       render(ErrorDisplay, {
         props: { errors: ['test'], isVisible: true },

@@ -8,6 +8,7 @@
   } from "../stores/aspectRatioStore";
   import { resolutionStore, type ResolutionState } from "../stores/resolutionStore";
   import { isVSCodeEnvironment } from "../transport/TransportFactory";
+  import { splitCompilerErrorBlocks } from "@shader-studio/rendering";
   import TimeControls from "./TimeControls.svelte";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import RecordingButton from "./recording/RecordingButton.svelte";
@@ -140,6 +141,13 @@
   const hasWarnings = $derived(warnings.length > 0);
   const errorMessage = $derived(hasErrors ? errors.join('\n') : '');
   const statusMessage = $derived(hasErrors ? errorMessage : warnings.join('\n'));
+  // One entry per diagnostic, split exactly as the VS Code diagnostics are, so
+  // a multi-error compile reads as separate blocks rather than one wall of text.
+  const statusBlocks = $derived(
+    hasErrors
+      ? splitCompilerErrorBlocks(errors).map((block) => block.text)
+      : warnings,
+  );
 
   let currentTime = $state(0.0);
   let timeUpdateHandle: number | null = null;
@@ -201,6 +209,77 @@
   const isPauseTooltipVisible = $derived(
     isPauseTooltipTriggerHovered || (isPauseTooltipHoverArmed && isPauseTooltipHovered)
   );
+
+  let pauseTooltipEl = $state<HTMLDivElement | null>(null);
+  let pauseTooltipMaxHeight = $state<number | null>(null);
+  let pauseTooltipMaxWidth = $state<number | null>(null);
+  /** Gap kept between the tooltip and the top edge of the pane it lives in. */
+  const PAUSE_TOOLTIP_MARGIN = 8;
+  /** Mirrors the caps in app.css: the measurement may only shrink the tooltip,
+      never grant it more room than the stylesheet does. */
+  const PAUSE_TOOLTIP_MAX_HEIGHT = 640;
+  const PAUSE_TOOLTIP_VIEWPORT_FRACTION = 0.7;
+  const PAUSE_TOOLTIP_MAX_WIDTH = 1100;
+  const PAUSE_TOOLTIP_VIEWPORT_WIDTH_FRACTION = 0.92;
+
+  /**
+   * The tooltip opens upwards and rightwards from the pause button, and the
+   * menu bar sits inside a dockview pane rather than the viewport - so
+   * viewport-relative caps let a long compile log run off the top of the pane
+   * and past its right edge. Measure the ancestor that actually clips and cap
+   * the tooltip to the room between the button and that pane's edges.
+   */
+  function measurePauseTooltipBounds() {
+    const anchor = pauseTooltipEl?.parentElement;
+    if (!anchor) {
+      return;
+    }
+    const bounds = visibleBounds(anchor);
+    const anchorRect = anchor.getBoundingClientRect();
+
+    const availableHeight = anchorRect.top - bounds.top - PAUSE_TOOLTIP_MARGIN;
+    const availableWidth = bounds.right - anchorRect.left - PAUSE_TOOLTIP_MARGIN;
+
+    // A non-positive measurement means nothing rendered yet (jsdom, a hidden
+    // pane): leave the stylesheet in charge rather than collapse the tooltip.
+    pauseTooltipMaxHeight = availableHeight > 0
+      ? Math.min(availableHeight, PAUSE_TOOLTIP_MAX_HEIGHT, window.innerHeight * PAUSE_TOOLTIP_VIEWPORT_FRACTION)
+      : null;
+    pauseTooltipMaxWidth = availableWidth > 0
+      ? Math.min(availableWidth, PAUSE_TOOLTIP_MAX_WIDTH, window.innerWidth * PAUSE_TOOLTIP_VIEWPORT_WIDTH_FRACTION)
+      : null;
+  }
+
+  /**
+   * The region the tooltip can actually occupy: the viewport intersected with
+   * every ancestor that clips. One ancestor is not enough - a dockview pane can
+   * be laid out wider than the webview that clips it, and taking either alone
+   * lets the tooltip escape the other.
+   */
+  function visibleBounds(element: HTMLElement): { top: number; right: number } {
+    let top = 0;
+    let right = window.innerWidth;
+    for (let node = element.parentElement; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      if (style.overflowY !== "visible") {
+        top = Math.max(top, rect.top);
+      }
+      if (style.overflowX !== "visible") {
+        right = Math.min(right, rect.right);
+      }
+    }
+    return { top, right };
+  }
+
+  $effect(() => {
+    if (!isPauseTooltipVisible || !pauseTooltipEl) {
+      return;
+    }
+    measurePauseTooltipBounds();
+    window.addEventListener("resize", measurePauseTooltipBounds);
+    return () => window.removeEventListener("resize", measurePauseTooltipBounds);
+  });
 
   // Breakpoints matching the @container collapse rules — items shown in options menu when toolbar button is hidden
   const showDebugInOptions = $derived(menuBarWidth <= 430);
@@ -602,9 +681,14 @@
       </button>
       {#if hasErrors || hasWarnings}
         <div
+          bind:this={pauseTooltipEl}
           class="error-tooltip"
           class:warning={!hasErrors && hasWarnings}
           class:visible={isPauseTooltipVisible}
+          style={[
+            pauseTooltipMaxHeight === null ? '' : `max-height: ${pauseTooltipMaxHeight}px;`,
+            pauseTooltipMaxWidth === null ? '' : `max-width: ${pauseTooltipMaxWidth}px;`,
+          ].join('') || undefined}
           role="presentation"
           onmouseenter={handlePauseTooltipEnter}
           onmouseleave={handlePauseTooltipLeave}
@@ -617,7 +701,9 @@
             >
               <i class="codicon codicon-copy"></i>
             </button>
-            {statusMessage}
+            {#each statusBlocks as block}
+              <div class="error-tooltip-block">{block}</div>
+            {/each}
           </div>
         </div>
       {/if}
