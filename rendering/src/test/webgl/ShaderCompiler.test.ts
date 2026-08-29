@@ -205,6 +205,25 @@ describe("ShaderCompiler", () => {
       );
     });
 
+    it("declares legacy channel metadata for every configured channel", () => {
+      const { wrappedCode } = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = texture(iCh4.sampler, fragCoord / iCh4.size.xy); }",
+        {
+          geometry: "fullscreen",
+          slotAssignments: Array.from({ length: 5 }, (_, slot) => ({
+            slot,
+            key: `iChannel${slot}`,
+            isCustomName: false,
+          })),
+          channelTypes: ["2D", "2D", "2D", "2D", "Cube"],
+        },
+      );
+
+      expect(wrappedCode).toContain("} iCh4;");
+      expect(wrappedCode).toContain("samplerCube sampler;");
+      expect(wrappedCode).toContain("uniform float iChannelTime[5];");
+    });
+
     it("should inject all uniforms that match PassRenderer expectations", () => {
       const code = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code);

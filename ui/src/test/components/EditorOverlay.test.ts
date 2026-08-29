@@ -32,6 +32,7 @@ const defaultProps = {
 };
 
 interface TestDecoration {
+  range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
   options: { inlineClassName?: string };
 }
 
@@ -199,7 +200,7 @@ describe('EditorOverlay', () => {
 
       const startColumn = shaderCode.indexOf('uTint') + 1;
       const highlightCall = mockEditor.deltaDecorations.mock.calls.find(([, decorations]) => (
-        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
       ));
       expect(highlightCall?.[1]).toEqual([
         expect.objectContaining({
@@ -209,7 +210,7 @@ describe('EditorOverlay', () => {
             endLineNumber: 1,
             endColumn: startColumn + 'uTint'.length,
           }),
-          options: expect.objectContaining({ inlineClassName: 'custom-uniform-token' }),
+          options: expect.objectContaining({ inlineClassName: 'shader-uniform-token' }),
         }),
       ]);
     });
@@ -239,7 +240,7 @@ describe('EditorOverlay', () => {
       });
 
       const highlightCalls = mockEditor.deltaDecorations.mock.calls.filter(([, decorations]) => (
-        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
       ));
       const latestCall = highlightCalls.at(-1);
       expect(latestCall?.[0]).toEqual(['custom-uniform-0']);
@@ -278,10 +279,168 @@ describe('EditorOverlay', () => {
       getContentChangeCallback()?.();
 
       const highlightCalls = mockEditor.deltaDecorations.mock.calls.filter(([, decorations]) => (
-        decorations.some((decoration) => decoration.options.inlineClassName === 'custom-uniform-token')
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
       ));
       expect(highlightCalls[0]?.[1]).toHaveLength(1);
       expect(highlightCalls.at(-1)?.[1]).toHaveLength(2);
+    });
+  });
+
+  describe('configured resource highlighting', () => {
+    it.each([
+      { language: 'GLSL', shaderPath: '/test.glsl', shaderCode: 'vec4 c = texture(noiseTexture, uv);' },
+      { language: 'Slang', shaderPath: '/test.slang', shaderCode: 'float4 c = noiseTexture.Sample(linearSampler, uv);' },
+    ])('highlights a configured input name in $language with no custom uniforms declared', async ({ shaderPath, shaderCode }) => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `shader-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath,
+          shaderCode,
+          config: {
+            version: '1.0',
+            passes: {
+              Image: { inputs: { noiseTexture: { type: 'texture', path: 'noise.png' } } },
+            },
+          },
+        },
+      });
+      await tick();
+
+      const startColumn = shaderCode.indexOf('noiseTexture') + 1;
+      const highlightCall = mockEditor.deltaDecorations.mock.calls.find(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
+      ));
+      expect(highlightCall?.[1]).toEqual([
+        expect.objectContaining({
+          range: expect.objectContaining({
+            startLineNumber: 1,
+            startColumn,
+            endLineNumber: 1,
+            endColumn: startColumn + 'noiseTexture'.length,
+          }),
+          options: expect.objectContaining({ inlineClassName: 'shader-uniform-token' }),
+        }),
+      ]);
+    });
+
+    it('highlights a configured storage buffer name', async () => {
+      const monaco = await import('monaco-editor');
+      const shaderCode = 'float mass = particles[0].x;';
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `shader-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/test.slang',
+          shaderCode,
+          config: {
+            version: '1.0',
+            storage: { particles: { count: 1024, elementType: 'float4' } },
+            passes: { Image: {} },
+          },
+        },
+      });
+      await tick();
+
+      const startColumn = shaderCode.indexOf('particles') + 1;
+      const highlightCall = mockEditor.deltaDecorations.mock.calls.find(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
+      ));
+      expect(highlightCall?.[1]).toEqual([
+        expect.objectContaining({
+          range: expect.objectContaining({ startColumn, endColumn: startColumn + 'particles'.length }),
+        }),
+      ]);
+    });
+
+    it('combines configured resource names with script-declared custom uniforms', async () => {
+      const monaco = await import('monaco-editor');
+      const shaderCode = 'vec4 c = texture(noiseTexture, uv) * uTint.rgba;';
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `shader-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderCode,
+          customUniformInfo: [{ name: 'uTint', type: 'vec3' }],
+          config: {
+            version: '1.0',
+            passes: {
+              Image: { inputs: { noiseTexture: { type: 'texture', path: 'noise.png' } } },
+            },
+          },
+        },
+      });
+      await tick();
+
+      const highlightCall = mockEditor.deltaDecorations.mock.calls.find(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
+      ));
+      const highlighted = highlightCall?.[1].map((decoration) => shaderCode.slice(
+        decoration.range.startColumn - 1,
+        decoration.range.endColumn - 1,
+      ));
+      expect(highlighted).toEqual(['noiseTexture', 'uTint']);
+    });
+
+    it('recomputes resource highlights when the active pass changes', async () => {
+      const monaco = await import('monaco-editor');
+      const shaderCode = 'vec4 c = texture(paletteTexture, uv);';
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue(shaderCode);
+      mockEditor.deltaDecorations.mockImplementation((_old, decorations) => (
+        decorations.map((_decoration, index) => `shader-uniform-${index}`)
+      ));
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      const config = {
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: 'buffer-a.glsl', inputs: { paletteTexture: { type: 'texture' as const, path: 'palette.png' } } },
+        },
+      };
+
+      const { rerender } = render(EditorOverlay, {
+        props: { ...defaultProps, shaderCode, config, activeBufferName: 'Image' },
+      });
+      await tick();
+
+      // Image declares no inputs, so nothing in this shader should be tagged yet.
+      const highlightedBefore = mockEditor.deltaDecorations.mock.calls
+        .flatMap(([, decorations]) => decorations)
+        .filter((decoration) => decoration.options.inlineClassName === 'shader-uniform-token');
+      expect(highlightedBefore).toEqual([]);
+
+      await rerender({ ...defaultProps, shaderCode, config, activeBufferName: 'BufferA' });
+
+      const highlightCalls = mockEditor.deltaDecorations.mock.calls.filter(([, decorations]) => (
+        decorations.some((decoration) => decoration.options.inlineClassName === 'shader-uniform-token')
+      ));
+      const startColumn = shaderCode.indexOf('paletteTexture') + 1;
+      expect(highlightCalls.at(-1)?.[1]).toEqual([
+        expect.objectContaining({
+          range: expect.objectContaining({ startColumn, endColumn: startColumn + 'paletteTexture'.length }),
+        }),
+      ]);
     });
   });
 

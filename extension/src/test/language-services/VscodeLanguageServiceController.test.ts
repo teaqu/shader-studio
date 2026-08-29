@@ -4,14 +4,18 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { DocumentRevision } from "@shader-studio/language-server-core";
+import type { ShaderConfig } from "@shader-studio/types";
 import { Messenger } from "../../app/transport/Messenger";
 import {
+  dynamicUniformNames,
   findUniformTokenRanges,
   isCurrentRevision,
 } from "../../language-services/VscodeLanguageServiceController";
 import {
   ShaderAuthoringEnvironmentProvider,
   clearLoadedShaderProjectSnapshots,
+  onDidChangeLoadedShaderProjectSnapshot,
+  publishLoadedShaderProjectSnapshot,
 } from "../../language-services/ShaderAuthoringEnvironmentProvider";
 
 suite("VS Code language-service revisions", () => {
@@ -43,6 +47,70 @@ suite("VS Code language-service revisions", () => {
       { line: 0, startCharacter: 14, endCharacter: 19 },
       { line: 2, startCharacter: 13, endCharacter: 18 },
     ]);
+  });
+
+  test("highlights configured input and storage names alongside custom uniforms", () => {
+    assert.deepStrictEqual(dynamicUniformNames(undefined), []);
+    assert.deepStrictEqual(dynamicUniformNames({
+      customUniforms: [{ name: "uTint", type: "vec3" }],
+      resources: [
+        { name: "noiseTexture", kind: "texture-2d", slot: 0 },
+        { name: "particles", kind: "storage", elementType: "float4" },
+      ],
+    }), ["uTint", "noiseTexture", "particles"]);
+  });
+
+  test("finds every configured uniform reference in one pass", () => {
+    const source = [
+      "vec4 tint = texture(noiseTexture, uv) * uTint.xyzz;",
+      "float mass = particles[0].x;",
+    ].join("\n");
+
+    assert.deepStrictEqual(
+      findUniformTokenRanges(source, ["uTint", "noiseTexture", "particles"]),
+      [
+        { line: 0, startCharacter: 20, endCharacter: 32 },
+        { line: 0, startCharacter: 40, endCharacter: 45 },
+        { line: 1, startCharacter: 13, endCharacter: 22 },
+      ],
+    );
+  });
+
+  test("announces a changed project so open shaders recolour and reanalyse", () => {
+    const shaderPath = "/workspace/image.glsl";
+    const config: ShaderConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { noiseTexture: { type: "texture", path: "noise.png" } } } },
+    };
+    let changes = 0;
+    const subscription = onDidChangeLoadedShaderProjectSnapshot(() => {
+      changes += 1;
+    });
+
+    try {
+      publishLoadedShaderProjectSnapshot(shaderPath, config);
+      assert.strictEqual(changes, 1);
+
+      // Every shaderSource message republishes the same project; only a real
+      // change may reanalyse open documents.
+      publishLoadedShaderProjectSnapshot(shaderPath, JSON.parse(JSON.stringify(config)));
+      assert.strictEqual(changes, 1);
+
+      const changedConfig: ShaderConfig = {
+        version: "1.0",
+        passes: { Image: { inputs: { paletteTexture: { type: "texture", path: "palette.png" } } } },
+      };
+      publishLoadedShaderProjectSnapshot(shaderPath, changedConfig);
+      assert.strictEqual(changes, 2);
+
+      clearLoadedShaderProjectSnapshots();
+      assert.strictEqual(changes, 3);
+      clearLoadedShaderProjectSnapshots();
+      assert.strictEqual(changes, 3);
+    } finally {
+      subscription.dispose();
+      clearLoadedShaderProjectSnapshots();
+    }
   });
 
   test("opens imported Slang modules as virtual authoring files", async () => {

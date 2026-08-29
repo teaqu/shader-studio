@@ -14,21 +14,44 @@ import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDepe
 const customUniforms = new Map<string, readonly CustomUniformDeclaration[]>();
 const snapshotListeners = new Set<(shaderPath: string) => void>();
 const loadedShaderProjects = new Map<string, { config: ShaderConfig; configPath: string; shaderPath: string }>();
+const projectSnapshotListeners = new Set<() => void>();
 type AuthoringDocument = Pick<vscode.TextDocument, "uri" | "languageId" | "getText">;
 
 /** Makes the exact project configuration sent to an active Shader Studio client available to authoring services. */
 export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: ShaderConfig): void {
   const normalizedShaderPath = path.resolve(shaderPath);
+  const previous = loadedShaderProjects.get(normalizedShaderPath);
   loadedShaderProjects.delete(normalizedShaderPath);
   loadedShaderProjects.set(normalizedShaderPath, {
     config: JSON.parse(JSON.stringify(config)) as ShaderConfig,
     configPath: shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json"),
     shaderPath: normalizedShaderPath,
   });
+  // Every shaderSource message republishes the snapshot, so only a genuinely
+  // different project reanalyses open documents.
+  if (JSON.stringify(previous?.config) !== JSON.stringify(config)) {
+    notifyProjectSnapshotListeners();
+  }
 }
 
 export function clearLoadedShaderProjectSnapshots(): void {
+  const hadSnapshots = loadedShaderProjects.size > 0;
   loadedShaderProjects.clear();
+  if (hadSnapshots) {
+    notifyProjectSnapshotListeners();
+  }
+}
+
+function notifyProjectSnapshotListeners(): void {
+  for (const listener of projectSnapshotListeners) {
+    listener();
+  }
+}
+
+/** Fires when the configured passes, inputs, or storage backing authoring change. */
+export function onDidChangeLoadedShaderProjectSnapshot(listener: () => void): vscode.Disposable {
+  projectSnapshotListeners.add(listener);
+  return { dispose: () => projectSnapshotListeners.delete(listener) };
 }
 
 /** Shares trusted ScriptEvaluator type snapshots without exposing values or code. */

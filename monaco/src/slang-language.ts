@@ -1,4 +1,9 @@
 import type { languages } from 'monaco-editor';
+import {
+  SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
+  SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
+  shaderStudioBuiltinUniformNames,
+} from '@shader-studio/types';
 
 // These concrete vocabularies mirror extension/syntaxes/slang.tmLanguage.json.
 // The parity tests intentionally compare both surfaces to prevent editor drift.
@@ -62,12 +67,14 @@ export const slangBuiltins = [
   'fwidth',
 ];
 
-export const slangShadertoyUniforms = [
-  'iResolution', 'iTime', 'iTimeDelta', 'iFrame', 'iFrameRate',
-  'iChannelTime', 'iChannelResolution', 'iMouse', 'iDate', 'iSampleRate',
-  'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3', 'iChannel4',
-  'iChannel5', 'iChannel6', 'iChannel7', 'iChannel8', 'iChannel9',
-];
+export const slangShadertoyUniforms = [...shaderStudioBuiltinUniformNames('slang')];
+
+// Channels past the four named slots are declared per configured input, so the
+// index is matched rather than enumerated.
+const slangIndexedChannelPattern = new RegExp(`${SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE}(?!\\w)`);
+const slangIndexedChannelMetadataPattern = new RegExp(
+  `${SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE}(?!\\w)`,
+);
 
 const slangMatrixBases = [
   'bool', 'half', 'float', 'double', 'float16_t', 'float32_t', 'float64_t',
@@ -188,6 +195,8 @@ export const slangLanguageDefinition: languages.IMonarchLanguage = {
       [invalidIdentifierNumberChainPattern, 'invalid'],
       [invalidDottedNumberChainPattern, 'invalid'],
       [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'identifier'],
+      [slangIndexedChannelPattern, 'variable.predefined'],
+      [slangIndexedChannelMetadataPattern, 'variable.predefined'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
           '@controlKeywords': 'keyword.control',

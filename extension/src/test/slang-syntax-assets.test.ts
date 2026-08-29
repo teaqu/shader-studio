@@ -9,6 +9,7 @@ import {
   Registry,
   parseRawGrammar,
 } from 'vscode-textmate';
+import { shaderStudioBuiltinUniformNames } from '@shader-studio/types';
 
 interface LanguageContribution {
   id: string;
@@ -377,6 +378,41 @@ void main() { shade(float2(0.)); }`,
 
       assert.ok(glslToken, `GLSL ${text} must have ${scope}`);
       assert.ok(slangToken, `Slang ${slangText} must have ${scope}`);
+    }
+  });
+
+  test('scopes every built-in uniform the catalog declares for the language', () => {
+    for (const [grammar, language] of [
+      [glslGrammar, 'glsl'],
+      [slangGrammar, 'slang'],
+    ] as const) {
+      const names = shaderStudioBuiltinUniformNames(language);
+      // Channel slots past the four named ones follow the configured inputs, and
+      // stage-limited uniforms stay scoped because a grammar has no stage.
+      const scoped = [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
+      const otherLanguage = language === 'glsl' ? 'slang' : 'glsl';
+      const unscoped = [
+        ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
+        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'iTimeExtra', 'myiTime',
+      ];
+      const lines = tokenizeLines([...scoped, ...unscoped].join(';\n'), grammar);
+
+      assert.ok(names.length > 0, `${language} must declare built-in uniforms`);
+      scoped.forEach((name, index) => {
+        const token = lines[index].find((candidate) => candidate.text === name);
+        assert.ok(token, `${language} ${name} must be emitted as one token`);
+        assert.ok(
+          hasScope(token, 'variable.language.uniform'),
+          `${language} ${name} must be scoped as a uniform`,
+        );
+      });
+      unscoped.forEach((name, index) => {
+        const line = lines[scoped.length + index];
+        assert.ok(
+          !line.some((token) => hasScope(token, 'variable.language.uniform')),
+          `${language} ${name} must not be scoped as a uniform`,
+        );
+      });
     }
   });
 

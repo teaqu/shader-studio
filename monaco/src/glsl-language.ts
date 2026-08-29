@@ -2,6 +2,12 @@
  * GLSL Monarch language definition for Monaco editor.
  * Provides syntax highlighting for GLSL/Shadertoy shaders.
  */
+import {
+  SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
+  SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
+  shaderStudioBuiltinUniformNames,
+} from '@shader-studio/types';
+
 const glslVectorTypes = ['vec', 'dvec', 'ivec', 'uvec', 'bvec']
   .flatMap((prefix) => [2, 3, 4].map((size) => `${prefix}${size}`));
 const glslMatrixTypes = ['mat', 'dmat'].flatMap((prefix) => [
@@ -58,6 +64,15 @@ export const glslPredefinedVariables = [
   'gl_LocalInvocationIndex',
 ];
 
+export const glslShadertoyUniforms = [...shaderStudioBuiltinUniformNames('glsl')];
+
+// Channels past the four named slots are declared per configured input, so the
+// index is matched rather than enumerated.
+const indexedChannelPattern = new RegExp(`${SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE}(?!\\w)`);
+const indexedChannelMetadataPattern = new RegExp(
+  `${SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE}(?!\\w)`,
+);
+
 export const glslLanguageDefinition = {
   keywords: [
     'attribute', 'const', 'uniform', 'varying', 'layout',
@@ -96,12 +111,7 @@ export const glslLanguageDefinition = {
     'dFdx', 'dFdy', 'fwidth',
     'mainImage',
   ],
-  shadertoyUniforms: [
-    'iResolution', 'iTime', 'iTimeDelta', 'iFrame', 'iFrameRate',
-    'iChannelTime', 'iChannelResolution', 'iMouse', 'iDate', 'iSampleRate',
-    'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3', 'iChannel4',
-    'iChannel5', 'iChannel6', 'iChannel7', 'iChannel8', 'iChannel9',
-  ],
+  shadertoyUniforms: glslShadertoyUniforms,
   predefinedVariables: glslPredefinedVariables,
   operators: [
     '=', '>', '<', '!', '~', '?', ':',
@@ -118,6 +128,8 @@ export const glslLanguageDefinition = {
       [/"/, 'string', '@stringDouble'],
       [/'/, 'string', '@stringSingle'],
       [/\.(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})\b/, 'identifier'],
+      [indexedChannelPattern, 'variable.predefined'],
+      [indexedChannelMetadataPattern, 'variable.predefined'],
       [/[a-zA-Z_]\w*(?=\s*\()/, {
         cases: {
           '@keywords': 'keyword',

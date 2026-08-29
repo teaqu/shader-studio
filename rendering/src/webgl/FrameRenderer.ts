@@ -10,6 +10,7 @@ import type { MouseManager } from "../input/MouseManager";
 import type { CameraManager } from "../input/CameraManager";
 import type { CustomUniformManager, CustomUniform } from "./CustomUniformManager";
 import { FPSCalculator } from "../util/FPSCalculator";
+import { assignInputSlots } from "../util/InputSlotAssigner";
 
 export class FrameRenderer {
   private running = false;
@@ -111,11 +112,13 @@ export class FrameRenderer {
   }
 
   private getPassUniforms(pass: Pass, baseUniforms: PassUniforms): PassUniforms {
-    const channelTime = [0, 0, 0, 0];
-    const channelLoaded = [0, 0, 0, 0];
+    const slotAssignments = assignInputSlots(pass.inputs);
+    const channelCount = Math.max(4, slotAssignments.length);
+    const channelTime = new Array<number>(channelCount).fill(0);
+    const channelLoaded = new Array<number>(channelCount).fill(0);
     const passResolution = this.getPassResolution(pass, baseUniforms);
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < channelCount; i++) {
       const input = pass.inputs[`iChannel${i}`];
       if (!input) {
         continue;

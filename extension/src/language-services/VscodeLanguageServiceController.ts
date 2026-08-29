@@ -4,9 +4,11 @@ import type {
   LanguageService,
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
+import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import {
   ShaderAuthoringEnvironmentProvider,
   onDidChangeCustomUniformSnapshot,
+  onDidChangeLoadedShaderProjectSnapshot,
 } from "./ShaderAuthoringEnvironmentProvider";
 
 export class VscodeLanguageServiceController implements vscode.Disposable {
@@ -43,14 +45,18 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     this.disposables.push(vscode.workspace.onDidChangeConfiguration((event) => {
       void this.configurationChanged(event);
     }));
-    this.disposables.push(onDidChangeCustomUniformSnapshot(() => {
+    const reanalyseOpenShaders = () => {
       this.semanticTokensChanged.fire();
       for (const document of vscode.workspace.textDocuments) {
         if (shaderLanguage(document)) {
           void this.change(document);
         }
       }
-    }));
+    };
+    this.disposables.push(onDidChangeCustomUniformSnapshot(reanalyseOpenShaders));
+    // Configured inputs and storage are uniforms too, so a project change moves
+    // the same highlighting and diagnostics as a custom uniform change.
+    this.disposables.push(onDidChangeLoadedShaderProjectSnapshot(reanalyseOpenShaders));
     context.subscriptions.push(this);
     for (const document of vscode.workspace.textDocuments) {
       void this.open(document);
@@ -76,8 +82,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       provideDocumentSemanticTokens: (document) => {
         const builder = new vscode.SemanticTokensBuilder(uniformSemanticLegend);
         const environment = this.environments.environmentFor(document);
-        const names = environment?.customUniforms.map(({ name }) => name) ?? [];
-        for (const range of findUniformTokenRanges(document.getText(), names)) {
+        for (const range of findUniformTokenRanges(document.getText(), dynamicUniformNames(environment))) {
           builder.push(
             new vscode.Range(range.line, range.startCharacter, range.line, range.endCharacter),
             "shaderUniform",
@@ -313,6 +318,19 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       }
     }
   }
+}
+
+/**
+ * Uniform names the bundled grammars cannot know: both custom uniforms and the
+ * config-named channel and storage resources the renderer declares alongside them.
+ */
+export function dynamicUniformNames(
+  environment: Pick<ShaderAuthoringEnvironment, "customUniforms" | "resources"> | undefined,
+): string[] {
+  return [
+    ...(environment?.customUniforms ?? []).map(({ name }) => name),
+    ...(environment?.resources ?? []).map(({ name }) => name),
+  ];
 }
 
 export interface UniformTokenRange {

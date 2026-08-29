@@ -136,6 +136,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(glsl.text).toContain("uniform sampler2D iChannel4;");
     expect(glsl.text).toContain("uniform vec3 iChannelResolution[5];");
     expect(glsl.text).toContain("} iCh0;");
+    expect(glsl.text).toContain("} iCh4;");
     expect(glsl.text).toContain("  samplerCube sampler;");
     expect(slang.text).toContain("TextureCube<float4> sky;");
     expect(slang.text).toContain("SamplerState skySampler;");
@@ -789,7 +790,7 @@ describe("ShaderAuthoringEnvironment", () => {
   it("marks the Slang-only channel loaded state as unavailable in GLSL", () => {
     expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iChannelLoaded")).toMatchObject({
       name: "iChannelLoaded",
-      slangType: "float[16]",
+      slangType: "float[1024]",
       languages: ["slang"],
     });
     expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iChannelLoaded")?.glslType).toBeUndefined();

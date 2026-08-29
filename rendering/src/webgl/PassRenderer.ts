@@ -88,17 +88,17 @@ export class PassRenderer {
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
 
-    // Set iCh struct uniforms (Shadertoy "new API")
-    for (let i = 0; i < 4; i++) {
+    // Set iCh struct uniforms (Shadertoy "new API") for every bound channel.
+    for (let i = 0; i < textureBindings.length; i++) {
       this.renderer.SetShaderTextureUnit(`iCh${i}.sampler`, i);
-      this.renderer.SetShaderConstant1F(`iCh${i}.time`, uniforms.channelTime[i]);
+      this.renderer.SetShaderConstant1F(`iCh${i}.time`, uniforms.channelTime[i] ?? 0);
       this.renderer.SetShaderConstant3F(
         `iCh${i}.size`,
         channelResolutions[3 * i],
         channelResolutions[3 * i + 1],
         channelResolutions[3 * i + 2],
       );
-      this.renderer.SetShaderConstant1I(`iCh${i}.loaded`, uniforms.channelLoaded[i]);
+      this.renderer.SetShaderConstant1I(`iCh${i}.loaded`, uniforms.channelLoaded[i] ?? 0);
     }
 
     if (this.gl) {

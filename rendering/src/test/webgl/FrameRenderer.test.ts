@@ -1193,6 +1193,32 @@ describe("FrameRenderer", () => {
       expect(passUniforms.channelLoaded[1]).toBe(1);
     });
 
+    it("should set channelTime and channelLoaded beyond the legacy four channels", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      mockResourceManager.getAudioState.mockReturnValue({ currentTime: 12.5 });
+
+      mockShaderPipeline.getPasses.mockReturnValue([{
+        name: 'Image',
+        shaderSrc: 'image shader',
+        inputs: {
+          iChannel0: { type: 'texture', path: 'a.png' },
+          iChannel1: { type: 'texture', path: 'b.png' },
+          iChannel2: { type: 'texture', path: 'c.png' },
+          iChannel3: { type: 'texture', path: 'd.png' },
+          iChannel4: { type: 'audio', path: 'music.mp3' },
+        },
+      }]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({ Image: { mProgram: {}, mResult: true } });
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelTime[4]).toBe(12.5);
+      expect(passUniforms.channelLoaded[4]).toBe(1);
+    });
+
     it("should use resolved_path for audio state lookup when available", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);

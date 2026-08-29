@@ -55,6 +55,12 @@ describe('glslLanguageDefinition', () => {
         expect(glslLanguageDefinition.tokenizer.root.length).toBeGreaterThan(0);
     });
 
+    it('matches legacy channel metadata accessors beyond slot 3', () => {
+        expect(glslLanguageDefinition.tokenizer.root.some((rule) => (
+            rule[0] instanceof RegExp && rule[0].source.includes('iCh\\d+')
+        ))).toBe(true);
+    });
+
     it('tokenizer has whitespace and comment states', () => {
         expect(glslLanguageDefinition.tokenizer).toHaveProperty('whitespace');
         expect(glslLanguageDefinition.tokenizer).toHaveProperty('comment');

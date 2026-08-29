@@ -22,7 +22,7 @@ describe("GLSL shader environment", () => {
       "uniform vec4 iMouse;",
       "uniform int iFrame;",
       "uniform vec4 iDate;",
-      "uniform float iChannelTime[16];",
+      "uniform float iChannelTime[1024];",
       "uniform float iSampleRate;",
       "uniform vec3 iCameraPos;",
       "uniform vec3 iCameraDir;",
@@ -57,6 +57,8 @@ describe("GLSL shader environment", () => {
       "samplerCube",
       "sampler2D",
       "sampler3D",
+      "samplerCube",
+      "sampler2D",
     ])).toEqual([
       "uniform struct {",
       "  samplerCube sampler;",
@@ -77,11 +79,17 @@ describe("GLSL shader environment", () => {
       "  int loaded;",
       "} iCh2;",
       "uniform struct {",
-      "  sampler2D sampler;",
+      "  samplerCube sampler;",
       "  vec3 size;",
       "  float time;",
       "  int loaded;",
       "} iCh3;",
+      "uniform struct {",
+      "  sampler2D sampler;",
+      "  vec3 size;",
+      "  float time;",
+      "  int loaded;",
+      "} iCh4;",
     ]);
   });
 

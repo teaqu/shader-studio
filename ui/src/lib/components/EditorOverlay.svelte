@@ -78,6 +78,18 @@
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
 
+  const activePassName = $derived(
+    activeBufferName.startsWith("__shader_studio_vertex__:")
+      ? activeBufferName.slice("__shader_studio_vertex__:".length)
+      : activeBufferName,
+  );
+  // Names the Monarch grammar cannot know: script-declared custom uniforms plus
+  // the configured input and storage resources the renderer declares for them.
+  const dynamicUniformNames = $derived([
+    ...customUniformInfo.map(({ name }) => name),
+    ...authoringResources(config, activePassName).map(({ name }) => name),
+  ]);
+
   let containerEl = $state<HTMLDivElement | null>(null);
   let statusBarEl = $state<HTMLDivElement | null>(null);
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
@@ -90,7 +102,7 @@
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
-  let customUniformDecorationIds: string[] = [];
+  let uniformDecorationIds: string[] = [];
   let lastShaderPath: string = "";
   let vimStatusAttached = false;
   let vimCurrentMode = "normal";
@@ -185,7 +197,7 @@
     focusMonacoTextInput();
   }
 
-  function customUniformDecorations(
+  function uniformDecorations(
     source: string,
     uniformNames: string[],
   ): monaco.editor.IModelDeltaDecoration[] {
@@ -247,7 +259,7 @@
           if (names.has(line.slice(start, column))) {
             decorations.push({
               range: new monaco.Range(lineIndex + 1, start + 1, lineIndex + 1, column + 1),
-              options: { inlineClassName: "custom-uniform-token" },
+              options: { inlineClassName: "shader-uniform-token" },
             });
           }
           continue;
@@ -259,15 +271,15 @@
     return decorations;
   }
 
-  function updateCustomUniformDecorations(uniforms: { name: string }[]) {
+  function updateUniformDecorations(uniformNames: string[]) {
     if (!editor) {
       return;
     }
     const language = languageForShaderPath(shaderPath);
     const decorations = language === "glsl" || language === "slang"
-      ? customUniformDecorations(editor.getValue(), uniforms.map(({ name }) => name))
+      ? uniformDecorations(editor.getValue(), uniformNames)
       : [];
-    customUniformDecorationIds = editor.deltaDecorations(customUniformDecorationIds, decorations);
+    uniformDecorationIds = editor.deltaDecorations(uniformDecorationIds, decorations);
   }
 
   function handleOverlaySave() {
@@ -570,7 +582,7 @@
         return;
       }
       updateBlankLineDecorations();
-      updateCustomUniformDecorations(customUniformInfo);
+      updateUniformDecorations(dynamicUniformNames);
       // Marker lines are clamped to the model's line count. If errors arrive
       // while the model is still empty every marker collapses to line 0, which
       // Monaco discards, and nothing recomputes them once the content lands.
@@ -630,7 +642,7 @@
     editor.focus();
     requestAnimationFrame(() => focusMonacoTextInput());
     updateBlankLineDecorations();
-    updateCustomUniformDecorations(customUniformInfo);
+    updateUniformDecorations(dynamicUniformNames);
     updateErrorMarkers(errors);
     editorReady = true;
   }
@@ -659,8 +671,8 @@
       containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
     }
     if (editor) {
-      editor.deltaDecorations(customUniformDecorationIds, []);
-      customUniformDecorationIds = [];
+      editor.deltaDecorations(uniformDecorationIds, []);
+      uniformDecorationIds = [];
       if (shaderPath) {
         savedViewStates.set(shaderPath, editor.saveViewState());
       }
@@ -688,9 +700,7 @@
     const uniforms = customUniformInfo;
     const modules = slangModules;
     const bufferName = activeBufferName;
-    const passName = bufferName.startsWith("__shader_studio_vertex__:")
-      ? bufferName.slice("__shader_studio_vertex__:".length)
-      : bufferName;
+    const passName = activePassName;
     if (!controller || !model?.uri || (language !== "glsl" && language !== "slang")) {
       return;
     }
@@ -710,10 +720,10 @@
   });
 
   $effect(() => {
-    const uniforms = customUniformInfo;
+    const names = dynamicUniformNames;
     const ready = editorReady;
     if (ready && editor) {
-      updateCustomUniformDecorations(uniforms);
+      updateUniformDecorations(names);
     }
   });
 
@@ -1042,7 +1052,7 @@
     background: rgba(255, 255, 255, 0.3) !important;
   }
 
-  .editor-overlay :global(.monaco-editor .custom-uniform-token) {
+  .editor-overlay :global(.monaco-editor .shader-uniform-token) {
     color: #50f5ff !important;
   }
 

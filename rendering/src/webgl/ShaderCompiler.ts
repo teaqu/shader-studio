@@ -68,6 +68,7 @@ export class ShaderCompiler {
       customUniformDeclarations,
     );
     const types = options.channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelCount = this.getChannelCount(options.slotAssignments);
     const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
     const mesh = isMeshGeometry(options.geometry);
     const fragmentContext = mesh
@@ -91,35 +92,12 @@ ${channelDeclarations}
 uniform vec4 iMouse;
 uniform int iFrame;
 uniform vec4 iDate;
-uniform float iChannelTime[4];
+uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 ${fragmentContext}
-uniform struct {
-  ${this.getSamplerType(types[0])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh0;
-uniform struct {
-  ${this.getSamplerType(types[1])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh1;
-uniform struct {
-  ${this.getSamplerType(types[2])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh2;
-uniform struct {
-  ${this.getSamplerType(types[3])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh3;
+${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 
     if (options.customUniformDeclarations) {
@@ -525,6 +503,7 @@ void main() {
 
   private buildVertexUniformDeclarations(options: ShaderWrapOptions): string {
     const types = options.channelTypes || ['2D', '2D', '2D', '2D'];
+    const channelCount = this.getChannelCount(options.slotAssignments);
     const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
     return `uniform vec3 iResolution;
 uniform float iTime;
@@ -533,11 +512,11 @@ uniform float iFrameRate;
 ${channelDeclarations}uniform vec4 iMouse;
 uniform int iFrame;
 uniform vec4 iDate;
-uniform float iChannelTime[4];
+uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
-${this.buildChannelMetadataDeclarations(types)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
+${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 
   private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
@@ -581,40 +560,26 @@ ${this.buildChannelMetadataDeclarations(types)}${options.customUniformDeclaratio
     return helpers;
   }
 
-  private buildChannelMetadataDeclarations(types: ChannelSamplerType[]): string {
-    return `uniform struct {
-  ${this.getSamplerType(types[0])} sampler;
+  private buildChannelMetadataDeclarations(types: ChannelSamplerType[], channelCount: number): string {
+    return Array.from({ length: channelCount }, (_, slot) => `uniform struct {
+  ${this.getSamplerType(types[slot] || '2D')} sampler;
   vec3 size;
   float time;
   int loaded;
-} iCh0;
-uniform struct {
-  ${this.getSamplerType(types[1])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh1;
-uniform struct {
-  ${this.getSamplerType(types[2])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh2;
-uniform struct {
-  ${this.getSamplerType(types[3])} sampler;
-  vec3 size;
-  float time;
-  int loaded;
-} iCh3;
-`;
+} iCh${slot};
+`).join("");
+  }
+
+  private getChannelCount(slotAssignments?: SlotAssignment[]): number {
+    return !slotAssignments || slotAssignments.length === 0
+      ? 4
+      : Math.max(4, slotAssignments.length);
   }
 
   private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     // At least 4 slots for backwards compatibility
-    const channelCount = !slotAssignments || slotAssignments.length === 0
-      ? 4
-      : Math.max(4, slotAssignments.length);
+    const channelCount = this.getChannelCount(slotAssignments);
 
     const aliasedNames = new Set(
       (slotAssignments ?? [])

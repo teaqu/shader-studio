@@ -6,9 +6,9 @@ export interface PassUniforms {
   mouse: number[] | Float32Array;
   frame: number;
   date: number[] | Float32Array;
-  channelTime: number[];    // 4 floats, per-channel playback time
+  channelTime: number[];    // Per-channel playback time
   sampleRate: number;       // audio sample rate (default 44100)
-  channelLoaded: number[];  // 4 ints (0 or 1), whether channel has a loaded resource
+  channelLoaded: number[];  // Per-channel loaded state (0 or 1)
   cameraPos: number[] | Float32Array;  // vec3 - camera position (WASD/QE)
   cameraDir: number[] | Float32Array;  // vec3 - camera direction (mouse/IJKL)
 }

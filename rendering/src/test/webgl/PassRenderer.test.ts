@@ -1156,6 +1156,8 @@ describe("PassRenderer", () => {
         "iChannelResolution[0]",
         [100, 100, 1, 200, 200, 1, 300, 300, 1, 400, 400, 1, 500, 500, 1]
       );
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iCh4.sampler", 4);
+      expect(mockRenderer.SetShaderConstant3F).toHaveBeenCalledWith("iCh4.size", 500, 500, 1);
     });
 
     it("should set iChannelResolution correctly with custom-named inputs", () => {

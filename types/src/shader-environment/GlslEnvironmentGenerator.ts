@@ -44,7 +44,7 @@ export function buildGlslAuthoringPreamble(
   const channelBindings = resolveAuthoringChannelBindings(environment.resources);
   const channels = new Map(channelBindings.map(({ slot, resource }) => [slot, resource]));
   const channelCount = Math.max(4, ...Array.from(channels.keys(), (slot) => slot + 1));
-  const samplerTypes = Array.from({ length: 4 }, (_, slot) => glslSamplerTypeFor(channels.get(slot)));
+  const samplerTypes = Array.from({ length: channelCount }, (_, slot) => glslSamplerTypeFor(channels.get(slot)));
   const lines = [
     ...GLSL_STABLE_DECLARATION_LINES,
     ...SHADER_STUDIO_BUILTIN_UNIFORMS.flatMap((uniform) => (

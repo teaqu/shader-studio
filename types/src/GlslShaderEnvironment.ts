@@ -20,7 +20,8 @@ export function glslSamplerType(type: "2D" | "Cube" | "3D"): GlslSamplerType {
 export function buildGlslCompatibilityUniformDeclarationLines(
   samplerTypes: readonly GlslSamplerType[] = [],
 ): string[] {
-  return Array.from({ length: 4 }, (_, slot) => [
+  const channelCount = Math.max(4, samplerTypes.length);
+  return Array.from({ length: channelCount }, (_, slot) => [
     "uniform struct {",
     `  ${samplerTypes[slot] ?? "sampler2D"} sampler;`,
     "  vec3 size;",
