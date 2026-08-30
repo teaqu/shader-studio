@@ -43,12 +43,24 @@ export class DiagnosticArbiter {
 
   /** Sink for one language service, handed to the language service controller. */
   languageServiceSink(language: ShaderLanguage): DiagnosticSink {
-    const entries = this.serviceEntries[language];
     return {
-      set: (uri, diagnostics) => this.record(entries, uri, diagnostics),
-      delete: (uri) => this.record(entries, uri, []),
-      clear: () => this.clearEntries(entries, this.collections[language]),
+      set: (uri, diagnostics) => this.recordService(language, uri, diagnostics),
+      delete: (uri) => this.recordService(language, uri, []),
+      clear: () => this.clearEntries(this.serviceEntries[language], this.collections[language]),
     };
+  }
+
+  /**
+   * A document has one language at a time, so the reporting service takes the
+   * URI from the other one. VS Code hands the same untitled name to whatever
+   * buffer holds it next, and a file can have its language mode changed.
+   */
+  private recordService(language: ShaderLanguage, uri: vscode.Uri, diagnostics: readonly vscode.Diagnostic[] | undefined): void {
+    const other: ShaderLanguage = language === "slang" ? "glsl" : "slang";
+    if (this.serviceEntries[other].delete(uri.fsPath)) {
+      this.collections[other].delete(uri);
+    }
+    this.record(this.serviceEntries[language], uri, diagnostics);
   }
 
   private record(entries: Map<string, Entry>, uri: vscode.Uri, diagnostics: readonly vscode.Diagnostic[] | undefined): void {
@@ -66,7 +78,7 @@ export class DiagnosticArbiter {
   }
 
   private republish(uri: vscode.Uri): void {
-    const language = languageForPath(uri.fsPath);
+    const language = this.languageFor(uri);
     const compiler = this.compilerEntries.get(uri.fsPath)?.diagnostics ?? [];
     const service = this.serviceEntries[language].get(uri.fsPath)?.diagnostics ?? [];
 
@@ -77,6 +89,22 @@ export class DiagnosticArbiter {
     }
     this.collections.compiler.set(uri, compiler);
     this.collections.glsl.set(uri, suppressDuplicateDiagnostics(compiler, service));
+  }
+
+  /**
+   * The service that reported owns the document: an untitled Slang buffer has
+   * no `.slang` path to read the language off, so only its own report says so.
+   * The path answers for a file nothing has analysed yet, such as a renderer
+   * error arriving before any language service ran.
+   */
+  private languageFor(uri: vscode.Uri): ShaderLanguage {
+    if (this.serviceEntries.slang.has(uri.fsPath)) {
+      return "slang";
+    }
+    if (this.serviceEntries.glsl.has(uri.fsPath)) {
+      return "glsl";
+    }
+    return languageForPath(uri.fsPath);
   }
 }
 

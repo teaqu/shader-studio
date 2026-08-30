@@ -588,7 +588,8 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("publishes bundled Slang compiler diagnostics in VS Code", async () => {
+  test("publishes bundled Slang compiler diagnostics in VS Code", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({
       language: "slang",
@@ -603,7 +604,8 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
-  test("publishes GLSL undefined-reference diagnostics in VS Code", async () => {
+  test("publishes GLSL undefined-reference diagnostics in VS Code", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const document = await vscode.workspace.openTextDocument({
       language: "glsl",
@@ -643,8 +645,21 @@ suite("VS Code language-service revisions", () => {
   });
 });
 
+/**
+ * Long enough for a cold `createLanguageServer()` to load the Slang stdlib,
+ * which costs ~1s the first time any test builds the service.
+ */
+const DIAGNOSTIC_WAIT_MS = 5_000;
+
+/**
+ * Twice the wait, so the helper below always hits its own deadline first and
+ * reports which diagnostic never arrived. A budget under the wait turns every
+ * such failure into a bare mocha timeout that names nothing.
+ */
+const DIAGNOSTIC_TEST_BUDGET_MS = DIAGNOSTIC_WAIT_MS * 2;
+
 async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
   while (Date.now() < deadline) {
     const diagnostic = vscode.languages.getDiagnostics(uri).find((item) => item.message.includes(message));
     if (diagnostic) {

@@ -171,6 +171,81 @@ suite('DiagnosticArbiter Test Suite', () => {
     assert.strictEqual(glsl.latest.get(uri.fsPath)?.length, 1);
   });
 
+  test('publishes Slang service diagnostics for an untitled buffer', () => {
+    // Untitled buffers have no .slang path, so only the service that reported
+    // knows the document is Slang.
+    const uri = vscode.Uri.parse('untitled:Untitled-1');
+
+    arbiter.languageServiceSink('slang').set(uri, [error(0, "undefined identifier 'badName'", 36)]);
+
+    assert.strictEqual(slang.latest.get(uri.fsPath)?.length, 1);
+    assert.strictEqual(glsl.latest.get(uri.fsPath), undefined);
+  });
+
+  test('publishes GLSL service diagnostics for an untitled buffer', () => {
+    const uri = vscode.Uri.parse('untitled:Untitled-2');
+
+    arbiter.languageServiceSink('glsl').set(uri, [error(0, "Undefined identifier 'badName'", 57)]);
+
+    assert.strictEqual(glsl.latest.get(uri.fsPath)?.length, 1);
+    assert.strictEqual(slang.latest.get(uri.fsPath), undefined);
+  });
+
+  test('lets an untitled Slang buffer suppress the renderer error it duplicates', () => {
+    const uri = vscode.Uri.parse('untitled:Untitled-3');
+
+    arbiter.languageServiceSink('slang').set(uri, [error(13, "undefined identifier 'stepp'", 14)]);
+    arbiter.compilerSink().set(uri, [error(13, 'Image: error[E30015]: undefined identifier')]);
+
+    assert.deepStrictEqual(compiler.latest.get(uri.fsPath), []);
+    assert.strictEqual(slang.latest.get(uri.fsPath)?.length, 1);
+  });
+
+  test('keeps a Slang buffer claimed after its diagnostics go quiet', () => {
+    const uri = vscode.Uri.parse('untitled:Untitled-4');
+
+    arbiter.languageServiceSink('slang').set(uri, [error(13, 'undefined identifier')]);
+    arbiter.languageServiceSink('slang').delete(uri);
+    arbiter.languageServiceSink('slang').set(uri, [error(13, 'undefined identifier')]);
+
+    assert.strictEqual(slang.latest.get(uri.fsPath)?.length, 1);
+  });
+
+  test('corrects the language guessed for a buffer nothing has analysed yet', () => {
+    // Nothing has analysed an untitled buffer when the first renderer error
+    // lands, so the path guesses GLSL. That guess only ever publishes the
+    // renderer's own report, which the Slang service then takes over.
+    const uri = vscode.Uri.parse('untitled:Untitled-1');
+
+    arbiter.compilerSink().set(uri, [error(13, 'Image: error[E30015]: undefined identifier')]);
+    assert.strictEqual(compiler.latest.get(uri.fsPath)?.length, 1, 'nothing to defer to yet');
+    assert.deepStrictEqual(glsl.latest.get(uri.fsPath), [], 'the guess publishes no GLSL report of its own');
+
+    arbiter.languageServiceSink('slang').set(uri, [error(13, "undefined identifier 'stepp'", 14)]);
+
+    assert.strictEqual(slang.latest.get(uri.fsPath)?.length, 1);
+    assert.deepStrictEqual(compiler.latest.get(uri.fsPath), [], 'the duplicate renderer error is suppressed');
+    assert.deepStrictEqual(glsl.latest.get(uri.fsPath), [], 'and GLSL still shows nothing');
+  });
+
+  test('hands a reused untitled name to whichever service reports next', () => {
+    // VS Code reuses an untitled name for the next buffer that claims it, so
+    // one service's claim must not swallow the buffer that follows it.
+    const slangFirst = vscode.Uri.parse('untitled:Untitled-1');
+    arbiter.languageServiceSink('slang').set(slangFirst, [error(0, "undefined identifier 'badName'", 36)]);
+    arbiter.languageServiceSink('glsl').set(slangFirst, [error(0, "Undefined identifier 'badName'", 57)]);
+
+    assert.strictEqual(glsl.latest.get(slangFirst.fsPath)?.length, 1);
+    assert.strictEqual(slang.latest.get(slangFirst.fsPath), undefined, 'the stale Slang report is withdrawn');
+
+    const glslFirst = vscode.Uri.parse('untitled:Untitled-2');
+    arbiter.languageServiceSink('glsl').set(glslFirst, [error(0, "Undefined identifier 'badName'", 57)]);
+    arbiter.languageServiceSink('slang').set(glslFirst, [error(0, "undefined identifier 'badName'", 36)]);
+
+    assert.strictEqual(slang.latest.get(glslFirst.fsPath)?.length, 1);
+    assert.strictEqual(glsl.latest.get(glslFirst.fsPath), undefined, 'the stale GLSL report is withdrawn');
+  });
+
   test('keeps the two language collections apart', () => {
     const slangUri = vscode.Uri.file('/shaders/image.slang');
 
@@ -201,6 +276,7 @@ suite('DiagnosticArbiter Test Suite', () => {
       assert.strictEqual(languageForPath('/a/IMAGE.SLANG'), 'slang');
       assert.strictEqual(languageForPath('/a/image.glsl'), 'glsl');
       assert.strictEqual(languageForPath('/a/image.frag'), 'glsl');
+      assert.strictEqual(languageForPath('Untitled-1'), 'glsl');
     });
   });
 });
