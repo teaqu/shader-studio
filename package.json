@@ -1,6 +1,7 @@
 {
   "name": "shader-studio-monorepo",
   "version": "0.0.1",
+  "license": "MIT",
   "private": true,
   "packageManager": "npm@11.6.2",
   "description": "A VS Code extension for viewing and editing shaders",

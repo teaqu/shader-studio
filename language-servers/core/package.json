@@ -1,6 +1,7 @@
 {
   "name": "@shader-studio/language-server-core",
   "version": "0.0.1",
+  "license": "MIT",
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
