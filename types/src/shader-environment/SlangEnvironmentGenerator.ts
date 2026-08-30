@@ -48,7 +48,7 @@ function buildSlangChannelMetadata(
   channelBindings: readonly AuthoringChannelBinding[],
   stage: ShaderAuthoringEnvironment["stage"],
 ): string[] {
-  const channels = channelBindings.filter(({ resource, slot }) => slot < 4 && resource.kind !== "texture-3d");
+  const channels = channelBindings.filter(({ resource }) => resource.kind !== "texture-3d");
   const has2D = channels.some(({ resource }) => resource.kind !== "texture-cube");
   const hasCube = channels.some(({ resource }) => resource.kind === "texture-cube");
   const sample2D = stage === "compute"
@@ -114,7 +114,7 @@ struct ShaderToyChannelCube
     channel.loaded = iChannelLoaded[${slot}] != 0.0 ? 1 : 0;
     return channel;
 }`,
-      `#define iCh${slot} (${identifiers.metadataAccessor!}())`,
+      `#define ${identifiers.metadataAlias!} (${identifiers.metadataAccessor!}())`,
     );
   }
   return lines;

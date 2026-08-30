@@ -75,6 +75,7 @@ export class GlslLanguageService implements LanguageService {
   private readonly files = new VirtualFileSystem();
   private readonly analyses = new Map<string, GlslAnalysisDocument>();
   private readonly includeAnalyses = new Map<string, readonly GlslAnalysisDocument[]>();
+  private readonly generatedAnalyses = new Map<string, GlslAnalysisDocument>();
 
   async initialize(): Promise<ServerCapabilities> {
     return CAPABILITIES;
@@ -115,6 +116,7 @@ export class GlslLanguageService implements LanguageService {
     this.files.closeOverlay(uri);
     this.analyses.delete(uri);
     this.includeAnalyses.delete(uri);
+    this.generatedAnalyses.delete(uri);
   }
 
   async completion(params: DocumentPositionParams): Promise<CompletionItem[]> {
@@ -132,7 +134,10 @@ export class GlslLanguageService implements LanguageService {
         params.position,
         state.document.text,
         state.environment,
-        this.includeAnalyses.get(params.document.uri) ?? [],
+        [
+          ...(this.generatedAnalyses.has(params.document.uri) ? [this.generatedAnalyses.get(params.document.uri)!] : []),
+          ...(this.includeAnalyses.get(params.document.uri) ?? []),
+        ],
         params.document.uri,
       );
     }
@@ -174,10 +179,16 @@ export class GlslLanguageService implements LanguageService {
       });
     }
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
-      if (!doc.languages.includes("glsl") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
+      if (doc.name === "iChannelN" || !doc.languages.includes("glsl") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
         continue;
       }
       items.set(doc.name, completionFromDoc(doc.name, doc.glslType, doc.description));
+    }
+    for (const symbol of this.generatedAnalyses.get(params.document.uri)?.symbols ?? []) {
+      if (!/^iCh\d+$/.test(symbol.name)) {
+        continue;
+      }
+      items.set(symbol.name, completionFromDoc(symbol.name, symbol.typeName ?? "ShaderToy channel metadata struct", "Shader Studio input channel metadata."));
     }
     for (const uniform of state.environment.customUniforms) {
       items.set(uniform.name, completionFromDoc(uniform.name, uniform.type, "Shader Studio custom uniform."));
@@ -377,6 +388,7 @@ export class GlslLanguageService implements LanguageService {
   async dispose(): Promise<void> {
     this.analyses.clear();
     this.includeAnalyses.clear();
+    this.generatedAnalyses.clear();
   }
 
   private nameIsTaken(
@@ -399,8 +411,8 @@ export class GlslLanguageService implements LanguageService {
     if (!document || !environment) {
       return;
     }
-    // Build it here so authoring generation stays continuously exercised and validated.
-    buildGlslAuthoringPreamble(environment);
+    const generated = buildGlslAuthoringPreamble(environment);
+    this.generatedAnalyses.set(uri, parseGlslDocument(generated.uri, generated.text, environment.stage));
     this.analyses.set(uri, parseGlslDocument(uri, stripIncludeDirectives(document.text), environment.stage));
   }
 

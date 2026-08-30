@@ -296,16 +296,6 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
       customUniforms: [{ name: "bool", type: "bool" as const }],
       resources: [],
     }],
-    ["slot-four Texture2D resource", {
-      stage: "fragment" as const,
-      customUniforms: [],
-      resources: [{ name: "Texture2D", kind: "texture-2d" as const, slot: 4 }],
-    }],
-    ["slot-four TextureCube resource", {
-      stage: "fragment" as const,
-      customUniforms: [],
-      resources: [{ name: "TextureCube", kind: "texture-cube" as const, slot: 4 }],
-    }],
     ["Texture3D resource", {
       stage: "fragment" as const,
       customUniforms: [],
@@ -336,6 +326,21 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     const result = compile(environment);
     expect(result.success, result.error).toBe(true);
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+  });
+
+  it.each([
+    ["Texture2D", "texture-2d"],
+    ["TextureCube", "texture-cube"],
+  ] as const)("rejects a higher-slot %s resource that shadows generated metadata dependencies", (name, kind) => {
+    const environment = {
+      ...baseEnvironment(),
+      resources: [{ name, kind, slot: 5 }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual(expect.objectContaining({
+      code: "reserved-identifier",
+      message: expect.stringContaining(name),
+    }));
   });
 
   it.each([

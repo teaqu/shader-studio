@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildSlangAuthoringModule, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { resolveSlangExpressionType } from "../expressionType";
 
 const shader = `struct Material { float3 albedo; float rough; float4 tint : COLOR; float3 shade(float k) { return albedo * k; } };
@@ -33,6 +34,7 @@ describe("resolveSlangExpressionType", () => {
         { name: "albedo", type: "float3" },
         { name: "rough", type: "float" },
         { name: "tint", type: "float4" },
+        { name: "shade", type: "float3" },
       ],
     });
   });
@@ -74,6 +76,25 @@ describe("resolveSlangExpressionType", () => {
       fields: [{ name: "color", type: "float3" }, { name: "power", type: "float" }],
     });
     expect(resolve("keyLight.color", { includes })?.name).toBe("float3");
+  });
+
+  it("expands channel metadata macros supplied by included generated source", () => {
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: "file:///image.slang",
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [{ name: "iChannel0", kind: "texture-2d", slot: 0 }],
+      virtualFiles: [],
+    };
+    const includes = [buildSlangAuthoringModule(environment).text];
+
+    expect(resolve("iCh0", { includes })?.name).toBe("ShaderToyChannel2D");
+    expect(resolve("iCh0.sampler", { includes })?.name).toBe("ShaderToySampler2D");
+    expect(resolve("iCh0.size", { includes })?.name).toBe("float3");
+    expect(resolve("iChannel0", { includes })?.name).toBe("Texture2D<float4>");
   });
 
   it("prefers the nearest declaration that precedes the cursor", () => {

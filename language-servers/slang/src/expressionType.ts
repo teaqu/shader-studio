@@ -84,6 +84,7 @@ function leadingStepType(
   source: string,
   cursorOffset: number | undefined,
   context: SlangExpressionContext,
+  expandedMacros = new Set<string>(),
 ): string | undefined {
   if (step?.kind === "call") {
     if (isSlangScalarType(step.name) || slangVectorType(step.name) || slangMatrixType(step.name)) {
@@ -100,7 +101,26 @@ function leadingStepType(
   const included = local ? undefined : (context.includes ?? [])
     .map((include) => globalDeclaredType(include, step.name))
     .find((typeName): typeName is string => typeName !== undefined);
-  return local?.typeName ?? included ?? context.variableType?.(step.name);
+  const declared = local?.typeName ?? included;
+  if (declared) {
+    return declared;
+  }
+  const replacement = expandedMacros.has(step.name) ? undefined : slangMacroReplacement(step.name, [source, ...(context.includes ?? [])]);
+  if (!replacement) {
+    return context.variableType?.(step.name);
+  }
+  expandedMacros.add(step.name);
+  return leadingStepType(parseMemberExpression(stripOuterParentheses(replacement))[0], source, cursorOffset, context, expandedMacros);
+}
+
+function slangMacroReplacement(name: string, sources: readonly string[]): string | undefined {
+  const define = new RegExp(`^\\s*#\\s*define\\s+${name}\\s+(.+?)\\s*$`, "m");
+  return sources.map((source) => define.exec(source)?.[1]?.trim()).find((replacement): replacement is string => Boolean(replacement));
+}
+
+function stripOuterParentheses(expression: string): string {
+  const trimmed = expression.trim();
+  return trimmed.startsWith("(") && trimmed.endsWith(")") ? trimmed.slice(1, -1).trim() : trimmed;
 }
 
 function fieldType(ownerType: string, fieldName: string, structs: readonly SlangStruct[]): string | undefined {
@@ -170,7 +190,7 @@ interface VariableDeclaration {
   readonly scopeEnd: number;
 }
 
-const TYPE_TOKEN = /[A-Za-z_]\w*(?:\s*<\s*[A-Za-z_]\w*\s*,\s*[234]\s*>)?/;
+const TYPE_TOKEN = /[A-Za-z_]\w*(?:\s*<[^>{}]+>)?/;
 const LOCAL_DECLARATION = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?\\s*(?:=[^;{}]*)?;`, "g");
 const QUALIFIER = /^(?:in|out|inout)\s+/;
 const CONTROL_KEYWORDS = new Set(["if", "for", "while", "switch", "return", "else"]);
@@ -227,7 +247,7 @@ function globalDeclaredType(source: string, name: string): string | undefined {
 
 function isKnownType(typeName: string, knownStructs: ReadonlySet<string>): boolean {
   return isSlangScalarType(typeName) || slangVectorType(typeName) !== undefined
-    || slangMatrixType(typeName) !== undefined || knownStructs.has(typeName);
+    || slangMatrixType(typeName) !== undefined || knownStructs.has(typeName) || /^[A-Za-z_]\w*<.+>$/.test(typeName);
 }
 
 interface SlangStruct {
@@ -254,6 +274,12 @@ function findSlangStructs(source: string): SlangStruct[] {
       const declaration = FIELD_DECLARATION.exec(`${statement.trim()};`);
       if (declaration?.[1] && declaration[2] && !statement.includes("(")) {
         fields.push({ name: declaration[2], type: canonicalizeSlangType(declaration[1]) });
+      }
+    }
+    const method = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(`, "g");
+    for (const match of body.matchAll(method)) {
+      if (match[1] && match[2] && !fields.some((field) => field.name === match[2])) {
+        fields.push({ name: match[2], type: canonicalizeSlangType(match[1]) });
       }
     }
     structs.push({ name, fields });

@@ -5,6 +5,40 @@ import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 
 describe("SlangLanguageService with bundled WASM", () => {
+  it("offers native members for a configured raw texture channel", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///channel.slang";
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [{ name: "iChannel0", kind: "texture-2d", slot: 0 }],
+      virtualFiles: [],
+    };
+    const text = `float4 mainImage(float2 p)
+{
+    iChannel0.
+    return float4(0.0);
+}`;
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+      const completions = await service.completion({
+        document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
+        position: { line: 2, character: "    iChannel0.".length },
+      });
+
+      expect(completions.map((item) => item.label)).toContain("Sample");
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
+
   it("uses the official browser language server for completion and diagnostics", async () => {
     const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
     const module = await createSlangModule({ wasmBinary });

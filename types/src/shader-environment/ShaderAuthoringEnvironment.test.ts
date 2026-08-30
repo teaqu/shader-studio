@@ -448,6 +448,23 @@ describe("ShaderAuthoringEnvironment", () => {
     });
   });
 
+  it("derives metadata aliases for every generated channel slot", () => {
+    const resource = { name: "iChannel0", kind: "texture-2d" as const };
+
+    expect(deriveSlangChannelGeneratedIdentifiers({ resource, slot: 0 })).toMatchObject({
+      metadataAccessor: "_getICh0",
+      metadataAlias: "iCh0",
+    });
+    expect(deriveSlangChannelGeneratedIdentifiers({ resource, slot: 5 })).toMatchObject({
+      metadataAccessor: "_getICh5",
+      metadataAlias: "iCh5",
+    });
+    expect(deriveSlangChannelGeneratedIdentifiers({
+      resource: { name: "volume", kind: "texture-3d" },
+      slot: 0,
+    }).metadataAlias).toBeUndefined();
+  });
+
   it.each(["", "3d", "not valid", "sky-dome"])(
     "keeps generated Slang APIs total and omits the malformed resource name %j",
     (name) => {

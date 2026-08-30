@@ -67,7 +67,21 @@ describe("GlslLanguageService", () => {
       .map((item) => item.label);
     expect(labels).toEqual(expect.arrayContaining(["normalize", "texture", "iResolution", "tint", "sky", "shade"]));
     expect(labels).not.toContain("texture2D");
+    expect(labels).not.toContain("iChannelN");
     expect(labels).not.toContain("mainVertex");
+  });
+
+  it("offers generated metadata aliases for configured higher GLSL channel slots", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      resources: [{ name: "iChannel5", kind: "texture-2d", slot: 5 }],
+    });
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text: source });
+
+    const labels = (await instance.completion({ document: revision, position: { line: 2, character: 0 } })).map((item) => item.label);
+    expect(labels).toContain("iCh5");
+    expect(labels).not.toContain("iChannelN");
   });
 
   it("completes vector components instead of every symbol after a member selector", async () => {
@@ -85,6 +99,29 @@ describe("GlslLanguageService", () => {
     expect(items.map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg", "s", "t", "st"]);
     expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "float", kind: CompletionItemKind.Field }));
     expect(items).toContainEqual(expect.objectContaining({ label: "xy", detail: "vec2" }));
+  });
+
+  it("completes generated channel metadata members from the GLSL authoring preamble", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      resources: [{ name: "sky", kind: "texture-cube", slot: 0 }],
+    });
+    const text = `void mainImage(out vec4 color, in vec2 coord) {
+  iCh0.
+  iCh0.sampler.
+  iCh0.size.
+  color = vec4(0.0);
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const labels = async (line: number) => (await instance.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    })).map((item) => item.label);
+
+    expect(await labels(1)).toEqual(expect.arrayContaining(["sampler", "size", "time", "loaded"]));
+    expect(await labels(2)).toEqual([]);
+    expect(await labels(3)).toContain("xyz");
   });
 
   it("completes struct fields declared in the document and in Shader Studio Common", async () => {
@@ -147,6 +184,7 @@ void mainImage(out vec4 color, in vec2 coord) {
   missing.
   t.
   sky.
+  iChannel0.
   color = vec4(uv, t, 1.0);
 }`;
     await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
@@ -158,6 +196,7 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await completions(3)).toEqual([]);
     expect(await completions(4)).toEqual([]);
     expect(await completions(5)).toEqual([]);
+    expect(await completions(6)).toEqual([]);
   });
 
   it("retains legacy texture names for explicitly versioned GLSL ES 1.00 documents", async () => {

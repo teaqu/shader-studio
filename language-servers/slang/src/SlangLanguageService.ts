@@ -193,8 +193,13 @@ export class SlangLanguageService implements LanguageService {
         documentation: computeFeatureMarkup(feature),
       });
     }
+    const generatedChannels = generatedChannelCompletions(state.environment);
+    const generatedMetadataAliases = new Set(generatedChannels.flatMap((item) => item.metadataAlias ? [item.metadataAlias] : []));
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
       if (!doc.languages.includes("slang") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
+        continue;
+      }
+      if (doc.name === "iChannelN" || generatedMetadataAliases.has(doc.name) || /^iCh\d+$/.test(doc.name)) {
         continue;
       }
       items.set(`${doc.name}:${doc.slangType}`, {
@@ -209,6 +214,20 @@ export class SlangLanguageService implements LanguageService {
     }
     for (const resource of state.environment.resources) {
       items.set(`${resource.name}:${resource.kind}`, { label: resource.name, kind: CompletionItemKind.Variable, detail: resource.kind });
+    }
+    for (const generated of generatedChannels) {
+      items.set(`${generated.sampler}:SamplerState`, {
+        label: generated.sampler,
+        kind: CompletionItemKind.Variable,
+        detail: "SamplerState",
+      });
+      if (generated.metadataAlias) {
+        items.set(`${generated.metadataAlias}:${generated.metadataType}`, {
+          label: generated.metadataAlias,
+          kind: CompletionItemKind.Variable,
+          detail: generated.metadataType,
+        });
+      }
     }
     for (const file of contextualFiles(state.environment)) {
       for (const declaration of findSlangDeclarations(file.text)) {
@@ -967,7 +986,7 @@ function memberCompletions(
   environment: ShaderAuthoringEnvironment,
 ): CompletionItem[] {
   const resolved = resolveSlangExpressionType({ source, position, expression }, {
-    includes: contextualFiles(environment).map((file) => file.text),
+    includes: [buildSlangAuthoringModule(environment).text, ...contextualFiles(environment).map((file) => file.text)],
     variableType: (name) => environmentTypeName(name, environment),
     functionType: (name) => intrinsicReturnType(documentedSlangFunctions(environment).find((item) => item.name === name)?.signatures[0]),
   });
@@ -983,12 +1002,67 @@ function memberCompletions(
       documentation: { kind: MarkupKind.Markdown, value: `Component selection on \`${resolved.name}\`.` },
     }));
   }
-  return (resolved.fields ?? []).map((field) => ({
+  const fields = (resolved.fields ?? []).map((field) => ({
     label: field.name,
     kind: CompletionItemKind.Field,
     detail: field.type,
     documentation: { kind: MarkupKind.Markdown, value: `Field of \`${resolved.name}\`.` },
   }));
+  return fields.length ? fields : nativeTextureMemberCompletions(resolved.name);
+}
+
+/** Native resource fallback for the bundled Slang server, which omits Texture* member completions. */
+function nativeTextureMemberCompletions(typeName: string): CompletionItem[] {
+  const texture = /^(Texture2D|TextureCube|Texture3D)<float4>$/.exec(typeName)?.[1];
+  if (!texture) {
+    return [];
+  }
+  const coordinates = texture === "Texture2D" ? "float2 location" : "float3 location";
+  const gradients = texture === "Texture2D" ? "float2 ddx, float2 ddy" : "float3 ddx, float3 ddy";
+  const loadCoordinates = texture === "Texture2D" ? "int3 location" : "int4 location";
+  const dimensions = texture === "Texture2D" ? "out uint width, out uint height" : "out uint width, out uint height, out uint depth";
+  return [
+    nativeTextureMember(texture, "Sample", `float4 ${texture}.Sample(SamplerState sampler, ${coordinates})`),
+    nativeTextureMember(texture, "SampleLevel", `float4 ${texture}.SampleLevel(SamplerState sampler, ${coordinates}, float level)`),
+    nativeTextureMember(texture, "SampleGrad", `float4 ${texture}.SampleGrad(SamplerState sampler, ${coordinates}, ${gradients})`),
+    nativeTextureMember(texture, "Load", `float4 ${texture}.Load(${loadCoordinates})`),
+    nativeTextureMember(texture, "GetDimensions", `void ${texture}.GetDimensions(${dimensions})`),
+  ];
+}
+
+function nativeTextureMember(texture: string, name: string, detail: string): CompletionItem {
+  return {
+    label: name,
+    kind: CompletionItemKind.Method,
+    detail,
+    documentation: { kind: MarkupKind.Markdown, value: `Native \`${texture}\` method.` },
+  };
+}
+
+interface GeneratedChannelCompletion {
+  readonly sampler: string;
+  readonly metadataAlias?: string;
+  readonly metadataType?: "ShaderToyChannel2D" | "ShaderToyChannelCube";
+}
+
+/** Generated channel globals, kept separate from contextual files so they never leak into general declarations. */
+function generatedChannelCompletions(environment: ShaderAuthoringEnvironment): readonly GeneratedChannelCompletion[] {
+  const channelBindings = resolveAuthoringChannelBindings(environment.resources);
+  const storageBindings = environment.resources
+    .filter((resource) => resource.kind === "storage")
+    .map((resource) => ({ resource, slot: resource.slot ?? 0 }));
+  return [...channelBindings, ...storageBindings]
+    .filter(({ resource }) => isValidShaderIdentifier(resource.name))
+    .map((binding) => {
+      const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
+      return {
+        sampler: identifiers.sampler,
+        metadataAlias: identifiers.metadataAlias,
+        metadataType: identifiers.metadataAlias
+          ? binding.resource.kind === "texture-cube" ? "ShaderToyChannelCube" : "ShaderToyChannel2D"
+          : undefined,
+      };
+    });
 }
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */

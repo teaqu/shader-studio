@@ -204,6 +204,86 @@ float value = iChannel0;`;
     expect(completions.map((item) => item.label)).toEqual(["Sample"]);
   });
 
+  it("completes generated channel symbols and their metadata members", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      resources: [
+        { name: "iChannel0", kind: "texture-2d", slot: 0 },
+        { name: "sky", kind: "texture-cube", slot: 1 },
+        { name: "albedo", kind: "texture-2d", slot: 2 },
+        { name: "volume", kind: "texture-3d", slot: 3 },
+        { name: "particles", kind: "storage", elementType: "float4" },
+        { name: "late", kind: "texture-2d", slot: 4 },
+        { name: "later", kind: "texture-2d", slot: 5 },
+      ],
+    });
+    const text = `float4 mainImage(float2 p)
+{
+    iCh0.
+    iCh0.sampler.
+    iCh0.size.
+    return float4(0.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const labels = async (line: number) => (await service.completion({
+      document: revision,
+      position: { line, character: (text.split("\n")[line] ?? "").length },
+    })).map((item) => item.label);
+
+    const globals = await labels(1);
+    expect(globals).toEqual(expect.arrayContaining([
+      "iChannel0Sampler", "sampleIChannel0", "sampleIChannel0Vertex", "iCh0",
+      "skySampler", "sampleIChannel1", "sampleIChannel1Vertex", "sampleSky", "sampleSkyVertex", "iCh1",
+      "albedo", "albedoSampler", "sampleAlbedo", "sampleAlbedoVertex", "iCh2",
+      "volumeSampler", "particlesSampler", "lateSampler", "sampleIChannel4", "iCh4",
+      "laterSampler", "sampleIChannel5", "iCh5",
+    ]));
+    expect(globals).not.toContain("sampleVolume");
+    expect(globals).not.toContain("sampleParticles");
+    expect(globals).not.toContain("iChannelN");
+    expect((await service.completion({ document: revision, position: { line: 1, character: 4 } }))
+      .find((item) => item.label === "iChannel0Sampler")?.detail).toBe("SamplerState");
+    expect(await labels(2)).toEqual(expect.arrayContaining(["sampler", "size", "time", "loaded"]));
+    expect(await labels(3)).toEqual(expect.arrayContaining(["texture", "state", "Sample"]));
+    expect(await labels(4)).toContain("xyz");
+  });
+
+  it("keeps generated channel completions empty without resources in fragment and compute stages", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    for (const stage of ["fragment", "compute"] as const) {
+      await service.syncEnvironment({ ...environment, stage, resources: [] });
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: "void main() {}" });
+      const labels = (await service.completion({ document: revision, position: { line: 0, character: 0 } })).map((item) => item.label);
+      expect(labels).not.toContain("iChannel0Sampler");
+      expect(labels).not.toContain("iCh0");
+    }
+  });
+
+  it("offers generated channel completions in compute shaders", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      stage: "compute",
+      resources: [{ name: "iChannel0", kind: "texture-cube", slot: 0 }],
+    });
+    const text = "[shader(\"compute\")]\nvoid computeMain() { iCh0.sampler. }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const globals = await service.completion({ document: revision, position: { line: 0, character: 0 } });
+    expect(globals.map((item) => item.label)).toEqual(expect.arrayContaining([
+      "iChannel0Sampler", "sampleIChannel0", "sampleIChannel0Vertex", "iCh0",
+    ]));
+    const members = await service.completion({ document: revision, position: { line: 1, character: text.split("\n")[1]!.indexOf(". }") + 1 } });
+    expect(members.map((item) => item.label)).toEqual(expect.arrayContaining(["texture", "state", "Sample"]));
+  });
+
   it("completes vector components instead of every symbol after a member selector", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([]));

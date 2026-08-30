@@ -163,7 +163,7 @@ function collectSlangGeneratedTypeDependencies(
       continue;
     }
     const resourceType = SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES[resource.kind];
-    const metadataUsesResourceType = resource.kind !== "texture-3d" && slot < 4;
+    const metadataUsesResourceType = resource.kind !== "texture-3d";
     if (resource.name !== resourceType || metadataUsesResourceType) {
       dependencies.add(resourceType);
     }
@@ -208,6 +208,7 @@ export interface SlangChannelGeneratedIdentifiers {
   readonly aliasHelper?: string;
   readonly aliasVertexHelper?: string;
   readonly metadataAccessor?: string;
+  readonly metadataAlias?: string;
   readonly samplingParameterType?: "float2" | "float3";
 }
 
@@ -235,7 +236,8 @@ export function deriveSlangChannelGeneratedIdentifiers(
     slotVertexHelper: `${slotHelper}Vertex`,
     aliasHelper,
     aliasVertexHelper: aliasHelper ? `${aliasHelper}Vertex` : undefined,
-    metadataAccessor: slot < 4 ? `_getICh${slot}` : undefined,
+    metadataAccessor: `_getICh${slot}`,
+    metadataAlias: `iCh${slot}`,
     samplingParameterType: resource.kind === "texture-cube" ? "float3" : "float2",
   };
 }
@@ -386,7 +388,7 @@ export function validateShaderAuthoringEnvironment(
     }
 
     const metadataBindings = channelBindings
-      .filter(({ resource, slot }) => slot < 4 && resource.kind !== "texture-3d");
+      .filter(({ resource }) => resource.kind !== "texture-3d");
     if (metadataBindings.some(({ resource }) => resource.kind === "texture-cube")) {
       claimGeneratedIdentifier("ShaderToySamplerCube", "generated channel metadata");
       claimGeneratedIdentifier("ShaderToyChannelCube", "generated channel metadata");

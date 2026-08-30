@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildGlslAuthoringPreamble, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { parseGlslDocument, resolveGlslExpressionType, glslVectorTypeName } from "../index";
 
 const uri = "file:///workspace/image.glsl";
@@ -77,6 +78,31 @@ describe("resolveGlslExpressionType", () => {
       name: "Light",
       fields: [{ name: "color", type: "vec3" }, { name: "power", type: "float" }],
     });
+  });
+
+  it("resolves channel metadata types from the generated GLSL preamble", () => {
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "glsl",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [{ name: "sky", kind: "texture-cube", slot: 0 }],
+      virtualFiles: [],
+    };
+    const generated = buildGlslAuthoringPreamble(environment);
+    const includes = [parseGlslDocument(generated.uri, generated.text, environment.stage)];
+
+    expect(resolveGlslExpressionType(request(shader, "iCh0", cursor.line, cursor.character), { includes })?.fields)
+      .toEqual(expect.arrayContaining([
+        { name: "sampler", type: "samplerCube" },
+        { name: "size", type: "vec3" },
+        { name: "time", type: "float" },
+        { name: "loaded", type: "int" },
+      ]));
+    expect(resolveGlslExpressionType(request(shader, "iCh0.size", cursor.line, cursor.character), { includes })?.name)
+      .toBe("vec3");
   });
 
   it("resolves a selection dangling at the end of a block", () => {
