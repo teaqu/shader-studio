@@ -55,7 +55,11 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       if (!changesDocumentText(event)) {
         return;
       }
-      void this.change(event.document);
+      if (shaderLanguage(event.document)) {
+        void this.change(event.document);
+      } else if (isShaderConfigDocument(event.document)) {
+        reanalyseOpenShaders();
+      }
     }));
     this.disposables.push(vscode.workspace.onDidCloseTextDocument((document) => {
       void this.close(document);
@@ -391,6 +395,10 @@ interface OpenedDocument {
  */
 export function changesDocumentText(event: Pick<vscode.TextDocumentChangeEvent, "contentChanges">): boolean {
   return event.contentChanges.length > 0;
+}
+
+function isShaderConfigDocument(document: Pick<vscode.TextDocument, "uri">): boolean {
+  return document.uri.scheme === "file" && /\.sha\.json$/i.test(document.uri.fsPath);
 }
 
 /**

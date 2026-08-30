@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { DocumentRevision, LanguageService } from "@shader-studio/language-server-core";
-import type { ShaderConfig } from "@shader-studio/types";
+import type { ShaderAuthoringEnvironment, ShaderConfig } from "@shader-studio/types";
 import { Messenger } from "../../app/transport/Messenger";
 import {
   VscodeLanguageServiceController,
@@ -193,6 +193,79 @@ suite("VS Code language-service revisions", () => {
       assert.strictEqual(environment?.stage, "compute");
       assert.strictEqual(environment?.outputLayers, 3);
     } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("uses unsaved open config text for configured shader resources", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-config-ls-"));
+    const shaderPath = path.join(directory, "image.slang");
+    const configPath = path.join(directory, "image.sha.json");
+    const savedConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { iChannel0: { type: "texture", path: "saved.png" } } } },
+    };
+    const unsavedConfig = {
+      version: "1.0",
+      passes: { Image: { inputs: { abbbb: { type: "texture", path: "unsaved.png" } } } },
+    };
+    try {
+      fs.writeFileSync(shaderPath, "float4 mainImage(float2 p) { return float4(p, 0, 1); }");
+      fs.writeFileSync(configPath, JSON.stringify(savedConfig));
+      const configDocument = await vscode.workspace.openTextDocument(configPath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(configDocument.uri, new vscode.Range(0, 0, configDocument.lineCount, 0), JSON.stringify(unsavedConfig));
+      assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+      const shaderDocument = {
+        uri: vscode.Uri.file(shaderPath),
+        languageId: "slang",
+        getText: () => fs.readFileSync(shaderPath, "utf8"),
+      };
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(shaderDocument);
+
+      assert.deepStrictEqual(environment?.resources, [{ name: "abbbb", kind: "texture-2d", slot: 0 }]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("re-syncs open shaders when an unsaved config changes", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-config-resync-"));
+    const shaderPath = path.join(directory, "image.slang");
+    const configPath = path.join(directory, "image.sha.json");
+    const synced: ShaderAuthoringEnvironment[] = [];
+    const service = countingLanguageService({ diagnostics: 0, openDocument: 0 }, (environment) => synced.push(environment));
+    const noSink = { set: () => {}, delete: () => {}, clear: () => {} };
+    const controller = new VscodeLanguageServiceController(
+      { glsl: async () => service, slang: async () => service },
+      new ShaderAuthoringEnvironmentProvider(),
+      { glsl: noSink, slang: noSink },
+    );
+    try {
+      fs.writeFileSync(shaderPath, "float4 mainImage(float2 p) { return float4(p, 0, 1); }");
+      fs.writeFileSync(configPath, JSON.stringify({
+        version: "1.0",
+        passes: { Image: { inputs: { iChannel0: { type: "texture", path: "saved.png" } } } },
+      }));
+      controller.start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
+      await vscode.workspace.openTextDocument(shaderPath);
+      await waitFor(() => synced.some((environment) => environment.documentUri === vscode.Uri.file(shaderPath).toString()
+        && environment.resources.some((resource) => resource.name === "iChannel0")));
+
+      const configDocument = await vscode.workspace.openTextDocument(configPath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(configDocument.uri, new vscode.Range(0, 0, configDocument.lineCount, 0), JSON.stringify({
+        version: "1.0",
+        passes: { Image: { inputs: { abbbb: { type: "texture", path: "unsaved.png" } } } },
+      }));
+      assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+
+      await waitFor(() => synced.some((environment) => environment.documentUri === vscode.Uri.file(shaderPath).toString()
+        && environment.resources.some((resource) => resource.name === "abbbb")));
+    } finally {
+      controller.dispose();
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -523,6 +596,47 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("updates Slang completion helpers after an unsaved channel rename", async function() {
+    this.timeout(20_000);
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-channel-completion-"));
+    const shaderPath = path.join(directory, "image.slang");
+    const configPath = path.join(directory, "image.sha.json");
+    const source = "float4 mainImage(float2 p) { return sample; }";
+    const labels = async (document: vscode.TextDocument) => {
+      const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        document.uri,
+        new vscode.Position(0, source.indexOf("sample") + "sample".length),
+      );
+      return completions.items.map((item) => typeof item.label === "string" ? item.label : item.label.label);
+    };
+    try {
+      fs.writeFileSync(shaderPath, source);
+      fs.writeFileSync(configPath, JSON.stringify({
+        version: "1.0",
+        passes: { Image: { inputs: { channel: { type: "texture", path: "saved.png" } } } },
+      }));
+      await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+      const shaderDocument = await vscode.workspace.openTextDocument(shaderPath);
+      await vscode.window.showTextDocument(shaderDocument);
+      assert.ok((await labels(shaderDocument)).includes("sampleChannel"));
+
+      const configDocument = await vscode.workspace.openTextDocument(configPath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(configDocument.uri, new vscode.Range(0, 0, configDocument.lineCount, 0), JSON.stringify({
+        version: "1.0",
+        passes: { Image: { inputs: { abbbb: { type: "texture", path: "unsaved.png" } } } },
+      }));
+      assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+
+      await waitForAsync(async () => (await labels(shaderDocument)).includes("sampleAbbbb"));
+      assert.ok(!(await labels(shaderDocument)).includes("sampleChannel"));
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("provides mainImage contract hovers for renamed GLSL and Slang parameters", async function() {
     this.timeout(10_000);
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
@@ -746,7 +860,10 @@ const DIAGNOSTIC_WAIT_MS = 5_000;
  */
 const DIAGNOSTIC_TEST_BUDGET_MS = DIAGNOSTIC_WAIT_MS * 2;
 
-function countingLanguageService(counts: { diagnostics: number; openDocument: number }): LanguageService {
+function countingLanguageService(
+  counts: { diagnostics: number; openDocument: number },
+  onSyncEnvironment?: (environment: ShaderAuthoringEnvironment) => void,
+): LanguageService {
   return {
     initialize: async () => ({
       completion: true,
@@ -760,7 +877,9 @@ function countingLanguageService(counts: { diagnostics: number; openDocument: nu
       documentHighlights: false,
       rename: false,
     }),
-    syncEnvironment: async () => {},
+    syncEnvironment: async (environment) => {
+      onSyncEnvironment?.(environment);
+    },
     openDocument: async () => { counts.openDocument += 1; },
     changeDocument: async () => {},
     closeDocument: async () => {},
@@ -788,6 +907,17 @@ async function waitFor(condition: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error("Timed out waiting for the controller to publish");
+}
+
+async function waitForAsync(condition: () => Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (await condition()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for the language-service completion update");
 }
 
 async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {

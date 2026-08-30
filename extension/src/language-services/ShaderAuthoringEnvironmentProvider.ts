@@ -211,6 +211,16 @@ function isWithinDirectory(parent: string, candidate: string): boolean {
 }
 
 function parseConfig(configPath: string): { config: ShaderConfig; path: string } | null {
+  const openDocument = vscode.workspace.textDocuments.find((document) => (
+    document.uri.scheme === "file" && path.normalize(document.uri.fsPath) === path.normalize(configPath)
+  ));
+  if (openDocument) {
+    try {
+      return { config: JSON.parse(openDocument.getText()) as ShaderConfig, path: configPath };
+    } catch {
+      // Keep authoring available while an in-progress edit temporarily leaves the config invalid.
+    }
+  }
   try {
     return { config: JSON.parse(fs.readFileSync(configPath, "utf8")) as ShaderConfig, path: configPath };
   } catch {
