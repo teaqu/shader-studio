@@ -1569,7 +1569,7 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const blocks = [...container.querySelectorAll('.error-tooltip-block')];
+      const blocks = [...document.body.querySelectorAll('.error-tooltip-block')];
       expect(blocks.map((block) => block.textContent)).toEqual(errors);
       expect(blocks[0].parentElement).toHaveClass('error-tooltip-content');
     });
@@ -1590,21 +1590,21 @@ describe('MenuBar Component', () => {
         "   | ^ undefined identifier 'd'.",
       ].join('\n');
 
-      const { container } = renderMenuBar({
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: [`${first}\n${second}`]
         }
       });
 
-      const blocks = [...container.querySelectorAll('.error-tooltip-block')];
+      const blocks = [...document.body.querySelectorAll('.error-tooltip-block')];
       expect(blocks).toHaveLength(2);
       expect(blocks[0].textContent).toBe(first);
       expect(blocks[1].textContent).toBe(second);
     });
 
     it('should give each warning its own block too', () => {
-      const { container } = renderMenuBar({
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: [],
@@ -1612,7 +1612,7 @@ describe('MenuBar Component', () => {
         }
       });
 
-      const blocks = [...container.querySelectorAll('.error-tooltip-block')];
+      const blocks = [...document.body.querySelectorAll('.error-tooltip-block')];
       expect(blocks.map((block) => block.textContent))
         .toEqual(['Storage stride mismatch', 'Script: bundle failed']);
     });
@@ -1708,107 +1708,106 @@ describe('MenuBar Component', () => {
     });
 
     /**
-     * Stands a stack of clipping ancestors above the tooltip's anchor. jsdom
-     * lays nothing out, so every rect the measurement reads is stubbed.
+     * The tooltip is portalled to the body, so it is positioned from script
+     * against its anchor. jsdom lays nothing out, so both rects are stubbed and
+     * a resize drives the measurement the effect has already subscribed to.
      */
-    async function measureTooltip(options: {
-      anchor: { top: number; left: number };
-      clippers: { top: number; right: number; axis?: 'both' | 'y' | 'x' }[];
+    async function positionTooltip(options: {
+      anchor: { top: number; bottom: number; left: number };
+      tooltip: { width: number; height: number };
       viewport?: { width: number; height: number };
     }) {
       const { container } = renderMenuBar({
         props: { ...defaultProps, errors: ['Error message'] }
       });
-      const tooltip = container.querySelector('.error-tooltip') as HTMLElement;
-      const anchor = tooltip.parentElement as HTMLElement;
+      const anchor = container.querySelector('.pause-button-container') as HTMLElement;
+      const tooltip = document.body.querySelector('.error-tooltip') as HTMLElement;
 
-      const viewport = options.viewport ?? { width: 2000, height: 1000 };
-      Object.defineProperty(window, 'innerHeight', { value: viewport.height, configurable: true });
+      const viewport = options.viewport ?? { width: 1200, height: 900 };
       Object.defineProperty(window, 'innerWidth', { value: viewport.width, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { value: viewport.height, configurable: true });
 
-      let child = anchor;
-      for (const clipper of options.clippers) {
-        const node = document.createElement('div');
-        node.style.overflowY = clipper.axis === 'x' ? 'visible' : 'auto';
-        node.style.overflowX = clipper.axis === 'y' ? 'visible' : 'auto';
-        node.getBoundingClientRect = () => ({ top: clipper.top, right: clipper.right }) as DOMRect;
-        Object.defineProperty(child, 'parentElement', { value: node, configurable: true });
-        child = node;
-      }
-      Object.defineProperty(child, 'parentElement', { value: null, configurable: true });
       anchor.getBoundingClientRect = () => (options.anchor) as DOMRect;
+      tooltip.getBoundingClientRect = () => (options.tooltip) as DOMRect;
 
       await fireEvent.mouseEnter(screen.getByLabelText('Toggle pause'));
+      window.dispatchEvent(new Event('resize'));
+      await Promise.resolve();
       return tooltip;
     }
 
-    it('caps the tooltip to the room above and right of the button inside its pane', async () => {
-      // A pane whose top is 100px down the viewport and whose right edge is at
-      // 700px, with the menu bar 500px down and 40px in.
-      const tooltip = await measureTooltip({
-        anchor: { top: 500, left: 40 },
-        clippers: [{ top: 100, right: 700 }],
+    it('opens above its anchor, aligned to its left edge', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 800, bottom: 830, left: 40 },
+        tooltip: { width: 300, height: 200 },
       });
 
-      // 500 - 100 and 700 - 40, each less the 8px margin kept off the edge.
-      expect(tooltip.style.maxHeight).toBe('392px');
-      expect(tooltip.style.maxWidth).toBe('652px');
+      // 800 - 200 - 8 above the anchor, sharing its left edge.
+      expect(tooltip.style.top).toBe('592px');
+      expect(tooltip.style.left).toBe('40px');
     });
 
-    it('never grants the tooltip more room than the stylesheet caps allow', async () => {
-      const tooltip = await measureTooltip({
-        anchor: { top: 4000, left: 0 },
-        clippers: [{ top: 0, right: 9000 }],
-        viewport: { width: 4000, height: 1000 },
+    it('pulls back from the right edge rather than overflowing it', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 800, bottom: 830, left: 1100 },
+        tooltip: { width: 400, height: 200 },
+        viewport: { width: 1200, height: 900 },
       });
 
-      // min(640px, 70vh of 1000) and min(1100px, 92vw of 4000).
-      expect(tooltip.style.maxHeight).toBe('640px');
-      expect(tooltip.style.maxWidth).toBe('1100px');
+      // 1200 - 400 - 8: the whole tooltip stays on screen.
+      expect(tooltip.style.left).toBe('792px');
     });
 
-    it('intersects every clipping ancestor, not just the nearest one', async () => {
-      // The nearest pane is laid out wider and taller than the outer element
-      // that actually clips it - the dockview case that let the tooltip escape.
-      const tooltip = await measureTooltip({
-        anchor: { top: 300, left: 40 },
-        clippers: [
-          { top: 0, right: 900 },
-          { top: 120, right: 500 },
-        ],
+    it('drops below the anchor when there is no room above', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 60, bottom: 90, left: 40 },
+        tooltip: { width: 300, height: 400 },
+        viewport: { width: 1200, height: 900 },
       });
 
-      expect(tooltip.style.maxHeight).toBe('172px');
-      expect(tooltip.style.maxWidth).toBe('452px');
+      expect(tooltip.style.top).toBe('98px');
     });
 
-    it('clamps to the viewport when no ancestor clips at all', async () => {
-      const tooltip = await measureTooltip({
-        anchor: { top: 300, left: 40 },
-        clippers: [{ top: 0, right: 9000, axis: 'y' }],
-        viewport: { width: 400, height: 1000 },
+    it('caps its height to the side it opens on, not the whole viewport', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 400, bottom: 430, left: 40 },
+        tooltip: { width: 300, height: 200 },
+        viewport: { width: 500, height: 900 },
       });
 
-      // 400 - 40 - 8: the viewport bounds the width even with nothing clipping.
-      expect(tooltip.style.maxWidth).toBe('352px');
+      // 400 above the anchor, less the 8px margin at each end.
+      expect(tooltip.style.maxHeight).toBe('384px');
+      expect(tooltip.style.maxWidth).toBe('484px');
     });
 
-    it('leaves the CSS cap alone when the pane is too short to clamp usefully', async () => {
+    it('never grows tall enough to cover its own anchor', async () => {
+      // Neither side fits the tooltip; covering the anchor would swallow the
+      // hover that opened it.
+      const tooltip = await positionTooltip({
+        anchor: { top: 300, bottom: 330, left: 40 },
+        tooltip: { width: 300, height: 800 },
+        viewport: { width: 500, height: 360 },
+      });
+
+      const top = Number.parseFloat(tooltip.style.top);
+      const maxHeight = Number.parseFloat(tooltip.style.maxHeight);
+      expect(top + maxHeight).toBeLessThanOrEqual(300);
+    });
+
+    it('leaves positioning to the stylesheet when nothing has been laid out', async () => {
       const { container } = renderMenuBar({
         props: { ...defaultProps, errors: ['Error message'] }
       });
+      const tooltip = document.body.querySelector('.error-tooltip') as HTMLElement;
 
-      const tooltip = container.querySelector('.error-tooltip') as HTMLElement;
-      const anchor = tooltip.parentElement as HTMLElement;
-      // jsdom reports zeroed rects by default, which is the degenerate case.
       await fireEvent.mouseEnter(screen.getByLabelText('Toggle pause'));
 
-      expect(anchor.getBoundingClientRect().top).toBe(0);
-      expect(tooltip.style.maxHeight).toBe('');
+      expect(container.querySelector('.pause-button-container')).toBeTruthy();
+      expect(tooltip.style.top).toBe('');
     });
 
     it('should keep the pause error tooltip visible when moving from the pause button onto the tooltip', async () => {
-      const { container } = renderMenuBar({
+      renderMenuBar({
         props: {
           ...defaultProps,
           errors: ['Error message']
@@ -1816,7 +1815,7 @@ describe('MenuBar Component', () => {
       });
 
       const pauseButton = screen.getByLabelText('Toggle pause');
-      const tooltip = container.querySelector('.error-tooltip')!;
+      const tooltip = document.body.querySelector('.error-tooltip')!;
 
       await fireEvent.mouseEnter(pauseButton);
       expect(tooltip).toHaveClass('visible');

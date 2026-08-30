@@ -321,11 +321,14 @@ canvas {
   flex: 0 0 auto;
 }
 
+/* Portalled to the body and positioned from script: inside the menu bar it was
+   trapped in the dockview pane's stacking and clipping context, which cut it
+   off and let neighbouring panels paint over it. */
 .error-tooltip {
-  position: absolute;
-  bottom: 100%;
+  position: fixed;
+  top: 0;
   left: 0;
-  transform: translateY(0);
+  pointer-events: none;
   /* Without this the 8px padding and 1px border are added on top of
      max-height, so the box ends up ~18px taller than the room measured for it
      and overruns the top of a short pane. */
@@ -346,9 +349,8 @@ canvas {
   max-width: min(1100px, 92vw);
   max-height: min(70vh, 640px);
   overflow-y: auto;
-  z-index: 1301;
+  z-index: 2147483000;
   opacity: 0;
-  pointer-events: auto;
   user-select: text;
   cursor: text;
   transition: opacity 0.1s ease-in;
@@ -420,6 +422,7 @@ canvas {
 
 .error-tooltip.visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .error-overlay {

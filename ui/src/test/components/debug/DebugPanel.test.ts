@@ -142,18 +142,20 @@ describe('DebugPanel', () => {
     expect(getByText('Pixel Inspector')).toBeTruthy();
   });
 
-  it('uses explicit variable capture loading and error state', () => {
-    const { getByText, queryByText } = render(DebugPanel, {
+  it('uses explicit variable capture loading and issue state', () => {
+    const { container, queryByText } = render(DebugPanel, {
       debugState: makeDebugState({
         isVariableInspectorEnabled: true,
         capturedVariables: [],
       }),
       getUniforms: mockGetUniforms,
       isVariableCaptureLoading: false,
-      variableCaptureError: 'Failed to capture variables',
+      variableCaptureIssues: [{ message: 'Failed to capture variables' }],
     });
 
-    expect(getByText('Failed to capture variables')).toBeInTheDocument();
+    expect(container.querySelector('[aria-label="Show capture errors"]')).toBeTruthy();
+    expect(document.body.querySelector('.error-tooltip-block')?.textContent)
+      .toBe('Failed to capture variables');
     expect(queryByText('Capturing...')).not.toBeInTheDocument();
   });
 

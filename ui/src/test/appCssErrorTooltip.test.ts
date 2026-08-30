@@ -83,6 +83,23 @@ describe('pause error tooltip styles', () => {
     expect(tooltip).toMatch(/overflow-y:\s*auto;/);
   });
 
+  it('escapes the pane it is anchored in', () => {
+    const tooltip = rule('.error-tooltip');
+
+    // Portalled to the body and positioned from script: inside the dockview
+    // pane it was clipped at the pane edge and painted over by other panels.
+    expect(tooltip).toMatch(/position:\s*fixed;/);
+    expect(tooltip).not.toMatch(/bottom:\s*100%;/);
+    expect(tooltip).toMatch(/z-index:\s*2147483000;/);
+  });
+
+  it('does not swallow pointer events while it is hidden', () => {
+    // It now covers the viewport's stacking order, so an invisible tooltip must
+    // not sit in front of the UI underneath it.
+    expect(rule('.error-tooltip')).toMatch(/pointer-events:\s*none;/);
+    expect(rule('.error-tooltip.visible')).toMatch(/pointer-events:\s*auto;/);
+  });
+
   it('keeps the copy button clear of the text', () => {
     expect(rule('.error-tooltip .error-tooltip-copy')).toMatch(/position:\s*absolute;/);
   });

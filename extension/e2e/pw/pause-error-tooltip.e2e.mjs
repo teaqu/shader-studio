@@ -54,6 +54,14 @@ test.describe('pause error tooltip geometry', () => {
           scrollHeight: tooltip.scrollHeight,
         },
         blocks: [...document.querySelectorAll('.error-tooltip-block')].map(box),
+        // What the viewer would actually click at the tooltip's centre: if a
+        // panel paints over it, this is not the tooltip.
+        topmostAtCentre: (() => {
+          const r = tooltip.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return hit ? !!hit.closest('.error-tooltip') : false;
+        })(),
+        portalledToBody: tooltip.parentElement === document.body,
       };
     });
   });
@@ -74,6 +82,13 @@ test.describe('pause error tooltip geometry', () => {
     // content-box sizing put the box ~18px past the room measured for it.
     expect(measured.tooltip.height).toBeLessThanOrEqual(Math.ceil(measured.tooltip.maxHeight));
     expect(measured.tooltip.width).toBeLessThanOrEqual(Math.ceil(measured.tooltip.maxWidth));
+  });
+
+  test('is not painted over by the panels around it', () => {
+    // It used to live inside the dockview pane, which clipped it at the pane
+    // edge and let neighbouring panels stack above it.
+    expect(measured.portalledToBody).toBe(true);
+    expect(measured.topmostAtCentre).toBe(true);
   });
 
   test('splits the compile into one block per diagnostic', () => {

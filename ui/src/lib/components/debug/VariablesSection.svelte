@@ -1,13 +1,14 @@
 <script lang="ts">
-  import type { CapturedVariable, RefreshMode, VariableCaptureManager } from '../../VariableCaptureManager';
+  import type { CaptureIssue, CapturedVariable, RefreshMode, VariableCaptureManager } from '../../VariableCaptureManager';
   import VariableRow from './VariableRow.svelte';
+  import ErrorTooltip from '../ErrorTooltip.svelte';
 
   interface Props {
     capturedVariables?: CapturedVariable[];
     isPixelMode?: boolean;
     enableRowPreview?: boolean;
     isLoading?: boolean;
-    captureError?: string | null;
+    captureIssues?: CaptureIssue[];
     onExpandToggle?: (varName: string) => void;
     onVarClick?: (varName: string, declarationLine: number) => void;
     variableCaptureManager?: VariableCaptureManager;
@@ -23,7 +24,7 @@
     isPixelMode = false,
     enableRowPreview = false,
     isLoading = false,
-    captureError = null,
+    captureIssues = [],
     onExpandToggle = (_varName: string) => {},
     onVarClick = (_varName: string, _declarationLine: number) => {},
     variableCaptureManager = undefined,
@@ -35,6 +36,29 @@
   }: Props = $props();
 
   const SAMPLE_SIZES = [16, 32, 64, 128];
+
+  let issueAnchorEl = $state<HTMLDivElement | null>(null);
+  let isIssueTooltipHovered = $state(false);
+  let isIssueTooltipTriggerHovered = $state(false);
+
+  const hasIssues = $derived(captureIssues.length > 0);
+  /** One line per failure, naming the variable it belongs to where there is one. */
+  const issueMessages = $derived(
+    captureIssues.map((issue) => (issue.varName ? `${issue.varName}: ${issue.message}` : issue.message)),
+  );
+  const isIssueTooltipVisible = $derived(
+    hasIssues && (isIssueTooltipTriggerHovered || isIssueTooltipHovered),
+  );
+
+  function handleIssueTriggerLeave(event: MouseEvent) {
+    isIssueTooltipTriggerHovered = false;
+    const nextTarget = event.relatedTarget;
+    const enteredTooltip = nextTarget instanceof Node
+      && (nextTarget as HTMLElement).closest?.('.error-tooltip');
+    if (!enteredTooltip) {
+      isIssueTooltipHovered = false;
+    }
+  }
 
   function changeRefreshMode(mode: RefreshMode) {
     variableCaptureManager?.changeRefreshMode(mode, hasPixelSelected);
@@ -73,6 +97,30 @@
   <div class="section-header">
     <span class="section-label">Variables</span>
     <div class="controls">
+      {#if hasIssues}
+        <!-- Mirrors the pause button: the icon reports that something failed and
+             holds the detail, so partial results stay visible behind it. -->
+        <div class="issue-indicator" bind:this={issueAnchorEl}>
+          <button
+            class="issue-button"
+            aria-label="Show capture errors"
+            onmouseenter={() => (isIssueTooltipTriggerHovered = true)}
+            onmouseleave={handleIssueTriggerLeave}
+          >
+            <i class="codicon codicon-error"></i>
+            {#if captureIssues.length > 1}
+              <span class="issue-count">{captureIssues.length}</span>
+            {/if}
+          </button>
+          <ErrorTooltip
+            messages={issueMessages}
+            visible={isIssueTooltipVisible}
+            anchor={issueAnchorEl}
+            onmouseenter={() => (isIssueTooltipHovered = true)}
+            onmouseleave={() => (isIssueTooltipHovered = false)}
+          />
+        </div>
+      {/if}
       <!-- Grid sample size (hidden when pixel is selected) -->
       {#if !hasPixelSelected}
         <span class="ctrl-label">Size</span>
@@ -85,7 +133,6 @@
           >{s}</button>
         {/each}
       {/if}
-
       <!-- Refresh mode -->
       <span class="ctrl-label">Refresh</span>
       <button
@@ -132,17 +179,13 @@
     </div>
   </div>
 
-  {#if captureError && capturedVariables.length === 0}
-    <div class="error-row">
-      <span class="error-text">{captureError}</span>
-    </div>
-  {:else if isLoading && capturedVariables.length === 0}
+  {#if isLoading && capturedVariables.length === 0}
     <div class="loading-row">
       <span class="loading-text">Capturing...</span>
     </div>
   {:else if capturedVariables.length === 0}
     <div class="empty-row">
-      <span class="empty-text">No variables in scope</span>
+      <span class="empty-text">{hasIssues ? 'No variables could be captured' : 'No variables in scope'}</span>
     </div>
   {:else}
     {#each capturedVariables as variable (variable.varName)}
@@ -247,8 +290,7 @@
   }
 
   .loading-row,
-  .empty-row,
-  .error-row {
+  .empty-row {
     padding: 2px 0;
   }
 
@@ -259,9 +301,33 @@
     font-style: italic;
   }
 
-  .error-text {
-    font-size: 12px;
-    color: var(--vscode-inputValidation-errorForeground, #f48771);
-    white-space: pre-wrap;
+  /* Anchors the tooltip, which positions itself against its parent. */
+  .issue-indicator {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: 6px;
+  }
+
+  .issue-button {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 3px;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: var(--vscode-errorForeground, #f48771);
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .issue-button:hover {
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  .issue-count {
+    font-size: 10px;
   }
 </style>

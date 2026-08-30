@@ -7,7 +7,7 @@
   import ParameterEditor from "./ParameterEditor.svelte";
 
   import type { ShaderDebugManager } from "../../ShaderDebugManager";
-  import type { VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
+  import type { CaptureIssue, VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
   import { debugPanelStore } from "../../stores/debugPanelStore";
   import { getInspectorState } from "../../state/pixelInspectorState.svelte";
@@ -31,7 +31,7 @@
     pollingMs?: number;
     customUniformValues?: Record<string, number | number[] | boolean>;
     isVariableCaptureLoading?: boolean;
-    variableCaptureError?: string | null;
+    variableCaptureIssues?: CaptureIssue[];
     onCaptureSettingsChanged?: () => void;
     errors?: string[];
   };
@@ -53,7 +53,7 @@
     pollingMs: pollingMsOverride = undefined,
     customUniformValues = {},
     isVariableCaptureLoading: variableCaptureLoadingOverride = undefined,
-    variableCaptureError: variableCaptureErrorOverride = undefined,
+    variableCaptureIssues: variableCaptureIssuesOverride = undefined,
     onCaptureSettingsChanged = () => {},
     errors = [],
   }: DebugPanelProps = $props();
@@ -98,7 +98,7 @@
   let internalRefreshMode = $state<RefreshMode>('polling');
   let internalPollingMs = $state(500);
   let internalVariableCaptureLoading = $state(false);
-  let internalVariableCaptureError = $state<string | null>(null);
+  let internalVariableCaptureIssues = $state<CaptureIssue[]>([]);
 
   const ctx = $derived(debugState?.functionContext);
   const isInlineOn = $derived(debugState?.isInlineRenderingEnabled);
@@ -136,7 +136,7 @@
     pollingMsOverride ?? internalPollingMs
   );
   const variableCaptureLoading = $derived(variableCaptureLoadingOverride ?? internalVariableCaptureLoading);
-  const variableCaptureError = $derived(variableCaptureErrorOverride ?? internalVariableCaptureError);
+  const variableCaptureIssues = $derived(variableCaptureIssuesOverride ?? internalVariableCaptureIssues);
 
   const normalizeTooltip = $derived(normalizeMode === 'off'
     ? "Normalize: OFF\nRaw shader output values"
@@ -185,8 +185,8 @@
     manager.setLoadingStateCallback((isLoading) => {
       internalVariableCaptureLoading = isLoading;
     });
-    manager.setErrorCallback((error) => {
-      internalVariableCaptureError = error;
+    manager.setErrorCallback((issues) => {
+      internalVariableCaptureIssues = issues;
     });
     manager.setSampleSettingsCallback(() => {
       internalSampleSize = manager.sampleSize;
@@ -697,7 +697,7 @@
         isPixelMode={isInspectorActive || isInspectorLocked}
         enableRowPreview={enableSlangGridRowPreview}
         isLoading={variableCaptureLoading}
-        captureError={variableCaptureError}
+        captureIssues={variableCaptureIssues}
         onExpandToggle={onExpandVarHistogram}
         {onVarClick}
         {variableCaptureManager}

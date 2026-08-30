@@ -22,7 +22,7 @@ const BASE_PROPS = {
   capturedVariables: [] as CapturedVariable[],
   isPixelMode: false,
   isLoading: false,
-  captureError: null as string | null,
+  captureIssues: [] as { varName?: string; message: string }[],
   onExpandToggle: () => {},
   variableCaptureManager: createMockVariableCaptureManager(),
   sampleSize: 32,
@@ -91,13 +91,104 @@ describe('VariablesSection', () => {
     resetVariablePreview();
   });
 
-  it('shows capture errors instead of the loading state when capture fails', () => {
-    const { getByText, queryByText } = render(VariablesSection, {
-      props: { ...BASE_PROPS, isLoading: true, captureError: 'Failed to capture variables' },
+  describe('capture issues', () => {
+    it('reports failures through an icon rather than replacing the panel body', () => {
+      const { container } = render(VariablesSection, {
+        props: {
+          ...BASE_PROPS,
+          capturedVariables: [makeGridVar('uv', 'vec2', 0.5)],
+          captureIssues: [{ varName: 'col', message: 'Shader compile failed' }],
+        },
+      });
+
+      expect(container.querySelector('[aria-label="Show capture errors"]')).toBeTruthy();
+      // The variables that did capture stay on screen behind the icon.
+      expect(container.textContent).toContain('uv');
     });
 
-    expect(getByText('Failed to capture variables')).toBeInTheDocument();
-    expect(queryByText('Capturing...')).not.toBeInTheDocument();
+    it('names the variable each failure belongs to in the tooltip', () => {
+      const { container } = render(VariablesSection, {
+        props: {
+          ...BASE_PROPS,
+          captureIssues: [
+            { varName: 'col', message: 'Shader compile failed' },
+            { message: 'Capture channels are not resolvable yet' },
+          ],
+        },
+      });
+
+      const blocks = [...document.body.querySelectorAll('.error-tooltip-block')]
+        .map((block) => block.textContent);
+      expect(blocks).toEqual([
+        'col: Shader compile failed',
+        'Capture channels are not resolvable yet',
+      ]);
+    });
+
+    it('sits with the controls, ahead of the sample-size buttons', () => {
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, captureIssues: [{ message: 'boom' }] },
+      });
+
+      const indicator = container.querySelector('.issue-indicator');
+      expect(indicator?.parentElement).toHaveClass('controls');
+
+      const controls = [...(indicator?.parentElement?.children ?? [])];
+      const sizeLabel = controls.findIndex((child) => child.textContent?.trim() === 'Size');
+      expect(controls.indexOf(indicator!)).toBeLessThan(sizeLabel);
+    });
+
+    it('counts the failures when there is more than one', () => {
+      const { container } = render(VariablesSection, {
+        props: {
+          ...BASE_PROPS,
+          captureIssues: [
+            { varName: 'col', message: 'boom' },
+            { varName: 'uv', message: 'boom' },
+          ],
+        },
+      });
+
+      expect(container.querySelector('.issue-count')?.textContent).toBe('2');
+    });
+
+    it('leaves the count off a single failure', () => {
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, captureIssues: [{ message: 'boom' }] },
+      });
+
+      expect(container.querySelector('.issue-count')).toBeNull();
+    });
+
+    it('shows no icon when nothing failed', () => {
+      const { container } = render(VariablesSection, {
+        props: { ...BASE_PROPS, capturedVariables: [makeGridVar('uv', 'vec2', 0.5)] },
+      });
+
+      expect(container.querySelector('[aria-label="Show capture errors"]')).toBeNull();
+    });
+
+    it('keeps the loading state visible while a capture with failures is in flight', () => {
+      const { getByText } = render(VariablesSection, {
+        props: { ...BASE_PROPS, isLoading: true, captureIssues: [{ message: 'boom' }] },
+      });
+
+      expect(getByText('Capturing...')).toBeInTheDocument();
+    });
+
+    it('says nothing captured rather than nothing in scope when everything failed', () => {
+      const { getByText } = render(VariablesSection, {
+        props: { ...BASE_PROPS, captureIssues: [{ varName: 'col', message: 'boom' }] },
+      });
+
+      expect(getByText('No variables could be captured')).toBeInTheDocument();
+    });
+
+    it('still says nothing is in scope when there were no failures', () => {
+      const { getByText } = render(VariablesSection, { props: { ...BASE_PROPS } });
+
+      expect(getByText('No variables in scope')).toBeInTheDocument();
+    });
   });
 
   // ----------------------------------------------------------------
