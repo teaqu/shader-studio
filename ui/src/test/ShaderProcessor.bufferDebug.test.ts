@@ -75,6 +75,15 @@ function makeDebugTarget(overrides: Partial<DebugTarget> = {}): DebugTarget {
 // ---------------------------------------------------------------------------
 
 describe('ShaderProcessor — buffer debugging', () => {
+  /**
+   * The untouched source is compiled first to settle the reported status, so
+   * the instrumented compile these tests assert on is the most recent call.
+   */
+  function lastCompileArgs(): any[] {
+    const calls = (mockRenderEngine.compileShaderPipeline as any).mock.calls;
+    return calls[calls.length - 1];
+  }
+
   let processor: ShaderProcessor;
   let mockRenderEngine: RenderingEngine;
   let mockDebugManager: ShaderDebugManager;
@@ -139,7 +148,7 @@ describe('ShaderProcessor — buffer debugging', () => {
       await processor.processMainShaderCompilation(makeMessage());
 
       expect(mockDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(IMAGE_CODE, 5);
-      const [codeArg, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg, configArg] = lastCompileArgs();
       expect(codeArg).toBe(MODIFIED_CODE);
       // Config unchanged for Image pass
       expect(configArg.passes.Image.inputs).toEqual(IMAGE_INPUTS);
@@ -193,7 +202,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [codeArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg] = lastCompileArgs();
       expect(codeArg).toBe(MODIFIED_CODE);
     });
 
@@ -218,7 +227,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       expect(configArg.passes.Image.inputs).toEqual(BUFFER_A_INPUTS);
     });
 
@@ -269,7 +278,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       expect(configArg.passes.Image.inputs).toEqual({ iChannel0: { type: 'buffer', source: 'BufferA' } });
     });
 
@@ -294,7 +303,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage({ buffers: {} }));
 
-      const [codeArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg] = lastCompileArgs();
       expect(codeArg).toBe(IMAGE_CODE);
     });
 
@@ -319,7 +328,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [codeArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg] = lastCompileArgs();
       // Falls back to Image code since no debug modification succeeded
       expect(codeArg).toBe(IMAGE_CODE);
     });
@@ -361,7 +370,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage({ config }));
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       // Image inputs should be unchanged for common
       expect(configArg.passes.Image.inputs).toEqual(IMAGE_INPUTS);
     });
@@ -386,7 +395,7 @@ describe('ShaderProcessor — buffer debugging', () => {
         buffers: { BufferA: BUFFER_A_CODE, common: COMMON_CODE },
       }));
 
-      const [, , , buffersArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, , , buffersArg] = lastCompileArgs();
       expect(buffersArg).toEqual({ BufferA: BUFFER_A_CODE });
     });
   });
@@ -415,7 +424,7 @@ describe('ShaderProcessor — buffer debugging', () => {
       await processor.processMainShaderCompilation(makeMessage());
 
       expect(mockDebugManager.applyFullShaderPostProcessing).toHaveBeenCalledWith(BUFFER_A_CODE);
-      const [codeArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg] = lastCompileArgs();
       expect(codeArg).toBe(POST_PROCESSED_CODE);
     });
 
@@ -440,7 +449,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       expect(configArg.passes.Image.inputs).toEqual(BUFFER_A_INPUTS);
     });
 
@@ -493,7 +502,7 @@ describe('ShaderProcessor — buffer debugging', () => {
       await processor.debugCompile(makeMessage());
 
       expect(mockDebugManager.modifyShaderForDebugging).toHaveBeenCalledWith(BUFFER_A_CODE, 1);
-      const [codeArg, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [codeArg, configArg] = lastCompileArgs();
       expect(codeArg).toBe(MODIFIED_CODE);
       expect(configArg.passes.Image.inputs).toEqual(BUFFER_A_INPUTS);
     });
@@ -536,7 +545,7 @@ describe('ShaderProcessor — buffer debugging', () => {
         buffers: { BufferA: BUFFER_A_CODE, common: COMMON_CODE },
       }));
 
-      const [, , , buffersArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, , , buffersArg] = lastCompileArgs();
       expect(buffersArg).toEqual({ BufferA: BUFFER_A_CODE });
     });
 
@@ -568,7 +577,7 @@ describe('ShaderProcessor — buffer debugging', () => {
         buffers: { BufferA: BUFFER_A_CODE, common: COMMON_CODE },
       }));
 
-      const [, , , buffersArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, , , buffersArg] = lastCompileArgs();
       expect(buffersArg).toEqual({ BufferA: BUFFER_A_CODE, common: COMMON_CODE });
     });
   });
@@ -590,7 +599,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage({ config: null }));
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       expect(configArg).toBeNull();
     });
 
@@ -615,7 +624,7 @@ describe('ShaderProcessor — buffer debugging', () => {
 
       await processor.processMainShaderCompilation(makeMessage());
 
-      const [, configArg] = (mockRenderEngine.compileShaderPipeline as any).mock.calls[0];
+      const [, configArg] = lastCompileArgs();
       // BufferA and BufferB passes should be unchanged
       expect(configArg.passes.BufferA).toEqual(makeConfig().passes.BufferA);
       expect(configArg.passes.BufferB).toEqual(makeConfig().passes.BufferB);

@@ -202,8 +202,14 @@ export class ShaderDebugManager {
     imageCode: string,
     config: ShaderConfig | null,
     originalImageCode = imageCode,
+    /**
+     * Line to plan at instead of the cursor's, used when the source was cut
+     * short: the cursor may sit on a line the cut emptied, where nothing is
+     * visible, while the line the cut returns from sees everything above it.
+     */
+    lineOverride?: number,
   ): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | { error: string } | null {
-    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode);
+    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode, lineOverride);
     if (!request) {
       if (this.language === 'slang' && this.state.isActive && this.state.currentLine !== null) {
         return { error: 'Slang debug source path could not be resolved' };
@@ -234,6 +240,7 @@ export class ShaderDebugManager {
     imageCode: string,
     config: ShaderConfig | null,
     originalImageCode = imageCode,
+    lineOverride?: number,
   ): DebugAnalysisRequest | null {
     if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
       return null;
@@ -256,7 +263,7 @@ export class ShaderDebugManager {
       ...this.slangModules.filter((module) => module.ownerPass === ownerPassName).map((module) => ({ ...module, uri: module.path, version: 1 })),
     ];
     const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
-    const rawLine = this.variablePreview?.debugLine ?? this.state.currentLine;
+    const rawLine = lineOverride ?? this.variablePreview?.debugLine ?? this.state.currentLine;
     const selectedLine = rawLine + (
       selectedPath === rootPath && this.pathsEqual(rootPath, this.imagePassPath ?? '')
         ? computeSlangLineOffset(imageCode, originalImageCode)

@@ -471,6 +471,71 @@ describe("VariableCapturer", () => {
       expect(result).toBe(0);
     });
 
+    it("captures the variables that work when one of them fails", async () => {
+      vi.mocked(shaderCompiler.compileShaderAsync).mockImplementationOnce(() => {
+        throw new Error("bad is not declared here");
+      });
+
+      const result = await capturer.issueCaptureGrid(
+        [
+          { varName: "bad", varType: "float", captureShader: "bad shader" },
+          { varName: "good", varType: "float", captureShader: "good shader" },
+        ],
+        createDefaultUniforms(),
+        2,
+        2,
+      );
+
+      expect(result, "the healthy variable still issues").toBe(1);
+      expect(capturer.getCaptureErrors()).toEqual([
+        { varName: "bad", message: "bad is not declared here" },
+      ]);
+    });
+
+    it("reports every failing variable, not just the last one", async () => {
+      vi.mocked(shaderCompiler.compileShaderAsync).mockImplementation(() => {
+        throw new Error("compile failed");
+      });
+
+      await capturer.issueCaptureGrid(
+        [
+          { varName: "first", varType: "float", captureShader: "a" },
+          { varName: "second", varType: "float", captureShader: "b" },
+        ],
+        createDefaultUniforms(),
+        2,
+        2,
+      );
+
+      expect(capturer.getCaptureErrors()).toEqual([
+        { varName: "first", message: "compile failed" },
+        { varName: "second", message: "compile failed" },
+      ]);
+      expect(capturer.getLastError()).toBe("compile failed");
+    });
+
+    it("clears the previous capture's failures when a new one is issued", async () => {
+      vi.mocked(shaderCompiler.compileShaderAsync).mockImplementationOnce(() => {
+        throw new Error("compile failed");
+      });
+      await capturer.issueCaptureGrid(
+        [{ varName: "bad", varType: "float", captureShader: "a" }],
+        createDefaultUniforms(),
+        2,
+        2,
+      );
+      expect(capturer.getCaptureErrors()).toHaveLength(1);
+
+      await capturer.issueCaptureGrid(
+        [{ varName: "good", varType: "float", captureShader: "b" }],
+        createDefaultUniforms(),
+        2,
+        2,
+      );
+
+      expect(capturer.getCaptureErrors()).toEqual([]);
+    });
+
     it("should not retry grid selector captures when the shared shader compile throws", async () => {
       vi.mocked(shaderCompiler.compileShaderAsync).mockImplementationOnce(() => {
         throw new Error("compile failed");

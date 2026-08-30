@@ -491,6 +491,102 @@ describe('ShaderProcessor', () => {
       );
     });
 
+    it('reports the real shader\'s errors when instrumentation hides them', async () => {
+      const imageShaderCode = 'void mainImage() { bad statement }';
+      // Instrumentation truncates the body at the inspected line, so a broken
+      // statement below it is not in what gets compiled - and the instrumented
+      // compile succeeds while the user's shader does not.
+      const modifiedCode = 'void mainImage() { /* debug */ }';
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 5,
+        lineContent: 'some code',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
+      (mockRenderEngine.compileShaderPipeline as any)
+        .mockResolvedValueOnce({ success: false, errors: ["ERROR: 0:1: 'bad' : undeclared identifier"] })
+        .mockResolvedValue({ success: true });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual(["ERROR: 0:1: 'bad' : undeclared identifier"]);
+      // The instrumented variant is never built: there is nothing to debug in a
+      // shader that does not compile.
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(1);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        imageShaderCode, message.config, message.path, message.buffers, undefined, undefined,
+      );
+    });
+
+    it('compiles the untouched source before the instrumented one', async () => {
+      const imageShaderCode = 'void mainImage() {}';
+      const modifiedCode = 'void mainImage() { /* debug */ }';
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 5,
+        lineContent: 'some code',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result.success).toBe(true);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(
+        1, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined,
+      );
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(
+        2, modifiedCode, message.config, message.path, message.buffers, undefined, undefined,
+      );
+    });
+
+    it('does not double-compile a shader that needs no instrumentation', async () => {
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: false,
+        isActive: false,
+        currentLine: null,
+        lineContent: '',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(1);
+    });
+
     it('should fallback to original code if debug compilation fails', async () => {
       const imageShaderCode = 'void mainImage() {}';
       const modifiedCode = 'void mainImage() { /* debug */ }';
@@ -505,10 +601,10 @@ describe('ShaderProcessor', () => {
       });
       (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue(modifiedCode);
 
-      // First call (debug) fails, second call (original) succeeds
+      // First call (untouched source) succeeds, second (instrumented) fails
       (mockRenderEngine.compileShaderPipeline as any)
-        .mockResolvedValueOnce({ success: false, errors: ['Debug compilation failed'] })
-        .mockResolvedValueOnce({ success: true });
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false, errors: ['Debug compilation failed'] });
 
       const message: ShaderSourceMessage = {
         type: 'shaderSource',
@@ -520,10 +616,15 @@ describe('ShaderProcessor', () => {
 
       const result = await shaderProcessor.processMainShaderCompilation(message, false);
 
+      // The untouched source compiles first and stays installed, so a failed
+      // instrumented compile needs no second build of the original.
       expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledTimes(2);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, modifiedCode, message.config, message.path, message.buffers, undefined, undefined);
-      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(1, imageShaderCode, message.config, message.path, message.buffers, undefined, undefined);
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenNthCalledWith(2, modifiedCode, message.config, message.path, message.buffers, undefined, undefined);
       expect(result.success).toBe(true);
+      expect(mockShaderDebugManager.setDebugError).toHaveBeenCalledWith(
+        expect.stringContaining('Debug shader compilation failed'),
+      );
     });
 
     it('should handle exceptions during compilation', async () => {

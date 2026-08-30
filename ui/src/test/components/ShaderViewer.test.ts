@@ -140,6 +140,9 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => {
         setCustomUniforms() {},
         setCompileContext() {},
         clearLastError() {},
+        getCaptureErrors() {
+          return [];
+        },
         getLastError() {
           return null;
         },
@@ -260,6 +263,9 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => {
         setCustomUniforms() {},
         setCompileContext() {},
         clearLastError() {},
+        getCaptureErrors() {
+          return [];
+        },
         getLastError() {
           return null;
         },
@@ -2307,8 +2313,9 @@ describe('ShaderViewer', () => {
     await messageHandler({ data: { type: 'error', payload: ['Missing mainImage function'] } });
     await tick();
 
-    // Error tooltip should be visible
-    const tooltip = container.querySelector('.error-tooltip');
+    // The tooltip is portalled to the body so it escapes the pane that clips
+    // and paints over the menu bar.
+    const tooltip = document.body.querySelector('.error-tooltip');
     expect(tooltip).toBeTruthy();
     expect(tooltip!.textContent).toContain('Missing mainImage function');
   });

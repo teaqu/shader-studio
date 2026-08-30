@@ -477,11 +477,73 @@ export class GlslParser {
       originalToProcessed: analysis.originalToProcessed,
       parsedSuccessfully: analysis.parsedSuccessfully,
       analysis,
-      functions: GlslParser.extractFunctions(analysis),
+      functions: GlslParser.resolveFunctions(analysis, originalLines),
     };
 
     DOC_CACHE.set(source, document);
     return document;
+  }
+
+  /**
+   * A shader that does not parse yields no function symbols, and without ranges
+   * every declaration in the file reads as a global - so a local from one
+   * function leaks into another's scope. Brace matching still finds the bodies,
+   * which is enough to keep them apart.
+   */
+  private static resolveFunctions(
+    analysis: GlslAnalysisDocument,
+    lines: string[],
+  ): ParsedFunctionInfo[] {
+    const parsed = GlslParser.extractFunctions(analysis);
+    return parsed.length > 0 ? parsed : GlslParser.findFunctionRangesByBraces(lines);
+  }
+
+  /** Function bodies located by brace matching, for sources that do not parse. */
+  private static findFunctionRangesByBraces(lines: string[]): ParsedFunctionInfo[] {
+    const functions: ParsedFunctionInfo[] = [];
+    const signature = /^\s*(\w+)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].replace(/\/\/.*$/, '').match(signature);
+      if (!match) {
+        continue;
+      }
+      const end = GlslParser.findFunctionBlockEnd(lines, index);
+      if (end <= index) {
+        continue;
+      }
+      functions.push({
+        name: match[2],
+        start: index,
+        end,
+        returnType: GLSL_TYPES.has(match[1]) ? match[1] : null,
+      });
+      index = end;
+    }
+
+    return functions;
+  }
+
+  /** The line closing the block opened at or after `start`, or -1. */
+  private static findFunctionBlockEnd(lines: string[], start: number): number {
+    let depth = 0;
+    let opened = false;
+
+    for (let index = start; index < lines.length; index += 1) {
+      for (const character of lines[index].replace(/\/\/.*$/, '')) {
+        if (character === '{') {
+          depth += 1;
+          opened = true;
+        } else if (character === '}') {
+          depth -= 1;
+          if (opened && depth === 0) {
+            return index;
+          }
+        }
+      }
+    }
+
+    return -1;
   }
 
   private static extractFunctions(analysis: GlslAnalysisDocument): ParsedFunctionInfo[] {

@@ -44,8 +44,13 @@ function helpers(vscode) {
     }).toContain(expected);
   }
 
+  // Capture failures surface through the Variables header icon and its
+  // tooltip, the same way compile errors surface on the pause button.
   const captureError = () => app().evaluate(
-    () => document.querySelector('.variables-section .error-text')?.textContent?.trim() ?? '',
+    () => Array.from(
+      document.querySelectorAll('.variables-section .error-tooltip-block'),
+      (el) => el.textContent?.trim() ?? '',
+    ).join(' | '),
   );
 
   /**
@@ -71,8 +76,7 @@ function helpers(vscode) {
 
   async function waitForNoCaptureError() {
     await expect.poll(() => app().evaluate(
-      () => Array.from(document.querySelectorAll('.variables-section .error-text'),
-        (el) => el.textContent?.trim() ?? '').join(' | '),
+      () => document.querySelector('.variables-section [aria-label="Show capture errors"]') ? 'errors' : '',
     )).toBe('');
   }
 

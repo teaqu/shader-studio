@@ -896,3 +896,47 @@ describe("GlslParser", () => {
   });
 
 });
+
+describe('function ranges when the shader does not parse', () => {
+  // A stray token stops the analyser producing function symbols. Without
+  // ranges every declaration reads as a global, so a local from one function
+  // leaks into another's scope and the capture references it out of scope.
+  // Realistic enough that the analyser gives up on it: the stray token merges
+  // with the statement below, and a small toy shader still parses.
+  const BROKEN = `vec3 planets[4];
+
+float getLen(vec3 p, vec3 q) { return length(p - q); }
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    float d = 1.0;
+    for (int k = 0; k < 3; k++) {
+        d += getLen(vec3(p, 0.0), planets[k]);
+    }
+    return d;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = fragCoord.xy;
+    vec2 q = uv * 10.0;
+d
+    fragColor = vec4(q, 0.0, 1.0);
+}`;
+
+  it('keeps locals of other functions out of the globals', () => {
+    const globals = GlslParser.getGlobalVariables(BROKEN.split('\n')).map((item) => item.name);
+
+    // `planets` is a real global; `d`, `i` and `k` belong to noise().
+    expect(globals).not.toContain('d');
+    expect(globals).not.toContain('i');
+    expect(globals).not.toContain('k');
+  });
+
+  it('still finds the enclosing function', () => {
+    const lines = BROKEN.split('\n');
+    const mainImageLine = lines.findIndex((line) => line.includes('vec2 q = uv * 10.0;'));
+
+    expect(GlslParser.findEnclosingFunction(lines, mainImageLine).name).toBe('mainImage');
+  });
+});

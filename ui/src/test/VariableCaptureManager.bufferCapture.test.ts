@@ -78,6 +78,7 @@ describe('VariableCaptureManager — buffer capture', () => {
       issueCaptureAtPixel: vi.fn().mockResolvedValue(1),
       collectResults: vi.fn().mockReturnValue([]),
       getLastError: vi.fn().mockReturnValue(null),
+      getCaptureErrors: vi.fn().mockReturnValue([]),
       clearLastError: vi.fn(),
       cancelPendingCaptures: vi.fn(),
       dispose: vi.fn(),

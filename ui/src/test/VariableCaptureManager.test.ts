@@ -208,6 +208,7 @@ describe('VariableCaptureManager', () => {
       setCompileContext: vi.fn(),
       clearLastError: vi.fn(),
       getLastError: vi.fn().mockReturnValue(null),
+      getCaptureErrors: vi.fn().mockReturnValue([]),
     };
 
     mockCreateVariableCapturer = vi.fn().mockReturnValue(mockCapturer);
@@ -464,6 +465,7 @@ describe('VariableCaptureManager', () => {
         false, // grid mode → captureCoordUniform=false
         gridWidth,
         gridHeight,
+        true, // keeps the module scope after the captured function
       );
     });
 
@@ -482,6 +484,7 @@ describe('VariableCaptureManager', () => {
         true, // pixel mode → captureCoordUniform=true
         expect.any(Number),
         expect.any(Number),
+        true,
       );
     });
   });
@@ -643,6 +646,7 @@ describe('VariableCaptureManager', () => {
         false,
         BASE_GRID.gridWidth,
         BASE_GRID.gridHeight,
+        true,
       );
       expect(mockIssueCaptureGrid).toHaveBeenCalledWith(
         [
@@ -827,7 +831,7 @@ describe('VariableCaptureManager', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(onError).not.toHaveBeenCalledWith('Failed to capture variables');
+      expect(onError).not.toHaveBeenCalledWith([{ message: 'Failed to capture variables' }]);
       await flushRAF(); // issue latest request
 
       expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(2);
@@ -851,7 +855,7 @@ describe('VariableCaptureManager', () => {
       await expect(flushRAF()).resolves.toBeUndefined();
 
       expect(onUpdate).not.toHaveBeenCalled();
-      expect(onError).toHaveBeenCalledWith('Failed to initialize variable capture');
+      expect(onError).toHaveBeenCalledWith([{ message: 'Failed to initialize variable capture' }]);
     });
 
     it('surfaces capture compile errors when no shaders issue successfully', async () => {
@@ -867,17 +871,181 @@ describe('VariableCaptureManager', () => {
         setCompileContext: vi.fn(),
         clearLastError: vi.fn(),
         getLastError: vi.fn().mockReturnValue('Shader compile failed: missing saturate'),
+        getCaptureErrors: vi.fn().mockReturnValue([{ varName: 'col', message: 'Shader compile failed: missing saturate' }]),
       });
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
       await flushRAF();
 
-      expect(onError).toHaveBeenCalledWith('Failed to capture variables:\nShader compile failed: missing saturate');
+      expect(onError).toHaveBeenCalledWith([
+        { varName: 'col', message: 'Shader compile failed: missing saturate' },
+      ]);
       expect(onUpdate).toHaveBeenCalledWith([]);
       expect(setTimeoutSpy).not.toHaveBeenCalled();
     });
 
-    it('stops polling after a partial capture compile failure', async () => {
+    it('retries with the whole-file cut when keeping the trailing source will not compile', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      (VariableCaptureBuilder.generateMultiCaptureShader as any)
+        .mockImplementation((...args: unknown[]) => (args[8] === false ? 'whole file shader' : 'trailing shader'));
+      mockIssueCaptureGrid.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+
+      manager.notifyStateChange({ ...BASE_PARAMS });
+      await flushRAF();
+
+      expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(2);
+      expect(mockIssueCaptureGrid.mock.calls[0][0][0].captureShader).toBe('trailing shader');
+      expect(mockIssueCaptureGrid.mock.calls[1][0][0].captureShader).toBe('whole file shader');
+    });
+
+    it('does not retry when the first cut issued captures', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      manager.notifyStateChange({ ...BASE_PARAMS });
+      await flushRAF();
+
+      expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(1);
+    });
+
+    it('captures above a compile error when the cursor sits below it', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'uv', varType: 'vec2' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      // Cursor on line 20 (0-based), the shader breaks on line 6 (1-based).
+      manager.notifyStateChange({ ...BASE_PARAMS, debugLine: 20, compileErrorLine: 6 });
+      await flushRAF();
+
+      // The cut leaves the break line empty, so the capture lands on it: line
+      // 6 one-based is 5 zero-based, below everything that still compiles.
+      expect(VariableCaptureBuilder.getAllInScopeVariables).toHaveBeenCalledWith(BASE_PARAMS.code, 5);
+      expect(onError.mock.calls.at(-1)?.[0]).toEqual([
+        { message: 'Capturing up to line 5: the shader fails to compile from line 6' },
+      ]);
+    });
+
+    it('does not cap a line in a function other than the broken one', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'uv', varType: 'vec2' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      // Break on line 6, inside a helper spanning lines 3-8; the cursor is in a
+      // later function, which the cut copy compiles unchanged.
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        debugLine: 20,
+        compileErrorLine: 6,
+        brokenFunctionRange: { start: 3, end: 8 },
+      });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.getAllInScopeVariables).toHaveBeenCalledWith(BASE_PARAMS.code, 20);
+    });
+
+    it('caps a line inside the broken function', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'uv', varType: 'vec2' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        debugLine: 7,
+        compileErrorLine: 6,
+        brokenFunctionRange: { start: 3, end: 8 },
+      });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.getAllInScopeVariables).toHaveBeenCalledWith(BASE_PARAMS.code, 5);
+    });
+
+    it('leaves the requested line alone when it is already above the break', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'uv', varType: 'vec2' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      manager.notifyStateChange({ ...BASE_PARAMS, debugLine: 2, compileErrorLine: 9 });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.getAllInScopeVariables).toHaveBeenCalledWith(BASE_PARAMS.code, 2);
+    });
+
+    it('says so when the break leaves nothing above it to capture', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'uv', varType: 'vec2' }]);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+
+      manager.notifyStateChange({ ...BASE_PARAMS, debugLine: 20, compileErrorLine: 1 });
+      await flushRAF();
+
+      expect(onError.mock.calls.at(-1)?.[0]).toEqual([
+        { message: 'Nothing to capture: the shader fails to compile from line 1' },
+      ]);
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+    });
+
+    it('collapses one shader-wide failure reported for every variable', async () => {
+      const slangError = [
+        'error[E20001]: unexpected token',
+        '  --> /shader.slang:8:1',
+        '   |',
+        '8  | d',
+        'error[E39999]: import failed due to compilation error',
+        'fatal error[E40003]: compilation ceased',
+      ].join('\n');
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockIssueCaptureGrid.mockResolvedValue(0);
+      mockCreateVariableCapturer.mockReturnValue({
+        issueCaptureAtPixel: mockIssueCaptureAtPixel,
+        issueCaptureGrid: mockIssueCaptureGrid,
+        collectResults: mockCollectResults,
+        dispose: mockCapturerDispose,
+        setCustomUniforms: vi.fn(),
+        setCompileContext: vi.fn(),
+        clearLastError: vi.fn(),
+        getLastError: vi.fn().mockReturnValue(slangError),
+        getCaptureErrors: vi.fn().mockReturnValue([
+          { varName: 'uv', message: slangError },
+          { varName: 'col', message: slangError },
+          { varName: 'sq', message: slangError },
+        ]),
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS });
+      await flushRAF();
+
+      const issues = onError.mock.calls.at(-1)?.[0];
+      expect(issues).toHaveLength(1);
+      // Shared by every variable, so naming one of them would be misleading.
+      expect(issues[0].varName).toBeUndefined();
+      expect(issues[0].message).toContain('unexpected token');
+      // Slang's epilogue says nothing the located error above it has not.
+      expect(issues[0].message).not.toContain('compilation ceased');
+    });
+
+    it('keeps naming the variable when only that one failed', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockIssueCaptureGrid.mockResolvedValue(0);
+      mockCreateVariableCapturer.mockReturnValue({
+        issueCaptureAtPixel: mockIssueCaptureAtPixel,
+        issueCaptureGrid: mockIssueCaptureGrid,
+        collectResults: mockCollectResults,
+        dispose: mockCapturerDispose,
+        setCustomUniforms: vi.fn(),
+        setCompileContext: vi.fn(),
+        clearLastError: vi.fn(),
+        getLastError: vi.fn().mockReturnValue('no matching overload'),
+        getCaptureErrors: vi.fn().mockReturnValue([
+          { varName: 'tun', message: 'no matching overload' },
+          { message: 'Capture channels are not resolvable yet' },
+        ]),
+      });
+
+      manager.notifyStateChange({ ...BASE_PARAMS });
+      await flushRAF();
+
+      expect(onError.mock.calls.at(-1)?.[0]).toEqual([
+        { varName: 'tun', message: 'no matching overload' },
+        { message: 'Capture channels are not resolvable yet' },
+      ]);
+    });
+
+    it('keeps polling after a partial capture failure so the healthy variables refresh', async () => {
       const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
       (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
       mockIssueCaptureGrid.mockResolvedValue(1);
@@ -893,15 +1061,20 @@ describe('VariableCaptureManager', () => {
         setCompileContext: vi.fn(),
         clearLastError: vi.fn(),
         getLastError: vi.fn().mockReturnValue('Shader compile failed: dimension mismatch'),
+        getCaptureErrors: vi.fn().mockReturnValue([{ varName: 'col', message: 'Shader compile failed: dimension mismatch' }]),
       });
 
       manager.notifyStateChange({ ...BASE_PARAMS, refreshMode: 'polling' as const, pollingMs: 500 });
       await flushRAF();
       await flushRAF();
 
-      expect(onError).toHaveBeenCalledWith('Failed to capture some variables:\nShader compile failed: dimension mismatch');
+      expect(onError).toHaveBeenCalledWith([
+        { varName: 'col', message: 'Shader compile failed: dimension mismatch' },
+      ]);
       expect(onUpdate).toHaveBeenCalledOnce();
-      expect(setTimeoutSpy).not.toHaveBeenCalled();
+      // One variable failing says nothing about the rest: the poll that keeps
+      // the successful captures current has to survive it.
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 500);
     });
 
     it('createVariableCapturer called only once (cached)', async () => {

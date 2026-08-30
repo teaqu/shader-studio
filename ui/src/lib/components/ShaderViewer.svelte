@@ -1,6 +1,6 @@
 <svelte:options runes={true} />
 <script lang="ts">
-  import { onMount, onDestroy, tick, setContext } from "svelte";
+  import { onMount, onDestroy, tick, setContext, untrack } from "svelte";
   import { get } from "svelte/store";
   import { ShaderPipeline } from "../ShaderPipeline";
   import { logSwitchTiming } from "../diagnostics/switchTiming";
@@ -44,6 +44,12 @@
     resetVariablePreview,
   } from "../state/variablePreviewState.svelte";
   import { ShaderCompilationState } from "../state/ShaderCompilationState.svelte";
+  import {
+    enclosingFunctionRange,
+    firstReportedErrorLine,
+    firstUnterminatedStatementLine,
+    truncateFunctionBodyAt,
+  } from "@shader-studio/rendering";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
   import type { AspectRatioMode, ShaderConfig, SlangSourceModule } from "@shader-studio/types";
@@ -864,9 +870,40 @@
     if (!state.isEnabled || !state.isVariableInspectorEnabled) {
       return;
     }
-    const debugTarget = shaderDebugManager.getDebugTarget(currentShaderCode, currentConfig);
+    // A statement the compiler cannot parse fails every capture in the file, in
+    // both languages. Cutting the body of the function it sits in - and only
+    // that function - leaves the rest of the module intact, so capturing in a
+    // healthy function still works while the broken one reports what it can.
+    const captureCode = compileErrorLine !== null
+      ? truncateFunctionBodyAt(currentShaderCode, compileErrorLine) ?? currentShaderCode
+      : currentShaderCode;
+
+    // Slang keeps the untouched target: its plan carries the cut copy itself,
+    // and the target drives line mapping that the cut would shift.
+    const debugTarget = shaderDebugManager.getDebugTarget(
+      engineLanguage === 'slang' ? currentShaderCode : captureCode,
+      currentConfig,
+    );
+    // A cursor at or below the break sits on a line the cut emptied, where
+    // nothing is in scope. Plan from the line the cut returns from instead: it
+    // sees every value declared above it, including the one just above.
+    const cursorLine = state.currentLine;
+    const cursorInBrokenFunction = brokenFunctionRange !== null
+      && cursorLine !== null
+      && cursorLine + 1 >= brokenFunctionRange.start
+      && cursorLine + 1 <= brokenFunctionRange.end;
+    const planLine = compileErrorLine !== null
+      && cursorInBrokenFunction
+      && cursorLine !== null
+      && cursorLine >= compileErrorLine - 1
+      // The cut leaves the break line empty and returns on the line after it,
+      // so that return line - zero-based, the same number as the one-based
+      // break - is where everything above it is still in scope.
+      ? compileErrorLine
+      : undefined;
+
     const slangResult = engineLanguage === 'slang'
-      ? shaderDebugManager.getSlangCapturePlan(currentShaderCode, currentConfig, originalShaderCode)
+      ? shaderDebugManager.getSlangCapturePlan(captureCode, currentConfig, originalShaderCode, planLine)
       : null;
     const slangPlan = slangResult && 'plan' in slangResult ? slangResult : null;
     const slangPlanError = slangResult && 'error' in slangResult ? slangResult.error : null;
@@ -887,8 +924,47 @@
       pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
       slangCapture: slangPlan,
       slangCaptureError: slangPlanError ?? (!slangPlan ? state.debugError : null),
+      compileErrorLine,
+      // The capture caps its line only when the line it is asked for is inside
+      // the function that was cut; elsewhere the cut copy compiles as it is.
+      brokenFunctionRange,
     });
   }
+
+  /**
+   * Where the source stops compiling. The compiler's own line is a line late
+   * when a stray token merges with the statement below it - `d` then
+   * `p += ...` reads as a declaration of `p` - so the earlier of the two wins.
+   */
+  const compileErrorLine = $derived.by(() => {
+    if (errors.length === 0) {
+      return null;
+    }
+    const reported = firstReportedErrorLine(errors);
+    const unterminated = firstUnterminatedStatementLine(currentShaderCode);
+    if (reported === null || (unterminated !== null && unterminated < reported)) {
+      return unterminated ?? reported;
+    }
+    return reported;
+  });
+
+  // Errors arrive after the capture that was already in flight, so the capture
+  // has to be re-run once the line it must cut above is known. Derived, so this
+  // fires when that line changes rather than on every compile result.
+  $effect(() => {
+    const line = compileErrorLine;
+    if (initialized && line !== null) {
+      notifyVariableCaptureManager();
+    }
+  });
+
+  /** The function the break cut short, so the capture can tell whether the line
+   *  it is asked for is inside it. Decided per capture rather than here: the
+   *  cursor is not reactive state, and a stale answer caps the wrong line. */
+  const brokenFunctionRange = $derived.by(() => {
+    const line = compileErrorLine;
+    return line === null ? null : enclosingFunctionRange(currentShaderCode, line);
+  });
 
   function getUniforms() {
     if (!initialized) {

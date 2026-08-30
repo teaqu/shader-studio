@@ -129,6 +129,15 @@ export class VariableCaptureBuilder {
     captureCoordUniform: boolean,
     gridWidth: number = DEFAULT_GRID_SIZE,
     gridHeight: number = DEFAULT_GRID_SIZE,
+    /**
+     * Keep whatever follows the captured function at module scope. Slang
+     * resolves functions defined further down the file, and GLSL reaches them
+     * through a prototype, so cutting the file at the capture line can drop a
+     * definition the code above still calls. Set false to cut the whole file,
+     * which is the older behaviour and the fallback when this one will not
+     * compile.
+     */
+    keepTrailingSource: boolean = true,
   ): string | null {
     if (vars.length === 0) return null;
 
@@ -233,6 +242,12 @@ export class VariableCaptureBuilder {
     const result = closedLines.slice(0, originalLength);
     result.push(...VariableCaptureBuilder.generateSelectorCaptureOutput(outputVars));
     result.push(...closedLines.slice(originalLength));
+    // Only what genuinely follows the captured function: an end at or before
+    // the cut means the parser could not find it, and appending from there
+    // would put the lines just cut straight back in.
+    if (keepTrailingSource && functionInfo.end > truncationEnd && functionInfo.end + 1 < lines.length) {
+      result.push(...lines.slice(functionInfo.end + 1));
+    }
 
     let shader = `uniform int _dbgVarIndex;\n${result.join('\n')}`;
     if (captureCoordUniform) {

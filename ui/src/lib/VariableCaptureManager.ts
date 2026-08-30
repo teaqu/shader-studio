@@ -4,6 +4,8 @@ import { VariableCaptureBuilder } from '@shader-studio/debug';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
 import type { ConfigInput, DebugInstrumentationPlan, DebugVisibleValue } from '@shader-studio/types';
+import type { CaptureError } from '../../../rendering/src/capture/CaptureErrorLog';
+import { dedupeCompilerErrors } from '../../../rendering/src/util/CompilerErrorDedupe';
 
 const CAPTURABLE_TYPES = new Set([
   'float', 'int', 'bool',
@@ -11,6 +13,9 @@ const CAPTURABLE_TYPES = new Set([
   'float2', 'float3', 'float4', 'float2x2',
 ]);
 const MAX_EMPTY_COLLECTION_FRAMES = 120;
+
+/** One capture failure, named against the variable it belongs to where known. */
+export type CaptureIssue = CaptureError;
 
 export interface ColorFrequency {
   r: number; g: number; b: number;  // 0–1 range
@@ -203,6 +208,10 @@ interface CaptureParams {
   pollingMs: number;
   slangCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
   slangCaptureError?: string | null;
+  /** First source line the shader compiler rejected, 1-based, when it named one. */
+  compileErrorLine?: number | null;
+  /** 1-based line range of the function that break sits in, when it is in one. */
+  brokenFunctionRange?: { start: number; end: number } | null;
 }
 
 /**
@@ -278,7 +287,12 @@ export class VariableCaptureManager {
   private _pixelPollingMs = 500;
   private onSampleSettingsChanged: (() => void) | null = null;
   private onLoadingStateChanged: ((isLoading: boolean) => void) | null = null;
-  private onErrorChanged: ((error: string | null) => void) | null = null;
+  private onErrorChanged: ((issues: CaptureIssue[]) => void) | null = null;
+  /**
+   * Why the capture stopped short of the inspected line. It explains what the
+   * panel is showing, so it outlives the per-cycle clearing of failures.
+   */
+  private capNotice: CaptureIssue | null = null;
 
   constructor(
     private renderingEngine: RenderingEngine,
@@ -327,7 +341,7 @@ export class VariableCaptureManager {
     this.onLoadingStateChanged = callback;
   }
 
-  setErrorCallback(callback: (error: string | null) => void): void {
+  setErrorCallback(callback: (issues: CaptureIssue[]) => void): void {
     this.onErrorChanged = callback;
   }
 
@@ -605,7 +619,37 @@ export class VariableCaptureManager {
     this.capturer.clearLastError();
     this.emitErrorState(null);
 
-    const resolvedLine = params.debugLine !== null ? params.debugLine : -1;
+    const requestedLine = params.debugLine !== null ? params.debugLine : -1;
+    // A capture is the shader truncated at the inspected line, so a broken
+    // statement above that line is inside it and nothing compiles. Capturing at
+    // the last line before the break still yields everything declared above it,
+    // which is the part the shader can actually produce values for.
+    // Only the function that was cut needs a capped line; capping elsewhere
+    // would drag the capture into a function the user is not looking at.
+    const range = params.brokenFunctionRange ?? null;
+    const insideBrokenFunction = range === null
+      || (requestedLine >= 0 && requestedLine + 1 >= range.start && requestedLine + 1 <= range.end);
+    const blockedFrom = insideBrokenFunction ? params.compileErrorLine ?? null : null;
+    // Capped to the break line itself: the cut leaves it empty, at the body's
+    // own depth, so the capture there sees what survived the blocks above it.
+    const cappedLine = blockedFrom !== null && requestedLine >= blockedFrom - 1
+      ? blockedFrom - 1
+      : requestedLine;
+    const resolvedLine = cappedLine;
+
+    this.capNotice = null;
+    if (blockedFrom !== null && cappedLine !== requestedLine) {
+      if (blockedFrom <= 1) {
+        this.emitIssues([{ message: `Nothing to capture: the shader fails to compile from line ${blockedFrom}` }]);
+        this.finishCollection([]);
+        return;
+      }
+      this.capNotice = {
+        // The last line that still compiles, which is the one below the break.
+        message: `Capturing up to line ${blockedFrom - 1}: the shader fails to compile from line ${blockedFrom}`,
+      };
+      this.emitIssues([this.capNotice]);
+    }
 
     let vars: Array<{ varName: string; varType: string; declarationLine: number }>;
     try {
@@ -666,16 +710,22 @@ export class VariableCaptureManager {
       this.varDeclarationLines.set(v.varName, v.declarationLine);
     }
 
-    const selectorShader = params.slangCapture ? params.slangCapture.plan.files.find((file) => file.uri === params.slangCapture!.plan.rootUri)?.source : VariableCaptureBuilder.generateMultiCaptureShader(
-      params.code,
-      resolvedLine,
-      vars,
-      params.loopMaxIters,
-      params.customParams,
-      isPixelMode,
-      gridWidth,
-      gridHeight,
-    );
+    const buildSelectorShader = (keepTrailingSource: boolean): string | undefined =>
+      params.slangCapture
+        ? params.slangCapture.plan.files.find((file) => file.uri === params.slangCapture!.plan.rootUri)?.source
+        : VariableCaptureBuilder.generateMultiCaptureShader(
+          params.code,
+          resolvedLine,
+          vars,
+          params.loopMaxIters,
+          params.customParams,
+          isPixelMode,
+          gridWidth,
+          gridHeight,
+          keepTrailingSource,
+        ) ?? undefined;
+
+    const selectorShader = buildSelectorShader(true);
 
     if (selectorShader) {
       if (params.slangCapture) {
@@ -728,25 +778,37 @@ export class VariableCaptureManager {
     this.lastGridHeight = gridHeight;
     this.emptyCollectFrames = 0;
 
-    let issued: number;
-    if (isPixelMode) {
-      issued = await this.capturer.issueCaptureAtPixel(
-        captures,
+    const issueCaptures = (batch: typeof captures) => isPixelMode
+      ? this.capturer!.issueCaptureAtPixel(
+        batch,
         params.pixelX!,
         params.pixelY!,
         params.canvasWidth,
         params.canvasHeight,
         uniforms,
         () => this.isCurrentRequest(requestId),
-      );
-    } else {
-      issued = await this.capturer.issueCaptureGrid(
-        captures,
+      )
+      : this.capturer!.issueCaptureGrid(
+        batch,
         uniforms,
         gridWidth,
         gridHeight,
         () => this.isCurrentRequest(requestId),
       );
+
+    let issued = await issueCaptures(captures);
+
+    // The capture keeps whatever follows the captured function so calls into
+    // it still resolve. When that will not compile - a stray token below the
+    // cut, say - fall back to the older cut that drops the rest of the file.
+    if (issued === 0 && !params.slangCapture && this.isCurrentRequest(requestId)) {
+      const wholeFileShader = buildSelectorShader(false);
+      if (wholeFileShader && wholeFileShader !== selectorShader) {
+        this.capturer.clearLastError();
+        issued = await issueCaptures(
+          captures.map((capture) => ({ ...capture, captureShader: wholeFileShader })),
+        );
+      }
     }
 
     if (!this.isCurrentRequest(requestId)) {
@@ -763,16 +825,15 @@ export class VariableCaptureManager {
       });
       this.clearPollTimeout();
       this.lastParams = null;
-      this.emitErrorState(captureError ? `Failed to capture variables:\n${captureError}` : 'Failed to capture variables');
+      this.emitIssues(this.capturerIssues('Failed to capture variables'));
       this.finishCollection([]);
       return;
     }
 
-    const partialCaptureError = this.capturer.getLastError();
-    if (partialCaptureError) {
-      this.clearPollTimeout();
-      this.lastParams = null;
-      this.emitErrorState(`Failed to capture some variables:\n${partialCaptureError}`);
+    // Some variables failed but others issued: report the failures and let the
+    // successful captures complete rather than discarding the whole batch.
+    if (this.capturer.getCaptureErrors().length > 0) {
+      this.emitIssues(this.capturerIssues('Failed to capture some variables'));
     }
 
     this.expectedCount = issued;
@@ -933,6 +994,54 @@ export class VariableCaptureManager {
   }
 
   private emitErrorState(error: string | null): void {
-    this.onErrorChanged?.(error);
+    if (error) {
+      this.emitIssues([{ message: error }]);
+      return;
+    }
+    // Clearing failures must not take the note explaining a shortened capture
+    // with it: that stays true for as long as the shader is broken.
+    this.emitIssues(this.capNotice ? [this.capNotice] : []);
+  }
+
+  /**
+   * A capture issues one shader per variable, so the ones that worked are still
+   * worth showing. The panel gets every failure with the variable it belongs
+   * to, rather than a single string that hid the successes behind it.
+   */
+  private emitIssues(issues: CaptureIssue[]): void {
+    this.onErrorChanged?.(issues);
+  }
+
+  /**
+   * Every variable's capture shader is built from the same source, so a syntax
+   * error in it is reported once per variable, each copy carrying Slang's
+   * "compilation ceased" epilogue. Running the messages through the same
+   * cleanup the renderer errors get collapses that back to what actually went
+   * wrong, while keeping the variable each failure belongs to.
+   */
+  private capturerIssues(fallback: string): CaptureIssue[] {
+    const reported = this.capturer?.getCaptureErrors() ?? [];
+    if (reported.length === 0) {
+      return [{ message: fallback }];
+    }
+
+    const byMessage = new Map<string, (string | undefined)[]>();
+    for (const entry of reported) {
+      const [cleaned] = dedupeCompilerErrors([entry.message]);
+      const message = cleaned?.trim();
+      if (!message) {
+        continue;
+      }
+      byMessage.set(message, [...(byMessage.get(message) ?? []), entry.varName]);
+    }
+
+    const issues: CaptureIssue[] = [];
+    for (const [message, varNames] of byMessage) {
+      // A failure every variable shares is a property of the shader, not of any
+      // one of them, so naming the first would be misleading.
+      const [varName] = varNames;
+      issues.push(varNames.length === 1 && varName !== undefined ? { varName, message } : { message });
+    }
+    return issues.length > 0 ? issues : [{ message: fallback }];
   }
 }

@@ -468,4 +468,13 @@ describe("VariableCaptureBuilder.generateMultiCaptureShader", () => {
     expect(result).toContain("fragColor = vec4(float(_dbgShadow0), 0.0, 0.0, 0.0);");
     expect(result).toContain("fragColor = vec4(_dbgShadow1, 0.0, 0.0, 0.0);");
   });
+
+  it("offers a loop's locals on the line that closes it, holding their last values", () => {
+    const names = VariableCaptureBuilder.getAllInScopeVariables(withLoop, 6)
+      .map((variable) => variable.varName);
+
+    expect(names).toContain("acc");
+    expect(names).toContain("i");
+    expect(names).toContain("val");
+  });
 });

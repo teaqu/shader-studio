@@ -7,6 +7,7 @@ import type { ConfigInput, DebugInstrumentationPlan } from '@shader-studio/types
 import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 import type { StorageBindingNode } from '../types/PassGraph';
+import { CaptureErrorLog, type CaptureError } from "./CaptureErrorLog";
 
 export interface CaptureUniforms {
   time: number;
@@ -87,6 +88,8 @@ export interface IVariableCapturer {
   setInputBindings(inputConfig: Record<string, ConfigInput>): void;
   clearLastError(): void;
   getLastError(): string | null;
+  /** Every failure from the last issue call, attributed to a variable where possible. */
+  getCaptureErrors(): readonly CaptureError[];
   issueCaptureAtPixel(
     captures: CaptureRequest[],
     pixelX: number,
@@ -137,7 +140,7 @@ export class VariableCapturer implements IVariableCapturer {
   private customUniforms: CaptureCustomUniform[] = [];
   private inputBindings: (PiTexture | null)[] = [];
   private compileContext: CaptureCompileContext = {};
-  private lastError: string | null = null;
+  private readonly errors = new CaptureErrorLog();
   private fboTextures = new WeakMap<WebGLFramebuffer, WebGLTexture>();
 
   constructor(
@@ -190,11 +193,15 @@ export class VariableCapturer implements IVariableCapturer {
   }
 
   clearLastError(): void {
-    this.lastError = null;
+    this.errors.clear();
   }
 
   getLastError(): string | null {
-    return this.lastError;
+    return this.errors.lastMessage;
+  }
+
+  getCaptureErrors(): readonly CaptureError[] {
+    return this.errors.list();
   }
 
   /**
@@ -307,7 +314,7 @@ export class VariableCapturer implements IVariableCapturer {
         });
         issued++;
       } catch (error) {
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.errors.record(error instanceof Error ? error.message : String(error), cap.varName);
         console.error(`[VariableCapture] Failed pixel capture for ${cap.varName}:`, error, {
           requestId,
           glError: this.readGlError(),
@@ -426,7 +433,7 @@ export class VariableCapturer implements IVariableCapturer {
         });
         issued++;
       } catch (error) {
-        this.lastError = error instanceof Error ? error.message : String(error);
+        this.errors.record(error instanceof Error ? error.message : String(error), cap.varName);
         console.error(`[VariableCapture] Failed grid capture for ${cap.varName}:`, error, {
           requestId,
           glError: this.readGlError(),
@@ -533,7 +540,7 @@ export class VariableCapturer implements IVariableCapturer {
     });
     if (!piShader || !piShader.mProgram) {
       if (piShader?.mInfo) {
-        this.lastError = piShader.mInfo;
+        this.errors.record(piShader.mInfo, varName);
         console.error('[VariableCapture] Shader compile failed:', piShader.mInfo, {
           requestId,
           varName,
@@ -541,7 +548,7 @@ export class VariableCapturer implements IVariableCapturer {
           glError: this.readGlError(),
         });
       } else {
-        this.lastError = 'Shader compile failed';
+        this.errors.record('Shader compile failed', varName);
         console.error('[VariableCapture] Shader compile failed', {
           requestId,
           varName,

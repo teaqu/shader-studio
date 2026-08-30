@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dedupeCompilerErrors, splitCompilerErrorBlocks } from "../../util/CompilerErrorDedupe";
+import { dedupeCompilerErrors, firstReportedErrorLine, splitCompilerErrorBlocks } from "../../util/CompilerErrorDedupe";
 
 const commonBlock = [
   "error[E20002]: syntax error",
@@ -240,5 +240,30 @@ describe("splitCompilerErrorBlocks", () => {
   it("returns nothing for missing input", () => {
     expect(splitCompilerErrorBlocks(undefined)).toEqual([]);
     expect(splitCompilerErrorBlocks([])).toEqual([]);
+  });
+});
+
+describe("firstReportedErrorLine", () => {
+  it("finds the line a GLSL driver error names", () => {
+    expect(firstReportedErrorLine(["Image: ERROR: 0:14: 'd' : undeclared identifier"])).toBe(14);
+  });
+
+  it("finds the line a Slang error names", () => {
+    expect(firstReportedErrorLine([
+      "Image: error[E20001]: unexpected token\n  --> /shader.slang:8:1",
+    ])).toBe(8);
+  });
+
+  it("reports the earliest line when several are named", () => {
+    expect(firstReportedErrorLine([
+      "Image: ERROR: 0:20: 'x' : undeclared identifier",
+      "Image: ERROR: 0:14: 'd' : undeclared identifier",
+    ])).toBe(14);
+  });
+
+  it("returns null when the compiler named no line", () => {
+    expect(firstReportedErrorLine(["Image: error[E99999]: entry point not found"])).toBeNull();
+    expect(firstReportedErrorLine([])).toBeNull();
+    expect(firstReportedErrorLine(undefined)).toBeNull();
   });
 });

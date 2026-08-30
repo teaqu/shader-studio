@@ -24,6 +24,14 @@ export function analyzeSlangSite(file: SlangWorkspaceFile, position: DebugSource
   }
   const controlFlow = innermostContainingControlFlow(file, position);
   if (controlFlow) {
+    // On the brace that closes a block, report what the block leaves behind:
+    // its own declarations, holding their last-iteration values. Capturing from
+    // the block's final statement is what makes those values reachable, and it
+    // matches what the GLSL path reports at the same place.
+    const closing = lastStatementOfBlock(file, controlFlow, position);
+    if (closing) {
+      return analyzeStatementSite(file, position, closing);
+    }
     return analyzeControlFlowSite(file, position, controlFlow);
   }
   // Fallback: if the cursor is on a blank/comment/non-code line inside a
@@ -134,6 +142,20 @@ function innermostContainingControlFlow(file: SlangWorkspaceFile, position: Debu
   return [...file.structure.controlFlows.values()]
     .filter((control) => containsPosition(control.range, position))
     .sort((left, right) => rangeSize(left.range) - rangeSize(right.range))[0];
+}
+
+/** The last statement inside `controlFlow`, when `position` is on its closing brace. */
+function lastStatementOfBlock(
+  file: SlangWorkspaceFile,
+  controlFlow: SlangControlFlowNode,
+  position: DebugSourcePosition,
+): SlangStatementNode | undefined {
+  if (position.line !== controlFlow.range.end.line) {
+    return undefined;
+  }
+  return [...file.structure.statements.values()]
+    .filter((statement) => containsRange(controlFlow.range, statement.range))
+    .sort((left, right) => comparePositions(right.range.end, left.range.end))[0];
 }
 
 function containingCallable(file: SlangWorkspaceFile, statement: SlangStatementNode): SlangCallableNode | undefined {

@@ -70,6 +70,25 @@ export function splitCompilerErrorBlocks(errors: readonly string[] | undefined):
     }));
 }
 
+/** glslang reports `ERROR: <shader>:<line>:` after the line has been mapped back. */
+const GLSL_REPORTED_LINE = /ERROR:\s*\d+:(\d+):/;
+
+/**
+ * The first source line the compiler complained about, or null when it named
+ * none. Everything below it failed to parse, so nothing there can be inspected.
+ */
+export function firstReportedErrorLine(errors: readonly string[] | undefined): number | null {
+  let earliest: number | null = null;
+  for (const block of splitCompilerErrorBlocks(errors)) {
+    const glsl = block.text.match(GLSL_REPORTED_LINE);
+    const line = block.location?.line ?? (glsl ? Number.parseInt(glsl[1], 10) : undefined);
+    if (line !== undefined && Number.isFinite(line) && (earliest === null || line < earliest)) {
+      earliest = line;
+    }
+  }
+  return earliest;
+}
+
 export function dedupeCompilerErrors(errors: readonly string[] | undefined): string[] {
   if (!errors) {
     return [];

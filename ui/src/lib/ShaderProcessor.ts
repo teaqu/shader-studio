@@ -64,6 +64,14 @@ export class ShaderProcessor {
         debugPlan,
       } = this.getDebugCompileArgs(code, config ?? null, message.originalCode ?? code);
       const buffersToCompile = this.getCompileBuffers(buffers, debugPassName, codeToCompile, code);
+
+      if (codeToCompile !== code) {
+        const baselineFailure = await this.compileUninstrumentedBaseline(message, code, config ?? null, path, buffers);
+        if (baselineFailure) {
+          return baselineFailure;
+        }
+      }
+
       const result = debugPlan && this.renderEngine.compileSlangDebugPlan
         ? await this.renderEngine.compileSlangDebugPlan(debugPlan, config ?? null)
         : await this.compileWithSlangContext(
@@ -84,22 +92,28 @@ export class ShaderProcessor {
       }
 
       if (!result?.success) {
-        // If debug mode compilation failed, try original code
+        // If debug mode compilation failed, fall back to the original code
         if (debugPlan || codeToCompile !== code) {
           this.shaderDebugManager.setDebugError(
             `Debug shader compilation failed: ${result?.errors?.[0] || 'unknown error'}`
           );
-          const fallbackResult = await this.compile(
-            code,
-            config,
-            path,
-            buffers,
-            message.customUniformDeclarations,
-            message.customUniformInfo,
-            message.slangModules,
-            undefined,
-            message.bufferPathMap,
-          );
+          // An instrumented compile runs after the untouched source has already
+          // compiled and installed, so there is nothing left to fall back to.
+          // Only a Slang debug plan, which compiles the real source itself,
+          // still needs the original built here.
+          const fallbackResult = codeToCompile !== code
+            ? { success: true }
+            : await this.compile(
+              code,
+              config,
+              path,
+              buffers,
+              message.customUniformDeclarations,
+              message.customUniformInfo,
+              message.slangModules,
+              undefined,
+              message.bufferPathMap,
+            );
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
@@ -131,6 +145,44 @@ export class ShaderProcessor {
     } finally {
       this.isProcessing = false;
     }
+  }
+
+
+  /**
+   * Debug instrumentation rewrites the shader - truncating the body at the
+   * inspected line, or post-processing it for inline rendering - so a broken
+   * statement below that line simply is not in what gets compiled. Reporting
+   * the instrumented compile's success then tells the user their shader is
+   * fine while it is not, and clears the real errors from the panel.
+   *
+   * Compiling the untouched source first settles what the user is told. It also
+   * leaves the working program installed when the instrumented compile that
+   * follows fails, which is what the old fallback path did by hand.
+   */
+  private async compileUninstrumentedBaseline(
+    message: ShaderSourceMessage,
+    code: string,
+    config: ShaderConfig | null,
+    path: string,
+    buffers: Record<string, string>,
+  ): Promise<CompilationResult | null> {
+    const result = await this.compileWithSlangContext(
+      code,
+      config,
+      path,
+      buffers,
+      message.customUniformDeclarations,
+      message.customUniformInfo,
+      message.slangModules,
+      undefined,
+      message.bufferPathMap,
+    );
+    if (result?.superseded) {
+      return this.supersededResult(result.errors);
+    }
+    return result?.success
+      ? null
+      : { success: false, errors: result?.errors || ["Unknown compilation error"] };
   }
 
   private getDebugCompileArgs(
@@ -346,6 +398,19 @@ export class ShaderProcessor {
       codeToCompile,
       this.imageShaderCode,
     );
+
+    if (codeToCompile !== this.imageShaderCode) {
+      const baselineFailure = await this.compileUninstrumentedBaseline(
+        message,
+        this.imageShaderCode,
+        config ?? null,
+        path,
+        buffers,
+      );
+      if (baselineFailure) {
+        return baselineFailure;
+      }
+    }
 
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.

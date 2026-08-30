@@ -14,6 +14,7 @@ import type { SlangChannelBinding } from "./SlangPrelude";
 import { DBG_CAPTURE_UNIFORM_SIZE, getShaderToyChannelCount } from "./SlangPrelude";
 import { createSlangCustomUniformLayout, packShaderToyUniforms } from "./uniforms";
 import { captureCounters, captureDiagTick } from "../capture/captureDiagnostics";
+import { CaptureErrorLog, type CaptureError } from "../capture/CaptureErrorLog";
 
 const SHADER_CACHE_MAX = 20;
 const FLOAT_BYTES = 4;
@@ -56,7 +57,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private compileContext: CaptureCompileContext = {};
   private compileContextGeneration = 0;
   private compileContextKey: string;
-  private lastError: string | null = null;
+  private readonly errors = new CaptureErrorLog();
+  /**
+   * Compiling and binding happen in helpers that do not know which variable
+   * they were called for, so they park the message here and the issue loop
+   * attributes it to the capture in flight.
+   */
+  private pendingError: string | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private captureUniformBuffer: GPUBuffer | null = null;
   private sampler: GPUSampler | null = null;
@@ -109,11 +116,22 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   }
 
   clearLastError(): void {
-    this.lastError = null;
+    this.errors.clear();
+    this.pendingError = null;
+  }
+
+  /** Files whatever a helper parked against the variable it failed for. */
+  private recordPendingError(varName?: string): void {
+    this.errors.record(this.pendingError, varName);
+    this.pendingError = null;
   }
 
   getLastError(): string | null {
-    return this.lastError;
+    return this.errors.lastMessage;
+  }
+
+  getCaptureErrors(): readonly CaptureError[] {
+    return this.errors.list();
   }
 
   async issueCaptureAtPixel(
@@ -231,10 +249,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       ? this.getChannelResources?.(this.compileContext) ?? null
       : [];
     if (channels.length > 0 && channelResources === null) {
-      this.lastError = "Capture channels are not resolvable yet";
+      this.errors.record("Capture channels are not resolvable yet");
       return 0;
     }
     if (!this.resolveStorageBuffers(storage)) {
+      this.recordPendingError();
       return 0;
     }
 
@@ -296,11 +315,13 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           break;
         }
         if (!cached) {
+          this.recordPendingError(capture.varName);
           continue;
         }
 
         const storageBuffers = this.resolveStorageBuffers(storage);
         if (!storageBuffers) {
+          this.recordPendingError(capture.varName);
           continue;
         }
         // Re-resolve after the compile await: a pass rebuild or feedback reset
@@ -310,7 +331,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           ? this.getChannelResources?.(this.compileContext) ?? null
           : [];
         if (currentChannelResources === null) {
-          this.lastError = "Capture channels are not resolvable yet";
+          this.errors.record("Capture channels are not resolvable yet", capture.varName);
           continue;
         }
         const bindGroup = this.buildBindGroup(
@@ -320,6 +341,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           storageBuffers,
         );
         if (!bindGroup) {
+          this.recordPendingError(capture.varName);
           continue;
         }
 
@@ -512,7 +534,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     if (!compileResult.success) {
       const selectedSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
       const selectedLabel = selectedSource?.path ?? slangPlan?.selectedSourceUri;
-      this.lastError = compileResult.errors
+      this.pendingError = compileResult.errors
         .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(slangPlan!.selectedSourceUri)
           ? `${selectedLabel}: ${error}`
           : error)
@@ -544,7 +566,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
         return null;
       }
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.pendingError = error instanceof Error ? error.message : String(error);
       return null;
     }
 
@@ -660,7 +682,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     try {
       return this.device.createBindGroup({ layout, entries });
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.pendingError = error instanceof Error ? error.message : String(error);
       return null;
     }
   }
@@ -671,7 +693,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       new Map<string, GPUBuffer>();
     const missing = storage.find((node) => !buffers.has(node.name));
     if (missing) {
-      this.lastError = `Capture storage buffer "${missing.name}" is not resolvable yet`;
+      this.pendingError = `Capture storage buffer "${missing.name}" is not resolvable yet`;
       return null;
     }
     return buffers;
