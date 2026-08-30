@@ -26,7 +26,7 @@ describe('ShaderCard context menu', () => {
       clientY: 60,
     });
 
-    expect(screen.getByText('Created')).toBeVisible();
+    expect(screen.getByText(/^Created/)).toBeVisible();
     expect(screen.getByText(/^Last modified/)).toBeVisible();
 
     await fireEvent.click(screen.getByRole('button', { name: 'Rename' }));

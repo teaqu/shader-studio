@@ -67,10 +67,6 @@
     if (e.key === 'Escape') closeMenu();
   }
 
-  function formatDate(ms: number): string {
-    return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  }
-
   function formatDateTime(ms: number): string {
     return new Date(ms).toLocaleString(undefined, {
       year: 'numeric',
@@ -80,10 +76,6 @@
       minute: '2-digit',
     });
   }
-
-  const createdStr = $derived(shader.createdTime ? formatDate(shader.createdTime) : null);
-  const modifiedStr = $derived(shader.modifiedTime ? formatDate(shader.modifiedTime) : null);
-  const hasTimestamps = $derived(!!(createdStr || modifiedStr));
 </script>
 
 <svelte:window onclick={closeMenu} onkeydown={handleKeydown} />
@@ -113,13 +105,6 @@
   <div class="shader-info">
     <div class="shader-name" title={displayName}>{displayName}</div>
     <div class="shader-path" title={shader.relativePath}>{shader.relativePath}</div>
-
-    {#if hasTimestamps}
-      <div class="timestamp-popup">
-        {#if createdStr}<div class="timestamp-row"><span class="ts-label">Created</span><span class="ts-value">{createdStr}</span></div>{/if}
-        {#if modifiedStr}<div class="timestamp-row"><span class="ts-label">Edited</span><span class="ts-value">{modifiedStr}</span></div>{/if}
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -138,7 +123,7 @@
       Rename
     </button>
     <button class="context-menu-item" onclick={deleteShader}>
-      🗑 Delete
+      Delete
     </button>
   </div>
 {/if}
@@ -271,46 +256,5 @@
     height: 1px;
     margin: 4px 0;
     background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border));
-  }
-
-  .timestamp-popup {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 8px;
-    background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
-    border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border));
-    border-radius: 4px;
-    padding: 6px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 10;
-    opacity: 0;
-    transform: translateY(4px);
-    transition: opacity 0.12s ease, transform 0.12s ease;
-  }
-
-  .shader-info:hover .timestamp-popup {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .timestamp-row {
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-  }
-
-  .ts-label {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-    min-width: 48px;
-  }
-
-  .ts-value {
-    font-size: 11px;
-    color: var(--vscode-foreground);
   }
 </style>
