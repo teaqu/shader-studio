@@ -880,7 +880,9 @@ function countingLanguageService(
     syncEnvironment: async (environment) => {
       onSyncEnvironment?.(environment);
     },
-    openDocument: async () => { counts.openDocument += 1; },
+    openDocument: async () => {
+      counts.openDocument += 1;
+    },
     changeDocument: async () => {},
     closeDocument: async () => {},
     completion: async () => [],
@@ -891,7 +893,9 @@ function countingLanguageService(
     references: async () => [],
     documentHighlights: async () => [],
     rename: async () => null,
-    diagnostics: async () => { counts.diagnostics += 1; return []; },
+    diagnostics: async () => {
+      counts.diagnostics += 1; return [];
+    },
     documentColors: async () => [],
     colorPresentations: async () => [],
     dispose: async () => {},
