@@ -3,10 +3,13 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import type { DocumentRevision } from "@shader-studio/language-server-core";
+import type { DocumentRevision, LanguageService } from "@shader-studio/language-server-core";
 import type { ShaderConfig } from "@shader-studio/types";
 import { Messenger } from "../../app/transport/Messenger";
 import {
+  VscodeLanguageServiceController,
+  changesDocumentText,
+  documentSendKind,
   dynamicUniformNames,
   findUniformTokenRanges,
   isCurrentRevision,
@@ -33,6 +36,27 @@ suite("VS Code language-service revisions", () => {
     assert.strictEqual(isCurrentRevision({ ...document, version: 5 }, 7, revision), false);
     assert.strictEqual(isCurrentRevision(document, 8, revision), false);
     assert.strictEqual(isCurrentRevision({ ...document, uri: vscode.Uri.file("/workspace/other.glsl") }, 7, revision), false);
+  });
+
+  test("tells a service about a buffer that took over an open name", () => {
+    const first = { name: "the buffer that had the name" };
+    const second = { name: "the buffer that has it now" };
+
+    assert.strictEqual(documentSendKind(undefined, first, 1), "open");
+    assert.strictEqual(documentSendKind({ document: first, version: 1 }, first, 1), "none");
+    assert.strictEqual(documentSendKind({ document: first, version: 1 }, first, 2), "change");
+    // The version is no help here: an untitled buffer starts at 1 like the one
+    // whose name it took, so only identity separates them.
+    assert.strictEqual(documentSendKind({ document: first, version: 1 }, second, 1), "open");
+  });
+
+  test("re-analyses only the changes that move a document's text", () => {
+    const edit = { range: new vscode.Range(0, 0, 0, 1), rangeOffset: 0, rangeLength: 1, text: "x" };
+
+    assert.strictEqual(changesDocumentText({ contentChanges: [edit] }), true);
+    // A dirty-state or end-of-line change carries none, and a shader compile
+    // is far too expensive to spend on text that did not move.
+    assert.strictEqual(changesDocumentText({ contentChanges: [] }), false);
   });
 
   test("finds exact custom uniform references outside comments and strings", () => {
@@ -620,6 +644,70 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("analyses the buffer that takes over a reused untitled name", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    // VS Code hands `Untitled-1` to the next buffer once the last one goes, so
+    // a service told only the name would still hold the previous buffer's text.
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const first = await vscode.workspace.openTextDocument({
+      language: "glsl",
+      content: "void mainImage(out vec4 color, in vec2 p) { color = vec4(firstBadName); }",
+    });
+    await vscode.window.showTextDocument(first);
+    await waitForDiagnostic(first.uri, "Undefined identifier 'firstBadName'");
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+
+    const second = await vscode.workspace.openTextDocument({
+      language: "glsl",
+      content: "void mainImage(out vec4 color, in vec2 p) { color = vec4(secondBadName); }",
+    });
+    await vscode.window.showTextDocument(second);
+
+    const diagnostic = await waitForDiagnostic(second.uri, "Undefined identifier 'secondBadName'");
+
+    assert.strictEqual(diagnostic.source, "shader-studio-glsl-ls");
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
+  test("answers editor requests without recomputing diagnostics", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    // Diagnostics mean a full Slang compile, so they belong to what the
+    // document says, not to how many times the editor asks about it.
+    const counts = { diagnostics: 0, openDocument: 0 };
+    const service = countingLanguageService(counts);
+    const noSink = { set: () => {}, delete: () => {}, clear: () => {} };
+    const controller = new VscodeLanguageServiceController(
+      { glsl: async () => service, slang: async () => service },
+      new ShaderAuthoringEnvironmentProvider(),
+      { glsl: noSink, slang: noSink },
+    );
+    controller.start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
+
+    try {
+      const document = await vscode.workspace.openTextDocument({
+        language: "slang",
+        content: "float4 mainImage(float2 p) { return float4(p, 0, 1); }",
+      });
+      await vscode.window.showTextDocument(document);
+      await waitFor(() => counts.diagnostics > 0);
+      const published = counts.diagnostics;
+
+      for (const command of [
+        "vscode.executeCompletionItemProvider",
+        "vscode.executeHoverProvider",
+        "vscode.executeDefinitionProvider",
+      ]) {
+        await vscode.commands.executeCommand(command, document.uri, new vscode.Position(0, 8));
+      }
+      await vscode.commands.executeCommand("vscode.executeDocumentColorProvider", document.uri);
+
+      assert.strictEqual(counts.diagnostics, published, "editor requests recomputed diagnostics");
+    } finally {
+      controller.dispose();
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
   test("disables and re-enables a loaded Slang language service", async () => {
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const configuration = vscode.workspace.getConfiguration("shader-studio");
@@ -657,6 +745,50 @@ const DIAGNOSTIC_WAIT_MS = 5_000;
  * such failure into a bare mocha timeout that names nothing.
  */
 const DIAGNOSTIC_TEST_BUDGET_MS = DIAGNOSTIC_WAIT_MS * 2;
+
+function countingLanguageService(counts: { diagnostics: number; openDocument: number }): LanguageService {
+  return {
+    initialize: async () => ({
+      completion: true,
+      hover: true,
+      definition: true,
+      signatureHelp: true,
+      documentSymbols: true,
+      diagnostics: true,
+      documentColors: true,
+      references: false,
+      documentHighlights: false,
+      rename: false,
+    }),
+    syncEnvironment: async () => {},
+    openDocument: async () => { counts.openDocument += 1; },
+    changeDocument: async () => {},
+    closeDocument: async () => {},
+    completion: async () => [],
+    hover: async () => null,
+    definition: async () => [],
+    signatureHelp: async () => null,
+    documentSymbols: async () => [],
+    references: async () => [],
+    documentHighlights: async () => [],
+    rename: async () => null,
+    diagnostics: async () => { counts.diagnostics += 1; return []; },
+    documentColors: async () => [],
+    colorPresentations: async () => [],
+    dispose: async () => {},
+  };
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
+  while (Date.now() < deadline) {
+    if (condition()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for the controller to publish");
+}
 
 async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {
   const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;

@@ -14,7 +14,10 @@ import {
 
 export class VscodeLanguageServiceController implements vscode.Disposable {
   private readonly services: Partial<Record<ShaderLanguage, Promise<LanguageService>>> = {};
-  private readonly opened: Record<ShaderLanguage, Set<string>> = { glsl: new Set(), slang: new Set() };
+  // Keyed by URI, but holding the document itself: VS Code hands the same
+  // untitled name to the next buffer that claims it, and the service must be
+  // told that is a different document rather than an edit to the last one.
+  private readonly opened: Record<ShaderLanguage, Map<string, OpenedDocument>> = { glsl: new Map(), slang: new Map() };
   private readonly diagnostics: Record<ShaderLanguage, DiagnosticSink>;
   private readonly ownedCollections: vscode.DiagnosticCollection[] = [];
   private readonly disposables: vscode.Disposable[] = [];
@@ -49,6 +52,9 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       void this.open(document);
     }));
     this.disposables.push(vscode.workspace.onDidChangeTextDocument((event) => {
+      if (!changesDocumentText(event)) {
+        return;
+      }
       void this.change(event.document);
     }));
     this.disposables.push(vscode.workspace.onDidCloseTextDocument((document) => {
@@ -201,42 +207,61 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
   }
 
   private async open(document: vscode.TextDocument): Promise<void> {
+    const opened = await this.ensureOpen(document);
+    if (!opened) {
+      return;
+    }
+    await this.publishDiagnostics(document, opened.service, opened.generation);
+  }
+
+  /**
+   * Brings the service's view of a document up to date, which is all an editor
+   * request needs. Diagnostics are a full compile of the shader, and nothing a
+   * hover or a completion asks can change them: they are republished when the
+   * document, its environment, or the language server setting changes.
+   */
+  private async ensureOpen(
+    document: vscode.TextDocument,
+  ): Promise<{ service: LanguageService; generation: number } | undefined> {
     const language = shaderLanguage(document);
     if (!language || !enabled(language)) {
-      return;
+      return undefined;
     }
     const environment = this.environments.environmentFor(document);
     if (!environment) {
-      return;
+      return undefined;
     }
     const service = await this.service(language);
     await service.syncEnvironment(environment);
-    if (!this.opened[language].has(document.uri.toString())) {
-      await service.openDocument(snapshot(document, language));
-      this.opened[language].add(document.uri.toString());
+    await this.send(service, document, language);
+    return { service, generation: environment.generation };
+  }
+
+  /**
+   * Gives the service the document as it stands now. A name it has never seen,
+   * or one a different buffer has taken over, opens; the same buffer at a newer
+   * version changes; anything else has already been sent.
+   */
+  private async send(service: LanguageService, document: vscode.TextDocument, language: ShaderLanguage): Promise<void> {
+    const uri = document.uri.toString();
+    const kind = documentSendKind(this.opened[language].get(uri), document, document.version);
+    if (kind === "none") {
+      return;
     }
-    await this.publishDiagnostics(document, service, environment.generation);
+    await (kind === "open"
+      ? service.openDocument(snapshot(document, language))
+      : service.changeDocument(snapshot(document, language)));
+    this.opened[language].set(uri, { document, version: document.version });
   }
 
   private async change(document: vscode.TextDocument): Promise<void> {
     const language = shaderLanguage(document);
-    if (!language || !enabled(language)) {
+    const opened = await this.ensureOpen(document);
+    if (!language || !opened) {
       return;
     }
-    const environment = this.environments.environmentFor(document);
-    if (!environment) {
-      return;
-    }
-    const service = await this.service(language);
-    await service.syncEnvironment(environment);
-    if (this.opened[language].has(document.uri.toString())) {
-      await service.changeDocument(snapshot(document, language));
-    } else {
-      await service.openDocument(snapshot(document, language));
-      this.opened[language].add(document.uri.toString());
-    }
-    await this.publishDiagnostics(document, service, environment.generation);
-    if (environment.passName.toLowerCase() === "common") {
+    await this.publishDiagnostics(document, opened.service, opened.generation);
+    if (this.environments.environmentFor(document)?.passName.toLowerCase() === "common") {
       await this.refreshCommonDependents(document, language);
     }
   }
@@ -261,10 +286,14 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
 
   private async close(document: vscode.TextDocument): Promise<void> {
     const language = shaderLanguage(document);
-    if (!language || !this.opened[language].delete(document.uri.toString())) {
+    const uri = document.uri.toString();
+    // Closing arrives after the next buffer has taken the name, so a stale
+    // close would otherwise withdraw the live buffer's diagnostics.
+    if (!language || this.opened[language].get(uri)?.document !== document) {
       return;
     }
-    await (await this.services[language])?.closeDocument(document.uri.toString());
+    this.opened[language].delete(uri);
+    await (await this.services[language])?.closeDocument(uri);
     this.diagnostics[language].delete(document.uri);
   }
 
@@ -273,7 +302,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     if (!language || !enabled(language)) {
       return fallback;
     }
-    await this.open(document);
+    await this.ensureOpen(document);
     const environment = this.environments.environmentFor(document);
     if (!environment) {
       return fallback;
@@ -330,6 +359,38 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       }
     }
   }
+}
+
+/**
+ * What a service still needs to be told about a document. Identity decides
+ * first: VS Code reuses an untitled name for the next buffer that claims it,
+ * and sending that as an edit would leave the service analysing text the
+ * buffer no longer holds.
+ */
+export function documentSendKind<T>(
+  sent: { document: T; version: number } | undefined,
+  document: T,
+  version: number,
+): "open" | "change" | "none" {
+  if (!sent || sent.document !== document) {
+    return "open";
+  }
+  return sent.version === version ? "none" : "change";
+}
+
+interface OpenedDocument {
+  document: vscode.TextDocument;
+  version: number;
+}
+
+/**
+ * VS Code also raises a change event when only a document's metadata moves,
+ * such as its dirty state or end-of-line sequence, and marks that by carrying
+ * no content changes. The text is identical, so re-analysing it would spend a
+ * full shader compile to arrive at the diagnostics already published.
+ */
+export function changesDocumentText(event: Pick<vscode.TextDocumentChangeEvent, "contentChanges">): boolean {
+  return event.contentChanges.length > 0;
 }
 
 /**
