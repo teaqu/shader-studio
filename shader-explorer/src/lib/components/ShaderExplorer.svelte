@@ -13,6 +13,7 @@
   interface Props {
     demoShaders?: ShaderFile[];
     demoVscodeApi?: { postMessage: (message: { type: string; path?: string; requestId?: number; [key: string]: unknown }) => void };
+    demoNotice?: string;
     selectedDemoShaderPath?: string;
     onDemoShaderSelect?: (shader: ShaderFile) => void;
     onDemoReset?: () => void;
@@ -21,6 +22,7 @@
   let {
     demoShaders = undefined,
     demoVscodeApi = undefined,
+    demoNotice = '',
     selectedDemoShaderPath = '',
     onDemoShaderSelect = (_shader: ShaderFile) => {},
     onDemoReset = () => {},
@@ -270,6 +272,10 @@
 <div class="shader-explorer" data-testid={demoShaders ? 'demo-shader-explorer' : undefined}>
   <div class="toolbar">
     {#if demoShaders}
+      <div class="demo-titlebar" data-testid="demo-explorer-titlebar" role="status">
+        <strong>Demo mode</strong>
+        <span>{demoNotice}</span>
+      </div>
       <div class="toolbar-actions demo-toolbar-actions" data-testid="demo-explorer-toolbar">
         <button class="icon-button" onclick={onDemoReset} title="Reset examples" aria-label="Reset examples">
           Reset
@@ -505,6 +511,22 @@
     background-color: var(--vscode-editor-background);
     align-items: stretch;
     flex-shrink: 0;
+  }
+
+  .demo-titlebar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .demo-titlebar span {
+    color: var(--vscode-descriptionForeground);
   }
 
   .toolbar-actions {

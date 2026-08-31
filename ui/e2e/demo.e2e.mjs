@@ -14,7 +14,7 @@ test('shows a resizable editor beside the preview and switches among bundled dem
   const editor = page.getByTestId('demo-editor');
   const preview = page.getByTestId('demo-preview');
   const explorer = page.getByTestId('demo-shader-explorer');
-  const demoTitlebar = page.getByTestId('demo-titlebar');
+  const demoTitlebar = explorer.getByTestId('demo-explorer-titlebar');
   await expect(demoTitlebar).toContainText('Demo mode');
   await expect(demoTitlebar).toContainText('Changes are saved in this browser. Some extension features are unavailable.');
   await expect(editor).toBeVisible();
@@ -37,7 +37,7 @@ test('shows a resizable editor beside the preview and switches among bundled dem
   expect(explorerBox?.width).toBeLessThanOrEqual(260);
   expect(explorerBox?.x).toBeLessThan(editorBox?.x ?? 0);
   expect(editorBox?.x).toBeLessThan(previewBox?.x ?? 0);
-  expect((titlebarBox?.y ?? 0) + (titlebarBox?.height ?? 0)).toBeLessThanOrEqual((editorBox?.y ?? 0) + 37);
+  expect(titlebarBox?.y).toBeLessThanOrEqual((explorerBox?.y ?? 0) + 8);
 
   // The fixed-width Explorer divider is disabled; the remaining enabled sash
   // is the resizable Editor/Preview boundary.

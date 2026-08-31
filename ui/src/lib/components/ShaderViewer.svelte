@@ -1643,7 +1643,6 @@
         <EditorOverlay
           isVisible={true}
           displayMode="pane"
-          topInset={34}
           shaderCode={editorFileCode}
           shaderPath={editorFilePath}
           {transport}
@@ -1659,10 +1658,6 @@
           onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
           {errors}
         />
-        <div class="demo-editor-titlebar" data-testid="demo-titlebar" role="status">
-          <strong>Demo mode</strong>
-          <span>Changes are saved in this browser. Some extension features are unavailable.</span>
-        </div>
       {/if}
     </div>
     <div class="dockview-panel-source" bind:this={demoExplorerEl}>
@@ -1670,6 +1665,7 @@
         <ShaderExplorer
           demoShaders={demoExplorerShaders}
           demoVscodeApi={demoExplorerVscodeApi}
+          demoNotice="Changes are saved in this browser. Some extension features are unavailable."
           selectedDemoShaderPath={`demo://${selectedDemoExample}`}
           onDemoShaderSelect={handleDemoExplorerSelect}
           onDemoReset={handleDemoExampleReset}
@@ -1708,27 +1704,6 @@
 </div>
 
 <style>
-  .demo-editor-titlebar {
-    position: absolute;
-    z-index: 1;
-    right: 0;
-    top: 0;
-    left: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 34px;
-    padding: 0 10px;
-    border-top: 1px solid var(--vscode-panel-border);
-    color: var(--vscode-editor-foreground);
-    background: transparent;
-    font-size: 12px;
-  }
-
-  .demo-editor-titlebar span {
-    color: var(--vscode-descriptionForeground);
-  }
-
   .dockview-panel-source {
     position: absolute;
     width: 100%;
