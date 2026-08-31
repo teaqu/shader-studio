@@ -35,6 +35,7 @@
     transport: Transport;
     onCodeChange?: (code: string) => void;
     vimMode?: boolean;
+    topInset?: number;
     bottomInset?: number;
     bufferNames?: string[];
     activeBufferName?: string;
@@ -45,6 +46,7 @@
     customUniformInfo?: { name: string; type: string }[];
     slangModules?: SlangSourceModule[];
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
+    displayMode?: "overlay" | "pane";
   }
 
   interface OverlayKeyEvent {
@@ -66,6 +68,7 @@
     transport,
     onCodeChange = () => {},
     vimMode = false,
+    topInset = 0,
     bottomInset = 0,
     bufferNames = ["Image"],
     activeBufferName = "Image",
@@ -76,6 +79,7 @@
     customUniformInfo = [],
     slangModules = [],
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
+    displayMode = "overlay",
   }: Props = $props();
 
   const activePassName = $derived(
@@ -926,7 +930,7 @@
 </script>
 
 {#if isVisible}
-  <div class="editor-wrapper" class:ready={editorReady} style={`bottom: ${bottomInset}px;`}>
+  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
     <div
       class="editor-overlay"
       data-active-buffer={activeBufferName}
@@ -956,6 +960,15 @@
 
   .editor-wrapper.ready {
     opacity: 1;
+  }
+
+  .editor-wrapper.pane {
+    position: relative;
+    margin-top: var(--editor-top-inset, 0px);
+    height: calc(100% - var(--editor-top-inset, 0px) - var(--editor-bottom-inset, 0px));
+    min-height: 0;
+    z-index: auto;
+    background: transparent;
   }
 
   .editor-overlay {
@@ -1005,12 +1018,12 @@
     resize: none !important;
   }
 
-  /* Semi-transparent background on the inline text content */
+  /* Keep the demo editor focused without the former overlay treatment. */
   .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
-    background: rgba(10, 10, 10, 0.75);
+    background: transparent;
     border-radius: 0;
     padding-right: 4px;
-    text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
+    text-shadow: none;
   }
 
   /* No background for blank lines */
@@ -1018,9 +1031,9 @@
     background: transparent !important;
   }
 
-  /* Line numbers with matching background */
+  /* Line numbers remain unobtrusive alongside the plain editor canvas. */
   .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
-    background: rgba(10, 10, 10, 0.75);
+    background: transparent;
     border-radius: 0;
     padding-left: 4px;
     padding-right: 8px;

@@ -6,10 +6,12 @@
   import { logSwitchTiming } from "../diagnostics/switchTiming";
   import { ShaderLocker } from "../ShaderLocker";
   import { createTransport } from "../transport/TransportFactory";
+  import { DEMO_EXPLORER_SHADERS, demoExampleIdForPath, demoShaderPreviewForPath } from "../transport/DemoTransport";
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
+  import ShaderExplorer from "../../../../shader-explorer/src/lib/components/ShaderExplorer.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
@@ -135,7 +137,12 @@
   }
   // --- end slot helpers ---
 
-  let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
+  interface Props {
+    onInitialized?: () => void;
+    demoMode?: boolean;
+  }
+
+  let { onInitialized = () => {}, demoMode = false }: Props = $props();
 
   // Core state
   let glCanvas = $state<HTMLCanvasElement>(undefined!);
@@ -232,6 +239,36 @@
   let editorFileCode = $state('');
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
+  let selectedDemoExample = $state('glsl');
+  const demoExplorerShaders = $derived(DEMO_EXPLORER_SHADERS.map((shader) => ({
+    name: shader.label,
+    path: `demo://${shader.id}`,
+    relativePath: shader.description,
+    hasConfig: true,
+    cachedThumbnail: shader.id === 'slang' ? './demo-assets/nebula-texture.png' : undefined,
+  })));
+  const demoExplorerVscodeApi = {
+    postMessage(message: { type: string; path?: string; requestId?: number }) {
+      if (message.type !== 'requestShaderCode' || !message.path || message.requestId === undefined) {
+        return;
+      }
+      const preview = demoShaderPreviewForPath(message.path);
+      if (!preview) {
+        return;
+      }
+      queueMicrotask(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+          data: {
+            type: 'shaderCode',
+            path: message.path,
+            requestId: message.requestId,
+            ...preview,
+            buffers: {},
+          },
+        }));
+      });
+    },
+  };
 
   // Resolution controller — created at component level so setContext works synchronously
   const resolutionController = new ResolutionSessionController({
@@ -355,6 +392,9 @@
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
+    if (demoMode) {
+      return;
+    }
     await initProfiles(profileAdapter);
   });
 
@@ -637,6 +677,21 @@
   function handleOverlayBufferSwitch(name: string) {
     configSelectedBuffer = name;
     setOverlayActiveFile(name);
+  }
+
+  function handleDemoExampleSelect(exampleId: string) {
+    selectedDemoExample = exampleId;
+    transport.postMessage({ type: 'selectDemoExample', payload: { id: exampleId } });
+  }
+
+  function handleDemoExampleReset() {
+    selectedDemoExample = 'glsl';
+    transport.postMessage({ type: 'resetDemoState' });
+  }
+
+  function handleDemoExplorerSelect(shader: { path: string }) {
+    const id = shader.path.replace('demo://', '');
+    handleDemoExampleSelect(id);
   }
 
   function handleOpenInNewTab(bufferName: string, mode: "active" | "beside") {
@@ -978,6 +1033,12 @@
   }
 
   function handleShaderSource(event: MessageEvent) {
+    if (demoMode) {
+      const demoExampleId = demoExampleIdForPath(event.data.path);
+      if (demoExampleId) {
+        selectedDemoExample = demoExampleId;
+      }
+    }
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
     if (!locked || (
@@ -1418,6 +1479,8 @@
   let configEl: HTMLElement;
   let performanceEl: HTMLElement;
   let recordingEl: HTMLElement;
+  let editorEl = $state<HTMLElement>(undefined!);
+  let demoExplorerEl = $state<HTMLElement>(undefined!);
 
   function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
     return (container) => {
@@ -1438,10 +1501,12 @@
   const mountConfig = createMountFn(() => configEl);
   const mountPerformance = createMountFn(() => performanceEl);
   const mountRecording = createMountFn(() => recordingEl);
+  const mountEditor = createMountFn(() => editorEl);
+  const mountDemoExplorer = createMountFn(() => demoExplorerEl);
 
   onDestroy(() => {
     resetVariablePreview();
-    if (transport?.getType() === 'websocket') {
+    if (transport?.getType() !== 'vscode') {
       releaseWebLayoutSlot();
     }
     if (recordingManager) {
@@ -1469,7 +1534,7 @@
 </script>
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
-  <div class="dockview-panel-source" bind:this={previewEl}>
+  <div class="dockview-panel-source" bind:this={previewEl} data-testid={demoMode ? 'demo-preview' : undefined}>
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -1485,24 +1550,26 @@
     {/if}
     {#if initialized}
       {#key editorFilePath}
-        <EditorOverlay
-          isVisible={editorOverlayVisible}
-          bottomInset={previewAlone && previewVisible ? 44 : 0}
-          shaderCode={editorFileCode}
-          shaderPath={editorFilePath}
-          {transport}
-          onCodeChange={handleEditorCodeChange}
-          compileMode={$compileModeStore.mode}
-          config={currentConfig}
-          customUniformInfo={authoringUniformInfo}
-          {slangModules}
-          vimMode={editorVimMode}
-          bufferNames={editorBufferNames}
-          activeBufferName={editorBufferName}
-          onBufferSwitch={handleOverlayBufferSwitch}
-          onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
-          {errors}
-        />
+        {#if !demoMode}
+          <EditorOverlay
+            isVisible={editorOverlayVisible}
+            bottomInset={previewAlone && previewVisible ? 44 : 0}
+            shaderCode={editorFileCode}
+            shaderPath={editorFilePath}
+            {transport}
+            onCodeChange={handleEditorCodeChange}
+            compileMode={$compileModeStore.mode}
+            config={currentConfig}
+            customUniformInfo={authoringUniformInfo}
+            {slangModules}
+            vimMode={editorVimMode}
+            bufferNames={editorBufferNames}
+            activeBufferName={editorBufferName}
+            onBufferSwitch={handleOverlayBufferSwitch}
+            onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
+            {errors}
+          />
+        {/if}
       {/key}
     {/if}
     {#if initialized && previewAlone && previewVisible}
@@ -1570,6 +1637,46 @@
       />
     {/if}
   </div>
+  {#if demoMode}
+    <div class="dockview-panel-source" bind:this={editorEl} data-testid="demo-editor">
+      {#if initialized}
+        <EditorOverlay
+          isVisible={true}
+          displayMode="pane"
+          topInset={34}
+          shaderCode={editorFileCode}
+          shaderPath={editorFilePath}
+          {transport}
+          onCodeChange={handleEditorCodeChange}
+          compileMode={$compileModeStore.mode}
+          config={currentConfig}
+          customUniformInfo={authoringUniformInfo}
+          {slangModules}
+          vimMode={editorVimMode}
+          bufferNames={editorBufferNames}
+          activeBufferName={editorBufferName}
+          onBufferSwitch={handleOverlayBufferSwitch}
+          onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
+          {errors}
+        />
+        <div class="demo-editor-titlebar" data-testid="demo-titlebar" role="status">
+          <strong>Demo mode</strong>
+          <span>Changes are saved in this browser. Some extension features are unavailable.</span>
+        </div>
+      {/if}
+    </div>
+    <div class="dockview-panel-source" bind:this={demoExplorerEl}>
+      {#if initialized}
+        <ShaderExplorer
+          demoShaders={demoExplorerShaders}
+          demoVscodeApi={demoExplorerVscodeApi}
+          selectedDemoShaderPath={`demo://${selectedDemoExample}`}
+          onDemoShaderSelect={handleDemoExplorerSelect}
+          onDemoReset={handleDemoExampleReset}
+        />
+      {/if}
+    </div>
+  {/if}
 
   <DockviewLayout
     {mountPreview}
@@ -1577,6 +1684,10 @@
     {mountConfig}
     {mountPerformance}
     {mountRecording}
+    {mountEditor}
+    showEditorPanel={demoMode}
+    {mountDemoExplorer}
+    showDemoExplorerPanel={demoMode}
     showDebugPanel={$debugPanelStore.isVisible}
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
@@ -1597,6 +1708,27 @@
 </div>
 
 <style>
+  .demo-editor-titlebar {
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 10px;
+    border-top: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
+    background: transparent;
+    font-size: 12px;
+  }
+
+  .demo-editor-titlebar span {
+    color: var(--vscode-descriptionForeground);
+  }
+
   .dockview-panel-source {
     position: absolute;
     width: 100%;

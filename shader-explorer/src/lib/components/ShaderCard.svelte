@@ -8,21 +8,23 @@
     positionContextMenu,
   } from '../state/contextMenuState.svelte';
 
-  let { shader, vscodeApi, cardSize = 280, refreshAll = false, forceFresh = false, layoutMode = 'grid', onOpen, onCompilationFailed }: {
+  let { shader, vscodeApi, cardSize = 280, refreshAll = false, forceFresh = false, layoutMode = 'grid', compact = false, selected = false, onOpen, onCompilationFailed }: {
     shader: ShaderFile;
     vscodeApi: any;
     cardSize?: number;
     refreshAll?: boolean;
     forceFresh?: boolean;
     layoutMode?: 'grid' | 'row';
+    compact?: boolean;
+    selected?: boolean;
     onOpen?: () => void;
     onCompilationFailed?: () => void;
   } = $props();
 
   const displayName = shader.name.replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, '');
 
-  let width = $derived(layoutMode === 'row' ? 96 : Math.round(cardSize * 2.286));
-  let height = $derived(layoutMode === 'row' ? 54 : Math.round(width * 9 / 16));
+  let width = $derived(layoutMode === 'row' ? (compact ? 72 : 96) : Math.round(cardSize * 2.286));
+  let height = $derived(layoutMode === 'row' ? (compact ? 41 : 54) : Math.round(width * 9 / 16));
 
   const openMenu = $derived(getOpenContextMenu());
   let menuElement = $state<HTMLDivElement | null>(null);
@@ -83,8 +85,12 @@
 <div
   class="shader-card"
   class:row={layoutMode === 'row'}
+  class:compact
+  class:selected
+  data-testid={shader.path.startsWith('demo://') ? `demo-shader-option-${shader.path.slice('demo://'.length)}` : undefined}
   role="button"
   tabindex="0"
+  aria-pressed={selected}
   onclick={() => onOpen?.()}
   oncontextmenu={showContextMenu}
   onkeydown={(e) => e.key === 'Enter' && onOpen?.()}
@@ -97,7 +103,7 @@
       {height}
       {refreshAll}
       {forceFresh}
-      compact={layoutMode === 'grid'}
+      compact={compact || layoutMode === 'grid'}
       onCompilationFailed={onCompilationFailed}
     />
   </div>
@@ -146,11 +152,20 @@
     height: 54px;
   }
 
+  .shader-card.row.compact {
+    height: 41px;
+  }
+
   .shader-card.row .shader-thumbnail {
     width: 96px;
     height: 54px;
     flex-shrink: 0;
     aspect-ratio: unset;
+  }
+
+  .shader-card.row.compact .shader-thumbnail {
+    width: 72px;
+    height: 41px;
   }
 
   .shader-card.row .shader-info {
@@ -161,6 +176,10 @@
     justify-content: center;
     padding: 2px 6px;
     gap: 1px;
+  }
+
+  .shader-card.row.compact .shader-info {
+    padding: 1px 5px;
   }
 
   .shader-card.row .shader-name {
@@ -174,6 +193,11 @@
   .shader-card:hover {
     border-color: var(--vscode-focusBorder);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .shader-card.selected {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
   }
 
   .shader-thumbnail {

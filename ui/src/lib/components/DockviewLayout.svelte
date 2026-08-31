@@ -29,10 +29,14 @@
     mountConfig?: (container: HTMLElement) => (() => void) | void;
     mountPerformance?: (container: HTMLElement) => (() => void) | void;
     mountRecording?: (container: HTMLElement) => (() => void) | void;
+    mountEditor?: (container: HTMLElement) => (() => void) | void;
+    mountDemoExplorer?: (container: HTMLElement) => (() => void) | void;
     showDebugPanel?: boolean;
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
     showRecordingPanel?: boolean;
+    showEditorPanel?: boolean;
+    showDemoExplorerPanel?: boolean;
     transport?: Transport | null;
   }
 
@@ -42,10 +46,14 @@
     mountConfig = () => {},
     mountPerformance = () => {},
     mountRecording = () => {},
+    mountEditor = () => {},
+    mountDemoExplorer = () => {},
     showDebugPanel = false,
     showConfigPanel = false,
     showPerformancePanel = false,
     showRecordingPanel = false,
+    showEditorPanel = false,
+    showDemoExplorerPanel = false,
     transport = null as Transport | null,
   }: Props = $props();
 
@@ -252,6 +260,12 @@
         case "recording":
           mountFn = mountRecording;
           break;
+        case "editor":
+          mountFn = mountEditor;
+          break;
+        case "demo-explorer":
+          mountFn = mountDemoExplorer;
+          break;
         default:
           return;
       }
@@ -282,6 +296,29 @@
       title: "Preview",
       renderer: "always",
     });
+
+    if (showEditorPanel) {
+      api.addPanel({
+        id: "editor",
+        component: "editor",
+        title: "Editor",
+        renderer: "always",
+        position: { referencePanel: "preview", direction: "left" },
+        initialWidth: 520,
+      });
+    }
+
+    if (showDemoExplorerPanel) {
+      api.addPanel({
+        id: "demo-explorer",
+        component: "demo-explorer",
+        title: "Shader Explorer",
+        renderer: "always",
+        position: { referencePanel: showEditorPanel ? "editor" : "preview", direction: "left" },
+        initialWidth: 220,
+        maximumWidth: 260,
+      });
+    }
 
     if (showConfigPanel) {
       addConfigPanel();
@@ -707,7 +744,7 @@
   });
 </script>
 
-<div class="dockview-container" bind:this={containerEl}></div>
+<div class="dockview-container" class:demo-layout={showEditorPanel} bind:this={containerEl}></div>
 
 <style>
   .dockview-container {
@@ -715,6 +752,15 @@
     height: 100%;
     flex: 1;
     overflow: hidden;
+  }
+
+  .dockview-container.demo-layout :global(.dv-sash.dv-enabled) {
+    background: var(--vscode-panel-border);
+  }
+
+  .dockview-container.demo-layout :global(.dv-sash.dv-enabled:hover),
+  .dockview-container.demo-layout :global(.dv-sash.dv-enabled:active) {
+    background: var(--vscode-focusBorder);
   }
 
   /* VS Code theme mapping for dockview */

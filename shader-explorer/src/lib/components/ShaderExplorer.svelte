@@ -10,6 +10,22 @@
     type ShaderSearchResultsMessage,
   } from '../shaderSearch';
 
+  interface Props {
+    demoShaders?: ShaderFile[];
+    demoVscodeApi?: { postMessage: (message: { type: string; path?: string; requestId?: number; [key: string]: unknown }) => void };
+    selectedDemoShaderPath?: string;
+    onDemoShaderSelect?: (shader: ShaderFile) => void;
+    onDemoReset?: () => void;
+  }
+
+  let {
+    demoShaders = undefined,
+    demoVscodeApi = undefined,
+    selectedDemoShaderPath = '',
+    onDemoShaderSelect = (_shader: ShaderFile) => {},
+    onDemoReset = () => {},
+  }: Props = $props();
+
   let vscode: any = $state(null);
   let shaders = $state<ShaderFile[]>([]);
   let search = $state('');
@@ -21,7 +37,9 @@
   let currentPage = $state(1);
   let pageSize = $state(20);
   let cardSize = $state(200); // Card width in pixels (100-1000)
-  let layoutMode = $state<'grid' | 'row'>('grid');
+  // The demo lives in a narrow docked panel; rows retain the package's actual
+  // cards while keeping the editor and preview usable.
+  let layoutMode = $state<'grid' | 'row'>(demoShaders ? 'row' : 'grid');
   let showOptions = $state(false);
   let hideFailedShaders = $state(false);
   let openFilesOnSelect = $state(true);
@@ -118,6 +136,12 @@
   }
 
   onMount(() => {
+    if (demoShaders) {
+      vscode = demoVscodeApi;
+      shaders = demoShaders;
+      stateRestored = true;
+      return;
+    }
     if (typeof acquireVsCodeApi !== 'undefined') {
       vscode = acquireVsCodeApi();
       searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
@@ -206,6 +230,10 @@
   function openShader(shader: ShaderFile) {
     lastClickedPath = shader.path;
     clickGeneration++;
+    if (demoShaders) {
+      onDemoShaderSelect(shader);
+      return;
+    }
     vscode?.postMessage({
       type: openFilesOnSelect ? 'openShader' : 'activateShader',
       path: shader.path,
@@ -239,58 +267,65 @@
 
 </script>
 
-<div class="shader-explorer">
+<div class="shader-explorer" data-testid={demoShaders ? 'demo-shader-explorer' : undefined}>
   <div class="toolbar">
-    <div class="toolbar-actions">
-      <div class="search-container">
-        <input
-          type="text"
-          bind:value={search}
-          placeholder="Search shaders..."
-          class="search-input"
-        />
+    {#if demoShaders}
+      <div class="toolbar-actions demo-toolbar-actions" data-testid="demo-explorer-toolbar">
+        <button class="icon-button" onclick={onDemoReset} title="Reset examples" aria-label="Reset examples">
+          Reset
+        </button>
       </div>
-      <button
-        class="icon-button"
-        onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
-        title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
-      >
-        {layoutMode === 'grid' ? '☰' : '⊞'}
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
-        title="Show Panel"
-        aria-label="Show Panel"
-      >
-        <svg class="panel-icon" viewBox="0 0 16 16" width="14" height="14">
-          <path fill="currentColor" d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/>
-          <rect fill="currentColor" x="4.5" y="5" width="3" height="6"/>
-          <rect fill="currentColor" x="8.5" y="5" width="3" height="3"/>
-        </svg>
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => vscode?.postMessage({ type: 'newShader' })}
-        title="New Shader"
-      >
-        +
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => showOptions = !showOptions}
-        title="Options"
-      >
-        {showOptions ? '✕' : '⚙'}
-      </button>
-      <button class="icon-button" onclick={refreshShaders} title="Refresh">
-        ↻
-      </button>
-      <div class="shader-count">
-        {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
+    {:else}
+      <div class="toolbar-actions">
+        <div class="search-container">
+          <input
+            type="text"
+            bind:value={search}
+            placeholder="Search shaders..."
+            class="search-input"
+          />
+        </div>
+        <button
+          class="icon-button"
+          onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
+          title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
+        >
+          {layoutMode === 'grid' ? '☰' : '⊞'}
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
+          title="Show Panel"
+          aria-label="Show Panel"
+        >
+          <svg class="panel-icon" viewBox="0 0 16 16" width="14" height="14">
+            <path fill="currentColor" d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/>
+            <rect fill="currentColor" x="4.5" y="5" width="3" height="6"/>
+            <rect fill="currentColor" x="8.5" y="5" width="3" height="3"/>
+          </svg>
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => vscode?.postMessage({ type: 'newShader' })}
+          title="New Shader"
+        >
+          +
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => showOptions = !showOptions}
+          title="Options"
+        >
+          {showOptions ? '✕' : '⚙'}
+        </button>
+        <button class="icon-button" onclick={refreshShaders} title="Refresh">
+          ↻
+        </button>
+        <div class="shader-count">
+          {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
+        </div>
       </div>
-    </div>
-    {#if showOptions}
+      {#if showOptions}
       <div class="options-divider"></div>
       <div class="toolbar-actions">
         {#if layoutMode === 'grid'}
@@ -336,6 +371,7 @@
           <span class="checkbox-label">Open Files</span>
         </label>
       </div>
+      {/if}
     {/if}
   </div>
 
@@ -372,6 +408,8 @@
             {refreshAll}
             forceFresh={shader.path === lastClickedPath}
             {layoutMode}
+            compact={Boolean(demoShaders)}
+            selected={selectedDemoShaderPath === shader.path}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}
             onCompilationFailed={() => handleCompilationFailure(shader)}

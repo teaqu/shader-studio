@@ -16,4 +16,7 @@
   });
 </script>
 
-<ShaderViewer onInitialized={handleAppInitialized} />
+<ShaderViewer
+  onInitialized={handleAppInitialized}
+  demoMode={import.meta.env.VITE_SHADER_STUDIO_DEMO === 'true'}
+/>

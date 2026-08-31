@@ -157,6 +157,30 @@ describe('DockviewLayout', () => {
     });
   }
 
+  it('adds an editor to the left of the preview when requested', async () => {
+    renderLayout({ mountEditor: () => {}, showEditorPanel: true });
+    await tick();
+
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'editor',
+      component: 'editor',
+      position: { referencePanel: 'preview', direction: 'left' },
+    }));
+  });
+
+  it('adds the demo shader explorer to the left of the editor when requested', async () => {
+    renderLayout({ mountEditor: () => {}, showEditorPanel: true, mountDemoExplorer: () => {}, showDemoExplorerPanel: true });
+    await tick();
+
+    expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'demo-explorer',
+      component: 'demo-explorer',
+      position: { referencePanel: 'editor', direction: 'left' },
+      initialWidth: 220,
+      maximumWidth: 260,
+    }));
+  });
+
   function createMockTransport() {
     let onMessageHandler: ((event: MessageEvent) => void) | null = null;
     return {

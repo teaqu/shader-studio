@@ -1,4 +1,5 @@
 import type { Transport } from './MessageTransport';
+import { DemoTransport } from './DemoTransport';
 import { VSCodeTransport } from './VSCodeTransport';
 import { WebSocketTransport } from './WebSocketTransport';
 
@@ -7,9 +8,13 @@ export function createTransport(): Transport {
 
   if (isVSCodeContext) {
     return new VSCodeTransport();
-  } else {
-    return new WebSocketTransport();
   }
+
+  if (import.meta.env.VITE_SHADER_STUDIO_DEMO === 'true') {
+    return new DemoTransport();
+  }
+
+  return new WebSocketTransport();
 }
 
 export function isVSCodeEnvironment(): boolean {
