@@ -18,7 +18,7 @@ export class MouseManager {
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
-    if (!this.enabled || !this.isMouseDown || !this.canvas) {
+    if (!this.enabled || !this.canvas) {
       return;
     }
     const { x, y } = this.getCanvasPosition(e, this.canvas);

@@ -183,7 +183,7 @@ describe("MouseManager", () => {
       expect(mouse[1]).toBe(450); // 600 - 150
     });
 
-    it("should not update xy when pointer is not down", () => {
+    it("should update xy when hovering without a button down", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
@@ -193,8 +193,8 @@ describe("MouseManager", () => {
       );
 
       const mouse = mouseManager.getMouse();
-      expect(mouse[0]).toBe(0);
-      expect(mouse[1]).toBe(0);
+      expect(mouse[0]).toBe(200);
+      expect(mouse[1]).toBe(450);
     });
 
     it("should not update zw during pointermove (only on pointerdown)", () => {
@@ -233,7 +233,7 @@ describe("MouseManager", () => {
       expect(mouse[3]).toBe(-400); // -(600-200) = -400
     });
 
-    it("should stop updating xy on pointermove after pointerup", () => {
+    it("should keep updating xy on pointermove after pointerup", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
@@ -242,14 +242,12 @@ describe("MouseManager", () => {
       );
       canvas.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
 
-      const posAfterUp = mouseManager.getMouse()[0];
-
       canvas.dispatchEvent(
         new PointerEvent("pointermove", { clientX: 500, clientY: 500, pointerId: 1 }),
       );
 
-      // xy should not have changed
-      expect(mouseManager.getMouse()[0]).toBe(posAfterUp);
+      expect(mouseManager.getMouse()[0]).toBe(500);
+      expect(mouseManager.getMouse()[1]).toBe(100);
     });
 
     it("should handle multiple down/up cycles", () => {
