@@ -152,8 +152,24 @@ float4 sampleIChannel0(float2 uv)
 {
     return float4(0.0, 0.0, 0.0, 1.0);
 }
+float4 sampleIChannel0Lod(float2 uv, float lod)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
 
 float4 sampleIChannel1(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel1Lod(float2 uv, float lod)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel1Grad(float2 uv, float2 ddxUv, float2 ddyUv)
 {
     return float4(0.0, 0.0, 0.0, 1.0);
 }
@@ -162,8 +178,24 @@ float4 sampleIChannel2(float2 uv)
 {
     return float4(0.0, 0.0, 0.0, 1.0);
 }
+float4 sampleIChannel2Lod(float2 uv, float lod)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel2Grad(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
 
 float4 sampleIChannel3(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel3Lod(float2 uv, float lod)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel3Grad(float2 uv, float2 ddxUv, float2 ddyUv)
 {
     return float4(0.0, 0.0, 0.0, 1.0);
 }
@@ -224,6 +256,59 @@ float4 fragmentMain(float4 fragCoord : SV_Position) : SV_Target
     expect(source).toContain('float4 sampleNoiseMapVertex(float2 uv)');
     expect(source).toContain('#define sampleNoiseMap sampleNoiseMapVertex');
     expect(source).toContain('#undef sampleNoiseMap');
+  });
+
+  it('emits mip-preserving Lod and Grad helpers beside the implicit-LOD sampler', () => {
+    const source = wrapSlangImageSource(image, { channels: [{ slot: 0, key: 'iChannel0' }] });
+
+    expect(source).toContain('float4 sampleIChannel0Lod(float2 uv, float lod)');
+    expect(source).toContain(
+      'return iChannel0.SampleLevel(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), lod);',
+    );
+    expect(source).toContain('float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)');
+    // The helper flips v, so both gradients must flip with it.
+    expect(source).toContain(
+      'return iChannel0.SampleGrad(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), '
+      + 'float2(ddxUv.x, -ddxUv.y), float2(ddyUv.x, -ddyUv.y));',
+    );
+  });
+
+  it('exposes Lod and Grad helpers under a custom channel name', () => {
+    const source = wrapSlangImageSource(image, { channels: [{ slot: 2, key: 'noiseMap' }] });
+
+    expect(source).toContain('float4 sampleNoiseMapLod(float2 uv, float lod)');
+    expect(source).toContain('return sampleIChannel2Lod(uv, lod);');
+    expect(source).toContain('float4 sampleNoiseMapGrad(float2 uv, float2 ddxUv, float2 ddyUv)');
+    expect(source).toContain('return sampleIChannel2Grad(uv, ddxUv, ddyUv);');
+  });
+
+  it('emits Lod and Grad helpers for cubemap channels', () => {
+    const source = wrapSlangImageSource(image, {
+      channels: [{ slot: 1, key: 'environment', kind: 'cubemap' }],
+    });
+
+    expect(source).toContain('float4 sampleIChannel1Lod(float3 dir, float lod)');
+    expect(source).toContain('return environment.SampleLevel(environmentSampler, dir, lod);');
+    expect(source).toContain('float4 sampleIChannel1Grad(float3 dir, float3 ddxDir, float3 ddyDir)');
+    expect(source).toContain('return environment.SampleGrad(environmentSampler, dir, ddxDir, ddyDir);');
+  });
+
+  it('aliases Lod and Grad helpers to their vertex variants inside a vertex hook', () => {
+    const source = wrapSlangImageSource(image, {
+      channels: [{ slot: 0, key: 'noiseMap' }],
+      vertexCode: 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += sampleIChannel0Lod(uv, 2.0).x; }',
+    });
+
+    expect(source).toContain('#define sampleIChannel0Lod sampleIChannel0LodVertex');
+    expect(source).toContain('#define sampleIChannel0Grad sampleIChannel0GradVertex');
+    expect(source).toContain('#define sampleNoiseMapLod sampleNoiseMapLodVertex');
+    expect(source).toContain('#define sampleNoiseMapGrad sampleNoiseMapGradVertex');
+    expect(source).toContain('#undef sampleIChannel0Grad');
+    // Supplied gradients work in a vertex stage, where implicit ones do not.
+    expect(source).toContain(`float4 sampleIChannel0GradVertex(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return sampleIChannel0Grad(uv, ddxUv, ddyUv);
+}`);
   });
 
   it('uses explicit-LOD helpers for cubemap channels in vertex hooks', () => {

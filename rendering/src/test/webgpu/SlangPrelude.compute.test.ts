@@ -66,6 +66,27 @@ describe("wrapSlangComputeSource", () => {
     expect(wrapped).not.toContain("computeMainEntry");
   });
 
+  it("keeps gradient sampling available in a compute pass", () => {
+    const wrapped = wrapSlangComputeSource("void computeMain(uint3 tid) {}", {
+      workgroupSize: [8, 8, 1],
+      outputLayers: 0,
+      hasOutput: false,
+      channels: [{ slot: 0, key: "iChannel0" }],
+    });
+
+    // SampleGrad takes its derivatives as arguments, so it is legal here even
+    // though implicit-LOD Sample is not.
+    expect(wrapped).toContain("float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
+    expect(wrapped).toContain(
+      "return iChannel0.SampleGrad(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), "
+      + "float2(ddxUv.x, -ddxUv.y), float2(ddyUv.x, -ddyUv.y));",
+    );
+    expect(wrapped).toContain("float4 sampleIChannel0Lod(float2 uv, float lod)");
+    expect(wrapped).toContain(
+      "return iChannel0.SampleLevel(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), lod);",
+    );
+  });
+
   it("allocates channel, storage, output, and dispatch bindings without conflicts", () => {
     const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [

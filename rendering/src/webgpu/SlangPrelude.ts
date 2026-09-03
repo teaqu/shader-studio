@@ -111,7 +111,11 @@ function buildVertexChannelAliases(channels: SlangChannelBinding[]): { define: s
       const customHelperName = channel.key === `iChannel${channel.slot}`
         ? null
         : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
-      return [helperName, customHelperName].filter((name): name is string => name !== null);
+      // Lod and Grad follow their base helper: a vertex stage has no
+      // derivatives, so both resolve to the level-0 vertex variants.
+      return [helperName, customHelperName]
+        .filter((name): name is string => name !== null)
+        .flatMap((name) => [name, `${name}Lod`, `${name}Grad`]);
     });
 
   return {
@@ -320,6 +324,10 @@ struct ShaderToyChannelCube
       const customHelperName = channel.key === `iChannel${channel.slot}`
         ? null
         : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
+      // Gradient sampling takes its derivatives as arguments rather than from
+      // the quad, so unlike implicit-LOD Sample it is legal in every stage.
+      const gradExpression2D = `${channel.key}.SampleGrad(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), float2(ddxUv.x, -ddxUv.y), float2(ddyUv.x, -ddyUv.y))`;
+      const gradExpressionCube = `${channel.key}.SampleGrad(${channel.key}Sampler, dir, ddxDir, ddyDir)`;
       const objectAccessor = `
 ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
 {
@@ -346,6 +354,22 @@ float4 ${helperName}Vertex(float3 dir)
 {
     return ${channel.key}.SampleLevel(${channel.key}Sampler, dir, 0.0);
 }
+float4 ${helperName}Lod(float3 dir, float lod)
+{
+    return ${channel.key}.SampleLevel(${channel.key}Sampler, dir, lod);
+}
+float4 ${helperName}LodVertex(float3 dir, float lod)
+{
+    return ${helperName}Lod(dir, lod);
+}
+float4 ${helperName}Grad(float3 dir, float3 ddxDir, float3 ddyDir)
+{
+    return ${gradExpressionCube};
+}
+float4 ${helperName}GradVertex(float3 dir, float3 ddxDir, float3 ddyDir)
+{
+    return ${helperName}Grad(dir, ddxDir, ddyDir);
+}
 ${customHelperName ? `float4 ${customHelperName}(float3 dir)
 {
     return ${helperName}(dir);
@@ -353,6 +377,22 @@ ${customHelperName ? `float4 ${customHelperName}(float3 dir)
 float4 ${customHelperName}Vertex(float3 dir)
 {
     return ${helperName}Vertex(dir);
+}
+float4 ${customHelperName}Lod(float3 dir, float lod)
+{
+    return ${helperName}Lod(dir, lod);
+}
+float4 ${customHelperName}LodVertex(float3 dir, float lod)
+{
+    return ${helperName}LodVertex(dir, lod);
+}
+float4 ${customHelperName}Grad(float3 dir, float3 ddxDir, float3 ddyDir)
+{
+    return ${helperName}Grad(dir, ddxDir, ddyDir);
+}
+float4 ${customHelperName}GradVertex(float3 dir, float3 ddxDir, float3 ddyDir)
+{
+    return ${helperName}GradVertex(dir, ddxDir, ddyDir);
 }
 ` : ""}${objectAccessor}
 `;
@@ -372,6 +412,24 @@ float4 ${helperName}Vertex(float2 uv)
 {
     return ${channel.key}.SampleLevel(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), 0.0);
 }
+float4 ${helperName}Lod(float2 uv, float lod)
+{
+    return ${channel.key}.SampleLevel(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), lod);
+}
+float4 ${helperName}LodVertex(float2 uv, float lod)
+{
+    return ${helperName}Lod(uv, lod);
+}
+float4 ${helperName}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    // The v flip above negates the v component of both derivatives, so the
+    // caller passes gradients in its own bottom-left-origin uv space.
+    return ${gradExpression2D};
+}
+float4 ${helperName}GradVertex(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return ${helperName}Grad(uv, ddxUv, ddyUv);
+}
 ${customHelperName ? `float4 ${customHelperName}(float2 uv)
 {
     return ${helperName}(uv);
@@ -379,6 +437,22 @@ ${customHelperName ? `float4 ${customHelperName}(float2 uv)
 float4 ${customHelperName}Vertex(float2 uv)
 {
     return ${helperName}Vertex(uv);
+}
+float4 ${customHelperName}Lod(float2 uv, float lod)
+{
+    return ${helperName}Lod(uv, lod);
+}
+float4 ${customHelperName}LodVertex(float2 uv, float lod)
+{
+    return ${helperName}LodVertex(uv, lod);
+}
+float4 ${customHelperName}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return ${helperName}Grad(uv, ddxUv, ddyUv);
+}
+float4 ${customHelperName}GradVertex(float2 uv, float2 ddxUv, float2 ddyUv)
+{
+    return ${helperName}GradVertex(uv, ddxUv, ddyUv);
 }
 ` : ""}${objectAccessor}
 `;
@@ -395,6 +469,14 @@ float4 ${customHelperName}Vertex(float2 uv)
   const fallbackHelpers = [0, 1, 2, 3]
     .filter((slot) => !claimedStandardHelpers.has(slot))
     .map((slot) => `float4 sampleIChannel${slot}(float2 uv)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel${slot}Lod(float2 uv, float lod)
+{
+    return float4(0.0, 0.0, 0.0, 1.0);
+}
+float4 sampleIChannel${slot}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
 {
     return float4(0.0, 0.0, 0.0, 1.0);
 }

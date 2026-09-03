@@ -585,6 +585,37 @@ float4 mainImage(float2 p)
     expect(JSON.stringify(completions.find((item) => item.label === "sampleNoise")?.documentation)).toContain("input channel 0");
   });
 
+  it("offers mip-preserving Lod and Grad sampling helpers for every channel", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({
+      ...environment,
+      resources: [
+        { name: "noise", kind: "texture-2d", slot: 0 },
+        { name: "sky", kind: "texture-cube", slot: 1 },
+      ],
+    });
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float4 c = float4(0.0);" });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: 11 } });
+    const detail = (label: string) => completions.find((item) => item.label === label)?.detail;
+
+    expect(detail("sampleIChannel0Lod")).toBe("float4 sampleIChannel0Lod(float2 uv, float lod)");
+    expect(detail("sampleIChannel0Grad"))
+      .toBe("float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
+    expect(detail("sampleNoiseLod")).toBe("float4 sampleNoiseLod(float2 uv, float lod)");
+    expect(detail("sampleNoiseGrad"))
+      .toBe("float4 sampleNoiseGrad(float2 uv, float2 ddxUv, float2 ddyUv)");
+    expect(detail("sampleIChannel1Lod")).toBe("float4 sampleIChannel1Lod(float3 dir, float lod)");
+    expect(detail("sampleIChannel1Grad"))
+      .toBe("float4 sampleIChannel1Grad(float3 dir, float3 ddxDir, float3 ddyDir)");
+    // Unassigned slots keep their black-return stubs in all three shapes.
+    expect(detail("sampleIChannel2Lod")).toBe("float4 sampleIChannel2Lod(float2 uv, float lod)");
+    expect(detail("sampleIChannel2Grad"))
+      .toBe("float4 sampleIChannel2Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
+  });
+
   it("documents generally useful math, bit, conversion, and packing helpers", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);

@@ -663,8 +663,13 @@ describe("SlangCompiler", () => {
     const wrapped = onLoad.mock.calls[0][0] as string;
     for (let slot = 0; slot < 4; slot++) {
       expect(wrapped).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
+      expect(wrapped).toContain(`float4 sampleIChannel${slot}Lod(float2 uv, float lod)`);
+      expect(wrapped).toContain(
+        `float4 sampleIChannel${slot}Grad(float2 uv, float2 ddxUv, float2 ddyUv)`,
+      );
     }
-    expect(wrapped.match(/return float4\(0\.0, 0\.0, 0\.0, 1\.0\);/g)).toHaveLength(4);
+    // Three stubs per unconfigured slot: the base helper plus Lod and Grad.
+    expect(wrapped.match(/return float4\(0\.0, 0\.0, 0\.0, 1\.0\);/g)).toHaveLength(12);
     expect(wrapped).not.toContain("Texture2D<float4> iChannel0;");
     expect(wrapped).not.toContain("sampleIChannel4");
   });

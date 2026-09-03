@@ -1177,7 +1177,27 @@ function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): read
       ? "a cube-map direction"
       : "normalized UV coordinates; Shader Studio flips the V coordinate to match texture orientation";
     const description = `Samples Shader Studio input channel ${binding.slot} (${binding.resource.name}) using ${coordinates}.`;
+    const isCube = identifiers.samplingParameterType === "float3";
+    const lodParameters = `${parameter}, float lod`;
+    const gradParameters = isCube
+      ? "float3 dir, float3 ddxDir, float3 ddyDir"
+      : "float2 uv, float2 ddxUv, float2 ddyUv";
+    const lodDescription = `${description} Reads the given mip level, so it is safe inside non-uniform control flow.`;
+    const gradDescription = `${description} Selects the mip level from gradients taken in uniform control flow; a compute or vertex stage reads mip level zero instead.`;
+    const addSamplingVariants = (helper: string, variantDescription: string): void => {
+      functions.set(`${helper}Lod`, intrinsic(
+        `${helper}Lod`,
+        `float4 ${helper}Lod(${lodParameters})`,
+        `${variantDescription} Reads the given mip level, so it is safe inside non-uniform control flow.`,
+      ));
+      functions.set(`${helper}Grad`, intrinsic(
+        `${helper}Grad`,
+        `float4 ${helper}Grad(${gradParameters})`,
+        `${variantDescription} Selects the mip level from gradients taken in uniform control flow; a compute or vertex stage reads mip level zero instead.`,
+      ));
+    };
     functions.set(identifiers.slotHelper, intrinsic(identifiers.slotHelper, `float4 ${identifiers.slotHelper}(${parameter})`, description));
+    addSamplingVariants(identifiers.slotHelper, description);
     functions.set(identifiers.slotVertexHelper, intrinsic(
       identifiers.slotVertexHelper,
       `float4 ${identifiers.slotVertexHelper}(${parameter})`,
@@ -1194,6 +1214,10 @@ function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): read
         `float4 ${identifiers.aliasVertexHelper}(${parameter})`,
         `Named vertex-stage helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}. It samples mip level zero.`,
       ));
+      addSamplingVariants(
+        identifiers.aliasHelper,
+        `Named sampling helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}.`,
+      );
     }
   }
   for (let slot = 0; slot < 4; slot++) {
@@ -1201,10 +1225,21 @@ function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): read
       continue;
     }
     const name = `sampleIChannel${slot}`;
+    const unassigned = `With no resource assigned to this slot, it returns opaque black.`;
     functions.set(name, intrinsic(
       name,
       `float4 ${name}(float2 uv)`,
-      `Samples Shader Studio input channel ${slot}. With no resource assigned to this slot, it returns opaque black.`,
+      `Samples Shader Studio input channel ${slot}. ${unassigned}`,
+    ));
+    functions.set(`${name}Lod`, intrinsic(
+      `${name}Lod`,
+      `float4 ${name}Lod(float2 uv, float lod)`,
+      `Samples Shader Studio input channel ${slot} at an explicit mip level. ${unassigned}`,
+    ));
+    functions.set(`${name}Grad`, intrinsic(
+      `${name}Grad`,
+      `float4 ${name}Grad(float2 uv, float2 ddxUv, float2 ddyUv)`,
+      `Samples Shader Studio input channel ${slot} using explicit gradients. ${unassigned}`,
     ));
   }
   return [...functions.values()];

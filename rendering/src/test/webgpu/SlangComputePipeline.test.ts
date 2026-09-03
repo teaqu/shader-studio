@@ -158,7 +158,9 @@ describe("SlangComputePipeline", () => {
     const errors = await compute.rebuild("// exact wgsl");
 
     expect(errors).toEqual([]);
-    expect(device.createShaderModule).toHaveBeenCalledWith({ code: "// exact wgsl" });
+    expect(device.createShaderModule).toHaveBeenCalledWith({
+      code: "diagnostic(off, derivative_uniformity);\n// exact wgsl",
+    });
     expect(device.createPipelineLayout).toHaveBeenCalledWith({
       bindGroupLayouts: [device.createBindGroupLayout.mock.results[0].value],
     });

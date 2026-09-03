@@ -1385,7 +1385,7 @@ describe("SlangPassPipeline", () => {
     expect(() => pass.dispose()).not.toThrow();
   });
 
-  it("passes the exact WGSL source to createShaderModule", async () => {
+  it("passes the WGSL source to createShaderModule under a derivative-uniformity filter", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {
       name: "Image",
@@ -1399,7 +1399,11 @@ describe("SlangPassPipeline", () => {
     const wgsl = "// the exact wgsl source\nfn main() {}";
     await pass.rebuild(wgsl);
 
-    expect(device.createShaderModule).toHaveBeenCalledWith({ code: wgsl });
+    // ShaderToy ports sample channels inside per-pixel branches; the filter
+    // keeps that legal so they keep automatic mip selection.
+    expect(device.createShaderModule).toHaveBeenCalledWith({
+      code: `diagnostic(off, derivative_uniformity);\n${wgsl}`,
+    });
   });
 
   it("configures the render pipeline with the Slang entry points and constructor format", async () => {

@@ -7,6 +7,7 @@ import type {
   CaptureResult,
   CaptureUniforms,
 } from "../capture/VariableCapturer";
+import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import type { ConfigInput, DebugInstrumentationPlan } from "@shader-studio/types";
 import type { StorageBindingNode } from "../types/PassGraph";
 import type { AsyncSlangCompiler } from "./AsyncSlangCompiler";
@@ -545,7 +546,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     let pipeline: GPURenderPipeline;
     let bindGroupLayout: GPUBindGroupLayout;
     try {
-      const shaderModule = this.device.createShaderModule({ code: compileResult.wgsl });
+      const shaderModule = this.device.createShaderModule({
+        code: allowNonUniformDerivatives(compileResult.wgsl),
+      });
       bindGroupLayout = this.device.createBindGroupLayout({
         entries: this.buildBindGroupLayoutEntries(channels, storage),
       });

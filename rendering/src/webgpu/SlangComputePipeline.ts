@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
 import type { StorageBindingNode } from "../types/PassGraph";
+import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import {
   type SlangChannelResource,
 } from "./SlangPassPipeline";
@@ -52,7 +53,9 @@ export class SlangComputePipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
-    const shaderModule = this.device.createShaderModule({ code: wgsl });
+    const shaderModule = this.device.createShaderModule({
+      code: allowNonUniformDerivatives(wgsl),
+    });
     const bindGroupLayout = this.device.createBindGroupLayout({
       entries: this.buildBindGroupLayoutEntries(),
     });

@@ -8,7 +8,7 @@ Each pass has its own channels. `iChannel0` can refer to a different input in an
 
 Shader Studio also provides metadata accessors: `iCh0`, `iCh1`, and so on. They are available for every configured channel.
 
-Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. Sample a configured channel with the generated helper, such as `sampleIChannel0(uv)`. Vertex sampling uses mip level 0. Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
+Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. Sample a configured channel with the generated helper, such as `sampleIChannel0(uv)`. Vertex sampling uses mip level 0 unless you pick a level yourself — see [Sampling Channels in Slang](#sampling-channels-in-slang). Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
 
 ## What Channels Can Do
 
@@ -49,6 +49,25 @@ Use `iChannelResolution[N].xy` when the input has a different size than the canv
 vec2 inputUV = fragCoord / iChannelResolution[0].xy;
 vec4 inputColor = texture(iChannel0, inputUV);
 ```
+
+## Sampling Channels in Slang
+
+Slang passes read a channel through a generated helper, named after the slot or after the channel if you renamed it:
+
+```slang
+float4 inputColor = sampleIChannel0(uv);   // a channel named "noise" also gets sampleNoise(uv)
+```
+
+Like GLSL's `texture()`, it picks a mip level for you, anywhere in the shader — including inside an `if` that only some pixels take.
+
+To pick the level yourself:
+
+| Helper | Use it when |
+|--------|-------------|
+| `sampleIChannel0Lod(uv, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
+| `sampleIChannel0Grad(uv, ddxUv, ddyUv)` | You want the level chosen from gradients you supply, rather than from the pixel's neighbours. |
+
+Renamed channels get both (`sampleNoiseLod`); cubemap versions take a direction. Compute and vertex passes have no neighbours to derive a level from, so plain `sampleIChannel0` reads level 0 there and these two are how you choose.
 
 ## Choosing a Channel Type
 

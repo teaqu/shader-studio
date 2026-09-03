@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
 import type { StorageBindingNode } from "../types/PassGraph";
+import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import type { GeometryType } from "@shader-studio/types";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
@@ -65,7 +66,9 @@ export class SlangPassPipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
-    const shaderModule = this.device.createShaderModule({ code: wgsl });
+    const shaderModule = this.device.createShaderModule({
+      code: allowNonUniformDerivatives(wgsl),
+    });
     // An explicit layout (instead of layout:"auto") covers every DECLARED
     // channel binding. With "auto", a shader that declares a channel but
     // never statically uses it gets a layout without those bindings, and the
