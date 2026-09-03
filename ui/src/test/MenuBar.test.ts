@@ -1742,9 +1742,35 @@ describe('MenuBar Component', () => {
         tooltip: { width: 300, height: 200 },
       });
 
-      // 800 - 200 - 8 above the anchor, sharing its left edge.
-      expect(tooltip.style.top).toBe('592px');
+      // 800 - 200: flush with the top of the anchor, sharing its left edge.
+      expect(tooltip.style.top).toBe('600px');
       expect(tooltip.style.left).toBe('40px');
+    });
+
+    /**
+     * The tooltip is hovered to reach its copy button, and it is portalled out
+     * of the anchor, so any gap between the two is dead space: the pointer
+     * crossing it leaves the anchor for the body, which disarms the hover and
+     * closes the tooltip before it can be reached.
+     */
+    it('sits flush against its anchor when it opens above, so the pointer can cross into it', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 800, bottom: 830, left: 40 },
+        tooltip: { width: 300, height: 200 },
+      });
+
+      // Its bottom edge meets the anchor's top edge: no dead space between.
+      expect(Number.parseFloat(tooltip.style.top) + 200).toBe(800);
+    });
+
+    it('sits flush against its anchor when it opens below', async () => {
+      const tooltip = await positionTooltip({
+        anchor: { top: 60, bottom: 90, left: 40 },
+        tooltip: { width: 300, height: 400 },
+        viewport: { width: 1200, height: 900 },
+      });
+
+      expect(Number.parseFloat(tooltip.style.top)).toBe(90);
     });
 
     it('pulls back from the right edge rather than overflowing it', async () => {
@@ -1765,7 +1791,7 @@ describe('MenuBar Component', () => {
         viewport: { width: 1200, height: 900 },
       });
 
-      expect(tooltip.style.top).toBe('98px');
+      expect(tooltip.style.top).toBe('90px');
     });
 
     it('caps its height to the side it opens on, not the whole viewport', async () => {
@@ -1775,8 +1801,8 @@ describe('MenuBar Component', () => {
         viewport: { width: 500, height: 900 },
       });
 
-      // 400 above the anchor, less the 8px margin at each end.
-      expect(tooltip.style.maxHeight).toBe('384px');
+      // 400 above the anchor, less the 8px margin at the viewport edge.
+      expect(tooltip.style.maxHeight).toBe('392px');
       expect(tooltip.style.maxWidth).toBe('484px');
     });
 

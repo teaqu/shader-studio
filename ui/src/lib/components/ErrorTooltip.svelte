@@ -28,7 +28,13 @@
   let maxHeight = $state<number | null>(null);
   let maxWidth = $state<number | null>(null);
 
-  /** Gap kept between the tooltip and both the anchor and the viewport edge. */
+  /**
+   * Gap kept between the tooltip and the viewport edge. It is deliberately not
+   * applied against the anchor: the tooltip is portalled to the body and is
+   * hovered to reach its copy button, so a gap there is dead space that hands
+   * the pointer to the body mid-crossing, disarming the hover and closing the
+   * tooltip before it can be reached.
+   */
   const MARGIN = 8;
   const MAX_HEIGHT = 640;
   const MAX_WIDTH = 1100;
@@ -62,8 +68,8 @@
     // Sized to the side it opens on rather than to the viewport: a tooltip
     // taller than the space available would otherwise cover its own anchor and
     // swallow the hover that opened it.
-    const spaceAbove = anchorRect.top - MARGIN * 2;
-    const spaceBelow = window.innerHeight - anchorRect.bottom - MARGIN * 2;
+    const spaceAbove = anchorRect.top - MARGIN;
+    const spaceBelow = window.innerHeight - anchorRect.bottom - MARGIN;
     const opensAbove = spaceAbove >= rect.height || spaceAbove >= spaceBelow;
     const available = Math.max(0, opensAbove ? spaceAbove : spaceBelow);
 
@@ -71,7 +77,7 @@
     const height = Math.min(rect.height, maxHeight);
 
     position = {
-      top: opensAbove ? anchorRect.top - MARGIN - height : anchorRect.bottom + MARGIN,
+      top: opensAbove ? anchorRect.top - height : anchorRect.bottom,
       left: Math.max(MARGIN, Math.min(anchorRect.left, window.innerWidth - rect.width - MARGIN)),
     };
   }

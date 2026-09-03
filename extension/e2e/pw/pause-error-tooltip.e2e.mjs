@@ -47,6 +47,7 @@ test.describe('pause error tooltip geometry', () => {
       const tooltip = document.querySelector('.error-tooltip');
       return {
         viewport: { height: window.innerHeight, width: window.innerWidth },
+        anchor: box(document.querySelector('.pause-button-container')),
         tooltip: {
           ...box(tooltip),
           maxHeight: parseFloat(tooltip.style.maxHeight),
@@ -93,5 +94,35 @@ test.describe('pause error tooltip geometry', () => {
 
   test('splits the compile into one block per diagnostic', () => {
     expect(measured.blocks.length).toBeGreaterThan(1);
+  });
+
+  test('opens flush against the pause button, leaving no gap to cross', () => {
+    // The tooltip is portalled to the body and is hovered to reach its copy
+    // button. Any gap between the two is dead space: crossing it hands the
+    // pointer to the body, which disarms the hover and closes the tooltip.
+    const anchorEdge = measured.tooltip.top < measured.anchor.top
+      ? measured.anchor.top
+      : measured.anchor.bottom;
+    const touchingEdge = measured.tooltip.top < measured.anchor.top
+      ? measured.tooltip.bottom
+      : measured.tooltip.top;
+
+    expect(Math.abs(touchingEdge - anchorEdge)).toBeLessThanOrEqual(1);
+  });
+
+  test('can be walked into from the pause button to copy the errors', async ({ vscode }) => {
+    const frame = await vscode.shaderFrame();
+
+    await frame.getByLabel('Toggle pause').hover();
+    await expect.poll(() => frame.locator('.error-tooltip.visible').count()).toBeGreaterThan(0);
+
+    // The real gesture: leave the button for the tooltip. This is what the gap
+    // used to break — the tooltip closed before the pointer arrived.
+    await frame.getByLabel('Copy error to clipboard').hover();
+    await expect(frame.locator('.error-tooltip.visible')).toHaveCount(1);
+
+    await frame.getByLabel('Copy error to clipboard').click();
+    await expect.poll(() => frame.evaluate(() => navigator.clipboard.readText()))
+      .toContain('error');
   });
 });
