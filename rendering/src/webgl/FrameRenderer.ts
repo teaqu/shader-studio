@@ -19,6 +19,9 @@ export class FrameRenderer {
   private lastRenderedAt: number | null = null;
   private fpsCalculator: FPSCalculator;
   private frameTimeBuffer: number[] = new Array(3600);
+  /** Mirrors frameTimeBuffer index-for-index: same head/len, GPU latency at that frame. */
+  private gpuFrameTimeBuffer: number[] = new Array(3600);
+  private gpuFrameTimeSource: (() => number | null) | null = null;
   private frameTimeHead = 0;   // write index (circular)
   private frameTimeLen = 0;    // current occupied length
   private frameTimeCount = 0;  // total frames ever recorded
@@ -230,6 +233,11 @@ export class FrameRenderer {
     this.framePacer = pacer;
   }
 
+  /** GPU latency lives on RenderingEngine; this pulls the current value in at push time. */
+  public setGpuFrameTimeSource(source: (() => number | null) | null): void {
+    this.gpuFrameTimeSource = source;
+  }
+
   public render(time: number): void {
     if (!this.running) {
       return;
@@ -301,6 +309,7 @@ export class FrameRenderer {
         // Ignore unreasonable spikes (e.g. tab was backgrounded)
         if (frameDelta < 500) {
           this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
+          this.gpuFrameTimeBuffer[this.frameTimeHead] = this.gpuFrameTimeSource?.() ?? 0;
           this.frameTimeHead = (this.frameTimeHead + 1) % FrameRenderer.MAX_HISTORY;
           if (this.frameTimeLen < FrameRenderer.MAX_HISTORY) {
             this.frameTimeLen++;
@@ -391,6 +400,18 @@ export class FrameRenderer {
     }
     // Wraps around: concat tail + head
     return this.frameTimeBuffer.slice(start).concat(this.frameTimeBuffer.slice(0, this.frameTimeHead));
+  }
+
+  /** Same indexing as getFrameTimeHistory(), so entry i in each lines up. */
+  public getGpuFrameTimeHistory(): number[] {
+    if (this.frameTimeLen === 0) {
+      return [];
+    }
+    const start = (this.frameTimeHead - this.frameTimeLen + FrameRenderer.MAX_HISTORY) % FrameRenderer.MAX_HISTORY;
+    if (start + this.frameTimeLen <= FrameRenderer.MAX_HISTORY) {
+      return this.gpuFrameTimeBuffer.slice(start, start + this.frameTimeLen);
+    }
+    return this.gpuFrameTimeBuffer.slice(start).concat(this.gpuFrameTimeBuffer.slice(0, this.frameTimeHead));
   }
 
   public getFrameTimeCount(): number {

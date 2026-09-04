@@ -44,6 +44,8 @@ export interface RenderingEngine {
    * healthy rate while the picture on screen falls behind.
    */
   getGpuFrameTimeMs?(): number | null;
+  /** Same indexing as getFrameTimeHistory(): entry i in each is the same frame. */
+  getGpuFrameTimeHistory?(): number[];
   /**
    * Turns the GPU timing probe on or off. It is off by default so a preview
    * nobody is measuring pays nothing for it.

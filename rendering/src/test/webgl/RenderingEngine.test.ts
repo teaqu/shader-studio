@@ -1472,6 +1472,25 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("gpu frame time history delegation", () => {
+    it("should delegate getGpuFrameTimeHistory to FrameRenderer", () => {
+      const mockHistory = [12.5, 47.1];
+      mockFrameRenderer.getGpuFrameTimeHistory = vi.fn().mockReturnValue(mockHistory);
+
+      const result = renderingEngine.getGpuFrameTimeHistory();
+
+      expect(mockFrameRenderer.getGpuFrameTimeHistory).toHaveBeenCalledOnce();
+      expect(result).toBe(mockHistory);
+    });
+
+    it("should return empty array when FrameRenderer returns empty", () => {
+      mockFrameRenderer.getGpuFrameTimeHistory = vi.fn().mockReturnValue([]);
+
+      expect(renderingEngine.getGpuFrameTimeHistory()).toEqual([]);
+    });
+
+  });
+
   describe("frame time count delegation", () => {
     it("should delegate getFrameTimeCount to FrameRenderer", () => {
       mockFrameRenderer.getFrameTimeCount = vi.fn().mockReturnValue(500);

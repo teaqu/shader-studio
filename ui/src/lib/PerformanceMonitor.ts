@@ -9,6 +9,8 @@ export interface PerformanceData {
   frameTimeCount: number;
   /** Submit-to-completion latency, where the backend can report it. */
   gpuFrameTime: number | null;
+  /** Same indexing as frameTimeHistory: entry i in each is the same frame. */
+  gpuFrameTimeHistory: number[];
 }
 
 export class PerformanceMonitor {
@@ -92,6 +94,7 @@ export class PerformanceMonitor {
       frameTimeHistory: history,
       frameTimeCount,
       gpuFrameTime: this.renderingEngine.getGpuFrameTimeMs?.() ?? null,
+      gpuFrameTimeHistory: this.renderingEngine.getGpuFrameTimeHistory?.() ?? [],
     });
   }
 }

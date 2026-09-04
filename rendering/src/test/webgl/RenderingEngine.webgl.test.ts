@@ -135,6 +135,26 @@ describe("RenderingEngine WebGL Initialization", () => {
       expect(capturerState.instances[0].captureAfterRender).toHaveBeenCalledWith(640, 360);
     });
 
+    it("wires FrameRenderer's GPU time source to its own gpuFrameMs", async () => {
+      const mockGL = { getExtension: vi.fn() } as unknown as WebGL2RenderingContext;
+      const mockCanvas = {
+        addEventListener: vi.fn(),
+        getContext: vi.fn(() => mockGL),
+        width: 320,
+        height: 180,
+      } as unknown as HTMLCanvasElement;
+      mockPiCreateGlContext.mockReturnValue(mockGL);
+      const setGpuFrameTimeSource = vi.spyOn(FrameRenderer.prototype, "setGpuFrameTimeSource");
+
+      const { RenderingEngine } = await import("../../webgl/RenderingEngine");
+      const engine = new RenderingEngine();
+      engine.initialize(mockCanvas);
+
+      const source = setGpuFrameTimeSource.mock.calls[0]?.[0];
+      (engine as any).gpuFrameMs = 33.3;
+      expect(source?.()).toBe(33.3);
+    });
+
     it("disposes the prior capturer before a failed reinitialization", async () => {
       const mockGL = { getExtension: vi.fn() } as unknown as WebGL2RenderingContext;
       const firstCanvas = {

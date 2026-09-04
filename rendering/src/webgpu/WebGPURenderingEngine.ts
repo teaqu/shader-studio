@@ -287,6 +287,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
   private frameTimeBuffer: number[] = new Array(3600);
+  /** Mirrors frameTimeBuffer index-for-index: same head/len, GPU latency at that frame. */
+  private gpuFrameTimeBuffer: number[] = new Array(3600);
   private frameTimeHead = 0;
   private frameTimeLen = 0;
   private frameTimeCount = 0;
@@ -2678,6 +2680,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const frameDelta = time - this.previousFrameTimestamp;
       if (frameDelta < 500) {
         this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
+        this.gpuFrameTimeBuffer[this.frameTimeHead] = this.gpuFrameMs ?? 0;
         this.frameTimeHead = (this.frameTimeHead + 1) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
         if (this.frameTimeLen < WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) {
           this.frameTimeLen++;
@@ -3328,6 +3331,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return this.frameTimeBuffer.slice(start, start + this.frameTimeLen);
     }
     return this.frameTimeBuffer.slice(start).concat(this.frameTimeBuffer.slice(0, this.frameTimeHead));
+  }
+
+  /** Same indexing as getFrameTimeHistory(), so entry i in each lines up. */
+  getGpuFrameTimeHistory(): number[] {
+    if (this.frameTimeLen === 0) {
+      return [];
+    }
+    const start = (
+      this.frameTimeHead - this.frameTimeLen + WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY
+    ) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
+    if (start + this.frameTimeLen <= WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY) {
+      return this.gpuFrameTimeBuffer.slice(start, start + this.frameTimeLen);
+    }
+    return this.gpuFrameTimeBuffer.slice(start).concat(this.gpuFrameTimeBuffer.slice(0, this.frameTimeHead));
   }
 
   getFrameTimeCount(): number {

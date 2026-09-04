@@ -192,6 +192,7 @@ describe('PerformanceMonitor', () => {
         frameTimeHistory: [10, 20, 30],
         frameTimeCount: 0,
         gpuFrameTime: null,
+        gpuFrameTimeHistory: [],
       });
     });
 
@@ -212,6 +213,7 @@ describe('PerformanceMonitor', () => {
         frameTimeHistory: [],
         frameTimeCount: 0,
         gpuFrameTime: null,
+        gpuFrameTimeHistory: [],
       });
     });
 
@@ -232,6 +234,7 @@ describe('PerformanceMonitor', () => {
         frameTimeHistory: [16.67],
         frameTimeCount: 0,
         gpuFrameTime: null,
+        gpuFrameTimeHistory: [],
       });
     });
 
@@ -288,6 +291,39 @@ describe('PerformanceMonitor', () => {
       scheduledCallback(0);
 
       expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('gpuFrameTimeHistory passthrough', () => {
+    it('should pass the engine\'s GPU frame time history to the callback', () => {
+      const callback = vi.fn();
+      monitor.setStateCallback(callback);
+
+      mockRenderingEngine.getFrameTimeHistory.mockReturnValue([16, 17]);
+      mockRenderingEngine.getCurrentFPS.mockReturnValue(60);
+      (mockRenderingEngine as any).getGpuFrameTimeHistory = vi.fn().mockReturnValue([12.5, 47.1]);
+
+      monitor.start();
+
+      expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+        gpuFrameTimeHistory: [12.5, 47.1],
+      }));
+    });
+
+    it('should default to an empty array when the engine cannot report GPU history', () => {
+      const callback = vi.fn();
+      monitor.setStateCallback(callback);
+
+      mockRenderingEngine.getFrameTimeHistory.mockReturnValue([16]);
+      mockRenderingEngine.getCurrentFPS.mockReturnValue(60);
+      // mockRenderingEngine has no getGpuFrameTimeHistory at all, matching an
+      // engine that predates the optional method.
+
+      monitor.start();
+
+      expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+        gpuFrameTimeHistory: [],
+      }));
     });
   });
 
@@ -389,6 +425,7 @@ describe('PerformanceMonitor', () => {
         frameTimeHistory: [8, 12, 16],
         frameTimeCount: 0,
         gpuFrameTime: null,
+        gpuFrameTimeHistory: [],
       });
 
       // Frame 2 data changes
@@ -407,6 +444,7 @@ describe('PerformanceMonitor', () => {
         frameTimeHistory: [10, 14, 18, 22],
         frameTimeCount: 0,
         gpuFrameTime: null,
+        gpuFrameTimeHistory: [],
       });
 
       // Stop and verify no more callbacks

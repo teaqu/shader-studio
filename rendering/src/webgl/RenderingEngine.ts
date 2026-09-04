@@ -141,6 +141,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       new FPSCalculator(60, 10),
     );
     this.frameRenderer.setFramePacer((time) => this.shouldWaitForGpu(time));
+    this.frameRenderer.setGpuFrameTimeSource(() => this.gpuFrameMs);
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
     this.pixelRegionCapturer = pixelRegionCapturer;
     this.frameRenderer.setPostImageCallback(() => {
@@ -619,6 +620,10 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public getFrameTimeHistory(): number[] {
     return this.frameRenderer.getFrameTimeHistory();
+  }
+
+  public getGpuFrameTimeHistory(): number[] {
+    return this.frameRenderer.getGpuFrameTimeHistory();
   }
 
   public getFrameTimeCount(): number {

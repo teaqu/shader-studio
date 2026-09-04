@@ -1833,6 +1833,55 @@ describe("FrameRenderer", () => {
     });
   });
 
+  describe("gpu frame time history", () => {
+    it("should return empty array initially", () => {
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([]);
+    });
+
+    it("should record 0 when no GPU time source is set", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([0]);
+    });
+
+    it("should record the GPU time source's value at each pushed frame, lined up with frame times", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      let gpuMs: number | null = 12.5;
+      frameRenderer.setGpuFrameTimeSource(() => gpuMs);
+
+      frameRenderer.render(1000);
+      gpuMs = 47.1;
+      frameRenderer.render(1016.67);
+
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([47.1]);
+    });
+
+    it("should skip a push (and stay lined up) when the frame delta is ignored as a background spike", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+      frameRenderer.setGpuFrameTimeSource(() => 99);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1600); // 600ms gap — ignored
+
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([]);
+    });
+  });
+
   describe("frame time count", () => {
     it("should return 0 initially", () => {
       expect(frameRenderer.getFrameTimeCount()).toBe(0);

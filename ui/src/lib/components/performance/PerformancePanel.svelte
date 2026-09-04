@@ -16,7 +16,8 @@
   let graphCanvas: HTMLCanvasElement = $state(null!);
   let performanceMonitor: PerformanceMonitor | null = $state(null);
   let visibleSamples = $state(180);
-  let showFPS = $state(false);
+  type GraphMode = "ms" | "fps" | "gpu";
+  let graphMode = $state<GraphMode>("ms");
   let downsample = $state(1);
   let yOffset = $state(0);
   let xOffset = $state(0);
@@ -80,6 +81,14 @@
   const SAMPLE_STEPS = [30, 60, 90, 120, 180, 300, 450, 600, 900, 1200, 1800, 3600];
   const YZOOM_STEPS = [1, 2, 4, 8, 16, 32];
 
+  /** The metric series the current graph mode plots — GPU latency for "gpu", frame time otherwise. */
+  function historyFor(activeData: PerformanceData | null): number[] {
+    if (!activeData) {
+      return [];
+    }
+    return graphMode === "gpu" ? activeData.gpuFrameTimeHistory : activeData.frameTimeHistory;
+  }
+
   function arrayMax(arr: number[]): number {
     let m = arr[0];
     for (let i = 1; i < arr.length; i++) {
@@ -126,7 +135,7 @@
 
   function clampXOffset() {
     const activeData = graphPaused ? frozenData : data;
-    const total = activeData?.frameTimeHistory?.length ?? 0;
+    const total = historyFor(activeData).length;
     const downTotal = Math.floor(total / downsample);
     const maxPoints = Math.ceil(visibleSamples / downsample);
     const maxOffset = Math.max(0, downTotal - maxPoints);
@@ -136,7 +145,9 @@
   function handleMouseDown(e: MouseEvent) {
     if (!graphPaused) {
       graphPaused = true;
-      frozenData = data ? { ...data, frameTimeHistory: [...data.frameTimeHistory] } : null;
+      frozenData = data
+        ? { ...data, frameTimeHistory: [...data.frameTimeHistory], gpuFrameTimeHistory: [...data.gpuFrameTimeHistory] }
+        : null;
     }
     dragging = true;
     hoverX = -1;
@@ -156,12 +167,12 @@
 
     if (!centered) {
       const activeData = graphPaused ? frozenData : data;
-      const history = activeData?.frameTimeHistory ?? [];
+      const history = historyFor(activeData);
       const fc = activeData?.frameTimeCount ?? history.length;
       const rawVisible = getRawVisibleSlice(history, fc);
 
       let scale: number;
-      if (showFPS) {
+      if (graphMode === "fps") {
         const fpsVals = rawVisible.map(ms => ms > 0 ? 1000 / ms : 0);
         const visMax = fpsVals.length > 0 ? arrayMax(fpsVals) : 60;
         scale = Math.max(60, visMax) * 1.15 / yZoom;
@@ -224,7 +235,9 @@
     } else {
       graphPaused = true;
       manualPause = true;
-      frozenData = data ? { ...data, frameTimeHistory: [...data.frameTimeHistory] } : null;
+      frozenData = data
+        ? { ...data, frameTimeHistory: [...data.frameTimeHistory], gpuFrameTimeHistory: [...data.gpuFrameTimeHistory] }
+        : null;
     }
   }
 
@@ -263,14 +276,14 @@
 
   function adjustYOffsetForZoom() {
     const activeData = graphPaused ? frozenData : data;
-    const history = activeData?.frameTimeHistory ?? [];
+    const history = historyFor(activeData);
     const fc = activeData?.frameTimeCount ?? history.length;
     const rawVisible = getRawVisibleSlice(history, fc);
     if (rawVisible.length === 0) {
-      yOffset = 0; return; 
+      yOffset = 0; return;
     }
 
-    if (showFPS) {
+    if (graphMode === "fps") {
       const fpsVals = rawVisible.map(ms => ms > 0 ? 1000 / ms : 0);
       const avg = visibleAvg(fpsVals);
       const visMax = fpsVals.length > 0 ? arrayMax(fpsVals) : 60;
@@ -315,7 +328,7 @@
    */
   let visibleStats = $derived.by(() => {
     const activeData = graphPaused ? frozenData : data;
-    const history = activeData?.frameTimeHistory ?? [];
+    const history = historyFor(activeData);
     if (history.length === 0) {
       return null;
     }
@@ -473,7 +486,7 @@
       return;
     }
 
-    const fullHistory = activeData.frameTimeHistory;
+    const fullHistory = historyFor(activeData);
 
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
@@ -508,7 +521,7 @@
 
     // Save/restore around graph drawing to prevent clip leaks
     ctx.save();
-    if (showFPS) {
+    if (graphMode === "fps") {
       drawFPSGraph(ctx, history, rawVisible, w, h, pad, graphW, graphH, fg, fgDim);
     } else {
       drawMsGraph(ctx, history, rawVisible, w, h, pad, graphW, graphH, fg, fgDim);
@@ -551,12 +564,31 @@
     ctx.font = "10px monospace";
     ctx.textAlign = "right";
 
-    if (showFPS) {
+    if (graphMode === "fps") {
       const fps = activeData.currentFPS;
       const minFps = activeData.maxFrameTime > 0 ? 1000 / activeData.maxFrameTime : 0;
       const maxFps = activeData.minFrameTime > 0 ? 1000 / activeData.minFrameTime : 0;
       ctx.fillStyle = fg;
       ctx.fillText(`avg ${fps.toFixed(0)}  min ${minFps.toFixed(0)}  max ${maxFps.toFixed(0)}`, x, y);
+    } else if (graphMode === "gpu") {
+      const gpu = activeData.gpuFrameTimeHistory;
+      let avg = 0, min = Infinity, max = 0;
+      for (const v of gpu) {
+        avg += v;
+        if (v < min) {
+          min = v;
+        }
+        if (v > max) {
+          max = v;
+        }
+      }
+      if (gpu.length > 0) {
+        avg /= gpu.length;
+      } else {
+        min = 0;
+      }
+      ctx.fillStyle = fg;
+      ctx.fillText(`avg ${avg.toFixed(1)}ms  min ${min.toFixed(1)}ms  max ${max.toFixed(1)}ms`, x, y);
     } else {
       ctx.fillStyle = fg;
       ctx.fillText(`avg ${activeData.avgFrameTime.toFixed(1)}ms  min ${activeData.minFrameTime.toFixed(1)}ms  max ${activeData.maxFrameTime.toFixed(1)}ms`, x, y);
@@ -670,7 +702,7 @@
 
     // Compute toY to place the dot correctly on the line
     let dotY: number;
-    if (showFPS) {
+    if (graphMode === "fps") {
       const rawFps = rawVisible.map(ms => ms > 0 ? 1000 / ms : 0);
       const avgFps = visibleAvg(rawFps);
       const visMax = rawFps.length > 0 ? arrayMax(rawFps) : 60;
@@ -712,7 +744,7 @@
     ctx.globalAlpha = 0.9;
 
     let label: string;
-    if (showFPS) {
+    if (graphMode === "fps") {
       const fps = msValue > 0 ? 1000 / msValue : 0;
       label = `${fps.toFixed(1)} fps`;
     } else {
@@ -1039,20 +1071,28 @@
       <div class="toolbar-group">
         <button
           class="toggle-btn"
-          class:active={!showFPS}
+          class:active={graphMode === "ms"}
           onclick={() => {
-            showFPS = false; adjustYOffsetForZoom();
+            graphMode = "ms"; adjustYOffsetForZoom();
           }}
           use:tooltip={"Plot how long each frame took, in milliseconds — lower is better"}
         >ms</button>
         <button
           class="toggle-btn"
-          class:active={showFPS}
+          class:active={graphMode === "fps"}
           onclick={() => {
-            showFPS = true; adjustYOffsetForZoom();
+            graphMode = "fps"; adjustYOffsetForZoom();
           }}
           use:tooltip={"Plot frames per second instead of milliseconds — higher is better"}
         >fps</button>
+        <button
+          class="toggle-btn"
+          class:active={graphMode === "gpu"}
+          onclick={() => {
+            graphMode = "gpu"; adjustYOffsetForZoom();
+          }}
+          use:tooltip={"Plot GPU submit-to-completion latency instead of frame time — isolates GPU cost from loop pacing"}
+        >gpu</button>
         <button
           class="toggle-btn pause-btn"
           class:active={graphPaused}

@@ -104,6 +104,7 @@ function makePerformanceData(overrides: Partial<PerformanceData> = {}): Performa
     frameTimeHistory: history,
     frameTimeCount: history.length,
     gpuFrameTime: null,
+    gpuFrameTimeHistory: [],
     ...overrides,
   };
 }
@@ -475,12 +476,13 @@ describe('PerformancePanel Component', () => {
     });
   });
 
-  // ─── ms/fps toggle ──────────────────────────────────────────────
-  describe('ms/fps toggle', () => {
+  // ─── ms/fps/gpu toggle ──────────────────────────────────────────
+  describe('ms/fps/gpu toggle', () => {
     it('should have ms button active by default', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.getByText('ms')).toHaveClass('active');
       expect(screen.getByText('fps')).not.toHaveClass('active');
+      expect(screen.getByText('gpu')).not.toHaveClass('active');
     });
 
     it('should activate fps button when clicked', async () => {
@@ -488,6 +490,7 @@ describe('PerformancePanel Component', () => {
       await fireEvent.click(screen.getByText('fps'));
       expect(screen.getByText('fps')).toHaveClass('active');
       expect(screen.getByText('ms')).not.toHaveClass('active');
+      expect(screen.getByText('gpu')).not.toHaveClass('active');
     });
 
     it('should activate ms button when clicked after fps', async () => {
@@ -496,6 +499,33 @@ describe('PerformancePanel Component', () => {
       await fireEvent.click(screen.getByText('ms'));
       expect(screen.getByText('ms')).toHaveClass('active');
       expect(screen.getByText('fps')).not.toHaveClass('active');
+      expect(screen.getByText('gpu')).not.toHaveClass('active');
+    });
+
+    it('should activate gpu button when clicked', async () => {
+      render(PerformancePanel, {
+        props: { data: makePerformanceData({ gpuFrameTimeHistory: [10, 20, 30] }) },
+      });
+      await fireEvent.click(screen.getByText('gpu'));
+      expect(screen.getByText('gpu')).toHaveClass('active');
+      expect(screen.getByText('ms')).not.toHaveClass('active');
+      expect(screen.getByText('fps')).not.toHaveClass('active');
+    });
+
+    it('should switch the p50/p95/worst legend to the GPU series in gpu mode', async () => {
+      render(PerformancePanel, {
+        props: { data: makePerformanceData({
+          frameTimeHistory: [16.6, 16.6, 16.6],
+          gpuFrameTimeHistory: [10, 20, 30],
+        }) },
+      });
+      // ms mode: legend reflects frame time.
+      expect(screen.getByText('p50 16.6ms')).toBeInTheDocument();
+
+      await fireEvent.click(screen.getByText('gpu'));
+
+      // gpu mode: legend reflects the GPU series instead.
+      expect(screen.getByText('p50 20.0ms')).toBeInTheDocument();
     });
   });
 

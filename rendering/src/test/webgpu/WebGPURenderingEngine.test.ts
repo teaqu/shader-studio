@@ -2644,6 +2644,29 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getFrameTimeCount()).toBe(2);
     });
 
+    it("records the GPU latency known at each rendered frame, lined up with the frame times", async () => {
+      const { engine } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      (engine as any).gpuFrameMs = 12.5;
+      engine.render(1000);
+      (engine as any).gpuFrameMs = 47.1;
+      engine.render(1034);
+
+      expect(engine.getFrameTimeHistory()).toEqual([34]);
+      expect(engine.getGpuFrameTimeHistory()).toEqual([47.1]);
+    });
+
+    it("records 0 for a frame pushed before any GPU latency has been measured", async () => {
+      const { engine } = await compiledEngine();
+      engine.setFPSLimit(30);
+
+      engine.render(1000);
+      engine.render(1034);
+
+      expect(engine.getGpuFrameTimeHistory()).toEqual([0]);
+    });
+
     it("renders the first frame with an FPS limit enabled (lastRenderedAt starts null)", async () => {
       const { engine, device } = await compiledEngine();
       engine.setFPSLimit(30);
