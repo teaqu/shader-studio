@@ -26,7 +26,11 @@ export class FPSCalculator {
     const frameTime = currentTime - this.lastFrameTime;
     this.lastFrameTime = currentTime;
 
-    if (frameTime > 0 && frameTime < 100) {
+    // No upper bound: a heavy shader can legitimately spend hundreds of ms
+    // per frame, and that sustained slowness must be visible rather than
+    // silently discarded as an anomaly. Only a non-positive delta (a
+    // duplicate timestamp) is degenerate.
+    if (frameTime > 0) {
       this.frameTimes.push(frameTime);
 
       if (this.frameTimes.length > this.maxFrameTimesSamples) {
