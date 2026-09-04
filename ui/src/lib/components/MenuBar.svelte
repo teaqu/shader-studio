@@ -706,7 +706,7 @@
         onTogglePerformancePanel(); showFPSMenu = false;
       }}
     >
-      <i class="codicon codicon-graph-line"></i> Frame Times
+      <i class="codicon codicon-graph-line"></i> Performance
     </button>
   </div>
 {/if}

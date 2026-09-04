@@ -1083,8 +1083,8 @@
         <span title="Slowest frame in the visible window">worst {visibleStats.worst.toFixed(1)}ms</span>
         <span
           class:late={visibleStats.lateFrames > 0}
-          title="Frames that overran the display's refresh and held the previous image on screen"
-        >late {visibleStats.latePercent.toFixed(0)}%</span>
+          title="Frames that overran the display's refresh and held the previous image on screen ({visibleStats.latePercent.toFixed(1)}% of the visible window)"
+        >late {visibleStats.lateFrames}</span>
       </div>
     {/if}
   {:else}

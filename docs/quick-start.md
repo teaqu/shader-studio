@@ -73,7 +73,7 @@ The preview updates in real time as you edit. The toolbar at the bottom gives qu
 - <i class="codicon codicon-debug-restart"></i> **Reset** — restart the shader and reset time-dependent state
 - <i class="codicon codicon-play"></i> / <i class="codicon codicon-debug-pause"></i> [**Play/Pause**](features/time-controls.md) — freeze or resume animation
 - [**Time**](features/time-controls.md) — scrub, loop, and control playback speed
-- **FPS** — click to set frame rate limit or open [Frame Times](features/performance.md)
+- **FPS** — click to set frame rate limit or open the [Performance panel](features/performance.md)
 - [**Resolution**](features/resolution.md) — click to change scale, aspect ratio, zoom, or set a custom resolution
 - <i class="codicon codicon-bug"></i> [**Debug**](debugging/index.md) — enable line-by-line visual debugging
 - <i class="codicon codicon-code"></i> [**Editor**](features/editor-overlay.md) — toggle inline code editing overlay

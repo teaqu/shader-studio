@@ -12,6 +12,12 @@ const DEFAULT_SETTINGS: LanguageServiceSettings = {
 
 let settings = $state<LanguageServiceSettings>({ ...DEFAULT_SETTINGS });
 
-export function getLanguageServiceSettings(): LanguageServiceSettings { return settings; }
-export function setLanguageServiceSettings(value: Partial<LanguageServiceSettings>): void { settings = { ...settings, ...value }; }
-export function resetLanguageServiceSettings(): void { settings = { ...DEFAULT_SETTINGS }; }
+export function getLanguageServiceSettings(): LanguageServiceSettings {
+  return settings; 
+}
+export function setLanguageServiceSettings(value: Partial<LanguageServiceSettings>): void {
+  settings = { ...settings, ...value }; 
+}
+export function resetLanguageServiceSettings(): void {
+  settings = { ...DEFAULT_SETTINGS }; 
+}

@@ -8,11 +8,11 @@ Click it to open the FPS menu:
 ![FPS menu](../assets/images/fps.png)
 
 - **Frame rate limit**: Unlimited, 60 fps, or 30 fps
-- **Frame Times**: Toggle the frame times panel
+- **Performance**: Toggle the performance panel
 
-## Frame Times Panel
+## Performance Panel
 
-The frame times panel shows a real-time graph of your shader's rendering performance.
+The performance panel shows a real-time graph of your shader's rendering performance.
 
 ![Frame times panel](../assets/images/frame-times.png)
 
@@ -31,6 +31,24 @@ The graph plots frame time (in milliseconds) on the Y-axis over recent history o
 A dashed line shows the **average of the visible time window**.
 
 Switch between **ms** and **fps** views with the toggle buttons.
+
+### Statistics
+
+Below the graph, four numbers summarise the visible window and follow its zoom
+and pan:
+
+| Value | Meaning |
+|-------|---------|
+| **p50** | Typical frame time |
+| **p95** | The slowest 5% of frames — where a stutter appears first |
+| **worst** | The slowest single frame |
+| **late** | Number of frames that overran the refresh interval, holding the previous image on screen |
+
+An average frame rate can look healthy while frames arrive unevenly, and
+uneven delivery is what the eye reads as stuttering. When the preview looks
+jumpy but the FPS display seems fine, check **late** and **worst** rather than
+the frame rate — a couple of late frames per second is enough to see, while
+barely moving the average.
 
 ### Controls
 

@@ -51,7 +51,7 @@
     truncateFunctionBodyAt,
   } from "@shader-studio/rendering";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
-  import FrameTimesPanel from "./performance/FrameTimesPanel.svelte";
+  import PerformancePanel from "./performance/PerformancePanel.svelte";
   import type { AspectRatioMode, ShaderConfig, SlangSourceModule } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
@@ -1555,7 +1555,7 @@
   </div>
   <div class="dockview-panel-source" bind:this={performanceEl}>
     {#if $performancePanelStore.isVisible}
-      <FrameTimesPanel {renderingEngine} active={$performancePanelStore.isVisible} />
+      <PerformancePanel {renderingEngine} active={$performancePanelStore.isVisible} />
     {/if}
   </div>
   <div class="dockview-panel-source" bind:this={recordingEl}>

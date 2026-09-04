@@ -1323,7 +1323,7 @@ describe('DockviewLayout', () => {
         expect.objectContaining({
           id: 'performance',
           component: 'performance',
-          title: 'Frame Times',
+          title: 'Performance',
         })
       );
     });
@@ -1351,7 +1351,7 @@ describe('DockviewLayout', () => {
       const perfCall = addCalls.find((c: any[]) => c[0]?.id === 'performance');
       expect(perfCall).toBeDefined();
       expect(perfCall![0].component).toBe('performance');
-      expect(perfCall![0].title).toBe('Frame Times');
+      expect(perfCall![0].title).toBe('Performance');
     });
 
     it('should use the mountPerformance prop for the performance component', async () => {

@@ -398,7 +398,7 @@
         api.addPanel({
           id: sid,
           component: sid,
-          title: sid === "performance" ? "Frame Times" : sid.charAt(0).toUpperCase() + sid.slice(1),
+          title: sid.charAt(0).toUpperCase() + sid.slice(1),
           renderer: "always",
           position: { referencePanel: "config", direction: "within" },
           inactive: true,
@@ -445,7 +445,7 @@
     api.addPanel({
       id: "performance",
       component: "performance",
-      title: "Frame Times",
+      title: "Performance",
       ...(tabRef
         ? { position: { referencePanel: tabRef.id, direction: "within" } }
         : { position: { referencePanel: "preview", direction: "below" }, initialHeight: 200 }),

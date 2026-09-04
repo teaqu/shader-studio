@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import FrameTimesPanel from '../../../lib/components/performance/FrameTimesPanel.svelte';
+import PerformancePanel from '../../../lib/components/performance/PerformancePanel.svelte';
 import type { PerformanceData } from '../../../lib/PerformanceMonitor';
 
 // Mock requestAnimationFrame / cancelAnimationFrame
@@ -121,11 +121,11 @@ function makeEngine(frameTime: number) {
   };
 }
 
-describe('FrameTimesPanel frame statistics', () => {
+describe('PerformancePanel frame statistics', () => {
   it('reports the tail of the visible window, not just its average', () => {
     // 175 even frames and 5 slow ones: the mean stays healthy, the tail does not.
     const history = [...Array.from({ length: 175 }, () => 13.6), ...Array.from({ length: 5 }, () => 60)];
-    render(FrameTimesPanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+    render(PerformancePanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
 
     const stats = screen.getByTestId('frame-stats');
     expect(stats).toHaveTextContent('p50 13.6ms');
@@ -134,31 +134,39 @@ describe('FrameTimesPanel frame statistics', () => {
 
   it('counts frames that missed a refresh', () => {
     const history = [...Array.from({ length: 170 }, () => 13.6), ...Array.from({ length: 10 }, () => 40)];
-    render(FrameTimesPanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+    render(PerformancePanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
 
-    // 10 of 180 frames ran long enough to hold the previous image on screen.
-    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 6%');
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 10');
+  });
+
+  it('shows a single late frame rather than rounding it away', () => {
+    // One hitch in a window is the whole signal when comparing two engines;
+    // as a percentage it would round to zero.
+    const history = [...Array.from({ length: 179 }, () => 13.6), 60];
+    render(PerformancePanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 1');
   });
 
   it('reports no late frames for an evenly paced window', () => {
-    render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+    render(PerformancePanel, { props: { data: makePerformanceData() } });
 
-    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 0%');
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 0');
   });
 
   it('shows no statistics before any frames have been recorded', () => {
-    render(FrameTimesPanel, { props: { data: null } });
+    render(PerformancePanel, { props: { data: null } });
 
     expect(screen.queryByTestId('frame-stats')).not.toBeInTheDocument();
   });
 });
 
-describe('FrameTimesPanel engine swaps', () => {
+describe('PerformancePanel engine swaps', () => {
   it('polls the engine it was mounted with', () => {
     const engine = makeEngine(16.6);
 
      
-    render(FrameTimesPanel, { props: { renderingEngine: engine as any, active: true } });
+    render(PerformancePanel, { props: { renderingEngine: engine as any, active: true } });
 
     expect(engine.getFrameTimeHistory).toHaveBeenCalled();
   });
@@ -167,7 +175,7 @@ describe('FrameTimesPanel engine swaps', () => {
     const glsl = makeEngine(16.6);
     const slang = makeEngine(13.6);
      
-    const { rerender } = render(FrameTimesPanel, { props: { renderingEngine: glsl as any, active: true } });
+    const { rerender } = render(PerformancePanel, { props: { renderingEngine: glsl as any, active: true } });
 
     // Switching language disposes the old engine and builds a new one.
      
@@ -181,7 +189,7 @@ describe('FrameTimesPanel engine swaps', () => {
     const glsl = makeEngine(16.6);
     const slang = makeEngine(13.6);
      
-    const { rerender } = render(FrameTimesPanel, { props: { renderingEngine: glsl as any, active: true } });
+    const { rerender } = render(PerformancePanel, { props: { renderingEngine: glsl as any, active: true } });
 
      
     await rerender({ renderingEngine: slang as any, active: true });
@@ -200,7 +208,7 @@ describe('FrameTimesPanel engine swaps', () => {
   it('does not keep polling after the panel is torn down', async () => {
     const engine = makeEngine(16.6);
      
-    const { unmount } = render(FrameTimesPanel, { props: { renderingEngine: engine as any, active: true } });
+    const { unmount } = render(PerformancePanel, { props: { renderingEngine: engine as any, active: true } });
 
     unmount();
     await tick();
@@ -212,21 +220,21 @@ describe('FrameTimesPanel engine swaps', () => {
   });
 });
 
-describe('FrameTimesPanel Component', () => {
+describe('PerformancePanel Component', () => {
   // ─── No data state ───────────────────────────────────────────────
   describe('No data state', () => {
     it('should show "Waiting for data..." when data is null', () => {
-      render(FrameTimesPanel, { props: { data: null } });
+      render(PerformancePanel, { props: { data: null } });
       expect(screen.getByText('Waiting for data...')).toBeInTheDocument();
     });
 
     it('should not show a canvas when data is null', () => {
-      const { container } = render(FrameTimesPanel, { props: { data: null } });
+      const { container } = render(PerformancePanel, { props: { data: null } });
       expect(container.querySelector('canvas')).not.toBeInTheDocument();
     });
 
     it('should not show toolbars when data is null', () => {
-      const { container } = render(FrameTimesPanel, { props: { data: null } });
+      const { container } = render(PerformancePanel, { props: { data: null } });
       expect(container.querySelector('.toolbar')).not.toBeInTheDocument();
     });
   });
@@ -234,23 +242,23 @@ describe('FrameTimesPanel Component', () => {
   // ─── With data ───────────────────────────────────────────────────
   describe('With data', () => {
     it('should show canvas when data is provided', () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(container.querySelector('canvas')).toBeInTheDocument();
     });
 
     it('should not show "Waiting for data..." when data is provided', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.queryByText('Waiting for data...')).not.toBeInTheDocument();
     });
 
     it('should show "Waiting for data..." when data has empty history', () => {
       const emptyData = makePerformanceData({ frameTimeHistory: [] });
-      render(FrameTimesPanel, { props: { data: emptyData } });
+      render(PerformancePanel, { props: { data: emptyData } });
       expect(screen.getByText('Waiting for data...')).toBeInTheDocument();
     });
 
     it('should show toolbar row above graph', () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       const toolbar = container.querySelector('.toolbar');
       expect(toolbar).toBeInTheDocument();
       const groups = toolbar!.querySelectorAll('.toolbar-group');
@@ -258,7 +266,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show downsample buttons in toolbar', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.getByText('1:1')).toBeInTheDocument();
       expect(screen.getByText('1:2')).toBeInTheDocument();
       expect(screen.getByText('1:4')).toBeInTheDocument();
@@ -266,7 +274,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should have canvas with frame-graph class', () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(container.querySelector('canvas.frame-graph')).toBeInTheDocument();
     });
   });
@@ -274,20 +282,20 @@ describe('FrameTimesPanel Component', () => {
   // ─── ms/fps toggle ──────────────────────────────────────────────
   describe('ms/fps toggle', () => {
     it('should have ms button active by default', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.getByText('ms')).toHaveClass('active');
       expect(screen.getByText('fps')).not.toHaveClass('active');
     });
 
     it('should activate fps button when clicked', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       await fireEvent.click(screen.getByText('fps'));
       expect(screen.getByText('fps')).toHaveClass('active');
       expect(screen.getByText('ms')).not.toHaveClass('active');
     });
 
     it('should activate ms button when clicked after fps', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       await fireEvent.click(screen.getByText('fps'));
       await fireEvent.click(screen.getByText('ms'));
       expect(screen.getByText('ms')).toHaveClass('active');
@@ -298,19 +306,19 @@ describe('FrameTimesPanel Component', () => {
   // ─── Center button ──────────────────────────────────────────────
   describe('Center button', () => {
     it('should not be active by default', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.getByTitle('Center line on visible average')).not.toHaveClass('active');
     });
 
     it('should toggle centered mode when clicked', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Center line on visible average');
       await fireEvent.click(btn);
       expect(btn).toHaveClass('active');
     });
 
     it('should toggle off when clicked again', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Center line on visible average');
       await fireEvent.click(btn);
       await fireEvent.click(btn);
@@ -321,19 +329,19 @@ describe('FrameTimesPanel Component', () => {
   // ─── Pause button ──────────────────────────────────────────────
   describe('Pause button', () => {
     it('should show pause icon by default', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
     });
 
     it('should toggle to resume state when clicked', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       await fireEvent.click(screen.getByTitle('Pause graph'));
       expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
       expect(screen.getByTitle('Resume graph')).toHaveClass('active');
     });
 
     it('should toggle back to pause state when clicked again', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       await fireEvent.click(screen.getByTitle('Pause graph'));
       await fireEvent.click(screen.getByTitle('Resume graph'));
       expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
@@ -344,13 +352,13 @@ describe('FrameTimesPanel Component', () => {
   // ─── Zoom button ───────────────────────────────────────────────
   describe('Zoom button', () => {
     it('should show 1x by default', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       expect(btn).toHaveTextContent('1x');
     });
 
     it('should cycle through all zoom levels on clicks', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
 
       const levels = ['2x', '4x', '8x', '16x', '32x', '1x'];
@@ -361,7 +369,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should be active when zoom is greater than 1x', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       expect(btn).not.toHaveClass('active');
       await fireEvent.click(btn);
@@ -369,7 +377,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should not be active at 1x zoom', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       expect(btn).not.toHaveClass('active');
     });
@@ -378,7 +386,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Vertical zoom via Ctrl+wheel ──────────────────────────────
   describe('Vertical zoom via Ctrl+wheel', () => {
     it('should zoom in vertically with Ctrl+scroll up', async () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       expect(zoomBtn).toHaveTextContent('1x');
 
@@ -388,7 +396,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should zoom out vertically with Ctrl+scroll down', async () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       const graphContainer = container.querySelector('.graph-container')!;
 
@@ -402,7 +410,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should not zoom below 1x with Ctrl+scroll down', async () => {
-      const { container } = render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
       const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       const graphContainer = container.querySelector('.graph-container')!;
 
@@ -414,18 +422,18 @@ describe('FrameTimesPanel Component', () => {
   // ─── Reset position button ──────────────────────────────────────
   describe('Reset position button', () => {
     it('should not show reset button by default', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.queryByTitle('Reset pan and zoom')).not.toBeInTheDocument();
     });
 
     it('should show reset button when zoom is changed', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       await fireEvent.click(screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust'));
       expect(screen.getByTitle('Reset pan and zoom')).toBeInTheDocument();
     });
 
     it('should reset zoom when reset is clicked', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
       await fireEvent.click(zoomBtn);
       expect(zoomBtn).toHaveTextContent('2x');
@@ -438,7 +446,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Background rendering ──────────────────────────────────────
   describe('Background rendering', () => {
     it('should use panel-background CSS variable for canvas background', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       // fillRect is called for background fill, should use panelBg '#252526'
       const fillRectCalls = mockContext.fillRect.mock.calls;
       expect(fillRectCalls.length).toBeGreaterThanOrEqual(1);
@@ -448,7 +456,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should call scale with devicePixelRatio', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(mockContext.scale).toHaveBeenCalled();
     });
   });
@@ -456,7 +464,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Context save/restore around graph drawing ─────────────────
   describe('Context state management', () => {
     it('should save and restore context around graph drawing', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       // save/restore should be called (at minimum once for the outer wrap, plus inner clips)
       expect(mockContext.save.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(mockContext.restore.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -468,7 +476,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Stats display ─────────────────────────────────────────────
   describe('Stats display', () => {
     it('should draw avg/min/max values in ms mode', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             avgFrameTime: 16.5,
@@ -485,7 +493,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw fps stats in fps mode', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({ currentFPS: 58 }),
         },
@@ -498,7 +506,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should position stats inside graph area above x-axis labels', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -516,7 +524,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── X-axis drawing (inside graph area) ────────────────────────
   describe('X-axis drawing', () => {
     it('should draw "now" label inside graph area', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -526,7 +534,7 @@ describe('FrameTimesPanel Component', () => {
 
     it('should draw time labels like -1s, -2s', () => {
       // 180 frames at 16.6ms ≈ 3s → should have -1s, -2s labels
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -536,7 +544,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw tick marks at bottom of graph area', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -548,7 +556,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw x-axis labels with safe margin from canvas edges', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -580,7 +588,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should not draw time labels for very short histories', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: [16.6], // only 1 sample
@@ -594,7 +602,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw labels with foreground color for visibility', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -607,7 +615,7 @@ describe('FrameTimesPanel Component', () => {
 
     it('should select appropriate tick interval for ~3s of data', () => {
       // 180 frames × 16.6ms ≈ 2.988s → totalTimeSec/0.5 ≈ 5.97 ≤ 8 → tickInterval = 0.5
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -628,7 +636,7 @@ describe('FrameTimesPanel Component', () => {
       const totalTimeSec = 180 / 60; // 3s (nominal window)
 
       // Render with partial data (50 points)
-      const { unmount } = render(FrameTimesPanel, {
+      const { unmount } = render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: Array.from({ length: 50 }, () => 16.6),
@@ -645,7 +653,7 @@ describe('FrameTimesPanel Component', () => {
       vi.clearAllMocks();
 
       // Render with full data (180 points)
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -663,7 +671,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should use textBaseline bottom for x-axis labels', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -677,7 +685,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Cursor / hover ─────────────────────────────────────────────
   describe('Cursor on hover', () => {
     it('should not draw cursor when mouse is not over graph', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -690,7 +698,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw cursor line and dot on mousemove over graph', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -716,7 +724,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw value tooltip with ms by default', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -734,7 +742,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw value tooltip with fps when in fps mode', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -756,7 +764,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should include time offset in tooltip', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -775,7 +783,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should hide cursor on mouseleave', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -798,7 +806,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should hide cursor during drag', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -824,7 +832,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Line drawing ──────────────────────────────────────────────
   describe('Line drawing', () => {
     it('should not stretch line to full width when fewer points than visibleSamples', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: Array.from({ length: 50 }, () => 16.6),
@@ -844,7 +852,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw line with green color (#4ec9b0)', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -854,7 +862,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw at least one moveTo and multiple lineTo for the frame time line', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: Array.from({ length: 10 }, () => 16.6),
@@ -870,7 +878,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Reference lines ───────────────────────────────────────────
   describe('Reference lines', () => {
     it('should draw 60fps reference line in ms mode', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -879,7 +887,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw 30fps reference line in ms mode', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -888,7 +896,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should draw avg line label', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -897,7 +905,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should use dashed lines for reference lines', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -911,7 +919,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Downsample function ───────────────────────────────────────
   describe('Downsample function', () => {
     it('should pass through data at 1:1', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: [10, 20, 30, 40],
@@ -924,7 +932,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should render line with correct number of points', () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: {
           data: makePerformanceData({
             frameTimeHistory: Array.from({ length: 80 }, (_, i) => 10 + (i % 8)),
@@ -940,7 +948,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Drag interaction ──────────────────────────────────────────
   describe('Drag interaction', () => {
     it('should freeze data on mousedown', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -952,7 +960,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should unfreeze data on mouseup when not manually paused', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -965,7 +973,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should stay paused on mouseup when manually paused', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -985,7 +993,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Scroll wheel (horizontal zoom) ────────────────────────────
   describe('Scroll wheel', () => {
     it('should zoom out horizontally on scroll down', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1003,7 +1011,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Y-zoom scroll wheel ─────────────────────────────────────
   describe('Y-zoom scroll wheel', () => {
     it('should zoom in (increase yZoom) on scroll up over zoom button', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1016,7 +1024,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should zoom out (decrease yZoom) on scroll down over zoom button', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1032,7 +1040,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should not zoom below 1x on scroll down', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1044,7 +1052,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should not zoom above max level on scroll up', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1574,13 +1582,13 @@ describe('FrameTimesPanel Component', () => {
   // ─── Horizontal zoom button (cycleHZoom) ─────────────────────
   describe('Horizontal zoom button', () => {
     it('should show default time window label of 3s', () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
       expect(btn).toHaveTextContent('3s');
     });
 
     it('should cycle through time windows on click', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Default is 180 samples = 3s (index 4)
@@ -1594,7 +1602,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should wrap around to first step after last', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Cycle through all steps: 180→300→450→600→900→1200→1800→3600→wrap to 30
@@ -1606,7 +1614,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should be active when not at default (180 samples)', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
       expect(btn).not.toHaveClass('active');
 
@@ -1615,7 +1623,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show reset button when horizontal zoom is changed', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.queryByTitle('Reset pan and zoom')).not.toBeInTheDocument();
 
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
@@ -1624,7 +1632,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should zoom in on scroll up over the button', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Scroll up (deltaY < 0) → fewer samples → zoom in
@@ -1633,7 +1641,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should zoom out on scroll down over the button', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Scroll down (deltaY > 0) → more samples → zoom out
@@ -1645,7 +1653,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Scroll wheel horizontal zoom (behavioral) ───────────────
   describe('Scroll wheel horizontal zoom', () => {
     it('should update time window label on scroll down', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1659,7 +1667,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should update time window label on scroll up', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1674,7 +1682,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── Drag panning ────────────────────────────────────────────
   describe('Drag panning', () => {
     it('should show dragging cursor class during drag', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1688,7 +1696,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show reset button after dragging (xOffset changes)', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData({ frameTimeHistory: Array.from({ length: 600 }, () => 16.6) }) },
       });
 
@@ -1710,7 +1718,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── computeTimeWindowLabel ──────────────────────────────────
   describe('Time window label formatting', () => {
     it('should show sub-second labels in ms', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Cycle to 30 samples = 500ms — need to wrap around
@@ -1722,7 +1730,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show whole-second labels without decimal', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Default 180 = 3s
@@ -1730,7 +1738,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show minute labels for large windows', async () => {
-      render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
       const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
 
       // Cycle to 3600 samples = 60s = 1m (index 11, need 7 clicks from index 4)
@@ -1744,7 +1752,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── FPS mode graph line drawing ─────────────────────────────
   describe('FPS mode graph rendering', () => {
     it('should convert ms to fps values when drawing in fps mode', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData({ frameTimeHistory: Array.from({ length: 180 }, () => 16.6) }) },
       });
 
@@ -1759,7 +1767,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should show fps stats when in fps mode', async () => {
-      render(FrameTimesPanel, {
+      render(PerformancePanel, {
         props: { data: makePerformanceData({ currentFPS: 60 }) },
       });
 
@@ -1775,7 +1783,7 @@ describe('FrameTimesPanel Component', () => {
   // ─── manualPause vs drag pause ───────────────────────────────
   describe('Manual pause vs drag pause', () => {
     it('should set manualPause via pause button (stays paused after drag)', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
@@ -1795,7 +1803,7 @@ describe('FrameTimesPanel Component', () => {
     });
 
     it('should auto-unpause after drag when not manually paused', async () => {
-      const { container } = render(FrameTimesPanel, {
+      const { container } = render(PerformancePanel, {
         props: { data: makePerformanceData() },
       });
 
