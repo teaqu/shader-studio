@@ -107,6 +107,111 @@ function makePerformanceData(overrides: Partial<PerformanceData> = {}): Performa
   };
 }
 
+/**
+ * Stand-in for a rendering engine. Only the three methods PerformanceMonitor
+ * polls are needed, so the shape is cast at the prop boundary rather than
+ * implementing the full engine contract.
+ */
+function makeEngine(frameTime: number) {
+  const history = Array.from({ length: 180 }, () => frameTime);
+  return {
+    getFrameTimeHistory: vi.fn(() => history),
+    getCurrentFPS: vi.fn(() => 1000 / frameTime),
+    getFrameTimeCount: vi.fn(() => history.length),
+  };
+}
+
+describe('FrameTimesPanel frame statistics', () => {
+  it('reports the tail of the visible window, not just its average', () => {
+    // 175 even frames and 5 slow ones: the mean stays healthy, the tail does not.
+    const history = [...Array.from({ length: 175 }, () => 13.6), ...Array.from({ length: 5 }, () => 60)];
+    render(FrameTimesPanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+
+    const stats = screen.getByTestId('frame-stats');
+    expect(stats).toHaveTextContent('p50 13.6ms');
+    expect(stats).toHaveTextContent('worst 60.0ms');
+  });
+
+  it('counts frames that missed a refresh', () => {
+    const history = [...Array.from({ length: 170 }, () => 13.6), ...Array.from({ length: 10 }, () => 40)];
+    render(FrameTimesPanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+
+    // 10 of 180 frames ran long enough to hold the previous image on screen.
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 6%');
+  });
+
+  it('reports no late frames for an evenly paced window', () => {
+    render(FrameTimesPanel, { props: { data: makePerformanceData() } });
+
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 0%');
+  });
+
+  it('shows no statistics before any frames have been recorded', () => {
+    render(FrameTimesPanel, { props: { data: null } });
+
+    expect(screen.queryByTestId('frame-stats')).not.toBeInTheDocument();
+  });
+});
+
+describe('FrameTimesPanel engine swaps', () => {
+  it('polls the engine it was mounted with', () => {
+    const engine = makeEngine(16.6);
+
+     
+    render(FrameTimesPanel, { props: { renderingEngine: engine as any, active: true } });
+
+    expect(engine.getFrameTimeHistory).toHaveBeenCalled();
+  });
+
+  it('follows the new engine when the shader language switches', async () => {
+    const glsl = makeEngine(16.6);
+    const slang = makeEngine(13.6);
+     
+    const { rerender } = render(FrameTimesPanel, { props: { renderingEngine: glsl as any, active: true } });
+
+    // Switching language disposes the old engine and builds a new one.
+     
+    await rerender({ renderingEngine: slang as any, active: true });
+    await tick();
+
+    expect(slang.getFrameTimeHistory).toHaveBeenCalled();
+  });
+
+  it('stops polling the engine that was disposed by the switch', async () => {
+    const glsl = makeEngine(16.6);
+    const slang = makeEngine(13.6);
+     
+    const { rerender } = render(FrameTimesPanel, { props: { renderingEngine: glsl as any, active: true } });
+
+     
+    await rerender({ renderingEngine: slang as any, active: true });
+    await tick();
+    glsl.getFrameTimeHistory.mockClear();
+    slang.getFrameTimeHistory.mockClear();
+
+    // A poll after the swap must reach only the live engine.
+    const monitorTick = vi.mocked(requestAnimationFrame).mock.calls.at(-1)?.[0];
+    monitorTick?.(0);
+
+    expect(slang.getFrameTimeHistory).toHaveBeenCalled();
+    expect(glsl.getFrameTimeHistory).not.toHaveBeenCalled();
+  });
+
+  it('does not keep polling after the panel is torn down', async () => {
+    const engine = makeEngine(16.6);
+     
+    const { unmount } = render(FrameTimesPanel, { props: { renderingEngine: engine as any, active: true } });
+
+    unmount();
+    await tick();
+    engine.getFrameTimeHistory.mockClear();
+    const monitorTick = vi.mocked(requestAnimationFrame).mock.calls.at(-1)?.[0];
+    monitorTick?.(0);
+
+    expect(engine.getFrameTimeHistory).not.toHaveBeenCalled();
+  });
+});
+
 describe('FrameTimesPanel Component', () => {
   // ─── No data state ───────────────────────────────────────────────
   describe('No data state', () => {

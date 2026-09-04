@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onMount } from "svelte";
   import { PerformanceMonitor, type PerformanceData } from "../../PerformanceMonitor";
+  import { computeFrameTimeStats } from "../../util/frameTimeStats";
   import type { RenderingEngine } from "../../../../../rendering/src/types/RenderingEngine";
 
   interface Props {
@@ -12,7 +13,7 @@
   let { data = null, renderingEngine = null, active = true }: Props = $props();
 
   let graphCanvas: HTMLCanvasElement = $state(null!);
-  let performanceMonitor: PerformanceMonitor | null = null;
+  let performanceMonitor: PerformanceMonitor | null = $state(null);
   let visibleSamples = $state(180);
   let showFPS = $state(false);
   let downsample = $state(1);
@@ -37,7 +38,7 @@
   let starFieldGenerated = false;
 
   // Screen refresh rate detection
-  let detectedHz = 0;
+  let detectedHz = $state(0);
   let hzDetectionDone = false;
 
   function detectScreenHz() {
@@ -304,6 +305,21 @@
   }
 
   let timeWindowLabel = $derived(computeTimeWindowLabel(visibleSamples));
+
+  /**
+   * Stats for the window on screen, so they answer for what the graph is
+   * showing and respond to the same zoom and pan controls as its average line.
+   */
+  let visibleStats = $derived.by(() => {
+    const activeData = graphPaused ? frozenData : data;
+    const history = activeData?.frameTimeHistory ?? [];
+    if (history.length === 0) {
+      return null;
+    }
+    const end = history.length - xOffset;
+    const start = Math.max(0, end - visibleSamples);
+    return computeFrameTimeStats(history.slice(start, end), detectedHz > 0 ? 1000 / detectedHz : 0);
+  });
 
   function cycleHZoom() {
     const idx = SAMPLE_STEPS.indexOf(visibleSamples);
@@ -922,29 +938,43 @@
 
   onMount(() => {
     detectScreenHz();
-    if (renderingEngine) {
-      performanceMonitor = new PerformanceMonitor(renderingEngine);
-      performanceMonitor.setStateCallback((nextData) => {
-        data = nextData;
-      });
-      if (active) {
-        performanceMonitor.start();
-      }
+  });
+
+  // Switching shader language replaces the engine, so the monitor has to be
+  // rebuilt against the new one: the previous engine is disposed and would
+  // otherwise be polled forever, freezing the graph.
+  $effect(() => {
+    const engine = renderingEngine;
+    if (!engine) {
+      performanceMonitor = null;
+      return;
     }
+    const monitor = new PerformanceMonitor(engine);
+    monitor.setStateCallback((nextData) => {
+      data = nextData;
+    });
+    performanceMonitor = monitor;
+    // The retiring engine's history belongs to a different run; keeping it
+    // would splice two shaders' timings into one graph.
+    data = null;
+    frozenData = null;
+    graphPaused = false;
+    resetView();
+    return () => {
+      monitor.dispose();
+      performanceMonitor = null;
+    };
   });
 
   $effect(() => {
-    if (performanceMonitor) {
+    const monitor = performanceMonitor;
+    if (monitor) {
       if (active) {
-        performanceMonitor.start();
+        monitor.start();
       } else {
-        performanceMonitor.stop();
+        monitor.stop();
       }
     }
-  });
-
-  onDestroy(() => {
-    performanceMonitor?.dispose();
   });
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -1046,6 +1076,17 @@
       onmousemove={handleGraphMouseMove} onmouseleave={handleGraphMouseLeave}>
       <canvas bind:this={graphCanvas} class="frame-graph" class:dragging></canvas>
     </div>
+    {#if visibleStats}
+      <div class="frame-stats" data-testid="frame-stats">
+        <span title="Typical frame time in the visible window">p50 {visibleStats.p50.toFixed(1)}ms</span>
+        <span title="Slowest 5% of frames — where a stutter shows first">p95 {visibleStats.p95.toFixed(1)}ms</span>
+        <span title="Slowest frame in the visible window">worst {visibleStats.worst.toFixed(1)}ms</span>
+        <span
+          class:late={visibleStats.lateFrames > 0}
+          title="Frames that overran the display's refresh and held the previous image on screen"
+        >late {visibleStats.latePercent.toFixed(0)}%</span>
+      </div>
+    {/if}
   {:else}
     <div class="no-data-msg">Waiting for data...</div>
   {/if}
@@ -1070,6 +1111,20 @@
     display: flex;
     gap: 3px;
     flex-shrink: 0;
+  }
+
+  .frame-stats {
+    display: flex;
+    gap: 10px;
+    padding: 2px 8px 4px;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground, #888);
+  }
+
+  .frame-stats .late {
+    color: var(--vscode-editorWarning-foreground, #cca700);
   }
 
   .graph-container {
