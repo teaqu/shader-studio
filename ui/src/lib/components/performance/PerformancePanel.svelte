@@ -226,20 +226,6 @@
     redrawGraph();
   }
 
-  /**
-   * Clears the recorded history rather than guessing which samples are
-   * backgrounding artifacts — e.g. after switching away from this tab for a
-   * while, which would otherwise show up as one enormous stall.
-   */
-  function resetHistory() {
-    renderingEngine?.resetFrameTimeHistory();
-    graphPaused = false;
-    manualPause = false;
-    frozenData = null;
-    xOffset = 0;
-    hoverX = -1;
-  }
-
   function toggleGraphPause() {
     if (graphPaused) {
       graphPaused = false;
@@ -1118,14 +1104,6 @@
             : "Freeze the graph to inspect a moment — the shader keeps rendering"}
           aria-label={graphPaused ? "Resume the live graph" : "Freeze the graph"}
         >{#if graphPaused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}</button>
-        <button
-          class="toggle-btn"
-          onclick={() => {
-            resetHistory(); adjustYOffsetForZoom();
-          }}
-          use:tooltip={"Clear the recorded history and start fresh — useful after switching away from this tab for a while, which would otherwise show as one huge stall"}
-          aria-label="Reset the recorded history"
-        ><i class="codicon codicon-clear-all"></i></button>
         <button
           class="toggle-btn"
           class:active={centered}

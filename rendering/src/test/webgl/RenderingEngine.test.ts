@@ -1491,15 +1491,6 @@ describe("RenderingEngine", () => {
 
   });
 
-  describe("resetFrameTimeHistory delegation", () => {
-    it("should delegate resetFrameTimeHistory to FrameRenderer", () => {
-      mockFrameRenderer.resetFrameTimeHistory = vi.fn();
-
-      renderingEngine.resetFrameTimeHistory();
-
-      expect(mockFrameRenderer.resetFrameTimeHistory).toHaveBeenCalledOnce();
-    });
-  });
 
   describe("frame time count delegation", () => {
     it("should delegate getFrameTimeCount to FrameRenderer", () => {

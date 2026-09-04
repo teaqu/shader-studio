@@ -3356,15 +3356,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.frameTimeCount;
   }
 
-  /** Clears the recorded history so a backgrounding artifact doesn't linger in the graph or stats. */
-  resetFrameTimeHistory(): void {
-    this.frameTimeHead = 0;
-    this.frameTimeLen = 0;
-    this.frameTimeCount = 0;
-    this.previousFrameTimestamp = null;
-    this.fps.reset();
-  }
-
   setFPSLimit(limit: number): void {
     this.fpsLimit = limit;
     this.lastRenderedAt = null;

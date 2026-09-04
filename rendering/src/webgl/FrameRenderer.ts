@@ -422,15 +422,6 @@ export class FrameRenderer {
     return this.frameTimeCount;
   }
 
-  /** Clears the recorded history so a backgrounding artifact doesn't linger in the graph or stats. */
-  public resetFrameTimeHistory(): void {
-    this.frameTimeHead = 0;
-    this.frameTimeLen = 0;
-    this.frameTimeCount = 0;
-    this.previousFrameTimestamp = null;
-    this.fpsCalculator.reset();
-  }
-
   public renderSinglePass(pass: Pass): void {
     const baseUniforms = this.getUniforms();
     const passUniforms = this.getPassUniforms(pass, baseUniforms);

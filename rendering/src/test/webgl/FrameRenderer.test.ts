@@ -1915,50 +1915,6 @@ describe("FrameRenderer", () => {
     });
   });
 
-  describe("resetFrameTimeHistory", () => {
-    it("clears the recorded history, count, and GPU history", () => {
-      frameRenderer.setRunning(true);
-      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
-      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
-      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
-      frameRenderer.setGpuFrameTimeSource(() => 42);
-
-      frameRenderer.render(1000);
-      frameRenderer.render(1016.67);
-      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
-
-      frameRenderer.resetFrameTimeHistory();
-
-      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
-      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([]);
-      expect(frameRenderer.getFrameTimeCount()).toBe(0);
-    });
-
-    it("does not record a spike for the first frame rendered after a reset", () => {
-      frameRenderer.setRunning(true);
-      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
-      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
-      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
-
-      frameRenderer.render(1000);
-      frameRenderer.render(1016.67);
-
-      frameRenderer.resetFrameTimeHistory();
-      frameRenderer.render(9000); // would be an ~8s delta against the pre-reset timestamp
-
-      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
-
-      frameRenderer.render(9016.67);
-      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
-    });
-
-    it("resets the FPS calculator", () => {
-      frameRenderer.resetFrameTimeHistory();
-
-      expect(mockFPSCalculator.reset).toHaveBeenCalled();
-    });
-  });
-
   describe("frame time count", () => {
     it("should return 0 initially", () => {
       expect(frameRenderer.getFrameTimeCount()).toBe(0);
