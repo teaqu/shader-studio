@@ -22,10 +22,12 @@ function percentile(sorted: number[], fraction: number): number {
  * what a viewer perceives as stuttering — so the tail and the count of late
  * frames say more about smoothness than the mean the graph already draws.
  *
- * A frame counts as late once it overruns the display's refresh interval by
- * half again, meaning it missed a refresh and the image was held on screen for
- * an extra one. Without a detected refresh rate, the window's own median
- * stands in for it.
+ * Lateness is measured against the window's own median rather than against a
+ * target rate: a shader running steadily at 30fps is smooth, however far below
+ * the refresh rate it sits, while the same shader dropping the occasional
+ * frame is not. A frame counts as late once it overruns that median by a whole
+ * refresh interval, meaning the previous image was held on screen an extra
+ * refresh. Without a detected refresh rate, half the median stands in for it.
  */
 export function computeFrameTimeStats(samples: number[], refreshMs = 0): FrameTimeStats {
   if (samples.length === 0) {
@@ -33,11 +35,9 @@ export function computeFrameTimeStats(samples: number[], refreshMs = 0): FrameTi
   }
   const sorted = [...samples].sort((a, b) => a - b);
   const p50 = percentile(sorted, 0.5);
-  const interval = refreshMs > 0 ? refreshMs : p50;
-  const lateThreshold = interval * 1.5;
-  const lateFrames = interval > 0
-    ? sorted.filter((sample) => sample > lateThreshold).length
-    : 0;
+  const overrun = refreshMs > 0 ? refreshMs : p50 * 0.5;
+  const lateThreshold = p50 + overrun;
+  const lateFrames = sorted.filter((sample) => sample > lateThreshold).length;
 
   return {
     p50,

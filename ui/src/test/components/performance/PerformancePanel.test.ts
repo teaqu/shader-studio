@@ -118,6 +118,7 @@ function makeEngine(frameTime: number) {
     getFrameTimeHistory: vi.fn(() => history),
     getCurrentFPS: vi.fn(() => 1000 / frameTime),
     getFrameTimeCount: vi.fn(() => history.length),
+    getShaderLanguage: vi.fn(() => "slang" as const),
   };
 }
 
@@ -154,10 +155,107 @@ describe('PerformancePanel frame statistics', () => {
     expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 0');
   });
 
+  it('counts nothing late when a shader runs steadily at a low frame rate', () => {
+    // Even delivery at ~30fps looks smooth, however far under the refresh rate.
+    const history = Array.from({ length: 180 }, () => 33.3);
+    render(PerformancePanel, { props: { data: makePerformanceData({ frameTimeHistory: history }) } });
+
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('late 0');
+  });
+
   it('shows no statistics before any frames have been recorded', () => {
     render(PerformancePanel, { props: { data: null } });
 
     expect(screen.queryByTestId('frame-stats')).not.toBeInTheDocument();
+  });
+});
+
+describe('PerformancePanel console logging', () => {
+  it('stays quiet until the toggle is switched on', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    render(PerformancePanel, { props: { data: makePerformanceData() } });
+    await tick();
+
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it('prints the visible statistics once switched on', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const history = [...Array.from({ length: 179 }, () => 13.6), 60];
+    render(PerformancePanel, {
+      props: { data: makePerformanceData({ frameTimeHistory: history, currentFPS: 73 }) },
+    });
+
+    await fireEvent.click(screen.getByLabelText('Log statistics to the console'));
+    await tick();
+
+    const line = log.mock.calls.at(-1)?.[0] as string;
+    expect(line).toContain('[Performance]');
+    const payload = JSON.parse(line.slice(line.indexOf('{')));
+    expect(payload).toMatchObject({ fps: 73, p50: 13.6, worst: 60, late: 1 });
+    log.mockRestore();
+  });
+
+  it('names the engine so two runs can be told apart', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const engine = makeEngine(13.6);
+    render(PerformancePanel, {
+       
+      props: { renderingEngine: engine as any, active: true },
+    });
+
+    await fireEvent.click(screen.getByLabelText('Log statistics to the console'));
+    await tick();
+
+    const line = log.mock.calls.at(-1)?.[0] as string;
+    expect(JSON.parse(line.slice(line.indexOf('{'))).engine).toBe('slang');
+    log.mockRestore();
+  });
+
+  it('logs at most once a second while running', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const { rerender } = render(PerformancePanel, { props: { data: makePerformanceData() } });
+
+    await fireEvent.click(screen.getByLabelText('Log statistics to the console'));
+    await tick();
+    expect(log).toHaveBeenCalledTimes(1);
+
+    clock = 500;
+    await rerender({ data: makePerformanceData({ currentFPS: 61 }) });
+    await tick();
+    expect(log).toHaveBeenCalledTimes(1);
+
+    clock = 1600;
+    await rerender({ data: makePerformanceData({ currentFPS: 62 }) });
+    await tick();
+    expect(log).toHaveBeenCalledTimes(2);
+
+    vi.mocked(performance.now).mockRestore();
+    log.mockRestore();
+  });
+
+  it('stops logging when switched back off', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const { rerender } = render(PerformancePanel, { props: { data: makePerformanceData() } });
+    const toggle = screen.getByLabelText('Log statistics to the console');
+
+    await fireEvent.click(toggle);
+    await tick();
+    await fireEvent.click(toggle);
+    log.mockClear();
+
+    clock = 5000;
+    await rerender({ data: makePerformanceData({ currentFPS: 61 }) });
+    await tick();
+
+    expect(log).not.toHaveBeenCalled();
+    vi.mocked(performance.now).mockRestore();
+    log.mockRestore();
   });
 });
 

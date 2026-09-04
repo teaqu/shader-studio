@@ -21,6 +21,8 @@
   let xOffset = $state(0);
   let centered = $state(false);
   let graphPaused = $state(false);
+  let logToConsole = $state(false);
+  let lastLoggedAt = Number.NEGATIVE_INFINITY;
   let manualPause = false;
   let frozenData: PerformanceData | null = null;
   let dragging = $state(false);
@@ -936,6 +938,33 @@
     ctx.stroke();
   }
 
+  /**
+   * Prints one line per second while enabled, so a run can be copied out of
+   * the devtools console and compared against another — reading pacing off a
+   * moving graph is not something anyone can do reliably.
+   */
+  $effect(() => {
+    const stats = visibleStats;
+    if (!logToConsole || !stats) {
+      return;
+    }
+    const now = performance.now();
+    if (now - lastLoggedAt < 1000) {
+      return;
+    }
+    lastLoggedAt = now;
+    console.log(`[Performance] ${JSON.stringify({
+      engine: renderingEngine?.getShaderLanguage?.() ?? "unknown",
+      fps: Math.round(data?.currentFPS ?? 0),
+      p50: +stats.p50.toFixed(1),
+      p95: +stats.p95.toFixed(1),
+      worst: +stats.worst.toFixed(1),
+      late: stats.lateFrames,
+      samples: Math.min(visibleSamples, data?.frameTimeHistory.length ?? 0),
+      refreshHz: detectedHz,
+    })}`);
+  });
+
   onMount(() => {
     detectScreenHz();
   });
@@ -1055,6 +1084,17 @@
           onwheel={handleYZoomWheel}
           title="Vertical zoom — click to cycle, scroll to adjust"
         ><i class="codicon codicon-arrow-both vertical"></i> {yZoom}x</button>
+        <button
+          class="toggle-btn"
+          class:active={logToConsole}
+          onclick={() => {
+            logToConsole = !logToConsole;
+            lastLoggedAt = Number.NEGATIVE_INFINITY;
+          }}
+          title="Log these statistics to the console once per second"
+          aria-label="Log statistics to the console"
+          aria-pressed={logToConsole}
+        ><i class="codicon codicon-output"></i></button>
         {#if yOffset !== 0 || xOffset !== 0 || yZoom !== 1 || visibleSamples !== 180}
           <button class="toggle-btn" onclick={resetView} title="Reset pan and zoom" aria-label="Reset pan and zoom"><i class="codicon codicon-discard"></i></button>
         {/if}

@@ -42,13 +42,31 @@ and pan:
 | **p50** | Typical frame time |
 | **p95** | The slowest 5% of frames — where a stutter appears first |
 | **worst** | The slowest single frame |
-| **late** | Number of frames that overran the refresh interval, holding the previous image on screen |
+| **late** | Number of frames that overran the window's own frame time by a whole refresh, holding the previous image on screen |
 
 An average frame rate can look healthy while frames arrive unevenly, and
 uneven delivery is what the eye reads as stuttering. When the preview looks
 jumpy but the FPS display seems fine, check **late** and **worst** rather than
 the frame rate — a couple of late frames per second is enough to see, while
 barely moving the average.
+
+Lateness is judged against the frame time the shader is actually achieving,
+not against a target rate: a shader running steadily at 30fps reports no late
+frames, because even delivery looks smooth however far below the refresh rate
+it sits. The same shader dropping the occasional frame does report them.
+
+### Logging to the Console
+
+The toolbar's output button prints one line per second to the developer
+console while it is enabled:
+
+```
+[Performance] {"engine":"slang","fps":62,"p50":15.8,"p95":17.6,"worst":36.1,"late":2,"samples":180,"refreshHz":73}
+```
+
+Useful for comparing two runs — the same shader in GLSL and in Slang, say —
+since the numbers can be copied out and read side by side instead of watched
+on a moving graph.
 
 ### Controls
 
