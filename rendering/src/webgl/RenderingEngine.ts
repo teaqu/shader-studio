@@ -626,6 +626,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.frameRenderer.getGpuFrameTimeHistory();
   }
 
+  public resetFrameTimeHistory(): void {
+    this.frameRenderer.resetFrameTimeHistory();
+  }
+
   public getFrameTimeCount(): number {
     return this.frameRenderer.getFrameTimeCount();
   }

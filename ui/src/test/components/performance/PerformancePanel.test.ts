@@ -121,6 +121,7 @@ function makeEngine(frameTime: number) {
     getCurrentFPS: vi.fn(() => 1000 / frameTime),
     getFrameTimeCount: vi.fn(() => history.length),
     getShaderLanguage: vi.fn(() => "slang" as const),
+    resetFrameTimeHistory: vi.fn(),
   };
 }
 
@@ -572,6 +573,42 @@ describe('PerformancePanel Component', () => {
       await fireEvent.click(screen.getByLabelText('Resume the live graph'));
       expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
       expect(screen.getByLabelText('Freeze the graph')).not.toHaveClass('active');
+    });
+  });
+
+  // ─── Reset history button ────────────────────────────────────────
+  describe('Reset history button', () => {
+    it('should call resetFrameTimeHistory on the engine when clicked', async () => {
+      const engine = makeEngine(16.6);
+      render(PerformancePanel, {
+        props: { data: makePerformanceData(), renderingEngine: engine as any },
+      });
+
+      await fireEvent.click(screen.getByLabelText('Reset the recorded history'));
+
+      expect(engine.resetFrameTimeHistory).toHaveBeenCalledOnce();
+    });
+
+    it('should not throw when there is no rendering engine', async () => {
+      render(PerformancePanel, { props: { data: makePerformanceData() } });
+
+      await expect(
+        fireEvent.click(screen.getByLabelText('Reset the recorded history')),
+      ).resolves.not.toThrow();
+    });
+
+    it('should unpause the graph so fresh data is visible immediately', async () => {
+      const engine = makeEngine(16.6);
+      render(PerformancePanel, {
+        props: { data: makePerformanceData(), renderingEngine: engine as any },
+      });
+
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
+
+      await fireEvent.click(screen.getByLabelText('Reset the recorded history'));
+
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
     });
   });
 

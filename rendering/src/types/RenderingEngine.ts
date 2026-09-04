@@ -36,6 +36,8 @@ export interface RenderingEngine {
   getCurrentFPS(): number;
   getFrameTimeHistory(): number[];
   getFrameTimeCount(): number;
+  /** Clears the recorded frame/GPU-time history — e.g. after a tab-backgrounding gap. */
+  resetFrameTimeHistory(): void;
   /**
    * Milliseconds from submitting a frame's work to the GPU reporting it done,
    * or null where the backend cannot tell. The render loop runs on animation

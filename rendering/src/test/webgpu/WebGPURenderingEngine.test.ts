@@ -2718,13 +2718,25 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).toHaveBeenCalledTimes(2);
     });
 
-    it("ignores large frame deltas (>= 500ms, tab backgrounding) in the history", async () => {
+    it("records a large frame delta rather than discarding it as a guessed anomaly", async () => {
       const { engine } = await compiledEngine();
 
       engine.render(1000);
       engine.render(1016);
-      engine.render(2016); // 1000ms delta — ignored
+      engine.render(2016); // 1000ms delta — a real gap, not silently dropped
       engine.render(2032);
+
+      expect(engine.getFrameTimeHistory()).toEqual([16, 1000, 16]);
+      expect(engine.getFrameTimeCount()).toBe(3);
+    });
+
+    it("ignores only a degenerate (non-positive) frame delta", async () => {
+      const { engine } = await compiledEngine();
+
+      engine.render(1000);
+      engine.render(1016);
+      engine.render(1010); // earlier than the previous timestamp — degenerate
+      engine.render(1026);
 
       expect(engine.getFrameTimeHistory()).toEqual([16, 16]);
       expect(engine.getFrameTimeCount()).toBe(2);
@@ -2758,6 +2770,61 @@ describe("WebGPURenderingEngine", () => {
 
       expect(engine.getFrameTimeHistory()).toHaveLength(3600);
       expect(engine.getFrameTimeCount()).toBe(frames);
+    });
+  });
+
+  describe("resetFrameTimeHistory", () => {
+    async function compiledEngine() {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const result = await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(0); }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.slang",
+        {},
+      );
+      expect(result?.success).toBe(true);
+      return { engine };
+    }
+
+    it("clears the recorded history and count", async () => {
+      const { engine } = await compiledEngine();
+      engine.render(1000);
+      engine.render(1016);
+      expect(engine.getFrameTimeHistory()).toEqual([16]);
+
+      engine.resetFrameTimeHistory();
+
+      expect(engine.getFrameTimeHistory()).toEqual([]);
+      expect(engine.getGpuFrameTimeHistory()).toEqual([]);
+      expect(engine.getFrameTimeCount()).toBe(0);
+    });
+
+    it("does not record a spike for the first frame rendered after a reset", async () => {
+      const { engine } = await compiledEngine();
+      engine.render(1000);
+      engine.render(1016);
+
+      engine.resetFrameTimeHistory();
+      engine.render(9000); // would be an 8s delta against the pre-reset timestamp
+
+      expect(engine.getFrameTimeHistory()).toEqual([]);
+
+      engine.render(9016);
+      expect(engine.getFrameTimeHistory()).toEqual([16]);
+    });
+
+    it("resets the fps reading back to its just-started default", async () => {
+      const { engine } = await compiledEngine();
+      // Enough ~30fps frames to move the reading away from the fresh-start default.
+      for (let i = 0; i <= 12; i++) {
+        engine.render(1000 + i * 33.3);
+      }
+      expect(engine.getCurrentFPS()).not.toBe(60);
+
+      engine.resetFrameTimeHistory();
+
+      expect(engine.getCurrentFPS()).toBe(60);
     });
   });
 

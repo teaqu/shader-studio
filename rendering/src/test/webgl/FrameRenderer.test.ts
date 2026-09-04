@@ -1776,17 +1776,35 @@ describe("FrameRenderer", () => {
       expect(history).toHaveLength(3600);
     });
 
-    it("should ignore large deltas (>= 500ms, simulating tab backgrounding)", () => {
+    it("should record a large delta rather than discarding it as a guessed anomaly", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
       vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
 
       frameRenderer.render(1000);
-      // Simulate a 600ms gap (tab was backgrounded)
+      // A 600ms gap — could be tab backgrounding, could be a real slow
+      // frame; recorded either way rather than guessed away.
       frameRenderer.render(1600);
 
-      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([600]);
+    });
+
+    it("should ignore only a degenerate (non-positive) delta", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+      frameRenderer.render(1010); // earlier than the previous timestamp
+      frameRenderer.render(1026.67);
+
+      const history = frameRenderer.getFrameTimeHistory();
+      expect(history).toHaveLength(2);
+      expect(history[0]).toBeCloseTo(16.67, 1);
+      expect(history[1]).toBeCloseTo(16.67, 1);
     });
 
     it("should reset previousFrameTimestamp when paused (no huge spike on unpause)", () => {
@@ -1867,7 +1885,7 @@ describe("FrameRenderer", () => {
       expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([47.1]);
     });
 
-    it("should skip a push (and stay lined up) when the frame delta is ignored as a background spike", () => {
+    it("stays lined up with a large recorded delta rather than skipping the push", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
@@ -1875,10 +1893,69 @@ describe("FrameRenderer", () => {
       frameRenderer.setGpuFrameTimeSource(() => 99);
 
       frameRenderer.render(1000);
-      frameRenderer.render(1600); // 600ms gap — ignored
+      frameRenderer.render(1600); // 600ms gap — now recorded, not guessed away
+
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([600]);
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([99]);
+    });
+
+    it("skips a push (and stays lined up) only for a degenerate delta", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+      frameRenderer.setGpuFrameTimeSource(() => 99);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+      frameRenderer.render(1010); // earlier than the previous timestamp — degenerate
+
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+      expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([99]);
+    });
+  });
+
+  describe("resetFrameTimeHistory", () => {
+    it("clears the recorded history, count, and GPU history", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+      frameRenderer.setGpuFrameTimeSource(() => 42);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+
+      frameRenderer.resetFrameTimeHistory();
 
       expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
       expect(frameRenderer.getGpuFrameTimeHistory()).toEqual([]);
+      expect(frameRenderer.getFrameTimeCount()).toBe(0);
+    });
+
+    it("does not record a spike for the first frame rendered after a reset", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      vi.mocked(mockTimeManager.isPaused).mockReturnValue(false);
+
+      frameRenderer.render(1000);
+      frameRenderer.render(1016.67);
+
+      frameRenderer.resetFrameTimeHistory();
+      frameRenderer.render(9000); // would be an ~8s delta against the pre-reset timestamp
+
+      expect(frameRenderer.getFrameTimeHistory()).toEqual([]);
+
+      frameRenderer.render(9016.67);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+    });
+
+    it("resets the FPS calculator", () => {
+      frameRenderer.resetFrameTimeHistory();
+
+      expect(mockFPSCalculator.reset).toHaveBeenCalled();
     });
   });
 
@@ -1903,7 +1980,7 @@ describe("FrameRenderer", () => {
       expect(frameRenderer.getFrameTimeCount()).toBe(2);
     });
 
-    it("should NOT increment for ignored large deltas (tab backgrounding)", () => {
+    it("should increment for a large delta rather than discarding it as a guessed anomaly", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
@@ -1911,10 +1988,10 @@ describe("FrameRenderer", () => {
 
       frameRenderer.render(1000);
       frameRenderer.render(1016.67); // +1 → count=1
-      frameRenderer.render(1600);    // 583ms gap — ignored, count stays 1
+      frameRenderer.render(1600);    // 583ms gap — recorded, count=2
 
-      expect(frameRenderer.getFrameTimeCount()).toBe(1);
-      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(1);
+      expect(frameRenderer.getFrameTimeCount()).toBe(2);
+      expect(frameRenderer.getFrameTimeHistory()).toHaveLength(2);
     });
 
     it("should NOT increment when paused", () => {

@@ -2678,7 +2678,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     if (this.previousFrameTimestamp !== null) {
       const frameDelta = time - this.previousFrameTimestamp;
-      if (frameDelta < 500) {
+      // A gap this large is almost always the tab being backgrounded rather
+      // than one real slow frame, but guessing that from magnitude alone
+      // means genuinely sustained slowness gets silently discarded too.
+      // Only a non-positive delta is degenerate; resetFrameTimeHistory()
+      // is the deliberate way to clear a backgrounding artifact.
+      if (frameDelta > 0) {
         this.frameTimeBuffer[this.frameTimeHead] = frameDelta;
         this.gpuFrameTimeBuffer[this.frameTimeHead] = this.gpuFrameMs ?? 0;
         this.frameTimeHead = (this.frameTimeHead + 1) % WebGPURenderingEngine.MAX_FRAME_TIME_HISTORY;
@@ -3349,6 +3354,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   getFrameTimeCount(): number {
     return this.frameTimeCount;
+  }
+
+  /** Clears the recorded history so a backgrounding artifact doesn't linger in the graph or stats. */
+  resetFrameTimeHistory(): void {
+    this.frameTimeHead = 0;
+    this.frameTimeLen = 0;
+    this.frameTimeCount = 0;
+    this.previousFrameTimestamp = null;
+    this.fps.reset();
   }
 
   setFPSLimit(limit: number): void {
