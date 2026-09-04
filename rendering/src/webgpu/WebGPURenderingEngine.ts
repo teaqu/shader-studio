@@ -1936,6 +1936,45 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  private gpuFrameMs: number | null = null;
+  private gpuProbeInFlight = false;
+
+  /** Latency from submit to GPU completion, sampled one frame at a time. */
+  getGpuFrameTimeMs(): number | null {
+    return this.gpuFrameMs;
+  }
+
+  /**
+   * Times one submission at a time: a frame queued behind unfinished work
+   * reports the whole wait, which is what distinguishes a GPU keeping up from
+   * one falling behind an animation-frame loop that never blocks.
+   */
+  private probeGpuFrameTime(): void {
+    if (this.gpuProbeInFlight || !this.device?.queue?.onSubmittedWorkDone) {
+      return;
+    }
+    const submittedAt = this.now();
+    this.gpuProbeInFlight = true;
+    let completion: Promise<void>;
+    try {
+      completion = this.device.queue.onSubmittedWorkDone();
+    } catch {
+      this.gpuProbeInFlight = false;
+      return;
+    }
+    void completion.then(
+      () => {
+        this.gpuProbeInFlight = false;
+        if (!this.disposed) {
+          this.gpuFrameMs = this.ms(this.now() - submittedAt);
+        }
+      },
+      () => {
+        this.gpuProbeInFlight = false;
+      },
+    );
+  }
+
   private now(): number {
     return performance.now();
   }
@@ -2523,6 +2562,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     this.device.queue.submit([encoder.finish()]);
     this.hasSubmittedFrameForInstalledGeneration = true;
+    this.probeGpuFrameTime();
     this.pixelRegionCapturer?.beginMappings();
 
     for (const passName of pendingDispatchOnce) {

@@ -36,6 +36,14 @@ export interface RenderingEngine {
   getCurrentFPS(): number;
   getFrameTimeHistory(): number[];
   getFrameTimeCount(): number;
+  /**
+   * Milliseconds from submitting a frame's work to the GPU reporting it done,
+   * or null where the backend cannot tell. The render loop runs on animation
+   * frames and does not wait for the GPU, so this is what reveals a backend
+   * queueing frames faster than the hardware retires them — the loop reports a
+   * healthy rate while the picture on screen falls behind.
+   */
+  getGpuFrameTimeMs?(): number | null;
   setFPSLimit(limit: number): void;
   getUniforms(): import("../models").PassUniforms;
   cleanup(): void;

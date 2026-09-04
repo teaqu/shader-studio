@@ -43,12 +43,20 @@ and pan:
 | **p95** | The slowest 5% of frames — where a stutter appears first |
 | **worst** | The slowest single frame |
 | **late** | Number of frames that overran the window's own frame time by a whole refresh, holding the previous image on screen |
+| **gpu** | How long the GPU took to finish a frame, when the backend can report it (Slang only) |
 
 An average frame rate can look healthy while frames arrive unevenly, and
 uneven delivery is what the eye reads as stuttering. When the preview looks
 jumpy but the FPS display seems fine, check **late** and **worst** rather than
 the frame rate — a couple of late frames per second is enough to see, while
 barely moving the average.
+
+**gpu** deserves attention when the preview looks frozen while the frame rate
+looks fine. The render loop does not wait for the GPU, so a backend can accept
+frames faster than the hardware retires them: the loop keeps reporting its own
+rate while the image on screen falls behind. A **gpu** value far above the
+frame time means work is queueing up, and what you are seeing is that backlog
+rather than the reported frame rate.
 
 Lateness is judged against the frame time the shader is actually achieving,
 not against a target rate: a shader running steadily at 30fps reports no late

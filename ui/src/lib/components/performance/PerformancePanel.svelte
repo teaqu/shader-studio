@@ -959,6 +959,7 @@
       p50: +stats.p50.toFixed(1),
       p95: +stats.p95.toFixed(1),
       worst: +stats.worst.toFixed(1),
+      gpuMs: data?.gpuFrameTime ?? null,
       late: stats.lateFrames,
       samples: Math.min(visibleSamples, data?.frameTimeHistory.length ?? 0),
       refreshHz: detectedHz,
@@ -1039,7 +1040,7 @@
           onclick={() => {
             showFPS = false; adjustYOffsetForZoom();
           }}
-          title="Show frame time in milliseconds"
+          title="Plot how long each frame took, in milliseconds — lower is better"
         >ms</button>
         <button
           class="toggle-btn"
@@ -1047,7 +1048,7 @@
           onclick={() => {
             showFPS = true; adjustYOffsetForZoom();
           }}
-          title="Show frames per second"
+          title="Plot frames per second instead of milliseconds — higher is better"
         >fps</button>
         <button
           class="toggle-btn pause-btn"
@@ -1055,7 +1056,10 @@
           onclick={() => {
             toggleGraphPause(); adjustYOffsetForZoom();
           }}
-          title={graphPaused ? "Resume graph" : "Pause graph"}
+          title={graphPaused
+            ? "Resume the live graph"
+            : "Freeze the graph to inspect a moment — the shader keeps rendering"}
+          aria-label={graphPaused ? "Resume the live graph" : "Freeze the graph"}
         >{#if graphPaused}<i class="codicon codicon-play"></i>{:else}<i class="codicon codicon-debug-pause"></i>{/if}</button>
         <button
           class="toggle-btn"
@@ -1065,8 +1069,8 @@
               yOffset = 0;
             } adjustYOffsetForZoom();
           }}
-          title="Center line on visible average"
-          aria-label="Center line on visible average"
+          title="Keep the line centred on its own average, so small changes stay visible as the graph moves"
+          aria-label="Centre the line on its average"
         ><i class="codicon codicon-screen-normal"></i></button>
         <button
           class="toggle-btn"
@@ -1075,14 +1079,16 @@
             cycleHZoom(); adjustYOffsetForZoom();
           }}
           onwheel={handleHZoomWheel}
-          title="Horizontal zoom (time window) — click to cycle, scroll to adjust"
+          title="How much history the graph shows — click to cycle, scroll to adjust"
+          aria-label="Time window"
         ><i class="codicon codicon-arrow-both"></i> {timeWindowLabel}</button>
         <button
           class="toggle-btn"
           class:active={yZoom > 1}
           onclick={cycleYZoomAndCenter}
           onwheel={handleYZoomWheel}
-          title="Vertical zoom — click to cycle, scroll to adjust"
+          title="Magnify the vertical axis to see small differences in frame time — click to cycle, scroll to adjust"
+          aria-label="Vertical zoom"
         ><i class="codicon codicon-arrow-both vertical"></i> {yZoom}x</button>
         <button
           class="toggle-btn"
@@ -1091,12 +1097,12 @@
             logToConsole = !logToConsole;
             lastLoggedAt = Number.NEGATIVE_INFINITY;
           }}
-          title="Log these statistics to the console once per second"
+          title="Print these statistics to the developer console once per second, for comparing two runs"
           aria-label="Log statistics to the console"
           aria-pressed={logToConsole}
         ><i class="codicon codicon-output"></i></button>
         {#if yOffset !== 0 || xOffset !== 0 || yZoom !== 1 || visibleSamples !== 180}
-          <button class="toggle-btn" onclick={resetView} title="Reset pan and zoom" aria-label="Reset pan and zoom"><i class="codicon codicon-discard"></i></button>
+          <button class="toggle-btn" onclick={resetView} title="Reset the zoom, pan and time window" aria-label="Reset the zoom, pan and time window"><i class="codicon codicon-discard"></i></button>
         {/if}
       </div>
       <div class="toolbar-group">
@@ -1107,7 +1113,10 @@
             onclick={() => {
               downsample = d; adjustYOffsetForZoom();
             }}
-            title="Downsample {downsampleLabel(d)}"
+            title={d === 1
+              ? "Plot every frame"
+              : `Average every ${d} frames into one point — a longer, smoother history`}
+            aria-label={d === 1 ? "Plot every frame" : `Average every ${d} frames`}
           >{downsampleLabel(d)}</button>
         {/each}
       </div>
@@ -1121,6 +1130,12 @@
         <span title="Typical frame time in the visible window">p50 {visibleStats.p50.toFixed(1)}ms</span>
         <span title="Slowest 5% of frames — where a stutter shows first">p95 {visibleStats.p95.toFixed(1)}ms</span>
         <span title="Slowest frame in the visible window">worst {visibleStats.worst.toFixed(1)}ms</span>
+        {#if data?.gpuFrameTime !== null && data?.gpuFrameTime !== undefined}
+          <span
+            class:late={data.gpuFrameTime > visibleStats.p50 * 2}
+            title="How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind."
+          >gpu {data.gpuFrameTime.toFixed(1)}ms</span>
+        {/if}
         <span
           class:late={visibleStats.lateFrames > 0}
           title="Frames that overran the display's refresh and held the previous image on screen ({visibleStats.latePercent.toFixed(1)}% of the visible window)"

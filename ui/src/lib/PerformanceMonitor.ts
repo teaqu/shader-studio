@@ -7,6 +7,8 @@ export interface PerformanceData {
   maxFrameTime: number;
   frameTimeHistory: number[];
   frameTimeCount: number;
+  /** Submit-to-completion latency, where the backend can report it. */
+  gpuFrameTime: number | null;
 }
 
 export class PerformanceMonitor {
@@ -85,6 +87,7 @@ export class PerformanceMonitor {
       maxFrameTime: max,
       frameTimeHistory: history,
       frameTimeCount,
+      gpuFrameTime: this.renderingEngine.getGpuFrameTimeMs?.() ?? null,
     });
   }
 }

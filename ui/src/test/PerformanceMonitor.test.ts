@@ -142,6 +142,7 @@ describe('PerformanceMonitor', () => {
         maxFrameTime: 30,
         frameTimeHistory: [10, 20, 30],
         frameTimeCount: 0,
+        gpuFrameTime: null,
       });
     });
 
@@ -161,6 +162,7 @@ describe('PerformanceMonitor', () => {
         maxFrameTime: 0,
         frameTimeHistory: [],
         frameTimeCount: 0,
+        gpuFrameTime: null,
       });
     });
 
@@ -180,6 +182,7 @@ describe('PerformanceMonitor', () => {
         maxFrameTime: 16.67,
         frameTimeHistory: [16.67],
         frameTimeCount: 0,
+        gpuFrameTime: null,
       });
     });
 
@@ -252,6 +255,7 @@ describe('PerformanceMonitor', () => {
 
       expect(callback).toHaveBeenCalledWith(expect.objectContaining({
         frameTimeCount: 500,
+        gpuFrameTime: null,
       }));
     });
 
@@ -267,6 +271,7 @@ describe('PerformanceMonitor', () => {
 
       expect(callback).toHaveBeenLastCalledWith(expect.objectContaining({
         frameTimeCount: 100,
+        gpuFrameTime: null,
       }));
 
       // Simulate next tick with updated count
@@ -276,6 +281,7 @@ describe('PerformanceMonitor', () => {
 
       expect(callback).toHaveBeenLastCalledWith(expect.objectContaining({
         frameTimeCount: 101,
+        gpuFrameTime: null,
       }));
     });
 
@@ -291,6 +297,7 @@ describe('PerformanceMonitor', () => {
 
       expect(callback).toHaveBeenCalledWith(expect.objectContaining({
         frameTimeCount: 0,
+        gpuFrameTime: null,
         frameTimeHistory: [],
       }));
     });
@@ -332,6 +339,7 @@ describe('PerformanceMonitor', () => {
         maxFrameTime: 16,
         frameTimeHistory: [8, 12, 16],
         frameTimeCount: 0,
+        gpuFrameTime: null,
       });
 
       // Frame 2 data changes
@@ -349,6 +357,7 @@ describe('PerformanceMonitor', () => {
         maxFrameTime: 22,
         frameTimeHistory: [10, 14, 18, 22],
         frameTimeCount: 0,
+        gpuFrameTime: null,
       });
 
       // Stop and verify no more callbacks

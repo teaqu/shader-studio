@@ -103,6 +103,7 @@ function makePerformanceData(overrides: Partial<PerformanceData> = {}): Performa
     maxFrameTime: 20.0,
     frameTimeHistory: history,
     frameTimeCount: history.length,
+    gpuFrameTime: null,
     ...overrides,
   };
 }
@@ -167,6 +168,67 @@ describe('PerformancePanel frame statistics', () => {
     render(PerformancePanel, { props: { data: null } });
 
     expect(screen.queryByTestId('frame-stats')).not.toBeInTheDocument();
+  });
+});
+
+describe('PerformancePanel tooltips', () => {
+  it('explains what each toolbar button does, not just what it is called', () => {
+    const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
+
+    const titles = [...container.querySelectorAll('.toolbar button')]
+      .map((button) => button.getAttribute('title') ?? '');
+
+    expect(titles.length).toBeGreaterThan(0);
+    for (const title of titles) {
+      // A label alone ("ms", "1:4") tells a first-time user nothing; a short
+      // phrase like "Plot every frame" does.
+      expect(title.split(' ').length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('describes the downsample buttons by what they do to the graph', () => {
+    const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
+    const titles = [...container.querySelectorAll('.toolbar button')]
+      .map((button) => button.getAttribute('title') ?? '');
+
+    expect(titles).toContain('Plot every frame');
+    expect(titles.some((title) => title.startsWith('Average every 4 frames'))).toBe(true);
+  });
+});
+
+describe('PerformancePanel GPU latency', () => {
+  it('shows nothing when the backend cannot report it', () => {
+    render(PerformancePanel, { props: { data: makePerformanceData() } });
+
+    expect(screen.getByTestId('frame-stats')).not.toHaveTextContent('gpu');
+  });
+
+  it('shows how long the GPU took to finish a frame', () => {
+    render(PerformancePanel, { props: { data: makePerformanceData({ gpuFrameTime: 18.4 }) } });
+
+    expect(screen.getByTestId('frame-stats')).toHaveTextContent('gpu 18.4ms');
+  });
+
+  it('flags a GPU falling behind the loop that feeds it', () => {
+    // The loop runs at 16.6ms while the GPU needs 500ms a frame: the reported
+    // frame rate stays healthy while the picture on screen is far behind.
+    const { container } = render(PerformancePanel, {
+      props: { data: makePerformanceData({ gpuFrameTime: 500 }) },
+    });
+
+    const gpu = [...container.querySelectorAll('.frame-stats span')]
+      .find((el) => el.textContent?.startsWith('gpu'));
+    expect(gpu).toHaveClass('late');
+  });
+
+  it('leaves a GPU keeping pace unflagged', () => {
+    const { container } = render(PerformancePanel, {
+      props: { data: makePerformanceData({ gpuFrameTime: 17 }) },
+    });
+
+    const gpu = [...container.querySelectorAll('.frame-stats span')]
+      .find((el) => el.textContent?.startsWith('gpu'));
+    expect(gpu).not.toHaveClass('late');
   });
 });
 
@@ -405,19 +467,19 @@ describe('PerformancePanel Component', () => {
   describe('Center button', () => {
     it('should not be active by default', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      expect(screen.getByTitle('Center line on visible average')).not.toHaveClass('active');
+      expect(screen.getByLabelText('Centre the line on its average')).not.toHaveClass('active');
     });
 
     it('should toggle centered mode when clicked', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Center line on visible average');
+      const btn = screen.getByLabelText('Centre the line on its average');
       await fireEvent.click(btn);
       expect(btn).toHaveClass('active');
     });
 
     it('should toggle off when clicked again', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Center line on visible average');
+      const btn = screen.getByLabelText('Centre the line on its average');
       await fireEvent.click(btn);
       await fireEvent.click(btn);
       expect(btn).not.toHaveClass('active');
@@ -428,22 +490,22 @@ describe('PerformancePanel Component', () => {
   describe('Pause button', () => {
     it('should show pause icon by default', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
     });
 
     it('should toggle to resume state when clicked', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      await fireEvent.click(screen.getByTitle('Pause graph'));
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
-      expect(screen.getByTitle('Resume graph')).toHaveClass('active');
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Resume the live graph')).toHaveClass('active');
     });
 
     it('should toggle back to pause state when clicked again', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      await fireEvent.click(screen.getByTitle('Pause graph'));
-      await fireEvent.click(screen.getByTitle('Resume graph'));
-      expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
-      expect(screen.getByTitle('Pause graph')).not.toHaveClass('active');
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
+      await fireEvent.click(screen.getByLabelText('Resume the live graph'));
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Freeze the graph')).not.toHaveClass('active');
     });
   });
 
@@ -451,13 +513,13 @@ describe('PerformancePanel Component', () => {
   describe('Zoom button', () => {
     it('should show 1x by default', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Vertical zoom');
       expect(btn).toHaveTextContent('1x');
     });
 
     it('should cycle through all zoom levels on clicks', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Vertical zoom');
 
       const levels = ['2x', '4x', '8x', '16x', '32x', '1x'];
       for (const expected of levels) {
@@ -468,7 +530,7 @@ describe('PerformancePanel Component', () => {
 
     it('should be active when zoom is greater than 1x', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Vertical zoom');
       expect(btn).not.toHaveClass('active');
       await fireEvent.click(btn);
       expect(btn).toHaveClass('active');
@@ -476,7 +538,7 @@ describe('PerformancePanel Component', () => {
 
     it('should not be active at 1x zoom', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Vertical zoom');
       expect(btn).not.toHaveClass('active');
     });
   });
@@ -485,7 +547,7 @@ describe('PerformancePanel Component', () => {
   describe('Vertical zoom via Ctrl+wheel', () => {
     it('should zoom in vertically with Ctrl+scroll up', async () => {
       const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       expect(zoomBtn).toHaveTextContent('1x');
 
       const graphContainer = container.querySelector('.graph-container')!;
@@ -495,7 +557,7 @@ describe('PerformancePanel Component', () => {
 
     it('should zoom out vertically with Ctrl+scroll down', async () => {
       const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       const graphContainer = container.querySelector('.graph-container')!;
 
       // Zoom in first
@@ -509,7 +571,7 @@ describe('PerformancePanel Component', () => {
 
     it('should not zoom below 1x with Ctrl+scroll down', async () => {
       const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       const graphContainer = container.querySelector('.graph-container')!;
 
       await fireEvent.wheel(graphContainer, { deltaY: 100, ctrlKey: true });
@@ -526,16 +588,16 @@ describe('PerformancePanel Component', () => {
 
     it('should show reset button when zoom is changed', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      await fireEvent.click(screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust'));
-      expect(screen.getByTitle('Reset pan and zoom')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Vertical zoom'));
+      expect(screen.getByLabelText('Reset the zoom, pan and time window')).toBeInTheDocument();
     });
 
     it('should reset zoom when reset is clicked', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       await fireEvent.click(zoomBtn);
       expect(zoomBtn).toHaveTextContent('2x');
-      await fireEvent.click(screen.getByTitle('Reset pan and zoom'));
+      await fireEvent.click(screen.getByLabelText('Reset the zoom, pan and time window'));
       expect(zoomBtn).toHaveTextContent('1x');
       expect(screen.queryByTitle('Reset pan and zoom')).not.toBeInTheDocument();
     });
@@ -1054,7 +1116,7 @@ describe('PerformancePanel Component', () => {
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
 
       // After mousedown, graph should be paused — resume button should appear
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
     });
 
     it('should unfreeze data on mouseup when not manually paused', async () => {
@@ -1067,7 +1129,7 @@ describe('PerformancePanel Component', () => {
       await fireEvent.mouseUp(window);
 
       // Should go back to pause button (unpaused)
-      expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
     });
 
     it('should stay paused on mouseup when manually paused', async () => {
@@ -1076,15 +1138,15 @@ describe('PerformancePanel Component', () => {
       });
 
       // Manually pause first
-      await fireEvent.click(screen.getByTitle('Pause graph'));
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
 
       // Drag should keep it paused after release
       const canvas = document.querySelector('canvas')!;
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       await fireEvent.mouseUp(window);
 
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
     });
   });
 
@@ -1113,7 +1175,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       expect(zoomBtn).toHaveTextContent('1x');
 
       // Scroll up (deltaY < 0) on the zoom button → increase zoom
@@ -1126,7 +1188,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
 
       // First zoom in
       await fireEvent.wheel(zoomBtn, { deltaY: -100 });
@@ -1142,7 +1204,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
       expect(zoomBtn).toHaveTextContent('1x');
 
       await fireEvent.wheel(zoomBtn, { deltaY: 100 });
@@ -1154,7 +1216,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const zoomBtn = screen.getByTitle('Vertical zoom — click to cycle, scroll to adjust');
+      const zoomBtn = screen.getByLabelText('Vertical zoom');
 
       // Scroll up many times to hit the max (32x)
       for (let i = 0; i < 10; i++) {
@@ -1681,13 +1743,13 @@ describe('PerformancePanel Component', () => {
   describe('Horizontal zoom button', () => {
     it('should show default time window label of 3s', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
       expect(btn).toHaveTextContent('3s');
     });
 
     it('should cycle through time windows on click', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Default is 180 samples = 3s (index 4)
       // Click cycles to next: 300 = 5s
@@ -1701,7 +1763,7 @@ describe('PerformancePanel Component', () => {
 
     it('should wrap around to first step after last', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Cycle through all steps: 180→300→450→600→900→1200→1800→3600→wrap to 30
       const clicks = 8; // 8 clicks from index 4 to wrap
@@ -1713,7 +1775,7 @@ describe('PerformancePanel Component', () => {
 
     it('should be active when not at default (180 samples)', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
       expect(btn).not.toHaveClass('active');
 
       await fireEvent.click(btn);
@@ -1724,14 +1786,14 @@ describe('PerformancePanel Component', () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
       expect(screen.queryByTitle('Reset pan and zoom')).not.toBeInTheDocument();
 
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
       await fireEvent.click(btn);
-      expect(screen.getByTitle('Reset pan and zoom')).toBeInTheDocument();
+      expect(screen.getByLabelText('Reset the zoom, pan and time window')).toBeInTheDocument();
     });
 
     it('should zoom in on scroll up over the button', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Scroll up (deltaY < 0) → fewer samples → zoom in
       await fireEvent.wheel(btn, { deltaY: -100 });
@@ -1740,7 +1802,7 @@ describe('PerformancePanel Component', () => {
 
     it('should zoom out on scroll down over the button', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Scroll down (deltaY > 0) → more samples → zoom out
       await fireEvent.wheel(btn, { deltaY: 100 });
@@ -1755,7 +1817,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const hzoomBtn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const hzoomBtn = screen.getByLabelText('Time window');
       expect(hzoomBtn).toHaveTextContent('3s');
 
       const graphContainer = container.querySelector('.graph-container')!;
@@ -1769,7 +1831,7 @@ describe('PerformancePanel Component', () => {
         props: { data: makePerformanceData() },
       });
 
-      const hzoomBtn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const hzoomBtn = screen.getByLabelText('Time window');
       const graphContainer = container.querySelector('.graph-container')!;
 
       await fireEvent.wheel(graphContainer, { deltaY: -100 });
@@ -1801,7 +1863,7 @@ describe('PerformancePanel Component', () => {
       const canvas = container.querySelector('canvas')!;
 
       // Manually pause first so drag doesn't auto-unpause and reset xOffset
-      await fireEvent.click(screen.getByTitle('Pause graph'));
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
 
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       // Drag right (positive dx) to increase xOffset
@@ -1809,7 +1871,7 @@ describe('PerformancePanel Component', () => {
       await fireEvent.mouseUp(window);
 
       // If xOffset changed, reset button should appear
-      expect(screen.getByTitle('Reset pan and zoom')).toBeInTheDocument();
+      expect(screen.getByLabelText('Reset the zoom, pan and time window')).toBeInTheDocument();
     });
   });
 
@@ -1817,7 +1879,7 @@ describe('PerformancePanel Component', () => {
   describe('Time window label formatting', () => {
     it('should show sub-second labels in ms', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Cycle to 30 samples = 500ms — need to wrap around
       // From 180 (index 4), cycle 8 times to wrap to index 0 (30 samples)
@@ -1829,7 +1891,7 @@ describe('PerformancePanel Component', () => {
 
     it('should show whole-second labels without decimal', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Default 180 = 3s
       expect(btn).toHaveTextContent('3s');
@@ -1837,7 +1899,7 @@ describe('PerformancePanel Component', () => {
 
     it('should show minute labels for large windows', async () => {
       render(PerformancePanel, { props: { data: makePerformanceData() } });
-      const btn = screen.getByTitle('Horizontal zoom (time window) — click to cycle, scroll to adjust');
+      const btn = screen.getByLabelText('Time window');
 
       // Cycle to 3600 samples = 60s = 1m (index 11, need 7 clicks from index 4)
       for (let i = 0; i < 7; i++) {
@@ -1886,18 +1948,18 @@ describe('PerformancePanel Component', () => {
       });
 
       // Manually pause
-      await fireEvent.click(screen.getByTitle('Pause graph'));
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Freeze the graph'));
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
 
       // Drag and release — should stay paused because manualPause=true
       const canvas = container.querySelector('canvas')!;
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       await fireEvent.mouseUp(window);
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
 
       // Click resume — should now unpause
-      await fireEvent.click(screen.getByTitle('Resume graph'));
-      expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Resume the live graph'));
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
     });
 
     it('should auto-unpause after drag when not manually paused', async () => {
@@ -1910,11 +1972,11 @@ describe('PerformancePanel Component', () => {
       // Drag without manual pause
       await fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       // During drag, should be paused
-      expect(screen.getByTitle('Resume graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Resume the live graph')).toBeInTheDocument();
 
       await fireEvent.mouseUp(window);
       // After release, should auto-unpause
-      expect(screen.getByTitle('Pause graph')).toBeInTheDocument();
+      expect(screen.getByLabelText('Freeze the graph')).toBeInTheDocument();
     });
   });
 });
