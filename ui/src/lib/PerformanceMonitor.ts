@@ -30,11 +30,15 @@ export class PerformanceMonitor {
       return;
     }
     this.running = true;
+    // GPU timing costs nothing while nobody is reading it, so it follows the
+    // panel rather than running for every preview.
+    this.renderingEngine.setGpuTimingEnabled?.(true);
     this.tick();
   }
 
   public stop(): void {
     this.running = false;
+    this.renderingEngine.setGpuTimingEnabled?.(false);
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;

@@ -1936,6 +1936,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  private gpuTimingEnabled = false;
   private gpuFrameMs: number | null = null;
   private gpuProbeInFlight = false;
 
@@ -1944,13 +1945,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.gpuFrameMs;
   }
 
+  setGpuTimingEnabled(enabled: boolean): void {
+    this.gpuTimingEnabled = enabled;
+    if (!enabled) {
+      this.gpuFrameMs = null;
+    }
+  }
+
   /**
    * Times one submission at a time: a frame queued behind unfinished work
    * reports the whole wait, which is what distinguishes a GPU keeping up from
    * one falling behind an animation-frame loop that never blocks.
    */
   private probeGpuFrameTime(): void {
-    if (this.gpuProbeInFlight || !this.device?.queue?.onSubmittedWorkDone) {
+    if (!this.gpuTimingEnabled || this.gpuProbeInFlight || !this.device?.queue?.onSubmittedWorkDone) {
       return;
     }
     const submittedAt = this.now();

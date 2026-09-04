@@ -43,7 +43,7 @@ and pan:
 | **p95** | The slowest 5% of frames — where a stutter appears first |
 | **worst** | The slowest single frame |
 | **late** | Number of frames that overran the window's own frame time by a whole refresh, holding the previous image on screen |
-| **gpu** | How long the GPU took to finish a frame, when the backend can report it (Slang only) |
+| **gpu** | How long the GPU took to finish a frame — measured on both engines, and appearing a moment after the panel opens |
 
 An average frame rate can look healthy while frames arrive unevenly, and
 uneven delivery is what the eye reads as stuttering. When the preview looks

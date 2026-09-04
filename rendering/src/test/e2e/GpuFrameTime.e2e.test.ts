@@ -67,12 +67,31 @@ describe("GPU frame time", () => {
     expect(heavyMs!).toBeGreaterThan(lightMs!);
   });
 
-  it("reports nothing for the WebGL engine, which cannot measure it", { timeout: 120_000 }, async () => {
+  it("reports submit-to-completion latency for the WebGL engine too", { timeout: 120_000 }, async () => {
     const harness = await renderFrames("glsl", programs.glsl, 640, 360, 6);
     try {
-      expect(harness.engine.getGpuFrameTimeMs?.() ?? null).toBeNull();
+      const gpuMs = harness.engine.getGpuFrameTimeMs?.() ?? null;
+
+      expect(gpuMs).not.toBeNull();
+      expect(gpuMs!).toBeGreaterThan(0);
+      expect(gpuMs!).toBeLessThan(1000);
+      console.log("[GpuFrameTime] webgl", JSON.stringify({ gpuMs }));
     } finally {
       harness.dispose();
     }
+  });
+
+  it("measures both engines on the same shader, so the two can be compared", { timeout: 180_000 }, async () => {
+    const glsl = await renderFrames("glsl", programs.glsl, 1280, 720, 6);
+    const glslMs = glsl.engine.getGpuFrameTimeMs?.() ?? null;
+    glsl.dispose();
+
+    const slang = await renderFrames("slang", programs.slang, 1280, 720, 6);
+    const slangMs = slang.engine.getGpuFrameTimeMs?.() ?? null;
+    slang.dispose();
+
+    console.log("[GpuFrameTime] engines", JSON.stringify({ glslMs, slangMs }));
+    expect(glslMs).not.toBeNull();
+    expect(slangMs).not.toBeNull();
   });
 });

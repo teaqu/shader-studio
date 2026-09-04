@@ -11,9 +11,10 @@ import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 function engineWithQueue(onSubmittedWorkDone: () => Promise<void>) {
   const engine = new WebGPURenderingEngine({ scriptUrl: "", wasmUrl: "" });
   const device = { queue: { onSubmittedWorkDone: vi.fn(onSubmittedWorkDone) } };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reaching past the device bootstrap
+   
   (engine as any).device = device;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- private probe under test
+  engine.setGpuTimingEnabled(true);
+   
   return { engine, device, probe: () => (engine as any).probeGpuFrameTime() };
 }
 
@@ -67,12 +68,23 @@ describe("WebGPURenderingEngine GPU frame time", () => {
     expect(device.queue.onSubmittedWorkDone).toHaveBeenCalledTimes(2);
   });
 
+  it("does not touch the queue while timing is off", () => {
+    const { engine, device, probe } = engineWithQueue(() => Promise.resolve());
+    engine.setGpuTimingEnabled(false);
+
+    probe();
+
+    expect(device.queue.onSubmittedWorkDone).not.toHaveBeenCalled();
+    expect(engine.getGpuFrameTimeMs()).toBeNull();
+  });
+
   it("survives a backend that cannot report completion", () => {
     const engine = new WebGPURenderingEngine({ scriptUrl: "", wasmUrl: "" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- device without the capability
+     
     (engine as any).device = { queue: {} };
+    engine.setGpuTimingEnabled(true);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- private probe under test
+     
     expect(() => (engine as any).probeGpuFrameTime()).not.toThrow();
     expect(engine.getGpuFrameTimeMs()).toBeNull();
   });

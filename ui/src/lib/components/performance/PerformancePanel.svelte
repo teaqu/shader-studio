@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { PerformanceMonitor, type PerformanceData } from "../../PerformanceMonitor";
   import { computeFrameTimeStats } from "../../util/frameTimeStats";
+  import { tooltip } from "../../actions/tooltip";
   import type { RenderingEngine } from "../../../../../rendering/src/types/RenderingEngine";
 
   interface Props {
@@ -959,7 +960,9 @@
       p50: +stats.p50.toFixed(1),
       p95: +stats.p95.toFixed(1),
       worst: +stats.worst.toFixed(1),
-      gpuMs: data?.gpuFrameTime ?? null,
+      ...(data?.gpuFrameTime === null || data?.gpuFrameTime === undefined
+        ? {}
+        : { gpuMs: data.gpuFrameTime }),
       late: stats.lateFrames,
       samples: Math.min(visibleSamples, data?.frameTimeHistory.length ?? 0),
       refreshHz: detectedHz,
@@ -1040,7 +1043,7 @@
           onclick={() => {
             showFPS = false; adjustYOffsetForZoom();
           }}
-          title="Plot how long each frame took, in milliseconds — lower is better"
+          use:tooltip={"Plot how long each frame took, in milliseconds — lower is better"}
         >ms</button>
         <button
           class="toggle-btn"
@@ -1048,7 +1051,7 @@
           onclick={() => {
             showFPS = true; adjustYOffsetForZoom();
           }}
-          title="Plot frames per second instead of milliseconds — higher is better"
+          use:tooltip={"Plot frames per second instead of milliseconds — higher is better"}
         >fps</button>
         <button
           class="toggle-btn pause-btn"
@@ -1056,7 +1059,7 @@
           onclick={() => {
             toggleGraphPause(); adjustYOffsetForZoom();
           }}
-          title={graphPaused
+          use:tooltip={graphPaused
             ? "Resume the live graph"
             : "Freeze the graph to inspect a moment — the shader keeps rendering"}
           aria-label={graphPaused ? "Resume the live graph" : "Freeze the graph"}
@@ -1069,7 +1072,7 @@
               yOffset = 0;
             } adjustYOffsetForZoom();
           }}
-          title="Keep the line centred on its own average, so small changes stay visible as the graph moves"
+          use:tooltip={"Keep the line centred on its own average, so small changes stay visible as the graph moves"}
           aria-label="Centre the line on its average"
         ><i class="codicon codicon-screen-normal"></i></button>
         <button
@@ -1079,7 +1082,7 @@
             cycleHZoom(); adjustYOffsetForZoom();
           }}
           onwheel={handleHZoomWheel}
-          title="How much history the graph shows — click to cycle, scroll to adjust"
+          use:tooltip={"How much history the graph shows — click to cycle, scroll to adjust"}
           aria-label="Time window"
         ><i class="codicon codicon-arrow-both"></i> {timeWindowLabel}</button>
         <button
@@ -1087,7 +1090,7 @@
           class:active={yZoom > 1}
           onclick={cycleYZoomAndCenter}
           onwheel={handleYZoomWheel}
-          title="Magnify the vertical axis to see small differences in frame time — click to cycle, scroll to adjust"
+          use:tooltip={"Magnify the vertical axis to see small differences in frame time — click to cycle, scroll to adjust"}
           aria-label="Vertical zoom"
         ><i class="codicon codicon-arrow-both vertical"></i> {yZoom}x</button>
         <button
@@ -1097,12 +1100,12 @@
             logToConsole = !logToConsole;
             lastLoggedAt = Number.NEGATIVE_INFINITY;
           }}
-          title="Print these statistics to the developer console once per second, for comparing two runs"
+          use:tooltip={"Print these statistics to the developer console once per second, for comparing two runs"}
           aria-label="Log statistics to the console"
           aria-pressed={logToConsole}
         ><i class="codicon codicon-output"></i></button>
         {#if yOffset !== 0 || xOffset !== 0 || yZoom !== 1 || visibleSamples !== 180}
-          <button class="toggle-btn" onclick={resetView} title="Reset the zoom, pan and time window" aria-label="Reset the zoom, pan and time window"><i class="codicon codicon-discard"></i></button>
+          <button class="toggle-btn" onclick={resetView} use:tooltip={"Reset the zoom, pan and time window"} aria-label="Reset the zoom, pan and time window"><i class="codicon codicon-discard"></i></button>
         {/if}
       </div>
       <div class="toolbar-group">
@@ -1113,7 +1116,7 @@
             onclick={() => {
               downsample = d; adjustYOffsetForZoom();
             }}
-            title={d === 1
+            use:tooltip={d === 1
               ? "Plot every frame"
               : `Average every ${d} frames into one point — a longer, smoother history`}
             aria-label={d === 1 ? "Plot every frame" : `Average every ${d} frames`}
@@ -1127,19 +1130,19 @@
     </div>
     {#if visibleStats}
       <div class="frame-stats" data-testid="frame-stats">
-        <span title="Typical frame time in the visible window">p50 {visibleStats.p50.toFixed(1)}ms</span>
-        <span title="Slowest 5% of frames — where a stutter shows first">p95 {visibleStats.p95.toFixed(1)}ms</span>
-        <span title="Slowest frame in the visible window">worst {visibleStats.worst.toFixed(1)}ms</span>
+        <span use:tooltip={"Typical frame time in the visible window"}>p50 {visibleStats.p50.toFixed(1)}ms</span>
+        <span use:tooltip={"Slowest 5% of frames — where a stutter shows first"}>p95 {visibleStats.p95.toFixed(1)}ms</span>
+        <span use:tooltip={"Slowest frame in the visible window"}>worst {visibleStats.worst.toFixed(1)}ms</span>
+        <span
+          class:late={visibleStats.lateFrames > 0}
+          use:tooltip={`Frames that overran the display's refresh and held the previous image on screen (${visibleStats.latePercent.toFixed(1)}% of the visible window)`}
+        >late {visibleStats.lateFrames}</span>
         {#if data?.gpuFrameTime !== null && data?.gpuFrameTime !== undefined}
           <span
             class:late={data.gpuFrameTime > visibleStats.p50 * 2}
-            title="How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind."
+            use:tooltip={"How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind."}
           >gpu {data.gpuFrameTime.toFixed(1)}ms</span>
         {/if}
-        <span
-          class:late={visibleStats.lateFrames > 0}
-          title="Frames that overran the display's refresh and held the previous image on screen ({visibleStats.latePercent.toFixed(1)}% of the visible window)"
-        >late {visibleStats.lateFrames}</span>
       </div>
     {/if}
   {:else}
@@ -1171,11 +1174,33 @@
   .frame-stats {
     display: flex;
     gap: 10px;
+    white-space: nowrap;
     padding: 2px 8px 4px;
     flex-shrink: 0;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
     color: var(--vscode-descriptionForeground, #888);
+  }
+
+  .frame-stats span {
+    /* Reserve room for the widest value so a changing figure cannot shove
+       its neighbours along the row. */
+    min-width: 5.5em;
+  }
+
+  :global(.ss-tooltip) {
+    position: fixed;
+    z-index: 1000;
+    max-width: 280px;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-editorHoverWidget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 3px;
+    background: var(--vscode-editorHoverWidget-background, #252526);
+    color: var(--vscode-editorHoverWidget-foreground, #cccccc);
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   }
 
   .frame-stats .late {

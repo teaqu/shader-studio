@@ -176,7 +176,7 @@ describe('PerformancePanel tooltips', () => {
     const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
 
     const titles = [...container.querySelectorAll('.toolbar button')]
-      .map((button) => button.getAttribute('title') ?? '');
+      .map((button) => button.getAttribute('data-tooltip') ?? '');
 
     expect(titles.length).toBeGreaterThan(0);
     for (const title of titles) {
@@ -189,7 +189,7 @@ describe('PerformancePanel tooltips', () => {
   it('describes the downsample buttons by what they do to the graph', () => {
     const { container } = render(PerformancePanel, { props: { data: makePerformanceData() } });
     const titles = [...container.querySelectorAll('.toolbar button')]
-      .map((button) => button.getAttribute('title') ?? '');
+      .map((button) => button.getAttribute('data-tooltip') ?? '');
 
     expect(titles).toContain('Plot every frame');
     expect(titles.some((title) => title.startsWith('Average every 4 frames'))).toBe(true);
@@ -197,10 +197,46 @@ describe('PerformancePanel tooltips', () => {
 });
 
 describe('PerformancePanel GPU latency', () => {
+  it('omits the GPU figure from the log until one has been measured', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    render(PerformancePanel, { props: { data: makePerformanceData({ gpuFrameTime: null }) } });
+
+    await fireEvent.click(screen.getByLabelText('Log statistics to the console'));
+    await tick();
+
+    const line = log.mock.calls.at(-1)?.[0] as string;
+    expect(JSON.parse(line.slice(line.indexOf('{')))).not.toHaveProperty('gpuMs');
+    log.mockRestore();
+  });
+
+  it('includes the GPU figure once it arrives', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    render(PerformancePanel, { props: { data: makePerformanceData({ gpuFrameTime: 21.5 }) } });
+
+    await fireEvent.click(screen.getByLabelText('Log statistics to the console'));
+    await tick();
+
+    const line = log.mock.calls.at(-1)?.[0] as string;
+    expect(JSON.parse(line.slice(line.indexOf('{'))).gpuMs).toBe(21.5);
+    log.mockRestore();
+  });
+
   it('shows nothing when the backend cannot report it', () => {
     render(PerformancePanel, { props: { data: makePerformanceData() } });
 
     expect(screen.getByTestId('frame-stats')).not.toHaveTextContent('gpu');
+  });
+
+  it('explains every statistic on hover', () => {
+    const { container } = render(PerformancePanel, {
+      props: { data: makePerformanceData({ gpuFrameTime: 12 }) },
+    });
+
+    const stats = [...container.querySelectorAll('.frame-stats span')];
+    expect(stats).toHaveLength(5);
+    for (const stat of stats) {
+      expect((stat.getAttribute('data-tooltip') ?? '').split(' ').length).toBeGreaterThan(3);
+    }
   });
 
   it('shows how long the GPU took to finish a frame', () => {

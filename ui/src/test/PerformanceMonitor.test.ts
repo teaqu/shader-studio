@@ -2,6 +2,55 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PerformanceMonitor, type PerformanceData } from '../lib/PerformanceMonitor';
 import type { RenderingEngine } from '../../../rendering/src/webgl/RenderingEngine';
 
+/** Only the methods PerformanceMonitor calls; cast at the boundary. */
+function createMockEngine() {
+  return {
+    getFrameTimeHistory: vi.fn().mockReturnValue([]),
+    getCurrentFPS: vi.fn().mockReturnValue(60),
+    getFrameTimeCount: vi.fn().mockReturnValue(0),
+    getGpuFrameTimeMs: vi.fn().mockReturnValue(null),
+    setGpuTimingEnabled: vi.fn(),
+  };
+}
+
+function monitorFor(engine: ReturnType<typeof createMockEngine>) {
+  return new PerformanceMonitor(engine as unknown as RenderingEngine);
+}
+
+describe('PerformanceMonitor GPU timing', () => {
+  it('asks the engine to measure only while it is polling', () => {
+    const engine = createMockEngine();
+    const monitor = monitorFor(engine);
+
+    monitor.start();
+    expect(engine.setGpuTimingEnabled).toHaveBeenCalledWith(true);
+
+    monitor.stop();
+    expect(engine.setGpuTimingEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it('turns measurement off when disposed', () => {
+    const engine = createMockEngine();
+    const monitor = monitorFor(engine);
+
+    monitor.start();
+    monitor.dispose();
+
+    expect(engine.setGpuTimingEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it('works with an engine that cannot measure GPU time', () => {
+    const engine = createMockEngine();
+    delete (engine as { setGpuTimingEnabled?: unknown }).setGpuTimingEnabled;
+    const monitor = monitorFor(engine);
+
+    expect(() => {
+      monitor.start();
+      monitor.stop();
+    }).not.toThrow();
+  });
+});
+
 describe('PerformanceMonitor', () => {
   let monitor: PerformanceMonitor;
   let mockRenderingEngine: {

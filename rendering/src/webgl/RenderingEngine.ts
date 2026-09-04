@@ -56,6 +56,9 @@ export class RenderingEngine implements RenderingEngineInterface {
   private holdVideoResumeForResetCompile = false;
   private pixelRegionCapturer: WebGLPixelRegionCapturer | null = null;
   private meshResources: WebGLMeshResources | null = null;
+  private gpuTimingEnabled = false;
+  private gpuFrameMs: number | null = null;
+  private gpuFence: { sync: WebGLSync; startedAt: number } | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
@@ -134,7 +137,63 @@ export class RenderingEngine implements RenderingEngineInterface {
     this.pixelRegionCapturer = pixelRegionCapturer;
     this.frameRenderer.setPostImageCallback(() => {
       pixelRegionCapturer.captureAfterRender(glCanvas.width, glCanvas.height);
+      this.probeGpuFrameTime();
     });
+  }
+
+  /**
+   * Latency from submitting a frame's work to the GPU reporting it done. The
+   * render loop runs on animation frames and does not wait for the GPU, so
+   * this is what reveals work queueing up behind a loop that never blocks.
+   */
+  public getGpuFrameTimeMs(): number | null {
+    return this.gpuFrameMs;
+  }
+
+  public setGpuTimingEnabled(enabled: boolean): void {
+    this.gpuTimingEnabled = enabled;
+    if (enabled) {
+      return;
+    }
+    this.gpuFrameMs = null;
+    if (this.gpuFence) {
+      this.gl?.deleteSync(this.gpuFence.sync);
+      this.gpuFence = null;
+    }
+  }
+
+  /**
+   * Polls a fence rather than blocking on it: `clientWaitSync` with a zero
+   * timeout only reports whether the GPU has reached the fence, so the probe
+   * never stalls the frame it is measuring. Only one fence is in flight at a
+   * time, so a slow frame is measured in full instead of being re-fenced.
+   */
+  private probeGpuFrameTime(): void {
+    const gl = this.gl;
+    if (!this.gpuTimingEnabled || !gl?.fenceSync) {
+      return;
+    }
+    if (this.gpuFence) {
+      const status = gl.clientWaitSync(this.gpuFence.sync, 0, 0);
+      const arrived = status === gl.ALREADY_SIGNALED || status === gl.CONDITION_SATISFIED;
+      if (!arrived && status !== gl.WAIT_FAILED) {
+        // Still running: leave the fence in place so the frame is timed in full.
+        return;
+      }
+      if (arrived) {
+        this.gpuFrameMs = Number((performance.now() - this.gpuFence.startedAt).toFixed(2));
+      }
+      // A failed wait leaves no usable measurement; drop it and fence again.
+      gl.deleteSync(this.gpuFence.sync);
+      this.gpuFence = null;
+    }
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) {
+      return;
+    }
+    // Without a flush the fence can sit unsubmitted, and the wait never ends.
+    gl.flush();
+    this.gpuFence = { sync, startedAt: performance.now() };
   }
 
   public handleCanvasResize(width: number, height: number): void {
@@ -700,6 +759,12 @@ export class RenderingEngine implements RenderingEngineInterface {
     };
 
     attempt(() => this.frameRenderer?.setPostImageCallback?.(null));
+    attempt(() => {
+      if (this.gpuFence) {
+        this.gl?.deleteSync(this.gpuFence.sync);
+        this.gpuFence = null;
+      }
+    });
     attempt(() => this.pixelRegionCapturer?.dispose());
     this.pixelRegionCapturer = null;
     attempt(() => this.meshResources?.dispose());

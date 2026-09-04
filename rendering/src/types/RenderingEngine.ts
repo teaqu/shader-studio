@@ -44,6 +44,11 @@ export interface RenderingEngine {
    * healthy rate while the picture on screen falls behind.
    */
   getGpuFrameTimeMs?(): number | null;
+  /**
+   * Turns the GPU timing probe on or off. It is off by default so a preview
+   * nobody is measuring pays nothing for it.
+   */
+  setGpuTimingEnabled?(enabled: boolean): void;
   setFPSLimit(limit: number): void;
   getUniforms(): import("../models").PassUniforms;
   cleanup(): void;
