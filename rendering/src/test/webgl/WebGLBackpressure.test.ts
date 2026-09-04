@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { FrameRenderer } from "../../webgl/FrameRenderer";
+import { MAX_GPU_STALL_MS } from "../../util/GpuBackpressure";
 
 /**
  * The driver blocks once swap-chain buffers run out, but that ceiling sits
@@ -43,9 +44,9 @@ describe("RenderingEngine GPU backpressure", () => {
   it("keeps the GPU pipelined rather than serialised", () => {
     const { engine, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
 
-    expect(engine.shouldWaitForGpu()).toBe(false);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
     submit();
-    expect(engine.shouldWaitForGpu()).toBe(false);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
   });
 
   it("holds frames back once the GPU is behind", () => {
@@ -54,7 +55,7 @@ describe("RenderingEngine GPU backpressure", () => {
     submit();
     submit();
 
-    expect(engine.shouldWaitForGpu()).toBe(true);
+    expect(engine.shouldWaitForGpu(0)).toBe(true);
   });
 
   it("resumes as soon as the GPU passes a fence", () => {
@@ -64,22 +65,35 @@ describe("RenderingEngine GPU backpressure", () => {
     submit();
 
     // Both fences are already passed, so nothing is outstanding.
-    expect(engine.shouldWaitForGpu()).toBe(false);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
   });
 
-  it("renders anyway rather than stalling on fences that never pass", () => {
+  it("renders anyway once fences that never pass have cost enough real time", () => {
     const { engine, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
 
     submit();
     submit();
 
-    expect([
-      engine.shouldWaitForGpu(),
-      engine.shouldWaitForGpu(),
-      engine.shouldWaitForGpu(),
-      engine.shouldWaitForGpu(),
-      engine.shouldWaitForGpu(),
-    ]).toEqual([true, true, true, true, false]);
+    expect(engine.shouldWaitForGpu(0)).toBe(true);
+    expect(engine.shouldWaitForGpu(MAX_GPU_STALL_MS - 1)).toBe(true);
+    expect(engine.shouldWaitForGpu(MAX_GPU_STALL_MS)).toBe(false);
+  });
+
+  it("keeps holding a genuinely slow (not stuck) GPU back across many ticks", () => {
+    // requestAnimationFrame fires at the display's refresh rate no matter
+    // how long the GPU actually takes to pass a fence, so a large canvas
+    // legitimately taking far longer than one frame must still be paced,
+    // not forced through just because many ticks went by.
+    const { engine, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
+
+    submit();
+    submit();
+
+    const tickIntervalMs = 16;
+    const ticksWithinStallBudget = Math.floor(MAX_GPU_STALL_MS / tickIntervalMs) - 1;
+    for (let i = 0; i <= ticksWithinStallBudget; i++) {
+      expect(engine.shouldWaitForGpu(i * tickIntervalMs)).toBe(true);
+    }
   });
 
   it("never withholds a frame while it is switched off", () => {
@@ -89,7 +103,7 @@ describe("RenderingEngine GPU backpressure", () => {
     submit();
     submit();
 
-    expect(engine.shouldWaitForGpu()).toBe(false);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
     expect(gl.fenceSync).not.toHaveBeenCalled();
   });
 
@@ -98,17 +112,17 @@ describe("RenderingEngine GPU backpressure", () => {
 
     submit();
     submit();
-    engine.shouldWaitForGpu();
+    engine.shouldWaitForGpu(0);
 
     expect(gl.deleteSync).toHaveBeenCalledTimes(2);
   });
 
   it("does nothing on a context without sync objects", () => {
     const engine = new RenderingEngine();
-     
+
     (engine as any).gl = {};
 
-    expect(engine.shouldWaitForGpu()).toBe(false);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
   });
 });
 
@@ -116,35 +130,43 @@ describe("FrameRenderer pacing", () => {
    
   function frameRenderer() {
     const stub = {} as any;
-    const renderer = new FrameRenderer(
+    return new FrameRenderer(
       { updateFrame: vi.fn(), getFrame: () => 1, getDeltaTime: () => 16, isPaused: () => false } as any,
       stub, stub, stub, stub, stub, stub, stub,
       document.createElement("canvas"),
       stub,
     );
-    // Simulate the loop being live; only then is a frame eligible for pacing.
-    (renderer as any).running = true;
-    return renderer;
   }
    
 
-  it("skips a loop frame when the pacer asks it to", () => {
+  it("asks the pacer before each loop frame", () => {
     const renderer = frameRenderer();
     const pacer = vi.fn(() => true);
-    renderer.setFramePacer(pacer);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
 
-    // Returning early is the point: the stubbed collaborators would throw if
-    // the frame went ahead.
-    expect(() => renderer.render(16)).not.toThrow();
+    renderer.setFramePacer(pacer);
+    renderer.startRenderLoop();
+    // Withholding the frame is the point: the stubbed collaborators would
+    // throw if it went ahead.
+    expect(() => frames[0]!(16)).not.toThrow();
     expect(pacer).toHaveBeenCalled();
+
+    renderer.stopRenderLoop();
+    vi.unstubAllGlobals();
   });
 
-  it("renders normally once the pacer is cleared", () => {
+  it("never withholds an explicit render, whatever the pacer says", () => {
     const renderer = frameRenderer();
     renderer.setFramePacer(() => true);
-    renderer.setFramePacer(null);
+     
+    (renderer as any).running = true;
 
-    // With no pacer the frame proceeds into the (stubbed) render path.
+    // A capture or readback must produce its frame, so this reaches the
+    // (stubbed) render path rather than being paced away.
     expect(() => renderer.render(16)).toThrow();
   });
 });

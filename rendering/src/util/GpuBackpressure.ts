@@ -21,8 +21,13 @@ export function gpuBackpressureEnabled(): boolean {
 export const MAX_FRAMES_IN_FLIGHT = 2;
 
 /**
- * Rendering is never withheld for longer than this many animation frames. A
- * completion signal that never arrives must cost a little latency rather than
- * freeze the preview.
+ * Rendering is never withheld for longer than this many real milliseconds.
+ * This is an escape hatch for a completion signal that never arrives at all
+ * (e.g. a lost context) — it must cost a little latency rather than freeze
+ * the preview forever. It is deliberately generous: animation frames keep
+ * firing at the display's refresh rate regardless of how long the GPU
+ * actually takes, so a short bound would force frames through during
+ * ordinary heavy load (large canvases, expensive passes) exactly when
+ * backpressure is supposed to be holding them back.
  */
-export const MAX_CONSECUTIVE_GPU_SKIPS = 4;
+export const MAX_GPU_STALL_MS = 2000;

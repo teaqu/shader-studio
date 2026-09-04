@@ -51,8 +51,8 @@ import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
 import {
   gpuBackpressureEnabled,
-  MAX_CONSECUTIVE_GPU_SKIPS,
   MAX_FRAMES_IN_FLIGHT,
+  MAX_GPU_STALL_MS,
 } from "../util/GpuBackpressure";
 export interface SlangAssetUrls {
   scriptUrl: string;
@@ -1944,7 +1944,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private gpuTimingEnabled = false;
   private gpuFrameMs: number | null = null;
   private framesInFlight = 0;
-  private consecutiveGpuSkips = 0;
+  private gpuStallStartMs: number | null = null;
   private gpuProbeInFlight = false;
 
   /**
@@ -1953,19 +1953,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
    * pixel readback or a capture must always produce the frame it was asked
    * for.
    */
-  private shouldWaitForGpu(): boolean {
+  private shouldWaitForGpu(time: number): boolean {
     if (!gpuBackpressureEnabled() || !this.running) {
+      this.gpuStallStartMs = null;
       return false;
     }
     if (this.framesInFlight < MAX_FRAMES_IN_FLIGHT) {
-      this.consecutiveGpuSkips = 0;
+      this.gpuStallStartMs = null;
       return false;
     }
-    if (this.consecutiveGpuSkips >= MAX_CONSECUTIVE_GPU_SKIPS) {
-      this.consecutiveGpuSkips = 0;
+    if (this.gpuStallStartMs === null) {
+      this.gpuStallStartMs = time;
+    }
+    if (time - this.gpuStallStartMs >= MAX_GPU_STALL_MS) {
+      this.gpuStallStartMs = null;
       return false;
     }
-    this.consecutiveGpuSkips += 1;
     return true;
   }
 
@@ -2376,9 +2379,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return;
     }
     if (!capture && !this.shouldRenderFrame(time)) {
-      return;
-    }
-    if (!capture && this.shouldWaitForGpu()) {
       return;
     }
     if (this.passGraph.length === 0) {
@@ -2884,7 +2884,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!this.running) {
         return;
       }
-      this.render(t);
+      // Only loop frames are paced; an explicit render() must always produce
+      // the frame it was asked for.
+      if (!this.shouldWaitForGpu(t)) {
+        this.render(t);
+      }
       this.rafId = requestAnimationFrame(loop);
     };
     this.rafId = requestAnimationFrame(loop);

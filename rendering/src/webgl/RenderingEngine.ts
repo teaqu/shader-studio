@@ -1,8 +1,8 @@
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
 import {
   gpuBackpressureEnabled,
-  MAX_CONSECUTIVE_GPU_SKIPS,
   MAX_FRAMES_IN_FLIGHT,
+  MAX_GPU_STALL_MS,
 } from "../util/GpuBackpressure";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
@@ -65,7 +65,7 @@ export class RenderingEngine implements RenderingEngineInterface {
   private gpuFrameMs: number | null = null;
   private gpuFence: { sync: WebGLSync; startedAt: number } | null = null;
   private inFlightFences: WebGLSync[] = [];
-  private consecutiveGpuSkips = 0;
+  private gpuStallStartMs: number | null = null;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
@@ -140,7 +140,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       glCanvas,
       new FPSCalculator(60, 10),
     );
-    this.frameRenderer.setFramePacer(() => this.shouldWaitForGpu());
+    this.frameRenderer.setFramePacer((time) => this.shouldWaitForGpu(time));
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
     this.pixelRegionCapturer = pixelRegionCapturer;
     this.frameRenderer.setPostImageCallback(() => {
@@ -159,20 +159,23 @@ export class RenderingEngine implements RenderingEngineInterface {
    * Only the render loop is paced — an explicit render, a capture or a pixel
    * readback must always produce the frame it was asked for.
    */
-  public shouldWaitForGpu(): boolean {
+  public shouldWaitForGpu(time: number): boolean {
     if (!gpuBackpressureEnabled() || !this.gl?.fenceSync) {
+      this.gpuStallStartMs = null;
       return false;
     }
     this.releaseCompletedFences();
     if (this.inFlightFences.length < MAX_FRAMES_IN_FLIGHT) {
-      this.consecutiveGpuSkips = 0;
+      this.gpuStallStartMs = null;
       return false;
     }
-    if (this.consecutiveGpuSkips >= MAX_CONSECUTIVE_GPU_SKIPS) {
-      this.consecutiveGpuSkips = 0;
+    if (this.gpuStallStartMs === null) {
+      this.gpuStallStartMs = time;
+    }
+    if (time - this.gpuStallStartMs >= MAX_GPU_STALL_MS) {
+      this.gpuStallStartMs = null;
       return false;
     }
-    this.consecutiveGpuSkips += 1;
     return true;
   }
 

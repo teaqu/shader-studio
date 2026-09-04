@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { MAX_GPU_STALL_MS } from "../../util/GpuBackpressure";
 
 /**
  * `queue.submit()` returns immediately, so an animation-frame loop can queue
@@ -28,8 +29,8 @@ function engineWithQueue() {
     engine,
      
     submit: () => (engine as any).trackFrameInFlight(),
-     
-    shouldWait: () => (engine as any).shouldWaitForGpu() as boolean,
+
+    shouldWait: (time = 0) => (engine as any).shouldWaitForGpu(time) as boolean,
     async completeOne() {
       releases.shift()?.();
       await Promise.resolve();
@@ -87,17 +88,37 @@ describe("WebGPURenderingEngine GPU backpressure", () => {
     expect(shouldWait()).toBe(false);
   });
 
-  it("renders anyway rather than stalling on a completion that never arrives", () => {
+  it("renders anyway once a completion that never arrives has cost enough real time", () => {
     (globalThis as PerfGlobal).__gpuBackpressure = true;
     const { submit, shouldWait } = engineWithQueue();
 
     submit();
     submit();
 
-    // A delayed callback costs latency, not a frozen preview.
-    const skips = [shouldWait(), shouldWait(), shouldWait(), shouldWait()];
-    expect(skips).toEqual([true, true, true, true]);
-    expect(shouldWait()).toBe(false);
+    // A delayed callback costs latency, not a frozen preview — but only
+    // after real time, not just tick count, has actually passed.
+    expect(shouldWait(0)).toBe(true);
+    expect(shouldWait(MAX_GPU_STALL_MS - 1)).toBe(true);
+    expect(shouldWait(MAX_GPU_STALL_MS)).toBe(false);
+  });
+
+  it("keeps holding a genuinely slow (not stuck) GPU back across many ticks, so measured fps reflects it", () => {
+    // Animation frames fire at the display's refresh rate regardless of how
+    // long the GPU actually takes to retire work, since queue.submit()
+    // never blocks. A large canvas can legitimately take far longer than a
+    // single frame to finish — that must still be paced, not forced through
+    // just because many rAF ticks went by while it was still working.
+    (globalThis as PerfGlobal).__gpuBackpressure = true;
+    const { submit, shouldWait } = engineWithQueue();
+
+    submit();
+    submit();
+
+    const tickIntervalMs = 16;
+    const ticksWithinStallBudget = Math.floor(MAX_GPU_STALL_MS / tickIntervalMs) - 1;
+    for (let i = 1; i <= ticksWithinStallBudget; i++) {
+      expect(shouldWait(i * tickIntervalMs)).toBe(true);
+    }
   });
 
   it("paces only the engine's own loop, never an explicit render", () => {

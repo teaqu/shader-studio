@@ -35,7 +35,7 @@ export class FrameRenderer {
   private resourceManager: ResourceManager<PiTexture>;
   private cameraManager: CameraManager;
   private glCanvas: HTMLCanvasElement;
-  private framePacer: (() => boolean) | null = null;
+  private framePacer: ((time: number) => boolean) | null = null;
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
@@ -202,7 +202,12 @@ export class FrameRenderer {
         return;
       }
 
-      this.render(time);
+      // Only loop frames are paced. An explicit render() — a capture, a
+      // readback, a redraw after a resize — must produce the frame it asked
+      // for, so the check lives here rather than inside render().
+      if (!this.framePacer?.(time)) {
+        this.render(time);
+      }
 
       if (this.running) {
         requestAnimationFrame(render);
@@ -221,7 +226,7 @@ export class FrameRenderer {
    * the GPU is behind. Explicit renders bypass it: a capture or a readback
    * must produce the frame it asked for.
    */
-  public setFramePacer(pacer: (() => boolean) | null): void {
+  public setFramePacer(pacer: ((time: number) => boolean) | null): void {
     this.framePacer = pacer;
   }
 
@@ -229,10 +234,6 @@ export class FrameRenderer {
     if (!this.running) {
       return;
     }
-    if (this.framePacer?.()) {
-      return;
-    }
-
     if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
       const minFrameInterval = 1000 / this.fpsLimit;
       const elapsed = time - this.lastRenderedAt;
