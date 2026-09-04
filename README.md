@@ -63,27 +63,6 @@ cd extension
 npm run vsce-package
 ```
 
-### Performance Instrumentation
-
-Both rendering engines can report what they are doing, for comparing the WebGL
-and WebGPU paths in the environment a user actually runs them in. Set the flag
-in the preview's console:
-
-```js
-window.__shaderPerf = true
-```
-
-In a VS Code webview, reach that console with **Developer: Open Webview
-Developer Tools**, then switch the console's context to the shader-studio
-frame. Each engine then logs its GPU adapter, the canvas backing store, and —
-once per 120 frames — frame rate, main-thread cost, frame pacing
-(`gapMsP50`/`gapMsP95`/`gapMsMax`, plus a `hitches` count of frames arriving
-late) and JS heap size. Averages hide judder, so read the pacing fields rather
-than `fps` when chasing a stutter.
-
-Set `window.__slangPerf = true` *before* switching to a Slang shader to add
-adapter, device, worker and per-pass compilation timings for that switch.
-
 ## Docs
 
 https://teaqu.github.io/shader-studio/
