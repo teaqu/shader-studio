@@ -82,7 +82,10 @@ describe("GPU frame time", () => {
     heavy.dispose();
 
     console.log("[GpuFrameTime] scaling", JSON.stringify({ lightMs, heavyMs }));
-    expect(heavyMs!).toBeGreaterThan(lightMs!);
+    // A clear multiple rather than a bare comparison: the shaders differ by
+    // thousands of iterations per pixel, so anything less would be measuring
+    // noise on a shared runner.
+    expect(heavyMs!).toBeGreaterThan(lightMs! * 2);
   });
 
   it("reports submit-to-completion latency for the WebGL engine too", { timeout: 120_000 }, async () => {
