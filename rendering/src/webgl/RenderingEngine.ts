@@ -1,4 +1,5 @@
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
+import { describeCanvas, logFramePerfInit } from "../util/FramePerf";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "../resources/ResourceManager";
@@ -32,6 +33,20 @@ import {
   getWebGLRenderLimits,
   type WebGLRenderLimits,
 } from "./WebGLRenderLimits";
+
+/** Names the GPU behind the context, so a software fallback is visible. */
+function readDebugRendererString(gl: WebGL2RenderingContext): string | null {
+  try {
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const parameter = info
+      ? (info as { UNMASKED_RENDERER_WEBGL: number }).UNMASKED_RENDERER_WEBGL
+      : gl.RENDERER;
+    const value = gl.getParameter(parameter) as unknown;
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export class RenderingEngine implements RenderingEngineInterface {
   private glCanvas: HTMLCanvasElement | null = null;
@@ -82,6 +97,11 @@ export class RenderingEngine implements RenderingEngineInterface {
       // Non-standard GL context (e.g., test mock) — keep default limit
     }
     this.clampCanvasToRenderLimits();
+    logFramePerfInit("webgl", {
+      renderer: readDebugRendererString(this.gl),
+      maxRenderSize: this.renderLimits,
+      ...describeCanvas(glCanvas),
+    });
     this.renderer = piRenderer();
     this.renderer.Initialize(this.gl);
     this.shaderCompiler = new ShaderCompiler(this.renderer, this.gl);

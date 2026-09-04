@@ -1,4 +1,5 @@
 import type { ShaderPipeline } from "./ShaderPipeline";
+import { describeCanvas, FramePerfTracker } from "../util/FramePerf";
 import type { BufferManager } from "./BufferManager";
 import type { PassRenderer } from "./PassRenderer";
 import type { ResourceManager } from "../resources/ResourceManager";
@@ -35,6 +36,7 @@ export class FrameRenderer {
   private resourceManager: ResourceManager<PiTexture>;
   private cameraManager: CameraManager;
   private glCanvas: HTMLCanvasElement;
+  private readonly framePerf = new FramePerfTracker("webgl");
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
@@ -219,6 +221,7 @@ export class FrameRenderer {
     if (!this.running) {
       return;
     }
+    const frameStartedAt = performance.now();
 
     if (this.fpsLimit > 0 && this.lastRenderedAt !== null) {
       const minFrameInterval = 1000 / this.fpsLimit;
@@ -305,6 +308,11 @@ export class FrameRenderer {
     if (!isPaused) {
       this.timeManager.incrementFrame();
     }
+
+    this.framePerf.record(performance.now() - frameStartedAt, () => ({
+      fpsLimit: this.fpsLimit,
+      ...describeCanvas(this.glCanvas),
+    }));
   }
 
   private evaluateCustomUniforms(): CustomUniform[] | undefined {

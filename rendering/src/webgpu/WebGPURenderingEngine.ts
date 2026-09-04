@@ -49,6 +49,7 @@ import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import { describeCanvas, FramePerfTracker, logFramePerfInit } from "../util/FramePerf";
 export interface SlangAssetUrls {
   scriptUrl: string;
   wasmUrl: string;
@@ -369,6 +370,21 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
       this.resourceManager.setGlobalAudioState(this.globalVolume, this.globalMuted);
+      logFramePerfInit("webgpu", {
+        adapter: adapter.info
+          ? {
+            vendor: adapter.info.vendor,
+            architecture: adapter.info.architecture,
+            device: adapter.info.device,
+            description: adapter.info.description,
+          }
+          : null,
+        // A software fallback would explain any amount of slowness.
+        isFallbackAdapter: (adapter as GPUAdapter & { isFallbackAdapter?: boolean })
+          .isFallbackAdapter ?? null,
+        maxTextureDimension2D: this.maxTextureDimension2D,
+        ...describeCanvas(this.canvas),
+      });
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.logSlangPerf("context configure", { format: this.format });
       // COPY_SRC lets the pixel inspector read back from the canvas texture.
@@ -1936,6 +1952,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
+  private readonly framePerf = new FramePerfTracker("webgpu");
+
   private now(): number {
     return performance.now();
   }
@@ -2280,6 +2298,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.device || !this.context) {
       return;
     }
+    const frameStartedAt = this.now();
     if (!capture && !this.shouldRenderFrame(time)) {
       return;
     }
@@ -2546,6 +2565,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (!isPaused) {
         this.timeManager.incrementFrame();
       }
+      this.framePerf.record(this.now() - frameStartedAt, () => ({
+        passes: this.passGraph.length,
+        fpsLimit: this.fpsLimit,
+        ...describeCanvas(this.canvas),
+      }));
     }
   }
 
