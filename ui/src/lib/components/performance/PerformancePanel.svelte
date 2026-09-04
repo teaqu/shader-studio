@@ -1130,15 +1130,17 @@
     </div>
     {#if visibleStats}
       <div class="frame-stats" data-testid="frame-stats">
-        <span use:tooltip={"Typical frame time in the visible window"}>p50 {visibleStats.p50.toFixed(1)}ms</span>
-        <span use:tooltip={"Slowest 5% of frames — where a stutter shows first"}>p95 {visibleStats.p95.toFixed(1)}ms</span>
-        <span use:tooltip={"Slowest frame in the visible window"}>worst {visibleStats.worst.toFixed(1)}ms</span>
+        <span class="ms" use:tooltip={"Typical frame time in the visible window"}>p50 {visibleStats.p50.toFixed(1)}ms</span>
+        <span class="ms" use:tooltip={"Slowest 5% of frames — where a stutter shows first"}>p95 {visibleStats.p95.toFixed(1)}ms</span>
+        <span class="ms" use:tooltip={"Slowest frame in the visible window"}>worst {visibleStats.worst.toFixed(1)}ms</span>
         <span
+          class="count"
           class:late={visibleStats.lateFrames > 0}
           use:tooltip={`Frames that overran the display's refresh and held the previous image on screen (${visibleStats.latePercent.toFixed(1)}% of the visible window)`}
         >late {visibleStats.lateFrames}</span>
         {#if data?.gpuFrameTime !== null && data?.gpuFrameTime !== undefined}
           <span
+            class="ms"
             class:late={data.gpuFrameTime > visibleStats.p50 * 2}
             use:tooltip={"How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind."}
           >gpu {data.gpuFrameTime.toFixed(1)}ms</span>
@@ -1173,7 +1175,7 @@
 
   .frame-stats {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     white-space: nowrap;
     padding: 2px 8px 4px;
     flex-shrink: 0;
@@ -1182,10 +1184,15 @@
     color: var(--vscode-descriptionForeground, #888);
   }
 
-  .frame-stats span {
-    /* Reserve room for the widest value so a changing figure cannot shove
-       its neighbours along the row. */
-    min-width: 5.5em;
+  /* Each figure reserves just enough room for its own widest value, so a
+     changing number cannot shove its neighbours along the row — and no
+     column is padded out wider than it needs. */
+  .frame-stats .ms {
+    min-width: 5.2em;
+  }
+
+  .frame-stats .count {
+    min-width: 3.4em;
   }
 
   :global(.ss-tooltip) {
