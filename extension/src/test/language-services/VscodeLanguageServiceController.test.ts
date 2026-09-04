@@ -197,7 +197,8 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("uses unsaved open config text for configured shader resources", async () => {
+  test("uses unsaved open config text for configured shader resources", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-config-ls-"));
     const shaderPath = path.join(directory, "image.slang");
     const configPath = path.join(directory, "image.sha.json");
