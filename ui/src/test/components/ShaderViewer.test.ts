@@ -3326,6 +3326,106 @@ describe('ShaderViewer', () => {
     mockTimeManager.isPaused = vi.fn(() => false);
   });
 
+  it('keeps the chosen frame rate limit when the shader language changes', async () => {
+    const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
+    const { WebGPURenderingEngine } = await import('../../../../rendering/src/webgpu/WebGPURenderingEngine');
+    const applied: Array<{ engine: string; limit: number }> = [];
+    const origWebGL = RenderingEngine.prototype.setFPSLimit;
+    const origWebGPU = WebGPURenderingEngine.prototype.setFPSLimit;
+    RenderingEngine.prototype.setFPSLimit = function (limit: number) {
+      applied.push({ engine: 'glsl', limit });
+    };
+    WebGPURenderingEngine.prototype.setFPSLimit = function (limit: number) {
+      applied.push({ engine: 'slang', limit });
+    };
+
+    try {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: '/test/shader.glsl' },
+        },
+      });
+      await tick();
+
+      await fireEvent.click(screen.getByLabelText('Change FPS limit'));
+      await tick();
+      await fireEvent.click(screen.getByText('60 FPS'));
+      await tick();
+      expect(applied).toContainEqual({ engine: 'glsl', limit: 60 });
+      applied.length = 0;
+
+      // Switching language builds a fresh engine, which starts unlimited.
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.slang',
+          language: 'slang',
+          code: 'float4 mainImage(float2 fragCoord) { return float4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: '/test/shader.slang' },
+        },
+      });
+      await tick();
+      await tick();
+
+      expect(applied).toContainEqual({ engine: 'slang', limit: 60 });
+    } finally {
+      RenderingEngine.prototype.setFPSLimit = origWebGL;
+      WebGPURenderingEngine.prototype.setFPSLimit = origWebGPU;
+    }
+  });
+
+  it('leaves the frame rate unlimited across a language change when none was chosen', async () => {
+    const { WebGPURenderingEngine } = await import('../../../../rendering/src/webgpu/WebGPURenderingEngine');
+    const applied: number[] = [];
+    const origWebGPU = WebGPURenderingEngine.prototype.setFPSLimit;
+    WebGPURenderingEngine.prototype.setFPSLimit = function (limit: number) {
+      applied.push(limit);
+    };
+
+    try {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: '/test/shader.glsl' },
+        },
+      });
+      await tick();
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/shader.slang',
+          language: 'slang',
+          code: 'float4 mainImage(float2 fragCoord) { return float4(1.0); }',
+          config: { passes: { image: {} } },
+          pathMap: { image: '/test/shader.slang' },
+        },
+      });
+      await tick();
+      await tick();
+
+      expect(applied).toEqual([]);
+    } finally {
+      WebGPURenderingEngine.prototype.setFPSLimit = origWebGPU;
+    }
+  });
+
   it('should handle resetLayout message without crashing', async () => {
     render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

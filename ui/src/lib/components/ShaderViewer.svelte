@@ -145,6 +145,7 @@
   let errors = $state<string[]>([]);
   let warnings = $state<string[]>([]);
   let currentFPS = $state(0);
+  let fpsLimit = $state(0);
   let canvasWidth = $state(0);
   let canvasHeight = $state(0);
   let zoomLevel = $state(1.0);
@@ -522,6 +523,9 @@
       // re-push the current audioStore state so a swapped-in shader with
       // media respects an already-active master mute/volume.
       audioVideoController?.reapply();
+      if (fpsLimit > 0) {
+        renderingEngine.setFPSLimit(fpsLimit);
+      }
       if (wasPaused) {
         renderingEngine.togglePause();
       }
@@ -676,6 +680,9 @@
     if (!initialized) {
       return;
     }
+    // Held here rather than only on the engine: a language switch builds a new
+    // one, and the limit is the user's choice, not the engine's.
+    fpsLimit = limit;
     renderingEngine.setFPSLimit(limit);
   }
 
