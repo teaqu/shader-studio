@@ -99,6 +99,19 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 - **Effects belong in the class that owns the behavior**, not in the consumer. If a manager class needs to react to state changes, give it a `$effect.root()` in its constructor and clean up in `dispose()`. Don't push reactive glue into components that shouldn't need to know about it.
 - When a class needs reactive effects outside a component lifecycle, use `$effect.root()` — it creates a standalone reactive root. Store the returned cleanup and call it in `dispose()`.
 
+## Experimental Flags
+
+`window.__gpuBackpressure = true`, set in the preview's console before the
+shader loads, makes the WebGPU engine hold frames back while the GPU is behind
+rather than queueing ahead of it. It exists because `queue.submit()` never
+blocks: the animation-frame loop can run tens of frames ahead of the hardware,
+reporting a healthy frame rate while the picture on screen is stale. WebGL is
+spared this by its driver blocking once swap-chain buffers run out.
+
+Off by default while it is being evaluated. Judge it with the **gpu** figure in
+the performance panel: it should fall to roughly one frame's work. Remove the
+flag once the behaviour is settled either way.
+
 ## Bug Fixes
 
 When a bug is reported:

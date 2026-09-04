@@ -30,6 +30,8 @@ const heavySlang = `float4 mainImage(float2 fragCoord) {
 
 async function renderFrames(language: ShaderLanguage, image: string, width: number, height: number, frames: number) {
   const harness = createShaderCanvasHarness(language);
+  // Measurement is off until something asks for it, as the panel does.
+  harness.engine.setGpuTimingEnabled?.(true);
   harness.resize(width, height);
   await harness.compile({ image });
   for (let frame = 0; frame < frames; frame += 1) {
@@ -39,6 +41,22 @@ async function renderFrames(language: ShaderLanguage, image: string, width: numb
 }
 
 describe("GPU frame time", () => {
+  it("stays unmeasured until something asks for it", { timeout: 120_000 }, async () => {
+    const harness = createShaderCanvasHarness("slang");
+    try {
+      harness.resize(640, 360);
+      await harness.compile({ image: programs.slang });
+      for (let frame = 0; frame < 4; frame += 1) {
+        await harness.renderAndReadRegion();
+      }
+
+      // A preview nobody is measuring pays nothing for the probe.
+      expect(harness.engine.getGpuFrameTimeMs?.() ?? null).toBeNull();
+    } finally {
+      harness.dispose();
+    }
+  });
+
   it("reports submit-to-completion latency for the WebGPU engine", { timeout: 120_000 }, async () => {
     const harness = await renderFrames("slang", programs.slang, 640, 360, 6);
     try {
