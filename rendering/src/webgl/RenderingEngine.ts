@@ -1,4 +1,9 @@
 import { piRenderer } from "../../../vendor/pilibs/src/piRenderer";
+import {
+  gpuBackpressureEnabled,
+  MAX_CONSECUTIVE_GPU_SKIPS,
+  MAX_FRAMES_IN_FLIGHT,
+} from "../util/GpuBackpressure";
 import { piCreateGlContext } from "../../../vendor/pilibs/src/piWebUtils";
 import { ShaderCompiler } from "./ShaderCompiler";
 import { ResourceManager } from "../resources/ResourceManager";
@@ -59,6 +64,8 @@ export class RenderingEngine implements RenderingEngineInterface {
   private gpuTimingEnabled = false;
   private gpuFrameMs: number | null = null;
   private gpuFence: { sync: WebGLSync; startedAt: number } | null = null;
+  private inFlightFences: WebGLSync[] = [];
+  private consecutiveGpuSkips = 0;
 
   initialize(glCanvas: HTMLCanvasElement, preserveDrawingBuffer: boolean = false) {
     this.frameRenderer?.setPostImageCallback?.(null);
@@ -133,12 +140,73 @@ export class RenderingEngine implements RenderingEngineInterface {
       glCanvas,
       new FPSCalculator(60, 10),
     );
+    this.frameRenderer.setFramePacer(() => this.shouldWaitForGpu());
     const pixelRegionCapturer = new WebGLPixelRegionCapturer(this.gl);
     this.pixelRegionCapturer = pixelRegionCapturer;
     this.frameRenderer.setPostImageCallback(() => {
       pixelRegionCapturer.captureAfterRender(glCanvas.width, glCanvas.height);
       this.probeGpuFrameTime();
+      this.trackFrameInFlight();
     });
+  }
+
+  /**
+   * Whether this animation frame should be skipped because the GPU has not
+   * caught up. The driver already blocks once swap-chain buffers run out, but
+   * that ceiling sits several frames deep and is the platform's choice rather
+   * than ours; capping in flight bounds the staleness explicitly.
+   *
+   * Only the render loop is paced — an explicit render, a capture or a pixel
+   * readback must always produce the frame it was asked for.
+   */
+  public shouldWaitForGpu(): boolean {
+    if (!gpuBackpressureEnabled() || !this.gl?.fenceSync) {
+      return false;
+    }
+    this.releaseCompletedFences();
+    if (this.inFlightFences.length < MAX_FRAMES_IN_FLIGHT) {
+      this.consecutiveGpuSkips = 0;
+      return false;
+    }
+    if (this.consecutiveGpuSkips >= MAX_CONSECUTIVE_GPU_SKIPS) {
+      this.consecutiveGpuSkips = 0;
+      return false;
+    }
+    this.consecutiveGpuSkips += 1;
+    return true;
+  }
+
+  /** Drops fences the GPU has passed, freeing room for the next frame. */
+  private releaseCompletedFences(): void {
+    const gl = this.gl;
+    if (!gl) {
+      return;
+    }
+    this.inFlightFences = this.inFlightFences.filter((sync) => {
+      const status = gl.clientWaitSync(sync, 0, 0);
+      const finished = status === gl.ALREADY_SIGNALED
+        || status === gl.CONDITION_SATISFIED
+        || status === gl.WAIT_FAILED;
+      if (finished) {
+        gl.deleteSync(sync);
+      }
+      return !finished;
+    });
+  }
+
+  /** Fences a submitted frame so the next one can be paced against it. */
+  private trackFrameInFlight(): void {
+    const gl = this.gl;
+    if (!gpuBackpressureEnabled() || !gl?.fenceSync) {
+      return;
+    }
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) {
+      return;
+    }
+    // Without a flush the fence can sit unsubmitted and never be passed.
+    gl.flush();
+    this.inFlightFences.push(sync);
   }
 
   /**
@@ -759,11 +827,16 @@ export class RenderingEngine implements RenderingEngineInterface {
     };
 
     attempt(() => this.frameRenderer?.setPostImageCallback?.(null));
+    attempt(() => this.frameRenderer?.setFramePacer?.(null));
     attempt(() => {
       if (this.gpuFence) {
         this.gl?.deleteSync(this.gpuFence.sync);
         this.gpuFence = null;
       }
+      for (const sync of this.inFlightFences) {
+        this.gl?.deleteSync(sync);
+      }
+      this.inFlightFences = [];
     });
     attempt(() => this.pixelRegionCapturer?.dispose());
     this.pixelRegionCapturer = null;

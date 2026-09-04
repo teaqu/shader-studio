@@ -44,6 +44,7 @@ afterEach(() => {
 
 describe("WebGPURenderingEngine GPU backpressure", () => {
   it("never withholds a frame while it is switched off", () => {
+    (globalThis as PerfGlobal).__gpuBackpressure = false;
     const { submit, shouldWait } = engineWithQueue();
 
     submit();
@@ -111,6 +112,7 @@ describe("WebGPURenderingEngine GPU backpressure", () => {
   });
 
   it("counts nothing while switched off, so enabling it starts clean", () => {
+    (globalThis as PerfGlobal).__gpuBackpressure = false;
     const { engine, submit } = engineWithQueue();
 
     submit();

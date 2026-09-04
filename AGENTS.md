@@ -101,16 +101,17 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 
 ## Experimental Flags
 
-`window.__gpuBackpressure = true`, set in the preview's console before the
-shader loads, makes the WebGPU engine hold frames back while the GPU is behind
-rather than queueing ahead of it. It exists because `queue.submit()` never
+The WebGPU engine holds frames back while the GPU is behind rather than
+queueing ahead of it. Set `window.__gpuBackpressure = false` in the preview's
+console before the shader loads to compare against the unpaced loop. It exists because `queue.submit()` never
 blocks: the animation-frame loop can run tens of frames ahead of the hardware,
 reporting a healthy frame rate while the picture on screen is stale. WebGL is
 spared this by its driver blocking once swap-chain buffers run out.
 
-Off by default while it is being evaluated. Judge it with the **gpu** figure in
-the performance panel: it should fall to roughly one frame's work. Remove the
-flag once the behaviour is settled either way.
+On by default while it is being evaluated. Judge it with the **gpu** figure in
+the performance panel: it should sit at roughly one frame's work rather than
+hundreds of milliseconds. Remove the flag once the behaviour is settled either
+way.
 
 ## Bug Fixes
 

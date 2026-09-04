@@ -1142,7 +1142,7 @@
           <span
             class="ms"
             class:late={data.gpuFrameTime > visibleStats.p50 * 2}
-            use:tooltip={"How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind."}
+            use:tooltip={"How long the GPU took to finish a frame. The render loop does not wait for it, so a value far above the frame time means work is queueing up and the picture on screen is behind. Compare it against p50 within one engine rather than between GLSL and Slang, which measure the wait differently."}
           >gpu {data.gpuFrameTime.toFixed(1)}ms</span>
         {/if}
       </div>

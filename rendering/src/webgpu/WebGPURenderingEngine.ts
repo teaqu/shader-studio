@@ -49,6 +49,11 @@ import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import {
+  gpuBackpressureEnabled,
+  MAX_CONSECUTIVE_GPU_SKIPS,
+  MAX_FRAMES_IN_FLIGHT,
+} from "../util/GpuBackpressure";
 export interface SlangAssetUrls {
   scriptUrl: string;
   wasmUrl: string;
@@ -1943,50 +1948,20 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private gpuProbeInFlight = false;
 
   /**
-   * Frames handed to the GPU but not yet finished. Two keeps the hardware
-   * pipelined — one executing, one queued — without letting the loop run away.
-   */
-  private static readonly MAX_FRAMES_IN_FLIGHT = 2;
-
-  /**
-   * Rendering is never withheld for longer than this many animation frames.
-   * Completion arrives through a browser callback, and a delayed one must
-   * cost a little latency rather than freeze the preview outright.
-   */
-  private static readonly MAX_CONSECUTIVE_GPU_SKIPS = 4;
-
-  /**
-   * Whether to hold frames back when the GPU is behind.
-   *
-   * `queue.submit()` returns immediately, so an animation-frame loop can queue
-   * far more work than the hardware retires: the loop reports a healthy rate
-   * while the picture on screen is half a second stale. WebGL is spared this
-   * by its driver blocking once swap-chain buffers run out; WebGPU has no
-   * equivalent, so the limit has to be ours.
-   *
-   * Off by default while the behaviour is being evaluated — set
-   * `window.__gpuBackpressure = true` before the preview loads to try it.
-   */
-  private backpressureEnabled(): boolean {
-    return (globalThis as typeof globalThis & { __gpuBackpressure?: boolean })
-      .__gpuBackpressure === true;
-  }
-
-  /**
    * Whether this animation frame should be skipped because the GPU has not
    * caught up. Only the engine's own loop is paced: an explicit render, a
    * pixel readback or a capture must always produce the frame it was asked
    * for.
    */
   private shouldWaitForGpu(): boolean {
-    if (!this.backpressureEnabled() || !this.running) {
+    if (!gpuBackpressureEnabled() || !this.running) {
       return false;
     }
-    if (this.framesInFlight < WebGPURenderingEngine.MAX_FRAMES_IN_FLIGHT) {
+    if (this.framesInFlight < MAX_FRAMES_IN_FLIGHT) {
       this.consecutiveGpuSkips = 0;
       return false;
     }
-    if (this.consecutiveGpuSkips >= WebGPURenderingEngine.MAX_CONSECUTIVE_GPU_SKIPS) {
+    if (this.consecutiveGpuSkips >= MAX_CONSECUTIVE_GPU_SKIPS) {
       this.consecutiveGpuSkips = 0;
       return false;
     }
@@ -1996,7 +1971,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   /** Counts a submission until the GPU reports it finished. */
   private trackFrameInFlight(): void {
-    if (!this.backpressureEnabled() || !this.device?.queue?.onSubmittedWorkDone) {
+    if (!gpuBackpressureEnabled() || !this.device?.queue?.onSubmittedWorkDone) {
       return;
     }
     this.framesInFlight += 1;

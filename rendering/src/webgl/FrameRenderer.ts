@@ -35,6 +35,7 @@ export class FrameRenderer {
   private resourceManager: ResourceManager<PiTexture>;
   private cameraManager: CameraManager;
   private glCanvas: HTMLCanvasElement;
+  private framePacer: (() => boolean) | null = null;
   private sampleRate: number = 44100;
   private lastWallTime: number | null = null;
   private customUniformManager: CustomUniformManager | null = null;
@@ -215,8 +216,20 @@ export class FrameRenderer {
     this.running = false;
   }
 
+  /**
+   * Consulted before each loop frame so the engine can hold work back while
+   * the GPU is behind. Explicit renders bypass it: a capture or a readback
+   * must produce the frame it asked for.
+   */
+  public setFramePacer(pacer: (() => boolean) | null): void {
+    this.framePacer = pacer;
+  }
+
   public render(time: number): void {
     if (!this.running) {
+      return;
+    }
+    if (this.framePacer?.()) {
       return;
     }
 

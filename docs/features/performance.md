@@ -43,13 +43,19 @@ and pan:
 | **p95** | The slowest 5% of frames — where a stutter appears first |
 | **worst** | The slowest single frame |
 | **late** | Number of frames that overran the window's own frame time by a whole refresh, holding the previous image on screen |
-| **gpu** | How long the GPU took to finish a frame — measured on both engines, and appearing a moment after the panel opens |
+| **gpu** | How long the GPU took to finish a frame — see the note below on comparing engines |
 
 An average frame rate can look healthy while frames arrive unevenly, and
 uneven delivery is what the eye reads as stuttering. When the preview looks
 jumpy but the FPS display seems fine, check **late** and **worst** rather than
 the frame rate — a couple of late frames per second is enough to see, while
 barely moving the average.
+
+**gpu** is measured differently by each engine, so compare it against **p50**
+within one engine — or before and after a change on the same engine — rather
+than between GLSL and Slang. The Slang figure reflects GPU execution; the GLSL
+one is taken from a fence that cannot pass until the frame has been presented,
+so it carries a refresh interval of waiting that is not shader work.
 
 **gpu** deserves attention when the preview looks frozen while the frame rate
 looks fine. The render loop does not wait for the GPU, so a backend can accept
