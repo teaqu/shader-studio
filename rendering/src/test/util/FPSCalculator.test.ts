@@ -41,7 +41,7 @@ describe('FPSCalculator', () => {
     expect(fpsCalculator.getFPS()).toBeCloseTo(30, 0);
   });
 
-  it('should ignore invalid frame times', () => {
+  it('should ignore only degenerate (zero or negative) frame times', () => {
     fpsCalculator.updateFrame(0);
 
     // Add enough valid frames to reach minimum
@@ -51,14 +51,37 @@ describe('FPSCalculator', () => {
 
     const fpsBeforeInvalid = fpsCalculator.getFPS();
 
-    // Add invalid frame (too long - <10 FPS, >100ms)
-    fpsCalculator.updateFrame(1000); // Way too long frame time
+    // A duplicate timestamp (zero delta) is degenerate, not a real frame.
+    fpsCalculator.updateFrame(6 * 16.67);
     expect(fpsCalculator.getFPS()).toBe(fpsBeforeInvalid); // FPS should not change
 
     // Add another valid frame
-    fpsCalculator.updateFrame(1016.67);
+    fpsCalculator.updateFrame(6 * 16.67 + 16.67);
     // FPS should still be reasonable
     expect(fpsCalculator.getFPS()).toBeGreaterThan(0);
+  });
+
+  it('reflects a sustained slow (sub-10fps) frame rate rather than freezing at the last fast reading', () => {
+    // A shader on a huge canvas can legitimately take hundreds of ms per
+    // frame. That must show up as a low fps, not get silently discarded as
+    // "invalid" and leave the display stuck reporting a healthy rate.
+    fpsCalculator.updateFrame(0);
+
+    // A brief fast run first, so there is a "before" reading to diverge from.
+    for (let i = 1; i <= 10; i++) {
+      fpsCalculator.updateFrame(i * 16.67);
+    }
+    expect(fpsCalculator.getFPS()).toBeCloseTo(60, 0);
+
+    // Then a sustained slowdown: real ~5fps (200ms/frame), well past the
+    // old 100ms cutoff, for enough frames to fill the averaging window.
+    let time = 10 * 16.67;
+    for (let i = 1; i <= 30; i++) {
+      time += 200;
+      fpsCalculator.updateFrame(time);
+    }
+
+    expect(fpsCalculator.getFPS()).toBeCloseTo(5, 0);
   });
 
   it('should reset correctly', () => {

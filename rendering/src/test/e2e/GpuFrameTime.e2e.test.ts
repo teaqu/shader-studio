@@ -22,7 +22,7 @@ const programs: Record<ShaderLanguage, string> = {
 const heavySlang = `float4 mainImage(float2 fragCoord) {
   float2 uv = fragCoord / iResolution.xy;
   float acc = 0.0;
-  for (int i = 0; i < 4000; ++i) {
+  for (int i = 0; i < 1200; ++i) {
     acc += sin(uv.x * float(i) + iTime) * cos(uv.y * float(i) * 1.37);
   }
   return float4(float3(acc / 4000.0), 1.0);
@@ -73,11 +73,11 @@ describe("GPU frame time", () => {
   });
 
   it("grows with the work the GPU is given", { timeout: 120_000 }, async () => {
-    const light = await renderFrames("slang", programs.slang, 1280, 720, 6);
+    const light = await renderFrames("slang", programs.slang, 640, 360, 6);
     const lightMs = light.engine.getGpuFrameTimeMs?.() ?? null;
     light.dispose();
 
-    const heavy = await renderFrames("slang", heavySlang, 1280, 720, 6);
+    const heavy = await renderFrames("slang", heavySlang, 640, 360, 6);
     const heavyMs = heavy.engine.getGpuFrameTimeMs?.() ?? null;
     heavy.dispose();
 
@@ -103,11 +103,11 @@ describe("GPU frame time", () => {
   });
 
   it("measures both engines on the same shader, so the two can be compared", { timeout: 180_000 }, async () => {
-    const glsl = await renderFrames("glsl", programs.glsl, 1280, 720, 6);
+    const glsl = await renderFrames("glsl", programs.glsl, 640, 360, 6);
     const glslMs = glsl.engine.getGpuFrameTimeMs?.() ?? null;
     glsl.dispose();
 
-    const slang = await renderFrames("slang", programs.slang, 1280, 720, 6);
+    const slang = await renderFrames("slang", programs.slang, 640, 360, 6);
     const slangMs = slang.engine.getGpuFrameTimeMs?.() ?? null;
     slang.dispose();
 

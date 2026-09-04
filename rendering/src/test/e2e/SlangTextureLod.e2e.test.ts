@@ -13,7 +13,7 @@ import { createShaderCanvasHarness, type ShaderLanguage } from "./ShaderCanvasHa
  */
 
 const TEXTURE_SIZE = 1024;
-const SAMPLES_PER_PIXEL = 16;
+const SAMPLES_PER_PIXEL = 8;
 /** Minification factor: derivatives this large would select a coarse mip. */
 const UV_SCALE = 48.0;
 
@@ -121,8 +121,8 @@ function textureConfig(url: string): ShaderConfig {
   };
 }
 
-const WARMUP_FRAMES = 3;
-const MEASURED_FRAMES = 10;
+const WARMUP_FRAMES = 2;
+const MEASURED_FRAMES = 4;
 
 async function measureFrameMs(
   language: ShaderLanguage,
@@ -153,9 +153,11 @@ describe("channel sampling cost", () => {
     const url = createNoiseTextureUrl();
     const config = textureConfig(url);
 
+    // Kept modest: every frame is read back with a deadline, and a shared CI
+    // runner is far slower than the machine this was written on.
     for (const { width, height } of [
-      { width: 640, height: 360 },
-      { width: 1920, height: 1080 },
+      { width: 480, height: 270 },
+      { width: 960, height: 540 },
     ]) {
       const glsl = await measureFrameMs("glsl", glslImage, config, width, height);
       const slangImplicit = await measureFrameMs("slang", slangImplicitLod, config, width, height);
@@ -225,10 +227,10 @@ describe("channel sampling cost", () => {
     // The generated WGSL carries diagnostic(off, derivative_uniformity), so a
     // channel read behind a per-pixel branch compiles and keeps its mip
     // selection instead of forcing the port onto level 0.
-    const implicit = await measureFrameMs("slang", slangBranchImplicit, config, 1920, 1080);
-    const lod0 = await measureFrameMs("slang", slangBranchLod0, config, 1920, 1080);
-    const lodHelper = await measureFrameMs("slang", slangBranchLodHelper, config, 1920, 1080);
-    const gradHelper = await measureFrameMs("slang", slangBranchGradHelper, config, 1920, 1080);
+    const implicit = await measureFrameMs("slang", slangBranchImplicit, config, 960, 540);
+    const lod0 = await measureFrameMs("slang", slangBranchLod0, config, 960, 540);
+    const lodHelper = await measureFrameMs("slang", slangBranchLodHelper, config, 960, 540);
+    const gradHelper = await measureFrameMs("slang", slangBranchGradHelper, config, 960, 540);
 
     console.log("[BranchSampling]", JSON.stringify({
       implicitMs: implicit,
