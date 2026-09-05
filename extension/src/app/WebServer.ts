@@ -254,6 +254,9 @@ export class WebServer {
         case ".png":
           contentType = "image/png";
           break;
+        case ".svg":
+          contentType = "image/svg+xml";
+          break;
         case ".gif":
           contentType = "image/gif";
           break;
