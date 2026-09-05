@@ -25,6 +25,7 @@
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { currentTheme, type Theme } from "../stores/themeStore";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -47,6 +48,8 @@
     slangModules?: SlangSourceModule[];
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
     displayMode?: "overlay" | "pane";
+    showVimToggle?: boolean;
+    onToggleVimMode?: () => void;
   }
 
   interface OverlayKeyEvent {
@@ -80,6 +83,8 @@
     slangModules = [],
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
     displayMode = "overlay",
+    showVimToggle = false,
+    onToggleVimMode = () => {},
   }: Props = $props();
 
   const activePassName = $derived(
@@ -117,6 +122,15 @@
   // Plain counters written straight onto the element: updateErrorMarkers runs
   // inside effects, where mutating $state is not allowed.
   let markerUpdateCount = 0;
+  let editorTheme: Theme = "light";
+  let unsubscribeTheme: (() => void) | null = null;
+
+  function monacoThemeFor(theme: Theme): string {
+    if (displayMode === "overlay") {
+      return "shader-studio-transparent";
+    }
+    return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
+  }
 
   function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
     const lower = path.toLowerCase();
@@ -504,7 +518,7 @@
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
       value: shaderCode,
       language: languageForShaderPath(shaderPath),
-      theme: "shader-studio-transparent",
+      theme: monacoThemeFor(editorTheme),
       minimap: { enabled: false },
       scrollbar: {
         vertical: "hidden",
@@ -531,6 +545,9 @@
       lineNumbersMinChars: 4,
       scrollBeyondLastLine: false,
       contextmenu: false,
+      // Keep completion and diagnostic widgets above Monaco's clipped editor
+      // viewport. Dockview's pane transforms are disabled for web layout below
+      // so fixed widget coordinates remain aligned with the editor.
       fixedOverflowWidgets: true,
       readOnly: false,
       domReadOnly: false,
@@ -900,12 +917,19 @@
   });
 
   onMount(() => {
+    if (displayMode === "pane") {
+      unsubscribeTheme = currentTheme.subscribe((theme) => {
+        editorTheme = theme;
+        monaco.editor.setTheme(monacoThemeFor(theme));
+      });
+    }
     if (isVisible) {
       createEditor();
     }
   });
 
   onDestroy(() => {
+    unsubscribeTheme?.();
     destroyEditor();
   });
 
@@ -936,6 +960,17 @@
       data-active-buffer={activeBufferName}
       bind:this={containerEl}
     ></div>
+    {#if showVimToggle && displayMode === "pane"}
+      <button
+        class="pane-vim-toggle"
+        type="button"
+        aria-label={vimMode ? "Disable Vim mode" : "Enable Vim mode"}
+        aria-pressed={vimMode}
+        onclick={onToggleVimMode}
+      >
+        Vim{vimMode ? " on" : ""}
+      </button>
+    {/if}
     {#if vimMode}
       <div class="vim-status-bar" bind:this={statusBarEl}></div>
     {/if}
@@ -971,6 +1006,22 @@
     background: transparent;
   }
 
+  /* The shader-preview overlay retains its original dark, high-contrast
+     presentation regardless of the docked web editor's workspace theme. */
+  .editor-wrapper:not(.pane) {
+    --shader-studio-editor-foreground: #d4d4d4;
+    --shader-studio-editor-current-line-background: rgba(255, 255, 255, 0.06);
+    --shader-studio-editor-active-line-number: #c6c6c6;
+    --shader-studio-editor-cursor: #ffffff;
+    --shader-studio-editor-selection-background: rgba(255, 255, 255, 0.3);
+    --shader-studio-editor-uniform-token: #50f5ff;
+    --shader-studio-editor-hover-background: rgba(30, 30, 30, 0.95);
+    --shader-studio-editor-hover-border: rgba(255, 255, 255, 0.15);
+    --shader-studio-editor-hover-status-background: rgba(255, 255, 255, 0.05);
+    --shader-studio-editor-status-background: rgba(10, 10, 10, 0.88);
+    --shader-studio-editor-status-border: rgba(255, 255, 255, 0.08);
+  }
+
   .editor-overlay {
     flex: 1;
     overflow: hidden;
@@ -983,14 +1034,28 @@
     min-height: 20px;
     font-family: monospace;
     font-size: 12px;
-    color: #d4d4d4;
-    background: rgba(10, 10, 10, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--shader-studio-editor-foreground);
+    background: var(--shader-studio-editor-status-background);
+    border: 1px solid var(--shader-studio-editor-status-border);
     border-radius: 4px;
     padding: 0 8px;
     line-height: 20px;
     z-index: 1200;
     pointer-events: none;
+  }
+
+  .pane-vim-toggle {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 3px 7px;
+    border: 1px solid var(--shader-studio-editor-status-border);
+    border-radius: 4px;
+    background: var(--shader-studio-editor-status-background);
+    color: var(--shader-studio-editor-foreground);
+    font-size: 11px;
+    line-height: 1.2;
   }
 
   /* Make ALL Monaco backgrounds transparent */
@@ -1018,7 +1083,6 @@
     resize: none !important;
   }
 
-  /* Keep the demo editor focused without the former overlay treatment. */
   .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
     background: transparent;
     border-radius: 0;
@@ -1026,12 +1090,18 @@
     text-shadow: none;
   }
 
+  /* Give shader-preview text a readable sheet without styling the web editor pane. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
+    background: rgba(10, 10, 10, 0.75);
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
+  }
+
   /* No background for blank lines */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-line.blank-line > span),
   .editor-overlay :global(.monaco-editor .view-line.blank-line > span) {
     background: transparent !important;
   }
 
-  /* Line numbers remain unobtrusive alongside the plain editor canvas. */
   .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
     background: transparent;
     border-radius: 0;
@@ -1039,14 +1109,19 @@
     padding-right: 8px;
   }
 
+  /* Match the overlay text sheet in the line-number gutter. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
+    background: rgba(10, 10, 10, 0.75);
+  }
+
   /* Current line number highlight */
   .editor-overlay :global(.monaco-editor .margin-view-overlays .current-line ~ .line-numbers) {
-    color: #c6c6c6;
+    color: var(--shader-studio-editor-active-line-number);
   }
 
   /* Current line highlight */
   .editor-overlay :global(.monaco-editor .current-line) {
-    background: rgba(255, 255, 255, 0.06) !important;
+    background: var(--shader-studio-editor-current-line-background) !important;
     border: none !important;
   }
 
@@ -1057,17 +1132,17 @@
 
   /* Cursor — bright and visible */
   .editor-overlay :global(.monaco-editor .cursor) {
-    background: #ffffff !important;
-    border-color: #ffffff !important;
+    background: var(--shader-studio-editor-cursor) !important;
+    border-color: var(--shader-studio-editor-cursor) !important;
   }
 
   /* Selection styling */
   .editor-overlay :global(.monaco-editor .selected-text) {
-    background: rgba(255, 255, 255, 0.3) !important;
+    background: var(--shader-studio-editor-selection-background) !important;
   }
 
   .editor-overlay :global(.monaco-editor .shader-uniform-token) {
-    color: #50f5ff !important;
+    color: var(--shader-studio-editor-uniform-token) !important;
   }
 
   /* Hide scrollbars */
@@ -1077,7 +1152,7 @@
 
   /* Active line number in gutter */
   .editor-overlay :global(.monaco-editor .active-line-number) {
-    color: #c6c6c6 !important;
+    color: var(--shader-studio-editor-active-line-number) !important;
   }
 
 /* Error squiggly — raise above the semi-transparent text backgrounds */
@@ -1091,17 +1166,17 @@
 
   /* Hover widget (error tooltips) */
   .editor-overlay :global(.monaco-editor .monaco-hover) {
-    background: rgba(30, 30, 30, 0.95) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    background: var(--shader-studio-editor-hover-background) !important;
+    border: 1px solid var(--shader-studio-editor-hover-border) !important;
   }
 
   .editor-overlay :global(.monaco-editor .monaco-hover-content) {
     background: transparent !important;
-    color: #d4d4d4 !important;
+    color: var(--shader-studio-editor-foreground) !important;
   }
 
   /* Hover status bar (bottom of hover widget) */
   .editor-overlay :global(.monaco-editor .monaco-hover .hover-row.status-bar) {
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: var(--shader-studio-editor-hover-status-background) !important;
   }
 </style>

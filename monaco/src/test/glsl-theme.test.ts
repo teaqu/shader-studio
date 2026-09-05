@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { shaderStudioTheme, shaderStudioTransparentTheme } from '../glsl-theme';
+import {
+    shaderStudioTheme,
+    shaderStudioTransparentLightTheme,
+    shaderStudioTransparentTheme,
+} from '../glsl-theme';
 
 describe('shaderStudioTheme', () => {
     it('has base property set to vs-dark', () => {
@@ -52,5 +56,13 @@ describe('shaderStudioTransparentTheme', () => {
 
     it('has transparent error border', () => {
         expect(shaderStudioTransparentTheme.colors['editorError.border']).toBe('#00000000');
+    });
+});
+
+describe('shaderStudioTransparentLightTheme', () => {
+    it('uses Monaco\'s light base and a dark editor foreground', () => {
+        expect(shaderStudioTransparentLightTheme.base).toBe('vs');
+        expect(shaderStudioTransparentLightTheme.colors['editor.foreground']).toBe('#1f1f1f');
+        expect(shaderStudioTransparentLightTheme.colors['editorCursor.foreground']).toBe('#1f1f1f');
     });
 });

@@ -198,6 +198,7 @@ const monacoMock = {
     })),
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
+    setTheme: vi.fn(),
     setModelLanguage: vi.fn(),
     setModelMarkers: vi.fn(),
   },

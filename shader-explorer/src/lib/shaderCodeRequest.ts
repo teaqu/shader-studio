@@ -14,8 +14,9 @@ export interface ShaderCodeResponse {
   slangModules?: SlangSourceModule[];
 }
 
-interface ShaderCodeRequestApi {
+export interface ShaderCodeRequestApi {
   postMessage(message: { type: 'requestShaderCode'; path: string; requestId: number }): void;
+  onMessage?(handler: (event: MessageEvent) => void): () => void;
 }
 
 interface RequestShaderCodeOptions {
@@ -48,9 +49,15 @@ export function requestShaderCode({
 
   return new Promise<ShaderCodeResponse>((resolve, reject) => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let unsubscribe: (() => void) | null = null;
 
     const cleanup = () => {
-      target.removeEventListener('message', handleMessage);
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      } else {
+        target.removeEventListener('message', handleMessage);
+      }
       signal?.removeEventListener('abort', handleAbort);
       if (timeoutId !== null) {
         clearTimeout(timeoutId);
@@ -91,7 +98,11 @@ export function requestShaderCode({
       resolve(response);
     }
 
-    target.addEventListener('message', handleMessage);
+    if (vscodeApi.onMessage) {
+      unsubscribe = vscodeApi.onMessage((event) => handleMessage(event));
+    } else {
+      target.addEventListener('message', handleMessage);
+    }
     signal?.addEventListener('abort', handleAbort, { once: true });
     if (signal?.aborted) {
       handleAbort();

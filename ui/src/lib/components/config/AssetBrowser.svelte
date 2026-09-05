@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
-  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "@shader-studio/types";
+  import {
+    AUDIO_EXTENSIONS,
+    SHADER_STUDIO_DEFAULT_ASSETS,
+    VIDEO_EXTENSIONS,
+    shaderStudioDefaultAssetRelativePath,
+  } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../util/waveformCache";
 
   interface Props {
@@ -23,6 +28,26 @@
   }: Props = $props();
 
   const PAGE_SIZE = 8;
+
+  function defaultAssets(): WorkspaceFileInfo[] {
+    if (import.meta.env.VITE_SHADER_STUDIO_WEB !== 'true') {
+      return [];
+    }
+
+    const definitions = [
+      { name: "Nebula Texture.png", path: SHADER_STUDIO_DEFAULT_ASSETS.nebulaTexture, extension: "png" },
+      { name: "Nebula Video.mp4", path: SHADER_STUDIO_DEFAULT_ASSETS.nebulaVideo, extension: "mp4" },
+      { name: "Desert Cubemap.png", path: SHADER_STUDIO_DEFAULT_ASSETS.desertCubemap, extension: "png" },
+    ];
+    return definitions
+      .filter((asset) => extensions.includes(asset.extension))
+      .map((asset) => ({
+        name: asset.name,
+        workspacePath: asset.path,
+        thumbnailUri: new URL(shaderStudioDefaultAssetRelativePath(asset.path)!, document.baseURI).toString(),
+        isSameDirectory: false,
+      }));
+  }
 
   let files: WorkspaceFileInfo[] = $state([]);
   let loading = $state(true);
@@ -72,7 +97,7 @@
   function handleMessage(event: MessageEvent) {
     const message = event.data;
     if (message?.type === "workspaceFiles") {
-      files = message.payload.files;
+      files = [...defaultAssets(), ...message.payload.files];
       loading = false;
       clearLoadingTimeout();
     }

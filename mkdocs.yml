@@ -3,7 +3,7 @@ site_description: User guide for the Shader Studio VS Code extension
 
 hooks:
   - docs/hooks.py
-site_url: https://teaqu.github.io/shader-studio/
+site_url: https://teaqu.github.io/shader-studio/docs/
 repo_url: https://github.com/teaqu/shader-studio
 repo_name: teaqu/shader-studio
 

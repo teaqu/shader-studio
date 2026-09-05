@@ -27,3 +27,6 @@ coverage
 *.sw?
 
 src/**/*.js.map
+# Playwright
+test-results
+playwright-report

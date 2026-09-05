@@ -10,22 +10,21 @@
     type ShaderSearchResultsMessage,
   } from '../shaderSearch';
 
+  interface ShaderExplorerHostApi {
+    postMessage(message: { type: string; [key: string]: unknown }): void;
+    onMessage?(handler: (event: MessageEvent) => void): () => void;
+  }
+
   interface Props {
-    demoShaders?: ShaderFile[];
-    demoVscodeApi?: { postMessage: (message: { type: string; path?: string; requestId?: number; [key: string]: unknown }) => void };
-    demoNotice?: string;
-    selectedDemoShaderPath?: string;
-    onDemoShaderSelect?: (shader: ShaderFile) => void;
-    onDemoReset?: () => void;
+    hostApi?: ShaderExplorerHostApi;
+    compact?: boolean;
+    selectedShaderPath?: string;
   }
 
   let {
-    demoShaders = undefined,
-    demoVscodeApi = undefined,
-    demoNotice = '',
-    selectedDemoShaderPath = '',
-    onDemoShaderSelect = (_shader: ShaderFile) => {},
-    onDemoReset = () => {},
+    hostApi = undefined,
+    compact = false,
+    selectedShaderPath = '',
   }: Props = $props();
 
   let vscode: any = $state(null);
@@ -39,9 +38,7 @@
   let currentPage = $state(1);
   let pageSize = $state(20);
   let cardSize = $state(200); // Card width in pixels (100-1000)
-  // The demo lives in a narrow docked panel; rows retain the package's actual
-  // cards while keeping the editor and preview usable.
-  let layoutMode = $state<'grid' | 'row'>(demoShaders ? 'row' : 'grid');
+  let layoutMode = $state<'grid' | 'row'>(compact ? 'row' : 'grid');
   let showOptions = $state(false);
   let hideFailedShaders = $state(false);
   let openFilesOnSelect = $state(true);
@@ -138,24 +135,21 @@
   }
 
   onMount(() => {
-    if (demoShaders) {
-      vscode = demoVscodeApi;
-      shaders = demoShaders;
-      stateRestored = true;
-      return;
-    }
-    if (typeof acquireVsCodeApi !== 'undefined') {
-      vscode = acquireVsCodeApi();
+    if (hostApi || typeof acquireVsCodeApi !== 'undefined') {
+      vscode = hostApi ?? acquireVsCodeApi();
       searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
-      
-      // Request shader list from extension
+
       vscode.postMessage({ type: 'requestShaders' });
 
-      // Listen for messages from extension
-      window.addEventListener('message', handleMessage);
+      const unsubscribe = hostApi?.onMessage
+        ? hostApi.onMessage(handleMessage)
+        : (() => {
+          window.addEventListener('message', handleMessage);
+          return () => window.removeEventListener('message', handleMessage);
+        })();
 
       return () => {
-        window.removeEventListener('message', handleMessage);
+        unsubscribe();
         searchScheduler?.dispose();
       };
     } else {
@@ -232,10 +226,6 @@
   function openShader(shader: ShaderFile) {
     lastClickedPath = shader.path;
     clickGeneration++;
-    if (demoShaders) {
-      onDemoShaderSelect(shader);
-      return;
-    }
     vscode?.postMessage({
       type: openFilesOnSelect ? 'openShader' : 'activateShader',
       path: shader.path,
@@ -269,19 +259,8 @@
 
 </script>
 
-<div class="shader-explorer" data-testid={demoShaders ? 'demo-shader-explorer' : undefined}>
+<div class="shader-explorer" data-testid={hostApi ? 'web-shader-explorer' : undefined}>
   <div class="toolbar">
-    {#if demoShaders}
-      <div class="demo-titlebar" data-testid="demo-explorer-titlebar" role="status">
-        <strong>Demo mode</strong>
-        <span>{demoNotice}</span>
-      </div>
-      <div class="toolbar-actions demo-toolbar-actions" data-testid="demo-explorer-toolbar">
-        <button class="icon-button" onclick={onDemoReset} title="Reset examples" aria-label="Reset examples">
-          Reset
-        </button>
-      </div>
-    {:else}
       <div class="toolbar-actions">
         <div class="search-container">
           <input
@@ -378,7 +357,6 @@
         </label>
       </div>
       {/if}
-    {/if}
   </div>
 
   <div class="content">
@@ -414,8 +392,8 @@
             {refreshAll}
             forceFresh={shader.path === lastClickedPath}
             {layoutMode}
-            compact={Boolean(demoShaders)}
-            selected={selectedDemoShaderPath === shader.path}
+            {compact}
+            selected={selectedShaderPath === shader.path}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}
             onCompilationFailed={() => handleCompilationFailure(shader)}
@@ -511,22 +489,6 @@
     background-color: var(--vscode-editor-background);
     align-items: stretch;
     flex-shrink: 0;
-  }
-
-  .demo-titlebar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 6px;
-    padding: 5px 8px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-    color: var(--vscode-editor-foreground);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .demo-titlebar span {
-    color: var(--vscode-descriptionForeground);
   }
 
   .toolbar-actions {

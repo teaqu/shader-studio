@@ -148,6 +148,22 @@ describe('EditorOverlay', () => {
       expect(container.querySelector('.vim-status-bar')).toBeTruthy();
     });
 
+    it('offers an independent Vim toggle when rendered as the web editor pane', () => {
+      const onToggleVimMode = vi.fn();
+      const { getByRole } = render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          displayMode: 'pane',
+          showVimToggle: true,
+          onToggleVimMode,
+        },
+      });
+
+      getByRole('button', { name: 'Enable Vim mode' }).click();
+
+      expect(onToggleVimMode).toHaveBeenCalledOnce();
+    });
+
     it('should destroy editor when visibility changes to false', async () => {
       const { rerender } = render(EditorOverlay, { props: defaultProps });
 
@@ -517,6 +533,46 @@ describe('EditorOverlay', () => {
         readOnly: false,
         selectionHighlight: false,
       });
+    });
+
+    it('keeps the overlay on its original dark theme', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, { props: defaultProps });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ theme: 'shader-studio-transparent' });
+    });
+
+    it('does not retheme the overlay when the workspace theme changes', async () => {
+      const monaco = await import('monaco-editor');
+      const { currentTheme } = await import('../../lib/stores/themeStore');
+      render(EditorOverlay, { props: defaultProps });
+      vi.mocked(monaco.editor.setTheme).mockClear();
+
+      currentTheme.set('dark');
+
+      expect(monaco.editor.setTheme).not.toHaveBeenCalled();
+      currentTheme.set('light');
+    });
+
+    it('uses the current workspace theme in the web editor pane', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, displayMode: 'pane' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ theme: 'shader-studio-transparent-light' });
+    });
+
+    it('keeps overflow widgets visible within the web editor pane', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, displayMode: 'pane' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ fixedOverflowWidgets: true });
     });
 
     it('should create a Slang model for a Slang shader', async () => {

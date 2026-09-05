@@ -24,6 +24,7 @@ describe('AssetBrowser', () => {
 
   afterEach(() => {
     messageHandler = null;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -73,6 +74,44 @@ describe('AssetBrowser', () => {
   });
 
   describe('File Display', () => {
+    it('hides Shader Studio default assets outside the web build', async () => {
+      render(AssetBrowser, {
+        extensions: ['png', 'mp4'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles([]);
+      await tick();
+
+      expect(screen.queryByText('Nebula Texture.png')).not.toBeInTheDocument();
+      expect(screen.queryByText('Nebula Video.mp4')).not.toBeInTheDocument();
+      expect(screen.queryByText('Desert Cubemap.png')).not.toBeInTheDocument();
+    });
+
+    it('includes Shader Studio default assets in the web build', async () => {
+      vi.stubEnv('VITE_SHADER_STUDIO_WEB', 'true');
+      render(AssetBrowser, {
+        extensions: ['png', 'mp4'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles([]);
+      await tick();
+
+      expect(screen.getByText('Nebula Texture.png')).toBeInTheDocument();
+      expect(screen.getByText('Nebula Video.mp4')).toBeInTheDocument();
+      expect(screen.getByText('Desert Cubemap.png')).toBeInTheDocument();
+      await fireEvent.click(screen.getByText('Nebula Texture.png').closest('button')!);
+      expect(mockOnSelect).toHaveBeenCalledWith(
+        'shader-studio://textures/nebula',
+        expect.stringContaining('assets/nebula-texture.png'),
+      );
+    });
+
     it('should render file list from message response', async () => {
       render(AssetBrowser, {
         extensions: ['png', 'jpg', 'hdr'],
@@ -109,7 +148,7 @@ describe('AssetBrowser', () => {
 
     it('should show empty state when no files found', async () => {
       render(AssetBrowser, {
-        extensions: ['png'],
+        extensions: ['wav'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
         onSelect: mockOnSelect,

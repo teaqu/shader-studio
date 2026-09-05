@@ -3,7 +3,11 @@ import { writable } from 'svelte/store';
 export type Theme = 'light' | 'dark';
 
 const savedTheme = (typeof localStorage !== 'undefined' && localStorage.getItem('shader-studio-theme')) as Theme | null;
-const defaultTheme: Theme = savedTheme || 'light';
+const systemTheme: Theme = typeof window !== 'undefined'
+  && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+  ? 'dark'
+  : 'light';
+const defaultTheme: Theme = savedTheme || systemTheme;
 
 export const currentTheme = writable<Theme>(defaultTheme);
 

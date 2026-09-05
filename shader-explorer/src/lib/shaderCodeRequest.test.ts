@@ -2,6 +2,31 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { requestShaderCode } from './shaderCodeRequest';
 
 describe('requestShaderCode', () => {
+  it('uses an injected host channel without global window messages', async () => {
+    let receive: ((event: MessageEvent) => void) | undefined;
+    const remove = vi.fn();
+    const vscodeApi = {
+      onMessage: vi.fn((handler: (event: MessageEvent) => void) => {
+        receive = handler;
+        return remove;
+      }),
+      postMessage: vi.fn((message: { path: string; requestId: number }) => {
+        receive?.(new MessageEvent('message', { data: {
+          type: 'shaderCode',
+          path: message.path,
+          requestId: message.requestId,
+          code: 'direct',
+          buffers: {},
+          language: 'glsl',
+        } }));
+      }),
+    };
+
+    await expect(requestShaderCode({ vscodeApi, path: '/direct.glsl', target: window }))
+      .resolves.toMatchObject({ code: 'direct' });
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

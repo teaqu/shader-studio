@@ -453,4 +453,38 @@ describe('MenuBar', () => {
       expect(screen.getByText('Save current layout')).toBeTruthy();
     });
   });
+
+  it('shows a documentation link only in web mode', async () => {
+    renderMenuBar(defaultProps);
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    expect(screen.queryByLabelText('Open documentation')).not.toBeInTheDocument();
+  });
+
+  it('links to the docs site and closes the menu when clicked in web mode', async () => {
+    renderMenuBar({ ...defaultProps, isWebMode: true });
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    const docsLink = screen.getByLabelText('Open documentation');
+    expect(docsLink).toHaveAttribute('href', 'https://teaqu.github.io/shader-studio/docs/');
+    expect(docsLink).toHaveAttribute('target', '_blank');
+    expect(docsLink).toHaveAttribute('rel', 'noopener noreferrer');
+
+    await fireEvent.click(docsLink);
+    expect(screen.queryByLabelText('Open documentation')).not.toBeInTheDocument();
+  });
+
+  it('only clears the web workspace after confirmation', async () => {
+    const onClearWorkspace = vi.fn().mockResolvedValue(undefined);
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    confirmSpy.mockReturnValueOnce(false);
+    renderMenuBar({ ...defaultProps, isWebMode: true, onClearWorkspace });
+
+    await fireEvent.click(screen.getByLabelText('Open options menu'));
+    await fireEvent.click(screen.getByLabelText('Clear web workspace'));
+    expect(onClearWorkspace).not.toHaveBeenCalled();
+
+    confirmSpy.mockReturnValueOnce(true);
+    await fireEvent.click(screen.getByLabelText('Clear web workspace'));
+    expect(onClearWorkspace).toHaveBeenCalledOnce();
+  });
 });

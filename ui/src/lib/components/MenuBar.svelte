@@ -75,6 +75,8 @@
     isRecording?: boolean;
     isRecordingPanelVisible?: boolean;
     onToggleRecordingPanel?: () => void;
+    isWebMode?: boolean;
+    onClearWorkspace?: () => void | Promise<void>;
   };
 
   let {
@@ -119,6 +121,8 @@
     isRecording = false,
     isRecordingPanelVisible = false,
     onToggleRecordingPanel = () => {},
+    isWebMode = false,
+    onClearWorkspace = () => {},
   }: Props = $props();
 
   // Resolution state from context
@@ -186,6 +190,8 @@
   let isPauseTooltipTriggerHovered = $state(false);
   let isPauseTooltipHovered = $state(false);
   let isPauseTooltipHoverArmed = $state(false);
+
+  const DOCS_URL = "https://teaqu.github.io/shader-studio/docs/";
 
   const compileModeIcons: Record<CompileMode, string> = {
     hot: "flame",
@@ -283,6 +289,14 @@
     event.stopPropagation();
     showOptionsMenu = false;
     onRefresh();
+  }
+
+  async function handleClearWorkspace(): Promise<void> {
+    if (!window.confirm('Clear the entire workspace and all saved browser state? This cannot be undone.')) {
+      return;
+    }
+    showOptionsMenu = false;
+    await onClearWorkspace();
   }
 
   function handleConfig(event: MouseEvent) {
@@ -996,6 +1010,30 @@
       <i class="codicon codicon-book"></i>
       <span>Shader Explorer</span>
     </button>
+    {#if isWebMode}
+      <div class="options-menu-divider"></div>
+      <a
+        class="options-menu-item"
+        href={DOCS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Open documentation"
+        onclick={() => {
+          showOptionsMenu = false;
+        }}
+      >
+        <i class="codicon codicon-link-external"></i>
+        <span>Documentation</span>
+      </a>
+      <button
+        class="options-menu-item"
+        onclick={handleClearWorkspace}
+        aria-label="Clear web workspace"
+      >
+        <i class="codicon codicon-trash"></i>
+        <span>Clear Workspace</span>
+      </button>
+    {/if}
     <div class="options-menu-divider"></div>
     <div class="options-menu-item compile-mode-menu-item">
       <span>Mode</span>

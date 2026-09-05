@@ -44,7 +44,7 @@ const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio,
     postMessage: vi.fn(),
     onMessage: vi.fn(),
     dispose: vi.fn(),
-    getType: () => 'vscode' as const,
+    getType: () => 'vscode' as 'vscode' | 'web',
     isConnected: () => true
   };
   const mockSetGlobalVolume = vi.fn();
@@ -560,6 +560,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTransport.getType = () => 'vscode';
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
     resolutionStore.reset();
@@ -596,6 +597,23 @@ describe('ShaderViewer', () => {
 
     expect(mockCreateTransport).toHaveBeenCalledTimes(1);
     expect(mockTransport.onMessage).toHaveBeenCalled();
+  });
+
+  it('shows the alpha warning only in web mode', async () => {
+    mockTransport.getType = () => 'web';
+    const { container, unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
+
+    const warning = screen.getByTestId('web-alpha-warning');
+    expect(warning).toHaveTextContent(
+      'Web mode is in alpha and is buggy and missing features compared to the VS Code extension.',
+    );
+    expect(container.querySelector('.main-container')?.firstElementChild).toBe(warning);
+
+    unmount();
+    mockTransport.getType = () => 'vscode';
+    render(ShaderViewer, { onInitialized: vi.fn() });
+
+    expect(screen.queryByTestId('web-alpha-warning')).not.toBeInTheDocument();
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {

@@ -43,19 +43,23 @@ describe('setupMonacoGlsl', () => {
         );
     });
 
-    it('calls monaco.editor.defineTheme for both themes', async () => {
+    it('calls monaco.editor.defineTheme for every editor theme', async () => {
         const { setupMonacoGlsl } = await import('../setup');
         const monaco = createMockMonaco();
 
         setupMonacoGlsl(monaco as any);
 
-        expect(monaco.editor.defineTheme).toHaveBeenCalledTimes(2);
+        expect(monaco.editor.defineTheme).toHaveBeenCalledTimes(3);
         expect(monaco.editor.defineTheme).toHaveBeenCalledWith(
             'shader-studio',
             expect.any(Object),
         );
         expect(monaco.editor.defineTheme).toHaveBeenCalledWith(
             'shader-studio-transparent',
+            expect.any(Object),
+        );
+        expect(monaco.editor.defineTheme).toHaveBeenCalledWith(
+            'shader-studio-transparent-light',
             expect.any(Object),
         );
     });
@@ -69,7 +73,7 @@ describe('setupMonacoGlsl', () => {
 
         // register is called only once because the second call bails out early
         expect(monaco.languages.register).toHaveBeenCalledTimes(1);
-        expect(monaco.editor.defineTheme).toHaveBeenCalledTimes(2);
+        expect(monaco.editor.defineTheme).toHaveBeenCalledTimes(3);
     });
 
     it('sets up MonacoEnvironment worker stub on self', async () => {

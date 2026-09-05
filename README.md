@@ -2,8 +2,13 @@
 
 A GLSL and Slang shader viewer for VS Code with hot reloading. Edit Shadertoy-style GLSL fragment shaders or write Slang shaders for the WebGPU pipeline — both with live preview, multi-pass pipelines, and visual debugging.
 
-Marketplace: https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio  
-Docs: https://teaqu.github.io/shader-studio/
+Try Shader Studio in [Standalone web mode](https://teaqu.github.io/shader-studio/app/) in your browser.
+
+### VSCode Marketplace
+ https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio. 
+
+### Documentation
+https://teaqu.github.io/shader-studio/docs/
 
 ![screenshot](assets/screenshot.png)
 ![shader explorer screenshot](assets/shader-explorer.png)
@@ -63,9 +68,24 @@ cd extension
 npm run vsce-package
 ```
 
+### Web Mode
+
+Run the standalone web build locally:
+
+```bash
+cd ui
+npm run dev:web
+```
+
+Build the static site (same output GitHub Pages deploys):
+
+```bash
+npm run build:web -w ui
+```
+
 ## Docs
 
-https://teaqu.github.io/shader-studio/
+https://teaqu.github.io/shader-studio/docs/
 
 Docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).
 

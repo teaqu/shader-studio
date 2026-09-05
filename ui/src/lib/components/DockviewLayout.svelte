@@ -30,13 +30,13 @@
     mountPerformance?: (container: HTMLElement) => (() => void) | void;
     mountRecording?: (container: HTMLElement) => (() => void) | void;
     mountEditor?: (container: HTMLElement) => (() => void) | void;
-    mountDemoExplorer?: (container: HTMLElement) => (() => void) | void;
+    mountWebExplorer?: (container: HTMLElement) => (() => void) | void;
     showDebugPanel?: boolean;
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
     showRecordingPanel?: boolean;
     showEditorPanel?: boolean;
-    showDemoExplorerPanel?: boolean;
+    showWebExplorerPanel?: boolean;
     transport?: Transport | null;
   }
 
@@ -47,13 +47,13 @@
     mountPerformance = () => {},
     mountRecording = () => {},
     mountEditor = () => {},
-    mountDemoExplorer = () => {},
+    mountWebExplorer = () => {},
     showDebugPanel = false,
     showConfigPanel = false,
     showPerformancePanel = false,
     showRecordingPanel = false,
     showEditorPanel = false,
-    showDemoExplorerPanel = false,
+    showWebExplorerPanel = false,
     transport = null as Transport | null,
   }: Props = $props();
 
@@ -263,8 +263,8 @@
         case "editor":
           mountFn = mountEditor;
           break;
-        case "demo-explorer":
-          mountFn = mountDemoExplorer;
+        case "web-explorer":
+          mountFn = mountWebExplorer;
           break;
         default:
           return;
@@ -308,10 +308,10 @@
       });
     }
 
-    if (showDemoExplorerPanel) {
+    if (showWebExplorerPanel) {
       api.addPanel({
-        id: "demo-explorer",
-        component: "demo-explorer",
+        id: "web-explorer",
+        component: "web-explorer",
         title: "Shader Explorer",
         renderer: "always",
         position: { referencePanel: showEditorPanel ? "editor" : "preview", direction: "left" },
@@ -744,7 +744,7 @@
   });
 </script>
 
-<div class="dockview-container" class:demo-layout={showEditorPanel} bind:this={containerEl}></div>
+<div class="dockview-container" class:web-layout={showEditorPanel} bind:this={containerEl}></div>
 
 <style>
   .dockview-container {
@@ -754,13 +754,23 @@
     overflow: hidden;
   }
 
-  .dockview-container.demo-layout :global(.dv-sash.dv-enabled) {
+  .dockview-container.web-layout :global(.dv-sash.dv-enabled) {
     background: var(--vscode-panel-border);
   }
 
-  .dockview-container.demo-layout :global(.dv-sash.dv-enabled:hover),
-  .dockview-container.demo-layout :global(.dv-sash.dv-enabled:active) {
+  .dockview-container.web-layout :global(.dv-sash.dv-enabled:hover),
+  .dockview-container.web-layout :global(.dv-sash.dv-enabled:active) {
     background: var(--vscode-focusBorder);
+  }
+
+  /* Monaco positions completion and diagnostic widgets against the viewport.
+     Dockview's animation transform changes that fixed-position containing
+     block, shifting the widgets by the editor pane's offset. The web layout
+     does not need the pane transition, so preserve the viewport coordinate
+     system for its editor. */
+  .dockview-container.web-layout :global(.dv-pane-container.dv-animated .dv-view),
+  .dockview-container.web-layout :global(.dv-split-view-container.dv-animation .dv-view) {
+    transform: none;
   }
 
   /* VS Code theme mapping for dockview */

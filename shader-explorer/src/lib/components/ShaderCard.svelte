@@ -22,6 +22,11 @@
   } = $props();
 
   const displayName = shader.name.replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, '');
+  const testId = `shader-option-${shader.name
+    .replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, (extension) => `-${extension.slice(1)}`)
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase()}`;
 
   let width = $derived(layoutMode === 'row' ? (compact ? 72 : 96) : Math.round(cardSize * 2.286));
   let height = $derived(layoutMode === 'row' ? (compact ? 41 : 54) : Math.round(width * 9 / 16));
@@ -87,7 +92,7 @@
   class:row={layoutMode === 'row'}
   class:compact
   class:selected
-  data-testid={shader.path.startsWith('demo://') ? `demo-shader-option-${shader.path.slice('demo://'.length)}` : undefined}
+  data-testid={testId}
   role="button"
   tabindex="0"
   aria-pressed={selected}

@@ -17,6 +17,7 @@ export default defineConfig({
       '@shader-studio/rendering': path.resolve(__dirname, '../rendering/src'),
       '@shader-studio/slang-language-server': path.resolve(__dirname, '../language-servers/slang/src'),
       '@shader-studio/types': path.resolve(__dirname, '../types/src'),
+      '@shader-studio/web-host': path.resolve(__dirname, '../web-host/src'),
     },
   },
   optimizeDeps: {

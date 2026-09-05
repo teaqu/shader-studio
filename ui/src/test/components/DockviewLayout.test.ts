@@ -168,13 +168,13 @@ describe('DockviewLayout', () => {
     }));
   });
 
-  it('adds the demo shader explorer to the left of the editor when requested', async () => {
-    renderLayout({ mountEditor: () => {}, showEditorPanel: true, mountDemoExplorer: () => {}, showDemoExplorerPanel: true });
+  it('adds the web shader explorer to the left of the editor when requested', async () => {
+    renderLayout({ mountEditor: () => {}, showEditorPanel: true, mountWebExplorer: () => {}, showWebExplorerPanel: true });
     await tick();
 
     expect(mockApi.addPanel).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'demo-explorer',
-      component: 'demo-explorer',
+      id: 'web-explorer',
+      component: 'web-explorer',
       position: { referencePanel: 'editor', direction: 'left' },
       initialWidth: 220,
       maximumWidth: 260,

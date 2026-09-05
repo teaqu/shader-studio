@@ -378,6 +378,10 @@ suite('WebServer Test Suite', () => {
       assert.strictEqual(requestFile('icon.svg'), 'image/svg+xml');
     });
 
+    test('serves bundled .mp4 default assets with video content type', () => {
+      assert.strictEqual(requestFile('assets/nebula-motion.mp4'), 'video/mp4');
+    });
+
     test('serves .wasm with application/wasm content type', () => {
       assert.strictEqual(requestFile('module.wasm'), 'application/wasm');
     });

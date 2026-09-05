@@ -21,12 +21,12 @@ vi.mock('../../lib/transport/WebSocketTransport', () => ({
   })),
 }));
 
-vi.mock('../../lib/transport/DemoTransport', () => ({
-  DemoTransport: vi.fn().mockImplementation(() => ({
+vi.mock('../../lib/transport/WebTransport', () => ({
+  WebTransport: vi.fn().mockImplementation(() => ({
     postMessage: vi.fn(),
     onMessage: vi.fn(),
     dispose: vi.fn(),
-    getType: vi.fn().mockReturnValue('demo'),
+    getType: vi.fn().mockReturnValue('web'),
     isConnected: vi.fn().mockReturnValue(true),
   })),
 }));
@@ -34,7 +34,7 @@ vi.mock('../../lib/transport/DemoTransport', () => ({
 import { createTransport, isVSCodeEnvironment } from '../../lib/transport/TransportFactory';
 import { VSCodeTransport } from '../../lib/transport/VSCodeTransport';
 import { WebSocketTransport } from '../../lib/transport/WebSocketTransport';
-import { DemoTransport } from '../../lib/transport/DemoTransport';
+import { WebTransport } from '../../lib/transport/WebTransport';
 
 describe('TransportFactory', () => {
   beforeEach(() => {
@@ -59,11 +59,11 @@ describe('TransportFactory', () => {
       expect(transport.getType()).toBe('websocket');
     });
 
-    it('should create DemoTransport in the demo build outside VS Code', () => {
-      vi.stubEnv('VITE_SHADER_STUDIO_DEMO', 'true');
+    it('should create WebTransport in the web build outside VS Code', () => {
+      vi.stubEnv('VITE_SHADER_STUDIO_WEB', 'true');
       const transport = createTransport();
-      expect(DemoTransport).toHaveBeenCalled();
-      expect(transport.getType()).toBe('demo');
+      expect(WebTransport).toHaveBeenCalled();
+      expect(transport.getType()).toBe('web');
     });
   });
 
