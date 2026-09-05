@@ -32,17 +32,6 @@ If IndexedDB is unavailable or cannot be opened, the app falls back to memory; c
 
 The asset picker does not browse files on your computer. You can use the bundled texture and cubemap, but local workspace asset selection is not available in standalone mode. Screenshots and recordings are saved as browser downloads.
 
-## Standalone or Open in Browser?
-
-| | Standalone mode | Extension's Open in Browser |
-|---|---|---|
-| Start | Open the standalone app | Start the web server from VS Code |
-| Requires VS Code running | No | Yes |
-| Shader files | Browser workspace | Files managed by the extension |
-| Connection | Runs in the browser | Connects to the extension's local server |
-
-To preview your existing VS Code workspace in a browser, follow [Open in Browser](features/web-server.md).
-
 ## Run Locally from Source
 
 From the repository root, install dependencies and start the standalone app:
