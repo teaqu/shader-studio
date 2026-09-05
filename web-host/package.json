@@ -3,24 +3,14 @@
   "version": "0.0.1",
   "license": "MIT",
   "private": true,
-  "main": "./dist/index.js",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/index.js"
-    }
-  },
+  "type": "module",
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.esm.json",
-    "test": "vitest run --config vitest.config.ts",
-    "watch": "tsc --watch"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
   },
-  "files": [
-    "dist"
-  ],
   "dependencies": {
     "@shader-studio/types": "*"
   }

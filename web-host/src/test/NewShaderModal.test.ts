@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import NewShaderModal from '../../lib/components/NewShaderModal.svelte';
+import NewShaderModal from '../NewShaderModal.svelte';
 
 describe('NewShaderModal', () => {
   it('submits the selected GLSL shader name', async () => {

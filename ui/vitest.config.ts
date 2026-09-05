@@ -43,10 +43,6 @@ export default defineConfig({
         replacement: path.resolve(__dirname, '../types/src'),
       },
       {
-        find: '@shader-studio/web-host',
-        replacement: path.resolve(__dirname, '../web-host/src'),
-      },
-      {
         find: /^svelte\/store$/,
         replacement: fileURLToPath(new URL('./src/test/svelte-store-shim.ts', import.meta.url)),
       },

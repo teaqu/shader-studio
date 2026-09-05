@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MenuBar from '../../lib/components/MenuBar.svelte';
@@ -117,6 +118,7 @@ describe('MenuBar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHost();
     mockResCtrl = createMockResCtrl();
   });
 
@@ -454,14 +456,15 @@ describe('MenuBar', () => {
     });
   });
 
-  it('shows a documentation link only in web mode', async () => {
+  it('shows a documentation link only when the host supplies one', async () => {
     renderMenuBar(defaultProps);
     await fireEvent.click(screen.getByLabelText('Open options menu'));
     expect(screen.queryByLabelText('Open documentation')).not.toBeInTheDocument();
   });
 
-  it('links to the docs site and closes the menu when clicked in web mode', async () => {
-    renderMenuBar({ ...defaultProps, isWebMode: true });
+  it('links to the docs site and closes the menu when the host supplies one', async () => {
+    configureHost({ docsUrl: 'https://teaqu.github.io/shader-studio/docs/' });
+    renderMenuBar(defaultProps);
 
     await fireEvent.click(screen.getByLabelText('Open options menu'));
     const docsLink = screen.getByLabelText('Open documentation');
@@ -477,7 +480,8 @@ describe('MenuBar', () => {
     const onClearWorkspace = vi.fn().mockResolvedValue(undefined);
     const confirmSpy = vi.spyOn(window, 'confirm');
     confirmSpy.mockReturnValueOnce(false);
-    renderMenuBar({ ...defaultProps, isWebMode: true, onClearWorkspace });
+    configureHost({ supportsClearWorkspace: true });
+    renderMenuBar({ ...defaultProps, onClearWorkspace });
 
     await fireEvent.click(screen.getByLabelText('Open options menu'));
     await fireEvent.click(screen.getByLabelText('Clear web workspace'));

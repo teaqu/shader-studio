@@ -21,25 +21,16 @@ vi.mock('../../lib/transport/WebSocketTransport', () => ({
   })),
 }));
 
-vi.mock('../../lib/transport/WebTransport', () => ({
-  WebTransport: vi.fn().mockImplementation(() => ({
-    postMessage: vi.fn(),
-    onMessage: vi.fn(),
-    dispose: vi.fn(),
-    getType: vi.fn().mockReturnValue('web'),
-    isConnected: vi.fn().mockReturnValue(true),
-  })),
-}));
-
 import { createTransport, isVSCodeEnvironment } from '../../lib/transport/TransportFactory';
 import { VSCodeTransport } from '../../lib/transport/VSCodeTransport';
 import { WebSocketTransport } from '../../lib/transport/WebSocketTransport';
-import { WebTransport } from '../../lib/transport/WebTransport';
+import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 
 describe('TransportFactory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    resetHost();
     // Clean up global
     delete (globalThis as any).acquireVsCodeApi;
   });
@@ -59,11 +50,33 @@ describe('TransportFactory', () => {
       expect(transport.getType()).toBe('websocket');
     });
 
-    it('should create WebTransport in the web build outside VS Code', () => {
-      vi.stubEnv('VITE_SHADER_STUDIO_WEB', 'true');
+    it('should use the transport an embedding host supplies', () => {
+      const hostTransport = {
+        postMessage: vi.fn(),
+        onMessage: vi.fn(),
+        dispose: vi.fn(),
+        getType: vi.fn().mockReturnValue('web'),
+        isConnected: vi.fn().mockReturnValue(true),
+      };
+      const createHostTransport = vi.fn().mockReturnValue(hostTransport);
+      configureHost({ createTransport: createHostTransport as any });
+
       const transport = createTransport();
-      expect(WebTransport).toHaveBeenCalled();
+
+      expect(createHostTransport).toHaveBeenCalled();
+      expect(WebSocketTransport).not.toHaveBeenCalled();
       expect(transport.getType()).toBe('web');
+    });
+
+    it('should ignore a host transport when running inside VS Code', () => {
+      (globalThis as any).acquireVsCodeApi = vi.fn();
+      const createHostTransport = vi.fn();
+      configureHost({ createTransport: createHostTransport as any });
+
+      const transport = createTransport();
+
+      expect(createHostTransport).not.toHaveBeenCalled();
+      expect(transport.getType()).toBe('vscode');
     });
   });
 

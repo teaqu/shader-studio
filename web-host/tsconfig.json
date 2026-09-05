@@ -1,19 +1,24 @@
 {
+  "extends": "@tsconfig/svelte/tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "lib": ["ES2020", "DOM"],
-    "declaration": true,
-    "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shader-studio/ui": ["../ui/src/index.ts"],
+      "@shader-studio/ui/*": ["../ui/src/*"],
+      "@shader-studio/types": ["../types/src/index.ts"],
+      "@shader-studio/shader-explorer/*": ["../shader-explorer/src/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "src/test/**"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"],
+  "exclude": ["dist", "node_modules"]
 }

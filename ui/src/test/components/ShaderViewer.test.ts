@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
@@ -560,6 +561,7 @@ describe('ShaderViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHost();
     mockTransport.getType = () => 'vscode';
     mockVCMFactory.reset();
     compileModeStore.setMode('hot');
@@ -599,18 +601,16 @@ describe('ShaderViewer', () => {
     expect(mockTransport.onMessage).toHaveBeenCalled();
   });
 
-  it('shows the alpha warning only in web mode', async () => {
-    mockTransport.getType = () => 'web';
+  it('shows a notice banner only when the host supplies one', async () => {
+    configureHost({ notice: 'Web mode is in alpha.' });
     const { container, unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
 
     const warning = screen.getByTestId('web-alpha-warning');
-    expect(warning).toHaveTextContent(
-      'Web mode is in alpha and is buggy and missing features compared to the VS Code extension.',
-    );
+    expect(warning).toHaveTextContent('Web mode is in alpha.');
     expect(container.querySelector('.main-container')?.firstElementChild).toBe(warning);
 
     unmount();
-    mockTransport.getType = () => 'vscode';
+    resetHost();
     render(ShaderViewer, { onInitialized: vi.fn() });
 
     expect(screen.queryByTestId('web-alpha-warning')).not.toBeInTheDocument();

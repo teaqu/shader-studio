@@ -1,7 +1,7 @@
 import type { Transport } from './MessageTransport';
-import { WebTransport } from './WebTransport';
 import { VSCodeTransport } from './VSCodeTransport';
 import { WebSocketTransport } from './WebSocketTransport';
+import { getHostTransportFactory } from '../state/hostState.svelte';
 
 export function createTransport(): Transport {
   const isVSCodeContext = typeof acquireVsCodeApi !== 'undefined';
@@ -10,8 +10,11 @@ export function createTransport(): Transport {
     return new VSCodeTransport();
   }
 
-  if (import.meta.env.VITE_SHADER_STUDIO_WEB === 'true') {
-    return new WebTransport();
+  // A host that embeds the viewer (such as the standalone web shell) supplies
+  // its own transport; otherwise the viewer talks to the extension's server.
+  const hostTransport = getHostTransportFactory();
+  if (hostTransport) {
+    return hostTransport();
   }
 
   return new WebSocketTransport();

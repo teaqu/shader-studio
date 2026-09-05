@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WebTransport } from '../../lib/transport/WebTransport';
+import { WebTransport } from '../WebTransport';
 
 async function eventually(assertion: () => void): Promise<void> {
   await vi.waitFor(assertion);

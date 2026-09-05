@@ -3,16 +3,15 @@ import type {
   ShaderExplorerHostApi,
   Transport,
   TransportMessage,
-} from './MessageTransport';
+} from '@shader-studio/ui';
+import { createDefaultWorkspaceFiles, resolveDefaultAssetUrl } from './defaultWorkspace';
 import {
-  createDefaultWorkspaceFiles,
   IndexedDbWorkspaceStore,
   MemoryWorkspaceStore,
-  resolveDefaultAssetUrl,
   VirtualWorkspace,
-  WebExtensionHost,
-} from '@shader-studio/web-host';
-import { installSlangAssetMetadata } from '../slangAssets';
+} from './VirtualWorkspace';
+import { WebExtensionHost } from './WebExtensionHost';
+import { installSlangAssetMetadata } from '@shader-studio/ui/lib/slangAssets';
 
 function createWorkspace() {
   const seeds = createDefaultWorkspaceFiles();

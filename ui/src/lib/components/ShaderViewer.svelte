@@ -9,9 +9,7 @@
   import type { Transport } from "../transport/MessageTransport";
   import ShaderCanvas from "./ShaderCanvas.svelte";
   import MenuBar from "./MenuBar.svelte";
-  import NewShaderModal from "./NewShaderModal.svelte";
   import EditorOverlay from "./EditorOverlay.svelte";
-  import ShaderExplorer from "../../../../shader-explorer/src/lib/components/ShaderExplorer.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
@@ -20,6 +18,13 @@
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
+  import {
+    getHostExplorer,
+    getHostNewShaderModal,
+    getHostNotice,
+    getHostProvidesEditingSurface,
+    getHostSupportsClearWorkspace,
+  } from "../state/hostState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
@@ -168,7 +173,11 @@
   let pendingSwapMessage: MessageEvent | null = null;
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
-  const webMode = transport.getType() === 'web';
+  const HostExplorer = $derived(getHostExplorer());
+  const HostNewShaderModal = $derived(getHostNewShaderModal());
+  const canClearWorkspace = $derived(getHostSupportsClearWorkspace());
+  const providesEditingSurface = getHostProvidesEditingSurface();
+  const hostNotice = $derived(getHostNotice());
   let showNewShaderModal = $state(false);
   const shaderExplorerHostApi = transport.getShaderExplorerHostApi?.();
   let layoutSlot = transport.getType() === 'vscode'
@@ -350,7 +359,6 @@
     onTogglePerformancePanel: handleTogglePerformancePanel,
     isRecordingPanelVisible: $recordingPanelStore.isVisible,
     onToggleRecordingPanel: handleToggleRecordingPanel,
-    isWebMode: webMode,
     onClearWorkspace: handleClearWebWorkspace,
     isEditorOverlayVisible: editorOverlayVisible,
     onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
@@ -373,7 +381,7 @@
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
-    if (webMode) {
+    if (providesEditingSurface) {
       return;
     }
     await initProfiles(profileAdapter);
@@ -1504,12 +1512,12 @@
 </script>
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
-  {#if webMode}
+  {#if hostNotice}
     <aside class="web-alpha-warning" data-testid="web-alpha-warning" role="note">
-      Web mode is in alpha and is buggy and missing features compared to the VS Code extension.
+      {hostNotice}
     </aside>
   {/if}
-  <div class="dockview-panel-source" bind:this={previewEl} data-testid={webMode ? 'web-preview' : undefined}>
+  <div class="dockview-panel-source" bind:this={previewEl} data-testid={providesEditingSurface ? 'web-preview' : undefined}>
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -1610,7 +1618,7 @@
       />
     {/if}
   </div>
-  {#if webMode}
+  {#if providesEditingSurface}
     <div class="dockview-panel-source" bind:this={editorEl} data-testid="web-editor">
       {#if initialized}
         <EditorOverlay
@@ -1637,11 +1645,13 @@
     </div>
     <div class="dockview-panel-source" bind:this={webExplorerEl}>
       {#if initialized}
-        <ShaderExplorer
-          hostApi={shaderExplorerHostApi}
-          compact={true}
-          selectedShaderPath={shaderPath}
-        />
+        {#if HostExplorer}
+          <HostExplorer
+            hostApi={shaderExplorerHostApi}
+            compact={true}
+            selectedShaderPath={shaderPath}
+          />
+        {/if}
       {/if}
     </div>
   {/if}
@@ -1653,9 +1663,9 @@
     {mountPerformance}
     {mountRecording}
     {mountEditor}
-    showEditorPanel={webMode}
+    showEditorPanel={providesEditingSurface}
     {mountWebExplorer}
-    showWebExplorerPanel={webMode}
+    showWebExplorerPanel={providesEditingSurface}
     showDebugPanel={$debugPanelStore.isVisible}
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
@@ -1672,8 +1682,8 @@
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />
   {/if}
-  {#if webMode && showNewShaderModal}
-    <NewShaderModal onCreate={handleCreateShader} onClose={() => showNewShaderModal = false} />
+  {#if HostNewShaderModal && showNewShaderModal}
+    <HostNewShaderModal onCreate={handleCreateShader} onClose={() => showNewShaderModal = false} />
   {/if}
 </div>
 

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { configureHost, resetHost } from '../../../lib/state/hostState.svelte';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { tick } from 'svelte';
 import AssetBrowser from '../../../lib/components/config/AssetBrowser.svelte';
@@ -9,6 +10,7 @@ describe('AssetBrowser', () => {
   let messageHandler: ((event: MessageEvent) => void) | null = null;
 
   beforeEach(() => {
+    resetHost();
     mockPostMessage = vi.fn();
     mockOnSelect = vi.fn();
 
@@ -90,8 +92,29 @@ describe('AssetBrowser', () => {
       expect(screen.queryByText('Desert Cubemap.png')).not.toBeInTheDocument();
     });
 
-    it('includes Shader Studio default assets in the web build', async () => {
-      vi.stubEnv('VITE_SHADER_STUDIO_WEB', 'true');
+    it('includes default assets supplied by the embedding host', async () => {
+      configureHost({
+        defaultAssets: [
+          {
+            name: 'Nebula Texture.png',
+            workspacePath: 'shader-studio://textures/nebula',
+            thumbnailUri: 'https://example.test/assets/nebula-texture.png',
+            isSameDirectory: false,
+          },
+          {
+            name: 'Nebula Video.mp4',
+            workspacePath: 'shader-studio://videos/nebula',
+            thumbnailUri: 'https://example.test/assets/nebula-motion.mp4',
+            isSameDirectory: false,
+          },
+          {
+            name: 'Desert Cubemap.png',
+            workspacePath: 'shader-studio://cubemaps/desert',
+            thumbnailUri: 'https://example.test/assets/desert-cubemap-cross.png',
+            isSameDirectory: false,
+          },
+        ],
+      });
       render(AssetBrowser, {
         extensions: ['png', 'mp4'],
         shaderPath: '/test/shader.glsl',

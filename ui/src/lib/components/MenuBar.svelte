@@ -29,6 +29,7 @@
 
   import type { AudioVideoController } from "../AudioVideoController";
   import { getActiveProfile, getProfileList, switchTo, saveProfile, restoreActiveProfile } from '../state/profileStore.svelte';
+  import { getHostDocsUrl, getHostSupportsClearWorkspace } from "../state/hostState.svelte";
   import ProfileModal from './ProfileModal.svelte';
   import { portal } from '../actions/portal';
   import { computeMenuPos } from '../utils/menuPos';
@@ -75,7 +76,6 @@
     isRecording?: boolean;
     isRecordingPanelVisible?: boolean;
     onToggleRecordingPanel?: () => void;
-    isWebMode?: boolean;
     onClearWorkspace?: () => void | Promise<void>;
   };
 
@@ -121,7 +121,6 @@
     isRecording = false,
     isRecordingPanelVisible = false,
     onToggleRecordingPanel = () => {},
-    isWebMode = false,
     onClearWorkspace = () => {},
   }: Props = $props();
 
@@ -191,7 +190,8 @@
   let isPauseTooltipHovered = $state(false);
   let isPauseTooltipHoverArmed = $state(false);
 
-  const DOCS_URL = "https://teaqu.github.io/shader-studio/docs/";
+  const docsUrl = $derived(getHostDocsUrl());
+  const canClearWorkspace = $derived(getHostSupportsClearWorkspace());
 
   const compileModeIcons: Record<CompileMode, string> = {
     hot: "flame",
@@ -1010,11 +1010,13 @@
       <i class="codicon codicon-book"></i>
       <span>Shader Explorer</span>
     </button>
-    {#if isWebMode}
+    {#if docsUrl || canClearWorkspace}
       <div class="options-menu-divider"></div>
+    {/if}
+    {#if docsUrl}
       <a
         class="options-menu-item"
-        href={DOCS_URL}
+        href={docsUrl}
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Open documentation"
@@ -1025,6 +1027,8 @@
         <i class="codicon codicon-link-external"></i>
         <span>Documentation</span>
       </a>
+    {/if}
+    {#if canClearWorkspace}
       <button
         class="options-menu-item"
         onclick={handleClearWorkspace}
