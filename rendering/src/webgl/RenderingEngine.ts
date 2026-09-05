@@ -25,8 +25,7 @@ import type { CompilationResult } from "../models";
 import { CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "../capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
-import { assignInputSlots } from "../util/InputSlotAssigner";
-import type { ChannelSamplerType } from "./ShaderCompiler";
+import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
 import type { PiTexture } from "../types/piRenderer";
 import { buildBufferPassSizes } from "./BufferPassResolution";
 import { WebGLPixelRegionCapturer } from "./WebGLPixelRegionCapturer";
@@ -685,8 +684,9 @@ export class RenderingEngine implements RenderingEngineInterface {
       return { commonCode: isCapturingCommonPass ? '' : commonPassCode };
     }
 
-    const slotAssignments = assignInputSlots(targetPass.inputs || {});
-    const channelTypes: ChannelSamplerType[] = ['2D', '2D', '2D', '2D'];
+    const passInputs = targetPass.inputs || {};
+    const slotAssignments = assignInputSlots(passInputs);
+    const channelTypes = resolveChannelSamplerTypes(passInputs, slotAssignments);
 
     return {
       commonCode: isCapturingCommonPass ? '' : commonPassCode,
@@ -731,6 +731,11 @@ export class RenderingEngine implements RenderingEngineInterface {
       if (input.type === 'texture' && input.path) {
         const imageCache = this.resourceManager.getImageTextureCache();
         textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
+      } else if (input.type === 'cubemap' && input.path) {
+        // No 2D fallback: the slot's uniform is a samplerCube, so a default 2D
+        // texture there is an invalid binding rather than a blank channel.
+        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path)
+          || this.resourceManager.getCubemapTexture(input.path);
       } else if (input.type === 'keyboard') {
         this.resourceManager.updateKeyboardTexture(
           this.keyboardManager.getKeyHeld(),

@@ -372,6 +372,98 @@ describe("RenderingEngine", () => {
 
       expect(result.commonCode).toBe('vec3 dddd = vec3(1.0);');
     });
+
+    it("declares cubemap channels as Cube so capture shaders compile", () => {
+      const mockPipeline = {
+        getPasses: vi.fn(() => [
+          {
+            name: 'Image',
+            shaderSrc: 'void mainImage() {}',
+            inputs: { iChannel0: { type: 'cubemap', path: 'sky/' } },
+          },
+        ]),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      const result = renderingEngine.getVariableCaptureCompileContext('void mainImage() {}');
+
+      expect(result.channelTypes).toEqual(['Cube', '2D', '2D', '2D']);
+      expect(result.slotAssignments).toEqual([{ slot: 0, key: 'iChannel0', isCustomName: false }]);
+    });
+
+    it("keeps non-cubemap channels 2D", () => {
+      const mockPipeline = {
+        getPasses: vi.fn(() => [
+          {
+            name: 'Image',
+            shaderSrc: 'void mainImage() {}',
+            inputs: {
+              iChannel0: { type: 'texture', path: 'noise.png' },
+              iChannel1: { type: 'buffer', source: 'BufferA' },
+            },
+          },
+        ]),
+      };
+
+      Object.defineProperty(renderingEngine, 'shaderPipeline', {
+        value: mockPipeline, writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.getVariableCaptureCompileContext('void mainImage() {}').channelTypes)
+        .toEqual(['2D', '2D', '2D', '2D']);
+    });
+  });
+
+  describe("getVariableCaptureTextureBindings", () => {
+    const defaultTexture = { id: 'default' };
+    const cubemapTexture = { id: 'cubemap' };
+    let mockResourceManager: any;
+
+    beforeEach(() => {
+      mockResourceManager = {
+        getDefaultTexture: vi.fn(() => defaultTexture),
+        getImageTextureCache: vi.fn(() => ({ 'noise.png': { id: 'noise' } })),
+        getCubemapTexture: vi.fn((path: string) => (path === 'sky/resolved/' ? cubemapTexture : null)),
+        getVideoTexture: vi.fn(() => null),
+        getAudioTexture: vi.fn(() => null),
+      };
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: mockResourceManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'bufferManager', {
+        value: { getPassBuffers: vi.fn(() => ({})) }, writable: true, configurable: true,
+      });
+    });
+
+    const bindingsFor = (inputs: any) =>
+      (renderingEngine as any).getVariableCaptureTextureBindings(inputs);
+
+    it("binds the cubemap texture for a cubemap input", () => {
+      const bindings = bindingsFor({
+        iChannel0: { type: 'cubemap', path: 'sky/', resolved_path: 'sky/resolved/' },
+      });
+
+      expect(bindings[0]).toBe(cubemapTexture);
+      expect(bindings.slice(1)).toEqual([defaultTexture, defaultTexture, defaultTexture]);
+    });
+
+    it("falls back to the unresolved cubemap path", () => {
+      mockResourceManager.getCubemapTexture = vi.fn((path: string) => (path === 'sky/' ? cubemapTexture : null));
+
+      expect(bindingsFor({ iChannel0: { type: 'cubemap', path: 'sky/', resolved_path: 'sky/missing/' } })[0])
+        .toBe(cubemapTexture);
+    });
+
+    it("leaves a cubemap slot unbound rather than binding a 2D default", () => {
+      expect(bindingsFor({ iChannel0: { type: 'cubemap', path: 'unknown/' } })[0]).toBeNull();
+    });
+
+    it("still binds 2D inputs from the image cache", () => {
+      expect(bindingsFor({ iChannel0: { type: 'texture', path: 'noise.png' } })[0]).toEqual({ id: 'noise' });
+    });
   });
 
   describe("FPS limiting", () => {

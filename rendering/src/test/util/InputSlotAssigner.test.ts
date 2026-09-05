@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveGlslInputBindings } from "@shader-studio/types";
-import { assignInputSlots } from "../../util/InputSlotAssigner";
+import { assignInputSlots, resolveChannelSamplerTypes } from "../../util/InputSlotAssigner";
 
 describe("assignInputSlots", () => {
   it("returns empty array for empty inputs", () => {
@@ -144,5 +144,45 @@ describe("assignInputSlots", () => {
       { slot: 1, key: "prevFrame", isCustomName: true },
       { slot: 2, key: "iChannel2", isCustomName: false },
     ]);
+  });
+});
+
+describe("resolveChannelSamplerTypes", () => {
+  it("pads to four 2D slots when there are no inputs", () => {
+    expect(resolveChannelSamplerTypes({})).toEqual(["2D", "2D", "2D", "2D"]);
+  });
+
+  it("marks cubemap inputs as Cube on their own slot", () => {
+    expect(resolveChannelSamplerTypes({
+      iChannel0: { type: "cubemap", path: "sky/" },
+    })).toEqual(["Cube", "2D", "2D", "2D"]);
+  });
+
+  it("marks cubemaps under custom names on the slot they occupy", () => {
+    expect(resolveChannelSamplerTypes({
+      noiseMap: { type: "texture", path: "noise.png" },
+      environment: { type: "cubemap", path: "sky/" },
+    })).toEqual(["2D", "Cube", "2D", "2D"]);
+  });
+
+  it("grows past four slots and keeps non-cubemap inputs 2D", () => {
+    expect(resolveChannelSamplerTypes({
+      a: { type: "texture", path: "a.png" },
+      b: { type: "buffer", source: "BufferA" },
+      c: { type: "keyboard" },
+      d: { type: "video", path: "v.mp4" },
+      e: { type: "cubemap", path: "sky/" },
+    })).toEqual(["2D", "2D", "2D", "2D", "Cube"]);
+  });
+
+  it("uses the slot assignments it is given rather than reassigning", () => {
+    const inputs = { environment: { type: "cubemap", path: "sky/" } };
+    const assignments = [{ slot: 2, key: "environment", isCustomName: true }];
+    expect(resolveChannelSamplerTypes(inputs, assignments)).toEqual(["2D", "2D", "Cube", "2D"]);
+  });
+
+  it("leaves slots whose key has no input entry as 2D", () => {
+    expect(resolveChannelSamplerTypes({}, [{ slot: 0, key: "missing", isCustomName: true }]))
+      .toEqual(["2D", "2D", "2D", "2D"]);
   });
 });

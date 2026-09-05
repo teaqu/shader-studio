@@ -116,6 +116,38 @@ test('desert sky and ground stay continuous when looking around and after reload
   }
 });
 
+test('captures variables while debugging a cubemap shader', async ({ page }) => {
+  const captureFailures = [];
+  page.on('console', (message) => {
+    if (message.text().includes('[VariableCapture] Shader compile failed')) {
+      captureFailures.push(message.text());
+    }
+  });
+
+  await page.goto('/');
+  await page.getByTestId('shader-option-desert-cubemap-glsl').click();
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default cubemap');
+
+  await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
+  const panel = page.locator('.debug-panel');
+  await expect(panel).toBeVisible();
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
+  await expect(panel.locator('.variables-section')).toBeVisible();
+
+  // The capture shader must declare iChannel0 as a samplerCube, or this line
+  // fails to compile and no variable on it can be read back.
+  await editor.locator('.view-line').filter({ hasText: 'texture(iChannel0, direction)' }).click();
+  const direction = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^direction$/ }) });
+  await expect(direction).toBeVisible();
+  await expect.poll(async () => (await direction.locator('.vec-value').first().textContent() ?? '').trim())
+    .toMatch(/^\(-?\d/);
+  await expect(panel.locator('.issue-button')).toHaveCount(0);
+  expect(captureFailures).toEqual([]);
+});
+
 test('runs a persistent virtual shader workspace in web mode', async ({ page }) => {
   const languageWorkerRequests = new Set();
   page.on('request', (request) => {

@@ -1,4 +1,5 @@
 import { resolveGlslInputBindings, type GlslInputLike } from "@shader-studio/types";
+import type { ChannelSamplerType } from "../webgl/ShaderCompiler";
 
 export interface SlotAssignment {
   slot: number;
@@ -25,4 +26,25 @@ export function assignInputSlots(inputs: Readonly<Record<string, GlslInputLike>>
     key,
     isCustomName,
   }));
+}
+
+/**
+ * Sampler type per slot, so declarations match the resources actually bound.
+ * A cubemap slot declared as sampler2D makes every texture() call against it
+ * fail to compile, which is why render and variable capture must agree here.
+ */
+export function resolveChannelSamplerTypes(
+  inputs: Readonly<Record<string, GlslInputLike>>,
+  slotAssignments: SlotAssignment[] = assignInputSlots(inputs),
+): ChannelSamplerType[] {
+  const channelCount = Math.max(4, slotAssignments.length);
+  const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
+
+  for (const { slot, key } of slotAssignments) {
+    if (inputs[key]?.type === 'cubemap') {
+      types[slot] = 'Cube';
+    }
+  }
+
+  return types;
 }

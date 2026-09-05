@@ -6,7 +6,7 @@ import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
-import { assignInputSlots } from "../util/InputSlotAssigner";
+import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
 import { resolveBufferPassSize } from "./BufferPassResolution";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import { resolvePassGeometry } from "../types/Geometry";
@@ -185,17 +185,7 @@ export class ShaderPipeline {
   }
 
   private getChannelTypes(pass: Pass, slotAssignments = assignInputSlots(pass.inputs)): ChannelSamplerType[] {
-    const channelCount = Math.max(4, slotAssignments.length);
-    const types: ChannelSamplerType[] = new Array(channelCount).fill('2D');
-
-    for (const { slot, key } of slotAssignments) {
-      const input = pass.inputs[key];
-      if (input?.type === 'cubemap') {
-        types[slot] = 'Cube';
-      }
-    }
-
-    return types;
+    return resolveChannelSamplerTypes(pass.inputs, slotAssignments);
   }
 
   private async compileShaders(
