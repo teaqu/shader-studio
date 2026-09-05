@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
   import type { WorkspaceFileInfo } from "@shader-studio/types";
-  import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from "@shader-studio/types";
+  import {
+    AUDIO_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+  } from "@shader-studio/types";
   import { getWaveformPeaks } from "../../util/waveformCache";
+  import { getHostDefaultAssets } from "../../state/hostState.svelte";
 
   interface Props {
     extensions: string[];
@@ -23,6 +27,12 @@
   }: Props = $props();
 
   const PAGE_SIZE = 8;
+
+  function defaultAssets(): WorkspaceFileInfo[] {
+    return getHostDefaultAssets().filter((asset) =>
+      extensions.includes(asset.name.split(".").pop() ?? ""),
+    );
+  }
 
   let files: WorkspaceFileInfo[] = $state([]);
   let loading = $state(true);
@@ -72,7 +82,7 @@
   function handleMessage(event: MessageEvent) {
     const message = event.data;
     if (message?.type === "workspaceFiles") {
-      files = message.payload.files;
+      files = [...defaultAssets(), ...message.payload.files];
       loading = false;
       clearLoadingTimeout();
     }

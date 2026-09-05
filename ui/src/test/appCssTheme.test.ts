@@ -18,6 +18,17 @@ const channelControlThemeProperties = [
   '--vscode-badge-background',
 ];
 
+const bufferTabThemeProperties = [
+  '--vscode-editorGroupHeader-tabsBackground',
+  '--vscode-tab-activeBackground',
+  '--vscode-tab-activeForeground',
+  '--vscode-tab-inactiveBackground',
+  '--vscode-tab-inactiveForeground',
+  '--vscode-tab-hoverBackground',
+  '--vscode-tab-hoverForeground',
+  '--vscode-tab-border',
+];
+
 const warningThemeProperties = [
   '--shader-studio-warning-foreground',
   '--shader-studio-warning-background',
@@ -37,6 +48,19 @@ describe('standalone browser theme', () => {
       const themeBlock = getThemeBlock(theme);
 
       for (const property of channelControlThemeProperties) {
+        expect(themeBlock, `${theme} theme is missing ${property}`).toMatch(
+          new RegExp(`${property}\\s*:`),
+        );
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
+    'defines buffer tab properties for the %s theme',
+    (theme) => {
+      const themeBlock = getThemeBlock(theme);
+
+      for (const property of bufferTabThemeProperties) {
         expect(themeBlock, `${theme} theme is missing ${property}`).toMatch(
           new RegExp(`${property}\\s*:`),
         );

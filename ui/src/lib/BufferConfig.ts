@@ -184,6 +184,8 @@ export class BufferConfig {
       case 'buffer':
         return this.validateBufferInput(input);
       case 'texture':
+      case 'cubemap':
+        // Cubemaps use the same path and sampler options as textures.
         return this.validateTextureInput(input);
       case 'video':
         return this.validateVideoInput(input);

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { configureHost, resetHost } from '../../../lib/state/hostState.svelte';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { tick } from 'svelte';
 import AssetBrowser from '../../../lib/components/config/AssetBrowser.svelte';
@@ -9,6 +10,7 @@ describe('AssetBrowser', () => {
   let messageHandler: ((event: MessageEvent) => void) | null = null;
 
   beforeEach(() => {
+    resetHost();
     mockPostMessage = vi.fn();
     mockOnSelect = vi.fn();
 
@@ -24,6 +26,7 @@ describe('AssetBrowser', () => {
 
   afterEach(() => {
     messageHandler = null;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -73,6 +76,65 @@ describe('AssetBrowser', () => {
   });
 
   describe('File Display', () => {
+    it('hides Shader Studio default assets outside the web build', async () => {
+      render(AssetBrowser, {
+        extensions: ['png', 'mp4'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles([]);
+      await tick();
+
+      expect(screen.queryByText('Nebula Texture.png')).not.toBeInTheDocument();
+      expect(screen.queryByText('Nebula Video.mp4')).not.toBeInTheDocument();
+      expect(screen.queryByText('Desert Cubemap.png')).not.toBeInTheDocument();
+    });
+
+    it('includes default assets supplied by the embedding host', async () => {
+      configureHost({
+        defaultAssets: [
+          {
+            name: 'Nebula Texture.png',
+            workspacePath: 'shader-studio://textures/nebula',
+            thumbnailUri: 'https://example.test/assets/nebula-texture.png',
+            isSameDirectory: false,
+          },
+          {
+            name: 'Nebula Video.mp4',
+            workspacePath: 'shader-studio://videos/nebula',
+            thumbnailUri: 'https://example.test/assets/nebula-motion.mp4',
+            isSameDirectory: false,
+          },
+          {
+            name: 'Desert Cubemap.png',
+            workspacePath: 'shader-studio://cubemaps/desert',
+            thumbnailUri: 'https://example.test/assets/desert-cubemap-cross.png',
+            isSameDirectory: false,
+          },
+        ],
+      });
+      render(AssetBrowser, {
+        extensions: ['png', 'mp4'],
+        shaderPath: '/test/shader.glsl',
+        postMessage: mockPostMessage,
+        onSelect: mockOnSelect,
+      });
+
+      simulateWorkspaceFiles([]);
+      await tick();
+
+      expect(screen.getByText('Nebula Texture.png')).toBeInTheDocument();
+      expect(screen.getByText('Nebula Video.mp4')).toBeInTheDocument();
+      expect(screen.getByText('Desert Cubemap.png')).toBeInTheDocument();
+      await fireEvent.click(screen.getByText('Nebula Texture.png').closest('button')!);
+      expect(mockOnSelect).toHaveBeenCalledWith(
+        'shader-studio://textures/nebula',
+        expect.stringContaining('assets/nebula-texture.png'),
+      );
+    });
+
     it('should render file list from message response', async () => {
       render(AssetBrowser, {
         extensions: ['png', 'jpg', 'hdr'],
@@ -109,7 +171,7 @@ describe('AssetBrowser', () => {
 
     it('should show empty state when no files found', async () => {
       render(AssetBrowser, {
-        extensions: ['png'],
+        extensions: ['wav'],
         shaderPath: '/test/shader.glsl',
         postMessage: mockPostMessage,
         onSelect: mockOnSelect,

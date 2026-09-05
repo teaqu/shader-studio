@@ -363,8 +363,8 @@ export class ShaderExplorerBackend {
       await this.addCustomUniformMetadata(config, previewPath, message);
 
       const processedMessage = await ConfigPathConverter.processConfigPaths(
-                message as any,
-                this.webview
+        message as any,
+        this.webview,
       );
 
       this.webview.postMessage(processedMessage);

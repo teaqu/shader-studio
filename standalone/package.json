@@ -1,0 +1,32 @@
+{
+  "name": "@shader-studio/standalone",
+  "version": "0.0.1",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "playwright test -c e2e/playwright.config.mjs",
+    "predev": "npm run prebuild -w shader-studio-ui",
+    "prebuild": "npm run prebuild -w shader-studio-ui"
+  },
+  "dependencies": {
+    "@shader-studio/types": "*",
+    "@vscode/codicons": "^0.0.45",
+    "dockview-core": "^5.0.0",
+    "monaco-editor": "^0.55.1",
+    "shader-explorer-ui": "*",
+    "shader-studio-ui": "*",
+    "svelte": "^5.28.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@testing-library/svelte": "^5.2.8",
+    "pngjs": "^7.0.0",
+    "svelte-check": "^4.0.8"
+  }
+}

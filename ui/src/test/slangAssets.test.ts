@@ -4,6 +4,7 @@ import { getSlangAssetUrls } from '../lib/slangAssets';
 describe('getSlangAssetUrls', () => {
   afterEach(() => {
     delete (globalThis as typeof globalThis & { __slangPerf?: boolean }).__slangPerf;
+    document.head.replaceChildren();
   });
 
   it('keeps Slang timing diagnostics disabled by default', () => {
@@ -15,4 +16,5 @@ describe('getSlangAssetUrls', () => {
 
     expect(getSlangAssetUrls().debugTimings).toBe(true);
   });
+
 });

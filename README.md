@@ -2,8 +2,13 @@
 
 A GLSL and Slang shader viewer for VS Code with hot reloading. Edit Shadertoy-style GLSL fragment shaders or write Slang shaders for the WebGPU pipeline — both with live preview, multi-pass pipelines, and visual debugging.
 
-Marketplace: https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio  
-Docs: https://teaqu.github.io/shader-studio/
+Try Shader Studio in [Standalone web mode](https://teaqu.github.io/shader-studio/app/) in your browser.
+
+### VSCode Marketplace
+ https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio. 
+
+### Documentation
+https://teaqu.github.io/shader-studio/docs/
 
 ![screenshot](assets/screenshot.png)
 ![shader explorer screenshot](assets/shader-explorer.png)
@@ -63,9 +68,35 @@ cd extension
 npm run vsce-package
 ```
 
+### Web Mode
+
+See the [Standalone Mode guide](docs/standalone.md) for getting started, workspace controls, and browser storage.
+
+Run the standalone web build locally:
+
+```bash
+npm run dev:standalone
+```
+
+Build the static site (same output GitHub Pages deploys):
+
+```bash
+npm run build:standalone
+```
+
+The `standalone/` Svelte app owns the workspace tabs, editor pane, explorer integration,
+and browser storage. It embeds `ui/` as a Viewer panel; the viewer keeps its own
+Preview, Config, Debug, Frame Times, and Export tabs. Workspace layout resets affect
+only the outer tabs. The viewer's Layout menu resets its inner layout separately.
+
+Run standalone checks with `npm run check -w @shader-studio/standalone`,
+`npm test -w @shader-studio/standalone`, and
+`npm run test:e2e -w @shader-studio/standalone`.
+
+
 ## Docs
 
-https://teaqu.github.io/shader-studio/
+https://teaqu.github.io/shader-studio/docs/
 
 Docs are in `/docs` and configured with MkDocs (`/mkdocs.yml`).
 

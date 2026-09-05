@@ -1,5 +1,9 @@
 import { glslLanguageDefinition } from './glsl-language';
-import { shaderStudioTheme, shaderStudioTransparentTheme } from './glsl-theme';
+import {
+  shaderStudioTheme,
+  shaderStudioTransparentLightTheme,
+  shaderStudioTransparentTheme,
+} from './glsl-theme';
 import { slangLanguageDefinition } from './slang-language';
 
 let registered = false;
@@ -42,6 +46,7 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
   // Register themes
   monaco.editor.defineTheme('shader-studio', shaderStudioTheme);
   monaco.editor.defineTheme('shader-studio-transparent', shaderStudioTransparentTheme);
+  monaco.editor.defineTheme('shader-studio-transparent-light', shaderStudioTransparentLightTheme);
 
   registered = true;
 }

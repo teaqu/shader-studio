@@ -21,10 +21,21 @@
   --vscode-sideBar-background: #f8f8f8;
   --vscode-sideBar-foreground: #1f1f1f;
   --vscode-panel-border: #e5e5e5;
+  --vscode-editorGroupHeader-tabsBackground: #f3f3f3;
+  --vscode-tab-activeBackground: #ffffff;
+  --vscode-tab-activeForeground: #1f1f1f;
+  --vscode-tab-inactiveBackground: #ececec;
+  --vscode-tab-inactiveForeground: #616161;
+  --vscode-tab-hoverBackground: #e8e8e8;
+  --vscode-tab-hoverForeground: #1f1f1f;
+  --vscode-tab-border: #e5e5e5;
   --vscode-list-hoverBackground: #e8e8e8;
   --vscode-input-background: #ffffff;
   --vscode-input-foreground: #1f1f1f;
   --vscode-input-border: #cecece;
+  --vscode-dropdown-background: #ffffff;
+  --vscode-dropdown-foreground: #1f1f1f;
+  --vscode-dropdown-border: #cecece;
   --vscode-focusBorder: #005fb8;
   --vscode-badge-background: #c4c4c4;
   --vscode-button-background: #005fb8;
@@ -42,6 +53,17 @@
   --shader-studio-warning-foreground: #c24100;
   --shader-studio-warning-background: #ffdfc2;
   --shader-studio-warning-border: #c24100;
+  --shader-studio-editor-foreground: #1f1f1f;
+  --shader-studio-editor-current-line-background: rgba(0, 0, 0, 0.05);
+  --shader-studio-editor-active-line-number: #1f1f1f;
+  --shader-studio-editor-cursor: #1f1f1f;
+  --shader-studio-editor-selection-background: rgba(0, 95, 184, 0.25);
+  --shader-studio-editor-uniform-token: #007a87;
+  --shader-studio-editor-hover-background: rgba(255, 255, 255, 0.98);
+  --shader-studio-editor-hover-border: rgba(0, 0, 0, 0.2);
+  --shader-studio-editor-hover-status-background: rgba(0, 0, 0, 0.05);
+  --shader-studio-editor-status-background: rgba(255, 255, 255, 0.95);
+  --shader-studio-editor-status-border: rgba(0, 0, 0, 0.15);
 }
 
 :root[data-theme="dark"] {
@@ -52,10 +74,21 @@
   --vscode-sideBar-background: #252526;
   --vscode-sideBar-foreground: #cccccc;
   --vscode-panel-border: #2b2b2b;
+  --vscode-editorGroupHeader-tabsBackground: #181818;
+  --vscode-tab-activeBackground: #1e1e1e;
+  --vscode-tab-activeForeground: #ffffff;
+  --vscode-tab-inactiveBackground: #2d2d2d;
+  --vscode-tab-inactiveForeground: #969696;
+  --vscode-tab-hoverBackground: #2a2d2e;
+  --vscode-tab-hoverForeground: #ffffff;
+  --vscode-tab-border: #2b2b2b;
   --vscode-list-hoverBackground: #2a2d2e;
   --vscode-input-background: #313131;
   --vscode-input-foreground: #cccccc;
   --vscode-input-border: #3c3c3c;
+  --vscode-dropdown-background: #313131;
+  --vscode-dropdown-foreground: #cccccc;
+  --vscode-dropdown-border: #3c3c3c;
   --vscode-focusBorder: #007fd4;
   --vscode-badge-background: #4d4d4d;
   --vscode-button-background: #0e639c;
@@ -73,6 +106,17 @@
   --shader-studio-warning-foreground: #ff7a00;
   --shader-studio-warning-background: #7a3000;
   --shader-studio-warning-border: #ff7a00;
+  --shader-studio-editor-foreground: #d4d4d4;
+  --shader-studio-editor-current-line-background: rgba(255, 255, 255, 0.06);
+  --shader-studio-editor-active-line-number: #c6c6c6;
+  --shader-studio-editor-cursor: #ffffff;
+  --shader-studio-editor-selection-background: rgba(255, 255, 255, 0.3);
+  --shader-studio-editor-uniform-token: #50f5ff;
+  --shader-studio-editor-hover-background: rgba(30, 30, 30, 0.95);
+  --shader-studio-editor-hover-border: rgba(255, 255, 255, 0.15);
+  --shader-studio-editor-hover-status-background: rgba(255, 255, 255, 0.05);
+  --shader-studio-editor-status-background: rgba(10, 10, 10, 0.88);
+  --shader-studio-editor-status-border: rgba(255, 255, 255, 0.08);
 }
 
 a {

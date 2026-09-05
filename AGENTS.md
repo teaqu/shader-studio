@@ -118,9 +118,11 @@ way.
 When a bug is reported:
 
 1. **Write a failing test first.** Before touching the bug, add a test that reproduces it and confirm it fails. This proves the bug exists and defines done.
-2. **Then fix the bug.** Run tests again to confirm the new test passes and nothing else broke.
+2. **Add unit regression coverage, then fix the bug.** Every bug fix must include automated unit tests for the underlying behavior, including relevant branches, edge cases, and error/fallback paths. Confirm the unit regression test fails before the fix, then run it and the relevant existing tests after the fix. For user-facing bugs, both unit tests and the automated end-to-end test in step 5 are required; neither replaces the other.
 3. **Never skip step 1.** Fixing first and testing after risks writing a test that passes regardless of the fix.
 4. **Do not apply band-aids.** Do not widen timeouts, add retries, skip assertions, serialize work, or change CI environments merely to make a failure disappear. First identify and fix the underlying race, state leak, or product defect. Make an exception only when evidence establishes that the previous limit or execution policy was invalid; document that evidence in the change.
+5. **Add and run an automated end-to-end regression test for user-facing bugs.** The test must exercise the actual user action in the running affected host (standalone, VS Code extension, or Electron), assert the visible result, and check persistence after reload when relevant. Confirm it fails before the fix and passes afterward, and keep it in the repository's automated test suite. Manual testing, a host-handler unit test, a mocked component test, lint, or type checks do not replace this requirement. For example, a standalone Fork regression test must click the Fork menu action and verify that the copied shader opens, appears in the explorer, and survives reload. If the necessary test harness is missing, add the support needed to automate the flow; do not silently omit the regression test.
+6. **Report verification precisely.** State which tests and app flows actually ran and their results. If runtime verification is blocked, state the concrete blocker and the unverified flow; do not claim the fix is fully verified or silently substitute unit tests for app verification.
 
 ## Releases
 

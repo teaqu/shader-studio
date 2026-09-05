@@ -142,6 +142,9 @@ export class WebServer {
           case ".jpeg":
             contentType = "image/jpeg";
             break;
+          case ".mp4":
+            contentType = "video/mp4";
+            break;
           case ".ttf":
             contentType = "font/ttf";
             break;

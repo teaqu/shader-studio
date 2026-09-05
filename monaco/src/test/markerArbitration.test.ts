@@ -24,8 +24,8 @@ function marker(line: number, message: string, severity = ERROR, column = 1) {
 
 function fixture(languageId: "glsl" | "slang") {
   const setModelMarkers = vi.fn();
-  const monaco = { editor: { setModelMarkers } } as never as typeof import("monaco-editor/esm/vs/editor/editor.api");
-  const model = { getLanguageId: () => languageId } as never as import("monaco-editor/esm/vs/editor/editor.api").editor.ITextModel;
+  const monaco = { editor: { setModelMarkers } } as never as typeof import("monaco-editor/esm/vs/editor/editor.api.js");
+  const model = { getLanguageId: () => languageId } as never as import("monaco-editor/esm/vs/editor/editor.api.js").editor.ITextModel;
   const published = (owner: string) => {
     const calls = setModelMarkers.mock.calls.filter((call) => call[1] === owner);
     return calls.at(-1)?.[2] as ReturnType<typeof marker>[] | undefined;

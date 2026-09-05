@@ -29,6 +29,7 @@
 
   import type { AudioVideoController } from "../AudioVideoController";
   import { getActiveProfile, getProfileList, switchTo, saveProfile, restoreActiveProfile } from '../state/profileStore.svelte';
+  import { getHostCapabilities } from "../state/hostState.svelte";
   import ProfileModal from './ProfileModal.svelte';
   import { portal } from '../actions/portal';
   import { computeMenuPos } from '../utils/menuPos';
@@ -898,7 +899,7 @@
     >
       <div style="display:flex;align-items:center;gap:8px">
         <i class="codicon codicon-layout"></i>
-        <span>Layout: {getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}</span>
+        <span>{#if !getHostCapabilities().layoutProfiles}Layout{:else}Layout: {getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}{/if}</span>
       </div>
       <i class="codicon codicon-chevron-right"></i>
     </button>
@@ -1112,60 +1113,62 @@
     class="layout-submenu-portal"
     style="top: {submenuPos.top}px; left: {submenuPos.left}px; visibility: {submenuVisible ? 'visible' : 'hidden'};"
   >
-    {#each getProfileList() as profile}
-      <button
-        class="layout-submenu-item"
-        class:active={profile.id === getActiveProfile()}
-        onclick={() => {
-          switchTo(profile.id); showLayoutMenu = false; showOptionsMenu = false;
-        }}
-      >
-        {#if profile.id === getActiveProfile()}
-          <i class="codicon codicon-check"></i>
-        {:else}
-          <span class="check-placeholder"></span>
-        {/if}
-        {profile.name}
-      </button>
-    {/each}
-    <div class="options-menu-divider"></div>
-    {#if confirmingSave}
-      <div class="layout-submenu-confirm">
-        <span>Save to "{getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}"? Are you sure?</span>
-        <div class="layout-submenu-confirm-btns">
-          <button class="confirm-btn confirm-yes" onclick={async (e) => {
-            e.stopPropagation();
-            await saveProfile(); confirmingSave = false; showLayoutMenu = false; showOptionsMenu = false;
-          }}>Yes</button>
-          <button class="confirm-btn confirm-no" onclick={(e) => {
-            e.stopPropagation();
-            confirmingSave = false;
-          }}>Cancel</button>
+    {#if getHostCapabilities().layoutProfiles}
+      {#each getProfileList() as profile}
+        <button
+          class="layout-submenu-item"
+          class:active={profile.id === getActiveProfile()}
+          onclick={() => {
+            switchTo(profile.id); showLayoutMenu = false; showOptionsMenu = false;
+          }}
+        >
+          {#if profile.id === getActiveProfile()}
+            <i class="codicon codicon-check"></i>
+          {:else}
+            <span class="check-placeholder"></span>
+          {/if}
+          {profile.name}
+        </button>
+      {/each}
+      <div class="options-menu-divider"></div>
+      {#if confirmingSave}
+        <div class="layout-submenu-confirm">
+          <span>Save to "{getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}"? Are you sure?</span>
+          <div class="layout-submenu-confirm-btns">
+            <button class="confirm-btn confirm-yes" onclick={async (e) => {
+              e.stopPropagation();
+              await saveProfile(); confirmingSave = false; showLayoutMenu = false; showOptionsMenu = false;
+            }}>Yes</button>
+            <button class="confirm-btn confirm-no" onclick={(e) => {
+              e.stopPropagation();
+              confirmingSave = false;
+            }}>Cancel</button>
+          </div>
         </div>
-      </div>
-    {:else}
+      {:else}
+        <button
+          class="layout-submenu-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            confirmingSave = true;
+          }}
+        >
+          <i class="codicon codicon-save"></i>
+          Save current layout
+        </button>
+      {/if}
       <button
         class="layout-submenu-item"
-        onclick={(e) => {
-          e.stopPropagation();
-          confirmingSave = true;
+        onclick={async () => {
+          await restoreActiveProfile(); showLayoutMenu = false; showOptionsMenu = false;
         }}
+        aria-label="Restore saved layout"
+        disabled={!hasShader}
       >
-        <i class="codicon codicon-save"></i>
-        Save current layout
+        <i class="codicon codicon-history"></i>
+        Restore Saved Layout
       </button>
     {/if}
-    <button
-      class="layout-submenu-item"
-      onclick={async () => {
-        await restoreActiveProfile(); showLayoutMenu = false; showOptionsMenu = false;
-      }}
-      aria-label="Restore saved layout"
-      disabled={!hasShader}
-    >
-      <i class="codicon codicon-history"></i>
-      Restore Saved Layout
-    </button>
     <button
       class="layout-submenu-item"
       onclick={() => {
@@ -1177,15 +1180,17 @@
       <i class="codicon codicon-debug-restart"></i>
       Reset to Default
     </button>
-    <button
-      class="layout-submenu-item"
-      onclick={() => {
-        showProfileModal = true; showLayoutMenu = false; showOptionsMenu = false;
-      }}
-    >
-      <i class="codicon codicon-settings"></i>
-      Manage profiles…
-    </button>
+    {#if getHostCapabilities().layoutProfiles}
+      <button
+        class="layout-submenu-item"
+        onclick={() => {
+          showProfileModal = true; showLayoutMenu = false; showOptionsMenu = false;
+        }}
+      >
+        <i class="codicon codicon-settings"></i>
+        Manage profiles…
+      </button>
+    {/if}
   </div>
 {/if}
 

@@ -155,13 +155,23 @@ describe('VideoEncoderWrapper', () => {
   });
 
   describe('addFrame', () => {
+    it.each(['mp4', 'webm'] as const)('provides explicit frame duration for %s in browsers that do not infer it', (format) => {
+      const wrapper = new VideoEncoderWrapper({ width: 640, height: 480, fps: 24, format });
+      const canvas = document.createElement('canvas');
+      wrapper.addFrame(canvas, 41667);
+      expect(globalThis.VideoFrame).toHaveBeenCalledWith(canvas, {
+        timestamp: 41667,
+        duration: 41667,
+      });
+    });
+
     it('should create VideoFrame and encode it', () => {
       const wrapper = new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
       const canvas = document.createElement('canvas');
 
       wrapper.addFrame(canvas, 0);
 
-      expect((globalThis as any).VideoFrame).toHaveBeenCalledWith(canvas, { timestamp: 0 });
+      expect((globalThis as any).VideoFrame).toHaveBeenCalledWith(canvas, { timestamp: 0, duration: 33333 });
       expect(mockEncode).toHaveBeenCalled();
     });
 

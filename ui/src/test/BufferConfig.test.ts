@@ -1,8 +1,48 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BufferConfig } from '../lib/BufferConfig';
-import type { BufferPass, ImagePass } from '@shader-studio/types';
+import type { BufferPass, ImagePass, CubemapConfigInput } from '@shader-studio/types';
 
 describe('BufferConfig', () => {
+  describe.each([
+    ['BufferA', 'buffer.glsl'],
+    ['BufferA', 'buffer.slang'],
+    ['Image', undefined],
+  ])('cubemap inputs for %s (%s)', (passName, path) => {
+    function createConfig() {
+      return new BufferConfig(passName, path ? { path } : {});
+    }
+
+    it.each([
+      {},
+      { filter: 'nearest', wrap: 'clamp', vflip: false },
+      { filter: 'linear', wrap: 'repeat', vflip: true },
+      { filter: 'mipmap', resolved_path: 'https://example.test/sky.png' },
+    ] satisfies Partial<CubemapConfigInput>[])('accepts a selected cubemap with options %j', (options) => {
+      const config = createConfig();
+      const input: CubemapConfigInput = { type: 'cubemap', path: 'sky-cross.png', ...options };
+      config.updateInputChannel('iChannel0', input);
+      expect(config.getInputChannel('iChannel0')).toEqual(input);
+      expect(config.validate()).toEqual({ isValid: true, errors: [] });
+    });
+
+    it.each([
+      { path: undefined },
+      { path: '' },
+      { path: 123 },
+      { filter: 'invalid' },
+      { wrap: 'invalid' },
+      { vflip: 'true' },
+    ])('rejects malformed cubemap options %j', (options) => {
+      const config = createConfig();
+      // Deliberately bypass the type checker to exercise malformed saved JSON.
+      config.updateInputChannel('iChannel0', { type: 'cubemap', path: 'sky.png', ...options } as unknown as CubemapConfigInput);
+      expect(config.validate()).toEqual({
+        isValid: false,
+        errors: [`${passName} pass has invalid input configuration for iChannel0`],
+      });
+    });
+  });
+
   describe('geometry validation', () => {
     it('accepts every supported geometry type for image and buffer configs', () => {
       const geometryTypes = ['fullscreen', 'plane', 'cube', 'sphere'] as const;
