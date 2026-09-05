@@ -65,25 +65,26 @@ export class ResourceManager<T> {
 
   public async loadImageTexture(
     path: string,
-    opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {}
+    opts: Partial<Pick<TextureConfigInput, 'filter' | 'wrap' | 'vflip' | 'grayscale'>> = {},
+    cacheKey = path,
   ): Promise<T | null> {
-    const cachedTexture = this.textureCache.removeCachedTexture(path);
+    const cachedTexture = this.textureCache.removeCachedTexture(cacheKey);
     
     if (cachedTexture) {
       // Reuse existing texture and re-cache it
-      this.textureCache.cacheTexture(path, cachedTexture);
+      this.textureCache.cacheTexture(cacheKey, cachedTexture);
       return cachedTexture;
     }
     
     try {
       const texture = await this.textureCache.loadTextureFromUrl(path, opts);
-      this.textureCache.cacheTexture(path, texture);
+      this.textureCache.cacheTexture(cacheKey, texture);
       return texture;
     } catch (error) {
       console.error(`Failed to load texture from ${path}:`, error);
       const defaultTexture = this.textureCache.getDefaultTexture();
       if (defaultTexture) {
-        this.textureCache.cacheTexture(path, defaultTexture);
+        this.textureCache.cacheTexture(cacheKey, defaultTexture);
         return defaultTexture;
       }
       return null;

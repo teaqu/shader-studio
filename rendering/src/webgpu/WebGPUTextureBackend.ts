@@ -1,4 +1,5 @@
 /// <reference types="@webgpu/types" />
+import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type {
   CreateTextureDesc,
   ImageTextureOptions,
@@ -132,18 +133,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
   }
 
   private createSampler(filter: TextureFilter, wrap: TextureWrap): GPUSampler {
-    const mode: GPUAddressMode = wrap === "clamp" ? "clamp-to-edge" : "repeat";
-    const filterMode: GPUFilterMode = filter === "nearest" ? "nearest" : "linear";
-    const desc: GPUSamplerDescriptor = {
-      magFilter: filterMode,
-      minFilter: filterMode,
-      addressModeU: mode,
-      addressModeV: mode,
-    };
-    if (filter === "mipmap") {
-      desc.mipmapFilter = "linear";
-    }
-    return this.device.createSampler(desc);
+    return getWebGPUSampler(this.device, filter, wrap);
   }
 
   createTextureFromImage(

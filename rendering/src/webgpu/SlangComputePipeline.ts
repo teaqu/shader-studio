@@ -1,4 +1,7 @@
 /// <reference types="@webgpu/types" />
+import type { SlangBindingChannel } from "./SlangBindingPlan";
+import { buildSlangBindingPlan } from "./SlangBindingPlan";
+import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import {
@@ -15,7 +18,7 @@ export interface SlangComputePipelineDescriptor {
   workgroupSize: [number, number, number];
   entryPoint: string;
   dispatchCount: number;
-  channels: Array<{ slot: number; key: string; kind?: string }>;
+  channels: SlangBindingChannel[];
   storage: StorageBindingNode[];
   uniformBufferSize?: number;
   /** Output texture format for compute texture writes. Prefer rgba32float
@@ -221,19 +224,11 @@ export class SlangComputePipeline {
       binding: 0,
       resource: { buffer: this.uniformBuffer },
     }];
-    for (let index = 0; index < sortedChannels.length; index++) {
-      const textureBinding = 1 + index * 2;
-      commonEntries.push({
-        binding: textureBinding,
-        resource: sortedChannels[index].textureView,
-      });
-      commonEntries.push({
-        binding: textureBinding + 1,
-        resource: sortedChannels[index].sampler ?? this.sampler!,
-      });
-    }
-
-    const storageBase = 1 + sortedChannels.length * 2;
+    const plan = buildSlangBindingPlan(this.descriptor.channels);
+    const channelEntries = slangChannelResourceEntries(plan, sortedChannels, this.sampler);
+    if (!channelEntries) { this.invalidateBindGroups(); return; }
+    commonEntries.push(...channelEntries);
+    const storageBase = plan.nextBinding;
     for (const node of this.descriptor.storage) {
       commonEntries.push({
         binding: storageBase + node.binding,
@@ -331,28 +326,9 @@ export class SlangComputePipeline {
       visibility: GPUShaderStage.COMPUTE,
       buffer: { type: "uniform" },
     }];
-    const sortedChannels = [...this.descriptor.channels].sort((a, b) => a.slot - b.slot);
-    for (let index = 0; index < sortedChannels.length; index++) {
-      const texture: GPUTextureBindingLayout = {
-        sampleType: "float",
-        viewDimension: "2d",
-      };
-      if (sortedChannels[index].kind === "cubemap") {
-        texture.viewDimension = "cube";
-      }
-      entries.push({
-        binding: 1 + index * 2,
-        visibility: GPUShaderStage.COMPUTE,
-        texture,
-      });
-      entries.push({
-        binding: 2 + index * 2,
-        visibility: GPUShaderStage.COMPUTE,
-        sampler: { type: "filtering" },
-      });
-    }
-
-    const storageBase = 1 + sortedChannels.length * 2;
+    const plan = buildSlangBindingPlan(this.descriptor.channels);
+    entries.push(...slangChannelLayoutEntries(plan, GPUShaderStage.COMPUTE));
+    const storageBase = plan.nextBinding;
     for (const node of this.descriptor.storage) {
       entries.push({
         binding: storageBase + node.binding,

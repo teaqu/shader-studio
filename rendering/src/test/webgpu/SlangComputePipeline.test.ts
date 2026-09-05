@@ -293,7 +293,7 @@ describe("SlangComputePipeline", () => {
         {
           binding: 1,
           visibility: GPUShaderStage.COMPUTE,
-          texture: { sampleType: "float", viewDimension: "2d" },
+          texture: { sampleType: "float" },
         },
         {
           binding: 2,

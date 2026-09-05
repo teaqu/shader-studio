@@ -1,3 +1,4 @@
+import { buildSlangChannels } from './SlangChannels';
 import { describe, expect, it } from 'vitest';
 import { buildSlangAuthoringModule } from './SlangEnvironmentGenerator';
 
@@ -9,6 +10,25 @@ function generate(resources: Array<{ name: string; kind: 'texture-2d' | 'texture
 }
 
 describe('Slang named channel API', () => {
+  it('emits shared runtime declarations while keeping both input properties and metadata', () => {
+    const source = buildSlangChannels([
+      { name: 'a', slot: 0, kind: 'texture-2d' },
+      { name: 'b', slot: 7, kind: 'texture-2d' },
+    ], { runtime: true, bindings: [
+      { slot: 0, textureBinding: 1, samplerBinding: 2 },
+      { slot: 7, textureBinding: 1, samplerBinding: 2 },
+    ] });
+    expect(source.match(/\[\[vk::binding/g)).toHaveLength(2);
+    expect(source).toContain('property ShaderStudioChannel2D a');
+    expect(source).toContain('property ShaderStudioChannel2D b');
+    expect(source).toContain('_st.channelResolution[7]');
+    const textures = [...source.matchAll(/result.texture = (\w+);/g)].map(match => match[1]);
+    const samplers = [...source.matchAll(/result.sampler = (\w+);/g)].map(match => match[1]);
+    expect(textures).toHaveLength(2);
+    expect(textures[0]).toBe(textures[1]);
+    expect(samplers[0]).toBe(samplers[1]);
+  });
+
   it('groups configured resources and metadata without exposing legacy aliases', () => {
     const source = generate([{ name: 'iChannel0', kind: 'texture-2d' }, { name: 'sky', kind: 'texture-cube' }]);
     expect(source).toContain('ShaderStudioChannel2D iChannel0');

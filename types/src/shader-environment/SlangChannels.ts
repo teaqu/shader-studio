@@ -46,7 +46,7 @@ export function describeSlangChannel(kind: SlangChannelKind): SlangChannelDescri
 /** Shared by editor declarations and renderer bindings; native access uses native coordinates. */
 export function buildSlangChannels(
   declarations: readonly SlangChannelDeclaration[],
-  options: { runtime?: boolean; channelCount?: number } = {},
+  options: { runtime?: boolean; channelCount?: number; bindings?: readonly { slot: number; textureBinding: number; samplerBinding: number }[] } = {},
 ): string {
   const sorted = [...declarations].sort((a, b) => a.slot - b.slot);
   const kinds = [...new Set(sorted.map(({ kind }) => kind))];
@@ -72,11 +72,27 @@ ${requiresFragment ? '    [require(wgsl, fragment)]\n' : ''}    float4 ${name}($
 ${methods}
 };`;
   }).join('\n\n');
+  const textureNames = new Map<number, string>();
+  const samplerNames = new Map<number, string>();
+  const resourceNames = new Map<number, { texture: string; sampler: string }>();
+  const bindingBySlot = new Map(options.bindings?.map(binding => [binding.slot, binding]));
   const bindings = sorted.map(({ name, slot, kind }, index) => {
-    const { texture, sampler } = deriveSlangChannelGeneratedIdentifiers({ resource: { name, kind }, slot });
+    const names = deriveSlangChannelGeneratedIdentifiers({ resource: { name, kind }, slot });
+    const binding = bindingBySlot.get(slot);
+    const textureBinding = binding?.textureBinding ?? 1 + index * 2;
+    const samplerBinding = binding?.samplerBinding ?? 2 + index * 2;
     const annotation = (binding: number) => options.runtime ? `[[vk::binding(${binding}, 0)]]\n` : '';
-    return `${annotation(1 + index * 2)}Texture${suffix(kind)}<float4> ${texture};
-${annotation(2 + index * 2)}SamplerState ${sampler};`;
+    const lines: string[] = [];
+    if (!textureNames.has(textureBinding)) {
+      textureNames.set(textureBinding, names.texture);
+      lines.push(`${annotation(textureBinding)}Texture${suffix(kind)}<float4> ${names.texture};`);
+    }
+    if (!samplerNames.has(samplerBinding)) {
+      samplerNames.set(samplerBinding, names.sampler);
+      lines.push(`${annotation(samplerBinding)}SamplerState ${names.sampler};`);
+    }
+    resourceNames.set(slot, { texture: textureNames.get(textureBinding)!, sampler: samplerNames.get(samplerBinding)! });
+    return lines.join('\n');
   }).join('\n');
   const count = options.channelCount ?? Math.max(4, ...sorted.map(({ slot }) => slot + 1));
   const metadata = options.runtime ? '' : `float3 _ssChannelResolution[${count}];
@@ -86,7 +102,7 @@ float _ssChannelLoaded[${count}];`;
   const time = options.runtime ? '_st.channelTime' : '_ssChannelTime';
   const loaded = options.runtime ? '_st.channelLoaded' : '_ssChannelLoaded';
   const fields = sorted.map(({ name, slot, kind }) => {
-    const { texture, sampler } = deriveSlangChannelGeneratedIdentifiers({ resource: { name, kind }, slot });
+    const { texture, sampler } = resourceNames.get(slot)!;
     const size = kind === 'texture-3d' ? `uint3(${resolution}[${slot}])` : `uint2(${resolution}[${slot}].xy)`;
     return `    property ShaderStudioChannel${suffix(kind)} ${name}
     {

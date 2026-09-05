@@ -1,3 +1,4 @@
+import { getSlangChannels } from "../../webgpu/SlangBindingPlan";
 import { describe, it, expect, vi } from "vitest";
 import type { DebugInstrumentationPlan } from "@shader-studio/types";
 import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
@@ -256,6 +257,24 @@ describe("WebGPUVariableCapturer", () => {
         source: "module tone_map;",
       }],
     }));
+  });
+
+  it("shares channel bindings in capture and appends the capture uniform after them", async () => {
+    const gpu = mockGpu();
+    const channels = getSlangChannels(Array.from({ length: 24 }, (_, slot) => ({
+      kind: "keyboard" as const, slot, key: `tex${slot}`,
+    })));
+    const textureView = {} as GPUTextureView;
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, { slangChannels: channels },
+      () => channels.map(channel => ({ slot: channel.slot, textureView })));
+    await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+    expect(gpu.compiler.compile).toHaveBeenCalledWith("shader-a", expect.objectContaining({ channels }));
+    const layout = gpu.createBindGroupLayout.mock.calls[0][0].entries;
+    expect(layout.map((entry: GPUBindGroupLayoutEntry) => entry.binding)).toEqual([0, 1, 2, 3]);
+    const entries = gpu.createBindGroup.mock.calls[0][0].entries;
+    expect(entries.map((entry: GPUBindGroupEntry) => entry.binding)).toEqual([0, 1, 2, 3]);
+    expect(entries[1].resource).toBe(textureView);
+    capturer.dispose();
   });
 
   it("passes the pass channels into the capture compile", async () => {
@@ -822,10 +841,10 @@ describe("WebGPURenderingEngine capture wiring", () => {
     const context = engine.getVariableCaptureCompileContext();
 
     expect(context.commonCode).toBe("float x;");
-    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
+    expect(context.slangChannels).toEqual([expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })]);
     expect(context.slangStorage).toEqual([storageA]);
     expect(context.slangStorageBuffers).toBe(storageBuffers);
-    expect(context.slangChannels).toEqual([{ slot: 0, key: "iChannel0", kind: "buffer" }]);
+    expect(context.slangChannels).toEqual([expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })]);
   });
 
   it("does not inject configured common code when that common source is itself being captured", async () => {
@@ -887,8 +906,8 @@ float4 mainImage(float2 fragCoord) {
     const context = engine.getVariableCaptureCompileContext(imageCode, "Image");
 
     expect(context.slangChannels).toEqual([
-      { slot: 0, key: "iChannel0", kind: "buffer" },
-      { slot: 1, key: "iChannel1", kind: "buffer" },
+      expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" }),
+      expect.objectContaining({ slot: 1, key: "iChannel1", kind: "buffer" }),
     ]);
     expect(context.slangStorage).toEqual([storageA]);
   });

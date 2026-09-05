@@ -1,3 +1,4 @@
+import { buildSlangBindingPlan, type SlangBindingChannel } from "./SlangBindingPlan";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
 //
 // A user `.slang` image shader defines:
@@ -150,7 +151,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 }
 `;
 
-export interface SlangChannelBinding {
+export interface SlangChannelBinding extends SlangBindingChannel {
   slot: number;
   key: string;
   kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";
@@ -241,7 +242,7 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
   return buildSlangChannels(channels.map(({ key, slot, kind }) => ({
     name: key, slot, kind: kind === "cubemap" ? "texture-cube" : "texture-2d",
-  })), { runtime: true });
+  })), { runtime: true, bindings: buildSlangBindingPlan(channels).channels });
 }
 
 /** Build storage declarations split around common code by their type dependency. */
@@ -249,6 +250,7 @@ export function buildStorageDeclarations(
   storage: StorageBindingNode[],
   channelCount: number,
   passKind: "render" | "compute",
+  baseBinding = 1 + channelCount * 2,
 ): { beforeCommon: string; afterCommon: string } {
   const bufferType = passKind === "compute" ? "RWStructuredBuffer" : "StructuredBuffer";
   const renderElementType = (elementType: string): string => {
@@ -263,7 +265,7 @@ export function buildStorageDeclarations(
     }
     return elementType;
   };
-  const declaration = (node: StorageBindingNode) => `[[vk::binding(${1 + channelCount * 2 + node.binding}, 0)]]
+  const declaration = (node: StorageBindingNode) => `[[vk::binding(${baseBinding + node.binding}, 0)]]
 ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 `;
 
@@ -284,10 +286,11 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     options.storage ?? [],
     options.channels?.length ?? 0,
     options.passKind ?? "render",
+    buildSlangBindingPlan(options.channels ?? []).nextBinding,
   );
   if (options.captureMode) {
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
-    const captureBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
+    const captureBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
     return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
@@ -296,7 +299,7 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // to keep user diagnostics on the user's real line numbers.
   const vertexCode = options.vertexCode?.trim() ?? "";
   if (isMeshGeometry(options.geometry)) {
-    const meshBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
+    const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
     return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
   }
   return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
@@ -387,8 +390,8 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = stripShaderStudioEditorImport(userSource);
   const channelPrelude = buildChannelPrelude(channels);
-  const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
-  const outputBinding = 1 + channels.length * 2 + storage.length;
+  const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute", buildSlangBindingPlan(channels).nextBinding);
+  const outputBinding = buildSlangBindingPlan(channels).nextBinding + storage.length;
   const outputPrelude = options.hasOutput
     ? buildOutputPrelude(outputBinding, options.outputLayers, options.outputImageFormat ?? "rgba16f")
     : "";
