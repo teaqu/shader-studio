@@ -58,7 +58,7 @@ function createMockEditorWithCallbacks() {
   let scrollChangeCallback: (() => void) | null = null;
   let keyDownCallback: ((event: any) => void) | null = null;
   const model = {
-    getLineMaxColumn: vi.fn(() => 80),
+    getLineMaxColumn: vi.fn((_line: number) => 80),
     getLineCount: vi.fn(() => 10),
     getLineContent: vi.fn(() => ''),
   };
@@ -1767,6 +1767,31 @@ describe('EditorOverlay', () => {
     expect(overlay?.getAttribute('data-errors-count')).toBe('1');
   });
 
+  it('clamps GLSL compiler error lines to the lines the model actually has', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(3);
+    // Monaco throws rather than clamping, so an error line left over from
+    // longer source aborts the effect that applies markers.
+    model.getLineMaxColumn.mockImplementation((line: number) => {
+      if (line < 1 || line > 3) {
+        throw new Error('Illegal value for lineNumber');
+      }
+      return 80;
+    });
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    render(EditorOverlay, {
+      props: { ...defaultProps, activeBufferName: 'Image', errors: ['Image: ERROR: 0:9: syntax error'] },
+    });
+
+    const markers = vi.mocked(monaco.editor.setModelMarkers).mock.calls.at(-1)![2];
+    expect(markers.length).toBe(1);
+    expect(markers[0].startLineNumber).toBe(3);
+    expect(markers[0].endLineNumber).toBe(3);
+    expect(markers[0].endColumn).toBe(80);
+  });
+
   const CI_SLANG_ERROR = [
     'Image: error[E30015]: undefined identifier',
     ' --> /runner/overlay-language-service.slang:4:19',
@@ -1940,6 +1965,9 @@ describe('EditorOverlay', () => {
 
     it('should handle multiple errors for the active buffer', async () => {
       const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      model.getLineCount.mockReturnValue(12);
+      vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
 
       render(EditorOverlay, {
         props: {
@@ -1963,6 +1991,9 @@ describe('EditorOverlay', () => {
 
     it('should update markers when errors prop changes', async () => {
       const monaco = await import('monaco-editor');
+      const { mockEditor, model } = createMockEditorWithCallbacks();
+      model.getLineCount.mockReturnValue(12);
+      vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
 
       const { rerender } = render(EditorOverlay, {
         props: {

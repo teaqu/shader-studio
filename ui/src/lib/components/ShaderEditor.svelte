@@ -826,7 +826,9 @@
           continue;
         }
 
-        const line = parseInt(lineNumber, 10);
+        // Errors can outlive the source that produced them, so clamp to the
+        // model's own range: Monaco throws on a line it does not have.
+        const line = Math.min(Math.max(1, parseInt(lineNumber, 10)), model.getLineCount());
         const message = diagnostic.trim();
         markers.push({
           severity: monaco.MarkerSeverity.Error,
