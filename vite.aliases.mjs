@@ -19,4 +19,5 @@ export const shaderStudioAliases = {
   '@shader-studio/rendering': path.resolve(root, 'rendering/src'),
   '@shader-studio/slang-language-server': path.resolve(root, 'language-servers/slang/src'),
   '@shader-studio/types': path.resolve(root, 'types/src'),
+  '@shader-studio/utils': path.resolve(root, 'utils/src'),
 };
