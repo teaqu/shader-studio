@@ -2826,6 +2826,26 @@ describe("WebGPURenderingEngine", () => {
       expect(device.queue.submit).toHaveBeenCalledTimes(1);
       expect(vi.mocked(cancelAnimationFrame)).toHaveBeenCalled();
     });
+
+    it("skips a loop frame's submit once the GPU has fallen behind", () => {
+      // shouldWaitForGpu/trackFrameInFlight are covered in isolation by
+      // WebGPUBackpressure.test.ts; this proves the live loop actually
+      // consults that pacer rather than always rendering.
+      const { engine, fireFrame } = rafStubbedEngine();
+      const device = (engine as any).device;
+      // A completion signal that never arrives keeps both frames counted as
+      // in flight, so the third tick must be held back.
+      device.queue.onSubmittedWorkDone = vi.fn(() => new Promise<void>(() => {}));
+
+      engine.startRenderLoop();
+      fireFrame(1000);
+      fireFrame(1016);
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+
+      fireFrame(1032);
+
+      expect(device.queue.submit).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("updateBufferAndRecompile", () => {

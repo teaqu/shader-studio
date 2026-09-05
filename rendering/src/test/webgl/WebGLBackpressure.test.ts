@@ -124,6 +124,21 @@ describe("RenderingEngine GPU backpressure", () => {
 
     expect(engine.shouldWaitForGpu(0)).toBe(false);
   });
+
+  it("does not track a frame when the driver fails to create a fence", () => {
+    // fenceSync can return null (e.g. a context under pressure) instead of
+    // throwing. That must not push a phantom fence that never releases.
+    const { engine, gl, submit } = engineWithGl(() => TIMEOUT_EXPIRED);
+    gl.fenceSync.mockReturnValue(null as unknown as WebGLSync);
+
+    submit();
+    submit();
+
+    expect(gl.flush).not.toHaveBeenCalled();
+
+    expect((engine as any).inFlightFences).toEqual([]);
+    expect(engine.shouldWaitForGpu(0)).toBe(false);
+  });
 });
 
 describe("FrameRenderer pacing", () => {

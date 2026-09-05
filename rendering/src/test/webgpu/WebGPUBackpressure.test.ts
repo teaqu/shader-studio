@@ -139,7 +139,36 @@ describe("WebGPURenderingEngine GPU backpressure", () => {
     submit();
     submit();
 
-     
+
     expect((engine as any).framesInFlight).toBe(0);
+  });
+
+  it("does not leak a counted frame when the completion signal throws synchronously", () => {
+    // A lost device can make onSubmittedWorkDone() throw instead of
+    // rejecting. That must not permanently inflate framesInFlight and wedge
+    // the loop into pacing forever.
+    (globalThis as PerfGlobal).__gpuBackpressure = true;
+    const engine = new WebGPURenderingEngine({ scriptUrl: "", wasmUrl: "" });
+    const device = {
+      queue: {
+        onSubmittedWorkDone: vi.fn(() => {
+          throw new Error("device lost");
+        }),
+      },
+    };
+
+    (engine as any).device = device;
+
+    (engine as any).running = true;
+
+
+    (engine as any).trackFrameInFlight();
+
+    (engine as any).trackFrameInFlight();
+
+
+    expect((engine as any).framesInFlight).toBe(0);
+
+    expect((engine as any).shouldWaitForGpu(0)).toBe(false);
   });
 });
