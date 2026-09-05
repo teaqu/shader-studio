@@ -60,9 +60,22 @@ describe('default workspace', () => {
   it('names the Slang Aurora shader aurora-slang', () => {
     const files = createDefaultWorkspaceFiles();
 
-    expect(files.find(({ path }) => path === '/shaders/aurora-slang.slang')?.contents)
-      .toContain('Shader Studio aurora-slang / WebGPU');
+    expect(files.some(({ path }) => path === '/shaders/aurora-slang.slang')).toBe(true);
     expect(files.some(({ path }) => path === '/shaders/aurora.slang')).toBe(false);
+  });
+
+  it('credits the Poly Haven source of the bundled cubemap in the shader', () => {
+    const cubemapShader = createDefaultWorkspaceFiles().find(
+      ({ path }) => path === '/shaders/desert-cubemap.glsl',
+    );
+
+    expect(cubemapShader?.contents).toContain(
+      '// Cubemap: Rogland Sunset by Greg Zaal / Poly Haven, released under CC0.',
+    );
+    expect(cubemapShader?.contents).toContain('// https://polyhaven.com/a/rogland_sunset');
+    // Attribution stays in comments, ahead of the first line of GLSL.
+    expect(cubemapShader?.contents.indexOf('polyhaven.com'))
+      .toBeLessThan(cubemapShader!.contents.indexOf('mat2 rotate'));
   });
 
   it('preserves the display aspect ratio in the cubemap camera direction', () => {

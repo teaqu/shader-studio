@@ -61,6 +61,8 @@ const SOURCES: ReadonlyArray<{
   {
     path: '/shaders/desert-cubemap.glsl',
     code: `// Drag in the preview to look around.
+// Cubemap: Rogland Sunset by Greg Zaal / Poly Haven, released under CC0.
+// https://polyhaven.com/a/rogland_sunset
 
 mat2 rotate(float angle) {
 	float c = cos(angle);
