@@ -3,8 +3,8 @@
 // Top row, left to right: float, vec2, vec3, vec4, bool. All panels should
 // animate; the bool panel alternates green/blue once per second.
 // Middle strips: iCameraPos and iCameraDir. Bottom row: iDate, then
-// iCh metadata checks for texture, audio, and keyboard, followed by the unused
-// iChannelResolution slot. Every status tile should be green.
+// Input metadata checks for texture, audio, and keyboard. Every status tile
+// should be green.
 
 float box(float2 uv, float2 lo, float2 hi)
 {
@@ -13,9 +13,9 @@ float box(float2 uv, float2 lo, float2 hi)
     return insideLo.x * insideLo.y * insideHi.x * insideHi.y;
 }
 
-float resolutionMatches(float3 actual, float3 expected)
+float resolutionMatches(uint2 actual, uint2 expected)
 {
-    return all(abs(actual - expected) < float3(0.5, 0.5, 0.5)) ? 1.0 : 0.0;
+    return all(actual == expected) ? 1.0 : 0.0;
 }
 
 float3 statusColor(float ok)
@@ -75,25 +75,25 @@ float4 mainImage(float2 fragCoord)
     col = lerp(col, float3(1.0, 1.0, 1.0), secondsBand);
 
     float4 checks = float4(
-        resolutionMatches(iCh0.size, float3(256.0, 256.0, 1.0)) * (iCh0.loaded != 0 ? 1.0 : 0.0),
-        resolutionMatches(iCh1.size, float3(512.0, 2.0, 1.0)) * (iCh1.loaded != 0 ? 1.0 : 0.0),
-        resolutionMatches(iCh2.size, float3(256.0, 3.0, 1.0)) * (iCh2.loaded != 0 ? 1.0 : 0.0),
-        resolutionMatches(iChannelResolution[3], float3(0.0, 0.0, 0.0))
+        resolutionMatches(inputs.iChannel0.size, uint2(256, 256)) * (inputs.iChannel0.loaded ? 1.0 : 0.0),
+        resolutionMatches(inputs.iChannel1.size, uint2(512, 2)) * (inputs.iChannel1.loaded ? 1.0 : 0.0),
+        resolutionMatches(inputs.iChannel2.size, uint2(256, 3)) * (inputs.iChannel2.loaded ? 1.0 : 0.0),
+        1.0
     );
     col = lerp(col, statusColor(checks.x), box(uv, float2(0.23, 0.10), float2(0.38, 0.42)));
     col = lerp(col, statusColor(checks.y), box(uv, float2(0.43, 0.10), float2(0.58, 0.42)));
     col = lerp(col, statusColor(checks.z), box(uv, float2(0.63, 0.10), float2(0.78, 0.42)));
     col = lerp(col, statusColor(checks.w), box(uv, float2(0.83, 0.10), float2(0.97, 0.42)));
 
-    // Exercise iCh.sampler and iCh.time as live values rather than merely
+    // Exercise input sampling and input time as live values rather than merely
     // compiling their fields. The texture-center swatch sits in the texture
     // tile; the audio-time bar grows across the bottom of the audio tile.
-    float3 textureProbe = iCh0.sampler.Sample(float2(0.25, 0.75)).rgb;
+    float3 textureProbe = inputs.iChannel0.Sample(float2(0.25, 0.75)).rgb;
     col = lerp(col, textureProbe, box(uv, float2(0.25, 0.34), float2(0.36, 0.40)));
     float audioTimeBand = box(
         uv,
         float2(0.43, 0.10),
-        float2(0.43 + 0.15 * frac(iCh1.time / 10.0), 0.14)
+        float2(0.43 + 0.15 * frac(inputs.iChannel1.time / 10.0), 0.14)
     );
     col = lerp(col, float3(1.0, 1.0, 1.0), audioTimeBand);
 

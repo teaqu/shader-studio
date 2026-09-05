@@ -6,7 +6,7 @@ uint cellAt(int2 cell, uint2 size)
     int x = (cell.x + int(size.x)) % int(size.x);
     int y = (cell.y + int(size.y)) % int(size.y);
     float2 uv = (float2(x, y) + 0.5) / float2(size);
-    return sampleIChannel0(uv).r > 0.5 ? 1u : 0u;
+    return inputs.iChannel0.SampleLevel(uv, 0.0).r > 0.5 ? 1u : 0u;
 }
 
 uint gosperGliderGun(uint2 cell)

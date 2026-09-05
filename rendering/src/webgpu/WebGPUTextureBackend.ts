@@ -54,7 +54,7 @@ export function reverseRows(rgba: Uint8Array, width: number, height: number): Ui
 }
 
 /**
- * GOVERNING INVARIANT: the Slang prelude's sampleIChannelN helper flips v
+ * GOVERNING INVARIANT: the Slang input object's sampling methods flips v
  * (it samples at float2(uv.x, 1.0 - uv.y)) so GPU-rendered buffer textures
  * (row 0 = top) sample like GL framebuffers (row 0 = bottom). Because every
  * channel is read through that helper, WebGPU texture storage must be the

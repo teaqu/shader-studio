@@ -1,6 +1,6 @@
 float4 mainImage(float2 p)
 {
-    float actual = sampleIChannel0(p / iResolution.xy).r >= 0.5 ? 1.0 : 0.0;
+    float actual = inputs.iChannel0.Sample(p / iResolution.xy).r >= 0.5 ? 1.0 : 0.0;
     float expected = length(p - float2(64.0, 64.0)) < 18.0 ? 1.0 : 0.0;
     float mismatch = abs(actual - expected);
 

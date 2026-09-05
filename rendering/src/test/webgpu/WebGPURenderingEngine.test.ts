@@ -2010,7 +2010,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2044,7 +2044,7 @@ describe("WebGPURenderingEngine", () => {
       };
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2077,7 +2077,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2122,7 +2122,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );

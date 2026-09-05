@@ -29,12 +29,12 @@ describe("shaderStudioBuiltinUniformNames", () => {
     expect(shaderStudioBuiltinUniformNames("slang")).not.toContain("iChannelN");
   });
 
-  it("excludes uniforms declared for only the other language", () => {
-    // iChannelLoaded and iDispatch are Slang-only in the catalog.
-    expect(shaderStudioBuiltinUniformNames("glsl")).not.toContain("iChannelLoaded");
+  it("keeps Slang channel implementation details out of the public built-ins", () => {
     expect(shaderStudioBuiltinUniformNames("glsl")).not.toContain("iDispatch");
-    expect(shaderStudioBuiltinUniformNames("slang")).toContain("iChannelLoaded");
     expect(shaderStudioBuiltinUniformNames("slang")).toContain("iDispatch");
+    for (const name of ["iChannelTime", "iChannelResolution", "iChannel0", "iCh0"]) {
+      expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
+    }
   });
 
   it("includes the camera and fragment-context symbols an editor should colour", () => {
@@ -48,12 +48,10 @@ describe("shaderStudioBuiltinUniformNames", () => {
     }
   });
 
-  it("includes the ShaderToy channel metadata accessors", () => {
-    for (const language of ["glsl", "slang"] as const) {
-      const names = shaderStudioBuiltinUniformNames(language);
-      for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
-        expect(names).toContain(name);
-      }
+  it("keeps ShaderToy channel metadata accessors in GLSL only", () => {
+    for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
+      expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
+      expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
     }
   });
 

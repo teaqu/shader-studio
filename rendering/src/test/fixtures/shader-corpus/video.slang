@@ -15,7 +15,7 @@ float box(float2 uv, float2 lo, float2 hi)
 float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.xy;
-    float3 video = sampleIChannel0(uv).rgb;
+    float3 video = inputs.iChannel0.Sample(uv).rgb;
 
     // Animated underlay makes a missing/black video channel obvious.
     float pulse = 0.5 + 0.5 * sin(iTime * 4.0 + uv.x * 18.0);
@@ -24,10 +24,10 @@ float4 mainImage(float2 fragCoord)
 
     // Fixed sample swatches show orientation and prove the shader is sampling
     // the video channel rather than only displaying a copied full-frame image.
-    float3 topSample = sampleIChannel0(float2(0.5, 0.92)).rgb;
-    float3 leftSample = sampleIChannel0(float2(0.08, 0.5)).rgb;
-    float3 bottomSample = sampleIChannel0(float2(0.5, 0.08)).rgb;
-    float3 rightSample = sampleIChannel0(float2(0.92, 0.5)).rgb;
+    float3 topSample = inputs.iChannel0.Sample(float2(0.5, 0.92)).rgb;
+    float3 leftSample = inputs.iChannel0.Sample(float2(0.08, 0.5)).rgb;
+    float3 bottomSample = inputs.iChannel0.Sample(float2(0.5, 0.08)).rgb;
+    float3 rightSample = inputs.iChannel0.Sample(float2(0.92, 0.5)).rgb;
 
     if (box(uv, float2(0.06, 0.78), float2(0.19, 0.91)) > 0.0) col = topSample;
     if (box(uv, float2(0.06, 0.60), float2(0.19, 0.73)) > 0.0) col = leftSample;

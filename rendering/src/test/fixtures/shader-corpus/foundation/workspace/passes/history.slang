@@ -14,7 +14,7 @@ float4 mainImage(float2 fragCoord)
     float2 resolution = iResolution.xy;
     float2 uv = fragCoord / resolution;
     float2 downwardDrift = float2(0.0, 1.5) / resolution;
-    float3 previous = sampleIChannel0(uv + downwardDrift).rgb * 0.985;
+    float3 previous = inputs.iChannel0.Sample(uv + downwardDrift).rgb * 0.985;
 
     float2 emitter = resolution * (float2(0.5) + 0.32 * float2(cos(iTime * 0.7), sin(iTime * 1.3)));
     float3 ink = foundationPalette(iTime * 0.11) * foundationBlob(fragCoord, emitter, 12.0);

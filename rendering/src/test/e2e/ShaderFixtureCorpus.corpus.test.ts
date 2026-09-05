@@ -250,13 +250,13 @@ describe("slang-multipass-test shader corpus", () => {
       expect(project.buffers).toHaveProperty("BufferA");
       expect(project.buffers).toHaveProperty("common");
       expect(project.buffers).toHaveProperty("__shader_studio_vertex__:Image");
-      for (const featureToken of ["CoverageSample", "weights[3]", "iChannelResolution", "uBool", "uint flags"]) {
+      for (const featureToken of ["CoverageSample", "weights[3]", "uBool", "uint flags"]) {
         expect(project.image).toContain(featureToken);
       }
     }
     expect(slang.image).toContain("ddx(sample.energy)");
     expect(glsl.image).toContain("dFdx(sampleValue.energy)");
-    expect(slang.buffers?.["__shader_studio_vertex__:Image"]).toContain("samplePatternTex");
+    expect(slang.buffers?.["__shader_studio_vertex__:Image"]).toContain("inputs.patternTex.SampleLevel");
     expect(glsl.buffers?.["__shader_studio_vertex__:Image"]).toContain("samplePatternTex");
   });
 

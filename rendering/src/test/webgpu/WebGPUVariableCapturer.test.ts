@@ -852,8 +852,8 @@ describe("WebGPURenderingEngine capture wiring", () => {
     const imageCode = `
 float4 mainImage(float2 fragCoord) {
   float2 uv = fragCoord / iResolution.xy;
-  float3 sharp = sampleIChannel0(uv).rgb;
-  float3 glow = sampleIChannel1(uv).rgb;
+  float3 sharp = inputs.iChannel0.Sample(uv).rgb;
+  float3 glow = inputs.iChannel1.Sample(uv).rgb;
   return float4(sharp + glow, 1.0);
 }`;
     (engine as any).canvas = { width: 1340, height: 753 };

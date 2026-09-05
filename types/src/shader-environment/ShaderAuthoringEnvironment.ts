@@ -91,6 +91,7 @@ function collectFixedRendererNames(
       names.add(name);
     }
     names.add("writeOutput");
+    names.add("inputs");
   }
   for (const name of shaderStudioBuiltinUniformNames(languageId)) {
     names.add(name);
@@ -110,6 +111,7 @@ const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
 const FORBIDDEN_STORAGE_ELEMENT_TYPE_TOKENS = new Set(["uniform"]);
 const SLANG_BASE_GENERATED_TYPE_DEPENDENCIES = new Set([
   "float", "float2", "float3", "float4", "int",
+  "ShaderStudioInputs", "ShaderStudioChannel2D", "ShaderStudioChannelCube", "ShaderStudioChannel3D",
 ]);
 const SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES = {
   "texture-2d": "Texture2D",
@@ -123,7 +125,9 @@ function isReservedShaderStudioIdentifier(
 ): boolean {
   return FIXED_RENDERER_NAMES_BY_LANGUAGE[languageId].has(name)
     || isShaderLanguageReservedTerm(languageId, name)
-    || /^iChannel\d+$/.test(name);
+    // iChannelN remains GLSL's public compatibility surface. In Slang it is
+    // a valid member name under inputs.
+    || (languageId === "glsl" && /^iChannel\d+$/.test(name));
 }
 
 function isValidStorageElementType(
@@ -158,15 +162,12 @@ function collectSlangGeneratedTypeDependencies(
     dependencies.add("bool");
   }
 
-  for (const { resource, slot } of resolveAuthoringChannelBindings(environment.resources)) {
+  for (const { resource } of resolveAuthoringChannelBindings(environment.resources)) {
     if (!isValidShaderIdentifier(resource.name) || resource.kind === "storage") {
       continue;
     }
     const resourceType = SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES[resource.kind];
-    const metadataUsesResourceType = resource.kind !== "texture-3d";
-    if (resource.name !== resourceType || metadataUsesResourceType) {
-      dependencies.add(resourceType);
-    }
+    dependencies.add(resourceType);
     dependencies.add("SamplerState");
   }
 
@@ -174,7 +175,6 @@ function collectSlangGeneratedTypeDependencies(
     if (
       resource.kind !== "storage"
       || !isValidShaderIdentifier(resource.name)
-      || /^iChannel\d+$/.test(resource.name)
     ) {
       continue;
     }
@@ -202,43 +202,24 @@ function collectSlangGeneratedTypeDependencies(
 }
 
 export interface SlangChannelGeneratedIdentifiers {
+  readonly texture: string;
   readonly sampler: string;
-  readonly slotHelper?: string;
-  readonly slotVertexHelper?: string;
-  readonly aliasHelper?: string;
-  readonly aliasVertexHelper?: string;
-  readonly metadataAccessor?: string;
-  readonly metadataAlias?: string;
-  readonly samplingParameterType?: "float2" | "float3";
+  readonly channelName: string;
 }
 
 export function isValidShaderIdentifier(name: string): boolean {
   return SHADER_IDENTIFIER.test(name);
 }
 
-/** Derives the global Slang identifiers emitted for one renderer channel binding. */
+/** Derives implementation-only Slang identifiers emitted for one renderer channel binding. */
 export function deriveSlangChannelGeneratedIdentifiers(
   binding: AuthoringChannelBinding,
 ): SlangChannelGeneratedIdentifiers {
   const { resource, slot } = binding;
-  const sampler = `${resource.name}Sampler`;
-  if (resource.kind === "storage" || resource.kind === "texture-3d") {
-    return { sampler };
-  }
-  const slotHelper = `sampleIChannel${slot}`;
-  const firstCharacter = resource.name[0];
-  const aliasHelper = resource.name === `iChannel${slot}` || !firstCharacter
-    ? undefined
-    : `sample${firstCharacter.toUpperCase()}${resource.name.slice(1)}`;
   return {
-    sampler,
-    slotHelper,
-    slotVertexHelper: `${slotHelper}Vertex`,
-    aliasHelper,
-    aliasVertexHelper: aliasHelper ? `${aliasHelper}Vertex` : undefined,
-    metadataAccessor: `_getICh${slot}`,
-    metadataAlias: `iCh${slot}`,
-    samplingParameterType: resource.kind === "texture-cube" ? "float3" : "float2",
+    texture: `_ssTexture${slot}`,
+    sampler: `_ssSampler${slot}`,
+    channelName: resource.name,
   };
 }
 
@@ -261,7 +242,12 @@ export function validateShaderAuthoringEnvironment(
   const generatedTypeDependencies = environment.languageId === "slang"
     ? collectSlangGeneratedTypeDependencies(environment)
     : new Set<string>();
-  const validate = (name: string, noun: "custom uniform" | "resource", allowChannelName = false): boolean => {
+  const validate = (
+    name: string,
+    noun: "custom uniform" | "resource",
+    isSlangInputMember = false,
+    isGlslCanonicalChannel = false,
+  ): boolean => {
     const displayName = noun === "custom uniform" ? "Custom uniform" : "Resource";
     if (!isValidShaderIdentifier(name)) {
       issues.push({
@@ -270,15 +256,27 @@ export function validateShaderAuthoringEnvironment(
       });
       return false;
     }
+    const isGeneratedTypeDependency = generatedTypeDependencies.has(name);
+    const isInputsMember = isSlangInputMember && name === "inputs";
+    const isBuiltinOrLanguageReserved = isReservedShaderStudioIdentifier(name, environment.languageId);
+    const isSlangInternalGlobal = environment.languageId === "slang"
+      && name.startsWith("_ss");
+    const collidesWithRuntimeCustomUniform = isSlangInputMember
+      && environment.customUniforms.some((uniform) => uniform.name === name);
     if (
-      (isReservedShaderStudioIdentifier(name, environment.languageId) || generatedTypeDependencies.has(name))
-      && !allowChannelName
+      (isBuiltinOrLanguageReserved && !isInputsMember && !isGlslCanonicalChannel)
+      || isSlangInternalGlobal
+      || (isGeneratedTypeDependency && !isSlangInputMember)
+      || collidesWithRuntimeCustomUniform
     ) {
       issues.push({
         code: "reserved-identifier",
         message: `${displayName} "${name}" conflicts with a Shader Studio built-in.`,
       });
       return false;
+    }
+    if (isSlangInputMember) {
+      return true;
     }
     const existing = names.get(name);
     if (existing) {
@@ -295,10 +293,27 @@ export function validateShaderAuthoringEnvironment(
   for (const uniform of environment.customUniforms) {
     validate(uniform.name, "custom uniform");
   }
-  const validResources = new Set<Readonly<AuthoringResource>>();
+  const slangInputNames = new Set<string>();
   for (const resource of environment.resources) {
-    if (validate(resource.name, "resource", resource.kind !== "storage" && /^iChannel\d+$/.test(resource.name))) {
-      validResources.add(resource);
+    const isSlangInputMember = environment.languageId === "slang" && resource.kind !== "storage";
+    const isGlslCanonicalChannel = environment.languageId === "glsl"
+      && resource.kind !== "storage"
+      && /^iChannel\d+$/.test(resource.name);
+    const valid = validate(
+      resource.name,
+      "resource",
+      isSlangInputMember,
+      isGlslCanonicalChannel,
+    );
+    if (valid && isSlangInputMember) {
+      if (slangInputNames.has(resource.name)) {
+        issues.push({
+          code: "duplicate-identifier",
+          message: `Resource "${resource.name}" duplicates a resource.`,
+        });
+      } else {
+        slangInputNames.add(resource.name);
+      }
     }
     if (resource.kind === "storage" && resource.elementType && !isValidStorageElementType(resource.elementType, environment.languageId)) {
       issues.push({
@@ -319,7 +334,7 @@ export function validateShaderAuthoringEnvironment(
       });
     } else {
       const canonicalChannel = /^iChannel(0|[1-9]\d*)$/.exec(resource.name);
-      if (canonicalChannel && Number.parseInt(canonicalChannel[1]!, 10) !== slot) {
+      if (environment.languageId === "glsl" && canonicalChannel && Number.parseInt(canonicalChannel[1]!, 10) !== slot) {
         issues.push({
           code: "channel-alias-collision",
           message: `Resource "${resource.name}" conflicts with canonical channel slot ${canonicalChannel[1]}.`,
@@ -332,76 +347,6 @@ export function validateShaderAuthoringEnvironment(
         });
       } else {
         channelSlots.add(slot);
-      }
-    }
-  }
-
-  if (environment.languageId === "slang") {
-    interface SlangIdentifierClaim {
-      readonly owner: string;
-      readonly callableSignature?: string;
-    }
-    const claims = new Map<string, SlangIdentifierClaim[]>(
-      [...names].map(([name, noun]) => [name, [{ owner: `${noun} "${name}"` }]] as const),
-    );
-    const claimGeneratedIdentifier = (
-      identifier: string,
-      owner: string,
-      callableSignature?: string,
-    ): void => {
-      const existingClaims = claims.get(identifier) ?? [];
-      const existing = existingClaims.find((claim) => (
-        !claim.callableSignature
-        || !callableSignature
-        || claim.callableSignature === callableSignature
-      ));
-      if (existing) {
-        issues.push({
-          code: "generated-identifier-collision",
-          message: `Generated Slang identifier "${identifier}" collides between ${existing.owner} and ${owner}.`,
-        });
-        return;
-      }
-      existingClaims.push({ owner, callableSignature });
-      claims.set(identifier, existingClaims);
-    };
-    const channelBindings = resolveAuthoringChannelBindings(environment.resources)
-      .filter(({ resource }) => validResources.has(resource));
-
-    for (const binding of channelBindings) {
-      const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
-      const owner = `resource "${binding.resource.name}"`;
-      claimGeneratedIdentifier(identifiers.sampler, owner);
-      for (const identifier of [
-        identifiers.slotHelper,
-        identifiers.slotVertexHelper,
-        identifiers.aliasHelper,
-        identifiers.aliasVertexHelper,
-      ]) {
-        if (identifier && identifiers.samplingParameterType) {
-          claimGeneratedIdentifier(identifier, owner, `(${identifiers.samplingParameterType})`);
-        }
-      }
-      if (identifiers.metadataAccessor) {
-        claimGeneratedIdentifier(identifiers.metadataAccessor, owner, "()");
-      }
-    }
-
-    const metadataBindings = channelBindings
-      .filter(({ resource }) => resource.kind !== "texture-3d");
-    if (metadataBindings.some(({ resource }) => resource.kind === "texture-cube")) {
-      claimGeneratedIdentifier("ShaderToySamplerCube", "generated channel metadata");
-      claimGeneratedIdentifier("ShaderToyChannelCube", "generated channel metadata");
-    }
-    if (metadataBindings.some(({ resource }) => resource.kind !== "texture-cube")) {
-      claimGeneratedIdentifier("ShaderToySampler2D", "generated channel metadata");
-      claimGeneratedIdentifier("ShaderToyChannel2D", "generated channel metadata");
-    }
-
-    const claimedSlots = new Set(channelBindings.map(({ slot }) => slot));
-    for (const slot of [0, 1, 2, 3]) {
-      if (!claimedSlots.has(slot)) {
-        claimGeneratedIdentifier(`sampleIChannel${slot}`, `fallback channel slot ${slot}`, "(float2)");
       }
     }
   }

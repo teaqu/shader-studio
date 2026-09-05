@@ -8,9 +8,9 @@ float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.xy;
 
-    float3 videoColor = sampleIChannel0(uv).rgb;
-    float spectrum = sampleIChannel1(float2(uv.x, 0.25)).r;
-    float waveform = sampleIChannel1(float2(uv.x, 0.75)).r;
+    float3 videoColor = inputs.iChannel0.Sample(uv).rgb;
+    float spectrum = inputs.iChannel1.Sample(float2(uv.x, 0.25)).r;
+    float waveform = inputs.iChannel1.Sample(float2(uv.x, 0.75)).r;
 
     float bar = smoothstep(uv.y - 0.015, uv.y + 0.015, spectrum * 0.85);
     float waveLine = 1.0 - smoothstep(

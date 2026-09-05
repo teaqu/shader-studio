@@ -225,9 +225,9 @@
     "builtins": {
       "patterns": [
         {
-          "comment": "Shader Studio built-in uniforms; indexed channel accessors cover every configured slot",
+          "comment": "Shader Studio built-in uniforms and the Slang input namespace",
           "name": "variable.language.uniform.slang",
-          "match": "\\b(?:iChannelResolution|iCameraPosition|iChannelLoaded|iWorldPosition|iChannelTime|iResolution|iSampleRate|iCameraDir|iCameraPos|iFrameRate|iTimeDelta|iDispatch|iNormal|iFrame|iMouse|iDate|iTime|iChannel\\d+|iCh\\d+)\\b"
+          "match": "\\b(?:inputs|iCameraPosition|iWorldPosition|iResolution|iSampleRate|iCameraDir|iCameraPos|iFrameRate|iTimeDelta|iDispatch|iNormal|iFrame|iMouse|iDate|iTime)\\b"
         }
       ]
     },

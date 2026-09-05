@@ -5,7 +5,7 @@ import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 
 describe("SlangLanguageService with bundled WASM", () => {
-  it("offers native members for a configured raw texture channel", async () => {
+  it("offers sampling members for a configured input", async () => {
     const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
     const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
@@ -22,7 +22,7 @@ describe("SlangLanguageService with bundled WASM", () => {
     };
     const text = `float4 mainImage(float2 p)
 {
-    iChannel0.
+    inputs.iChannel0.
     return float4(0.0);
 }`;
     try {
@@ -30,10 +30,12 @@ describe("SlangLanguageService with bundled WASM", () => {
       await service.openDocument({ uri, languageId: "slang", version: 1, text });
       const completions = await service.completion({
         document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
-        position: { line: 2, character: "    iChannel0.".length },
+        position: { line: 2, character: "    inputs.iChannel0.".length },
       });
 
-      expect(completions.map((item) => item.label)).toContain("Sample");
+      expect(completions.map((item) => item.label)).toEqual(expect.arrayContaining([
+        "texture", "sampler", "size", "time", "loaded", "Sample", "SampleLevel", "SampleGrad",
+      ]));
     } finally {
       await service.dispose();
     }

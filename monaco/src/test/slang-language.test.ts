@@ -22,11 +22,7 @@ import {
   slangTypes,
 } from '../slang-language';
 import { shaderStudioTheme } from '../glsl-theme';
-import {
-  SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
-  SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
-  shaderStudioBuiltinUniformNames,
-} from '@shader-studio/types';
+import { shaderStudioBuiltinUniformNames } from '@shader-studio/types';
 
 interface GrammarPattern {
   name: string;
@@ -117,11 +113,6 @@ function sorted(values: readonly string[]): string[] {
   return [...values].sort();
 }
 
-const indexedChannel = new RegExp(`^${SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE}$`);
-const indexedChannelMetadata = new RegExp(
-  `^${SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE}$`,
-);
-
 function matchesWhole(pattern: RegExp, value: string): boolean {
   return new RegExp(`^(?:${pattern.source})$`).test(value);
 }
@@ -196,18 +187,9 @@ describe('Slang Monarch language', () => {
     expect(sorted(slangBuiltins)).toEqual(grammar.repository['builtin-functions'].patterns!
       .flatMap((entry) => vocabulary(entry.match!))
       .sort());
-    // Channel aliases are matched by index rather than enumerated, so the named
-    // half of the vocabulary is compared and the indexed alternative is pinned.
     const uniformPattern = grammar.repository.builtins.patterns![0].match!;
-    expect(uniformPattern).toContain(`|${SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE}`);
-    expect(uniformPattern).toContain(`|${SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE})`);
-    expect(sorted(slangShadertoyUniforms.filter((name) => (
-      !indexedChannel.test(name) && !indexedChannelMetadata.test(name)
-    )))).toEqual(
-      vocabulary(uniformPattern
-        .replace(`|${SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE}`, '')
-        .replace(`|${SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE}`, '')),
-    );
+    expect(uniformPattern).toContain('inputs');
+    expect(sorted([...slangShadertoyUniforms, 'inputs'])).toEqual(vocabulary(uniformPattern));
     const textMatePreprocessor = new RegExp(generalTextMatePreprocessorPattern().begin!);
     for (const directive of slangPreprocessorDirectives) {
       expect(textMatePreprocessor.test(`#${directive}`), directive).toBe(true);
@@ -379,14 +361,14 @@ describe('Slang Monarch language', () => {
   it('colours every built-in uniform the catalog declares for the language', () => {
     for (const language of ['glsl', 'slang'] as const) {
       const names = shaderStudioBuiltinUniformNames(language);
-      // Channel slots past the four named ones follow the configured inputs, and
-      // stage-limited uniforms stay coloured because a grammar has no stage.
-      const highlighted = [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
+      // Stage-limited uniforms stay coloured because a grammar has no stage.
+      const highlighted = language === 'slang' ? [...names, 'inputs'] : [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
       const otherLanguage = language === 'glsl' ? 'slang' : 'glsl';
       const plain = [
         ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
-        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'iTimeExtra', 'myiTime',
+        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
       ];
+      if (language === 'slang') plain.push('iCh7');
       const lines = monaco.editor.tokenize([...highlighted, ...plain].join(';\n'), language);
 
       expect(names.length, `${language} catalog names`).toBeGreaterThan(0);

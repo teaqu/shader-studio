@@ -191,7 +191,7 @@ interface VariableDeclaration {
 }
 
 const TYPE_TOKEN = /[A-Za-z_]\w*(?:\s*<[^>{}]+>)?/;
-const LOCAL_DECLARATION = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?\\s*(?:=[^;{}]*)?;`, "g");
+const LOCAL_DECLARATION = new RegExp(`\\b(?:(?:static|const)\\s+)*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?\\s*(?:=[^;{}]*)?;`, "g");
 const QUALIFIER = /^(?:in|out|inout)\s+/;
 const CONTROL_KEYWORDS = new Set(["if", "for", "while", "switch", "return", "else"]);
 
@@ -274,6 +274,12 @@ function findSlangStructs(source: string): SlangStruct[] {
       const declaration = FIELD_DECLARATION.exec(`${statement.trim()};`);
       if (declaration?.[1] && declaration[2] && !statement.includes("(")) {
         fields.push({ name: declaration[2], type: canonicalizeSlangType(declaration[1]) });
+      }
+    }
+    const property = new RegExp(`\\bproperty\\s+(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\{`, "g");
+    for (const match of body.matchAll(property)) {
+      if (match[1] && match[2] && !fields.some((field) => field.name === match[2])) {
+        fields.push({ name: match[2], type: canonicalizeSlangType(match[1]) });
       }
     }
     const method = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(`, "g");

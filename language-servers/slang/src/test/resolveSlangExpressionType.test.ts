@@ -61,11 +61,11 @@ describe("resolveSlangExpressionType", () => {
   it("resolves names and functions supplied by the host environment", () => {
     const context = {
       variableType: (name: string) => (name === "iResolution" ? "float3" : undefined),
-      functionType: (name: string) => (name === "sampleIChannel0" ? "float4" : undefined),
+      functionType: (name: string) => (name === "sampleTexture" ? "float4" : undefined),
     };
 
     expect(resolve("iResolution", context)?.name).toBe("float3");
-    expect(resolve("sampleIChannel0(uv)", context)?.name).toBe("float4");
+    expect(resolve("sampleTexture(uv)", context)?.name).toBe("float4");
   });
 
   it("resolves declarations contributed by included sources", () => {
@@ -78,7 +78,7 @@ describe("resolveSlangExpressionType", () => {
     expect(resolve("keyLight.color", { includes })?.name).toBe("float3");
   });
 
-  it("expands channel metadata macros supplied by included generated source", () => {
+  it("resolves typed channel fields supplied by the generated source", () => {
     const environment: ShaderAuthoringEnvironment = {
       documentUri: "file:///image.slang",
       languageId: "slang",
@@ -91,10 +91,10 @@ describe("resolveSlangExpressionType", () => {
     };
     const includes = [buildSlangAuthoringModule(environment).text];
 
-    expect(resolve("iCh0", { includes })?.name).toBe("ShaderToyChannel2D");
-    expect(resolve("iCh0.sampler", { includes })?.name).toBe("ShaderToySampler2D");
-    expect(resolve("iCh0.size", { includes })?.name).toBe("float3");
-    expect(resolve("iChannel0", { includes })?.name).toBe("Texture2D<float4>");
+    expect(resolve("inputs", { includes })?.name).toBe("ShaderStudioInputs");
+    expect(resolve("inputs.iChannel0", { includes })?.name).toBe("ShaderStudioChannel2D");
+    expect(resolve("inputs.iChannel0.texture", { includes })?.name).toBe("Texture2D<float4>");
+    expect(resolve("inputs.iChannel0.size", { includes })?.name).toBe("uint2");
   });
 
   it("prefers the nearest declaration that precedes the cursor", () => {

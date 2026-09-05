@@ -107,7 +107,7 @@ const conformanceCases: ConformanceCase[] = [
         },
       },
       slang: {
-        image: "float4 mainImage(float2 fragCoord) { return sampleIChannel0(fragCoord / iResolution.xy); }",
+        image: "float4 mainImage(float2 fragCoord) { return inputs.iChannel0.Sample(fragCoord / iResolution.xy); }",
         buffers: {
           BufferA: "float4 mainImage(float2 fragCoord) { return float4(1.0, 0.0, 1.0, 1.0); }",
         },
@@ -165,7 +165,7 @@ describe("Slang-only canvas conformance", () => {
     const harness = createShaderCanvasHarness("slang");
     try {
       await harness.compile({
-        image: "float4 mainImage(float2 fragCoord) { return sampleIChannel0(fragCoord / iResolution.xy); }",
+        image: "float4 mainImage(float2 fragCoord) { return inputs.iChannel0.Sample(fragCoord / iResolution.xy); }",
         buffers: {
           ComputePattern: `[shader("compute")]
             [numthreads(1, 1, 1)]

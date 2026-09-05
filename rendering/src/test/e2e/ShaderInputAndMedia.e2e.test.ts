@@ -27,7 +27,7 @@ const inputPrograms: Record<ShaderLanguage, ShaderProgram> = {
   },
   slang: {
     image: `float keyRow(float row) {
-      return sampleIChannel0(float2((65.0 + 0.5) / 256.0, (row + 0.5) / 3.0)).r;
+      return inputs.iChannel0.Sample(float2((65.0 + 0.5) / 256.0, (row + 0.5) / 3.0)).r;
     }
     float4 mainImage(float2 fragCoord) {
       float3 keyState = float3(keyRow(0.0), keyRow(1.0), keyRow(2.0));
@@ -47,7 +47,7 @@ const mediaPrograms: Record<ShaderLanguage, string> = {
   }`,
   slang: `float4 mainImage(float2 fragCoord) {
     float2 uv = fragCoord / iResolution.xy;
-    return float4(sampleIChannel0(uv).rgb, 1.0);
+    return float4(inputs.iChannel0.Sample(uv).rgb, 1.0);
   }`,
 };
 

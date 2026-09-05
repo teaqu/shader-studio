@@ -5,8 +5,8 @@ import { createShaderCanvasHarness, type ShaderLanguage } from "./ShaderCanvasHa
 /**
  * Isolates the cost of explicit-LOD sampling. Channel textures default to
  * `filter: "mipmap"` in both engines (TextureCache), so GLSL's `texture()` and
- * the Slang prelude's `sampleIChannel0` pick a mip from the derivatives. A
- * Slang port that samples `iChannel0.SampleLevel(..., 0)` — the workaround for
+ * the Slang prelude's `inputs.iChannel0.Sample` pick a mip from the derivatives. A
+ * Slang port that samples `inputs.iChannel0.SampleLevel(..., 0)` — the workaround for
  * WGSL's uniformity rule inside branches — always reads level 0 instead, which
  * on a minified texture turns coherent mip reads into scattered full-size
  * reads. This measures how much that costs at preview resolutions.
@@ -52,7 +52,7 @@ const slangImplicitLod = `float4 mainImage(float2 fragCoord) {
   float sum = 0.0;
   for (int i = 0; i < ${SAMPLES_PER_PIXEL}; ++i) {
     float2 p = uv * ${UV_SCALE.toFixed(1)} + float2(float(i) * 0.37, float(i) * 0.71);
-    sum += sampleIChannel0(p).r;
+    sum += inputs.iChannel0.Sample(p).r;
   }
   return float4(float3(sum / float(${SAMPLES_PER_PIXEL})), 1.0);
 }`;
@@ -63,7 +63,7 @@ const slangExplicitLod0 = `float4 mainImage(float2 fragCoord) {
   float sum = 0.0;
   for (int i = 0; i < ${SAMPLES_PER_PIXEL}; ++i) {
     float2 p = uv * ${UV_SCALE.toFixed(1)} + float2(float(i) * 0.37, float(i) * 0.71);
-    sum += iChannel0.SampleLevel(iChannel0Sampler, float2(p.x, 1.0 - p.y), 0.0).r;
+    sum += inputs.iChannel0.SampleLevel(p, 0.0).r;
   }
   return float4(float3(sum / float(${SAMPLES_PER_PIXEL})), 1.0);
 }`;
@@ -88,21 +88,21 @@ function slangBranchProgram(sampleExpression: string, hoisted = ""): string {
 
 /** The workaround a port reaches for today: always level 0. */
 const slangBranchLod0 = slangBranchProgram(
-  "iChannel0.SampleLevel(iChannel0Sampler, float2(p.x, 1.0 - p.y), 0.0).r",
+  "inputs.iChannel0.SampleLevel(p, 0.0).r",
 );
 
 /** Implicit LOD inside a non-uniform branch — rejected by WGSL's uniformity rules. */
-const slangBranchImplicit = slangBranchProgram("sampleIChannel0(p).r");
+const slangBranchImplicit = slangBranchProgram("inputs.iChannel0.Sample(p).r");
 
 /** Explicit level from the known minification, chosen outside the branch. */
 const slangBranchLodHelper = slangBranchProgram(
-  "sampleIChannel0Lod(p, lod).r",
+  "inputs.iChannel0.SampleLevel(p, lod).r",
   `float lod = log2(max(1.0, ${TEXTURE_SIZE}.0 * ${UV_SCALE.toFixed(1)} / iResolution.y));`,
 );
 
 /** Real gradients, taken in uniform control flow and carried into the branch. */
 const slangBranchGradHelper = slangBranchProgram(
-  "sampleIChannel0Grad(p, dx, dy).r",
+  "inputs.iChannel0.SampleGrad(p, dx, dy).r",
   `float2 base = uv * ${UV_SCALE.toFixed(1)};
   float2 dx = ddx(base);
   float2 dy = ddy(base);`,
@@ -182,7 +182,7 @@ describe("channel sampling cost", () => {
     const harness = createShaderCanvasHarness("slang");
     try {
       await harness.compile({
-        image: "float4 mainImage(float2 fragCoord) { return sampleIChannel0(fragCoord / iResolution.xy); }",
+        image: "float4 mainImage(float2 fragCoord) { return inputs.iChannel0.Sample(fragCoord / iResolution.xy); }",
         buffers: {
           SampleKernel: `[shader("compute")]
             [numthreads(1, 1, 1)]
@@ -190,8 +190,8 @@ describe("channel sampling cost", () => {
               float2 uv = float2(id.xy) * 0.5;
               // Neither implicit-LOD sampling nor derivatives exist here, but
               // both explicit forms do.
-              float4 level = sampleIChannel0Lod(uv, 2.0);
-              float4 grad = sampleIChannel0Grad(uv, float2(0.01, 0.0), float2(0.0, 0.01));
+              float4 level = inputs.iChannel0.SampleLevel(uv, 2.0);
+              float4 grad = inputs.iChannel0.SampleGrad(uv, float2(0.01, 0.0), float2(0.0, 0.01));
               writeOutput(id.xy, float4(level.r, grad.g, 1.0, 1.0));
             }`,
         },

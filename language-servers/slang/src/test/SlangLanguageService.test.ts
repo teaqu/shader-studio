@@ -171,17 +171,17 @@ void computeMain() {}`;
     const { module, server } = fixture();
     const service = new SlangLanguageService(module);
     await service.syncEnvironment(environment);
-    const text = `// iChannel0
-/* iChannel0 */
-float value = iChannel0;`;
+    const text = `// inputs
+/* inputs */
+float value = inputs;`;
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
-    await expect(service.completion({ document: revision, position: { line: 0, character: 11 } })).resolves.toEqual([]);
-    await expect(service.completion({ document: revision, position: { line: 1, character: 11 } })).resolves.toEqual([]);
+    await expect(service.completion({ document: revision, position: { line: 0, character: 5 } })).resolves.toEqual([]);
+    await expect(service.completion({ document: revision, position: { line: 1, character: 5 } })).resolves.toEqual([]);
     expect(server.completion).not.toHaveBeenCalled();
 
     await expect(service.completion({ document: revision, position: { line: 2, character: 16 } }))
-      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ label: "iChannel0" })]));
+      .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ label: "inputs" })]));
   });
 
   it("keeps official member completions without adding global symbols", async () => {
@@ -194,7 +194,7 @@ float value = iChannel0;`;
     }]));
     const service = new SlangLanguageService(module);
     await service.syncEnvironment(environment);
-    const text = "float4 color = iChannel0.sam;";
+    const text = "float4 color = inputs.noise.texture.sam;";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     const completions = await service.completion({
@@ -204,7 +204,7 @@ float value = iChannel0;`;
     expect(completions.map((item) => item.label)).toEqual(["Sample"]);
   });
 
-  it("completes generated channel symbols and their metadata members", async () => {
+  it("completes the generated inputs object and its typed input members", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([]));
     const service = new SlangLanguageService(module);
@@ -222,9 +222,9 @@ float value = iChannel0;`;
     });
     const text = `float4 mainImage(float2 p)
 {
-    iCh0.
-    iCh0.sampler.
-    iCh0.size.
+    inputs.
+    inputs.iChannel0.
+    inputs.iChannel0.texture.
     return float4(0.0);
 }`;
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
@@ -234,24 +234,46 @@ float value = iChannel0;`;
     })).map((item) => item.label);
 
     const globals = await labels(1);
-    expect(globals).toEqual(expect.arrayContaining([
-      "iChannel0Sampler", "sampleIChannel0", "sampleIChannel0Vertex", "iCh0",
-      "skySampler", "sampleIChannel1", "sampleIChannel1Vertex", "sampleSky", "sampleSkyVertex", "iCh1",
-      "albedo", "albedoSampler", "sampleAlbedo", "sampleAlbedoVertex", "iCh2",
-      "volumeSampler", "particlesSampler", "lateSampler", "sampleIChannel4", "iCh4",
-      "laterSampler", "sampleIChannel5", "iCh5",
-    ]));
-    expect(globals).not.toContain("sampleVolume");
-    expect(globals).not.toContain("sampleParticles");
-    expect(globals).not.toContain("iChannelN");
+    expect(globals).toContain("inputs");
     expect((await service.completion({ document: revision, position: { line: 1, character: 4 } }))
-      .find((item) => item.label === "iChannel0Sampler")?.detail).toBe("SamplerState");
-    expect(await labels(2)).toEqual(expect.arrayContaining(["sampler", "size", "time", "loaded"]));
-    expect(await labels(3)).toEqual(expect.arrayContaining(["texture", "state", "Sample"]));
-    expect(await labels(4)).toContain("xyz");
+      .find((item) => item.label === "inputs")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("Configured shader inputs") }));
+    expect(JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 3, character: "    inputs.iCh".length },
+    }))?.contents)).toContain("Configured input channel");
+    expect(globals).not.toEqual(expect.arrayContaining([
+      "iChannel0", "iChannel0Sampler", "sampleIChannel0", "sampleSky", "iCh0", "sky",
+    ]));
+    expect(await labels(2)).toEqual(expect.arrayContaining(["iChannel0", "sky", "albedo", "volume"]));
+    expect(await labels(3)).toEqual(expect.arrayContaining(["texture", "sampler", "size", "time", "loaded", "Sample", "SampleLevel", "SampleGrad"]));
+    const inputMethods = await service.completion({ document: revision, position: { line: 3, character: "    inputs.iChannel0.".length } });
+    expect(inputMethods.filter((item) => item.label === "Sample").map((item) => item.detail)).toEqual(expect.arrayContaining([
+      "float4 ShaderStudioChannel2D.Sample(float2 uv)",
+      "float4 ShaderStudioChannel2D.Sample(SamplerState sampling, float2 uv)",
+    ]));
+    server.signatureHelp.mockReturnValue(undefined);
+    const methodSource = "float4 mainImage(float2 uv) { return inputs.iChannel0.Sample(inputs.iChannel0.sampler, uv); }";
+    await service.changeDocument({ uri, languageId: "slang", version: 2, text: methodSource });
+    const signatures = await service.signatureHelp({
+      document: { ...revision, version: 2 },
+      position: { line: 0, character: methodSource.indexOf(", uv") + 4 },
+    });
+    expect(signatures?.signatures.map((signature) => signature.label)).toContain(
+      "float4 ShaderStudioChannel2D.Sample(SamplerState sampling, float2 uv)",
+    );
+    const twoCalls = "float4 mainImage(float2 uv) { return inputs.iChannel0.Sample (uv) + inputs.sky.Sample(float3(uv, 1.0)); }";
+    await service.changeDocument({ uri, languageId: "slang", version: 3, text: twoCalls });
+    const firstCall = await service.signatureHelp({
+      document: { ...revision, version: 3 },
+      position: { line: 0, character: twoCalls.indexOf("uv) +") + 2 },
+    });
+    expect(firstCall?.signatures.map((signature) => signature.label)).toContain(
+      "float4 ShaderStudioChannel2D.Sample(float2 uv)",
+    );
   });
 
-  it("keeps generated channel completions empty without resources in fragment and compute stages", async () => {
+  it("offers an empty inputs object when no inputs are configured", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([]));
     const service = new SlangLanguageService(module);
@@ -259,12 +281,11 @@ float value = iChannel0;`;
       await service.syncEnvironment({ ...environment, stage, resources: [] });
       await service.openDocument({ uri, languageId: "slang", version: 1, text: "void main() {}" });
       const labels = (await service.completion({ document: revision, position: { line: 0, character: 0 } })).map((item) => item.label);
-      expect(labels).not.toContain("iChannel0Sampler");
-      expect(labels).not.toContain("iCh0");
+      expect(labels).toContain("inputs");
     }
   });
 
-  it("offers generated channel completions in compute shaders", async () => {
+  it("offers channel members in compute shaders", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([]));
     const service = new SlangLanguageService(module);
@@ -273,15 +294,13 @@ float value = iChannel0;`;
       stage: "compute",
       resources: [{ name: "iChannel0", kind: "texture-cube", slot: 0 }],
     });
-    const text = "[shader(\"compute\")]\nvoid computeMain() { iCh0.sampler. }";
+    const text = "[shader(\"compute\")]\nvoid computeMain() { inputs.iChannel0.texture. }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     const globals = await service.completion({ document: revision, position: { line: 0, character: 0 } });
-    expect(globals.map((item) => item.label)).toEqual(expect.arrayContaining([
-      "iChannel0Sampler", "sampleIChannel0", "sampleIChannel0Vertex", "iCh0",
-    ]));
+    expect(globals.map((item) => item.label)).toContain("inputs");
     const members = await service.completion({ document: revision, position: { line: 1, character: text.split("\n")[1]!.indexOf(". }") + 1 } });
-    expect(members.map((item) => item.label)).toEqual(expect.arrayContaining(["texture", "state", "Sample"]));
+    expect(members.map((item) => item.label)).toEqual(expect.arrayContaining(["Sample", "SampleLevel", "SampleGrad"]));
   });
 
   it("completes vector components instead of every symbol after a member selector", async () => {
@@ -561,31 +580,24 @@ float4 mainImage(float2 p)
       .toContain("normalize");
   });
 
-  it("documents broader Slang intrinsics and generated channel sampling helpers", async () => {
+  it("documents broader Slang intrinsics without reintroducing channel helper functions", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);
     server.signatureHelp.mockReturnValue(undefined);
     const service = new SlangLanguageService(module);
-    await service.syncEnvironment({
-      ...environment,
-      resources: [{ name: "noise", kind: "texture-2d" }],
-    });
-    const text = "float x = fmod(3.0, 2.0);\nfloat4 c = sampleIChannel0(float2(0.5));\nfloat4 d = sampleNoise(float2(0.5));";
+    await service.syncEnvironment(environment);
+    const text = "float x = fmod(3.0, 2.0);";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 12 } }))?.contents))
       .toContain("Floating-point remainder");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 1, character: 20 } }))?.contents))
-      .toContain("input channel 0");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 2, character: 20 } }))?.contents))
-      .toContain("noise");
-    expect((await service.signatureHelp({ document: revision, position: { line: 1, character: 38 } }))?.signatures[0]?.label)
-      .toBe("float4 sampleIChannel0(float2 uv)");
-    const completions = await service.completion({ document: revision, position: { line: 2, character: 20 } });
-    expect(JSON.stringify(completions.find((item) => item.label === "sampleNoise")?.documentation)).toContain("input channel 0");
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.length } });
+    expect(completions.map((item) => item.label)).not.toEqual(expect.arrayContaining([
+      "sampleIChannel0", "sampleIChannel0Lod", "sampleIChannel0Grad", "sampleNoise",
+    ]));
   });
 
-  it("offers mip-preserving Lod and Grad sampling helpers for every channel", async () => {
+  it("does not fabricate sampling helpers for configured channels", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([]));
     const service = new SlangLanguageService(module);
@@ -599,21 +611,9 @@ float4 mainImage(float2 p)
     await service.openDocument({ uri, languageId: "slang", version: 1, text: "float4 c = float4(0.0);" });
 
     const completions = await service.completion({ document: revision, position: { line: 0, character: 11 } });
-    const detail = (label: string) => completions.find((item) => item.label === label)?.detail;
-
-    expect(detail("sampleIChannel0Lod")).toBe("float4 sampleIChannel0Lod(float2 uv, float lod)");
-    expect(detail("sampleIChannel0Grad"))
-      .toBe("float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
-    expect(detail("sampleNoiseLod")).toBe("float4 sampleNoiseLod(float2 uv, float lod)");
-    expect(detail("sampleNoiseGrad"))
-      .toBe("float4 sampleNoiseGrad(float2 uv, float2 ddxUv, float2 ddyUv)");
-    expect(detail("sampleIChannel1Lod")).toBe("float4 sampleIChannel1Lod(float3 dir, float lod)");
-    expect(detail("sampleIChannel1Grad"))
-      .toBe("float4 sampleIChannel1Grad(float3 dir, float3 ddxDir, float3 ddyDir)");
-    // Unassigned slots keep their black-return stubs in all three shapes.
-    expect(detail("sampleIChannel2Lod")).toBe("float4 sampleIChannel2Lod(float2 uv, float lod)");
-    expect(detail("sampleIChannel2Grad"))
-      .toBe("float4 sampleIChannel2Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
+    expect(completions.map((item) => item.label)).not.toEqual(expect.arrayContaining([
+      "sampleIChannel0", "sampleIChannel0Lod", "sampleIChannel0Grad", "sampleNoise", "sampleSky",
+    ]));
   });
 
   it("documents generally useful math, bit, conversion, and packing helpers", async () => {

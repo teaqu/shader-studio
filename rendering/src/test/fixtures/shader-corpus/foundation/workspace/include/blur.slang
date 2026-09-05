@@ -10,7 +10,7 @@ float3 foundationBlurHistory(float2 uv)
         for (int x = -kFoundationBlurRadius; x <= kFoundationBlurRadius; ++x)
         {
             float2 offset = float2(float(x), float(y)) / iResolution.xy * 2.0;
-            sum += sampleIChannel0(uv + offset).rgb;
+            sum += inputs.iChannel0.Sample(uv + offset).rgb;
             sampleCount += 1;
         }
     }

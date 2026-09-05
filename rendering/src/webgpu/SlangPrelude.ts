@@ -15,6 +15,7 @@
 import type { StorageBindingNode } from "../types/PassGraph";
 import {
   buildSlangRuntimePrelude,
+  buildSlangChannels,
   type GeometryType,
   type SlangCustomUniformInfo,
 } from "@shader-studio/types";
@@ -103,31 +104,8 @@ ConstantBuffer<MeshUniforms> _mesh;
 `;
 }
 
-function buildVertexChannelAliases(channels: SlangChannelBinding[]): { define: string; undef: string } {
-  const aliases = [...channels]
-    .sort((a, b) => a.slot - b.slot)
-    .flatMap((channel) => {
-      const helperName = `sampleIChannel${channel.slot}`;
-      const customHelperName = channel.key === `iChannel${channel.slot}`
-        ? null
-        : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
-      // Lod and Grad follow their base helper: a vertex stage has no
-      // derivatives, so both resolve to the level-0 vertex variants.
-      return [helperName, customHelperName]
-        .filter((name): name is string => name !== null)
-        .flatMap((name) => [name, `${name}Lod`, `${name}Grad`]);
-    });
-
-  return {
-    define: aliases.map((name) => `#define ${name} ${name}Vertex`).join("\n"),
-    undef: aliases.map((name) => `#undef ${name}`).join("\n"),
-  };
-}
-
-function buildMeshEntryPoints(vertexCode: string, vertexChannelAliases: { define: string; undef: string }): string {
-  return `${vertexChannelAliases.define}
-${vertexCode}
-${vertexChannelAliases.undef}
+function buildMeshEntryPoints(vertexCode: string): string {
+  return `${vertexCode}
 struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
 [shader("vertex")]
 MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0) { mainVertex(position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
@@ -142,13 +120,11 @@ float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
 `;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string, vertexChannelAliases: { define: string; undef: string }): string {
+function buildFullscreenEntryPoints(vertexCode: string): string {
   if (!vertexCode.trim()) {
     return ENTRY_POINTS;
   }
-  return `${vertexChannelAliases.define}
-${vertexCode}
-${vertexChannelAliases.undef}
+  return `${vertexCode}
 [shader("vertex")]
 float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(position, normal, uv); return float4(position, 1); }
 [shader("fragment")]
@@ -262,228 +238,10 @@ float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
 }
 `;
 
-function buildChannelPrelude(
-  channels: SlangChannelBinding[] = [],
-  stage: "fragment" | "compute" = "fragment",
-): string {
-  const sortedChannels = [...channels].sort((a, b) => a.slot - b.slot);
-  const objectChannels = sortedChannels;
-  const has2DObject = objectChannels.some(({ kind }) => kind !== "cubemap");
-  const hasCubeObject = objectChannels.some(({ kind }) => kind === "cubemap");
-  const objectSampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
-  const objectExplicitLod = stage === "compute" ? ", 0.0" : "";
-  const objectTypes = `${has2DObject ? `struct ShaderToySampler2D
-{
-    Texture2D<float4> texture;
-    SamplerState state;
-
-    float4 Sample(float2 uv)
-    {
-        return texture.${objectSampleMethod}(state, float2(uv.x, 1.0 - uv.y)${objectExplicitLod});
-    }
-};
-
-struct ShaderToyChannel2D
-{
-    ShaderToySampler2D sampler;
-    float3 size;
-    float time;
-    int loaded;
-};
-` : ""}${hasCubeObject ? `struct ShaderToySamplerCube
-{
-    TextureCube<float4> texture;
-    SamplerState state;
-
-    float4 Sample(float3 dir)
-    {
-        return texture.${objectSampleMethod}(state, dir${objectExplicitLod});
-    }
-};
-
-struct ShaderToyChannelCube
-{
-    ShaderToySamplerCube sampler;
-    float3 size;
-    float time;
-    int loaded;
-};
-` : ""}`;
-
-  const bindings = sortedChannels
-    .map((channel, index) => {
-      // Bindings are position-based over the slot-sorted array (not derived
-      // from the slot number), so sparse slots pack densely from binding 1.
-      // Bind-group creation must use the same position-over-sorted-array
-      // scheme when attaching textures/samplers.
-      const textureBinding = 1 + index * 2;
-      const samplerBinding = textureBinding + 1;
-      const helperName = `sampleIChannel${channel.slot}`;
-      const sampleMethod = stage === "compute" ? "SampleLevel" : "Sample";
-      const explicitLod = stage === "compute" ? ", 0.0" : "";
-      const customHelperName = channel.key === `iChannel${channel.slot}`
-        ? null
-        : `sample${channel.key[0].toUpperCase()}${channel.key.slice(1)}`;
-      // Gradient sampling takes its derivatives as arguments rather than from
-      // the quad, so unlike implicit-LOD Sample it is legal in every stage.
-      const gradExpression2D = `${channel.key}.SampleGrad(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), float2(ddxUv.x, -ddxUv.y), float2(ddyUv.x, -ddyUv.y))`;
-      const gradExpressionCube = `${channel.key}.SampleGrad(${channel.key}Sampler, dir, ddxDir, ddyDir)`;
-      const objectAccessor = `
-ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} _getICh${channel.slot}()
-{
-    ShaderToyChannel${channel.kind === "cubemap" ? "Cube" : "2D"} channel;
-    channel.sampler.texture = ${channel.key};
-    channel.sampler.state = ${channel.key}Sampler;
-    channel.size = _st.channelResolution[${channel.slot}];
-    channel.time = _st.channelTime[${channel.slot}];
-    channel.loaded = _st.channelLoaded[${channel.slot}] != 0.0 ? 1 : 0;
-    return channel;
-}
-#define iCh${channel.slot} (_getICh${channel.slot}())
-`;
-      if (channel.kind === "cubemap") {
-        return `[[vk::binding(${textureBinding}, 0)]]
-TextureCube<float4> ${channel.key};
-[[vk::binding(${samplerBinding}, 0)]]
-SamplerState ${channel.key}Sampler;
-float4 ${helperName}(float3 dir)
-{
-    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, dir${explicitLod});
-}
-float4 ${helperName}Vertex(float3 dir)
-{
-    return ${channel.key}.SampleLevel(${channel.key}Sampler, dir, 0.0);
-}
-float4 ${helperName}Lod(float3 dir, float lod)
-{
-    return ${channel.key}.SampleLevel(${channel.key}Sampler, dir, lod);
-}
-float4 ${helperName}LodVertex(float3 dir, float lod)
-{
-    return ${helperName}Lod(dir, lod);
-}
-float4 ${helperName}Grad(float3 dir, float3 ddxDir, float3 ddyDir)
-{
-    return ${gradExpressionCube};
-}
-float4 ${helperName}GradVertex(float3 dir, float3 ddxDir, float3 ddyDir)
-{
-    return ${helperName}Grad(dir, ddxDir, ddyDir);
-}
-${customHelperName ? `float4 ${customHelperName}(float3 dir)
-{
-    return ${helperName}(dir);
-}
-float4 ${customHelperName}Vertex(float3 dir)
-{
-    return ${helperName}Vertex(dir);
-}
-float4 ${customHelperName}Lod(float3 dir, float lod)
-{
-    return ${helperName}Lod(dir, lod);
-}
-float4 ${customHelperName}LodVertex(float3 dir, float lod)
-{
-    return ${helperName}LodVertex(dir, lod);
-}
-float4 ${customHelperName}Grad(float3 dir, float3 ddxDir, float3 ddyDir)
-{
-    return ${helperName}Grad(dir, ddxDir, ddyDir);
-}
-float4 ${customHelperName}GradVertex(float3 dir, float3 ddxDir, float3 ddyDir)
-{
-    return ${helperName}GradVertex(dir, ddxDir, ddyDir);
-}
-` : ""}${objectAccessor}
-`;
-      }
-      return `[[vk::binding(${textureBinding}, 0)]]
-Texture2D<float4> ${channel.key};
-[[vk::binding(${samplerBinding}, 0)]]
-SamplerState ${channel.key}Sampler;
-float4 ${helperName}(float2 uv)
-{
-    // uv comes from the Y-flipped fragCoord (bottom-left origin, GL-style),
-    // but WebGPU textures put v=0 at the top row, so flip v back to sample
-    // the texel the caller expects.
-    return ${channel.key}.${sampleMethod}(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y)${explicitLod});
-}
-float4 ${helperName}Vertex(float2 uv)
-{
-    return ${channel.key}.SampleLevel(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), 0.0);
-}
-float4 ${helperName}Lod(float2 uv, float lod)
-{
-    return ${channel.key}.SampleLevel(${channel.key}Sampler, float2(uv.x, 1.0 - uv.y), lod);
-}
-float4 ${helperName}LodVertex(float2 uv, float lod)
-{
-    return ${helperName}Lod(uv, lod);
-}
-float4 ${helperName}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
-{
-    // The v flip above negates the v component of both derivatives, so the
-    // caller passes gradients in its own bottom-left-origin uv space.
-    return ${gradExpression2D};
-}
-float4 ${helperName}GradVertex(float2 uv, float2 ddxUv, float2 ddyUv)
-{
-    return ${helperName}Grad(uv, ddxUv, ddyUv);
-}
-${customHelperName ? `float4 ${customHelperName}(float2 uv)
-{
-    return ${helperName}(uv);
-}
-float4 ${customHelperName}Vertex(float2 uv)
-{
-    return ${helperName}Vertex(uv);
-}
-float4 ${customHelperName}Lod(float2 uv, float lod)
-{
-    return ${helperName}Lod(uv, lod);
-}
-float4 ${customHelperName}LodVertex(float2 uv, float lod)
-{
-    return ${helperName}LodVertex(uv, lod);
-}
-float4 ${customHelperName}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
-{
-    return ${helperName}Grad(uv, ddxUv, ddyUv);
-}
-float4 ${customHelperName}GradVertex(float2 uv, float2 ddxUv, float2 ddyUv)
-{
-    return ${helperName}GradVertex(uv, ddxUv, ddyUv);
-}
-` : ""}${objectAccessor}
-`;
-    })
-    .join("\n");
-
-  const claimedStandardHelpers = new Set(sortedChannels.map(({ slot }) => slot));
-  for (const { key } of sortedChannels) {
-    const match = /^iChannel([0-3])$/.exec(key);
-    if (match) {
-      claimedStandardHelpers.add(Number.parseInt(match[1], 10));
-    }
-  }
-  const fallbackHelpers = [0, 1, 2, 3]
-    .filter((slot) => !claimedStandardHelpers.has(slot))
-    .map((slot) => `float4 sampleIChannel${slot}(float2 uv)
-{
-    return float4(0.0, 0.0, 0.0, 1.0);
-}
-float4 sampleIChannel${slot}Lod(float2 uv, float lod)
-{
-    return float4(0.0, 0.0, 0.0, 1.0);
-}
-float4 sampleIChannel${slot}Grad(float2 uv, float2 ddxUv, float2 ddyUv)
-{
-    return float4(0.0, 0.0, 0.0, 1.0);
-}
-`)
-    .join("\n");
-
-  return objectTypes + bindings + fallbackHelpers;
+function buildChannelPrelude(channels: SlangChannelBinding[] = []): string {
+  return buildSlangChannels(channels.map(({ key, slot, kind }) => ({
+    name: key, slot, kind: kind === "cubemap" ? "texture-cube" : "texture-2d",
+  })), { runtime: true });
 }
 
 /** Build storage declarations split around common code by their type dependency. */
@@ -537,12 +295,11 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   // above the user source (after commonCode and custom storage declarations)
   // to keep user diagnostics on the user's real line numbers.
   const vertexCode = options.vertexCode?.trim() ?? "";
-  const vertexChannelAliases = buildVertexChannelAliases(options.channels ?? []);
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = 1 + (options.channels?.length ?? 0) * 2 + (options.storage?.length ?? 0);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}", vertexChannelAliases)}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
   }
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode, vertexChannelAliases)}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
@@ -629,7 +386,7 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = stripShaderStudioEditorImport(userSource);
-  const channelPrelude = buildChannelPrelude(channels, "compute");
+  const channelPrelude = buildChannelPrelude(channels);
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute");
   const outputBinding = 1 + channels.length * 2 + storage.length;
   const outputPrelude = options.hasOutput

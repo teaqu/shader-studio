@@ -12,13 +12,12 @@ const slot14Config: ShaderConfig = {
 };
 
 describe("Slang channel metadata WebGPU E2E", () => {
-  it("keeps the four ShaderToy metadata slots available with no configured inputs", { timeout: 30_000 }, async () => {
+  it("compiles a Slang shader with no configured inputs", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness("slang");
     try {
       await harness.compile({
         image: `float4 mainImage(float2 fragCoord) {
-          float3 size = iChannelResolution[3];
-          return float4(float3(iChannelTime[3] + size.x, size.y, size.z), 1.0);
+          return float4(0.0, 0.0, 0.0, 1.0);
         }`,
       });
 
@@ -31,12 +30,25 @@ describe("Slang channel metadata WebGPU E2E", () => {
     }
   });
 
-  it("delivers slot-14 metadata through the generated 15-entry uniform ABI", { timeout: 30_000 }, async () => {
+  it("rejects access to an input that is not configured", { timeout: 30_000 }, async () => {
+    const harness = createShaderCanvasHarness("slang");
+    try {
+      await expect(harness.compile({
+        image: `float4 mainImage(float2 fragCoord) {
+          return inputs.iChannel3.Sample(fragCoord / iResolution.xy);
+        }`,
+      })).rejects.toThrow(/iChannel3|undefined identifier/i);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it("delivers slot-14 metadata through its configured input object", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness("slang");
     try {
       await harness.compile({
         image: `float4 mainImage(float2 fragCoord) {
-          return float4(iCh14.size / float3(256.0, 3.0, 1.0), 1.0);
+          return float4(float2(inputs.iChannel14.size) / float2(256.0, 3.0), 1.0, 1.0);
         }`,
         config: slot14Config,
       });
