@@ -84,6 +84,12 @@ export class WebSocketTransport implements MessageTransport {
             return;
           }
 
+          // Webview panels reach both handlers: PanelManager's ClientMessageHandler
+          // and, through WebviewTransport, the Messenger's MessageHandler. Browser
+          // clients need the same pair - debug mode, logs, errors and shader locks
+          // all live on the Messenger side.
+          this.messageHandler?.(data);
+
           await clientHandler.handle(
             data,
             (responseMsg) => {
