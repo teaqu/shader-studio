@@ -8,6 +8,7 @@ function createMockMonaco() {
                 registeredLanguages.push(lang);
             }),
             setMonarchTokensProvider: vi.fn(),
+            setLanguageConfiguration: vi.fn(),
             getLanguages: vi.fn(() => registeredLanguages),
         },
         editor: {
@@ -43,6 +44,19 @@ describe('setupMonacoGlsl', () => {
         );
     });
 
+    it('configures glsl brackets and indentation rules', async () => {
+        const { setupMonacoGlsl } = await import('../setup');
+        const { shaderLanguageConfiguration } = await import('../language-configuration');
+        const monaco = createMockMonaco();
+
+        setupMonacoGlsl(monaco as any);
+
+        expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith(
+            'glsl',
+            shaderLanguageConfiguration,
+        );
+    });
+
     it('calls monaco.editor.defineTheme for every editor theme', async () => {
         const { setupMonacoGlsl } = await import('../setup');
         const monaco = createMockMonaco();
@@ -73,6 +87,7 @@ describe('setupMonacoGlsl', () => {
 
         // register is called only once because the second call bails out early
         expect(monaco.languages.register).toHaveBeenCalledTimes(1);
+        expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledTimes(1);
         expect(monaco.editor.defineTheme).toHaveBeenCalledTimes(3);
     });
 

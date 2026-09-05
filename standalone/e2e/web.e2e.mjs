@@ -935,3 +935,33 @@ test('standalone defaults to Aurora GLSL and preserves a later selection on relo
   await expect(desert).toHaveAttribute('aria-pressed', 'true');
   await expect(aurora).toHaveAttribute('aria-pressed', 'false');
 });
+
+test('pressing Enter after an open brace indents the new line like VS Code', async ({ page }) => {
+  await page.goto('/');
+  const explorer = page.getByTestId('web-shader-explorer');
+  const editor = page.getByTestId('web-editor');
+  await explorer.getByTitle('New Shader').click();
+  await page.getByRole('dialog', { name: 'New Shader' }).getByLabel('Shader name').fill('indent-check');
+  await page.getByRole('button', { name: 'Create Shader', exact: true }).click();
+  await expect(page.getByTestId('shader-option-indent-check-glsl')).toBeVisible();
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+
+  const editorInput = editor.locator('.inputarea');
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editorInput.press('ControlOrMeta+A');
+  await page.keyboard.type('void main() {');
+  await editorInput.press('Enter');
+  await page.keyboard.type('float x;');
+
+  const lines = async () => editor.locator('.view-line').evaluateAll((elements) => elements
+    .sort((a, b) => parseFloat(a.style.top) - parseFloat(b.style.top))
+    .map((element) => element.textContent.replace(/ /g, ' ')));
+
+  // The brace auto-closes, Enter indents the body, and the closing brace
+  // drops back to column 0.
+  await expect.poll(lines).toEqual([
+    'void main() {',
+    expect.stringMatching(/^ {2,}float x;$/),
+    '}',
+  ]);
+});

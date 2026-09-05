@@ -1,4 +1,5 @@
 import { glslLanguageDefinition } from './glsl-language';
+import { shaderLanguageConfiguration } from './language-configuration';
 import {
   shaderStudioTheme,
   shaderStudioTransparentLightTheme,
@@ -43,6 +44,9 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
     monaco.languages.setMonarchTokensProvider('glsl', glslLanguageDefinition as any);
   }
 
+  // Brackets and indentation rules — without these Enter after `{` does not indent.
+  monaco.languages.setLanguageConfiguration('glsl', shaderLanguageConfiguration);
+
   // Register themes
   monaco.editor.defineTheme('shader-studio', shaderStudioTheme);
   monaco.editor.defineTheme('shader-studio-transparent', shaderStudioTransparentTheme);
@@ -59,6 +63,7 @@ export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
     monaco.languages.register({ id: 'slang' });
   }
   monaco.languages.setMonarchTokensProvider('slang', slangLanguageDefinition);
+  monaco.languages.setLanguageConfiguration('slang', shaderLanguageConfiguration);
 
   slangRegistrations.add(monaco);
 }

@@ -678,6 +678,7 @@ describe('setupMonacoSlang', () => {
         getLanguages: vi.fn(() => languages),
         register: vi.fn((language: { id: string }) => languages.push(language)),
         setMonarchTokensProvider: vi.fn(),
+        setLanguageConfiguration: vi.fn(),
       },
     };
   }
@@ -687,6 +688,7 @@ describe('setupMonacoSlang', () => {
     const monacoB = createMockMonaco();
     const { setupMonacoSlang } = await import('../setup');
     const { slangLanguageDefinition: definition } = await import('../slang-language');
+    const { shaderLanguageConfiguration: configuration } = await import('../language-configuration');
 
     expect(setupMonacoSlang).toHaveLength(1);
     expect(setupMonacoSlang(monacoA as never)).toBeUndefined();
@@ -698,6 +700,8 @@ describe('setupMonacoSlang', () => {
       expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
       expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
       expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
+      expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledTimes(1);
+      expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith('slang', configuration);
     }
     expect((self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment).toBeUndefined();
   });
@@ -706,6 +710,7 @@ describe('setupMonacoSlang', () => {
     const monaco = createMockMonaco([{ id: 'slang' }]);
     const { setupMonacoSlang } = await import('../setup');
     const { slangLanguageDefinition: definition } = await import('../slang-language');
+    const { shaderLanguageConfiguration: configuration } = await import('../language-configuration');
 
     setupMonacoSlang(monaco as never);
     setupMonacoSlang(monaco as never);
@@ -713,19 +718,23 @@ describe('setupMonacoSlang', () => {
     expect(monaco.languages.register).not.toHaveBeenCalled();
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
+    expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledTimes(1);
+    expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith('slang', configuration);
   });
 
-  it('registers only the Slang Monarch tokenizer API', async () => {
+  it('registers only the Slang tokenizer and language-configuration APIs', async () => {
     const languages: { id: string }[] = [];
     const monaco = {
       languages: {
         getLanguages: vi.fn(() => languages),
         register: vi.fn((language: { id: string }) => languages.push(language)),
         setMonarchTokensProvider: vi.fn(),
+        setLanguageConfiguration: vi.fn(),
       },
     };
     const { setupMonacoSlang } = await import('../setup');
     const { slangLanguageDefinition: definition } = await import('../slang-language');
+    const { shaderLanguageConfiguration: configuration } = await import('../language-configuration');
 
     expect(setupMonacoSlang(monaco as never)).toBeUndefined();
     expect(setupMonacoSlang(monaco as never)).toBeUndefined();
@@ -734,6 +743,8 @@ describe('setupMonacoSlang', () => {
     expect(monaco.languages.register).toHaveBeenCalledWith({ id: 'slang' });
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledTimes(1);
     expect(monaco.languages.setMonarchTokensProvider).toHaveBeenCalledWith('slang', definition);
+    expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledTimes(1);
+    expect(monaco.languages.setLanguageConfiguration).toHaveBeenCalledWith('slang', configuration);
     expect((self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment).toBeUndefined();
   });
 });
@@ -742,8 +753,10 @@ describe('Slang package exports', () => {
   it('exports the language definition and setup function from the public entry point', async () => {
     const exports = await import('../index');
     const { slangLanguageDefinition: definition } = await import('../slang-language');
+    const { shaderLanguageConfiguration: configuration } = await import('../language-configuration');
 
     expect(exports.slangLanguageDefinition).toBe(definition);
+    expect(exports.shaderLanguageConfiguration).toBe(configuration);
     expect(exports.setupMonacoSlang).toEqual(expect.any(Function));
   });
 });
