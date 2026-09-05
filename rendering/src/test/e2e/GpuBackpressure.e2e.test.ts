@@ -56,12 +56,27 @@ async function sampleMaxInFlight(language: ShaderLanguage, windowMs: number): Pr
     await harness.compile({ image: heavy[language] });
     harness.engine.startRenderLoop();
 
+    // A setTimeout poll races the render loop on an independent clock, and
+    // can land outside the brief window a fence is actually outstanding —
+    // worse under Chromium's background-timer throttling on a CI runner.
+    // Sampling via requestAnimationFrame instead ties each check to the same
+    // clock the loop itself renders on: registered right after
+    // startRenderLoop(), it runs later within the very frame the loop just
+    // rendered, so it always sees that tick's just-tracked frame before the
+    // next tick releases it.
     let maxSeen = 0;
     const deadline = performance.now() + windowMs;
-    while (performance.now() < deadline) {
-      maxSeen = Math.max(maxSeen, inFlightCount(harness.engine, language));
-      await new Promise<void>((resolve) => setTimeout(resolve, 4));
-    }
+    await new Promise<void>((resolve) => {
+      const sample = () => {
+        maxSeen = Math.max(maxSeen, inFlightCount(harness.engine, language));
+        if (performance.now() < deadline) {
+          requestAnimationFrame(sample);
+        } else {
+          resolve();
+        }
+      };
+      requestAnimationFrame(sample);
+    });
 
     harness.engine.stopRenderLoop();
     return maxSeen;
