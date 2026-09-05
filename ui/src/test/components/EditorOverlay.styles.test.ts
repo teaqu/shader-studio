@@ -2,15 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const workspaceComponentPath = resolve(process.cwd(), 'ui/src/lib/components/EditorOverlay.svelte');
+const workspaceComponentPath = resolve(process.cwd(), 'ui/src/lib/components/ShaderEditor.svelte');
 const componentPath = existsSync(workspaceComponentPath)
   ? workspaceComponentPath
-  : resolve(process.cwd(), 'src/lib/components/EditorOverlay.svelte');
+  : resolve(process.cwd(), 'src/lib/components/ShaderEditor.svelte');
 const component = readFileSync(componentPath, 'utf8');
 
 function rule(selector: string): string {
   const match = component.match(new RegExp(`${selector.replace(/[.+()]/g, '\\$&')}\\s*{[^}]*}`, 's'));
-  expect(match, `${selector} is missing from EditorOverlay.svelte`).toBeTruthy();
+  expect(match, `${selector} is missing from ShaderEditor.svelte`).toBeTruthy();
   return match![0];
 }
 

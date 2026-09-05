@@ -33,6 +33,9 @@
   --vscode-input-background: #ffffff;
   --vscode-input-foreground: #1f1f1f;
   --vscode-input-border: #cecece;
+  --vscode-dropdown-background: #ffffff;
+  --vscode-dropdown-foreground: #1f1f1f;
+  --vscode-dropdown-border: #cecece;
   --vscode-focusBorder: #005fb8;
   --vscode-badge-background: #c4c4c4;
   --vscode-button-background: #005fb8;
@@ -83,6 +86,9 @@
   --vscode-input-background: #313131;
   --vscode-input-foreground: #cccccc;
   --vscode-input-border: #3c3c3c;
+  --vscode-dropdown-background: #313131;
+  --vscode-dropdown-foreground: #cccccc;
+  --vscode-dropdown-border: #3c3c3c;
   --vscode-focusBorder: #007fd4;
   --vscode-badge-background: #4d4d4d;
   --vscode-button-background: #0e639c;

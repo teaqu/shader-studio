@@ -65,6 +65,7 @@ nav:
   - Getting Started:
       - Overview: index.md
       - Quick Start: quick-start.md
+      - Standalone Mode: standalone.md
   - Features:
       - Configure Buffers And Inputs: features/config-buffers.md
       - Compute Passes: features/compute.md

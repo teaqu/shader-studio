@@ -41,6 +41,7 @@
   let layoutMode = $state<'grid' | 'row'>(compact ? 'row' : 'grid');
   let showOptions = $state(false);
   let hideFailedShaders = $state(false);
+  let hideBufferShaders = $state(true);
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
@@ -51,7 +52,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect, layoutMode, showOptions };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, openFilesOnSelect, layoutMode, showOptions };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -63,6 +64,7 @@
     search,
     searchResultPaths,
     hideFailedShaders,
+    hideBufferShaders,
     failedShaderPaths: failedShaders,
     sortBy,
     sortOrder,
@@ -82,6 +84,7 @@
     sortBy;
     sortOrder;
     pageSize;
+    hideBufferShaders;
     currentPage = 1;
   });
 
@@ -139,14 +142,15 @@
       vscode = hostApi ?? acquireVsCodeApi();
       searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
 
-      vscode.postMessage({ type: 'requestShaders' });
-
       const unsubscribe = hostApi?.onMessage
         ? hostApi.onMessage(handleMessage)
         : (() => {
           window.addEventListener('message', handleMessage);
           return () => window.removeEventListener('message', handleMessage);
         })();
+
+      // Subscribe before requesting: standalone hosts can respond immediately.
+      vscode.postMessage({ type: 'requestShaders' });
 
       return () => {
         unsubscribe();
@@ -188,6 +192,9 @@
           }
           if (typeof message.savedState.hideFailedShaders === 'boolean') {
             hideFailedShaders = message.savedState.hideFailedShaders;
+          }
+          if (typeof message.savedState.hideBufferShaders === 'boolean') {
+            hideBufferShaders = message.savedState.hideBufferShaders;
           }
           if (typeof message.savedState.openFilesOnSelect === 'boolean') {
             openFilesOnSelect = message.savedState.openFilesOnSelect;
@@ -347,6 +354,10 @@
           <option value={50}>Show 50</option>
           <option value={100}>Show 100</option>
         </select>
+        <label class="checkbox-control">
+          <input type="checkbox" bind:checked={hideBufferShaders} />
+          <span class="checkbox-label">Hide Buffers</span>
+        </label>
         <label class="checkbox-control">
           <input type="checkbox" bind:checked={hideFailedShaders} />
           <span class="checkbox-label">Hide Failed</span>

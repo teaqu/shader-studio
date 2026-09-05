@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
+import { render, screen, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MenuBar from '../../lib/components/MenuBar.svelte';
@@ -117,8 +117,8 @@ describe('MenuBar', () => {
   }
 
   beforeEach(() => {
-    vi.clearAllMocks();
     resetHost();
+    vi.clearAllMocks();
     mockResCtrl = createMockResCtrl();
   });
 
@@ -455,40 +455,15 @@ describe('MenuBar', () => {
       expect(screen.getByText('Save current layout')).toBeTruthy();
     });
   });
-
-  it('shows a documentation link only when the host supplies one', async () => {
+  it('keeps reset available but hides unsupported profile actions', async () => {
+    configureHost({ capabilities: { layoutProfiles: false } });
     renderMenuBar(defaultProps);
     await fireEvent.click(screen.getByLabelText('Open options menu'));
-    expect(screen.queryByLabelText('Open documentation')).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByLabelText('Switch layout profile'));
+    expect(screen.getByLabelText('Reset default layout')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Restore saved layout')).not.toBeInTheDocument();
+    expect(screen.queryByText('Save current layout')).not.toBeInTheDocument();
+    expect(screen.queryByText('Manage profiles…')).not.toBeInTheDocument();
   });
 
-  it('links to the docs site and closes the menu when the host supplies one', async () => {
-    configureHost({ docsUrl: 'https://teaqu.github.io/shader-studio/docs/' });
-    renderMenuBar(defaultProps);
-
-    await fireEvent.click(screen.getByLabelText('Open options menu'));
-    const docsLink = screen.getByLabelText('Open documentation');
-    expect(docsLink).toHaveAttribute('href', 'https://teaqu.github.io/shader-studio/docs/');
-    expect(docsLink).toHaveAttribute('target', '_blank');
-    expect(docsLink).toHaveAttribute('rel', 'noopener noreferrer');
-
-    await fireEvent.click(docsLink);
-    expect(screen.queryByLabelText('Open documentation')).not.toBeInTheDocument();
-  });
-
-  it('only clears the web workspace after confirmation', async () => {
-    const onClearWorkspace = vi.fn().mockResolvedValue(undefined);
-    const confirmSpy = vi.spyOn(window, 'confirm');
-    confirmSpy.mockReturnValueOnce(false);
-    configureHost({ supportsClearWorkspace: true });
-    renderMenuBar({ ...defaultProps, onClearWorkspace });
-
-    await fireEvent.click(screen.getByLabelText('Open options menu'));
-    await fireEvent.click(screen.getByLabelText('Clear web workspace'));
-    expect(onClearWorkspace).not.toHaveBeenCalled();
-
-    confirmSpy.mockReturnValueOnce(true);
-    await fireEvent.click(screen.getByLabelText('Clear web workspace'));
-    expect(onClearWorkspace).toHaveBeenCalledOnce();
-  });
 });

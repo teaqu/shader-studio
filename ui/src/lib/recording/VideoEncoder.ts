@@ -72,7 +72,11 @@ export class VideoEncoderWrapper {
   }
 
   addFrame(canvas: HTMLCanvasElement, timestampUs: number): void {
-    const frame = new VideoFrame(canvas, { timestamp: timestampUs });
+    // Firefox preserves a missing duration as null; the MP4 muxer requires it.
+    const frame = new VideoFrame(canvas, {
+      timestamp: timestampUs,
+      duration: Math.round(1_000_000 / this.fps),
+    });
     this.encoder.encode(frame, {
       keyFrame: this.frameCount % (this.fps * 2) === 0,
     });

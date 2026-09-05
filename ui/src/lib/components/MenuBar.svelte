@@ -29,7 +29,7 @@
 
   import type { AudioVideoController } from "../AudioVideoController";
   import { getActiveProfile, getProfileList, switchTo, saveProfile, restoreActiveProfile } from '../state/profileStore.svelte';
-  import { getHostDocsUrl, getHostSupportsClearWorkspace } from "../state/hostState.svelte";
+  import { getHostCapabilities } from "../state/hostState.svelte";
   import ProfileModal from './ProfileModal.svelte';
   import { portal } from '../actions/portal';
   import { computeMenuPos } from '../utils/menuPos';
@@ -76,7 +76,6 @@
     isRecording?: boolean;
     isRecordingPanelVisible?: boolean;
     onToggleRecordingPanel?: () => void;
-    onClearWorkspace?: () => void | Promise<void>;
   };
 
   let {
@@ -121,7 +120,6 @@
     isRecording = false,
     isRecordingPanelVisible = false,
     onToggleRecordingPanel = () => {},
-    onClearWorkspace = () => {},
   }: Props = $props();
 
   // Resolution state from context
@@ -189,9 +187,6 @@
   let isPauseTooltipTriggerHovered = $state(false);
   let isPauseTooltipHovered = $state(false);
   let isPauseTooltipHoverArmed = $state(false);
-
-  const docsUrl = $derived(getHostDocsUrl());
-  const canClearWorkspace = $derived(getHostSupportsClearWorkspace());
 
   const compileModeIcons: Record<CompileMode, string> = {
     hot: "flame",
@@ -289,14 +284,6 @@
     event.stopPropagation();
     showOptionsMenu = false;
     onRefresh();
-  }
-
-  async function handleClearWorkspace(): Promise<void> {
-    if (!window.confirm('Clear the entire workspace and all saved browser state? This cannot be undone.')) {
-      return;
-    }
-    showOptionsMenu = false;
-    await onClearWorkspace();
   }
 
   function handleConfig(event: MouseEvent) {
@@ -912,7 +899,7 @@
     >
       <div style="display:flex;align-items:center;gap:8px">
         <i class="codicon codicon-layout"></i>
-        <span>Layout: {getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}</span>
+        <span>{#if !getHostCapabilities().layoutProfiles}Layout{:else}Layout: {getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}{/if}</span>
       </div>
       <i class="codicon codicon-chevron-right"></i>
     </button>
@@ -1010,34 +997,6 @@
       <i class="codicon codicon-book"></i>
       <span>Shader Explorer</span>
     </button>
-    {#if docsUrl || canClearWorkspace}
-      <div class="options-menu-divider"></div>
-    {/if}
-    {#if docsUrl}
-      <a
-        class="options-menu-item"
-        href={docsUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open documentation"
-        onclick={() => {
-          showOptionsMenu = false;
-        }}
-      >
-        <i class="codicon codicon-link-external"></i>
-        <span>Documentation</span>
-      </a>
-    {/if}
-    {#if canClearWorkspace}
-      <button
-        class="options-menu-item"
-        onclick={handleClearWorkspace}
-        aria-label="Clear web workspace"
-      >
-        <i class="codicon codicon-trash"></i>
-        <span>Clear Workspace</span>
-      </button>
-    {/if}
     <div class="options-menu-divider"></div>
     <div class="options-menu-item compile-mode-menu-item">
       <span>Mode</span>
@@ -1154,60 +1113,62 @@
     class="layout-submenu-portal"
     style="top: {submenuPos.top}px; left: {submenuPos.left}px; visibility: {submenuVisible ? 'visible' : 'hidden'};"
   >
-    {#each getProfileList() as profile}
-      <button
-        class="layout-submenu-item"
-        class:active={profile.id === getActiveProfile()}
-        onclick={() => {
-          switchTo(profile.id); showLayoutMenu = false; showOptionsMenu = false;
-        }}
-      >
-        {#if profile.id === getActiveProfile()}
-          <i class="codicon codicon-check"></i>
-        {:else}
-          <span class="check-placeholder"></span>
-        {/if}
-        {profile.name}
-      </button>
-    {/each}
-    <div class="options-menu-divider"></div>
-    {#if confirmingSave}
-      <div class="layout-submenu-confirm">
-        <span>Save to "{getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}"? Are you sure?</span>
-        <div class="layout-submenu-confirm-btns">
-          <button class="confirm-btn confirm-yes" onclick={async (e) => {
-            e.stopPropagation();
-            await saveProfile(); confirmingSave = false; showLayoutMenu = false; showOptionsMenu = false;
-          }}>Yes</button>
-          <button class="confirm-btn confirm-no" onclick={(e) => {
-            e.stopPropagation();
-            confirmingSave = false;
-          }}>Cancel</button>
+    {#if getHostCapabilities().layoutProfiles}
+      {#each getProfileList() as profile}
+        <button
+          class="layout-submenu-item"
+          class:active={profile.id === getActiveProfile()}
+          onclick={() => {
+            switchTo(profile.id); showLayoutMenu = false; showOptionsMenu = false;
+          }}
+        >
+          {#if profile.id === getActiveProfile()}
+            <i class="codicon codicon-check"></i>
+          {:else}
+            <span class="check-placeholder"></span>
+          {/if}
+          {profile.name}
+        </button>
+      {/each}
+      <div class="options-menu-divider"></div>
+      {#if confirmingSave}
+        <div class="layout-submenu-confirm">
+          <span>Save to "{getProfileList().find(p => p.id === getActiveProfile())?.name ?? getActiveProfile()}"? Are you sure?</span>
+          <div class="layout-submenu-confirm-btns">
+            <button class="confirm-btn confirm-yes" onclick={async (e) => {
+              e.stopPropagation();
+              await saveProfile(); confirmingSave = false; showLayoutMenu = false; showOptionsMenu = false;
+            }}>Yes</button>
+            <button class="confirm-btn confirm-no" onclick={(e) => {
+              e.stopPropagation();
+              confirmingSave = false;
+            }}>Cancel</button>
+          </div>
         </div>
-      </div>
-    {:else}
+      {:else}
+        <button
+          class="layout-submenu-item"
+          onclick={(e) => {
+            e.stopPropagation();
+            confirmingSave = true;
+          }}
+        >
+          <i class="codicon codicon-save"></i>
+          Save current layout
+        </button>
+      {/if}
       <button
         class="layout-submenu-item"
-        onclick={(e) => {
-          e.stopPropagation();
-          confirmingSave = true;
+        onclick={async () => {
+          await restoreActiveProfile(); showLayoutMenu = false; showOptionsMenu = false;
         }}
+        aria-label="Restore saved layout"
+        disabled={!hasShader}
       >
-        <i class="codicon codicon-save"></i>
-        Save current layout
+        <i class="codicon codicon-history"></i>
+        Restore Saved Layout
       </button>
     {/if}
-    <button
-      class="layout-submenu-item"
-      onclick={async () => {
-        await restoreActiveProfile(); showLayoutMenu = false; showOptionsMenu = false;
-      }}
-      aria-label="Restore saved layout"
-      disabled={!hasShader}
-    >
-      <i class="codicon codicon-history"></i>
-      Restore Saved Layout
-    </button>
     <button
       class="layout-submenu-item"
       onclick={() => {
@@ -1219,15 +1180,17 @@
       <i class="codicon codicon-debug-restart"></i>
       Reset to Default
     </button>
-    <button
-      class="layout-submenu-item"
-      onclick={() => {
-        showProfileModal = true; showLayoutMenu = false; showOptionsMenu = false;
-      }}
-    >
-      <i class="codicon codicon-settings"></i>
-      Manage profiles…
-    </button>
+    {#if getHostCapabilities().layoutProfiles}
+      <button
+        class="layout-submenu-item"
+        onclick={() => {
+          showProfileModal = true; showLayoutMenu = false; showOptionsMenu = false;
+        }}
+      >
+        <i class="codicon codicon-settings"></i>
+        Manage profiles…
+      </button>
+    {/if}
   </div>
 {/if}
 

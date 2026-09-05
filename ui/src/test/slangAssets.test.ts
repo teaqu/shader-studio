@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getSlangAssetUrls, installSlangAssetMetadata } from '../lib/slangAssets';
+import { getSlangAssetUrls } from '../lib/slangAssets';
 
 describe('getSlangAssetUrls', () => {
   afterEach(() => {
@@ -17,11 +17,4 @@ describe('getSlangAssetUrls', () => {
     expect(getSlangAssetUrls().debugTimings).toBe(true);
   });
 
-  it('installs the asset metadata required by the embedded Shader Explorer', () => {
-    installSlangAssetMetadata();
-
-    expect(document.querySelector<HTMLMetaElement>('meta[name="shader-studio-slang-script-url"]')?.content).toBeTruthy();
-    expect(document.querySelector<HTMLMetaElement>('meta[name="shader-studio-slang-wasm-url"]')?.content).toBeTruthy();
-    expect(document.querySelector<HTMLMetaElement>('meta[name="shader-studio-slang-worker-url"]')?.content).toBeTruthy();
-  });
 });

@@ -4,8 +4,12 @@ import { getLanguageServiceSettings } from "../state/languageServiceState.svelte
 
 export class LanguageServiceController {
   private readonly cleanup: () => void;
+  private disposed = false;
 
-  constructor(private readonly manager: MonacoLanguageServiceManager) {
+  constructor(
+    private readonly manager: MonacoLanguageServiceManager,
+    private readonly releaseManager: () => void = () => manager.dispose(),
+  ) {
     this.cleanup = $effect.root(() => {
       $effect(() => {
         const settings = getLanguageServiceSettings();
@@ -21,7 +25,11 @@ export class LanguageServiceController {
   }
 
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
     this.cleanup();
-    this.manager.dispose();
+    this.releaseManager();
   }
 }

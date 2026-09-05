@@ -32,6 +32,8 @@ export const shaderStudioTransparentTheme = {
   ...shaderStudioTheme,
   colors: {
     'editor.background': '#00000000',
+    'editorHoverWidget.background': '#1e1e1e',
+    'editorSuggestWidget.background': '#1e1e1e',
     'editor.lineHighlightBackground': '#ffffff12',
     'editor.lineHighlightBorder': '#ffffff08',
     'editorGutter.background': '#00000000',
@@ -71,6 +73,8 @@ export const shaderStudioTransparentLightTheme = {
   ],
   colors: {
     'editor.background': '#00000000',
+    'editorHoverWidget.background': '#ffffff',
+    'editorSuggestWidget.background': '#ffffff',
     'editor.foreground': '#1f1f1f',
     'editor.lineHighlightBackground': '#0000000d',
     'editor.lineHighlightBorder': '#00000000',

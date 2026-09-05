@@ -212,7 +212,7 @@ const monacoMock = {
 // Mock Monaco editor entrypoints — the static import in EditorOverlay.svelte would
 // crash jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
 vi.mock('monaco-editor', () => monacoMock);
-vi.mock('monaco-editor/esm/vs/editor/editor.api', () => monacoMock);
+vi.mock('monaco-editor/esm/vs/editor/editor.api.js', () => monacoMock);
 vi.mock('monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError', () => {
   monacoContributionLoadState.gotoError += 1;
   return {};

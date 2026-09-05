@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     projects: [
       'types/vitest.config.ts',
-      'web-host/vitest.config.ts',
+      'standalone/vitest.config.ts',
       'ui/vitest.config.ts',
       'debug/vitest.config.ts',
       'language-servers/core/vitest.config.ts',

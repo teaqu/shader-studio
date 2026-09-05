@@ -7,6 +7,8 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'ui/**'
+      - 'standalone/**'
+      - 'shader-explorer/**'
       - 'rendering/**'
       - 'types/**'
       - 'debug/**'
@@ -59,13 +61,13 @@ jobs:
         run: mkdocs build --strict
 
       - name: Build web app
-        run: npm run build:web -w ui
+        run: npm run build:standalone
 
       - name: Assemble combined Pages output
         run: |
           mkdir -p public/docs public/app
           cp -r site/. public/docs/
-          cp -r ui/dist/. public/app/
+          cp -r standalone/dist/. public/app/
           cat > public/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">

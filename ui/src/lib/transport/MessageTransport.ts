@@ -22,7 +22,5 @@ export interface Transport {
   onMessage(handler: (event: MessageEvent) => void): void;
   dispose(): void;
   getType(): 'vscode' | 'websocket' | 'web';
-  getShaderExplorerHostApi?(): ShaderExplorerHostApi;
-  clearWorkspace?(): Promise<void>;
   isConnected(): boolean;
 }

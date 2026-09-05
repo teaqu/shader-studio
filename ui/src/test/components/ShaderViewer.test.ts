@@ -1,3 +1,4 @@
+import { getViewerSession } from '../../lib/state/viewerSession.svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
@@ -601,19 +602,31 @@ describe('ShaderViewer', () => {
     expect(mockTransport.onMessage).toHaveBeenCalled();
   });
 
-  it('shows a notice banner only when the host supplies one', async () => {
-    configureHost({ notice: 'Web mode is in alpha.' });
-    const { container, unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
-
-    const warning = screen.getByTestId('web-alpha-warning');
-    expect(warning).toHaveTextContent('Web mode is in alpha.');
-    expect(container.querySelector('.main-container')?.firstElementChild).toBe(warning);
-
+  it('publishes the active shader session and releases it when the viewer unmounts', async () => {
+    const { unmount } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await loadShader();
+    expect(getViewerSession()).toMatchObject({
+      ready: true,
+      selectedShaderPath: '/test/shader.glsl',
+      shaderPath: '/test/shader.glsl',
+      shaderCode: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      activeBufferName: 'Image',
+    });
+    compileModeStore.setMode('manual');
+    await tick();
+    expect(getViewerSession()?.compileMode).toBe('manual');
     unmount();
-    resetHost();
-    render(ShaderViewer, { onInitialized: vi.fn() });
+    expect(getViewerSession()).toBeNull();
+  });
 
+  it('keeps shell panels and notices outside the viewer', async () => {
+    configureHost({ capabilities: { layoutProfiles: false } });
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
     expect(screen.queryByTestId('web-alpha-warning')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="web-editor"]')).toBeNull();
+    expect(container.querySelector('[data-testid="web-shader-explorer"]')).toBeNull();
   });
 
   it('should disable shader inputs while editor overlay is visible', async () => {
@@ -2579,6 +2592,24 @@ describe('ShaderViewer', () => {
 
     const varInspectorButtonAfterRemount = screen.getByLabelText('Toggle variable inspector');
     expect(varInspectorButtonAfterRemount.classList.contains('active')).toBe(false);
+  });
+
+  it('uses host-resolved file paths for script double clicks', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+    const messageHandler = mockTransport.onMessage.mock.calls[0][0];
+    await messageHandler({ data: {
+      type: 'shaderSource', path: '/test/shader.glsl', code: '',
+      config: { version: '1.0', script: '../script.ts', passes: { Image: {} } },
+      bufferPathMap: { '../script.ts': '/script.ts' },
+    } });
+    await tick();
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.doubleClick(container.querySelector('[data-tab-name="Script"]')!);
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'navigateToBuffer', payload: {
+      bufferPath: '/script.ts', shaderPath: '/test/shader.glsl', mode: 'active',
+    } });
   });
 
   it('should update config when not locked', async () => {

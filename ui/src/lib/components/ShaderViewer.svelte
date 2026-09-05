@@ -12,19 +12,14 @@
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
+  import { getHostCapabilities } from "../state/hostState.svelte";
+  import { setViewerSession } from "../state/viewerSession.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
-  import {
-    getHostExplorer,
-    getHostNewShaderModal,
-    getHostNotice,
-    getHostProvidesEditingSurface,
-    getHostSupportsClearWorkspace,
-  } from "../state/hostState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
   import { VariableCaptureManager } from "../VariableCaptureManager";
@@ -173,25 +168,11 @@
   let pendingSwapMessage: MessageEvent | null = null;
   let pendingSwapStartedAt: number | null = null;
   let transport: Transport = createTransport();
-  const HostExplorer = $derived(getHostExplorer());
-  const HostNewShaderModal = $derived(getHostNewShaderModal());
-  const canClearWorkspace = $derived(getHostSupportsClearWorkspace());
-  const providesEditingSurface = getHostProvidesEditingSurface();
-  const hostNotice = $derived(getHostNotice());
-  let showNewShaderModal = $state(false);
-  const shaderExplorerHostApi = transport.getShaderExplorerHostApi?.();
   let layoutSlot = transport.getType() === 'vscode'
     ? (getInjectedLayoutSlot() ?? 'vscode:1')
     : allocateWebLayoutSlot();
   const profileAdapter = new FileProfileAdapter(transport);
   let timeManager: any = null;
-
-  async function handleClearWebWorkspace(): Promise<void> {
-    await transport.clearWorkspace?.();
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.reload();
-  }
   let pixelInspectorManager: PixelInspectorManager | undefined;
   let shaderDebugManager = $state<ShaderDebugManager | undefined>(undefined);
   let variableCaptureManager = $state<VariableCaptureManager | undefined>(undefined);
@@ -250,7 +231,6 @@
   // Editor overlay state
   let editorOverlayVisible = $derived(hasShader && getEditorOverlayVisible());
   let editorVimMode = $derived(getVimMode());
-  let webEditorVimMode = $state(false);
   let currentShaderCode = $state('');
   let originalShaderCode = $state('');
   let editorBufferName = $state('Image');
@@ -258,6 +238,7 @@
   let editorFileCode = $state('');
   let editorBufferNames = $state<string[]>(['Image']);
   let configSelectedBuffer = $state('Image');
+
   // Resolution controller — created at component level so setContext works synchronously
   const resolutionController = new ResolutionSessionController({
     get currentConfig() {
@@ -359,7 +340,6 @@
     onTogglePerformancePanel: handleTogglePerformancePanel,
     isRecordingPanelVisible: $recordingPanelStore.isVisible,
     onToggleRecordingPanel: handleToggleRecordingPanel,
-    onClearWorkspace: handleClearWebWorkspace,
     isEditorOverlayVisible: editorOverlayVisible,
     onToggleEditorOverlay: () => editorOverlayManager?.toggle(),
     isVimModeEnabled: editorVimMode,
@@ -379,12 +359,31 @@
     onManualCompile: handleManualCompile,
   }));
 
+  $effect(() => {
+    setViewerSession({
+      ready: initialized,
+      shaderCode: editorFileCode,
+      shaderPath: editorFilePath,
+      selectedShaderPath: shaderPath,
+      transport,
+      config: currentConfig,
+      customUniformInfo: authoringUniformInfo,
+      slangModules,
+      compileMode: $compileModeStore.mode,
+      bufferNames: editorBufferNames,
+      activeBufferName: editorBufferName,
+      errors,
+      onCodeChange: handleEditorCodeChange,
+      onBufferSwitch: handleOverlayBufferSwitch,
+      onCursorChange: (line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName),
+    });
+  });
+
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
-    if (providesEditingSurface) {
-      return;
+    if (getHostCapabilities().layoutProfiles) {
+      await initProfiles(profileAdapter);
     }
-    await initProfiles(profileAdapter);
   });
 
   // Subscribe to config/debug panel stores
@@ -678,6 +677,8 @@
     let bufferPath: string | undefined;
     if (actualName === "Image") {
       bufferPath = shaderPath;
+    } else if (bufferPathMap[actualName]) {
+      bufferPath = bufferPathMap[actualName];
     } else if (actualName.startsWith("./") || actualName.startsWith("../")) {
       // Resolve relative path against shader directory
       const shaderDir = shaderPath.substring(0, shaderPath.lastIndexOf("/"));
@@ -827,11 +828,6 @@
       return;
     }
     transport.postMessage({ type: 'extensionCommand', payload: { command } });
-  }
-
-  function handleCreateShader(name: string, language: 'glsl' | 'slang') {
-    transport.postMessage({ type: 'createShader', payload: { name, language } });
-    showNewShaderModal = false;
   }
 
   function handleSetCompileMode(mode: CompileMode) {
@@ -1082,11 +1078,6 @@
 
     if (type === 'languageServiceSettings') {
       setLanguageServiceSettings(event.data.payload);
-      return;
-    }
-
-    if (type === 'showNewShaderModal') {
-      showNewShaderModal = true;
       return;
     }
 
@@ -1457,8 +1448,6 @@
   let configEl: HTMLElement;
   let performanceEl: HTMLElement;
   let recordingEl: HTMLElement;
-  let editorEl = $state<HTMLElement>(undefined!);
-  let webExplorerEl = $state<HTMLElement>(undefined!);
 
   function createMountFn(getEl: () => HTMLElement): (container: HTMLElement) => () => void {
     return (container) => {
@@ -1479,10 +1468,9 @@
   const mountConfig = createMountFn(() => configEl);
   const mountPerformance = createMountFn(() => performanceEl);
   const mountRecording = createMountFn(() => recordingEl);
-  const mountEditor = createMountFn(() => editorEl);
-  const mountWebExplorer = createMountFn(() => webExplorerEl);
 
   onDestroy(() => {
+    setViewerSession(null);
     resetVariablePreview();
     if (transport?.getType() !== 'vscode') {
       releaseWebLayoutSlot();
@@ -1512,12 +1500,7 @@
 </script>
 
 <div class="main-container" role="application" onmousemove={handleCanvasMouseMove}>
-  {#if hostNotice}
-    <aside class="web-alpha-warning" data-testid="web-alpha-warning" role="note">
-      {hostNotice}
-    </aside>
-  {/if}
-  <div class="dockview-panel-source" bind:this={previewEl} data-testid={providesEditingSurface ? 'web-preview' : undefined}>
+  <div class="dockview-panel-source" bind:this={previewEl}>
     {#key engineLanguage}
       <ShaderCanvas
         {zoomLevel}
@@ -1618,43 +1601,6 @@
       />
     {/if}
   </div>
-  {#if providesEditingSurface}
-    <div class="dockview-panel-source" bind:this={editorEl} data-testid="web-editor">
-      {#if initialized}
-        <EditorOverlay
-          isVisible={true}
-          displayMode="pane"
-          shaderCode={editorFileCode}
-          shaderPath={editorFilePath}
-          {transport}
-          onCodeChange={handleEditorCodeChange}
-          compileMode={$compileModeStore.mode}
-          config={currentConfig}
-          customUniformInfo={authoringUniformInfo}
-          {slangModules}
-          vimMode={webEditorVimMode}
-          showVimToggle={true}
-          onToggleVimMode={() => webEditorVimMode = !webEditorVimMode}
-          bufferNames={editorBufferNames}
-          activeBufferName={editorBufferName}
-          onBufferSwitch={handleOverlayBufferSwitch}
-          onCursorChange={(line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName)}
-          {errors}
-        />
-      {/if}
-    </div>
-    <div class="dockview-panel-source" bind:this={webExplorerEl}>
-      {#if initialized}
-        {#if HostExplorer}
-          <HostExplorer
-            hostApi={shaderExplorerHostApi}
-            compact={true}
-            selectedShaderPath={shaderPath}
-          />
-        {/if}
-      {/if}
-    </div>
-  {/if}
 
   <DockviewLayout
     {mountPreview}
@@ -1662,10 +1608,6 @@
     {mountConfig}
     {mountPerformance}
     {mountRecording}
-    {mountEditor}
-    showEditorPanel={providesEditingSurface}
-    {mountWebExplorer}
-    showWebExplorerPanel={providesEditingSurface}
     showDebugPanel={$debugPanelStore.isVisible}
     showConfigPanel={$configPanelStore.isVisible}
     showPerformancePanel={$performancePanelStore.isVisible}
@@ -1678,13 +1620,15 @@
     on:configClosed={handleConfigClosed}
     on:performanceClosed={handlePerformanceClosed}
     on:recordingClosed={handleRecordingClosed}
+    on:toolRestored={(event) => {
+      const stores = { debug: debugPanelStore, config: configPanelStore, performance: performancePanelStore, recording: recordingPanelStore };
+      stores[event.detail].setVisible(true);
+    }}
   />
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />
   {/if}
-  {#if HostNewShaderModal && showNewShaderModal}
-    <HostNewShaderModal onCreate={handleCreateShader} onClose={() => showNewShaderModal = false} />
-  {/if}
+
 </div>
 
 <style>
@@ -1708,16 +1652,5 @@
     color: rgba(255, 255, 255, 0.72);
     font-size: 13px;
     letter-spacing: 0.08em;
-  }
-
-  .web-alpha-warning {
-    flex-shrink: 0;
-    padding: 3px 10px;
-    border-bottom: 1px solid var(--vscode-panel-border);
-    background: var(--vscode-sideBar-background);
-    color: var(--vscode-descriptionForeground);
-    font-size: 11px;
-    line-height: 1.4;
-    text-align: left;
   }
 </style>

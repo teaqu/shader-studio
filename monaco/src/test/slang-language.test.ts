@@ -28,6 +28,56 @@ import {
   shaderStudioBuiltinUniformNames,
 } from '@shader-studio/types';
 
+// jsdom does not implement CSS.escape, but Monaco uses the browser API when
+// creating scoped style selectors. Keep this test environment browser-faithful
+// with the CSSOM "serialize an identifier" algorithm.
+function cssEscape(value: string): string {
+  const source = String(value);
+  let result = '';
+
+  for (let index = 0; index < source.length; index += 1) {
+    const codeUnit = source.charCodeAt(index);
+    const character = source[index];
+
+    if (codeUnit === 0x0000) {
+      result += '\uFFFD';
+    } else if (
+      (codeUnit >= 0x0001 && codeUnit <= 0x001f)
+      || codeUnit === 0x007f
+      || (index === 0 && codeUnit >= 0x0030 && codeUnit <= 0x0039)
+      || (index === 1 && codeUnit >= 0x0030 && codeUnit <= 0x0039 && source.charCodeAt(0) === 0x002d)
+    ) {
+      result += `\\${codeUnit.toString(16)} `;
+    } else if (index === 0 && source.length === 1 && codeUnit === 0x002d) {
+      result += '\\-';
+    } else if (
+      codeUnit >= 0x0080
+      || codeUnit === 0x002d
+      || codeUnit === 0x005f
+      || (codeUnit >= 0x0030 && codeUnit <= 0x0039)
+      || (codeUnit >= 0x0041 && codeUnit <= 0x005a)
+      || (codeUnit >= 0x0061 && codeUnit <= 0x007a)
+    ) {
+      result += character;
+    } else {
+      result += `\\${character}`;
+    }
+  }
+
+  return result;
+}
+
+if (!globalThis.CSS) {
+  Object.defineProperty(globalThis, 'CSS', { configurable: true, value: {} });
+}
+
+if (!globalThis.CSS.escape) {
+  Object.defineProperty(globalThis.CSS, 'escape', {
+    configurable: true,
+    value: cssEscape,
+  });
+}
+
 interface GrammarPattern {
   name: string;
   match?: string;
@@ -42,7 +92,9 @@ const grammar = JSON.parse(readFileSync(grammarPath, 'utf8')) as {
 
 function findPattern(repositoryKey: string, scope: string): string {
   const pattern = grammar.repository[repositoryKey].patterns?.find((entry) => entry.name === scope);
-  if (!pattern?.match) throw new Error(`Missing ${scope} pattern`);
+  if (!pattern?.match) {
+    throw new Error(`Missing ${scope} pattern`);
+  }
   return pattern.match;
 }
 
@@ -50,13 +102,17 @@ function generalTextMatePreprocessorPattern(): GrammarPattern {
   const pattern = grammar.repository.preprocessor.patterns?.find(
     (entry) => entry.begin?.includes('define|undef'),
   );
-  if (!pattern?.begin) throw new Error('Missing general Slang preprocessor pattern');
+  if (!pattern?.begin) {
+    throw new Error('Missing general Slang preprocessor pattern');
+  }
   return pattern;
 }
 
 function firstGroup(pattern: string): string {
   const start = pattern.indexOf('(');
-  if (start < 0) throw new Error(`Pattern has no group: ${pattern}`);
+  if (start < 0) {
+    throw new Error(`Pattern has no group: ${pattern}`);
+  }
   const contentStart = pattern.startsWith('(?:', start) ? start + 3 : start + 1;
   let depth = 1;
 
@@ -90,7 +146,9 @@ function expandVocabulary(source: string): string[] {
       if (source[position] === '(') {
         position += source.startsWith('?:', position + 1) ? 3 : 1;
         atoms = expression();
-        if (source[position] !== ')') throw new Error(`Unterminated vocabulary group: ${source}`);
+        if (source[position] !== ')') {
+          throw new Error(`Unterminated vocabulary group: ${source}`);
+        }
         position += 1;
       } else {
         atoms = [source[position]];
@@ -158,7 +216,9 @@ function dottedNumberCorpus(): string[] {
         const chain = `${segments.join('.')}${suffix}${trailingDot}`;
         cases.add(`.${chain}`);
         cases.add(`1.${chain}`);
-        for (const identifier of ['a', 'foo']) cases.add(`${identifier}.${chain}`);
+        for (const identifier of ['a', 'foo']) {
+          cases.add(`${identifier}.${chain}`);
+        }
       }
     }
   }
@@ -166,7 +226,14 @@ function dottedNumberCorpus(): string[] {
 }
 
 describe('Slang Monarch language', () => {
-  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api');
+  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api.js');
+
+  it('provides the CSSOM CSS.escape API Monaco uses in jsdom', () => {
+    expect(CSS.escape('0shader')).toBe('\\30 shader');
+    expect(CSS.escape('-0shader')).toBe('-\\30 shader');
+    expect(CSS.escape('a b')).toBe('a\\ b');
+    expect(CSS.escape('\0')).toBe('\uFFFD');
+  });
 
   beforeAll(async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -174,7 +241,7 @@ describe('Slang Monarch language', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })));
-    monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
     const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
     setupMonacoGlsl(monaco);
     setupMonacoSlang(monaco);
@@ -286,7 +353,9 @@ describe('Slang Monarch language', () => {
       const tokens = monaco.editor.tokenize(source, language)[0];
       const offset = source.indexOf(text);
       const token = [...tokens].reverse().find((candidate) => candidate.offset <= offset);
-      if (!token) throw new Error(`Missing ${language} token for ${JSON.stringify(text)}`);
+      if (!token) {
+        throw new Error(`Missing ${language} token for ${JSON.stringify(text)}`);
+      }
       return token.type;
     };
     const parityCases = [

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
+import EditorOverlay from '../../lib/components/ShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
 vi.mock('@shader-studio/monaco', () => ({
@@ -148,20 +148,12 @@ describe('EditorOverlay', () => {
       expect(container.querySelector('.vim-status-bar')).toBeTruthy();
     });
 
-    it('offers an independent Vim toggle when rendered as the web editor pane', () => {
-      const onToggleVimMode = vi.fn();
-      const { getByRole } = render(EditorOverlay, {
-        props: {
-          ...defaultProps,
-          displayMode: 'pane',
-          showVimToggle: true,
-          onToggleVimMode,
-        },
+    it('does not add shell controls when rendered as an editor pane', () => {
+      const { queryByRole } = render(EditorOverlay, {
+        props: { ...defaultProps, displayMode: 'pane' },
       });
 
-      getByRole('button', { name: 'Enable Vim mode' }).click();
-
-      expect(onToggleVimMode).toHaveBeenCalledOnce();
+      expect(queryByRole('button', { name: /vim mode/i })).toBeNull();
     });
 
     it('should destroy editor when visibility changes to false', async () => {
@@ -507,7 +499,7 @@ describe('EditorOverlay', () => {
     });
 
     it('should initialize the GLSL and Slang Monaco tokenizers once', async () => {
-      const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+      const monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
       const { setupMonacoGlsl, setupMonacoSlang } = await import('@shader-studio/monaco');
 
       render(EditorOverlay, { props: defaultProps });
@@ -573,6 +565,28 @@ describe('EditorOverlay', () => {
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
       expect(createCall?.[1]).toMatchObject({ fixedOverflowWidgets: true });
+    });
+
+    it('owns a themed popup container and removes it on disposal', async () => {
+      const monaco = await import('monaco-editor');
+      const overflowWidgetsDomNode = document.createElement('div');
+      const { unmount } = render(EditorOverlay, {
+        props: { ...defaultProps, overflowWidgetsDomNode },
+      });
+      const popup = vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.overflowWidgetsDomNode;
+      expect(popup).not.toBe(overflowWidgetsDomNode);
+      expect(popup?.parentElement).toBe(overflowWidgetsDomNode);
+      expect(popup?.classList.contains('monaco-editor')).toBe(true);
+      unmount();
+      expect(overflowWidgetsDomNode.childElementCount).toBe(0);
+    });
+
+    it('leaves overflow widgets in Monaco’s default DOM node when no portal is supplied', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, { props: defaultProps });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]?.overflowWidgetsDomNode).toBeUndefined();
     });
 
     it('should create a Slang model for a Slang shader', async () => {
@@ -1572,6 +1586,25 @@ describe('EditorOverlay', () => {
 
   // Test group: Content changes and debounced updates
   describe('content changes', () => {
+    it.each(['/other.glsl', '/test.glsl'])('does not persist host-loaded content for %s', async (path) => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      // Simulate Monaco's synchronous content event for programmatic setValue.
+      mockEditor.setValue.mockImplementation((code: string) => {
+        mockEditor.getValue.mockReturnValue(code);
+        getContentChangeCallback()?.();
+      });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as unknown as ReturnType<typeof monaco.editor.create>);
+      const onCodeChange = vi.fn();
+      const { rerender } = render(EditorOverlay, { props: { ...defaultProps, onCodeChange } });
+      await rerender({ shaderPath: path, shaderCode: 'loaded source' });
+      await tick();
+      vi.advanceTimersByTime(500);
+      expect(mockEditor.setValue).toHaveBeenCalledWith('loaded source');
+      expect(onCodeChange).not.toHaveBeenCalled();
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'updateShaderSource' }));
+    });
+
     it('should call onCodeChange after recompile debounce on content change', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();

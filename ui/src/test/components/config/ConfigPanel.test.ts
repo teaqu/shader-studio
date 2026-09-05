@@ -1851,6 +1851,7 @@ describe('ConfigPanel', () => {
   });
 
   describe('double-click sends navigateToBuffer', () => {
+
     it('switches the visible overlay to the double-clicked buffer when unlocked', async () => {
       const config: ShaderConfig = {
         version: '1.0',

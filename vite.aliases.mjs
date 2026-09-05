@@ -6,7 +6,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Source aliases for every in-repo package.
  *
- * Shared by the viewer (`ui`) and the standalone shell (`web-host`) so the two
+ * Shared by the viewer (`ui`) and the standalone shell (`standalone`) so the two
  * builds cannot drift apart. Host-specific entries (`@shader-studio/ui`,
  * `@shader-studio/shader-explorer`) are added by the shell that needs them.
  */

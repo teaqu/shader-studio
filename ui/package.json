@@ -7,14 +7,11 @@
   "scripts": {
     "prebuild": "node scripts/ensure-slang-wasm.mjs",
     "dev": "vite",
-    "dev:web": "vite --mode web",
     "build": "vite build",
-    "build:web": "vite build --mode web",
     "copy-to-extension": "rimraf ../extension/ui-dist && cpx \"dist/**/*\" ../extension/ui-dist",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
-    "test:e2e": "playwright test -c e2e/playwright.config.mjs",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage"
   },

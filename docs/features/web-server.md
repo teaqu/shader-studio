@@ -2,6 +2,8 @@
 
 Run your shader preview in a browser tab for full-screen viewing or working in a browser instead of the VS Code panel.
 
+This mode connects to the running VS Code extension and uses its workspace files. To work without VS Code, use [Standalone Mode](../standalone.md).
+
 ## Steps
 
 1. Click the **Shader Studio** icon in the VS Code status bar.

@@ -31,7 +31,7 @@ export default [{
     "extension/**/*.ts",
     "language-servers/**/*.ts",
     "types/src/**/*.ts",
-    "web-host/src/**/*.ts",
+    "standalone/src/**/*.ts",
     "debug/src/glsl/GlslParser.ts",
     "debug/src/glsl/test/GlslParser.test.ts",
     "debug/src/glsl/test/ShaderDebugger.extractContext.test.ts",

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy, createEventDispatcher } from "svelte";
+  import { onMount, onDestroy, createEventDispatcher, getContext } from "svelte";
+  import { PANEL_HOST_CONTEXT, type PanelHost, type HostedPanelId } from '../layout/PanelHost';
   import {
     createDockview,
     themeVisualStudio,
@@ -14,13 +15,14 @@
   import type { SerializedLayout } from "@shader-studio/types";
 
   const dispatch = createEventDispatcher<{
-    ready: { api: DockviewApi; resetLayout: () => void; showPreview: () => void };
+    ready: { api: DockviewApi | null; resetLayout: () => void; showPreview: () => void };
     previewVisibleChange: boolean;
     previewAloneChange: boolean;
     debugClosed: void;
     configClosed: void;
     performanceClosed: void;
     recordingClosed: void;
+    toolRestored: HostedPanelId;
   }>();
 
   interface Props {
@@ -29,14 +31,10 @@
     mountConfig?: (container: HTMLElement) => (() => void) | void;
     mountPerformance?: (container: HTMLElement) => (() => void) | void;
     mountRecording?: (container: HTMLElement) => (() => void) | void;
-    mountEditor?: (container: HTMLElement) => (() => void) | void;
-    mountWebExplorer?: (container: HTMLElement) => (() => void) | void;
     showDebugPanel?: boolean;
     showConfigPanel?: boolean;
     showPerformancePanel?: boolean;
     showRecordingPanel?: boolean;
-    showEditorPanel?: boolean;
-    showWebExplorerPanel?: boolean;
     transport?: Transport | null;
   }
 
@@ -46,19 +44,18 @@
     mountConfig = () => {},
     mountPerformance = () => {},
     mountRecording = () => {},
-    mountEditor = () => {},
-    mountWebExplorer = () => {},
     showDebugPanel = false,
     showConfigPanel = false,
     showPerformancePanel = false,
     showRecordingPanel = false,
-    showEditorPanel = false,
-    showWebExplorerPanel = false,
     transport = null as Transport | null,
   }: Props = $props();
 
   let containerEl: HTMLElement;
+  const panelHost = getContext<PanelHost | undefined>(PANEL_HOST_CONTEXT);
+  const hostedCleanups: (() => void)[] = [];
   let api: DockviewApi | null = null;
+  let dropListener: { dispose(): void } | undefined;
   let apiReady = $state(false);
   let layoutReady = $state(false);
   let programmaticRemoval = false;
@@ -260,12 +257,6 @@
         case "recording":
           mountFn = mountRecording;
           break;
-        case "editor":
-          mountFn = mountEditor;
-          break;
-        case "web-explorer":
-          mountFn = mountWebExplorer;
-          break;
         default:
           return;
       }
@@ -296,29 +287,6 @@
       title: "Preview",
       renderer: "always",
     });
-
-    if (showEditorPanel) {
-      api.addPanel({
-        id: "editor",
-        component: "editor",
-        title: "Editor",
-        renderer: "always",
-        position: { referencePanel: "preview", direction: "left" },
-        initialWidth: 520,
-      });
-    }
-
-    if (showWebExplorerPanel) {
-      api.addPanel({
-        id: "web-explorer",
-        component: "web-explorer",
-        title: "Shader Explorer",
-        renderer: "always",
-        position: { referencePanel: showEditorPanel ? "editor" : "preview", direction: "left" },
-        initialWidth: 220,
-        maximumWidth: 260,
-      });
-    }
 
     if (showConfigPanel) {
       addConfigPanel();
@@ -367,6 +335,10 @@
   }
 
   function addDebugPanel() {
+    if (panelHost) {
+      panelHost.setVisible('debug', true);
+      return;
+    }
     if (!api || api.getPanel("debug")) {
       return;
     }
@@ -386,6 +358,10 @@
   }
 
   function removeDebugPanel() {
+    if (panelHost) {
+      panelHost.setVisible('debug', false);
+      return;
+    }
     if (!api) {
       return;
     }
@@ -399,6 +375,10 @@
   }
 
   function addConfigPanel() {
+    if (panelHost) {
+      panelHost.setVisible('config', true);
+      return;
+    }
     if (!api || api.getPanel("config")) {
       return;
     }
@@ -458,6 +438,10 @@
   }
 
   function removeConfigPanel() {
+    if (panelHost) {
+      panelHost.setVisible('config', false);
+      return;
+    }
     if (!api) {
       return;
     }
@@ -471,6 +455,10 @@
   }
 
   function addPerformancePanel() {
+    if (panelHost) {
+      panelHost.setVisible('performance', true);
+      return;
+    }
     if (!api || api.getPanel("performance")) {
       return;
     }
@@ -490,6 +478,10 @@
   }
 
   function removePerformancePanel() {
+    if (panelHost) {
+      panelHost.setVisible('performance', false);
+      return;
+    }
     if (!api) {
       return;
     }
@@ -503,6 +495,10 @@
   }
 
   function addRecordingPanel() {
+    if (panelHost) {
+      panelHost.setVisible('recording', true);
+      return;
+    }
     if (!api || api.getPanel("recording")) {
       return;
     }
@@ -522,6 +518,10 @@
   }
 
   function removeRecordingPanel() {
+    if (panelHost) {
+      panelHost.setVisible('recording', false);
+      return;
+    }
     if (!api) {
       return;
     }
@@ -585,7 +585,8 @@
   }
 
   function isRestorableLayout(data: SerializedDockview | null | undefined): data is SerializedDockview {
-    return !!data?.panels && Object.keys(data.panels).length > 0;
+    return !!data?.panels && Object.keys(data.panels).length > 0
+      && (!panelHost || Object.keys(data.panels).every((id) => id === 'preview'));
   }
 
   // Force-read reactive deps before conditions to ensure they are tracked
@@ -593,7 +594,7 @@
   $effect(() => {
     const _debug = showDebugPanel;
     const _ready = layoutReady;
-    if (api && _ready) {
+    if ((api || panelHost) && _ready) {
       if (_debug) {
         addDebugPanel();
       } else {
@@ -605,7 +606,7 @@
   $effect(() => {
     const _config = showConfigPanel;
     const _ready = layoutReady;
-    if (api && _ready) {
+    if ((api || panelHost) && _ready) {
       if (_config) {
         addConfigPanel();
       } else {
@@ -617,7 +618,7 @@
   $effect(() => {
     const _perf = showPerformancePanel;
     const _ready = layoutReady;
-    if (api && _ready) {
+    if ((api || panelHost) && _ready) {
       if (_perf) {
         addPerformancePanel();
       } else {
@@ -629,7 +630,7 @@
   $effect(() => {
     const _recording = showRecordingPanel;
     const _ready = layoutReady;
-    if (api && _ready) {
+    if ((api || panelHost) && _ready) {
       if (_recording) {
         addRecordingPanel();
       } else {
@@ -650,6 +651,29 @@
   });
 
   onMount(() => {
+    if (panelHost) {
+      hostedCleanups.push(
+        panelHost.register('debug', { mount: mountDebug, onClose: () => dispatch('debugClosed'), onRestore: () => dispatch('toolRestored', 'debug') }),
+        panelHost.register('config', { mount: mountConfig, onClose: () => dispatch('configClosed'), onRestore: () => dispatch('toolRestored', 'config') }),
+        panelHost.register('performance', { mount: mountPerformance, onClose: () => dispatch('performanceClosed'), onRestore: () => dispatch('toolRestored', 'performance') }),
+        panelHost.register('recording', { mount: mountRecording, onClose: () => dispatch('recordingClosed'), onRestore: () => dispatch('toolRestored', 'recording') }),
+      );
+      // The shell owns the Preview tab. Mount its content directly, without
+      // creating a second dock inside the shell's panel.
+      const cleanup = mountPreview(containerEl);
+      if (cleanup) {
+        hostedCleanups.push(cleanup);
+      }
+      layoutReady = true;
+      dispatch('previewVisibleChange', true);
+      dispatch('previewAloneChange', true);
+      dispatch('ready', {
+        api: null,
+        resetLayout: () => panelHost.resetLayout?.(),
+        showPreview: () => panelHost.showPreview?.(),
+      });
+      return;
+    }
     api = createDockview(containerEl, {
       createComponent(options) {
         return new SvelteContentRenderer(options.name);
@@ -660,6 +684,13 @@
         className: "shader-studio-dockview-theme",
       },
       disableFloatingGroups: true,
+    });
+
+    // Embedded viewers keep their tabs inside their own dock.
+    dropListener = api.onWillDrop((event) => {
+      if (event.getData()?.viewId !== api?.id) {
+        event.preventDefault();
+      }
     });
 
     apiReady = true;
@@ -720,6 +751,10 @@
 
   onDestroy(() => {
     isDestroying = true;
+    for (const cleanup of hostedCleanups.splice(0)) {
+      cleanup();
+    }
+    dropListener?.dispose();
     document.removeEventListener("pointerdown", handlePointerDown, true);
     document.removeEventListener("pointerup", handlePointerUp, true);
     clearTimeout(sashHoverTimer);
@@ -744,7 +779,7 @@
   });
 </script>
 
-<div class="dockview-container" class:web-layout={showEditorPanel} bind:this={containerEl}></div>
+<div class="dockview-container" bind:this={containerEl}></div>
 
 <style>
   .dockview-container {
@@ -752,25 +787,6 @@
     height: 100%;
     flex: 1;
     overflow: hidden;
-  }
-
-  .dockview-container.web-layout :global(.dv-sash.dv-enabled) {
-    background: var(--vscode-panel-border);
-  }
-
-  .dockview-container.web-layout :global(.dv-sash.dv-enabled:hover),
-  .dockview-container.web-layout :global(.dv-sash.dv-enabled:active) {
-    background: var(--vscode-focusBorder);
-  }
-
-  /* Monaco positions completion and diagnostic widgets against the viewport.
-     Dockview's animation transform changes that fixed-position containing
-     block, shifting the widgets by the editor pane's offset. The web layout
-     does not need the pane transition, so preserve the viewport coordinate
-     system for its editor. */
-  .dockview-container.web-layout :global(.dv-pane-container.dv-animated .dv-view),
-  .dockview-container.web-layout :global(.dv-split-view-container.dv-animation .dv-view) {
-    transform: none;
   }
 
   /* VS Code theme mapping for dockview */

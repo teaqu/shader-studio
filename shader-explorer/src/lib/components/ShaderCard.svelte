@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShaderFile } from '../types/ShaderFile';
   import ShaderPreview from './ShaderPreview.svelte';
+  import { portal } from '../actions/portal';
   import {
     closeContextMenu,
     getOpenContextMenu,
@@ -120,7 +121,7 @@
 </div>
 
 {#if openMenu?.path === shader.path}
-  <div bind:this={menuElement} class="context-menu" style="left: {openMenu.x}px; top: {openMenu.y}px;">
+  <div use:portal bind:this={menuElement} class="context-menu" style="left: {openMenu.x}px; top: {openMenu.y}px;">
     {#if shader.createdTime}
       <div class="context-menu-metadata">Created {formatDateTime(shader.createdTime)}</div>
     {/if}
