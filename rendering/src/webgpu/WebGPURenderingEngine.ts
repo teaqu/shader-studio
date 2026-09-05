@@ -3381,7 +3381,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const pass = this.passGraph.find((candidate) => candidate.name === context.slangPassName)
           ?? this.passGraph.find((candidate) => candidate.name === "Image")
           ?? this.passGraph[0];
-        return pass ? this.getChannelResources(pass) : [];
+        // Paused capture reads the keyboard texture the frozen frame was drawn
+        // with, matching the render path and the WebGL capturer.
+        return pass ? this.getChannelResources(pass, this.timeManager.isPaused()) : [];
       },
       () => this.storageBuffers,
     );

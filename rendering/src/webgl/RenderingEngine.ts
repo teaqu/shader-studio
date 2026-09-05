@@ -26,6 +26,7 @@ import { CustomUniformManager } from "./CustomUniformManager";
 import { VariableCapturer } from "../capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
 import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
+import { resolveTextureBindings } from "../util/TextureBindingResolver";
 import type { PiTexture } from "../types/piRenderer";
 import { buildBufferPassSizes } from "./BufferPassResolution";
 import { WebGLPixelRegionCapturer } from "./WebGLPixelRegionCapturer";
@@ -715,44 +716,19 @@ export class RenderingEngine implements RenderingEngineInterface {
   }
 
   private getVariableCaptureTextureBindings(inputConfig: Record<string, ConfigInput>): (PiTexture | null)[] {
-    const slotAssignments = assignInputSlots(inputConfig);
-    const channelCount = Math.max(4, slotAssignments.length);
-    const defaultTexture = this.resourceManager.getDefaultTexture();
-    const passBuffers = this.bufferManager.getPassBuffers();
-    const textureBindings: (PiTexture | null)[] = new Array(channelCount).fill(defaultTexture);
-
-    for (const { slot, key } of slotAssignments) {
-      const input = inputConfig[key];
-      if (!input) {
-        textureBindings[slot] = defaultTexture;
-        continue;
-      }
-
-      if (input.type === 'texture' && input.path) {
-        const imageCache = this.resourceManager.getImageTextureCache();
-        textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
-      } else if (input.type === 'cubemap' && input.path) {
-        // No 2D fallback: the slot's uniform is a samplerCube, so a default 2D
-        // texture there is an invalid binding rather than a blank channel.
-        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path)
-          || this.resourceManager.getCubemapTexture(input.path);
-      } else if (input.type === 'keyboard') {
-        this.resourceManager.updateKeyboardTexture(
-          this.keyboardManager.getKeyHeld(),
-          this.keyboardManager.getKeyPressed(),
-          this.keyboardManager.getKeyToggled(),
-        );
-        textureBindings[slot] = this.resourceManager.getKeyboardTexture() || defaultTexture;
-      } else if (input.type === 'buffer') {
-        textureBindings[slot] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
-      } else if (input.type === 'video' && input.path) {
-        textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
-      } else if (input.type === 'audio' && input.path) {
-        textureBindings[slot] = this.resourceManager.getAudioTexture(input.resolved_path || input.path) || this.resourceManager.getAudioTexture(input.path) || defaultTexture;
-      }
-    }
-
-    return textureBindings;
+    return resolveTextureBindings({
+      inputs: inputConfig,
+      slotAssignments: assignInputSlots(inputConfig),
+      resourceManager: this.resourceManager,
+      passBuffers: this.bufferManager.getPassBuffers(),
+      // Same rule as rendering a paused frame: capture reports the keys the
+      // picture on screen was drawn with, not ones pressed since it froze.
+      keyboard: this.timeManager.isPaused() ? null : {
+        held: this.keyboardManager.getKeyHeld(),
+        pressed: this.keyboardManager.getKeyPressed(),
+        toggled: this.keyboardManager.getKeyToggled(),
+      },
+    });
   }
 
   public getCustomUniformInfo(): { name: string; type: string }[] {

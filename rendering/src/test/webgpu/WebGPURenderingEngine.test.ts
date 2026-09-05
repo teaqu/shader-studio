@@ -1742,6 +1742,40 @@ describe("WebGPURenderingEngine", () => {
       expect(captureUniforms.res).toEqual([160, 90, 1]);
       expect(captureUniforms.channelResolution?.slice(0, 3)).toEqual([64, 32, 1]);
     });
+
+    it.each([
+      { paused: false, refreshes: true },
+      { paused: true, refreshes: false },
+    ])("refreshes the keyboard texture for capture only while running (paused: $paused)", ({ paused, refreshes }) => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      const keyboardHandle = { width: 256, height: 3, view: { label: "keyboard" }, sampler: {} };
+      const updateKeyboardTexture = vi.fn();
+      (engine as any).resourceManager = {
+        getImageTextureCache: () => ({}),
+        getDefaultTexture: () => keyboardHandle,
+        getKeyboardTexture: () => keyboardHandle,
+        updateKeyboardTexture,
+        getAudioSampleRate: () => 44100,
+      };
+      (engine as any).passGraph = [{
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        source: "image-source",
+        channels: [{ kind: "keyboard", slot: 0, key: "iChannel0" }],
+      }];
+      vi.spyOn(engine.getTimeManager(), "isPaused").mockReturnValue(paused);
+
+      const capturer = engine.createVariableCapturer();
+      const resources = (capturer as any).getChannelResources(
+        engine.getVariableCaptureCompileContext(undefined, "Image"),
+      );
+
+      expect(resources).toEqual([expect.objectContaining({ slot: 0, textureView: keyboardHandle.view })]);
+      expect(updateKeyboardTexture).toHaveBeenCalledTimes(refreshes ? 1 : 0);
+    });
   });
 
   describe("video input parity", () => {

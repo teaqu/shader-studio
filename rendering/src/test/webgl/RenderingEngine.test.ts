@@ -420,21 +420,37 @@ describe("RenderingEngine", () => {
   describe("getVariableCaptureTextureBindings", () => {
     const defaultTexture = { id: 'default' };
     const cubemapTexture = { id: 'cubemap' };
+    const keyboardTexture = { id: 'keyboard' };
     let mockResourceManager: any;
+    let mockTimeManager: any;
 
     beforeEach(() => {
       mockResourceManager = {
         getDefaultTexture: vi.fn(() => defaultTexture),
         getImageTextureCache: vi.fn(() => ({ 'noise.png': { id: 'noise' } })),
         getCubemapTexture: vi.fn((path: string) => (path === 'sky/resolved/' ? cubemapTexture : null)),
+        getKeyboardTexture: vi.fn(() => keyboardTexture),
+        updateKeyboardTexture: vi.fn(),
         getVideoTexture: vi.fn(() => null),
         getAudioTexture: vi.fn(() => null),
       };
+      mockTimeManager = { isPaused: vi.fn(() => false) };
       Object.defineProperty(renderingEngine, 'resourceManager', {
         value: mockResourceManager, writable: true, configurable: true,
       });
       Object.defineProperty(renderingEngine, 'bufferManager', {
         value: { getPassBuffers: vi.fn(() => ({})) }, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'timeManager', {
+        value: mockTimeManager, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, 'keyboardManager', {
+        value: {
+          getKeyHeld: vi.fn(() => new Uint8Array([1])),
+          getKeyPressed: vi.fn(() => new Uint8Array([2])),
+          getKeyToggled: vi.fn(() => new Uint8Array([3])),
+        },
+        writable: true, configurable: true,
       });
     });
 
@@ -463,6 +479,24 @@ describe("RenderingEngine", () => {
 
     it("still binds 2D inputs from the image cache", () => {
       expect(bindingsFor({ iChannel0: { type: 'texture', path: 'noise.png' } })[0]).toEqual({ id: 'noise' });
+    });
+
+    it("refreshes the keyboard texture while the shader is running", () => {
+      const bindings = bindingsFor({ iChannel0: { type: 'keyboard' } });
+
+      expect(mockResourceManager.updateKeyboardTexture).toHaveBeenCalledWith(
+        new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3]),
+      );
+      expect(bindings[0]).toBe(keyboardTexture);
+    });
+
+    it("captures the paused keyboard texture rather than keys pressed since", () => {
+      mockTimeManager.isPaused = vi.fn(() => true);
+
+      const bindings = bindingsFor({ iChannel0: { type: 'keyboard' } });
+
+      expect(mockResourceManager.updateKeyboardTexture).not.toHaveBeenCalled();
+      expect(bindings[0]).toBe(keyboardTexture);
     });
   });
 

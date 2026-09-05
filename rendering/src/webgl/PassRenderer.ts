@@ -6,6 +6,7 @@ import type { KeyboardManager } from "../input/KeyboardManager";
 import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
 import { bindTextures } from "../util/TextureBinder";
+import { resolveTextureBindings } from "../util/TextureBindingResolver";
 import type { WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
@@ -211,46 +212,17 @@ export class PassRenderer {
     slotAssignments: SlotAssignment[],
     skipInputUpdates: boolean = false,
   ): (PiTexture | null)[] {
-    const channelCount = Math.max(4, slotAssignments.length);
-    const defaultTexture = this.resourceManager.getDefaultTexture();
-    const passBuffers = this.bufferManager.getPassBuffers();
-    const textureBindings: (PiTexture | null)[] = new Array(channelCount).fill(defaultTexture);
-
-    for (const { slot, key } of slotAssignments) {
-      const input = passConfig.inputs[key];
-      if (!input) {
-        textureBindings[slot] = defaultTexture;
-        continue;
-      }
-
-      if (input.type === "texture" && input.path) {
-        const imageCache = this.resourceManager.getImageTextureCache();
-        textureBindings[slot] = imageCache[input.resolved_path || input.path] || imageCache[input.path] || defaultTexture;
-      } else if (input.type === "cubemap" && input.path) {
-        textureBindings[slot] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path) || this.resourceManager.getCubemapTexture(input.path);
-      } else if (input.type === "keyboard") {
-        if (!skipInputUpdates) {
-          this.resourceManager.updateKeyboardTexture(
-            this.keyboardManager.getKeyHeld(),
-            this.keyboardManager.getKeyPressed(),
-            this.keyboardManager.getKeyToggled(),
-          );
-        }
-        textureBindings[slot] = this.resourceManager.getKeyboardTexture() || defaultTexture;
-      } else if (input.type === "buffer") {
-        if (input.source === passConfig.name) {
-          textureBindings[slot] = passBuffers[passConfig.name]?.front?.mTex0 || defaultTexture;
-        } else if (passBuffers[input.source]) {
-          textureBindings[slot] = passBuffers[input.source]?.front?.mTex0 || defaultTexture;
-        } else {
-          textureBindings[slot] = defaultTexture;
-        }
-      } else if (input.type === "video" && input.path) {
-        textureBindings[slot] = this.resourceManager.getVideoTexture(input.resolved_path || input.path) || this.resourceManager.getVideoTexture(input.path) || defaultTexture;
-      } else if (input.type === "audio" && input.path) {
-        textureBindings[slot] = this.resourceManager.getAudioTexture(input.resolved_path || input.path) || this.resourceManager.getAudioTexture(input.path) || defaultTexture;
-      }
-    }
-    return textureBindings;
+    return resolveTextureBindings({
+      inputs: passConfig.inputs,
+      slotAssignments,
+      resourceManager: this.resourceManager,
+      passBuffers: this.bufferManager.getPassBuffers(),
+      // A paused frame keeps the keyboard texture it was rendered with.
+      keyboard: skipInputUpdates ? null : {
+        held: this.keyboardManager.getKeyHeld(),
+        pressed: this.keyboardManager.getKeyPressed(),
+        toggled: this.keyboardManager.getKeyToggled(),
+      },
+    });
   }
 }
