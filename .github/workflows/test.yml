@@ -112,8 +112,12 @@ jobs:
       - name: Build workspace test dependencies
         run: npm run build:deps -w extension
 
-      # No Playwright browser download here: the suite drives VS Code's own
-      # Electron through _electron.launch(), verified to run with none installed.
+      # The suite drives VS Code's own Electron through _electron.launch(), but
+      # the Slang dedup spec also opens the browser-connected UI in Chromium.
+      # It needs the full build: the headless shell's only WebGPU adapter is
+      # SwiftShader, which reports 16 textures and presents black.
+      - name: Install Playwright browser
+        run: npx playwright install chromium
 
       - name: Run full VS Code webview E2E suite
         id: vscode-e2e
