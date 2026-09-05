@@ -31,10 +31,7 @@ const SOURCES: ReadonlyArray<{
 }> = [
   {
     path: '/shaders/aurora.glsl',
-    code: `// Shader Studio Aurora
-// Edit this shader and see the preview update live.
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    code: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 uv = fragCoord / iResolution.xy;
 	vec2 p = (fragCoord * 2.0 - iResolution.xy) / iResolution.y;
 	float wave = sin(p.x * 3.0 + iTime) + sin(p.y * 4.0 - iTime * 0.7);
@@ -45,9 +42,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   },
   {
     path: '/shaders/aurora-slang.slang',
-    code: `// Shader Studio aurora-slang / WebGPU
-
-float4 mainImage(float2 fragCoord)
+    code: `float4 mainImage(float2 fragCoord)
 {
 	float2 uv = fragCoord / iResolution.xy;
 	float3 colour = 0.5 + 0.5 * cos(iTime + uv.xyx * 4.0 + float3(0.0, 2.0, 4.0));
@@ -57,9 +52,7 @@ float4 mainImage(float2 fragCoord)
   },
   {
     path: '/shaders/nebula-texture.glsl',
-    code: `// Shader Studio default texture
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    code: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 uv = fragCoord / iResolution.xy;
 	fragColor = vec4(texture(iChannel0, uv).rgb, 1.0);
 }`,
@@ -67,8 +60,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   },
   {
     path: '/shaders/desert-cubemap.glsl',
-    code: `// Shader Studio default cubemap
-// Drag in the preview to look around.
+    code: `// Drag in the preview to look around.
 
 mat2 rotate(float angle) {
 	float c = cos(angle);
