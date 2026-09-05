@@ -40,6 +40,8 @@ export interface CaptureCompileContext {
   /** Slang/WebGPU path: currently installed storage buffer resources. */
   slangStorageBuffers?: Map<string, GPUBuffer>;
   slangChannels?: Array<{
+    textureIdentity?: string;
+    samplerIdentity?: string;
     slot: number;
     key: string;
     kind?: "texture" | "video" | "cubemap" | "audio" | "buffer" | "keyboard";

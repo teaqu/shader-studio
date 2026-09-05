@@ -203,14 +203,14 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(c); }", {
       geometry: "cube",
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel0;");
-    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> _ssTexture0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState _ssSampler0;");
     expect(wrapped).toContain("[[vk::binding(3, 0)]]\nConstantBuffer<MeshUniforms> _mesh;");
   });
 
@@ -272,7 +272,7 @@ describe("SlangCompiler", () => {
   );
 
   it.runIf(realSlangAssets)(
-    "compiles a vertex hook that samples configured iChannel3 with real Slang",
+    "compiles a vertex hook that explicitly samples configured iChannel3 with real Slang",
     async () => {
       const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
       const compiler = new SlangCompiler(slang);
@@ -281,7 +281,7 @@ describe("SlangCompiler", () => {
         "float4 mainImage(float2 fragCoord) { return float4(1); }",
         {
           channels: [{ slot: 3, key: "iChannel3" }],
-          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += sampleIChannel3(uv).x; }",
+          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += inputs.iChannel3.SampleLevel(uv, 0.0).x; }",
         },
       );
 
@@ -375,7 +375,7 @@ describe("SlangCompiler", () => {
     expect(result).toEqual({ success: true, wgsl: "// wgsl output" });
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain(`void simulate(uint3 tid : SV_DispatchThreadID)`);
-    expect(wrapped).toContain("Texture2D<float4> iChannel2;");
+    expect(wrapped).toContain("Texture2D<float4> _ssTexture2;");
     expect(wrapped).toContain("RWStructuredBuffer<Particle> particles;");
     expect(wrapped).toContain("WTexture2DArray<float4> _outTex;");
     expect(wrapped).toContain("#define iDispatch");
@@ -649,29 +649,23 @@ describe("SlangCompiler", () => {
     });
   });
 
-  it("lets a standalone shader sample all four standard channels without slot configuration", () => {
+  it("does not fabricate standard inputs without slot configuration", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(`
       float4 mainImage(float2 c) {
-        return sampleIChannel0(c) + sampleIChannel1(c)
-          + sampleIChannel2(c) + sampleIChannel3(c);
+        return inputs.iChannel0.Sample(c) + inputs.iChannel1.Sample(c)
+          + inputs.iChannel2.Sample(c) + inputs.iChannel3.Sample(c);
       }
     `);
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    for (let slot = 0; slot < 4; slot++) {
-      expect(wrapped).toContain(`float4 sampleIChannel${slot}(float2 uv)`);
-      expect(wrapped).toContain(`float4 sampleIChannel${slot}Lod(float2 uv, float lod)`);
-      expect(wrapped).toContain(
-        `float4 sampleIChannel${slot}Grad(float2 uv, float2 ddxUv, float2 ddyUv)`,
-      );
-    }
-    // Three stubs per unconfigured slot: the base helper plus Lod and Grad.
-    expect(wrapped.match(/return float4\(0\.0, 0\.0, 0\.0, 1\.0\);/g)).toHaveLength(12);
-    expect(wrapped).not.toContain("Texture2D<float4> iChannel0;");
-    expect(wrapped).not.toContain("sampleIChannel4");
+    expect(wrapped).toContain("struct ShaderStudioInputs");
+    expect(wrapped).not.toContain("property ShaderStudioChannel2D iChannel0");
+    expect(wrapped).not.toContain("sampleIChannel0");
+    expect(wrapped).not.toContain("Texture2D<float4> _ssTexture0;");
+    expect(wrapped).not.toContain("inputs.iChannel4.Sample");
   });
 
   it("caches the global session across compiles", () => {
@@ -754,35 +748,35 @@ describe("SlangCompiler", () => {
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("[[vk::binding(1, 0)]]");
-    expect(wrapped).toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).toContain("Texture2D<float4> _ssTexture0;");
     expect(wrapped).toContain("[[vk::binding(2, 0)]]");
-    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
-    expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
+    expect(wrapped).toContain("SamplerState _ssSampler0;");
+    expect(wrapped).toContain("float4 Sample(float2 uv)");
   });
 
-  it("exposes a custom channel through its Slang name and canonical slot helper", () => {
+  it("exposes a custom input through its configured name", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleAlbedo(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.albedo.Sample(c); }", {
       passName: "Image",
       channels: [{ slot: 0, key: "albedo", kind: "texture" }],
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("Texture2D<float4> albedo;");
-    expect(wrapped).toContain("SamplerState albedoSampler;");
-    expect(wrapped).toContain("float4 sampleAlbedo(float2 uv)");
-    expect(wrapped).toContain("float4 sampleIChannel0(float2 uv)");
+    expect(wrapped).toContain("Texture2D<float4> _ssTexture0;");
+    expect(wrapped).toContain("SamplerState _ssSampler0;");
+    expect(wrapped).toContain("property ShaderStudioChannel2D albedo");
+    expect(wrapped).toContain("float4 Sample(float2 uv)");
   });
 
-  it("exposes configured 2D and cubemap channels through iCh objects", () => {
+  it("exposes configured 2D and cubemap inputs through typed properties", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(
       `float4 mainImage(float2 c) {
-        return iCh0.sampler.Sample(c) + iCh2.sampler.Sample(float3(c, 1));
+        return inputs.iChannel0.Sample(c) + inputs.iChannel2.Sample(float3(c, 1));
       }`,
       {
         channels: [
@@ -793,56 +787,50 @@ describe("SlangCompiler", () => {
     );
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("struct ShaderToySampler2D");
-    expect(wrapped).toContain("struct ShaderToySamplerCube");
-    expect(wrapped).toContain("struct ShaderToyChannel2D");
-    expect(wrapped).toContain("struct ShaderToyChannelCube");
-    expect(wrapped).toContain("ShaderToyChannel2D _getICh0()");
-    expect(wrapped).toContain("channel.sampler.texture = iChannel0;");
-    expect(wrapped).toContain("channel.size = _st.channelResolution[0];");
-    expect(wrapped).toContain("channel.time = _st.channelTime[0];");
-    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[0] != 0.0 ? 1 : 0;");
-    expect(wrapped).toContain("#define iCh0 (_getICh0())");
-    expect(wrapped).toContain("ShaderToyChannelCube _getICh2()");
-    expect(wrapped).toContain("#define iCh2 (_getICh2())");
+    expect(wrapped).toContain("struct ShaderStudioChannel2D");
+    expect(wrapped).toContain("struct ShaderStudioChannelCube");
+    expect(wrapped).toContain("property ShaderStudioChannel2D iChannel0");
+    expect(wrapped).toContain("property ShaderStudioChannelCube iChannel2");
+    expect(wrapped).toContain("result.size = uint2(_st.channelResolution[0].xy);");
+    expect(wrapped).toContain("result.time = _st.channelTime[0];");
+    expect(wrapped).not.toMatch(/\biCh\d/);
   });
 
-  it("declares ShaderToy audio timing and loaded uniforms", () => {
+  it("keeps input timing and loaded values internal to the input properties", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iChannelTime[1]); }");
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(iTime); }");
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("float channelTime[4];");
     expect(wrapped).toContain("float channelLoaded[4];");
     expect(wrapped).toContain("float sampleRate;");
-    expect(wrapped).toContain("#define iChannelTime (_st.channelTime)");
-    expect(wrapped).toContain("#define iChannelLoaded (_st.channelLoaded)");
+    expect(wrapped).not.toMatch(/#define iChannel(?:Time|Loaded)/);
     expect(wrapped).toContain("#define iSampleRate (_st.sampleRate)");
     expect(wrapped).not.toContain("_audioPad");
   });
 
-  it("declares the remaining GLSL ShaderToy date and channel-resolution uniforms", () => {
+  it("keeps the date global while channel resolution stays on inputs", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(
-      "float4 mainImage(float2 c) { return iDate + float4(iChannelResolution[2], 0); }",
+      "float4 mainImage(float2 c) { return iDate; }",
     );
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("float4 date;");
     expect(wrapped).toContain("float3 channelResolution[4];");
     expect(wrapped).toContain("#define iDate (_st.date)");
-    expect(wrapped).toContain("#define iChannelResolution (_st.channelResolution)");
+    expect(wrapped).not.toContain("#define iChannelResolution");
   });
 
   it("exposes channel metadata beyond the legacy 16-slot boundary", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return iCh16.sampler.Sample(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel16.Sample(c); }", {
       channels: [{ slot: 16, key: "iChannel16", kind: "texture" }],
     });
 
@@ -851,9 +839,9 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("float channelLoaded[17];");
     expect(wrapped).toContain("float3 channelResolution[17];");
     expect(wrapped).not.toContain("[1024]");
-    expect(wrapped).toContain("channel.size = _st.channelResolution[16];");
-    expect(wrapped).toContain("channel.time = _st.channelTime[16];");
-    expect(wrapped).toContain("channel.loaded = _st.channelLoaded[16]");
+    expect(wrapped).toContain("property ShaderStudioChannel2D iChannel16");
+    expect(wrapped).toContain("result.size = uint2(_st.channelResolution[16].xy);");
+    expect(wrapped).toContain("result.time = _st.channelTime[16];");
   });
 
   it("declares the GLSL camera uniforms", () => {
@@ -912,18 +900,18 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(float3(1, 0, 0)); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(float3(1, 0, 0)); }", {
       passName: "Image",
       channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("[[vk::binding(1, 0)]]");
-    expect(wrapped).toContain("TextureCube<float4> iChannel0;");
+    expect(wrapped).toContain("TextureCube<float4> _ssTexture0;");
     expect(wrapped).toContain("[[vk::binding(2, 0)]]");
-    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
-    expect(wrapped).toContain("float4 sampleIChannel0(float3 dir)");
-    expect(wrapped).toContain("return iChannel0.Sample(iChannel0Sampler, dir);");
+    expect(wrapped).toContain("SamplerState _ssSampler0;");
+    expect(wrapped).toContain("float4 Sample(float3 dir)");
+    expect(wrapped).toContain("return texture.Sample(sampling, dir);");
   });
 
   it("wraps a sparse audio channel with a 2D sampling helper", () => {
@@ -931,14 +919,14 @@ describe("SlangCompiler", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(
-      "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+      "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
       { channels: [{ slot: 1, key: "iChannel1", kind: "audio" }] },
     );
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel1;");
-    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel1Sampler;");
-    expect(wrapped).toContain("float4 sampleIChannel1(float2 uv)");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> _ssTexture1;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState _ssSampler1;");
+    expect(wrapped).toContain("float4 Sample(float2 uv)");
   });
 
   it("numbers bindings sequentially for multiple channels, sorted by slot", () => {
@@ -956,17 +944,17 @@ describe("SlangCompiler", () => {
 
     const wrapped = onLoad.mock.calls[0][0] as string;
     expect(wrapped).toContain("[[vk::binding(1, 0)]]");
-    expect(wrapped).toContain("Texture2D<float4> iChannel0;");
+    expect(wrapped).toContain("Texture2D<float4> _ssTexture0;");
     expect(wrapped).toContain("[[vk::binding(2, 0)]]");
-    expect(wrapped).toContain("SamplerState iChannel0Sampler;");
+    expect(wrapped).toContain("SamplerState _ssSampler0;");
     expect(wrapped).toContain("[[vk::binding(3, 0)]]");
-    expect(wrapped).toContain("Texture2D<float4> iChannel1;");
+    expect(wrapped).toContain("Texture2D<float4> _ssTexture1;");
     expect(wrapped).toContain("[[vk::binding(4, 0)]]");
-    expect(wrapped).toContain("SamplerState iChannel1Sampler;");
+    expect(wrapped).toContain("SamplerState _ssSampler1;");
 
     // iChannel0's declaration must precede iChannel1's, confirming sort order.
-    expect(wrapped.indexOf("Texture2D<float4> iChannel0;")).toBeLessThan(
-      wrapped.indexOf("Texture2D<float4> iChannel1;"),
+    expect(wrapped.indexOf("Texture2D<float4> _ssTexture0;")).toBeLessThan(
+      wrapped.indexOf("Texture2D<float4> _ssTexture1;"),
     );
   });
 
@@ -1029,7 +1017,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return sampleIChannel0(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(c); }", {
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 
@@ -1037,7 +1025,7 @@ describe("SlangCompiler", () => {
     // computed from it is GL-style (v=0 at the bottom). WebGPU textures put
     // v=0 at the TOP row, so the generated helper must flip v when sampling.
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("iChannel0.Sample(iChannel0Sampler, float2(uv.x, 1.0 - uv.y))");
+    expect(wrapped).toContain("texture.Sample(sampling, float2(uv.x, 1.0 - uv.y))");
   });
 
   it("assigns position-based bindings for sparse channel slots", () => {
@@ -1051,11 +1039,11 @@ describe("SlangCompiler", () => {
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel2;");
-    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel2Sampler;");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> _ssTexture2;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState _ssSampler2;");
     expect(wrapped).not.toContain("vk::binding(5");
     expect(wrapped).not.toContain("vk::binding(6");
-    expect(wrapped).toContain("float4 sampleIChannel2(float2 uv)");
+    expect(wrapped).toContain("float4 Sample(float2 uv)");
   });
 
   it("names the compiled module after the pass so diagnostics cite the right file", () => {

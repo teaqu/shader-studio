@@ -31,9 +31,7 @@ import {
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
-  deriveSlangChannelGeneratedIdentifiers,
-  isValidShaderIdentifier,
-  resolveAuthoringChannelBindings,
+  describeSlangChannel,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
@@ -163,7 +161,9 @@ export class SlangLanguageService implements LanguageService {
         data: item.data,
       };
     });
-    const items = new Map<string, CompletionItem>(official.map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
+    const items = new Map<string, CompletionItem>(official
+      .filter((item) => !isGeneratedInputImplementationSymbol(item.label))
+      .map((item) => [`${item.label}:${item.detail ?? ""}`, item]));
     const access = findMemberAccess(state.document.text, params.position);
     if (access) {
       for (const item of memberCompletions(access.expression, params.position, state.document.text, state.environment)) {
@@ -193,13 +193,11 @@ export class SlangLanguageService implements LanguageService {
         documentation: computeFeatureMarkup(feature),
       });
     }
-    const generatedChannels = generatedChannelCompletions(state.environment);
-    const generatedMetadataAliases = new Set(generatedChannels.flatMap((item) => item.metadataAlias ? [item.metadataAlias] : []));
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
       if (!doc.languages.includes("slang") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
         continue;
       }
-      if (doc.name === "iChannelN" || generatedMetadataAliases.has(doc.name) || /^iCh\d+$/.test(doc.name)) {
+      if (doc.name === "iChannelN" || doc.name === "iChannelResolution" || doc.name === "iChannelTime" || doc.name === "iChannelLoaded") {
         continue;
       }
       items.set(`${doc.name}:${doc.slangType}`, {
@@ -212,22 +210,18 @@ export class SlangLanguageService implements LanguageService {
     for (const uniform of state.environment.customUniforms) {
       items.set(`${uniform.name}:${uniform.type}`, { label: uniform.name, kind: CompletionItemKind.Variable, detail: slangType(uniform.type) });
     }
-    for (const resource of state.environment.resources) {
+    for (const resource of state.environment.resources.filter((resource) => resource.kind === "storage")) {
       items.set(`${resource.name}:${resource.kind}`, { label: resource.name, kind: CompletionItemKind.Variable, detail: resource.kind });
     }
-    for (const generated of generatedChannels) {
-      items.set(`${generated.sampler}:SamplerState`, {
-        label: generated.sampler,
+    for (const generated of generatedEnvironmentGlobals(state.environment)) {
+      items.set(`${generated.name}:${generated.type}`, {
+        label: generated.name,
         kind: CompletionItemKind.Variable,
-        detail: "SamplerState",
+        detail: generated.type,
+        documentation: generated.name === "inputs"
+          ? { kind: MarkupKind.Markdown, value: "Configured shader inputs. Access one by its config key, for example `inputs.iChannel0.Sample(uv)`." }
+          : undefined,
       });
-      if (generated.metadataAlias) {
-        items.set(`${generated.metadataAlias}:${generated.metadataType}`, {
-          label: generated.metadataAlias,
-          kind: CompletionItemKind.Variable,
-          detail: generated.metadataType,
-        });
-      }
     }
     for (const file of contextualFiles(state.environment)) {
       for (const declaration of findSlangDeclarations(file.text)) {
@@ -288,6 +282,24 @@ export class SlangLanguageService implements LanguageService {
     const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("slang"));
     if (doc) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${doc.slangType} ${doc.name}\n\`\`\`\n\n${doc.description}` } };
+    }
+    if (word === "inputs") {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: "```slang\nShaderStudioInputs inputs\n```\n\nConfigured shader inputs. Access one by its config key, for example `inputs.iChannel0.Sample(uv)`.",
+        },
+      };
+    }
+    const input = state.environment.resources.find((resource) => resource.kind !== "storage" && resource.name === word);
+    if (input && input.kind !== "storage") {
+      const description = describeSlangChannel(input.kind);
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `\`\`\`slang\nShaderStudioChannel${description.shape} inputs.${input.name}\n\`\`\`\n\nConfigured input channel. Use \`inputs.${input.name}\` to sample it and read its metadata.`,
+        },
+      };
     }
     const uniform = state.environment.customUniforms.find((item) => item.name === word);
     if (uniform) {
@@ -401,10 +413,12 @@ export class SlangLanguageService implements LanguageService {
       findSlangDeclarations(file.text).filter((item) => item.kind === SymbolKind.Function && item.name === call.name)
     ));
     const intrinsics = documentedSlangFunctions(state.environment).filter((item) => item.name === call.name);
+    const inputMethods = shaderStudioInputMethodSignaturesAtCall(state, params.position, call.name);
     const labels = [
       ...signatures.map((item) => item.detail),
       ...contextual.map((item) => item.detail),
       ...intrinsics.flatMap((item) => item.signatures),
+      ...inputMethods,
     ];
     return labels.length > 0 ? { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter } : null;
   }
@@ -1002,6 +1016,10 @@ function memberCompletions(
       documentation: { kind: MarkupKind.Markdown, value: `Component selection on \`${resolved.name}\`.` },
     }));
   }
+  const inputMembers = shaderStudioInputMemberCompletions(resolved.name);
+  if (inputMembers) {
+    return inputMembers;
+  }
   const fields = (resolved.fields ?? []).map((field) => ({
     label: field.name,
     kind: CompletionItemKind.Field,
@@ -1009,6 +1027,61 @@ function memberCompletions(
     documentation: { kind: MarkupKind.Markdown, value: `Field of \`${resolved.name}\`.` },
   }));
   return fields.length ? fields : nativeTextureMemberCompletions(resolved.name);
+}
+
+function shaderStudioInputMemberCompletions(typeName: string): CompletionItem[] | undefined {
+  const kind = typeName === "ShaderStudioChannel2D" ? "texture-2d"
+    : typeName === "ShaderStudioChannelCube" ? "texture-cube"
+      : typeName === "ShaderStudioChannel3D" ? "texture-3d" : undefined;
+  if (!kind) {
+    return undefined;
+  }
+  const description = describeSlangChannel(kind);
+  const fields: CompletionItem[] = [
+    { label: "texture", kind: CompletionItemKind.Field, detail: description.textureType },
+    { label: "sampler", kind: CompletionItemKind.Field, detail: "SamplerState" },
+    { label: "size", kind: CompletionItemKind.Field, detail: description.sizeType },
+    { label: "time", kind: CompletionItemKind.Field, detail: "float" },
+    { label: "loaded", kind: CompletionItemKind.Field, detail: "bool" },
+  ];
+  return [...fields, ...description.methods.flatMap(({ name, parameters }) => [
+    inputMethodCompletion(typeName, name, parameters),
+    inputMethodCompletion(typeName, name, `SamplerState sampling, ${parameters}`),
+  ])];
+}
+
+function inputMethodCompletion(typeName: string, name: string, parameters: string): CompletionItem {
+  return {
+    label: name,
+    kind: CompletionItemKind.Method,
+    detail: `float4 ${typeName}.${name}(${parameters})`,
+    documentation: { kind: MarkupKind.Markdown, value: "Shader Studio input sampling method." },
+  };
+}
+
+function isGeneratedInputImplementationSymbol(name: string): boolean {
+  return /^_ss(?:Texture|Sampler|ChannelResolution|ChannelTime|ChannelLoaded)\d*$/.test(name);
+}
+
+function shaderStudioInputMethodSignaturesAtCall(
+  state: NonNullable<ReturnType<SlangLanguageService["current"]>>,
+  position: { line: number; character: number },
+  name: string,
+): string[] {
+  if (!["Sample", "SampleLevel", "SampleGrad"].includes(name)) {
+    return [];
+  }
+  const prefix = state.document.text.slice(0, offsetAtPosition(state.document.text, position));
+  const receiver = prefix.match(new RegExp(`([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\.\\s*${name}\\s*\\([^()]*$`))?.[1];
+  if (!receiver) {
+    return [];
+  }
+  const resolved = resolveSlangExpressionType({ source: state.document.text, position, expression: receiver }, {
+    includes: [buildSlangAuthoringModule(state.environment).text],
+  });
+  return (shaderStudioInputMemberCompletions(resolved?.name ?? "") ?? [])
+    .filter((item) => item.label === name)
+    .map((item) => item.detail ?? "");
 }
 
 /** Native resource fallback for the bundled Slang server, which omits Texture* member completions. */
@@ -1039,30 +1112,16 @@ function nativeTextureMember(texture: string, name: string, detail: string): Com
   };
 }
 
-interface GeneratedChannelCompletion {
-  readonly sampler: string;
-  readonly metadataAlias?: string;
-  readonly metadataType?: "ShaderToyChannel2D" | "ShaderToyChannelCube";
-}
-
-/** Generated channel globals, kept separate from contextual files so they never leak into general declarations. */
-function generatedChannelCompletions(environment: ShaderAuthoringEnvironment): readonly GeneratedChannelCompletion[] {
-  const channelBindings = resolveAuthoringChannelBindings(environment.resources);
-  const storageBindings = environment.resources
-    .filter((resource) => resource.kind === "storage")
-    .map((resource) => ({ resource, slot: resource.slot ?? 0 }));
-  return [...channelBindings, ...storageBindings]
-    .filter(({ resource }) => isValidShaderIdentifier(resource.name))
-    .map((binding) => {
-      const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
-      return {
-        sampler: identifiers.sampler,
-        metadataAlias: identifiers.metadataAlias,
-        metadataType: identifiers.metadataAlias
-          ? binding.resource.kind === "texture-cube" ? "ShaderToyChannelCube" : "ShaderToyChannel2D"
-          : undefined,
-      };
-    });
+/**
+ * The authoring prelude owns Shader Studio globals. Parse its public aggregate
+ * declaration so completion stays in lockstep with the renderer-generated API
+ * instead of recreating input names and helper functions here.
+ */
+function generatedEnvironmentGlobals(environment: ShaderAuthoringEnvironment): readonly { name: string; type: string }[] {
+  const source = buildSlangAuthoringModule(environment).text;
+  return [...source.matchAll(/^\s*(?:(?:static|const)\s+)*([A-Za-z_]\w*(?:\s*<[^;>]+>)?)\s+([A-Za-z_]\w*)\s*(?:=[^;]+)?;\s*$/gm)]
+    .map((match) => ({ type: match[1]!.replace(/\s+/g, ""), name: match[2]! }))
+    .filter(({ name }) => name === "inputs");
 }
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
@@ -1162,84 +1221,6 @@ function documentedSlangFunctions(environment: ShaderAuthoringEnvironment): read
       layered
         ? "Writes a color to one layer of the current compute pass output texture."
         : "Writes a color to the current compute pass output texture.",
-    ));
-  }
-  const bindings = resolveAuthoringChannelBindings(environment.resources)
-    .filter(({ resource }) => isValidShaderIdentifier(resource.name));
-  const claimedSlots = new Set(bindings.map(({ slot }) => slot));
-  for (const binding of bindings) {
-    const identifiers = deriveSlangChannelGeneratedIdentifiers(binding);
-    if (!identifiers.slotHelper || !identifiers.slotVertexHelper || !identifiers.samplingParameterType) {
-      continue;
-    }
-    const parameter = identifiers.samplingParameterType === "float3" ? "float3 dir" : "float2 uv";
-    const coordinates = identifiers.samplingParameterType === "float3"
-      ? "a cube-map direction"
-      : "normalized UV coordinates; Shader Studio flips the V coordinate to match texture orientation";
-    const description = `Samples Shader Studio input channel ${binding.slot} (${binding.resource.name}) using ${coordinates}.`;
-    const isCube = identifiers.samplingParameterType === "float3";
-    const lodParameters = `${parameter}, float lod`;
-    const gradParameters = isCube
-      ? "float3 dir, float3 ddxDir, float3 ddyDir"
-      : "float2 uv, float2 ddxUv, float2 ddyUv";
-    const lodDescription = `${description} Reads the given mip level, so it is safe inside non-uniform control flow.`;
-    const gradDescription = `${description} Selects the mip level from gradients taken in uniform control flow; a compute or vertex stage reads mip level zero instead.`;
-    const addSamplingVariants = (helper: string, variantDescription: string): void => {
-      functions.set(`${helper}Lod`, intrinsic(
-        `${helper}Lod`,
-        `float4 ${helper}Lod(${lodParameters})`,
-        `${variantDescription} Reads the given mip level, so it is safe inside non-uniform control flow.`,
-      ));
-      functions.set(`${helper}Grad`, intrinsic(
-        `${helper}Grad`,
-        `float4 ${helper}Grad(${gradParameters})`,
-        `${variantDescription} Selects the mip level from gradients taken in uniform control flow; a compute or vertex stage reads mip level zero instead.`,
-      ));
-    };
-    functions.set(identifiers.slotHelper, intrinsic(identifiers.slotHelper, `float4 ${identifiers.slotHelper}(${parameter})`, description));
-    addSamplingVariants(identifiers.slotHelper, description);
-    functions.set(identifiers.slotVertexHelper, intrinsic(
-      identifiers.slotVertexHelper,
-      `float4 ${identifiers.slotVertexHelper}(${parameter})`,
-      `${description} This vertex-stage variant samples mip level zero.`,
-    ));
-    if (identifiers.aliasHelper && identifiers.aliasVertexHelper) {
-      functions.set(identifiers.aliasHelper, intrinsic(
-        identifiers.aliasHelper,
-        `float4 ${identifiers.aliasHelper}(${parameter})`,
-        `Named sampling helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}.`,
-      ));
-      functions.set(identifiers.aliasVertexHelper, intrinsic(
-        identifiers.aliasVertexHelper,
-        `float4 ${identifiers.aliasVertexHelper}(${parameter})`,
-        `Named vertex-stage helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}. It samples mip level zero.`,
-      ));
-      addSamplingVariants(
-        identifiers.aliasHelper,
-        `Named sampling helper for Shader Studio input channel ${binding.slot} (${binding.resource.name}), using ${coordinates}.`,
-      );
-    }
-  }
-  for (let slot = 0; slot < 4; slot++) {
-    if (claimedSlots.has(slot)) {
-      continue;
-    }
-    const name = `sampleIChannel${slot}`;
-    const unassigned = `With no resource assigned to this slot, it returns opaque black.`;
-    functions.set(name, intrinsic(
-      name,
-      `float4 ${name}(float2 uv)`,
-      `Samples Shader Studio input channel ${slot}. ${unassigned}`,
-    ));
-    functions.set(`${name}Lod`, intrinsic(
-      `${name}Lod`,
-      `float4 ${name}Lod(float2 uv, float lod)`,
-      `Samples Shader Studio input channel ${slot} at an explicit mip level. ${unassigned}`,
-    ));
-    functions.set(`${name}Grad`, intrinsic(
-      `${name}Grad`,
-      `float4 ${name}Grad(float2 uv, float2 ddxUv, float2 ddyUv)`,
-      `Samples Shader Studio input channel ${slot} using explicit gradients. ${unassigned}`,
     ));
   }
   return [...functions.values()];

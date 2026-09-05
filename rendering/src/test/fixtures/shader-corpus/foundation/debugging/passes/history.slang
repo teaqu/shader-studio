@@ -16,7 +16,7 @@ float4 mainImage(float2 fragCoord)
     float2 uv = fragCoord / resolution;
     float2 texelSize = 1.0 / resolution;
 
-    float3 sampledHistory = sampleIChannel0(uv + float2(0.0, 0.7) * texelSize).rgb;
+    float3 sampledHistory = inputs.iChannel0.Sample(uv + float2(0.0, 0.7) * texelSize).rgb;
     float3 previous = debugFeedbackDecay(sampledHistory, iTime);
     float2 emitter = resolution * (0.5 + 0.3 * float2(cos(iTime * 0.73), sin(iTime * 1.11)));
     float newInk = debugBlob(fragCoord, emitter, 13.0);

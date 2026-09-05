@@ -9,7 +9,7 @@
 float keyRow(float keyCode, float row)
 {
     float2 uv = float2((keyCode + 0.5) / 256.0, (row + 0.5) / 3.0);
-    return sampleIChannel0(uv).r;
+    return inputs.iChannel0.Sample(uv).r;
 }
 
 float held(float keyCode)

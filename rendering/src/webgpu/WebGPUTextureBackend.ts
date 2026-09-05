@@ -1,4 +1,5 @@
 /// <reference types="@webgpu/types" />
+import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type {
   CreateTextureDesc,
   ImageTextureOptions,
@@ -54,7 +55,7 @@ export function reverseRows(rgba: Uint8Array, width: number, height: number): Ui
 }
 
 /**
- * GOVERNING INVARIANT: the Slang prelude's sampleIChannelN helper flips v
+ * GOVERNING INVARIANT: the Slang input object's sampling methods flips v
  * (it samples at float2(uv.x, 1.0 - uv.y)) so GPU-rendered buffer textures
  * (row 0 = top) sample like GL framebuffers (row 0 = bottom). Because every
  * channel is read through that helper, WebGPU texture storage must be the
@@ -132,18 +133,7 @@ export class WebGPUTextureBackend implements TextureBackend<WebGPUTextureHandle>
   }
 
   private createSampler(filter: TextureFilter, wrap: TextureWrap): GPUSampler {
-    const mode: GPUAddressMode = wrap === "clamp" ? "clamp-to-edge" : "repeat";
-    const filterMode: GPUFilterMode = filter === "nearest" ? "nearest" : "linear";
-    const desc: GPUSamplerDescriptor = {
-      magFilter: filterMode,
-      minFilter: filterMode,
-      addressModeU: mode,
-      addressModeV: mode,
-    };
-    if (filter === "mipmap") {
-      desc.mipmapFilter = "linear";
-    }
-    return this.device.createSampler(desc);
+    return getWebGPUSampler(this.device, filter, wrap);
   }
 
   createTextureFromImage(

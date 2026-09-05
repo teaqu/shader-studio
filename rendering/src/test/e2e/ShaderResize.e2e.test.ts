@@ -66,15 +66,15 @@ const programs: Record<ShaderLanguage, ShaderProgram> = {
       return float2(64.0, 48.0);
     }
     float4 mainImage(float2 fragCoord) {
-      float history = sampleIChannel0(float2(12.5, 10.5) / iResolution.xy).r;
-      float scaledSize = sampleIChannel1(float2(0.5)).g;
-      float fixedSize = sampleIChannel2(float2(0.5)).b;
+      float history = inputs.iChannel0.Sample(float2(12.5, 10.5) / iResolution.xy).r;
+      float scaledSize = inputs.iChannel1.Sample(float2(0.5)).g;
+      float fixedSize = inputs.iChannel2.Sample(float2(0.5)).b;
       float canvasSize = all(iResolution.xy == expectedCanvasSize()) ? 1.0 : 0.0;
       return float4(history, scaledSize, fixedSize, 1.0) * float4(float3(canvasSize), 1.0);
     }`,
     buffers: {
       History: `float4 mainImage(float2 fragCoord) {
-        float4 previous = sampleIChannel0(fragCoord / iResolution.xy);
+        float4 previous = inputs.iChannel0.Sample(fragCoord / iResolution.xy);
         float seed = iFrame == 0 && all(abs(fragCoord - float2(12.5, 10.5)) < float2(1.0)) ? 1.0 : 0.0;
         return max(previous, float4(seed, 0.0, 0.0, 1.0));
       }`,

@@ -116,8 +116,8 @@ float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.xy;
     float3 direction = normalize(float3(uv * 2.0 - 1.0, 1.0));
-    float3 color = sampleIChannel0(uv).rgb * 0.55;
-    color += sampleIChannel1(direction).rgb * 0.25;
+    float3 color = inputs.iChannel0.Sample(uv).rgb * 0.55;
+    color += inputs.iChannel1.Sample(direction).rgb * 0.25;
     color += exerciseVectorMatrixAndDerivativeIntrinsics(uv);
     color += exerciseScalarIntrinsics(uv.x + uv.y);
     color += exerciseBitAndPackingIntrinsics(uv.x) * 0.0001;

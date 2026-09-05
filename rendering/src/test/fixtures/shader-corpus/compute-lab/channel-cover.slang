@@ -1,4 +1,4 @@
 float4 mainImage(float2 fragCoord)
 {
-    return sampleIChannel0(fragCoord / iResolution.xy);
+    return inputs.iChannel0.Sample(fragCoord / iResolution.xy);
 }

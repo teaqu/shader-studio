@@ -9,6 +9,6 @@ void transformCoveredChannel(uint3 tid : SV_DispatchThreadID)
     }
 
     float2 uv = (float2(tid.xy) + 0.5) / iResolution.xy;
-    float3 source = sampleIChannel0(uv).rgb;
+    float3 source = inputs.iChannel0.SampleLevel(uv, 0.0).rgb;
     writeOutput(tid.xy, float4(source.bgr * float3(1.0, 0.8, 1.2), 1.0));
 }

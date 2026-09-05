@@ -332,7 +332,8 @@ suite('WebServer Test Suite', () => {
           readFile: sandbox.stub().callsFake((_filePath: string, callback: Function) => {
             callback(null, Buffer.from('file content'));
           }),
-          existsSync: sandbox.stub().returns(true)
+          existsSync: sandbox.stub().returns(true),
+          statSync: sandbox.stub().returns({ isFile: () => true, size: 12 })
         },
         'http': {
           createServer: sandbox.stub().callsFake((handler: any) => {
@@ -348,7 +349,7 @@ suite('WebServer Test Suite', () => {
     });
 
     function requestFile(filename: string): string {
-      const mockRequest = { url: `/${filename}`, method: 'GET' } as any;
+      const mockRequest = { url: `/${filename}`, method: 'GET', headers: {} };
       mockHttpServer.emit('request', mockRequest, mockResponse);
       const headers = mockResponse.writeHead.lastCall.args[1] as any;
       return headers['Content-Type'];
@@ -373,6 +374,13 @@ suite('WebServer Test Suite', () => {
     test('serves .woff2 with font/woff2 content type', () => {
       assert.strictEqual(requestFile('font.woff2'), 'font/woff2');
     });
+
+    for (const extension of ['svg', 'SVG']) {
+      test(`serves SVG texture requests (${extension}) with an image MIME type`, () => {
+        const url = `textures/${encodeURIComponent(`/fixtures/texture.${extension}`)}`;
+        assert.strictEqual(requestFile(url), 'image/svg+xml');
+      });
+    }
 
     test('serves .svg with image/svg+xml content type', () => {
       assert.strictEqual(requestFile('icon.svg'), 'image/svg+xml');

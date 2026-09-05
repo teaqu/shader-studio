@@ -6,8 +6,8 @@ import lib.palette;
 float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.xy;
-    float3 history = sampleIChannel0(uv).rgb;
-    float3 glow = sampleIChannel1(uv).rgb;
+    float3 history = inputs.iChannel0.Sample(uv).rgb;
+    float3 glow = inputs.iChannel1.Sample(uv).rgb;
     float3 color = foundationToneMap(history + glow * 0.75);
     color += foundationPalette(uv.x + iTime * 0.02) * 0.025;
 

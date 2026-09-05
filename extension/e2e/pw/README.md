@@ -30,8 +30,10 @@ per step.
   serial. Measured locally: 1 worker 23.0s, 2 workers 14.7s, 4 workers 15.6s -
   with only four spec files the extra windows buy nothing. Parallel windows
   overlap, so the occluded-window flags below are what make this safe.
-- No Playwright browser download is needed. The suite drives VS Code's own
-  Electron through `_electron.launch()`; verified to run with none installed.
+- Only the dedup spec needs a Playwright browser. Everything else drives VS
+  Code's own Electron through `_electron.launch()`; that spec additionally
+  opens the browser-connected UI, so run `npx playwright install chromium`
+  before it.
 
 ## Gotchas found the hard way
 
@@ -55,3 +57,34 @@ Failures retain a trace. Open it with:
 
 It carries a DOM snapshot per step, which is the capability the previous runner
 lacked and which several failures in this area badly needed.
+
+## Slang resource deduplication
+
+`slang-dedup.e2e.mjs` opens the real extension preview and browser-connected UI,
+checks screenshot pixels and numeric variable captures, edits and saves an input
+configuration, and verifies the changed result after a VS Code/window or browser
+page reload. After a VS Code reload it reopens the saved shader through the
+normal command; the extension does not automatically restore webview panels.
+Its fixture contains 24 image inputs sharing 12 image allocations,
+an extra image alias, and a compute pass with 24 keyboard inputs.
+
+The pinned VS Code currently exposes 16 sampled textures per shader stage on the
+test machine. This fixture fits that budget while exceeding 16 logical inputs.
+The Chromium renderer test in `SlangChannelMetadata.e2e.test.ts` additionally
+samples 24 distinct textures when the adapter supports that count.
+
+After building the extension, run the host regression with:
+
+    npm run test:e2e:vscode:run -w extension -- slang-dedup.e2e.mjs
+
+The spec owns its fixture configuration and restores it after the run. Avoid
+running two copies of this spec against the same checkout simultaneously.
+
+Its second test starts the extension's web server and drives the same flow from
+Chromium. Launch it with `channel: 'chromium'`, the full browser build: the
+default `chromium.launch()` starts the headless shell, whose only WebGPU adapter
+is SwiftShader. That adapter reports 16 sampled textures, runs at about 1 FPS
+and presents a black canvas, so the spec cannot tell a rendering bug from a
+missing GPU. The full build reaches the real adapter, which here offers 48
+sampled textures against 16 samplers - the texture-rich, sampler-poor budget
+that deduplicating samplers exists to exploit.

@@ -199,6 +199,51 @@ suite('WebSocketTransport Test Suite', () => {
     sinon.assert.calledOnce(send);
   });
 
+  test('browser client messages reach the messenger handler', async () => {
+    // Debug mode, errors and logs are handled by the Messenger's MessageHandler,
+    // which only ever saw webview traffic: without this the browser-connected UI
+    // could enable debug mode and the extension would never broadcast the
+    // cursor position it needs.
+    Logger.initialize({
+      info: sandbox.stub(),
+      debug: sandbox.stub(),
+      trace: sandbox.stub(),
+      warn: sandbox.stub(),
+      error: sandbox.stub(),
+    } as unknown as vscode.LogOutputChannel);
+    transport = new WebSocketTransport(51485, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
+    const received: any[] = [];
+    transport.onMessage(message => received.push(message));
+
+    (transport as any).wsServer.emit('connection', mockWsClient);
+    const messageHandler = (mockWsClient.on as sinon.SinonStub)
+      .getCalls().find(call => call.args[0] === 'message')?.args[1];
+    assert.ok(messageHandler, 'connection never registered a message handler');
+    await messageHandler(Buffer.from(JSON.stringify({ type: 'debugModeState', payload: { enabled: true } })));
+
+    assert.deepStrictEqual(received, [{ type: 'debugModeState', payload: { enabled: true } }]);
+  });
+
+  test('client identification is not forwarded to the messenger handler', async () => {
+    Logger.initialize({
+      info: sandbox.stub(),
+      debug: sandbox.stub(),
+      trace: sandbox.stub(),
+      warn: sandbox.stub(),
+      error: sandbox.stub(),
+    } as unknown as vscode.LogOutputChannel);
+    transport = new WebSocketTransport(51486, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension');
+    const received: any[] = [];
+    transport.onMessage(message => received.push(message));
+
+    (transport as any).wsServer.emit('connection', mockWsClient);
+    const messageHandler = (mockWsClient.on as sinon.SinonStub)
+      .getCalls().find(call => call.args[0] === 'message')?.args[1];
+    await messageHandler(Buffer.from(JSON.stringify({ type: 'clientInfo', payload: {} })));
+
+    assert.deepStrictEqual(received, []);
+  });
+
   suite('convertUriForClient', () => {
     let vscodeConfigStub: sinon.SinonStub;
     let mockConfig: any;

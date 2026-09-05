@@ -76,14 +76,14 @@ describe("wrapSlangComputeSource", () => {
 
     // SampleGrad takes its derivatives as arguments, so it is legal here even
     // though implicit-LOD Sample is not.
-    expect(wrapped).toContain("float4 sampleIChannel0Grad(float2 uv, float2 ddxUv, float2 ddyUv)");
+    expect(wrapped).toContain("float4 SampleGrad(float2 uv, float2 dx, float2 dy)");
     expect(wrapped).toContain(
-      "return iChannel0.SampleGrad(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), "
-      + "float2(ddxUv.x, -ddxUv.y), float2(ddyUv.x, -ddyUv.y));",
+      "return texture.SampleGrad(sampling, float2(uv.x, 1.0 - uv.y), "
+      + "float2(dx.x, -dx.y), float2(dy.x, -dy.y));",
     );
-    expect(wrapped).toContain("float4 sampleIChannel0Lod(float2 uv, float lod)");
+    expect(wrapped).toContain("float4 SampleLevel(float2 uv, float lod)");
     expect(wrapped).toContain(
-      "return iChannel0.SampleLevel(iChannel0Sampler, float2(uv.x, 1.0 - uv.y), lod);",
+      "return texture.SampleLevel(sampling, float2(uv.x, 1.0 - uv.y), lod);",
     );
   });
 
@@ -102,10 +102,10 @@ describe("wrapSlangComputeSource", () => {
     for (const binding of [1, 2, 3, 4, 5, 6, 7, 8]) {
       expect(wrapped.match(new RegExp(`\\[\\[vk::binding\\(${binding}, 0\\)\\]`, "g"))).toHaveLength(1);
     }
-    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> iChannel0;");
-    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState iChannel0Sampler;");
-    expect(wrapped).toContain("[[vk::binding(3, 0)]]\nTexture2D<float4> iChannel2;");
-    expect(wrapped).toContain("[[vk::binding(4, 0)]]\nSamplerState iChannel2Sampler;");
+    expect(wrapped).toContain("[[vk::binding(1, 0)]]\nTexture2D<float4> _ssTexture0;");
+    expect(wrapped).toContain("[[vk::binding(2, 0)]]\nSamplerState _ssSampler0;");
+    expect(wrapped).toContain("[[vk::binding(3, 0)]]\nTexture2D<float4> _ssTexture2;");
+    expect(wrapped).toContain("[[vk::binding(4, 0)]]\nSamplerState _ssSampler2;");
     expect(wrapped).toContain("[[vk::binding(5, 0)]]\nRWStructuredBuffer<float4> positions;");
     expect(wrapped).toContain("[[vk::binding(6, 0)]]\nRWStructuredBuffer<Particle> particles;");
     expect(wrapped).toContain(
@@ -208,7 +208,7 @@ describe("wrapSlangComputeSource", () => {
     );
   });
 
-  it("uses explicit LOD for 2D texture and buffer channels in compute helpers", () => {
+  it("exposes 2D texture and buffer inputs for explicit compute sampling", () => {
     const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [
         { slot: 1, key: "bufferChannel", kind: "buffer" },
@@ -220,15 +220,15 @@ describe("wrapSlangComputeSource", () => {
     });
 
     expect(wrapped).toContain(
-      "textureChannel.SampleLevel(textureChannelSampler, float2(uv.x, 1.0 - uv.y), 0.0)",
+      "property ShaderStudioChannel2D textureChannel",
     );
     expect(wrapped).toContain(
-      "bufferChannel.SampleLevel(bufferChannelSampler, float2(uv.x, 1.0 - uv.y), 0.0)",
+      "property ShaderStudioChannel2D bufferChannel",
     );
-    expect(wrapped).not.toContain(".Sample(");
+    expect(wrapped).toContain("float4 SampleLevel(float2 uv, float lod)");
   });
 
-  it("uses explicit LOD for cubemap channels in compute helpers", () => {
+  it("exposes cubemap inputs for explicit compute sampling", () => {
     const wrapped = wrapSlangComputeSource(computeSource, {
       channels: [{ slot: 0, key: "cubeChannel", kind: "cubemap" }],
       workgroupSize: [1, 1, 1],
@@ -236,11 +236,11 @@ describe("wrapSlangComputeSource", () => {
       hasOutput: false,
     });
 
-    expect(wrapped).toContain("cubeChannel.SampleLevel(cubeChannelSampler, dir, 0.0)");
-    expect(wrapped).not.toContain(".Sample(");
+    expect(wrapped).toContain("property ShaderStudioChannelCube cubeChannel");
+    expect(wrapped).toContain("float4 SampleLevel(float3 dir, float lod)");
   });
 
-  it("retains implicit sampling in fragment channel helpers", () => {
+  it("retains implicit sampling in fragment input methods", () => {
     const wrapped = wrapSlangImageSource("float4 mainImage(float2 c) { return float4(0); }", {
       channels: [
         { slot: 0, key: "textureChannel", kind: "texture" },
@@ -249,12 +249,11 @@ describe("wrapSlangComputeSource", () => {
     });
 
     expect(wrapped).toContain(
-      "textureChannel.Sample(textureChannelSampler, float2(uv.x, 1.0 - uv.y))",
+      "property ShaderStudioChannel2D textureChannel",
     );
-    expect(wrapped).toContain("cubeChannel.Sample(cubeChannelSampler, dir)");
-    expect(wrapped).toContain("sampleIChannel0Vertex(float2 uv)");
-    expect(wrapped).toContain("textureChannel.SampleLevel(textureChannelSampler");
-    expect(wrapped).toContain("sampleIChannel0(float2 uv)");
+    expect(wrapped).toContain("property ShaderStudioChannelCube cubeChannel");
+    expect(wrapped).toContain("float4 Sample(float2 uv)");
+    expect(wrapped).toContain("float4 Sample(float3 dir)");
   });
 
   it("puts #line directly above user source and the entry point after it", () => {

@@ -1,4 +1,6 @@
 /// <reference types="@webgpu/types" />
+import { buildSlangBindingPlan } from "./SlangBindingPlan";
+import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type {
   IVariableCapturer,
   CaptureCompileContext,
@@ -337,6 +339,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         }
         const bindGroup = this.buildBindGroup(
           cached.bindGroupLayout,
+          channels,
           currentChannelResources,
           storage,
           storageBuffers,
@@ -607,11 +610,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       contextKey === this.compileContextKey;
   }
 
-  /**
-   * Layout mirrors SlangPassPipeline (binding 0 = ShaderToy uniforms, then
-   * texture/sampler pairs over the slot-sorted channel array), then storage,
-   * with the capture uniform block appended after every pass resource.
-   */
+  /** Uniforms, unique channel resources, then pass-specific buffers. */
   private buildBindGroupLayoutEntries(
     channels: SlangChannelBinding[],
     storage: StorageBindingNode[],
@@ -623,24 +622,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       visibility: VERTEX | FRAGMENT,
       buffer: { type: "uniform" },
     }];
-    const sorted = [...channels].sort((a, b) => a.slot - b.slot);
-    for (let index = 0; index < sorted.length; index++) {
-      const texture: GPUTextureBindingLayout = { sampleType: "float" };
-      if (sorted[index].kind === "cubemap") {
-        texture.viewDimension = "cube";
-      }
-      entries.push({
-        binding: 1 + index * 2,
-        visibility: FRAGMENT,
-        texture,
-      });
-      entries.push({
-        binding: 2 + index * 2,
-        visibility: FRAGMENT,
-        sampler: { type: "filtering" },
-      });
-    }
-    const storageBaseBinding = 1 + sorted.length * 2;
+    const plan = buildSlangBindingPlan(channels);
+    entries.push(...slangChannelLayoutEntries(plan, FRAGMENT));
+    const storageBaseBinding = plan.nextBinding;
     for (const node of storage) {
       entries.push({
         binding: storageBaseBinding + node.binding,
@@ -658,6 +642,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
 
   private buildBindGroup(
     layout: GPUBindGroupLayout,
+    channels: SlangChannelBinding[],
     channelResources: Array<{ slot: number; textureView: GPUTextureView; sampler?: GPUSampler }>,
     storage: StorageBindingNode[],
     storageBuffers: Map<string, GPUBuffer>,
@@ -666,12 +651,11 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       return null;
     }
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
-    const sorted = [...channelResources].sort((a, b) => a.slot - b.slot);
-    for (let index = 0; index < sorted.length; index++) {
-      entries.push({ binding: 1 + index * 2, resource: sorted[index].textureView });
-      entries.push({ binding: 2 + index * 2, resource: sorted[index].sampler ?? this.sampler! });
-    }
-    const storageBaseBinding = 1 + sorted.length * 2;
+    const plan = buildSlangBindingPlan(channels);
+    const channelEntries = slangChannelResourceEntries(plan, channelResources, this.sampler);
+    if (!channelEntries) return null;
+    entries.push(...channelEntries);
+    const storageBaseBinding = plan.nextBinding;
     for (const node of storage) {
       entries.push({
         binding: storageBaseBinding + node.binding,

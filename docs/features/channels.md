@@ -2,13 +2,13 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on.
+Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on. In Slang, they appear under `inputs`, such as `inputs.iChannel0` and `inputs.iChannel1`.
 
 Each pass has its own channels. `iChannel0` can refer to a different input in another pass.
 
-Shader Studio also provides metadata accessors: `iCh0`, `iCh1`, and so on. They are available for every configured channel.
+In Slang, each channel object provides sampling, metadata, and access to its native texture and sampler. GLSL provides the existing `iCh0`, `iCh1`, and related metadata accessors.
 
-Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. Sample a configured channel with the generated helper, such as `sampleIChannel0(uv)`. Vertex sampling uses mip level 0 unless you pick a level yourself — see [Sampling Channels in Slang](#sampling-channels-in-slang). Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
+Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. In Slang vertex and compute shaders, use `SampleLevel(uv, 0.0)` for a configured channel; see [Sampling Channels in Slang](#sampling-channels-in-slang). Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
 
 ## What Channels Can Do
 
@@ -52,22 +52,42 @@ vec4 inputColor = texture(iChannel0, inputUV);
 
 ## Sampling Channels in Slang
 
-Slang passes read a channel through a generated helper, named after the slot or after the channel if you renamed it:
+Slang passes expose each configured channel as an object under `inputs`. The member name is the exact configuration key: `iChannel0` becomes `inputs.iChannel0`; a channel named `noise` becomes `inputs.noise`.
 
 ```slang
-float4 inputColor = sampleIChannel0(uv);   // a channel named "noise" also gets sampleNoise(uv)
+float4 inputColor = inputs.iChannel0.Sample(uv);
+float4 noise = inputs.noise.Sample(uv);
 ```
 
-Like GLSL's `texture()`, it picks a mip level for you, anywhere in the shader — including inside an `if` that only some pixels take.
+`Sample` chooses a mip level from pixel derivatives, like GLSL's `texture()`. Use the explicit operations when you need to choose the level yourself:
 
-To pick the level yourself:
-
-| Helper | Use it when |
+| Method | Use it when |
 |--------|-------------|
-| `sampleIChannel0Lod(uv, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
-| `sampleIChannel0Grad(uv, ddxUv, ddyUv)` | You want the level chosen from gradients you supply, rather than from the pixel's neighbours. |
+| `inputs.iChannel0.SampleLevel(uv, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
+| `inputs.iChannel0.SampleGrad(uv, ddxUv, ddyUv)` | You want the level chosen from gradients you supply, rather than from the pixel's neighbours. |
 
-Renamed channels get both (`sampleNoiseLod`); cubemap versions take a direction. Compute and vertex passes have no neighbours to derive a level from, so plain `sampleIChannel0` reads level 0 there and these two are how you choose.
+Cubemap channels take a direction instead of a UV. Vertex and compute shaders have no pixel derivatives, so use `SampleLevel(directionOrUv, 0.0)` or `SampleGrad` explicitly.
+
+Each Slang channel also exposes its metadata and native resources:
+
+```slang
+uint2 size = inputs.iChannel0.size;
+float time = inputs.iChannel0.time;
+bool ready = inputs.iChannel0.loaded;
+
+Texture2D<float4> texture = inputs.iChannel0.texture;
+SamplerState sampler = inputs.iChannel0.sampler;
+```
+
+All convenience sampling methods use bottom-left UV coordinates and correct the Y component of supplied gradients. Native `.texture` methods use WebGPU texture coordinates directly; convert `uv.y` to `1.0 - uv.y` when moving from the convenience API to native 2D sampling.
+
+The configured filter and wrap modes supply the default sampler. Each method also accepts an explicit `SamplerState` as its first argument, so one input can use another input's sampler:
+
+```slang
+float4 color = inputs.noise.Sample(inputs.reference.sampler, uv);
+```
+
+Only configured input names exist. Referring to an undeclared input is a compile error; a configured resource that has not loaded exposes `loaded == false`.
 
 ## Choosing a Channel Type
 
@@ -82,7 +102,7 @@ Use a channel type based on what the shader needs to sample:
 | **Buffer** | Output from another pass, including feedback | `sampler2D` |
 | **Keyboard** | Pressed, held, and toggled key state | `sampler2D` |
 
-Every channel has metadata. Use `iChannelResolution[N]` for its dimensions and `iChannelTime[N]` for playback time. `iChN` provides the channel's sampler, dimensions, playback time, and loaded state together.
+Every channel has metadata. In GLSL, use `iChannelResolution[N]` for its dimensions and `iChannelTime[N]` for playback time; `iChN` provides the channel's sampler, dimensions, playback time, and loaded state together. In Slang, use fields such as `inputs.iChannel0.size`, `.time`, and `.loaded`.
 
 ## Texture Channels
 

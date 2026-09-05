@@ -26,17 +26,17 @@ Open `keyboard.slang` to test Slang/WebGPU keyboard channels. Config
 auto-loads from `keyboard.sha.json`.
 
 Open `uniforms.slang` to test Slang/WebGPU custom uniforms, `iDate`,
-`iChannelResolution`, `iCh0`–`iCh2`, `iCameraPos`, and `iCameraDir`; its config is
+`inputs.iChannel0`–`inputs.iChannel2`, `iCameraPos`, and `iCameraDir`; its config is
 `uniforms.sha.json`. For the GLSL/WebGL reference, open `uniforms_glsl.glsl`, which loads
 `uniforms_glsl.sha.json`. Both use `uniforms.ts` and matching channel inputs.
 
-Open `ich.slang` for a focused `iCh0`–`iCh3` test covering texture, audio,
+Open `ich.slang` for a focused `inputs.iChannel0`–`inputs.iChannel3` test covering texture, audio,
 keyboard, and cubemap samplers plus `.size`, `.time`, and `.loaded`. Compare it
 with `ich_glsl.glsl`; their configs bind the same four assets/channel kinds.
 
 Open `vertex.slang` to test a custom Slang vertex stage. Its config,
 `vertex.sha.json`, initializes `vertexTransform` in a compute pass, then
-`vertex_vertex.slang` reads that storage buffer and samples its `iChannel3`
+`vertex_vertex.slang` reads that storage buffer and samples its `inputs.iChannel3`
 texture input, rendering an inset, offset triangle rather than the default
 fullscreen triangle.
 
@@ -150,12 +150,12 @@ Expected:
 1. The five large top panels animate: grayscale float fill, vec2 red/green, vec3 RGB, vec4 RGB with a moving white alpha band, and a bool panel alternating green/blue once per second.
 2. The two thin middle strips show camera position (left, initially mid-grey) and direction (right, initially yellow). Hold W/A/S/D/Q/E to move; drag the canvas or use arrow keys to look. The small badge at the right stays green while the direction is normalized.
 3. Pause after moving the camera, then keep moving/looking: the displayed strips stay frozen until unpaused. Reset returns position to mid-grey and direction to yellow.
-4. All five lower status tiles are green. The middle three validate `iChN.size` and `iChN.loaded` for texture (256×256), audio (512×2), and keyboard (256×3); the last checks the unused channel (0×0×0).
-5. The texture tile contains an off-center swatch sampled through `iCh0.sampler`; it must match between GLSL and Slang, which also checks the wrapper's V-flip. A thin white bar at the bottom of the audio tile moves with `iCh1.time`; the date tile has its own seconds bar.
+4. All five lower status tiles are green. The middle three validate `inputs.iChannelN.size` and `.loaded` for texture (256×256), audio (512×2), and keyboard (256×3); the last is a fixed success tile because Slang does not expose unconfigured inputs.
+5. The texture tile contains an off-center swatch sampled through `inputs.iChannel0.Sample`; it must match between GLSL and Slang, which also checks the wrapper's V-flip. A thin white bar at the bottom of the audio tile moves with `inputs.iChannel1.time`; the date tile has its own seconds bar.
 6. Slang and GLSL output should match visually and produce no validation errors.
-7. Selecting expressions that use `uVec3`, `uBool`, `iDate`, `iCh0.size`, `iCh1.time`, or either camera uniform in the debugger should produce the same values as the rendered panels.
+7. Selecting expressions that use `uVec3`, `uBool`, `iDate`, `inputs.iChannel0.size`, `inputs.iChannel1.time`, or either camera uniform in the debugger should produce the same values as the rendered panels.
 
-## iCh0-iCh3 smoke test
+## Slang input-object smoke test
 
 Open `ich.slang`, then compare with `ich_glsl.glsl`.
 
@@ -163,7 +163,7 @@ Expected:
 
 1. All four thin status strips are green; red identifies a bad `.size`, `.loaded`, or `.time` value.
 2. Top-left texture panel has RED at TOP, GREEN at LEFT, BLUE at BOTTOM, and YELLOW at RIGHT. A vertical inversion means the 2D wrapper's V-flip is wrong.
-3. Top-right audio panel shows cyan spectrum bars, a yellow waveform, and a white marker moving with `iCh1.time`.
+3. Top-right audio panel shows cyan spectrum bars, a yellow waveform, and a white marker moving with `inputs.iChannel1.time`.
 4. Bottom-left keyboard panel lights red/green/blue while holding A/S/D, and flashes its white band for one rendered frame when Space is pressed.
 5. Bottom-right cubemap panel shows the cubemap, with six bottom probes ordered red, green, blue, yellow, magenta, cyan (+X, -X, +Y, -Y, +Z, -Z).
 6. Slang and GLSL output match visually and neither produces validation errors.

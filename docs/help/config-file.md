@@ -228,7 +228,7 @@ Each non-Image pass needs a `path` field pointing to its `.glsl` or `.slang` fil
 
 ## Channel Types
 
-Each pass can bind input channels (`iChannel0`, `iChannel1`, and so on). Matching metadata accessors are available for every configured slot (`iCh0`, `iCh1`, and so on):
+Each pass can bind input channels with configuration keys such as `iChannel0` and `iChannel1`. In GLSL, those same names and matching metadata accessors (`iCh0`, `iCh1`, and so on) are available in the shader. In Slang, they are available as `inputs.iChannel0`, `inputs.iChannel1`, and so on:
 
 | Type | Fields | Description |
 |------|--------|-------------|
@@ -239,7 +239,7 @@ Each pass can bind input channels (`iChannel0`, `iChannel1`, and so on). Matchin
 | `cubemap` | `path`, `filter`, `wrap`, `vflip` | T-cross cubemap image |
 | `keyboard` | — | Key state input texture |
 
-In GLSL, `iChN` exposes the same input as `iChannelN` together with its metadata: `.sampler`, `.size`, `.time`, and `.loaded`. For example, `iCh4.sampler` and `iChannel4` refer to the fifth configured input.
+In GLSL, `iChN` exposes the same input as `iChannelN` together with its metadata: `.sampler`, `.size`, `.time`, and `.loaded`. For example, `iCh4.sampler` and `iChannel4` refer to the fifth configured input. In Slang, `inputs.iChannel4` exposes `.Sample`, `.SampleLevel`, `.SampleGrad`, `.texture`, `.sampler`, `.size` (`uint2`), `.time`, and `.loaded` (`bool`).
 
 ### Texture / Video / Cubemap Options
 

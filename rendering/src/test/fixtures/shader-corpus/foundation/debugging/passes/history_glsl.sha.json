@@ -2,7 +2,15 @@
   "version": "1.0",
   "passes": {
     "Image": {
-      "inputs": {}
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "HistorySource"
+        }
+      }
+    },
+    "HistorySource": {
+      "path": "./history-source.glsl"
     },
     "common": {
       "path": "@/foundation/debugging/common_glsl.glsl"

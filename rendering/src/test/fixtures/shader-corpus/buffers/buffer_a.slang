@@ -12,7 +12,7 @@ float4 mainImage(float2 fragCoord)
 
     // Copy from slightly ABOVE, so ink drifts downward over time.
     float2 drift = float2(0.0, 1.5) / res;
-    float3 prev = sampleIChannel0(uv + drift).rgb;
+    float3 prev = inputs.iChannel0.Sample(uv + drift).rgb;
 
     // Decay old ink.
     prev *= 0.985;

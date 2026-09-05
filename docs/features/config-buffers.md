@@ -44,7 +44,7 @@ The Image tab has no file path — it always corresponds to your main shader fil
 | **Aspect ratio** | 16:9, 4:3, 1:1, Fill, Auto | Constrains the canvas shape. Auto uses your screen's aspect ratio. |
 | **Custom dimensions** | e.g. `1920 × 1080` | Base width and height in pixels |
 
-The Image pass can also have input channels (`iChannel0`, `iChannel1`, and so on), with matching metadata accessors (`iCh0`, `iCh1`, and so on). See [Channels](channels.md) for how to bind textures, video, audio, and more.
+The Image pass can also have input channels. GLSL accesses them as `iChannel0`, `iChannel1`, and so on, with matching `iCh0`, `iCh1`, and metadata accessors. Slang accesses them as `inputs.iChannel0`, `inputs.iChannel1`, and so on. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 See [Resolution](resolution.md) for how these settings interact with the toolbar.
 
@@ -54,7 +54,7 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 ## Buffer Passes
 
-Each fragment buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. You can configure input channels for each pass, with matching `iChN` metadata accessors. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+Each fragment buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, while Slang uses `inputs.iChannelN`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 **Path field** — points to the shader file for this buffer. Three path forms are supported:
 

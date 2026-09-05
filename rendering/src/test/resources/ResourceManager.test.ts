@@ -1,3 +1,4 @@
+import type { TextureCache } from "../../resources/TextureCache";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ResourceManager } from "../../resources/ResourceManager";
 import type { TextureBackend } from "../../resources/TextureBackend";
@@ -175,6 +176,31 @@ describe("ResourceManager", () => {
   });
 
   describe("loadImageTexture", () => {
+    it("uses an explicit upload variant key while loading the original URL", async () => {
+      const texture = createMockTexture();
+      const cache = vi.mocked((resourceManager as unknown as { textureCache: TextureCache<PiTexture> }).textureCache);
+      cache.loadTextureFromUrl.mockResolvedValue(texture);
+      expect(await resourceManager.loadImageTexture("image.jpg", { vflip: false }, "variant")).toBe(texture);
+      expect(cache.removeCachedTexture).toHaveBeenCalledWith("variant");
+      expect(cache.loadTextureFromUrl).toHaveBeenCalledWith("image.jpg", { vflip: false });
+      expect(cache.cacheTexture).toHaveBeenCalledWith("variant", texture);
+      cache.removeCachedTexture.mockReturnValue(texture);
+      cache.loadTextureFromUrl.mockClear();
+      expect(await resourceManager.loadImageTexture("image.jpg", { vflip: false }, "variant")).toBe(texture);
+      expect(cache.loadTextureFromUrl).not.toHaveBeenCalled();
+    });
+
+    it("caches a failed upload fallback under its variant key", async () => {
+      const cache = vi.mocked((resourceManager as unknown as { textureCache: TextureCache<PiTexture> }).textureCache);
+      const fallback = createMockTexture();
+      cache.loadTextureFromUrl.mockRejectedValue(new Error("load failed"));
+      cache.getDefaultTexture.mockReturnValue(fallback);
+      expect(await resourceManager.loadImageTexture("image.jpg", {}, "failed-variant")).toBe(fallback);
+      expect(cache.cacheTexture).toHaveBeenCalledWith("failed-variant", fallback);
+      cache.getDefaultTexture.mockReturnValue(null);
+      expect(await resourceManager.loadImageTexture("image.jpg", {}, "no-fallback")).toBeNull();
+    });
+
     it("should load image texture successfully", async () => {
       const mockTexture = createMockTexture();
       const textureCache = (resourceManager as any).textureCache;

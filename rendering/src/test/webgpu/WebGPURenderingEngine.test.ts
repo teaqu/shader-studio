@@ -1,3 +1,5 @@
+import { getSlangTextureIdentity } from "../../webgpu/SlangBindingPlan";
+import { getWebGPUSampler } from "../../webgpu/WebGPUSamplerCache";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
@@ -378,7 +380,7 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
-      expect(ConfigValidator.getChannelLimit()).toBe(24);
+      expect(ConfigValidator.getChannelLimit()).toBe(1363);
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: {
@@ -743,7 +745,7 @@ describe("WebGPURenderingEngine", () => {
   it("collects loaded state and resolution metadata for channel 15", () => {
     const engine = new WebGPURenderingEngine(assets);
     (engine as any).resourceManager = {
-      getImageTextureCache: () => ({ high: { width: 4096, height: 2048 } }),
+      getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 15, key: "", path: "high" })]: { width: 4096, height: 2048 } }),
       getAudioSampleRate: () => 48000,
     };
 
@@ -857,7 +859,7 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.compile).toHaveBeenNthCalledWith(2, expect.stringContaining("float4(0)"), {
       passName: "Image",
       commonCode: "",
-      channels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+      channels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
       storage: [],
       passKind: "render",
       workgroupSize: [8, 8, 1],
@@ -1230,7 +1232,7 @@ describe("WebGPURenderingEngine", () => {
     expect(compiler.compile).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        channels: [{ slot: 0, key: "ignoredInput", kind: "audio" }],
+        channels: [expect.objectContaining({ slot: 0, key: "ignoredInput", kind: "audio" })],
       }),
     );
   });
@@ -1258,6 +1260,7 @@ describe("WebGPURenderingEngine", () => {
     };
 
     (engine as any).device = {
+      createSampler: vi.fn(() => ({})),
       queue: {
         writeBuffer: vi.fn(),
         submit: vi.fn(),
@@ -1315,6 +1318,7 @@ describe("WebGPURenderingEngine", () => {
     };
 
     (engine as any).device = {
+      createSampler: vi.fn(() => ({})),
       queue: { writeBuffer: vi.fn(), submit: vi.fn() },
       createCommandEncoder: vi.fn(() => ({
         copyTextureToTexture: vi.fn(),
@@ -1352,6 +1356,7 @@ describe("WebGPURenderingEngine", () => {
     const beginRenderPass = vi.fn();
     const getCurrentTexture = vi.fn();
     (engine as any).device = {
+      createSampler: vi.fn(() => ({})),
       queue: { writeBuffer, submit: vi.fn() },
       createCommandEncoder: vi.fn(() => ({
         beginRenderPass,
@@ -1398,6 +1403,7 @@ describe("WebGPURenderingEngine", () => {
     };
 
     (engine as any).device = {
+      createSampler: vi.fn(() => ({})),
       queue: { writeBuffer, submit: vi.fn() },
       createCommandEncoder: vi.fn(() => ({
         beginRenderPass: vi.fn(() => ({
@@ -1627,7 +1633,7 @@ describe("WebGPURenderingEngine", () => {
       stubDeviceAndContext(engine);
       const textureHandle = { width: 640, height: 360, view: {}, sampler: {} };
       (engine as any).resourceManager = {
-        getImageTextureCache: () => ({ "/tex.png": textureHandle }),
+        getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/tex.png" })]: textureHandle }),
         getDefaultTexture: () => textureHandle,
         getAudioTexture: () => textureHandle,
         getAudioState: () => null,
@@ -1681,8 +1687,8 @@ describe("WebGPURenderingEngine", () => {
       const imageHandle = { width: 256, height: 128, view: { label: "image-input" }, sampler: {} };
       (engine as any).resourceManager = {
         getImageTextureCache: () => ({
-          "/buffer.png": bufferHandle,
-          "/image.png": imageHandle,
+          [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/buffer.png" })]: bufferHandle,
+          [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/image.png" })]: imageHandle,
         }),
         getDefaultTexture: () => imageHandle,
         getAudioSampleRate: () => 44100,
@@ -1779,7 +1785,7 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel0", kind: "video" }],
+          channels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "video" })],
         }),
       );
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
@@ -1819,7 +1825,7 @@ describe("WebGPURenderingEngine", () => {
       expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
         { binding: 0, resource: { buffer: expect.anything() } },
         { binding: 1, resource: videoHandle.view },
-        { binding: 2, resource: videoHandle.sampler },
+        { binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "linear", "clamp") },
       ]);
     });
 
@@ -1869,7 +1875,7 @@ describe("WebGPURenderingEngine", () => {
       expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
         { binding: 0, resource: { buffer: expect.anything() } },
         { binding: 1, resource: defaultHandle.view },
-        { binding: 2, resource: defaultHandle.sampler },
+        { binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "linear", "clamp") },
       ]);
     });
 
@@ -2010,7 +2016,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2028,7 +2034,7 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel1", kind: "audio" }],
+          channels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "audio" })],
         }),
       );
     });
@@ -2044,7 +2050,7 @@ describe("WebGPURenderingEngine", () => {
       };
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2077,7 +2083,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       const result = await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2092,7 +2098,7 @@ describe("WebGPURenderingEngine", () => {
       expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
         { binding: 0, resource: { buffer: expect.anything() } },
         { binding: 1, resource: audioHandle.view },
-        { binding: 2, resource: audioHandle.sampler },
+        { binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "linear", "clamp") },
       ]);
       const packed = device.queue.writeBuffer.mock.calls.at(-1)![2] as ArrayBuffer;
       const uniforms = new DataView(packed);
@@ -2122,7 +2128,7 @@ describe("WebGPURenderingEngine", () => {
       (engine as any).resourceManager = resourceManager;
 
       await engine.compileShaderPipeline(
-        "float4 mainImage(float2 c) { return sampleIChannel1(float2(c.x, 0.25)); }",
+        "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
         audioConfig,
         "/image.slang",
       );
@@ -2292,7 +2298,7 @@ describe("WebGPURenderingEngine", () => {
       expect(compiler.compile).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+          channels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "cubemap" })],
         }),
       );
       expect(engine.getPasses()[0].channels[0]).toEqual(expect.objectContaining({
@@ -2332,7 +2338,7 @@ describe("WebGPURenderingEngine", () => {
       expect(device.createBindGroup.mock.calls[0][0].entries).toEqual([
         { binding: 0, resource: { buffer: expect.anything() } },
         { binding: 1, resource: cubemapHandle.view },
-        { binding: 2, resource: cubemapHandle.sampler },
+        { binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "mipmap", "clamp") },
       ]);
     });
 
@@ -3546,7 +3552,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext()).toEqual({
         commonCode: "",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -3884,7 +3890,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonA() { return 1.0; }",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -3895,7 +3901,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
+        slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -3916,7 +3922,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("same-path candidate image")).toEqual({
         commonCode: "float commonC() { return 3.0; }",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel0", kind: "buffer" }],
+        slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "buffer" })],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -3951,7 +3957,7 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getVariableCaptureCompileContext("candidate image")).toEqual({
         commonCode: "float commonB() { return 2.0; }",
         slangPassName: "Image",
-        slangChannels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
+        slangChannels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
         slangStorage: [],
         slangStorageBuffers: expect.any(Map),
         slangModules: [],
@@ -4020,6 +4026,7 @@ describe("WebGPURenderingEngine", () => {
 
   function stubDeviceAndContext(engine: WebGPURenderingEngine) {
     (engine as any).device = {
+      createSampler: vi.fn(() => ({})),
       queue: { writeBuffer: vi.fn(), submit: vi.fn() },
       createCommandEncoder: vi.fn(() => ({
         beginRenderPass: vi.fn(() => ({
@@ -4423,7 +4430,7 @@ describe("WebGPURenderingEngine", () => {
       expect(second.compiler.compile).toHaveBeenCalledTimes(1);
       expect(second.compiler.compile).toHaveBeenCalledWith("img channel cache", expect.objectContaining({
         passName: "Image",
-        channels: [{ slot: 0, key: "iChannel1", kind: "buffer" }],
+        channels: [expect.objectContaining({ slot: 0, key: "iChannel1", kind: "buffer" })],
       }));
     });
 
@@ -4450,7 +4457,7 @@ describe("WebGPURenderingEngine", () => {
 
       expect(second.compiler.compile).toHaveBeenCalledWith("img channel kind cache", expect.objectContaining({
         passName: "Image",
-        channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
+        channels: [expect.objectContaining({ slot: 0, key: "iChannel0", kind: "cubemap" })],
       }));
     });
 
@@ -5256,7 +5263,7 @@ describe("WebGPURenderingEngine", () => {
           wrap: "clamp",
           vflip: false,
           grayscale: true,
-        });
+        }, getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/abs/tex.png", filter: "nearest", vflip: false, grayscale: true }));
         expect(loadSpy.mock.instances).toEqual([engine.getResourceManager()]);
         expect(engine.getResourceManager()).not.toBe(originalResourceManager);
       } finally {
@@ -5295,7 +5302,7 @@ describe("WebGPURenderingEngine", () => {
       const loadSpy = vi.spyOn(ResourceManager.prototype, "loadImageTexture")
         .mockResolvedValue(handle as never);
       const cacheSpy = vi.spyOn(ResourceManager.prototype, "getImageTextureCache")
-        .mockReturnValue({ "/abs/tex.png": handle as never });
+        .mockReturnValue({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/abs/tex.png", filter: "nearest", vflip: false, grayscale: true })]: handle as never });
 
       try {
         const result = await engine.compileShaderPipeline(IMAGE_SRC, textureConfig, "/s.slang", {});
@@ -5305,7 +5312,7 @@ describe("WebGPURenderingEngine", () => {
         const bindCalls = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls;
         const entries = bindCalls.at(-1)![0].entries;
         expect(entries).toContainEqual({ binding: 1, resource: handle.view });
-        expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+        expect(entries).toContainEqual({ binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "nearest", "clamp") });
       } finally {
         loadSpy.mockRestore();
         cacheSpy.mockRestore();
@@ -5353,7 +5360,7 @@ describe("WebGPURenderingEngine", () => {
 
       const textureHandle = { view: { label: "tex-view" }, sampler: { label: "tex-sampler" } };
       (engine as any).resourceManager = {
-        getImageTextureCache: () => ({ "/tex.png": textureHandle }),
+        getImageTextureCache: () => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path: "/tex.png" })]: textureHandle }),
         getDefaultTexture: () => null,
       };
 
@@ -5403,7 +5410,7 @@ describe("WebGPURenderingEngine", () => {
       expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith(
         [
           { slot: 0, textureView: { label: "bufferA-current" } },
-          { slot: 1, textureView: textureHandle.view, sampler: textureHandle.sampler },
+          { slot: 1, textureView: textureHandle.view, sampler: getWebGPUSampler((engine as unknown as { device: GPUDevice }).device, "mipmap", "repeat") },
         ],
         expect.any(Map),
       );
@@ -5491,7 +5498,7 @@ describe("WebGPURenderingEngine", () => {
       const device = (engine as any).device;
       const entries = (device.createBindGroup as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].entries;
       expect(entries).toContainEqual({ binding: 1, resource: handle.view });
-      expect(entries).toContainEqual({ binding: 2, resource: handle.sampler });
+      expect(entries).toContainEqual({ binding: 2, resource: getWebGPUSampler(device as unknown as GPUDevice, "nearest", "clamp") });
     });
 
     it("setInputEnabled(false) clears held keys", async () => {

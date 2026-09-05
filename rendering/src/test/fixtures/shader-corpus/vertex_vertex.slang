@@ -6,6 +6,6 @@ void mainVertex(inout float3 position, inout float3 normal, inout float2 uv)
     float4 transform = vertexTransform[0];
     position.xy = position.xy * transform.xy + transform.zw;
 
-    float3 channelColor = sampleIChannel3(uv).rgb;
+    float3 channelColor = inputs.iChannel3.SampleLevel(uv, 0.0).rgb;
     position.xy += (channelColor.rg - 0.5) * 0.16;
 }

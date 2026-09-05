@@ -1,4 +1,7 @@
 /// <reference types="@webgpu/types" />
+import type { SlangBindingChannel } from "./SlangBindingPlan";
+import { buildSlangBindingPlan } from "./SlangBindingPlan";
+import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import type { GeometryType } from "@shader-studio/types";
@@ -9,7 +12,7 @@ export interface SlangPassPipelineDescriptor {
   width: number;
   height: number;
   output: "texture" | "canvas";
-  channels: Array<{ slot: number; key: string; kind?: string }>;
+  channels: SlangBindingChannel[];
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
@@ -291,13 +294,11 @@ export class SlangPassPipeline {
     this.invalidateBindGroup();
 
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
-    for (let index = 0; index < sorted.length; index++) {
-      const textureBinding = 1 + index * 2;
-      const samplerBinding = textureBinding + 1;
-      entries.push({ binding: textureBinding, resource: sorted[index].textureView });
-      entries.push({ binding: samplerBinding, resource: sorted[index].sampler ?? this.sampler! });
-    }
-    const storageBaseBinding = 1 + this.descriptor.channels.length * 2;
+    const plan = buildSlangBindingPlan(this.descriptor.channels);
+    const channelEntries = slangChannelResourceEntries(plan, sorted, this.sampler);
+    if (!channelEntries) { this.invalidateBindGroup(); return; }
+    entries.push(...channelEntries);
+    const storageBaseBinding = plan.nextBinding;
     for (const { node, buffer } of resolvedStorage) {
       entries.push({
         binding: storageBaseBinding + node.binding,
@@ -378,39 +379,16 @@ export class SlangPassPipeline {
     this.resetResources();
   }
 
-  /**
-   * Bind group layout entries matching the prelude's binding contract:
-   * binding 0 = uniforms; then, over the slot-sorted channel array, texture
-   * at 1+index*2 and sampler at 2+index*2; storage follows channel
-   * pairs at 1+channelCount*2+node.binding.
-   */
+  /** Uniforms, unique channel resources, then pass-specific buffers. */
   private buildBindGroupLayoutEntries(): GPUBindGroupLayoutEntry[] {
     const entries: GPUBindGroupLayoutEntry[] = [{
       binding: 0,
       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
       buffer: { type: "uniform" },
     }];
-    const sorted = [...this.descriptor.channels].sort((a, b) => a.slot - b.slot);
-    const channelVisibility = this.descriptor.vertexChannels
-      ? GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT
-      : GPUShaderStage.FRAGMENT;
-    for (let index = 0; index < sorted.length; index++) {
-      const textureEntry: GPUTextureBindingLayout = { sampleType: "float" };
-      if (sorted[index].kind === "cubemap") {
-        textureEntry.viewDimension = "cube";
-      }
-      entries.push({
-        binding: 1 + index * 2,
-        visibility: channelVisibility,
-        texture: textureEntry,
-      });
-      entries.push({
-        binding: 2 + index * 2,
-        visibility: channelVisibility,
-        sampler: { type: "filtering" },
-      });
-    }
-    const storageBaseBinding = 1 + sorted.length * 2;
+    const plan = buildSlangBindingPlan(this.descriptor.channels);
+    entries.push(...slangChannelLayoutEntries(plan, this.descriptor.vertexChannels ? GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT : GPUShaderStage.FRAGMENT));
+    const storageBaseBinding = plan.nextBinding;
     for (const node of this.descriptor.storage ?? []) {
       entries.push({
         binding: storageBaseBinding + node.binding,

@@ -13,12 +13,12 @@ float4 mainImage(float2 fragCoord)
     float2 uv = fragCoord / iResolution.xy;
     float pulse = 0.5 + 0.5 * sin(iTime), grid = parityGrid(uv, 12.0);
     float3 helperColor = debugHelper(uv, 0.55, 0.2);
-    float3 feedback = sampleIChannel0(uv).rgb;
-    float3 computeColor = sampleIChannel1(uv).rgb;
+    float3 feedback = inputs.iChannel0.Sample(uv).rgb;
+    float3 computeColor = inputs.iChannel1.Sample(uv).rgb;
     float3 color = lerp(feedback, computeColor, 0.35) + helperColor * (0.12 + grid * 0.08);
-    float3 slot15Size = iChannelResolution[15];
-    bool slot15Ready = iChannelLoaded[15] > 0.5 && iCh15.loaded != 0 && slot15Size.x > 0.0 && slot15Size.y > 0.0;
-    float3 slot15Sample = iCh15.sampler.Sample(uv).rgb;
+    uint2 slot15Size = inputs.iChannel15.size;
+    bool slot15Ready = inputs.iChannel15.loaded && slot15Size.x > 0 && slot15Size.y > 0;
+    float3 slot15Sample = inputs.iChannel15.Sample(uv).rgb;
 
     if (uv.x > 0.72 && uv.y > 0.72)
         color = slot15Sample;

@@ -17,8 +17,8 @@ float4 mainImage(float2 fragCoord)
     // `palette` comes from common.slang — proves common code reaches Image.
     float3 col = palette(uv.x * 0.2 + iTime * 0.02) * 0.06;
 
-    float3 sharp = sampleIChannel0(uv).rgb;
-    float3 glow = sampleIChannel1(uv).rgb;
+    float3 sharp = inputs.iChannel0.Sample(uv).rgb;
+    float3 glow = inputs.iChannel1.Sample(uv).rgb;
     col += sharp + 0.6 * glow * glow;
 
     if (uv.y > 0.985) col = float3(1.0, 0.0, 0.0); // TOP edge = red

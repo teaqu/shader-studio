@@ -1,0 +1,242 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "tex0": {
+          "type": "texture",
+          "path": "./tex0.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex1": {
+          "type": "texture",
+          "path": "./tex1.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex2": {
+          "type": "texture",
+          "path": "./tex2.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex3": {
+          "type": "texture",
+          "path": "./tex3.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex4": {
+          "type": "texture",
+          "path": "./tex4.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex5": {
+          "type": "texture",
+          "path": "./tex5.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex6": {
+          "type": "texture",
+          "path": "./tex6.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex7": {
+          "type": "texture",
+          "path": "./tex7.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex8": {
+          "type": "texture",
+          "path": "./tex8.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex9": {
+          "type": "texture",
+          "path": "./tex9.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex10": {
+          "type": "texture",
+          "path": "./tex10.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex11": {
+          "type": "texture",
+          "path": "./tex11.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex12": {
+          "type": "texture",
+          "path": "./tex0.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex13": {
+          "type": "texture",
+          "path": "./tex1.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex14": {
+          "type": "texture",
+          "path": "./tex2.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex15": {
+          "type": "texture",
+          "path": "./tex3.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex16": {
+          "type": "texture",
+          "path": "./tex4.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex17": {
+          "type": "texture",
+          "path": "./tex5.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex18": {
+          "type": "texture",
+          "path": "./tex6.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex19": {
+          "type": "texture",
+          "path": "./tex7.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex20": {
+          "type": "texture",
+          "path": "./tex8.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex21": {
+          "type": "texture",
+          "path": "./tex9.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex22": {
+          "type": "texture",
+          "path": "./tex10.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "tex23": {
+          "type": "texture",
+          "path": "./tex11.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "alias": {
+          "type": "texture",
+          "path": "./tex11.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "computed": {
+          "type": "buffer",
+          "source": "Compute"
+        }
+      }
+    },
+    "Compute": {
+      "type": "compute",
+      "path": "./compute.slang",
+      "entryPoint": "fill",
+      "inputs": {
+        "key0": {
+          "type": "keyboard"
+        },
+        "key1": {
+          "type": "keyboard"
+        },
+        "key2": {
+          "type": "keyboard"
+        },
+        "key3": {
+          "type": "keyboard"
+        },
+        "key4": {
+          "type": "keyboard"
+        },
+        "key5": {
+          "type": "keyboard"
+        },
+        "key6": {
+          "type": "keyboard"
+        },
+        "key7": {
+          "type": "keyboard"
+        },
+        "key8": {
+          "type": "keyboard"
+        },
+        "key9": {
+          "type": "keyboard"
+        },
+        "key10": {
+          "type": "keyboard"
+        },
+        "key11": {
+          "type": "keyboard"
+        },
+        "key12": {
+          "type": "keyboard"
+        },
+        "key13": {
+          "type": "keyboard"
+        },
+        "key14": {
+          "type": "keyboard"
+        },
+        "key15": {
+          "type": "keyboard"
+        },
+        "key16": {
+          "type": "keyboard"
+        },
+        "key17": {
+          "type": "keyboard"
+        },
+        "key18": {
+          "type": "keyboard"
+        },
+        "key19": {
+          "type": "keyboard"
+        },
+        "key20": {
+          "type": "keyboard"
+        },
+        "key21": {
+          "type": "keyboard"
+        },
+        "key22": {
+          "type": "keyboard"
+        },
+        "key23": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { getSlangTextureIdentity } from "../../webgpu/SlangBindingPlan";
+import { getWebGPUSampler } from "../../webgpu/WebGPUSamplerCache";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   BufferResolution,
@@ -646,7 +648,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       height: 16,
     };
     const resourceManager = {
-      getImageTextureCache: vi.fn(() => ({ [path]: handle })),
+      getImageTextureCache: vi.fn(() => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path })]: handle })),
       getDefaultTexture: vi.fn(() => null),
     };
     (testHarness.engine as unknown as { resourceManager: typeof resourceManager })
@@ -691,7 +693,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
         height: 45,
       };
       const resourceManager = {
-        getImageTextureCache: vi.fn(() => kind === "texture" ? { [path]: handle } : {}),
+        getImageTextureCache: vi.fn(() => kind === "texture" ? { [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path })]: handle } : {}),
         getVideoTexture: vi.fn(() => kind === "video" ? handle : null),
         getDefaultTexture: vi.fn(() => null),
       };
@@ -1137,7 +1139,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
     expect(testHarness.commandEvents.some(({ type }) => type === "beginComputePass")).toBe(false);
     expect(testHarness.commandEvents.some(({ type }) => type === "beginRenderPass")).toBe(true);
 
-    resourceManager.getImageTextureCache.mockReturnValue({ [path]: handle });
+    resourceManager.getImageTextureCache.mockReturnValue({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path })]: handle });
     testHarness.engine.render(1016);
     testHarness.engine.render(1032);
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
@@ -1880,7 +1882,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       height: 16,
     };
     const resourceManager = {
-      getImageTextureCache: vi.fn(() => ({ [path]: handle })),
+      getImageTextureCache: vi.fn(() => ({ [getSlangTextureIdentity({ kind: "texture", slot: 0, key: "", path })]: handle })),
       getDefaultTexture: vi.fn(() => null),
     };
     (testHarness.engine as unknown as { resourceManager: typeof resourceManager })

@@ -24,7 +24,7 @@ Completion and hover include:
 
 - Language intrinsics such as GLSL `texture` and Slang `fmod`
 - Shader Studio uniforms such as `iResolution`, `iTime`, and channel inputs
-- Shader Studio sampling helpers such as Slang `sampleIChannel0`
+- Shader Studio channel objects such as Slang `inputs.iChannel0`
 - Functions, structures, and variables declared in the current shader
 - Functions and types provided by configured Common and dependency files
 - Custom uniforms from the active Script and resources from the Shader Studio

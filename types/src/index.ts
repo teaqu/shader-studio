@@ -12,3 +12,5 @@ export * from './shader-environment/GlslEnvironmentGenerator';
 export * from './shader-environment/SlangEnvironmentGenerator';
 export * from './shader-environment/ShaderStudioDocumentation';
 export * from './shader-environment/ShaderLanguageReservedTerms';
+
+export * from './shader-environment/SlangChannels';

@@ -66,14 +66,28 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
     const completionDocs = {};
     const documentedCompletions = expectedLanguage === 'glsl'
       ? new Set(['texture'])
-      : new Set(['normalize', 'fmod', 'sampleIChannel0']);
+      : new Set(['normalize', 'fmod', 'inputs']);
     for (const item of completionItems) {
       const label = typeof item.label === 'string' ? item.label : item.label.label;
       if (documentedCompletions.has(label)) {
         completionDocs[label] = [completionDocs[label], markdown(item.documentation)].filter(Boolean).join('\n');
       }
     }
+    const inputMembers = expectedLanguage === 'slang'
+      ? await vscode.commands.executeCommand(
+        'vscode.executeCompletionItemProvider', document.uri,
+        position('inputs.iChannel0.Sample', 0, 'inputs.iChannel0.'.length), '.', 1_000,
+      )
+      : undefined;
+    const inputSignature = expectedLanguage === 'slang'
+      ? await vscode.commands.executeCommand(
+        'vscode.executeSignatureHelpProvider', document.uri,
+        position('inputs.iChannel0.Sample(uv)', 0, 'inputs.iChannel0.Sample('.length), '(',
+      )
+      : undefined;
     return {
+      inputMembers: (inputMembers?.items ?? []).map((item) => typeof item.label === 'string' ? item.label : item.label.label),
+      inputSignatures: inputSignature?.signatures.map((item) => item.label) ?? [],
       labels: completionItems.map((item) => typeof item.label === 'string' ? item.label : item.label.label),
       completionDocs,
       completionEntries: completionItems.filter((item) => (
@@ -85,7 +99,7 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       })),
       builtinHover: await hover('iResolution'),
       intrinsicHover: await hover(expectedLanguage === 'glsl' ? 'texture(iChannel0' : 'fmod('),
-      channelHover: await hover(expectedLanguage === 'glsl' ? 'iChannel0' : 'sampleIChannel0'),
+      channelHover: await hover('iChannel0'),
       hookHover: await hover('mainImage'),
       coordinateHover: await hover('pixelPosition'),
       definitions: (definition ?? []).map((item) => ({ path: item.uri.fsPath, line: item.range.start.line })),
@@ -303,7 +317,7 @@ test.describe('Shader language servers in VS Code', () => {
   test('provides the complete Slang authoring feature set through bundled WASM', async ({ vscode }) => {
     const result = await languageSnapshot(vscode, join(fixturePath, 'image.slang'), 'slang');
 
-    for (const label of ['normalize', 'fmod', 'sampleIChannel0', 'iResolution', 'iChannel0', 'shade', 'twice']) {
+    for (const label of ['normalize', 'fmod', 'inputs', 'iResolution', 'shade', 'twice']) {
       expect(result.labels.includes(label), `Missing Slang completion ${label}`).toBeTruthy();
     }
     expect(
@@ -311,13 +325,20 @@ test.describe('Shader language servers in VS Code', () => {
       JSON.stringify(result.completionEntries.filter((item) => item.label === 'normalize')),
     ).toMatch(/unit length/i);
     expect(result.completionDocs.fmod).toMatch(/remainder/i);
-    expect(result.completionDocs.sampleIChannel0).toMatch(/input channel 0/i);
+    expect(result.completionDocs.inputs).toMatch(/configured shader inputs/i);
     for (const stageOnly of ['mainVertex', 'numthreads', 'SV_DispatchThreadID', 'writeOutput']) {
       expect(!result.labels.includes(stageOnly), `Unexpected fragment completion ${stageOnly}`).toBeTruthy();
     }
     expect(result.builtinHover).toMatch(/Canvas dimensions/);
     expect(result.intrinsicHover).toMatch(/remainder/i);
     expect(result.channelHover).toMatch(/input channel/i);
+    for (const member of ['Sample', 'SampleLevel', 'SampleGrad', 'texture', 'sampler', 'size', 'time', 'loaded']) {
+      expect(result.inputMembers, `Missing Slang input member ${member}`).toContain(member);
+    }
+    expect(result.inputSignatures.some((label) => label.includes('Sample(') && label.includes('float2'))).toBeTruthy();
+    for (const legacy of ['iChannel0', 'iChannel0Sampler', 'iCh0', 'sampleIChannel0', 'iChannelResolution', 'iChannelTime']) {
+      expect(result.labels, `Unexpected legacy Slang completion ${legacy}`).not.toContain(legacy);
+    }
     expect(result.hookHover).toMatch(/fragment entry point/i);
     expect(result.coordinateHover).toMatch(/lower-left/i);
     expect(result.definitions.some((item) => item.path.endsWith('palette.slang')), JSON.stringify(result.definitions)).toBeTruthy();

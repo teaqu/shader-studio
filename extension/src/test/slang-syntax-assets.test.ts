@@ -387,14 +387,16 @@ void main() { shade(float2(0.)); }`,
       [slangGrammar, 'slang'],
     ] as const) {
       const names = shaderStudioBuiltinUniformNames(language);
-      // Channel slots past the four named ones follow the configured inputs, and
-      // stage-limited uniforms stay scoped because a grammar has no stage.
-      const scoped = [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
+      // Stage-limited uniforms stay scoped because a grammar has no stage.
+      const scoped = language === 'slang'
+        ? [...names, 'inputs']
+        : [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
       const otherLanguage = language === 'glsl' ? 'slang' : 'glsl';
       const unscoped = [
         ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
-        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'iTimeExtra', 'myiTime',
+        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
       ];
+      if (language === 'slang') unscoped.push('iCh7');
       const lines = tokenizeLines([...scoped, ...unscoped].join(';\n'), grammar);
 
       assert.ok(names.length > 0, `${language} must declare built-in uniforms`);
@@ -421,13 +423,16 @@ void main() { shade(float2(0.)); }`,
       [glslGrammar, 'GLSL'],
       [slangGrammar, 'Slang'],
     ] as const) {
-      const source =
-        'iTime; iResolution.xy; iMouse.x; iChannel0; uv.y; uv.x; '
-        + 'color.rgba; texcoord.stpq;';
+      const source = language === 'GLSL'
+        ? 'iTime; iResolution.xy; iMouse.x; iChannel0; uv.y; uv.x; color.rgba; texcoord.stpq;'
+        : 'iTime; iResolution.xy; iMouse.x; inputs.iChannel0; uv.y; uv.x; color.rgba; texcoord.stpq;';
       const [tokens] = tokenizeLines(source, grammar);
 
       assert.strictEqual(tokens.map((token) => token.text).join(''), source);
-      for (const uniform of ['iTime', 'iResolution', 'iMouse', 'iChannel0']) {
+      const uniforms = language === 'GLSL'
+        ? ['iTime', 'iResolution', 'iMouse', 'iChannel0']
+        : ['iTime', 'iResolution', 'iMouse', 'inputs'];
+      for (const uniform of uniforms) {
         const token = tokens.find((candidate) => candidate.text === uniform);
         assert.ok(token, `${language} ${uniform} must be emitted as one token`);
         assert.ok(hasScope(token, 'variable.language.uniform'));

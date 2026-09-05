@@ -1,4 +1,6 @@
 /// <reference types="@webgpu/types" />
+import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
+import { getWebGPUSampler } from "./WebGPUSamplerCache";
 import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
@@ -31,9 +33,9 @@ import {
   type ComputeWorkgroupLimits,
   type RenderPassNode,
 } from "./SlangPassGraph";
-import type { StorageBindingNode } from "../types/PassGraph";
+import type { RenderPassChannel, StorageBindingNode } from "../types/PassGraph";
 import { SlangComputePipeline } from "./SlangComputePipeline";
-import { getShaderToyChannelCount } from "./SlangPrelude";
+import { createShaderToyUniformLayout, getShaderToyChannelCount } from "./SlangPrelude";
 import {
   BUFFER_TEXTURE_FORMAT,
   HIGH_PRECISION_BUFFER_TEXTURE_FORMAT,
@@ -499,16 +501,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return descriptor;
   }
 
-  private resolveChannelLimit(limits: Pick<GPUSupportedLimits, "maxSampledTexturesPerShaderStage" | "maxSamplersPerShaderStage"> | undefined): number {
-    const sampledTextures = limits?.maxSampledTexturesPerShaderStage;
-    const samplers = limits?.maxSamplersPerShaderStage;
-    if (
-      typeof sampledTextures === "number" && Number.isFinite(sampledTextures) && sampledTextures > 0 &&
-      typeof samplers === "number" && Number.isFinite(samplers) && samplers > 0
-    ) {
-      return Math.min(sampledTextures, samplers);
-    }
-    return DEFAULT_MAX_SAMPLED_TEXTURES_PER_SHADER_STAGE;
+  private resolveChannelLimit(limits: Pick<GPUSupportedLimits, "maxUniformBufferBindingSize"> | undefined): number {
+    // Logical aliases consume metadata space, not one sampler/texture each.
+    const bytes = limits?.maxUniformBufferBindingSize ?? 65536;
+    return Math.max(4, Math.floor((bytes - createShaderToyUniformLayout(4).size) / 48) + 4);
   }
 
   private resolveDeviceTextureLimit(device: GPUDevice): number {
@@ -888,7 +884,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
                   wrap: channel.wrap,
                   vflip: channel.vflip,
                   grayscale: channel.grayscale,
-                }), compileResourceManager);
+                }, getSlangTextureIdentity(channel)), compileResourceManager);
             } else if (channel.kind === "video") {
               const result = await this.trackCandidateResourceLoad(pipelineCandidates, () =>
                 compileResourceManager.loadVideoTexture(channel.path, {
@@ -1009,13 +1005,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           let wgsl = sharedSlangWgslCache.get(wgslKey);
           const wgslCacheHit = wgsl !== null;
           let slangMs = 0;
-          const channels = [...pass.channels]
-            .sort((a, b) => a.slot - b.slot)
-            .map((channel) => ({
-              slot: channel.slot,
-              key: channel.key,
-              kind: channel.kind,
-            }));
+          const channels = getSlangChannels(pass.channels);
           if (!wgsl) {
             const slangStartedAt = this.now();
             const compiled = await this.compiler.compile(pass.source, {
@@ -2067,9 +2057,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     customUniforms: { name: string; type: string }[] = [],
     modules: Array<{ moduleName: string; path: string; source: string }> = [],
   ): string {
-    const channels = [...pass.channels]
-      .sort((a, b) => a.slot - b.slot)
-      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
+      .map(channel => [channel.slot, channel.key, channel.kind, channel.textureBinding, channel.samplerBinding]);
     const storageLayout = storage.map((node) => [
       node.name,
       node.elementType,
@@ -2102,9 +2091,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     customUniforms: { name: string; type: string }[] = [],
     modules: Array<{ moduleName: string; path: string; source: string }> = [],
   ): string {
-    const channels = [...pass.channels]
-      .sort((a, b) => a.slot - b.slot)
-      .map((channel) => [channel.slot, channel.key, channel.kind]);
+    const channels = buildSlangBindingPlan(getSlangChannels(pass.channels)).channels
+      .map(channel => [channel.slot, channel.key, channel.kind, channel.textureBinding, channel.samplerBinding]);
     const storageLayout = storage.map((node) => [
       node.name,
       node.binding,
@@ -2211,13 +2199,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while creating pass pipeline");
     }
-    const channels = [...pass.channels]
-      .sort((a, b) => a.slot - b.slot)
-      .map((channel) => ({
-        slot: channel.slot,
-        key: channel.key,
-        kind: channel.kind,
-      }));
+    const channels = getSlangChannels(pass.channels);
+    const plan = buildSlangBindingPlan(channels);
+    const extraBindings = storage.length + (pass.kind === "compute"
+      ? 1 + Number(pass.output === "texture")
+      : Number(pass.geometry !== "fullscreen"));
+    validateSlangBindingBudget(pass.name, plan, this.device.limits, extraBindings, uniformBufferSize);
     return pass.kind === "compute"
       ? new SlangComputePipeline(this.device, {
         name: pass.name,
@@ -2696,6 +2683,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.previousFrameTimestamp = time;
   }
 
+  private getChannelSampler(channel: RenderPassChannel): GPUSampler {
+    const settings = getSlangSamplerSettings(channel);
+    return getWebGPUSampler(this.device!, settings.filter, settings.wrap);
+  }
+
   /**
    * Resolve every channel of a pass to a texture view. Returns null if ANY
    * channel is unresolvable (missing source pipeline or view): the pass's
@@ -2726,7 +2718,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         const size = computeSource?.getOutputSize?.() ?? renderSource?.getOutputSize?.();
         resources.push({ slot: channel.slot, textureView, ...size });
       } else if (channel.kind === "texture") {
-        const handle = this.resourceManager?.getImageTextureCache()[channel.path]
+        const handle = this.resourceManager?.getImageTextureCache()[getSlangTextureIdentity(channel)]
           ?? this.resourceManager?.getDefaultTexture();
         if (!handle) {
           return null;
@@ -2734,7 +2726,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
-          sampler: handle.sampler,
+          sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
         });
@@ -2747,7 +2739,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
-          sampler: handle.sampler,
+          sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
         });
@@ -2759,7 +2751,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
-          sampler: handle.sampler,
+          sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
         });
@@ -2772,7 +2764,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
-          sampler: handle.sampler,
+          sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
         });
@@ -2784,7 +2776,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         resources.push({
           slot: channel.slot,
           textureView: handle.view,
-          sampler: handle.sampler,
+          sampler: this.getChannelSampler(channel),
           width: handle.width,
           height: handle.height,
         });
@@ -2823,7 +2815,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
         this.setChannelResolution(channelResolution, channel.slot, 512, 2);
       } else if (channel.kind === "texture") {
-        const handle = this.resourceManager?.getImageTextureCache?.()[channel.path];
+        const handle = this.resourceManager?.getImageTextureCache?.()[getSlangTextureIdentity(channel)];
         channelLoaded[channel.slot] = handle ? 1 : 0;
         this.setChannelResolution(channelResolution, channel.slot, handle?.width, handle?.height);
       } else if (channel.kind === "cubemap") {
@@ -3428,7 +3420,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return {
       commonCode,
       slangPassName: targetPass?.name,
-      slangChannels: targetPass?.channels.map(({ slot, key, kind }) => ({ slot, key, kind })) ?? [],
+      slangChannels: getSlangChannels(targetPass?.channels ?? []),
       slangStorage: graph.storage,
       slangStorageBuffers: this.storageBuffers,
       slangModules,
