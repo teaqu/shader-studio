@@ -284,4 +284,42 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       await service.dispose();
     }
   }, 20_000);
+  it("offers locals and parameters the official server omits", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///locals.slang";
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [],
+    };
+    const text = `float3 palette(float t, float3 base)
+{
+    float2 uv = float2(t, t);
+    b
+    return base;
+}`;
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+      const completions = await service.completion({
+        document: { uri, languageId: "slang", version: 1, environmentGeneration: 1 },
+        position: { line: 3, character: 5 },
+      });
+
+      const labels = completions.map((item) => item.label);
+      expect(labels).toContain("t");
+      expect(labels).toContain("base");
+      expect(labels).toContain("uv");
+      expect(labels).toContain("normalize");
+    } finally {
+      await service.dispose();
+    }
+  }, 20_000);
 });

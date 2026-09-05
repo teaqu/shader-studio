@@ -716,4 +716,108 @@ float4 mainImage(float2 p)
     expect(contents).toContain("Defined in image.slang(1)");
     expect(contents).not.toContain("163822878836dd49609d813a83756631d58ad921");
   });
+  describe("locals and parameters in scope", () => {
+    async function open(text: string) {
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([]));
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+      return service;
+    }
+
+    it("offers parameters and preceding locals inside a function body", async () => {
+      const service = await open(`float3 palette(float t, float3 base)
+{
+    float2 uv = float2(t, t);
+    float glow = 1.0;
+    b
+    return base;
+}`);
+
+      const completions = await service.completion({ document: revision, position: { line: 4, character: 5 } });
+
+      const labels = completions.map((item) => item.label);
+      expect(labels).toContain("t");
+      expect(labels).toContain("base");
+      expect(labels).toContain("uv");
+      expect(labels).toContain("glow");
+      expect(completions.find((item) => item.label === "uv")).toEqual(expect.objectContaining({
+        kind: CompletionItemKind.Variable,
+        detail: "float2",
+      }));
+      expect(completions.find((item) => item.label === "base")).toEqual(expect.objectContaining({
+        kind: CompletionItemKind.Variable,
+        detail: "float3",
+      }));
+    });
+
+    it("does not offer a local declared after the cursor", async () => {
+      const service = await open(`float3 palette(float t)
+{
+    fl
+    float later = 1.0;
+    return float3(t);
+}`);
+
+      const labels = (await service.completion({ document: revision, position: { line: 2, character: 6 } }))
+        .map((item) => item.label);
+
+      expect(labels).toContain("t");
+      expect(labels).not.toContain("later");
+    });
+
+    it("does not offer locals or parameters of another function", async () => {
+      const service = await open(`float3 palette(float t)
+{
+    float2 uv = float2(t, t);
+    return float3(t);
+}
+
+float other(float amount)
+{
+    u
+    return amount;
+}`);
+
+      const labels = (await service.completion({ document: revision, position: { line: 8, character: 5 } }))
+        .map((item) => item.label);
+
+      expect(labels).toContain("amount");
+      expect(labels).not.toContain("uv");
+      expect(labels).not.toContain("t");
+    });
+
+    it("offers the innermost declaration when a local shadows an outer one", async () => {
+      const service = await open(`float3 palette(float t)
+{
+    float2 uv = float2(t, t);
+    {
+        float3 uv = float3(t);
+        u
+    }
+    return float3(t);
+}`);
+
+      const completions = await service.completion({ document: revision, position: { line: 5, character: 9 } });
+
+      expect(completions.filter((item) => item.label === "uv")).toEqual([
+        expect.objectContaining({ detail: "float3" }),
+      ]);
+    });
+
+    it("keeps the documented mainImage coordinate instead of a bare parameter entry", async () => {
+      const service = await open(`float4 mainImage(float2 fragCoord)
+{
+    fr
+    return float4(0.0);
+}`);
+
+      const completions = await service.completion({ document: revision, position: { line: 2, character: 6 } });
+
+      expect(completions.filter((item) => item.label === "fragCoord")).toHaveLength(1);
+      expect(completions.find((item) => item.label === "fragCoord")?.documentation)
+        .toEqual(expect.objectContaining({ value: expect.stringContaining("lower-left") }));
+    });
+  });
 });

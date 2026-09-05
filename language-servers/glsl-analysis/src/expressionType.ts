@@ -2,7 +2,8 @@ import { parseMemberExpression, type MemberExpressionStep } from "@shader-studio
 import type { ShaderStage } from "@shader-studio/types";
 import type { Position } from "vscode-languageserver-protocol";
 import type { GlslAnalysisDocument, GlslSymbol } from "./model.js";
-import { parseGlslDocument, visibleSymbolsAtPosition } from "./parseGlslDocument.js";
+import { visibleSymbolsAtPosition } from "./parseGlslDocument.js";
+import { parseGlslDocumentAtPosition } from "./recovery.js";
 import {
   isBuiltinValueType,
   matrixType,
@@ -56,10 +57,11 @@ export function resolveGlslExpressionType(
   if (!steps.length) {
     return undefined;
   }
-  const analysis = parseGlslDocument(
+  const analysis = parseGlslDocumentAtPosition(
     request.uri,
-    blankStatementAt(request.source, request.position),
+    request.source,
     request.stage,
+    request.position,
   );
   const documents = [analysis, ...context.includes ?? []];
   let typeName = leadingStepType(steps[0], analysis, documents, request.position, context);
@@ -155,41 +157,4 @@ function indexedTypeName(typeName: string): string | undefined {
   }
   const matrix = matrixType(typeName);
   return matrix ? vectorTypeName(matrix.componentType, matrix.rows) : undefined;
-}
-
-/**
- * Replaces the statement under the cursor with blanks, keeping every line and column
- * in place so an unfinished selection cannot stop the rest of the document parsing.
- */
-function blankStatementAt(source: string, position: Position): string {
-  const offset = positionOffset(source, position);
-  if (offset === undefined) {
-    return source;
-  }
-  const boundaries = [";", "{", "}"];
-  let start = 0;
-  for (let index = offset - 1; index >= 0; index--) {
-    if (boundaries.includes(source[index] ?? "")) {
-      start = index + 1;
-      break;
-    }
-  }
-  let end = source.length;
-  for (let index = offset; index < source.length; index++) {
-    if (boundaries.includes(source[index] ?? "")) {
-      end = index;
-      break;
-    }
-  }
-  const blanked = source.slice(start, end).replace(/[^\n]/g, " ");
-  return `${source.slice(0, start)}${blanked}${source.slice(end)}`;
-}
-
-function positionOffset(source: string, position: Position): number | undefined {
-  const lines = source.split("\n");
-  const line = lines[position.line];
-  if (line === undefined || position.character < 0 || position.character > line.length) {
-    return undefined;
-  }
-  return lines.slice(0, position.line).reduce((offset, current) => offset + current.length + 1, 0) + position.character;
 }

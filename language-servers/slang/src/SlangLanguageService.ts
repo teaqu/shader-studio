@@ -47,7 +47,7 @@ import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
 import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
-import { resolveSlangExpressionType } from "./expressionType.js";
+import { resolveSlangExpressionType, visibleSlangLocals } from "./expressionType.js";
 import { SLANG_SWIZZLE_SETS, slangVectorTypeName } from "./slangTypes.js";
 
 const CAPABILITIES: ServerCapabilities = {
@@ -265,6 +265,19 @@ export class SlangLanguageService implements LanguageService {
         kind: feature.kind === "function" ? CompletionItemKind.Function : CompletionItemKind.Variable,
         detail: feature.signature,
         documentation: vertexHookMarkup(feature),
+      });
+    }
+    // The official server offers no identifier completions for locals and parameters, so
+    // add the ones in scope. Anything already listed keeps its richer entry.
+    const listedLabels = new Set([...items.values()].map((item) => item.label));
+    for (const local of visibleSlangLocals(state.document.text, params.position)) {
+      if (listedLabels.has(local.name)) {
+        continue;
+      }
+      items.set(`${local.name}:${local.typeName}`, {
+        label: local.name,
+        kind: CompletionItemKind.Variable,
+        detail: local.typeName,
       });
     }
     return [...items.values()];

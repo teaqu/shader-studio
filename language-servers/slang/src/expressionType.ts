@@ -186,8 +186,17 @@ function enclosingScopeEnd(pairs: readonly BracePair[], offset: number, sourceLe
 interface VariableDeclaration {
   readonly name: string;
   readonly typeName: string;
+  readonly kind: SlangLocalKind;
   readonly offset: number;
   readonly scopeEnd: number;
+}
+
+export type SlangLocalKind = "variable" | "parameter";
+
+export interface SlangLocalSymbol {
+  readonly name: string;
+  readonly typeName: string;
+  readonly kind: SlangLocalKind;
 }
 
 const TYPE_TOKEN = /[A-Za-z_]\w*(?:\s*<[^>{}]+>)?/;
@@ -195,15 +204,15 @@ const LOCAL_DECLARATION = new RegExp(`\\b(?:(?:static|const)\\s+)*(${TYPE_TOKEN.
 const QUALIFIER = /^(?:in|out|inout)\s+/;
 const CONTROL_KEYWORDS = new Set(["if", "for", "while", "switch", "return", "else"]);
 
-/** Every declaration of `name` in `source`, whether a local variable, parameter, or array. */
-function variableCandidates(source: string, name: string): readonly VariableDeclaration[] {
+/** Every local variable and parameter declared in `source`, with the block each one lives in. */
+function declarationCandidates(source: string): readonly VariableDeclaration[] {
   const pairs = bracePairs(source);
   const knownTypes = new Set(findSlangStructs(source).map((struct) => struct.name));
   const candidates: VariableDeclaration[] = [];
 
   for (const match of source.matchAll(LOCAL_DECLARATION)) {
     const [, rawType, declaredName, arrayBrackets] = match;
-    if (declaredName !== name || match.index === undefined) {
+    if (declaredName === undefined || match.index === undefined) {
       continue;
     }
     const baseType = canonicalizeSlangType(rawType ?? "");
@@ -212,7 +221,13 @@ function variableCandidates(source: string, name: string): readonly VariableDecl
     }
     const typeName = arrayBrackets ? `${baseType}[]` : baseType;
     const offset = match.index + match[0].indexOf(declaredName, rawType?.length ?? 0);
-    candidates.push({ name, typeName, offset, scopeEnd: enclosingScopeEnd(pairs, offset, source.length) });
+    candidates.push({
+      name: declaredName,
+      typeName,
+      kind: "variable",
+      offset,
+      scopeEnd: enclosingScopeEnd(pairs, offset, source.length),
+    });
   }
 
   for (const fn of findSlangFunctions(source)) {
@@ -223,13 +238,43 @@ function variableCandidates(source: string, name: string): readonly VariableDecl
     const bodyOpen = fn.parameterListEnd + (source.slice(fn.parameterListEnd).indexOf("{"));
     const scopeEnd = enclosingScopeEnd(pairs, bodyOpen, source.length);
     for (const parameter of fn.parameters) {
-      if (parameter.name === name) {
-        candidates.push({ name, typeName: parameter.typeName, offset: fn.parameterListEnd, scopeEnd });
-      }
+      candidates.push({
+        name: parameter.name,
+        typeName: parameter.typeName,
+        kind: "parameter",
+        offset: fn.parameterListEnd,
+        scopeEnd,
+      });
     }
   }
 
   return candidates;
+}
+
+/** Every declaration of `name` in `source`, whether a local variable, parameter, or array. */
+function variableCandidates(source: string, name: string): readonly VariableDeclaration[] {
+  return declarationCandidates(source).filter((candidate) => candidate.name === name);
+}
+
+/**
+ * Local variables and parameters visible at the cursor. Slang's language server offers no
+ * identifier completions for these, so they are recovered by scanning source text; an inner
+ * declaration shadows an outer one of the same name, matching block scoping rules.
+ */
+export function visibleSlangLocals(source: string, position: Position): readonly SlangLocalSymbol[] {
+  const cursorOffset = positionOffset(source, position);
+  if (cursorOffset === undefined) {
+    return [];
+  }
+  const visible = new Map<string, SlangLocalSymbol>();
+  for (const candidate of declarationCandidates(source)
+    .filter((entry) => entry.offset < cursorOffset && cursorOffset <= entry.scopeEnd)
+    .sort((left, right) => right.offset - left.offset)) {
+    if (!visible.has(candidate.name)) {
+      visible.set(candidate.name, { name: candidate.name, typeName: candidate.typeName, kind: candidate.kind });
+    }
+  }
+  return [...visible.values()];
 }
 
 /** Finds the nearest declaration of `name` whose scope contains `cursorOffset`, so inner shadows outer. */

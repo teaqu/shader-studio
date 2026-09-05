@@ -43,6 +43,7 @@ import {
 import {
   glslVectorTypeName,
   parseGlslDocument,
+  parseGlslDocumentAtPosition,
   resolveGlslExpressionType,
   symbolAtPosition,
   visibleSymbolsAtPosition,
@@ -142,9 +143,19 @@ export class GlslLanguageService implements LanguageService {
       );
     }
     const items = new Map<string, CompletionItem>();
-    for (const symbol of visibleSymbolsAtPosition(state.analysis, params.position)) {
-      const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, symbol) : undefined;
-      const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(state.analysis, symbol) : undefined;
+    // The statement being completed is rarely valid GLSL, and a failed parse leaves the
+    // analysis with no symbols at all, so recover the declarations that precede it.
+    const analysis = state.analysis.parsedSuccessfully
+      ? state.analysis
+      : parseGlslDocumentAtPosition(
+        params.document.uri,
+        stripIncludeDirectives(state.document.text),
+        state.environment.stage,
+        params.position,
+      );
+    for (const symbol of visibleSymbolsAtPosition(analysis, params.position)) {
+      const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(analysis, symbol) : undefined;
+      const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(analysis, symbol) : undefined;
       const hook = vertexHook ?? fragmentHook;
       items.set(symbol.name, {
         label: symbol.name,

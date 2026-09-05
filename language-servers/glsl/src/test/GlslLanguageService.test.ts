@@ -673,4 +673,93 @@ void mainImage(out vec4 color, in vec2 coord) {
       expect(await instance.rename({ document: stale, position: positionOf(scoped, "amount", 1), newName: "strength" })).toBeNull();
     });
   });
+  describe("completion inside an unfinished statement", () => {
+    async function open(text: string, overrides: Partial<ShaderAuthoringEnvironment> = {}) {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({ ...environment(), ...overrides });
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+      return instance;
+    }
+
+    const typing = `float shade(float x) { return x * 2.0; }
+void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord * 0.5;
+  float glow = 1.0;
+  u
+}`;
+
+    it("offers parameters and preceding locals while the statement under the cursor is unfinished", async () => {
+      const instance = await open(typing);
+
+      const completions = await instance.completion({ document: revision, position: { line: 4, character: 3 } });
+
+      const labels = completions.map((item) => item.label);
+      expect(labels).toContain("uv");
+      expect(labels).toContain("glow");
+      expect(labels).toContain("coord");
+      expect(labels).toContain("color");
+      expect(labels).toContain("shade");
+      expect(completions.find((item) => item.label === "uv")).toEqual(expect.objectContaining({
+        kind: CompletionItemKind.Variable,
+        detail: "vec2",
+      }));
+      expect(completions.find((item) => item.label === "coord")).toEqual(expect.objectContaining({
+        kind: CompletionItemKind.Variable,
+      }));
+    });
+
+    it("still offers intrinsics and Shader Studio symbols while the statement is unfinished", async () => {
+      const instance = await open(typing);
+
+      const labels = (await instance.completion({ document: revision, position: { line: 4, character: 3 } }))
+        .map((item) => item.label);
+
+      expect(labels).toContain("iTime");
+      expect(labels).toContain("tint");
+      expect(labels).toContain("normalize");
+    });
+
+    it("keeps locals out of scope that the unfinished statement cannot see", async () => {
+      const instance = await open(`void mainImage(out vec4 color, in vec2 coord) {
+  {
+    float inner = 1.0;
+  }
+  float outer = 2.0;
+  i
+}`);
+
+      const labels = (await instance.completion({ document: revision, position: { line: 5, character: 3 } }))
+        .map((item) => item.label);
+
+      expect(labels).toContain("outer");
+      expect(labels).not.toContain("inner");
+    });
+
+    it("offers nothing local when blanking the statement cannot repair the document", async () => {
+      const instance = await open(`void mainImage(out vec4 color, in vec2 coord) {
+  float glow = 1.0;
+  g
+`);
+
+      const labels = (await instance.completion({ document: revision, position: { line: 2, character: 3 } }))
+        .map((item) => item.label);
+
+      expect(labels).not.toContain("glow");
+      expect(labels).toContain("iTime");
+    });
+
+    it("offers members of a local declared before an unfinished selection", async () => {
+      const instance = await open(`void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord * 0.5;
+  uv.
+}`);
+
+      const labels = (await instance.completion({ document: revision, position: { line: 2, character: 5 } }))
+        .map((item) => item.label);
+
+      expect(labels).toContain("x");
+      expect(labels).toContain("y");
+      expect(labels).not.toContain("uv");
+    });
+  });
 });
