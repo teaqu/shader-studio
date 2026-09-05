@@ -111,9 +111,20 @@ describe('StandaloneLayoutController', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview', title: 'Preview' }));
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'explorer', initialWidth: 220, position: { referencePanel: 'preview', direction: 'left' } }));
-    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'editor', initialWidth: 520, position: { referencePanel: 'explorer', direction: 'right' } }));
+    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'editor', initialWidth: 820, position: { referencePanel: 'explorer', direction: 'right' } }));
     expect(api.addPanel).toHaveBeenCalledTimes(3);
     expect(api.getPanel('explorer')?.api.setSize).toHaveBeenCalledWith({ width: 260 });
+    expect(api.getPanel('preview')?.api.setSize).toHaveBeenCalledWith({ width: 560 });
+    expect(api.getPanel('editor')?.api.setSize).not.toHaveBeenCalled();
+  });
+
+  it('sizes the preview by default on reset too, leaving the editor the remaining width', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    vi.mocked(api.getPanel('preview')!.api.setSize).mockClear();
+    controller.resetLayout();
+    expect(api.getPanel('preview')?.api.setSize).toHaveBeenCalledWith({ width: 560 });
+    expect(api.getPanel('editor')?.api.setSize).not.toHaveBeenCalled();
   });
 
   it('does not cap explorer width on creation, reopening, or reset', () => {

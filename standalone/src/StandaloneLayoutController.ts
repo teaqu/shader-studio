@@ -50,7 +50,7 @@ export interface LayoutStorage {
 const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Record<string, string>; initialWidth?: number }> = {
   preview: { title: 'Preview' },
   explorer: { title: 'Shader Explorer', position: { referencePanel: 'preview', direction: 'left' }, initialWidth: 220 },
-  editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 520 },
+  editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,8 +284,10 @@ export class StandaloneLayoutController {
     this.addPanel('preview');
     this.addPanel('explorer');
     this.addPanel('editor');
-    // Adding splits redistributes widths; apply the default after all panels exist.
+    // Adding splits redistributes widths; apply the defaults after all panels exist.
+    // Explorer and preview take fixed defaults so the editor keeps the remaining width.
     this.api.getPanel('explorer')?.api.setSize({ width: 260 });
+    this.api.getPanel('preview')?.api.setSize({ width: 560 });
   }
 
   private addPanel(panelId: StandalonePanelId): void {
