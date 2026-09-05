@@ -1655,6 +1655,58 @@ describe("FrameRenderer", () => {
       expect(passedUniforms.date).toEqual(new Float32Array([2025, 1, 1, 100]));
     });
 
+    it("should not track mouse movement while paused when the manager mutates its array in place", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      // The real MouseManager hands out one Float32Array and mutates it on
+      // pointer events, so freezing must copy rather than keep the reference.
+      const liveMouse = new Float32Array([10, 20, 10, 20]);
+      mockMouseManager.getMouse.mockReturnValue(liveMouse);
+
+      mockTimeManager.isPaused.mockReturnValue(true);
+      frameRenderer.render(1000);
+
+      liveMouse.set([99, 98, 10, 20]);
+
+      mockPassRenderer.renderPass.mockClear();
+      frameRenderer.render(2000);
+
+      const passedUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(Array.from(passedUniforms.mouse)).toEqual([10, 20, 10, 20]);
+    });
+
+    it("should not track camera movement while paused when the manager mutates its position in place", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+
+      const mockPasses = [{ name: 'Image', shaderSrc: 'shader', inputs: {} }];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      const livePos = new Float32Array([1, 2, 3]);
+      mockCameraManager.getCameraPos.mockReturnValue(livePos);
+
+      mockTimeManager.isPaused.mockReturnValue(true);
+      frameRenderer.render(1000);
+
+      livePos.set([9, 9, 9]);
+
+      mockPassRenderer.renderPass.mockClear();
+      frameRenderer.render(2000);
+
+      const passedUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(Array.from(passedUniforms.cameraPos)).toEqual([1, 2, 3]);
+    });
+
     it("should use fresh uniforms after unpausing", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);

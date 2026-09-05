@@ -104,13 +104,16 @@ export class FrameRenderer {
       time: this.timeManager.getCurrentTime(this.currentFrameTime),
       timeDelta: this.timeManager.getDeltaTime(),
       frameRate: this.fpsCalculator.getRawFPS(),
-      mouse: this.mouseManager.getMouse(),
+      // MouseManager and CameraManager hand out one array each and mutate it
+      // in place. Copying keeps a snapshot — the frozen pause uniforms in
+      // particular — from tracking later pointer and camera movement.
+      mouse: new Float32Array(this.mouseManager.getMouse()),
       frame: this.timeManager.getFrame(),
       date: this.timeManager.getCurrentDate(),
       channelTime: [0, 0, 0, 0],
       sampleRate: this.resourceManager.getAudioSampleRate() || this.sampleRate,
       channelLoaded: [0, 0, 0, 0],
-      cameraPos: this.cameraManager.getCameraPos(),
+      cameraPos: new Float32Array(this.cameraManager.getCameraPos()),
       cameraDir: this.cameraManager.getCameraDir(),
     };
   }
