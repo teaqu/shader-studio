@@ -7,6 +7,7 @@
   "description": "A VS Code extension for viewing and editing shaders",
   "workspaces": [
     "types",
+    "standalone",
     "debug",
     "rendering",
     "utils",
@@ -26,6 +27,10 @@
     "build:shader-explorer": "npm run build:types && npm run build -w shader-explorer",
     "build:extension:code": "npm run build:code -w extension",
     "compile:extension": "npm run build:extension:code",
+    "dev:standalone": "npm run dev -w @shader-studio/standalone",
+    "build:standalone": "npm run build:types && npm run build -w @shader-studio/standalone",
+    "dev:web": "npm run dev:standalone",
+    "build:web": "npm run build:standalone",
     "dev:ui": "npm run dev -w ui",
     "dev:shader-explorer": "npm run dev -w shader-explorer",
     "test": "vitest run",

@@ -1,23 +1,14 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import path from 'path';
 import { slangAssetManifestPlugin } from './viteSlangAssetManifest';
+import { shaderStudioAliases } from '../vite.aliases.mjs';
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [svelte(), slangAssetManifestPlugin()],
   base: './', // Use relative paths for assets
   resolve: {
-    alias: {
-      '@shader-studio/debug': path.resolve(__dirname, '../debug/src'),
-      '@shader-studio/glsl-analysis': path.resolve(__dirname, '../language-servers/glsl-analysis/src'),
-      '@shader-studio/glsl-language-server': path.resolve(__dirname, '../language-servers/glsl/src'),
-      '@shader-studio/language-server-core': path.resolve(__dirname, '../language-servers/core/src'),
-      '@shader-studio/monaco': path.resolve(__dirname, '../monaco/src'),
-      '@shader-studio/rendering': path.resolve(__dirname, '../rendering/src'),
-      '@shader-studio/slang-language-server': path.resolve(__dirname, '../language-servers/slang/src'),
-      '@shader-studio/types': path.resolve(__dirname, '../types/src'),
-    },
+    alias: { ...shaderStudioAliases },
   },
   optimizeDeps: {
     include: ['monaco-editor'],

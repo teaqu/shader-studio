@@ -16,4 +16,6 @@
   });
 </script>
 
-<ShaderViewer onInitialized={handleAppInitialized} />
+<ShaderViewer
+  onInitialized={handleAppInitialized}
+/>

@@ -12,6 +12,8 @@
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
+  import { getHostCapabilities } from "../state/hostState.svelte";
+  import { setViewerSession } from "../state/viewerSession.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
@@ -135,7 +137,11 @@
   }
   // --- end slot helpers ---
 
-  let { onInitialized = () => {} }: { onInitialized?: () => void } = $props();
+  interface Props {
+    onInitialized?: () => void;
+  }
+
+  let { onInitialized = () => {} }: Props = $props();
 
   // Core state
   let glCanvas = $state<HTMLCanvasElement>(undefined!);
@@ -354,9 +360,31 @@
     onManualCompile: handleManualCompile,
   }));
 
+  $effect(() => {
+    setViewerSession({
+      ready: initialized,
+      shaderCode: editorFileCode,
+      shaderPath: editorFilePath,
+      selectedShaderPath: shaderPath,
+      transport,
+      config: currentConfig,
+      customUniformInfo: authoringUniformInfo,
+      slangModules,
+      compileMode: $compileModeStore.mode,
+      bufferNames: editorBufferNames,
+      activeBufferName: editorBufferName,
+      errors,
+      onCodeChange: handleEditorCodeChange,
+      onBufferSwitch: handleOverlayBufferSwitch,
+      onCursorChange: (line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName),
+    });
+  });
+
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
-    await initProfiles(profileAdapter);
+    if (getHostCapabilities().layoutProfiles) {
+      await initProfiles(profileAdapter);
+    }
   });
 
   // Subscribe to config/debug panel stores
@@ -653,6 +681,8 @@
     let bufferPath: string | undefined;
     if (actualName === "Image") {
       bufferPath = shaderPath;
+    } else if (bufferPathMap[actualName]) {
+      bufferPath = bufferPathMap[actualName];
     } else if (actualName.startsWith("./") || actualName.startsWith("../")) {
       // Resolve relative path against shader directory
       const shaderDir = shaderPath.substring(0, shaderPath.lastIndexOf("/"));
@@ -1447,8 +1477,9 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
+    setViewerSession(null);
     resetVariablePreview();
-    if (transport?.getType() === 'websocket') {
+    if (transport?.getType() !== 'vscode') {
       releaseWebLayoutSlot();
     }
     if (recordingManager) {
@@ -1596,6 +1627,10 @@
     on:configClosed={handleConfigClosed}
     on:performanceClosed={handlePerformanceClosed}
     on:recordingClosed={handleRecordingClosed}
+    on:toolRestored={(event) => {
+      const stores = { debug: debugPanelStore, config: configPanelStore, performance: performancePanelStore, recording: recordingPanelStore };
+      stores[event.detail].setVisible(true);
+    }}
   />
   {#if initialized && !(previewAlone && previewVisible)}
     <MenuBar {...menuBarProps} />

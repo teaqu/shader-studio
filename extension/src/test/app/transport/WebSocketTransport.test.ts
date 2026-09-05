@@ -450,6 +450,29 @@ suite('WebSocketTransport Test Suite', () => {
       assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/texture.png');
     });
 
+    test('converts cubemap path to HTTP URL in resolved_path', () => {
+      const wsClients = (transport as any).wsClients as Set<WebSocket>;
+      wsClients.add(mockWsClient as any);
+
+      transport.send({
+        type: 'shaderSource',
+        path: '/test/shader.glsl',
+        config: {
+          passes: {
+            Image: {
+              inputs: {
+                iChannel0: { type: 'cubemap', path: '/path/to/skybox.png' }
+              }
+            }
+          }
+        }
+      });
+
+      const sentData = JSON.parse(mockWsClient.send.getCall(0).args[0] as string);
+      assert.ok(sentData.config.passes.Image.inputs.iChannel0.resolved_path.startsWith('http://localhost:3000/textures/'));
+      assert.strictEqual(sentData.config.passes.Image.inputs.iChannel0.path, '/path/to/skybox.png');
+    });
+
     test('handles multiple inputs across passes', () => {
       const wsClients = (transport as any).wsClients as Set<WebSocket>;
       wsClients.add(mockWsClient as any);

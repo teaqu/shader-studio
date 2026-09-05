@@ -1,0 +1,94 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'ui/**'
+      - 'standalone/**'
+      - 'shader-explorer/**'
+      - 'rendering/**'
+      - 'types/**'
+      - 'debug/**'
+      - 'monaco/**'
+      - 'language-servers/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install docs deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+
+      - name: Install node dependencies
+        run: npm ci
+
+      - name: Build docs
+        run: mkdocs build --strict
+
+      - name: Build web app
+        run: npm run build:standalone
+
+      - name: Assemble combined Pages output
+        run: |
+          mkdir -p public/docs public/app
+          cp -r site/. public/docs/
+          cp -r standalone/dist/. public/app/
+          cat > public/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Shader Studio</title>
+          <meta http-equiv="refresh" content="0; url=./app/">
+          <link rel="canonical" href="https://teaqu.github.io/shader-studio/app/">
+          <p>Redirecting to <a href="./app/">Shader Studio Web</a>…</p>
+          HTML
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

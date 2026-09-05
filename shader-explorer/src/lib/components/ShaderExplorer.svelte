@@ -10,6 +10,23 @@
     type ShaderSearchResultsMessage,
   } from '../shaderSearch';
 
+  interface ShaderExplorerHostApi {
+    postMessage(message: { type: string; [key: string]: unknown }): void;
+    onMessage?(handler: (event: MessageEvent) => void): () => void;
+  }
+
+  interface Props {
+    hostApi?: ShaderExplorerHostApi;
+    compact?: boolean;
+    selectedShaderPath?: string;
+  }
+
+  let {
+    hostApi = undefined,
+    compact = false,
+    selectedShaderPath = '',
+  }: Props = $props();
+
   let vscode: any = $state(null);
   let shaders = $state<ShaderFile[]>([]);
   let search = $state('');
@@ -21,9 +38,10 @@
   let currentPage = $state(1);
   let pageSize = $state(20);
   let cardSize = $state(200); // Card width in pixels (100-1000)
-  let layoutMode = $state<'grid' | 'row'>('grid');
+  let layoutMode = $state<'grid' | 'row'>(compact ? 'row' : 'grid');
   let showOptions = $state(false);
   let hideFailedShaders = $state(false);
+  let hideBufferShaders = $state(true);
   let openFilesOnSelect = $state(true);
   let failedShaders = $state(new Set<string>()); // Track failed shader paths
   let refreshKey = $state(0); // Only incremented on explicit refresh
@@ -34,7 +52,7 @@
 
   // Persist state changes by sending to extension
   $effect(() => {
-    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, openFilesOnSelect, layoutMode, showOptions };
+    const state = { sortBy, sortOrder, pageSize, cardSize, hideFailedShaders, hideBufferShaders, openFilesOnSelect, layoutMode, showOptions };
     if (vscode && stateRestored) {
       vscode.postMessage({ type: 'saveState', state });
     }
@@ -46,6 +64,7 @@
     search,
     searchResultPaths,
     hideFailedShaders,
+    hideBufferShaders,
     failedShaderPaths: failedShaders,
     sortBy,
     sortOrder,
@@ -65,6 +84,7 @@
     sortBy;
     sortOrder;
     pageSize;
+    hideBufferShaders;
     currentPage = 1;
   });
 
@@ -118,18 +138,22 @@
   }
 
   onMount(() => {
-    if (typeof acquireVsCodeApi !== 'undefined') {
-      vscode = acquireVsCodeApi();
+    if (hostApi || typeof acquireVsCodeApi !== 'undefined') {
+      vscode = hostApi ?? acquireVsCodeApi();
       searchScheduler = createShaderSearchScheduler(message => vscode?.postMessage(message));
-      
-      // Request shader list from extension
+
+      const unsubscribe = hostApi?.onMessage
+        ? hostApi.onMessage(handleMessage)
+        : (() => {
+          window.addEventListener('message', handleMessage);
+          return () => window.removeEventListener('message', handleMessage);
+        })();
+
+      // Subscribe before requesting: standalone hosts can respond immediately.
       vscode.postMessage({ type: 'requestShaders' });
 
-      // Listen for messages from extension
-      window.addEventListener('message', handleMessage);
-
       return () => {
-        window.removeEventListener('message', handleMessage);
+        unsubscribe();
         searchScheduler?.dispose();
       };
     } else {
@@ -168,6 +192,9 @@
           }
           if (typeof message.savedState.hideFailedShaders === 'boolean') {
             hideFailedShaders = message.savedState.hideFailedShaders;
+          }
+          if (typeof message.savedState.hideBufferShaders === 'boolean') {
+            hideBufferShaders = message.savedState.hideBufferShaders;
           }
           if (typeof message.savedState.openFilesOnSelect === 'boolean') {
             openFilesOnSelect = message.savedState.openFilesOnSelect;
@@ -239,58 +266,58 @@
 
 </script>
 
-<div class="shader-explorer">
+<div class="shader-explorer" data-testid={hostApi ? 'web-shader-explorer' : undefined}>
   <div class="toolbar">
-    <div class="toolbar-actions">
-      <div class="search-container">
-        <input
-          type="text"
-          bind:value={search}
-          placeholder="Search shaders..."
-          class="search-input"
-        />
+      <div class="toolbar-actions">
+        <div class="search-container">
+          <input
+            type="text"
+            bind:value={search}
+            placeholder="Search shaders..."
+            class="search-input"
+          />
+        </div>
+        <button
+          class="icon-button"
+          onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
+          title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
+        >
+          {layoutMode === 'grid' ? '☰' : '⊞'}
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
+          title="Show Panel"
+          aria-label="Show Panel"
+        >
+          <svg class="panel-icon" viewBox="0 0 16 16" width="14" height="14">
+            <path fill="currentColor" d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/>
+            <rect fill="currentColor" x="4.5" y="5" width="3" height="6"/>
+            <rect fill="currentColor" x="8.5" y="5" width="3" height="3"/>
+          </svg>
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => vscode?.postMessage({ type: 'newShader' })}
+          title="New Shader"
+        >
+          +
+        </button>
+        <button
+          class="icon-button"
+          onclick={() => showOptions = !showOptions}
+          title="Options"
+        >
+          {showOptions ? '✕' : '⚙'}
+        </button>
+        <button class="icon-button" onclick={refreshShaders} title="Refresh">
+          ↻
+        </button>
+        <div class="shader-count">
+          {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
+        </div>
       </div>
-      <button
-        class="icon-button"
-        onclick={() => layoutMode = layoutMode === 'grid' ? 'row' : 'grid'}
-        title={layoutMode === 'grid' ? 'Row layout' : 'Grid layout'}
-      >
-        {layoutMode === 'grid' ? '☰' : '⊞'}
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => vscode?.postMessage({ type: 'togglePanel' })}
-        title="Show Panel"
-        aria-label="Show Panel"
-      >
-        <svg class="panel-icon" viewBox="0 0 16 16" width="14" height="14">
-          <path fill="currentColor" d="M2 2h12v12H2V2zm1 1v10h10V3H3z"/>
-          <rect fill="currentColor" x="4.5" y="5" width="3" height="6"/>
-          <rect fill="currentColor" x="8.5" y="5" width="3" height="3"/>
-        </svg>
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => vscode?.postMessage({ type: 'newShader' })}
-        title="New Shader"
-      >
-        +
-      </button>
-      <button
-        class="icon-button"
-        onclick={() => showOptions = !showOptions}
-        title="Options"
-      >
-        {showOptions ? '✕' : '⚙'}
-      </button>
-      <button class="icon-button" onclick={refreshShaders} title="Refresh">
-        ↻
-      </button>
-      <div class="shader-count">
-        {filteredShaders.length} shader{filteredShaders.length !== 1 ? 's' : ''}
-      </div>
-    </div>
-    {#if showOptions}
+      {#if showOptions}
       <div class="options-divider"></div>
       <div class="toolbar-actions">
         {#if layoutMode === 'grid'}
@@ -328,6 +355,10 @@
           <option value={100}>Show 100</option>
         </select>
         <label class="checkbox-control">
+          <input type="checkbox" bind:checked={hideBufferShaders} />
+          <span class="checkbox-label">Hide Buffers</span>
+        </label>
+        <label class="checkbox-control">
           <input type="checkbox" bind:checked={hideFailedShaders} />
           <span class="checkbox-label">Hide Failed</span>
         </label>
@@ -336,7 +367,7 @@
           <span class="checkbox-label">Open Files</span>
         </label>
       </div>
-    {/if}
+      {/if}
   </div>
 
   <div class="content">
@@ -372,6 +403,8 @@
             {refreshAll}
             forceFresh={shader.path === lastClickedPath}
             {layoutMode}
+            {compact}
+            selected={selectedShaderPath === shader.path}
             vscodeApi={vscode}
             onOpen={() => openShader(shader)}
             onCompilationFailed={() => handleCompilationFailure(shader)}

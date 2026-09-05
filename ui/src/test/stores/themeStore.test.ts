@@ -3,6 +3,12 @@ import { get } from 'svelte/store';
 
 const STORAGE_KEY = 'shader-studio-theme';
 
+function setSystemTheme(theme: 'light' | 'dark'): void {
+  vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(prefers-color-scheme: dark)' && theme === 'dark',
+  })));
+}
+
 async function createFreshStore() {
   const { currentTheme, applyTheme, toggleTheme, snapshotTheme, applyThemeProfile } = await import('../../lib/stores/themeStore');
   return { currentTheme, applyTheme, toggleTheme, snapshotTheme, applyThemeProfile };
@@ -10,6 +16,7 @@ async function createFreshStore() {
 
 describe('themeStore', () => {
   beforeEach(() => {
+    setSystemTheme('light');
     localStorage.removeItem(STORAGE_KEY);
     document.documentElement.removeAttribute('data-theme');
     vi.resetModules();
@@ -21,10 +28,28 @@ describe('themeStore', () => {
       expect(get(currentTheme)).toBe('light');
     });
 
+    it('should infer a dark theme from the browser when no theme has been saved', async () => {
+      setSystemTheme('dark');
+
+      const { currentTheme } = await createFreshStore();
+
+      expect(get(currentTheme)).toBe('dark');
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    });
+
     it('should use saved theme from localStorage', async () => {
       localStorage.setItem(STORAGE_KEY, 'dark');
       const { currentTheme } = await createFreshStore();
       expect(get(currentTheme)).toBe('dark');
+    });
+
+    it('should prefer a saved theme over the browser theme', async () => {
+      setSystemTheme('dark');
+      localStorage.setItem(STORAGE_KEY, 'light');
+
+      const { currentTheme } = await createFreshStore();
+
+      expect(get(currentTheme)).toBe('light');
     });
 
     it('should apply default theme to document on load', async () => {

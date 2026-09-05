@@ -1,9 +1,89 @@
 import { render, fireEvent } from '@testing-library/svelte';
 import { tick } from 'svelte';
+import { createDockview } from 'dockview-core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import DockviewLayout from '../../lib/components/DockviewLayout.svelte';
 import * as layoutState from '../../lib/state/layoutState.svelte';
 import * as profileStore from '../../lib/state/profileStore.svelte';
+import { PANEL_HOST_CONTEXT, type HostedPanelDefinition, type HostedPanelId } from '../../lib/layout/PanelHost';
+
+describe('hosted tool panels', () => {
+  beforeEach(() => {
+    layoutChangeListeners = [];
+    removePanelListeners = [];
+    addPanelListeners = [];
+    panels.clear();
+    vi.clearAllMocks();
+    vi.mocked(layoutState.getPendingLayout).mockReturnValue(null);
+    vi.mocked(layoutState.hasPendingLayout).mockReturnValue(false);
+  });
+
+  it('migrates old nested tool layouts without duplicating tools in the preview dock', async () => {
+    const pending = {
+      panels: {
+        preview: { id: 'preview', contentComponent: 'preview', title: 'Preview' },
+        config: { id: 'config', contentComponent: 'config', title: 'Config' },
+      },
+      grid: { root: { type: 'leaf', data: { views: ['preview', 'config'] } } },
+    };
+    vi.mocked(layoutState.getPendingLayout).mockReturnValue(pending as unknown as ReturnType<typeof layoutState.getPendingLayout>);
+    vi.mocked(layoutState.hasPendingLayout).mockReturnValue(true);
+    const host = { register: vi.fn(() => vi.fn()), setVisible: vi.fn() };
+    render(DockviewLayout, {
+      props: { showConfigPanel: true },
+      context: new Map([[PANEL_HOST_CONTEXT, host]]),
+    });
+    await tick();
+    expect(createDockview).not.toHaveBeenCalled();
+    expect(host.setVisible).toHaveBeenCalledWith('config', true);
+  });
+
+  it('mounts Preview directly and registers tools without creating a nested dock', async () => {
+    const definitions = new Map<HostedPanelId, HostedPanelDefinition>();
+    const cleanups = Array.from({ length: 4 }, () => vi.fn());
+    const host = {
+      register: vi.fn((id: HostedPanelId, definition: HostedPanelDefinition) => {
+        definitions.set(id, definition);
+        return cleanups[definitions.size - 1];
+      }),
+      setVisible: vi.fn(),
+      resetLayout: vi.fn(),
+      showPreview: vi.fn(),
+    };
+    const previewCleanup = vi.fn();
+    const mountPreview = vi.fn(() => previewCleanup);
+    const ready = vi.fn();
+    const mountDebug = vi.fn();
+    const closed = vi.fn();
+    const result = render(DockviewLayout, {
+      props: { mountPreview, mountDebug, showDebugPanel: true, showConfigPanel: true },
+      context: new Map([[PANEL_HOST_CONTEXT, host]]),
+      events: { debugClosed: closed, ready },
+    });
+    await tick();
+    expect([...definitions.keys()]).toEqual(['debug', 'config', 'performance', 'recording']);
+    expect(createDockview).not.toHaveBeenCalled();
+    expect(mountPreview).toHaveBeenCalledWith(result.container.querySelector('.dockview-container'));
+    ready.mock.calls[0][0].detail.resetLayout();
+    ready.mock.calls[0][0].detail.showPreview();
+    expect(host.resetLayout).toHaveBeenCalledOnce();
+    expect(host.showPreview).toHaveBeenCalledOnce();
+    expect(host.setVisible).toHaveBeenCalledWith('debug', true);
+    expect(host.setVisible).toHaveBeenCalledWith('config', true);
+    const container = document.createElement('div');
+    definitions.get('debug')?.mount(container);
+    expect(mountDebug).toHaveBeenCalledWith(container);
+    definitions.get('debug')?.onClose();
+    expect(closed).toHaveBeenCalledOnce();
+    await result.rerender({ showDebugPanel: false });
+    expect(host.setVisible).toHaveBeenCalledWith('debug', false);
+    result.unmount();
+    expect(previewCleanup).toHaveBeenCalledOnce();
+    for (const cleanup of cleanups) {
+      expect(cleanup).toHaveBeenCalledOnce();
+    }
+  });
+});
 
 // --- dockview-core mock ---
 
@@ -33,6 +113,8 @@ vi.mock('dockview-core', () => {
     createDockview: vi.fn((_container: HTMLElement, _options: any) => {
       panels.clear();
       mockApi = {
+        id: "viewer-dock",
+        onWillDrop: vi.fn(() => ({ dispose: vi.fn() })),
         panels: [],
         addPanel: vi.fn((opts: any) => {
           const panel = makeMockPanel(opts.id);
@@ -156,6 +238,17 @@ describe('DockviewLayout', () => {
       },
     });
   }
+
+  it('allows its own tab moves and rejects panels from an enclosing dock', () => {
+    renderLayout();
+    expect(mockApi.onWillDrop).toHaveBeenCalledOnce();
+    const handler = mockApi.onWillDrop.mock.calls[0][0];
+    const preventDefault = vi.fn();
+    handler({ getData: () => ({ viewId: 'viewer-dock' }), preventDefault });
+    expect(preventDefault).not.toHaveBeenCalled();
+    handler({ getData: () => ({ viewId: 'standalone-dock' }), preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
 
   function createMockTransport() {
     let onMessageHandler: ((event: MessageEvent) => void) | null = null;

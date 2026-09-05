@@ -1,5 +1,7 @@
 # Quick Start
 
+Prefer to work entirely in your browser? See [Standalone Mode](standalone.md) for setup, editing, and browser storage.
+
 
 ## Step 1: Install
 

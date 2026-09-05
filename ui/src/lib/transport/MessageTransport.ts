@@ -12,10 +12,15 @@ export type TransportMessage<TMessage extends BaseMessage> = TMessage & (
       : TMessage
 );
 
+export interface ShaderExplorerHostApi {
+  postMessage(message: { type: string; [key: string]: unknown }): void;
+  onMessage(handler: (event: MessageEvent) => void): () => void;
+}
+
 export interface Transport {
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void;
   onMessage(handler: (event: MessageEvent) => void): void;
   dispose(): void;
-  getType(): 'vscode' | 'websocket';
+  getType(): 'vscode' | 'websocket' | 'web';
   isConnected(): boolean;
 }

@@ -11,7 +11,7 @@
  * Only errors suppress errors, and only on the same line, so warnings and the
  * link/binding failures the language services never see always survive.
  */
-import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api";
+import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import type { ShaderLanguage } from "@shader-studio/language-server-core";
 
 export const RENDERER_COMPILER_MARKER_OWNER = "shader-studio-renderer-compiler";

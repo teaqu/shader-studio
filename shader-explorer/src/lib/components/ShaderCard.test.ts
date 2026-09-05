@@ -17,6 +17,32 @@ const shader: ShaderFile = {
 };
 
 describe('ShaderCard context menu', () => {
+  it('renders outside the dock container and removes the menu on unmount', async () => {
+    const { container, unmount } = render(ShaderCard, {
+      props: { shader, vscodeApi: { postMessage: vi.fn() } },
+    });
+    await fireEvent.contextMenu(container.querySelector('.shader-card')!);
+    const menu = document.querySelector('.context-menu')!;
+    expect(menu.parentElement).toBe(document.body);
+    unmount();
+    expect(document.querySelector('.context-menu')).toBeNull();
+  });
+
+  it.each(['escape', 'outside click', 'delete'])('closes the menu on %s', async (action) => {
+    const vscodeApi = { postMessage: vi.fn() };
+    const { container } = render(ShaderCard, { props: { shader, vscodeApi } });
+    await fireEvent.contextMenu(container.querySelector('.shader-card')!);
+    if (action === 'escape') {
+      await fireEvent.keyDown(window, { key: 'Escape' });
+    } else if (action === 'outside click') {
+      await fireEvent.click(document.body);
+    } else {
+      await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      expect(vscodeApi.postMessage).toHaveBeenCalledWith({ type: 'deleteShader', path: shader.path });
+    }
+    expect(document.querySelector('.context-menu')).toBeNull();
+  });
+
   it('shows full timestamps and sends a rename request', async () => {
     const vscodeApi = { postMessage: vi.fn() };
     const { container } = render(ShaderCard, { props: { shader, vscodeApi } });

@@ -1,0 +1,1182 @@
+<script lang="ts">
+  import { onMount, onDestroy, untrack } from "svelte";
+  import type { Transport } from "../transport/MessageTransport";
+  import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+  // Monaco's `editor.api` entrypoint ships the API only: every editor
+  // contribution registers itself as an import side effect. Each import below
+  // is the UI half of a provider registered in MonacoLanguageServiceManager —
+  // without it the provider is called and its results are silently dropped.
+  import "monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError";
+  import "monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution";
+  import "monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController";
+  import "monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints";
+  import "monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands";
+  import "monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition";
+  import "monaco-editor/esm/vs/editor/standalone/browser/referenceSearch/standaloneReferenceSearch";
+  import "monaco-editor/esm/vs/editor/contrib/rename/browser/rename";
+  import "monaco-editor/esm/vs/editor/contrib/colorPicker/browser/colorPickerContribution";
+  import "monaco-editor/esm/vs/editor/contrib/documentSymbols/browser/documentSymbols";
+  import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
+  import "monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
+  import { initVimMode, VimMode } from "monaco-vim";
+  import { setupMonacoGlsl, setupMonacoSlang, setCompilerMarkers } from "@shader-studio/monaco";
+  import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
+  import { isAuthoringValueType } from "@shader-studio/types";
+  import { createLanguageServiceController } from "../editor/createLanguageServiceController";
+  import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
+  import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { currentTheme, type Theme } from "../stores/themeStore";
+
+  type CompileMode = "hot" | "save" | "manual";
+
+  interface Props {
+    isVisible?: boolean;
+    shaderCode?: string;
+    shaderPath?: string;
+    transport: Transport;
+    onCodeChange?: (code: string) => void;
+    vimMode?: boolean;
+    topInset?: number;
+    bottomInset?: number;
+    bufferNames?: string[];
+    activeBufferName?: string;
+    onBufferSwitch?: (bufferName: string) => void;
+    errors?: string[];
+    compileMode?: CompileMode;
+    config?: ShaderConfig | null;
+    customUniformInfo?: { name: string; type: string }[];
+    slangModules?: SlangSourceModule[];
+    onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
+    displayMode?: "overlay" | "pane";
+    /** Portal for Monaco completion/hover widgets when an ancestor clips or transforms them. */
+    overflowWidgetsDomNode?: HTMLElement;
+  }
+
+  interface OverlayKeyEvent {
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+    browserEvent?: {
+      key?: string;
+      metaKey?: boolean;
+      ctrlKey?: boolean;
+      preventDefault?: () => void;
+      stopPropagation?: () => void;
+    };
+  }
+
+  let {
+    isVisible = false,
+    shaderCode = "",
+    shaderPath = "",
+    transport,
+    onCodeChange = () => {},
+    vimMode = false,
+    topInset = 0,
+    bottomInset = 0,
+    bufferNames = ["Image"],
+    activeBufferName = "Image",
+    onBufferSwitch = (_bufferName: string) => {},
+    errors = [],
+    compileMode = "hot",
+    config = null,
+    customUniformInfo = [],
+    slangModules = [],
+    onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
+    displayMode = "overlay",
+    overflowWidgetsDomNode = undefined,
+  }: Props = $props();
+
+  const activePassName = $derived(
+    activeBufferName.startsWith("__shader_studio_vertex__:")
+      ? activeBufferName.slice("__shader_studio_vertex__:".length)
+      : activeBufferName,
+  );
+  // Names the Monarch grammar cannot know: script-declared custom uniforms plus
+  // the configured input and storage resources the renderer declares for them.
+  const dynamicUniformNames = $derived([
+    ...customUniformInfo.map(({ name }) => name),
+    ...authoringResources(config, activePassName).map(({ name }) => name),
+  ]);
+
+  let containerEl = $state<HTMLDivElement | null>(null);
+  let statusBarEl = $state<HTMLDivElement | null>(null);
+  let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let languageServiceController = $state<LanguageServiceController | null>(null);
+  let environmentGeneration = 0;
+  let vimModeInstance: any = null;
+  let popupContainer: HTMLDivElement | null = null;
+  let editorReady = $state(false);
+  let recompileTimer: ReturnType<typeof setTimeout> | null = null;
+  let applyingHostContent = false;
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSentCode: string | null = null;
+  let cursorChangeDisposable: monaco.IDisposable | null = null;
+  let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  let uniformDecorationIds: string[] = [];
+  let lastShaderPath: string = "";
+  let vimStatusAttached = false;
+  let vimCurrentMode = "normal";
+  const savedViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
+  const PERSIST_DELAY_MS = 15;
+  // Observability for the marker pipeline. updateCount separates "never ran"
+  // from "ran and produced nothing", which the DOM alone cannot distinguish.
+  // Plain counters written straight onto the element: updateErrorMarkers runs
+  // inside effects, where mutating $state is not allowed.
+  let markerUpdateCount = 0;
+  let editorTheme: Theme = "light";
+  let unsubscribeTheme: (() => void) | null = null;
+
+  function monacoThemeFor(theme: Theme): string {
+    if (displayMode === "overlay") {
+      return "shader-studio-transparent";
+    }
+    return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
+  }
+
+  function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
+    const lower = path.toLowerCase();
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) {
+      return "typescript";
+    }
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) {
+      return "javascript";
+    }
+    if (lower.endsWith(".slang")) {
+      return "slang";
+    }
+    return "glsl";
+  }
+
+  function focusMonacoTextInput() {
+    if (!containerEl) {
+      return;
+    }
+    const input = (containerEl.querySelector("textarea.inputarea")
+      || containerEl.querySelector(".monaco-editor textarea")
+      || containerEl.querySelector("textarea")) as HTMLTextAreaElement | null;
+    input?.focus({ preventScroll: true });
+  }
+
+  function syncVimStatus(mode?: string) {
+    vimCurrentMode = mode ?? "normal";
+    const statusBar = statusBarEl;
+    if (!statusBar) {
+      return;
+    }
+
+    const setStatusText = (text: string) => {
+      const modeNode = statusBar.firstElementChild;
+      if (modeNode) {
+        modeNode.textContent = text;
+        return;
+      }
+      statusBar.textContent = text;
+    };
+
+    switch (mode) {
+      case "insert":
+        setStatusText("-- INSERT --");
+        break;
+      case "visual":
+        setStatusText("-- VISUAL --");
+        break;
+      case "visualblock":
+        setStatusText("-- VISUAL BLOCK --");
+        break;
+      case "replace":
+        setStatusText("-- REPLACE --");
+        break;
+      default:
+        setStatusText("-- NORMAL --");
+        break;
+    }
+  }
+
+  function syncCursorForMode(mode?: string) {
+    if (!editor) {
+      return;
+    }
+
+    if (mode === "insert" || mode === "replace") {
+      editor.updateOptions({
+        cursorStyle: "line",
+        cursorWidth: 1,
+      });
+      return;
+    }
+
+    editor.updateOptions({
+      cursorStyle: "block",
+      cursorWidth: 2,
+    });
+  }
+
+  function handleContainerMouseDown() {
+    focusMonacoTextInput();
+  }
+
+  function uniformDecorations(
+    source: string,
+    uniformNames: string[],
+  ): monaco.editor.IModelDeltaDecoration[] {
+    const names = new Set(uniformNames.filter((name) => /^[A-Za-z_]\w*$/.test(name)));
+    if (names.size === 0) {
+      return [];
+    }
+
+    const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+    const lines = source.split("\n");
+    let inBlockComment = false;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      let column = 0;
+      while (column < line.length) {
+        if (inBlockComment) {
+          const commentEnd = line.indexOf("*/", column);
+          if (commentEnd < 0) {
+            break;
+          }
+          inBlockComment = false;
+          column = commentEnd + 2;
+          continue;
+        }
+
+        if (line.startsWith("//", column)) {
+          break;
+        }
+        if (line.startsWith("/*", column)) {
+          inBlockComment = true;
+          column += 2;
+          continue;
+        }
+
+        const character = line[column];
+        if (character === '"' || character === "'") {
+          const quote = character;
+          column += 1;
+          while (column < line.length) {
+            if (line[column] === "\\") {
+              column += 2;
+            } else if (line[column] === quote) {
+              column += 1;
+              break;
+            } else {
+              column += 1;
+            }
+          }
+          continue;
+        }
+
+        if (/[A-Za-z_]/.test(character)) {
+          const start = column;
+          column += 1;
+          while (column < line.length && /\w/.test(line[column])) {
+            column += 1;
+          }
+          if (names.has(line.slice(start, column))) {
+            decorations.push({
+              range: new monaco.Range(lineIndex + 1, start + 1, lineIndex + 1, column + 1),
+              options: { inlineClassName: "shader-uniform-token" },
+            });
+          }
+          continue;
+        }
+        column += 1;
+      }
+    }
+
+    return decorations;
+  }
+
+  function updateUniformDecorations(uniformNames: string[]) {
+    if (!editor) {
+      return;
+    }
+    const language = languageForShaderPath(shaderPath);
+    const decorations = language === "glsl" || language === "slang"
+      ? uniformDecorations(editor.getValue(), uniformNames)
+      : [];
+    uniformDecorationIds = editor.deltaDecorations(uniformDecorationIds, decorations);
+  }
+
+  function handleOverlaySave() {
+    if (!transport || !shaderPath) {
+      return;
+    }
+    transport.postMessage({
+      type: "extensionCommand",
+      payload: { command: "saveCurrentShader" },
+    });
+  }
+
+  function editorHasFocus(): boolean {
+    if (!editor) {
+      return false;
+    }
+    return editor.hasTextFocus();
+  }
+
+  function runEditorAction(actionId: string, args?: unknown) {
+    editor?.getAction(actionId)?.run(args);
+  }
+
+  function stopKeyEvent(event: OverlayKeyEvent) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.browserEvent?.preventDefault?.();
+    event.browserEvent?.stopPropagation?.();
+  }
+
+  function switchToNextBuffer() {
+    const idx = bufferNames.indexOf(activeBufferName);
+    const next = bufferNames[(idx + 1) % bufferNames.length];
+    onBufferSwitch(next);
+  }
+
+  function switchToPrevBuffer() {
+    const idx = bufferNames.indexOf(activeBufferName);
+    const prev = bufferNames[(idx - 1 + bufferNames.length) % bufferNames.length];
+    onBufferSwitch(prev);
+  }
+
+  function switchToNamedBuffer(name: string) {
+    const exact = bufferNames.find(b => b === name);
+    if (exact) {
+      onBufferSwitch(exact); return;
+    }
+    const lower = name.toLowerCase();
+    const match = bufferNames.find(b => b.toLowerCase().startsWith(lower));
+    if (match) {
+      onBufferSwitch(match);
+    }
+  }
+
+  let vimCommandsRegistered = false;
+
+  function registerVimCommands() {
+    if (vimCommandsRegistered) {
+      return;
+    }
+    try {
+      const vim = (VimMode as any).Vim;
+      if (!vim?.defineEx) {
+        return;
+      }
+
+      vim.defineEx('bnext', 'bn', () => switchToNextBuffer());
+      vim.defineEx('bprev', 'bp', () => switchToPrevBuffer());
+      vim.defineEx('buffer', 'b', (_cm: any, params: any) => {
+        const name = params?.args?.[0];
+        if (name) {
+          switchToNamedBuffer(name);
+        }
+      });
+      vim.defineEx('lnext', 'lne', () => {
+        runEditorAction('editor.action.marker.next');
+      });
+      vim.defineEx('lprev', 'lp', () => {
+        runEditorAction('editor.action.marker.prev');
+      });
+
+      vimCommandsRegistered = true;
+    } catch (e) {
+      console.warn('Failed to register vim buffer commands:', e);
+    }
+  }
+
+  function enableVim() {
+    if (!editor || vimModeInstance) {
+      return;
+    }
+    registerVimCommands();
+    vimModeInstance = initVimMode(editor as any, statusBarEl ?? null);
+    vimModeInstance.on?.("vim-mode-change", ({ mode }: { mode?: string }) => {
+      syncVimStatus(mode);
+      syncCursorForMode(mode);
+      if (mode === "insert" || mode === "replace") {
+        requestAnimationFrame(() => focusMonacoTextInput());
+      }
+    });
+    editor.updateOptions({ readOnly: false, domReadOnly: false });
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
+    vimStatusAttached = !!statusBarEl;
+    syncVimStatus();
+    syncCursorForMode();
+    setTimeout(() => {
+      if (vimModeInstance) {
+        syncVimStatus(vimCurrentMode);
+      }
+    }, 0);
+  }
+
+  function disableVim() {
+    if (vimModeInstance) {
+      vimModeInstance.dispose();
+      vimModeInstance = null;
+    }
+    vimStatusAttached = false;
+    if (statusBarEl) {
+      statusBarEl.textContent = "";
+    }
+  }
+
+  function fallbackEnterInsertMode(key: string) {
+    if (!editor || !vimModeInstance?.state?.vim) {
+      return;
+    }
+
+    const position = editor.getPosition();
+    const model = editor.getModel();
+    if (!position || !model) {
+      return;
+    }
+
+    const lineNumber = position.lineNumber;
+    const lineContent = model.getLineContent(lineNumber);
+    const lineMaxColumn = model.getLineMaxColumn(lineNumber);
+
+    switch (key) {
+      case "a":
+        editor.setPosition({
+          lineNumber,
+          column: Math.min(position.column + 1, lineMaxColumn),
+        });
+        break;
+      case "I": {
+        const indentColumn = (lineContent.match(/^\s*/) ?? [""])[0].length + 1;
+        editor.setPosition({ lineNumber, column: indentColumn });
+        break;
+      }
+      case "A":
+        editor.setPosition({ lineNumber, column: lineMaxColumn });
+        break;
+      case "o":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, lineMaxColumn, lineNumber, lineMaxColumn),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 1, column: 1 });
+        break;
+      case "O":
+        editor.executeEdits("vim-fallback", [{
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          text: "\n",
+        }]);
+        editor.setPosition({ lineNumber, column: 1 });
+        break;
+      default:
+        break;
+    }
+
+    vimModeInstance.state.keyMap = "vim-insert";
+    vimModeInstance.state.vim.insertMode = true;
+    vimModeInstance.state.vim.visualMode = false;
+    syncVimStatus("insert");
+    syncCursorForMode("insert");
+    requestAnimationFrame(() => focusMonacoTextInput());
+  }
+
+  function updateBlankLineDecorations() {
+    if (!editor || !containerEl) {
+      return;
+    }
+    const model = editor.getModel();
+    if (!model) {
+      return;
+    }
+    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+    const padding = editor.getOption(monaco.editor.EditorOption.padding);
+    const topPad = padding?.top ?? 0;
+    requestAnimationFrame(() => {
+      if (!containerEl) {
+        return;
+      }
+      const viewLines = containerEl.querySelectorAll('.view-lines .view-line');
+      viewLines.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const top = parseFloat(htmlEl.style.top);
+        if (isNaN(top)) {
+          return;
+        }
+        const lineNum = Math.round((top - topPad) / lineHeight) + 1;
+        const isBlank = lineNum >= 1 && lineNum <= model!.getLineCount()
+          && model!.getLineContent(lineNum).trim() === '';
+        htmlEl.classList.toggle('blank-line', isBlank);
+      });
+    });
+  }
+
+  function createEditor() {
+    if (!containerEl || editor) {
+      return;
+    }
+
+    setupMonacoGlsl(monaco as any);
+    setupMonacoSlang(monaco as any);
+
+    if (overflowWidgetsDomNode) {
+      // Monaco scopes widget layout and colour variables to .monaco-editor.
+      // Preserve that scope when the widgets escape a clipped dock pane.
+      popupContainer = document.createElement("div");
+      popupContainer.className = "monaco-editor shader-editor-popups";
+      overflowWidgetsDomNode.appendChild(popupContainer);
+    }
+
+    const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
+      value: shaderCode,
+      language: languageForShaderPath(shaderPath),
+      theme: monacoThemeFor(editorTheme),
+      minimap: { enabled: false },
+      scrollbar: {
+        vertical: "hidden",
+        horizontal: "hidden",
+        useShadows: false,
+      },
+      overviewRulerLanes: 0,
+      overviewRulerBorder: false,
+      hideCursorInOverviewRuler: true,
+      renderLineHighlight: "line",
+      selectionHighlight: false,
+      // The document-highlight provider is only reachable with this on; "off"
+      // left it registered but unused.
+      occurrencesHighlight: "singleFile",
+      automaticLayout: true,
+      fontSize: 14,
+      lineHeight: 20,
+      padding: { top: 0 },
+      stickyScroll: { enabled: false },
+      folding: false,
+      glyphMargin: false,
+      lineDecorationsWidth: 4,
+      lineNumbers: "on",
+      lineNumbersMinChars: 4,
+      scrollBeyondLastLine: false,
+      contextmenu: false,
+      // Keep completion and diagnostic widgets above Monaco's clipped editor
+      // viewport. Dockview's pane transforms are disabled for web layout below
+      // so fixed widget coordinates remain aligned with the editor.
+      fixedOverflowWidgets: true,
+      ...(popupContainer ? { overflowWidgetsDomNode: popupContainer } : {}),
+      readOnly: false,
+      domReadOnly: false,
+      editContext: false,
+      cursorStyle: "line",
+      cursorWidth: 2,
+      cursorBlinking: "smooth",
+      guides: {
+        indentation: false,
+        bracketPairs: false,
+        highlightActiveIndentation: false,
+        bracketPairsHorizontal: false,
+      },
+    };
+
+    editor = monaco.editor.create(containerEl, editorOptions);
+    languageServiceController = createLanguageServiceController(monaco);
+
+    if (shaderPath && savedViewStates.has(shaderPath)) {
+      editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
+    }
+
+    editor.onKeyDown?.((event: OverlayKeyEvent) => {
+      const browserKey = event.browserEvent?.key;
+      const metaKey = !!event.browserEvent?.metaKey;
+      const ctrlKey = !!event.browserEvent?.ctrlKey;
+
+      if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
+        stopKeyEvent(event);
+        handleOverlaySave();
+        return;
+      }
+
+      if (
+        browserKey
+        && ["i", "a", "I", "A", "o", "O"].includes(browserKey)
+        && vimCurrentMode === "normal"
+        && vimModeInstance?.state?.vim
+        && !vimModeInstance.state.vim.inputState?.operator
+      ) {
+        event.browserEvent?.preventDefault?.();
+        event.browserEvent?.stopPropagation?.();
+        fallbackEnterInsertMode(browserKey);
+      }
+    });
+
+    editor.onDidScrollChange(() => updateBlankLineDecorations());
+    containerEl.addEventListener("mousedown", handleContainerMouseDown, true);
+
+    editor.onDidChangeModelContent(() => {
+      if (!editor) {
+        return;
+      }
+      updateBlankLineDecorations();
+      updateUniformDecorations(dynamicUniformNames);
+      // Marker lines are clamped to the model's line count. If errors arrive
+      // while the model is still empty every marker collapses to line 0, which
+      // Monaco discards, and nothing recomputes them once the content lands.
+      updateErrorMarkers(errors);
+      const code = editor.getValue();
+      if (applyingHostContent || code === undefined || !shaderPath) {
+        return;
+      }
+
+      if (compileMode === "hot") {
+        if (recompileTimer) {
+          clearTimeout(recompileTimer);
+        }
+        recompileTimer = setTimeout(() => {
+          onCodeChange(code);
+        }, 30);
+      }
+
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persistTimer = setTimeout(() => {
+        if (transport && shaderPath) {
+          lastSentCode = code;
+          transport.postMessage({
+            type: "updateShaderSource",
+            payload: {
+              code,
+              path: shaderPath,
+            },
+          });
+        }
+      }, PERSIST_DELAY_MS);
+    });
+
+    lastShaderPath = shaderPath;
+
+    if (vimMode) {
+      enableVim();
+    }
+
+    cursorChangeDisposable = editor.onDidChangeCursorPosition(() => {
+      const position = editor?.getPosition();
+      const model = editor?.getModel();
+      if (!position || !model) {
+        return;
+      }
+      const line = position.lineNumber - 1;
+      const content = model.getLineContent(position.lineNumber);
+      const buffer = activeBufferName;
+      if (cursorChangeTimer) {
+        clearTimeout(cursorChangeTimer);
+      }
+      cursorChangeTimer = setTimeout(() => onCursorChange(line, content, buffer), 150);
+    });
+
+    editor.focus();
+    requestAnimationFrame(() => focusMonacoTextInput());
+    updateBlankLineDecorations();
+    updateUniformDecorations(dynamicUniformNames);
+    updateErrorMarkers(errors);
+    editorReady = true;
+  }
+
+  function destroyEditor() {
+    if (recompileTimer) {
+      clearTimeout(recompileTimer);
+      recompileTimer = null;
+    }
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    if (cursorChangeTimer) {
+      clearTimeout(cursorChangeTimer);
+      cursorChangeTimer = null;
+    }
+    if (cursorChangeDisposable) {
+      cursorChangeDisposable.dispose();
+      cursorChangeDisposable = null;
+    }
+    disableVim();
+    languageServiceController?.dispose();
+    languageServiceController = null;
+    if (containerEl) {
+      containerEl.removeEventListener("mousedown", handleContainerMouseDown, true);
+    }
+    if (editor) {
+      editor.deltaDecorations(uniformDecorationIds, []);
+      uniformDecorationIds = [];
+      if (shaderPath) {
+        savedViewStates.set(shaderPath, editor.saveViewState());
+      }
+      editor.dispose();
+      editor = null;
+    }
+    popupContainer?.remove();
+    popupContainer = null;
+    editorReady = false;
+    lastSentCode = null;
+  }
+
+  $effect(() => {
+    if (isVisible && containerEl && !editor) {
+      createEditor();
+    }
+    if (!isVisible && editor) {
+      destroyEditor();
+    }
+  });
+
+  $effect(() => {
+    const controller = languageServiceController;
+    const model = editor?.getModel();
+    const language = languageForShaderPath(shaderPath);
+    const currentConfig = config;
+    const uniforms = customUniformInfo;
+    const modules = slangModules;
+    const bufferName = activeBufferName;
+    const passName = activePassName;
+    if (!controller || !model?.uri || (language !== "glsl" && language !== "slang")) {
+      return;
+    }
+    environmentGeneration += 1;
+    void controller.syncEnvironment({
+      documentUri: model.uri.toString(),
+      languageId: language,
+      generation: environmentGeneration,
+      passName,
+      stage: bufferName.startsWith("__shader_studio_vertex__:") ? "vertex" : authoringStage(currentConfig, passName),
+      customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
+      resources: authoringResources(currentConfig, passName),
+      virtualFiles: language === "slang"
+        ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
+        : [],
+    });
+  });
+
+  $effect(() => {
+    const names = dynamicUniformNames;
+    const ready = editorReady;
+    if (ready && editor) {
+      updateUniformDecorations(names);
+    }
+  });
+
+  $effect(() => {
+    if (isVisible && editor) {
+      editor.focus();
+      requestAnimationFrame(() => focusMonacoTextInput());
+    }
+  });
+
+  $effect(() => {
+    // Read reactive deps (vimMode, editorReady) unconditionally so the effect
+    // re-runs on toggle. `editor` is a plain let and can't be a dependency, so
+    // gate on editorReady ($state) which tracks the lazily-created editor.
+    const enabled = vimMode;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && !vimModeInstance) {
+      enableVim();
+    } else if (!enabled && vimModeInstance) {
+      disableVim();
+    }
+  });
+
+  $effect(() => {
+    const enabled = vimMode;
+    const statusBar = statusBarEl;
+    if (!editorReady || !editor) {
+      return;
+    }
+    if (enabled && vimModeInstance && statusBar && !vimStatusAttached) {
+      vimModeInstance.dispose();
+      vimModeInstance = null;
+      enableVim();
+    }
+  });
+
+  $effect(() => {
+    // Read errors before the editor guard. `editor` is a plain variable, so if
+    // this effect first runs before the editor exists the guard short-circuits,
+    // errors is never read, and the effect ends up with no dependencies at all
+    // - it would never react to another compile result. Editor creation applies
+    // the current errors itself, so skipping the call here is safe.
+    const currentErrors = errors;
+    if (editor) {
+      updateErrorMarkers(currentErrors);
+    }
+  });
+
+  function updateErrorMarkers(errs: string[]) {
+    if (!editor) {
+      return;
+    }
+    const model = editor.getModel();
+    if (!model) {
+      return;
+    }
+
+    const activeBufferKey = activeBufferName.trim().toLowerCase();
+    const markers: monaco.editor.IMarkerData[] = [];
+
+    for (const err of errs) {
+      const match = err.match(/^(?:(.+?):\s*)?ERROR:\s*\d+:(\d+):\s*(.+)$/s);
+      if (match) {
+        const [, passName, lineNumber, diagnostic] = match;
+        if (passName && passName.trim().toLowerCase() !== activeBufferKey) {
+          continue;
+        }
+
+        // Errors can outlive the source that produced them, so clamp to the
+        // model's own range: Monaco throws on a line it does not have.
+        const line = Math.min(Math.max(1, parseInt(lineNumber, 10)), model.getLineCount());
+        const message = diagnostic.trim();
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: line,
+          startColumn: 1,
+          endLineNumber: line,
+          endColumn: model.getLineMaxColumn(line),
+          message,
+        });
+        continue;
+      }
+
+      const passName = err.match(/^([^:\n]+):\s*(?=error(?:\[[^\]]+\])?:)/i)?.[1];
+      if (passName && passName.trim().toLowerCase() !== activeBufferKey) {
+        continue;
+      }
+      const headings = [...err.matchAll(/(?:^|\n)(?:[^:\n]+:\s*)?error(?:\[[^\]]+\])?:\s*([^\n]+)/gi)];
+      for (let index = 0; index < headings.length; index++) {
+        const heading = headings[index];
+        const nextHeading = headings[index + 1];
+        const blockStart = (heading.index ?? 0) + heading[0].length;
+        const blockEnd = nextHeading?.index ?? err.length;
+        const location = err.slice(blockStart, blockEnd).match(/^\s*-->\s+.+?:(\d+):(\d+)\s*$/m);
+        if (!location) {
+          continue;
+        }
+        const line = Math.min(Math.max(1, Number(location[1])), model.getLineCount());
+        const maxColumn = model.getLineMaxColumn(line);
+        const column = Math.min(Math.max(1, Number(location[2])), maxColumn);
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: line,
+          startColumn: column,
+          endLineNumber: line,
+          endColumn: maxColumn,
+          message: heading[1]?.trim() ?? "Slang compiler error",
+        });
+      }
+    }
+
+    markerUpdateCount += 1;
+    containerEl?.setAttribute("data-marker-updates", String(markerUpdateCount));
+    containerEl?.setAttribute("data-marker-count", String(markers.length));
+    containerEl?.setAttribute("data-errors-count", String(errs.length));
+    // Routed through the arbiter so a line the language service already
+    // reported is not squiggled twice.
+    setCompilerMarkers(monaco, model, markers);
+  }
+
+  function applyHostContent(code: string) {
+    // Monaco emits content changes for setValue as well as user edits.
+    // Loading host state must not schedule a save back to the host.
+    applyingHostContent = true;
+    try {
+      editor?.setValue(code);
+    } finally {
+      applyingHostContent = false;
+    }
+  }
+
+  $effect(() => {
+    if (editor && shaderCode !== undefined) {
+      const fileChanged = shaderPath !== lastShaderPath;
+      const currentValue = editor.getValue();
+      // setValue() replaces the model content and drops the markers already on
+      // it. When new content and new errors arrive in the same flush the marker
+      // effect above runs first, so its markers would be lost; re-apply them
+      // after any content replacement. Untracked so this effect keeps reacting
+      // to content alone rather than re-running on every error change.
+      let contentReplaced = false;
+
+      if (fileChanged) {
+        if (lastShaderPath) {
+          savedViewStates.set(lastShaderPath, editor.saveViewState());
+        }
+        const model = editor.getModel();
+        if (model) {
+          monaco.editor.setModelLanguage(model, languageForShaderPath(shaderPath));
+        }
+        applyHostContent(shaderCode);
+        contentReplaced = true;
+        const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
+        if (nextViewState) {
+          editor.restoreViewState(nextViewState);
+        } else {
+          editor.setPosition({ lineNumber: 1, column: 1 });
+          editor.setScrollTop(0);
+        }
+        lastSentCode = null;
+        lastShaderPath = shaderPath;
+      } else if (currentValue === shaderCode) {
+        lastSentCode = null;
+      } else if (lastSentCode !== null && shaderCode === lastSentCode) {
+        lastSentCode = null;
+      } else if (!editorHasFocus()) {
+        const position = editor.getPosition();
+        const scrollTop = editor.getScrollTop();
+        applyHostContent(shaderCode);
+        contentReplaced = true;
+        if (position) {
+          editor.setPosition(position);
+        }
+        editor.setScrollTop(scrollTop);
+        lastSentCode = null;
+      }
+
+      if (contentReplaced) {
+        untrack(() => updateErrorMarkers(errors));
+      }
+    }
+  });
+
+  onMount(() => {
+    if (displayMode === "pane") {
+      unsubscribeTheme = currentTheme.subscribe((theme) => {
+        editorTheme = theme;
+        monaco.editor.setTheme(monacoThemeFor(theme));
+      });
+    }
+    if (isVisible) {
+      createEditor();
+    }
+  });
+
+  onDestroy(() => {
+    unsubscribeTheme?.();
+    destroyEditor();
+  });
+
+  function authoringStage(shaderConfig: ShaderConfig | null, passName: string): ShaderStage {
+    const pass = shaderConfig?.passes?.[passName];
+    return pass && "type" in pass && pass.type === "compute" ? "compute" : "fragment";
+  }
+
+  function authoringResources(shaderConfig: ShaderConfig | null, passName: string): AuthoringResource[] {
+    const pass = shaderConfig?.passes?.[passName];
+    const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
+    const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
+      name,
+      kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
+      slot,
+    }));
+    for (const [name, storage] of Object.entries(shaderConfig?.storage ?? {})) {
+      resources.push({ name, kind: "storage", elementType: storage.elementType });
+    }
+    return resources;
+  }
+</script>
+
+{#if isVisible}
+  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
+    <div
+      class="editor-overlay"
+      data-active-buffer={activeBufferName}
+      bind:this={containerEl}
+    ></div>
+    {#if vimMode}
+      <div class="vim-status-bar" bind:this={statusBarEl}></div>
+    {/if}
+  </div>
+{/if}
+
+<style>
+  .editor-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    /* Hidden until Monaco initializes */
+    opacity: 0;
+    transition: opacity 0.15s ease-in;
+  }
+
+  .editor-wrapper.ready {
+    opacity: 1;
+  }
+
+  .editor-wrapper.pane {
+    position: relative;
+    margin-top: var(--editor-top-inset, 0px);
+    height: calc(100% - var(--editor-top-inset, 0px) - var(--editor-bottom-inset, 0px));
+    min-height: 0;
+    z-index: auto;
+    background: transparent;
+  }
+
+  /* The shader-preview overlay retains its original dark, high-contrast
+     presentation regardless of the docked web editor's workspace theme. */
+  .editor-wrapper:not(.pane) {
+    --shader-studio-editor-foreground: #d4d4d4;
+    --shader-studio-editor-current-line-background: rgba(255, 255, 255, 0.06);
+    --shader-studio-editor-active-line-number: #c6c6c6;
+    --shader-studio-editor-cursor: #ffffff;
+    --shader-studio-editor-selection-background: rgba(255, 255, 255, 0.3);
+    --shader-studio-editor-uniform-token: #50f5ff;
+    --shader-studio-editor-hover-background: rgba(30, 30, 30, 0.95);
+    --shader-studio-editor-hover-border: rgba(255, 255, 255, 0.15);
+    --shader-studio-editor-hover-status-background: rgba(255, 255, 255, 0.05);
+    --shader-studio-editor-status-background: rgba(10, 10, 10, 0.88);
+    --shader-studio-editor-status-border: rgba(255, 255, 255, 0.08);
+  }
+
+  .editor-overlay {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .vim-status-bar {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    min-height: 20px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--shader-studio-editor-foreground);
+    background: var(--shader-studio-editor-status-background);
+    border: 1px solid var(--shader-studio-editor-status-border);
+    border-radius: 4px;
+    padding: 0 8px;
+    line-height: 20px;
+    z-index: 1200;
+    pointer-events: none;
+  }
+
+  /* Make ALL Monaco backgrounds transparent */
+  .editor-overlay :global(.monaco-editor),
+  .editor-overlay :global(.monaco-editor .overflow-guard),
+  .editor-overlay :global(.monaco-editor-background),
+  .editor-overlay :global(.monaco-editor .inputarea.ime-input) {
+    background: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .editor-overlay :global(.monaco-editor.focused),
+  .editor-overlay :global(.monaco-editor:focus),
+  .editor-overlay :global(.monaco-editor [tabindex]:focus),
+  .editor-overlay :global(.monaco-editor textarea:focus) {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+  }
+
+  /* Force-hide Monaco's internal textarea */
+  .editor-overlay :global(.monaco-editor textarea) {
+    resize: none !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
+    background: transparent;
+    border-radius: 0;
+    padding-right: 4px;
+    text-shadow: none;
+  }
+
+  /* Give shader-preview text a readable sheet without styling the web editor pane. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-lines .view-line > span) {
+    background: rgba(10, 10, 10, 0.75);
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.4);
+  }
+
+  /* No background for blank lines */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .view-line.blank-line > span),
+  .editor-overlay :global(.monaco-editor .view-line.blank-line > span) {
+    background: transparent !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
+    background: transparent;
+    border-radius: 0;
+    padding-left: 4px;
+    padding-right: 8px;
+  }
+
+  /* Match the overlay text sheet in the line-number gutter. */
+  .editor-wrapper:not(.pane) .editor-overlay :global(.monaco-editor .margin-view-overlays .line-numbers) {
+    background: rgba(10, 10, 10, 0.75);
+  }
+
+  /* Current line number highlight */
+  .editor-overlay :global(.monaco-editor .margin-view-overlays .current-line ~ .line-numbers) {
+    color: var(--shader-studio-editor-active-line-number);
+  }
+
+  /* Current line highlight */
+  .editor-overlay :global(.monaco-editor .current-line) {
+    background: var(--shader-studio-editor-current-line-background) !important;
+    border: none !important;
+  }
+
+  /* Make the margin/gutter background transparent */
+  .editor-overlay :global(.monaco-editor .margin) {
+    background: transparent !important;
+  }
+
+  /* Cursor — bright and visible */
+  .editor-overlay :global(.monaco-editor .cursor) {
+    background: var(--shader-studio-editor-cursor) !important;
+    border-color: var(--shader-studio-editor-cursor) !important;
+  }
+
+  /* Selection styling */
+  .editor-overlay :global(.monaco-editor .selected-text) {
+    background: var(--shader-studio-editor-selection-background) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .shader-uniform-token) {
+    color: var(--shader-studio-editor-uniform-token) !important;
+  }
+
+  /* Hide scrollbars */
+  .editor-overlay :global(.monaco-editor .monaco-scrollable-element > .scrollbar) {
+    opacity: 0;
+  }
+
+  /* Active line number in gutter */
+  .editor-overlay :global(.monaco-editor .active-line-number) {
+    color: var(--shader-studio-editor-active-line-number) !important;
+  }
+
+/* Error squiggly — raise above the semi-transparent text backgrounds */
+  .editor-overlay :global(.monaco-editor .view-overlays) {
+    z-index: 1 !important;
+    pointer-events: none;
+  }
+  .editor-overlay :global(.monaco-editor .squiggly-error) {
+    opacity: 1 !important;
+  }
+
+  /* Hover widget (error tooltips) */
+  .editor-overlay :global(.monaco-editor .monaco-hover) {
+    background: var(--shader-studio-editor-hover-background) !important;
+    border: 1px solid var(--shader-studio-editor-hover-border) !important;
+  }
+
+  .editor-overlay :global(.monaco-editor .monaco-hover-content) {
+    background: transparent !important;
+    color: var(--shader-studio-editor-foreground) !important;
+  }
+
+  /* Hover status bar (bottom of hover widget) */
+  .editor-overlay :global(.monaco-editor .monaco-hover .hover-row.status-bar) {
+    background: var(--shader-studio-editor-hover-status-background) !important;
+  }
+</style>

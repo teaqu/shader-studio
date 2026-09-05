@@ -191,7 +191,7 @@ export class WebSocketTransport implements MessageTransport {
         if (!input?.path) {
           continue;
         }
-        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio') {
+        if (input.type !== 'texture' && input.type !== 'video' && input.type !== 'audio' && input.type !== 'cubemap') {
           continue;
         }
 
