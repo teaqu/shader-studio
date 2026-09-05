@@ -555,7 +555,7 @@ suite("VS Code language-service revisions", () => {
         "float3 n = normalize(float3(1));",
         "float3 m = nor;",
         "float x = fmod(3.0, 2.0);",
-        "float4 c = sampleIChannel0(float2(0.5));",
+        "ShaderStudioInputs configured = inputs;",
       ].join("\n"),
     });
     await vscode.window.showTextDocument(document);
@@ -585,9 +585,9 @@ suite("VS Code language-service revisions", () => {
     const channelHovers = await vscode.commands.executeCommand<vscode.Hover[]>(
       "vscode.executeHoverProvider",
       document.uri,
-      new vscode.Position(3, 20),
+      new vscode.Position(3, 33),
     );
-    assert.ok(hoverText(channelHovers).includes("input channel 0"));
+    assert.ok(hoverText(channelHovers).includes("Configured shader inputs"));
     const signature = await vscode.commands.executeCommand<vscode.SignatureHelp>(
       "vscode.executeSignatureHelpProvider",
       document.uri,
@@ -597,17 +597,17 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
-  test("updates Slang completion helpers after an unsaved channel rename", async function() {
+  test("updates Slang input members after an unsaved channel rename", async function() {
     this.timeout(20_000);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-channel-completion-"));
     const shaderPath = path.join(directory, "image.slang");
     const configPath = path.join(directory, "image.sha.json");
-    const source = "float4 mainImage(float2 p) { return sample; }";
+    const source = "float4 mainImage(float2 p) { return inputs.; }";
     const labels = async (document: vscode.TextDocument) => {
       const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
         "vscode.executeCompletionItemProvider",
         document.uri,
-        new vscode.Position(0, source.indexOf("sample") + "sample".length),
+        new vscode.Position(0, source.indexOf("inputs.") + "inputs.".length),
       );
       return completions.items.map((item) => typeof item.label === "string" ? item.label : item.label.label);
     };
@@ -620,7 +620,7 @@ suite("VS Code language-service revisions", () => {
       await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
       const shaderDocument = await vscode.workspace.openTextDocument(shaderPath);
       await vscode.window.showTextDocument(shaderDocument);
-      assert.ok((await labels(shaderDocument)).includes("sampleChannel"));
+      assert.ok((await labels(shaderDocument)).includes("channel"));
 
       const configDocument = await vscode.workspace.openTextDocument(configPath);
       const edit = new vscode.WorkspaceEdit();
@@ -630,8 +630,8 @@ suite("VS Code language-service revisions", () => {
       }));
       assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
 
-      await waitForAsync(async () => (await labels(shaderDocument)).includes("sampleAbbbb"));
-      assert.ok(!(await labels(shaderDocument)).includes("sampleChannel"));
+      await waitForAsync(async () => (await labels(shaderDocument)).includes("abbbb"));
+      assert.ok(!(await labels(shaderDocument)).includes("channel"));
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
