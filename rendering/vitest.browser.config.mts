@@ -3,6 +3,9 @@ import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   test: {
+    // GPU timing, backpressure, and pixel readback tests share one device.
+    // Concurrent files can starve readbacks and distort measured frame times.
+    fileParallelism: false,
     browser: {
       enabled: true,
       provider: playwright({
