@@ -92,6 +92,13 @@ export interface IVariableCapturer {
   getLastError(): string | null;
   /** Every failure from the last issue call, attributed to a variable where possible. */
   getCaptureErrors(): readonly CaptureError[];
+  /**
+   * True when the last issue call captured nothing because the pipeline was not
+   * ready - channel or storage resources still resolving, or a compile context
+   * replaced mid-flight - rather than because a capture failed. The caller has
+   * to retry such a batch instead of reporting a failure to the user.
+   */
+  issueDeferred(): boolean;
   issueCaptureAtPixel(
     captures: CaptureRequest[],
     pixelX: number,
@@ -196,6 +203,14 @@ export class VariableCapturer implements IVariableCapturer {
 
   clearLastError(): void {
     this.errors.clear();
+  }
+
+  /**
+   * The WebGL capturer has no not-ready state: it resolves every resource
+   * synchronously, so a batch that issued nothing genuinely failed.
+   */
+  issueDeferred(): boolean {
+    return false;
   }
 
   getLastError(): string | null {

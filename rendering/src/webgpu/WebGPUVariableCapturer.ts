@@ -59,6 +59,8 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   private pendingCaptureTargets = new Set<GPUTexture>();
   private compileContext: CaptureCompileContext = {};
   private compileContextGeneration = 0;
+  /** Set when an issue bailed on resources that were still resolving. */
+  private deferred = false;
   private compileContextKey: string;
   private readonly errors = new CaptureErrorLog();
   /**
@@ -121,6 +123,16 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
   clearLastError(): void {
     this.errors.clear();
     this.pendingError = null;
+    this.deferred = false;
+  }
+
+  /**
+   * Channel views, storage buffers and the compile context are all resolved
+   * live, so a batch can issue nothing simply because a pass rebuild has not
+   * settled. That is not a capture failure - the caller retries it.
+   */
+  issueDeferred(): boolean {
+    return this.deferred;
   }
 
   /** Files whatever a helper parked against the variable it failed for. */
@@ -253,10 +265,12 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       : [];
     if (channels.length > 0 && channelResources === null) {
       this.errors.record("Capture channels are not resolvable yet");
+      this.deferred = true;
       return 0;
     }
     if (!this.resolveStorageBuffers(storage)) {
       this.recordPendingError();
+      this.deferred = true;
       return 0;
     }
 
@@ -315,6 +329,9 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           this.disposed ||
           !this.isCompileContextCurrent(compileContextGeneration, compileContextKey)
         ) {
+          // The batch was overtaken rather than rejected: whatever replaced it
+          // has to be captured, so the caller must reissue instead of failing.
+          this.deferred = true;
           break;
         }
         if (!cached) {
@@ -325,6 +342,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         const storageBuffers = this.resolveStorageBuffers(storage);
         if (!storageBuffers) {
           this.recordPendingError(capture.varName);
+          this.deferred = true;
           continue;
         }
         // Re-resolve after the compile await: a pass rebuild or feedback reset
@@ -335,6 +353,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           : [];
         if (currentChannelResources === null) {
           this.errors.record("Capture channels are not resolvable yet", capture.varName);
+          this.deferred = true;
           continue;
         }
         const bindGroup = this.buildBindGroup(

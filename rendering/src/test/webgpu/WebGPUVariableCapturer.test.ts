@@ -368,6 +368,28 @@ describe("WebGPUVariableCapturer", () => {
     expect(capturer.getLastError()).toBe("Capture channels are not resolvable yet");
   });
 
+  it("marks a capture deferred when resources are not ready, and not when a compile fails", async () => {
+    const gpu = mockGpu();
+    let resources: Array<{ slot: number; textureView: GPUTextureView }> | null = null;
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { commonCode: "", slangChannels: [{ slot: 0, key: "iChannel0" }] },
+      () => resources,
+    );
+
+    expect(await capturer.issueCaptureGrid(captures, uniforms, 8, 4)).toBe(0);
+    expect(capturer.issueDeferred()).toBe(true);
+
+    // The resources arrive but the shader itself will not compile: that is a
+    // real failure the panel has to report, not something to retry silently.
+    resources = [{ slot: 0, textureView: {} as GPUTextureView }];
+    gpu.compiler.compile.mockResolvedValue({ success: false as const, errors: ["compile failed"] });
+
+    expect(await capturer.issueCaptureGrid(captures, uniforms, 8, 4)).toBe(0);
+    expect(capturer.issueDeferred()).toBe(false);
+  });
+
   it("binds a channel resource's own sampler when provided", async () => {
     const gpu = mockGpu();
     const textureView = { tag: "textureView" } as unknown as GPUTextureView;
