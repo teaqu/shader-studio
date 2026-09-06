@@ -578,7 +578,7 @@ float4 mainImage(float2 p)
       expect.objectContaining({
         code: "unused-variable",
         message: "Unused variable 'unused'.",
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Hint,
         tags: [DiagnosticTag.Unnecessary],
         source: "shader-studio-slang-ls",
         range: { start: { line: 6, character: 10 }, end: { line: 6, character: 16 } },
@@ -586,7 +586,7 @@ float4 mainImage(float2 p)
       expect.objectContaining({
         code: "unused-parameter",
         message: "Unused parameter 'unusedParam'.",
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Hint,
         tags: [DiagnosticTag.Unnecessary],
         source: "shader-studio-slang-ls",
         range: { start: { line: 0, character: 31 }, end: { line: 0, character: 42 } },

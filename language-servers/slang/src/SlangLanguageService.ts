@@ -558,7 +558,9 @@ export class SlangLanguageService implements LanguageService {
       .filter((local) => !official.some((diagnostic) => rangesOverlap(diagnostic.range, local.range)))
       .map((local): Diagnostic => ({
         range: local.range,
-        severity: DiagnosticSeverity.Warning,
+        // Hint, not Warning: the Unnecessary tag already greys the symbol,
+        // and an unused local needs no squiggle.
+        severity: DiagnosticSeverity.Hint,
         source: "shader-studio-slang-ls",
         code: local.kind === "parameter" ? "unused-parameter" : "unused-variable",
         message: `Unused ${local.kind} '${local.name}'.`,

@@ -356,14 +356,14 @@ void mainImage(out vec4 color, in vec2 coord) {
       expect.objectContaining({
         code: "unused-variable",
         message: "Unused variable 'unusedLocal'.",
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Hint,
         tags: [DiagnosticTag.Unnecessary],
         range: { start: { line: 2, character: 8 }, end: { line: 2, character: 19 } },
       }),
       expect.objectContaining({
         code: "unused-parameter",
         message: "Unused parameter 'unusedParam'.",
-        severity: DiagnosticSeverity.Warning,
+        severity: DiagnosticSeverity.Hint,
         tags: [DiagnosticTag.Unnecessary],
         range: { start: { line: 1, character: 36 }, end: { line: 1, character: 47 } },
       }),

@@ -506,7 +506,9 @@ function unusedSymbolDiagnostics(analysis: GlslAnalysisDocument): Diagnostic[] {
     const label = symbol.kind === "parameter" ? "parameter" : "variable";
     return [{
       range: symbol.declaration,
-      severity: DiagnosticSeverity.Warning,
+      // Hint, not Warning: the Unnecessary tag already greys the symbol, and
+      // an unused local needs no squiggle.
+      severity: DiagnosticSeverity.Hint,
       source: "shader-studio-glsl-ls",
       code: `unused-${label}`,
       message: `Unused ${label} '${symbol.name}'.`,
