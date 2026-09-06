@@ -79,13 +79,23 @@ export function isShaderTypeKeyword(language: "glsl" | "slang", word: string): b
   return TYPE_KEYWORDS_BY_LANGUAGE[language].has(word);
 }
 
+/** Types that can only be a function's return type, never a variable's. */
+export const RETURN_ONLY_TYPE_KEYWORDS: readonly string[] = Object.freeze(["void"]);
+
 /**
- * Type keywords a completion list should lead with, most-used first: the value
- * types an author writes when declaring a variable. Resource types are declared
- * far less often and stay behind them.
+ * Type keywords a completion list should offer. Inside a function body a
+ * declaration declares a variable, so the return-only types are dropped: `void`
+ * names no value. At file scope it stays, because a function declaration starts
+ * with exactly that.
  */
-export function shaderTypeCompletionKeywords(language: "glsl" | "slang"): readonly string[] {
-  return language === "glsl" ? GLSL_TYPE_KEYWORDS : SLANG_TYPE_KEYWORDS;
+export function shaderTypeCompletionKeywords(
+  language: "glsl" | "slang",
+  options: { insideFunctionBody?: boolean } = {},
+): readonly string[] {
+  const keywords = language === "glsl" ? GLSL_TYPE_KEYWORDS : SLANG_TYPE_KEYWORDS;
+  return options.insideFunctionBody
+    ? keywords.filter((keyword) => !RETURN_ONLY_TYPE_KEYWORDS.includes(keyword))
+    : keywords;
 }
 
 /** The subset that leads the list, in the order it should appear. */

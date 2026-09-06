@@ -93,6 +93,28 @@ describe("GlslLanguageService", () => {
       );
     });
 
+    it("does not offer void where a variable is being declared", async () => {
+      const items = await completeAt(body(""), 2);
+
+      expect(items.map((item) => item.label)).not.toContain("void");
+      expect(items.map((item) => item.label)).toContain("float");
+    });
+
+    it("offers void at file scope, where a function is being declared", async () => {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({
+        uri,
+        languageId: "glsl",
+        version: 1,
+        text: "void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0); }\n",
+      });
+
+      const items = await instance.completion({ document: revision, position: { line: 1, character: 0 } });
+
+      expect(items.map((item) => item.label)).toContain("void");
+    });
+
     it("sorts types above functions at the start of a statement", async () => {
       const items = await completeAt(body(""), 2);
       const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;

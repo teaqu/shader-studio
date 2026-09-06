@@ -111,6 +111,30 @@ describe("SlangLanguageService", () => {
       );
     });
 
+    it("does not offer void where a variable is being declared", async () => {
+      const items = await completeAt(body(""), 4);
+
+      expect(items.map((item) => item.label)).not.toContain("void");
+      expect(items.map((item) => item.label)).toContain("float3");
+    });
+
+    it("offers void at file scope, where a function is being declared", async () => {
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([]));
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment(environment);
+      await service.openDocument({
+        uri,
+        languageId: "slang",
+        version: 1,
+        text: "float4 mainImage(float2 coord) { return float4(0.0); }\n",
+      });
+
+      const items = await service.completion({ document: revision, position: { line: 1, character: 0 } });
+
+      expect(items.map((item) => item.label)).toContain("void");
+    });
+
     it("sorts types above symbols at the start of a statement", async () => {
       const items = await completeAt(body(""), 4);
       const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;

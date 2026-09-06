@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { declarationContext } from "../declarationContext";
+import { declarationContext, isInsideBlock } from "../declarationContext";
 
 const TYPES = new Set([
   "float", "vec2", "vec3", "vec4", "float3", "float4", "int", "bool", "mat4",
@@ -107,5 +107,48 @@ describe("declarationContext", () => {
 
   it("reports an expression for a line that does not exist", () => {
     expect(declarationContext("float a = 1.0;", { line: 4, character: 0 }, isType)).toBe("expression");
+  });
+
+  describe("isInsideBlock", () => {
+    /** Whether the cursor marked by `|` sits inside a block. */
+    function insideAt(source: string) {
+      const offset = source.indexOf("|");
+      const before = source.slice(0, offset);
+      const line = before.split("\n").length - 1;
+      const character = before.length - (before.lastIndexOf("\n") + 1);
+      return isInsideBlock(source.replace("|", ""), { line, character });
+    }
+
+    it("reports file scope outside every brace", () => {
+      expect(insideAt("float shade(float x) { return x; }\n|")).toBe(false);
+    });
+
+    it("reports a function body as inside", () => {
+      expect(insideAt("void main() {\n    |\n}")).toBe(true);
+    });
+
+    it("reports a nested block as inside", () => {
+      expect(insideAt("void main() {\n  if (x) {\n    |\n  }\n}")).toBe(true);
+    });
+
+    it("reports file scope again after a body closes", () => {
+      expect(insideAt("void main() {\n  float a = 1.0;\n}\n|")).toBe(false);
+    });
+
+    it("ignores braces inside line comments", () => {
+      expect(insideAt("// void main() {\n|")).toBe(false);
+    });
+
+    it("ignores braces inside block comments", () => {
+      expect(insideAt("/* { { */\n|")).toBe(false);
+    });
+
+    it("ignores braces inside strings", () => {
+      expect(insideAt('#define NAME "{"\n|')).toBe(false);
+    });
+
+    it("reports file scope for a line that does not exist", () => {
+      expect(isInsideBlock("void main() {", { line: 9, character: 0 })).toBe(false);
+    });
   });
 });

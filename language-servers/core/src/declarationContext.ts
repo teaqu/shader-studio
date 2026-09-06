@@ -98,3 +98,33 @@ export function rankCompletionsForContext<T extends { label: string; sortText?: 
     sortText: `${isTypeLabel(item.label) === typesLead ? "0" : "1"}${item.label}`,
   }));
 }
+
+/**
+ * Whether the cursor sits inside a block rather than at file scope. A
+ * declaration means different things in the two places: a function at file
+ * scope, a variable inside a body.
+ */
+export function isInsideBlock(source: string, position: Position): boolean {
+  const lines = source.split("\n");
+  if (position.line < 0 || position.line >= lines.length) {
+    return false;
+  }
+  const before = [
+    ...lines.slice(0, position.line),
+    lines[position.line]!.slice(0, position.character),
+  ].join("\n");
+  // Braces inside comments and strings are text, not structure.
+  const code = before
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+  let depth = 0;
+  for (const character of code) {
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+    }
+  }
+  return depth > 0;
+}

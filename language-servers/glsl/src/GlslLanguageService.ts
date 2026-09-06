@@ -24,6 +24,7 @@ import {
   rankCompletionsForContext,
   findLiteralConstructorColors,
   findMemberAccess,
+  isInsideBlock,
   isPositionInComment,
   swizzleSelections,
   type ColorPresentationParams,
@@ -225,7 +226,8 @@ export class GlslLanguageService implements LanguageService {
     if (context === "declarator") {
       return [...items.values()].filter((item) => isShaderEntryPointName(item.label));
     }
-    for (const type of shaderTypeCompletionKeywords("glsl")) {
+    const insideFunctionBody = isInsideBlock(state.document.text, params.position);
+    for (const type of shaderTypeCompletionKeywords("glsl", { insideFunctionBody })) {
       if (!items.has(type)) {
         items.set(type, { label: type, kind: CompletionItemKind.Keyword, detail: "type" });
       }

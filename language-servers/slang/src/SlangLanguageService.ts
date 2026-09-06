@@ -21,8 +21,9 @@ import {
   declarationContext,
   findLiteralConstructorColors,
   findMemberAccess,
-  rankCompletionsForContext,
+  isInsideBlock,
   isPositionInComment,
+  rankCompletionsForContext,
   swizzleSelections,
   type ColorPresentationParams,
   type DocumentParams,
@@ -297,7 +298,8 @@ export class SlangLanguageService implements LanguageService {
     if (context === "declarator") {
       return [...items.values()].filter((item) => isShaderEntryPointName(item.label));
     }
-    for (const type of shaderTypeCompletionKeywords("slang")) {
+    const insideFunctionBody = isInsideBlock(state.document.text, params.position);
+    for (const type of shaderTypeCompletionKeywords("slang", { insideFunctionBody })) {
       const key = `${type}:type`;
       if (![...items.values()].some((item) => item.label === type)) {
         items.set(key, { label: type, kind: CompletionItemKind.Keyword, detail: "type" });
