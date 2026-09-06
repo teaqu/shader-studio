@@ -1,38 +1,38 @@
 import * as assert from "assert";
-import * as path from "path";
-import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "../../app/SlangDependencyGraph";
+import { normalize } from "pathe";
+import { collectSlangDependencies, collectSlangDependenciesAsync, resolveSlangIncludes, resolveSlangIncludesAsync, resolveSlangImports } from "../../app/SlangDependencyGraph";
 
 suite("SlangDependencyGraph", () => {
   test("collects transitive imports in dependency-first order", () => {
     const files = new Map<string, string>([
-      [path.normalize("/shader/palette.slang"), "module palette;\nimport tone_map;"],
-      [path.normalize("/shader/tone-map.slang"), "module tone_map;"],
+      [normalize("/shader/palette.slang"), "module palette;\nimport tone_map;"],
+      [normalize("/shader/tone-map.slang"), "module tone_map;"],
     ]);
 
     const result = collectSlangDependencies({
       rootPath: "/shader/image.slang",
       rootSource: "import palette;\nfloat4 mainImage(float2 p) { return 1; }",
       ownerPass: "Image",
-      readSource: (filePath) => files.get(path.normalize(filePath)) ?? null,
+      readSource: (filePath) => files.get(normalize(filePath)) ?? null,
     });
 
     assert.deepStrictEqual(result.errors, []);
     assert.deepStrictEqual(result.modules.map((module) => module.moduleName), ["tone_map", "palette"]);
     assert.strictEqual(result.modules[0].ownerPass, "Image");
-    assert.strictEqual(result.modules[1].path, path.normalize("/shader/palette.slang"));
+    assert.strictEqual(result.modules[1].path, normalize("/shader/palette.slang"));
   });
 
   test("deduplicates cycles without loading the root as its own dependency", () => {
     const files = new Map<string, string>([
-      [path.normalize("/shader/a.slang"), "module a;\nimport b;"],
-      [path.normalize("/shader/b.slang"), "module b;\nimport a;"],
+      [normalize("/shader/a.slang"), "module a;\nimport b;"],
+      [normalize("/shader/b.slang"), "module b;\nimport a;"],
     ]);
 
     const result = collectSlangDependencies({
       rootPath: "/shader/a.slang",
-      rootSource: files.get(path.normalize("/shader/a.slang"))!,
+      rootSource: files.get(normalize("/shader/a.slang"))!,
       ownerPass: "Image",
-      readSource: (filePath) => files.get(path.normalize(filePath)) ?? null,
+      readSource: (filePath) => files.get(normalize(filePath)) ?? null,
     });
 
     assert.deepStrictEqual(result.errors, []);
@@ -50,9 +50,9 @@ suite("SlangDependencyGraph", () => {
     assert.deepStrictEqual(result.modules, []);
     assert.deepStrictEqual(result.errors, [{
       code: "slang-module-not-found",
-      importerPath: path.normalize("/shader/image.slang"),
+      importerPath: normalize("/shader/image.slang"),
       moduleName: "missing_palette",
-      resolvedPath: path.normalize("/shader/missing-palette.slang"),
+      resolvedPath: normalize("/shader/missing-palette.slang"),
       message: "Cannot resolve Slang module 'missing_palette' imported by /shader/image.slang",
     }]);
   });
@@ -68,26 +68,26 @@ suite("SlangDependencyGraph", () => {
       ].join("\n"),
       ownerPass: "Image",
       readSource: (filePath) => {
-        readPaths.push(path.normalize(filePath));
+        readPaths.push(normalize(filePath));
         return filePath.endsWith("palette.slang") ? "module palette;" : null;
       },
     });
 
     assert.deepStrictEqual(result.errors, []);
     assert.deepStrictEqual(result.modules.map((module) => module.moduleName), ["palette"]);
-    assert.deepStrictEqual(readPaths, [path.normalize("/shader/palette.slang")]);
+    assert.deepStrictEqual(readPaths, [normalize("/shader/palette.slang")]);
   });
 });
 
 suite("resolveSlangIncludes", () => {
   const readSource = (files: Record<string, string>) => (filePath: string) => {
-    const normalized = path.normalize(filePath);
+    const normalized = normalize(filePath);
     return normalized in files ? files[normalized]! : null;
   };
 
   test("inlines a single #include", () => {
     const files = {
-      [path.normalize("/shader/include/tone-map.slang")]: "float3 toneMap(float3 c) { return c; }",
+      [normalize("/shader/include/tone-map.slang")]: "float3 toneMap(float3 c) { return c; }",
     };
     const source = '#include "include/tone-map.slang"\nfloat4 mainImage() { return 1; }';
     const { source: result } = resolveSlangIncludes(source, "/shader/image.slang", readSource(files));
@@ -96,8 +96,8 @@ suite("resolveSlangIncludes", () => {
 
   test("inlines nested #include directives", () => {
     const files = {
-      [path.normalize("/shader/include/blur.slang")]: '#include "math.slang"\nfloat3 blur() { return smooth(); }',
-      [path.normalize("/shader/include/math.slang")]: "float3 smooth() { return 1; }",
+      [normalize("/shader/include/blur.slang")]: '#include "math.slang"\nfloat3 blur() { return smooth(); }',
+      [normalize("/shader/include/math.slang")]: "float3 smooth() { return 1; }",
     };
     const source = '#include "include/blur.slang"\nfloat4 mainImage() { return 1; }';
     const { source: result } = resolveSlangIncludes(source, "/shader/image.slang", readSource(files));
@@ -112,8 +112,8 @@ suite("resolveSlangIncludes", () => {
 
   test("leaves cyclic includes unresolved", () => {
     const files = {
-      [path.normalize("/shader/a.slang")]: '#include "b.slang"',
-      [path.normalize("/shader/b.slang")]: '#include "a.slang"',
+      [normalize("/shader/a.slang")]: '#include "b.slang"',
+      [normalize("/shader/b.slang")]: '#include "a.slang"',
     };
     const source = '#include "a.slang"';
     // a -> b -> a cycle: the second a should be left unresolved
@@ -123,7 +123,7 @@ suite("resolveSlangIncludes", () => {
 
   test("resolves paths relative to the source file directory", () => {
     const files = {
-      [path.normalize("/project/passes/include/util.slang")]: "void util() {}",
+      [normalize("/project/passes/include/util.slang")]: "void util() {}",
     };
     const source = '#include "include/util.slang"\nvoid main() { util(); }';
     const { source: result } = resolveSlangIncludes(source, "/project/passes/glow.slang", readSource(files));
@@ -138,7 +138,7 @@ suite("resolveSlangIncludes", () => {
 
   test("inlines a __include (module-level, string form)", () => {
     const files = {
-      [path.normalize("/shader/helpers.slang")]: "implementing scene;\nvoid helper() {}",
+      [normalize("/shader/helpers.slang")]: "implementing scene;\nvoid helper() {}",
     };
     const source = '__include "helpers.slang"\nvoid main() { helper(); }';
     const { source: result } = resolveSlangIncludes(source, "/shader/scene.slang", readSource(files));
@@ -147,7 +147,7 @@ suite("resolveSlangIncludes", () => {
 
   test("inlines a __include with identifier syntax", () => {
     const files = {
-      [path.normalize("/shader/utils/helpers.slang")]: "implementing scene;\nvoid helper() {}",
+      [normalize("/shader/utils/helpers.slang")]: "implementing scene;\nvoid helper() {}",
     };
     const source = "__include utils.helpers;\nvoid main() { helper(); }";
     const { source: result } = resolveSlangIncludes(source, "/shader/scene.slang", readSource(files));
@@ -157,7 +157,7 @@ suite("resolveSlangIncludes", () => {
 
   test("translates underscores to hyphens in __include identifiers", () => {
     const files = {
-      [path.normalize("/shader/utils/my-helpers.slang")]: "void helper() {}",
+      [normalize("/shader/utils/my-helpers.slang")]: "void helper() {}",
     };
     const source = "__include utils.my_helpers;\nvoid main() { helper(); }";
     const { source: result } = resolveSlangIncludes(source, "/shader/scene.slang", readSource(files));
@@ -167,24 +167,24 @@ suite("resolveSlangIncludes", () => {
 
   test("tracks included paths for dependency invalidation", () => {
     const files = {
-      [path.normalize("/shader/include/tone-map.slang")]: "float3 toneMap(float3 c) { return c; }",
+      [normalize("/shader/include/tone-map.slang")]: "float3 toneMap(float3 c) { return c; }",
     };
     const source = '#include "include/tone-map.slang"\nfloat4 mainImage() { return 1; }';
     const { source: result, includedPaths } = resolveSlangIncludes(source, "/shader/image.slang", readSource(files));
     assert.strictEqual(result, "float3 toneMap(float3 c) { return c; }\nfloat4 mainImage() { return 1; }");
-    assert.deepStrictEqual(includedPaths, [path.normalize("/shader/include/tone-map.slang")]);
+    assert.deepStrictEqual(includedPaths, [normalize("/shader/include/tone-map.slang")]);
   });
 });
 
 suite("resolveSlangImports", () => {
   const readSource = (files: Record<string, string>) => (filePath: string) => {
-    const normalized = path.normalize(filePath);
+    const normalized = normalize(filePath);
     return normalized in files ? files[normalized]! : null;
   };
 
   test("inlines an identifier-path import", () => {
     const files = {
-      [path.normalize("/shader/lib/palette.slang")]:
+      [normalize("/shader/lib/palette.slang")]:
         "module palette;\npublic float3 paletteColor() { return float3(1,0,0); }",
     };
     const source = "import lib.palette;\nfloat4 mainImage() { return float4(paletteColor(), 1); }";
@@ -197,7 +197,7 @@ suite("resolveSlangImports", () => {
 
   test("inlines a quoted-path import", () => {
     const files = {
-      [path.normalize("/shader/passes/../lib/palette.slang")]:
+      [normalize("/shader/passes/../lib/palette.slang")]:
         "public float3 paletteColor() { return float3(1,0,0); }",
     };
     const source = 'import "../lib/palette.slang";\nfloat4 mainImage() { return float4(paletteColor(), 1); }';
@@ -226,9 +226,9 @@ suite("resolveSlangImports", () => {
 
   test("recursively inlines transitive imports", () => {
     const files = {
-      [path.normalize("/shader/lib/color.slang")]:
+      [normalize("/shader/lib/color.slang")]:
         "module color;\npublic float3 getColor() { return float3(1,0,0); }",
-      [path.normalize("/shader/lib/palette.slang")]:
+      [normalize("/shader/lib/palette.slang")]:
         'import "color.slang";\nmodule palette;\npublic float3 paletteColor() { return getColor(); }',
     };
     const source = "import lib.palette;\nfloat4 mainImage() { return float4(paletteColor(), 1); }";
@@ -241,8 +241,8 @@ suite("resolveSlangImports", () => {
 
   test("detects and breaks import cycles", () => {
     const files = {
-      [path.normalize("/shader/a.slang")]: 'module a;\nimport "b.slang";\npublic float3 colorA() { return colorB(); }',
-      [path.normalize("/shader/b.slang")]: 'module b;\nimport "a.slang";\npublic float3 colorB() { return colorA(); }',
+      [normalize("/shader/a.slang")]: 'module a;\nimport "b.slang";\npublic float3 colorA() { return colorB(); }',
+      [normalize("/shader/b.slang")]: 'module b;\nimport "a.slang";\npublic float3 colorB() { return colorA(); }',
     };
     const source = 'import "a.slang";\nfloat4 mainImage() { return float4(colorA(), 1); }';
     const result = resolveSlangImports(source, "/shader/image.slang", readSource(files));

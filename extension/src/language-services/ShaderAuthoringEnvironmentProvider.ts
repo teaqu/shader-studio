@@ -1,5 +1,4 @@
-import * as fs from "fs";
-import * as path from "path";
+import { dirname, isAbsolute, join, normalize, parse, relative, resolve } from "pathe";
 import * as vscode from "vscode";
 import {
   isAuthoringValueType,
@@ -9,7 +8,7 @@ import {
   type ShaderConfig,
   type ShaderStage,
 } from "@shader-studio/types";
-import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDependencyGraph";
+import { collectSlangDependenciesAsync, resolveSlangIncludesAsync } from "../app/SlangDependencyGraph";
 
 const customUniforms = new Map<string, readonly CustomUniformDeclaration[]>();
 const snapshotListeners = new Set<(shaderPath: string) => void>();
@@ -19,7 +18,7 @@ type AuthoringDocument = Pick<vscode.TextDocument, "uri" | "languageId" | "getTe
 
 /** Makes the exact project configuration sent to an active Shader Studio client available to authoring services. */
 export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: ShaderConfig): void {
-  const normalizedShaderPath = path.resolve(shaderPath);
+  const normalizedShaderPath = resolve(shaderPath);
   const previous = loadedShaderProjects.get(normalizedShaderPath);
   loadedShaderProjects.delete(normalizedShaderPath);
   loadedShaderProjects.set(normalizedShaderPath, {
@@ -56,14 +55,14 @@ export function onDidChangeLoadedShaderProjectSnapshot(listener: () => void): vs
 
 /** Shares trusted ScriptEvaluator type snapshots without exposing values or code. */
 export function publishCustomUniformSnapshot(shaderPath: string, values: readonly { name: string; type: string }[]): void {
-  customUniforms.set(path.resolve(shaderPath), values.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []));
+  customUniforms.set(resolve(shaderPath), values.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []));
   for (const listener of snapshotListeners) {
     listener(shaderPath);
   }
 }
 
 export function clearCustomUniformSnapshot(shaderPath: string): void {
-  customUniforms.delete(path.resolve(shaderPath));
+  customUniforms.delete(resolve(shaderPath));
   for (const listener of snapshotListeners) {
     listener(shaderPath);
   }
@@ -77,25 +76,25 @@ export function onDidChangeCustomUniformSnapshot(listener: (shaderPath: string) 
 export class ShaderAuthoringEnvironmentProvider {
   private readonly generations = new Map<string, { fingerprint: string; generation: number }>();
 
-  environmentFor(document: AuthoringDocument): ShaderAuthoringEnvironment | undefined {
+  async environmentFor(document: AuthoringDocument): Promise<ShaderAuthoringEnvironment | undefined> {
     const languageId = document.languageId === "slang" ? "slang" : document.languageId === "glsl" ? "glsl" : undefined;
     if (!languageId) {
       return undefined;
     }
-    const loadedConfig = readConfig(document.uri.fsPath);
+    const loadedConfig = await readConfig(document.uri.fsPath);
     const config = loadedConfig?.config ?? null;
     const pass = findPass(config, document.uri.fsPath, loadedConfig?.path);
     const stage = pass && "vertex" in pass && pass.vertex ? "vertex" : stageFor(document.uri.fsPath, pass?.value);
     const resources = resourcesFor(config, pass?.value);
-    const uniforms = customUniforms.get(path.resolve(mainShaderPath(document.uri.fsPath, languageId, loadedConfig?.path))) ?? [];
+    const uniforms = customUniforms.get(resolve(mainShaderPath(document.uri.fsPath, languageId, loadedConfig?.path))) ?? [];
     const outputLayers = pass?.value && "type" in pass.value && pass.value.type === "compute"
       ? pass.value.outputLayers ?? 1
       : undefined;
     const passName = pass?.name ?? "Image";
-    const commonFile = configuredCommonFile(config, loadedConfig?.path, passName);
+    const commonFile = await configuredCommonFile(config, loadedConfig?.path, passName);
     const virtualFiles = mergeVirtualFiles(
-      collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, passName),
-      commonFile ? collectVirtualFiles(commonFile.text, vscode.Uri.parse(commonFile.uri).fsPath, languageId, "common") : [],
+      await collectVirtualFiles(document.getText(), document.uri.fsPath, languageId, passName),
+      commonFile ? await collectVirtualFiles(commonFile.text, vscode.Uri.parse(commonFile.uri).fsPath, languageId, "common") : [],
     );
     const semantic = { languageId, passName, stage, outputLayers, resources, uniforms, commonFile, virtualFiles };
     const fingerprint = JSON.stringify(semantic);
@@ -117,11 +116,41 @@ export class ShaderAuthoringEnvironmentProvider {
   }
 }
 
-function configuredCommonFile(
+/**
+ * Reads a file through the workspace file system so this works on desktop and
+ * in the browser extension host, where Node `fs` does not exist. Open editors
+ * are preferred by callers; this is the on-disk fallback for unopened files.
+ * Returns null when the file cannot be read (missing, non-file scheme, …).
+ */
+async function readTextFile(filePath: string): Promise<string | null> {
+  try {
+    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+    // TextDecoder — not Node's Buffer — so this also runs in the browser
+    // extension host, where Buffer does not exist.
+    return new TextDecoder("utf-8").decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/** Lists sibling `.sha.json` names in a directory, sorted, or [] when unreadable. */
+async function listConfigNames(directory: string): Promise<string[]> {
+  try {
+    const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(directory));
+    return entries
+      .filter(([name, type]) => type === vscode.FileType.File && name.endsWith(".sha.json"))
+      .map(([name]) => name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+async function configuredCommonFile(
   config: ShaderConfig | null,
   configPath: string | undefined,
   passName: string,
-): { uri: string; text: string; version: number } | undefined {
+): Promise<{ uri: string; text: string; version: number } | undefined> {
   if (!config || !configPath || passName.toLowerCase() === "common") {
     return undefined;
   }
@@ -132,12 +161,16 @@ function configuredCommonFile(
   }
   const commonPath = resolveConfiguredPath(configPath, common.path);
   const openDocument = vscode.workspace.textDocuments.find((document) => (
-    path.normalize(document.uri.fsPath) === path.normalize(commonPath)
+    normalize(document.uri.fsPath) === normalize(commonPath)
   ));
   try {
+    const text = openDocument?.getText() ?? await readTextFile(commonPath);
+    if (text === null || text === undefined) {
+      return undefined;
+    }
     return {
       uri: vscode.Uri.file(commonPath).toString(),
-      text: openDocument?.getText() ?? fs.readFileSync(commonPath, "utf8"),
+      text,
       version: openDocument?.version ?? 1,
     };
   } catch {
@@ -148,11 +181,11 @@ function configuredCommonFile(
 function resolveConfiguredPath(configPath: string, configuredPath: string): string {
   if (configuredPath.startsWith("@/")) {
     const workspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(configPath));
-    return path.resolve(workspace?.uri.fsPath ?? path.dirname(configPath), configuredPath.slice(2));
+    return resolve(workspace?.uri.fsPath ?? dirname(configPath), configuredPath.slice(2));
   }
-  return path.isAbsolute(configuredPath)
-    ? path.normalize(configuredPath)
-    : path.resolve(path.dirname(configPath), configuredPath);
+  return isAbsolute(configuredPath)
+    ? normalize(configuredPath)
+    : resolve(dirname(configPath), configuredPath);
 }
 
 function mergeVirtualFiles(
@@ -161,9 +194,9 @@ function mergeVirtualFiles(
   return [...new Map(groups.flat().map((file) => [file.uri, file])).values()];
 }
 
-function readConfig(shaderPath: string): { config: ShaderConfig; path: string } | null {
+async function readConfig(shaderPath: string): Promise<{ config: ShaderConfig; path: string } | null> {
   const companion = shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json");
-  const direct = parseConfig(companion);
+  const direct = await parseConfig(companion);
   if (direct) {
     return direct;
   }
@@ -172,17 +205,16 @@ function readConfig(shaderPath: string): { config: ShaderConfig; path: string } 
     return { config: loaded.config, path: loaded.configPath };
   }
   const workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(shaderPath))?.uri.fsPath;
-  const searchRoot = path.resolve(workspaceRoot ?? path.parse(shaderPath).root);
-  let directory = path.dirname(path.resolve(shaderPath));
+  const searchRoot = resolve(workspaceRoot ?? parse(shaderPath).root);
+  let directory = dirname(resolve(shaderPath));
   while (isWithinDirectory(searchRoot, directory)) {
     try {
-      const candidates = fs.readdirSync(directory)
-        .filter((name) => name.endsWith(".sha.json"))
-        .map((name) => path.join(directory, name))
+      const candidates = (await listConfigNames(directory))
+        .map((name) => join(directory, name))
         .filter((candidate) => candidate !== companion)
         .sort();
       for (const candidate of candidates) {
-        const loaded = parseConfig(candidate);
+        const loaded = await parseConfig(candidate);
         if (loaded && findExplicitPass(loaded.config, shaderPath, loaded.path)) {
           return loaded;
         }
@@ -191,13 +223,13 @@ function readConfig(shaderPath: string): { config: ShaderConfig; path: string } 
     if (directory === searchRoot) {
       break;
     }
-    directory = path.dirname(directory);
+    directory = dirname(directory);
   }
   return null;
 }
 
 function findLoadedShaderProject(shaderPath: string) {
-  const normalizedShaderPath = path.resolve(shaderPath);
+  const normalizedShaderPath = resolve(shaderPath);
   const projects = [...loadedShaderProjects.values()].reverse();
   return projects.find((project) => (
     project.shaderPath === normalizedShaderPath
@@ -206,13 +238,13 @@ function findLoadedShaderProject(shaderPath: string) {
 }
 
 function isWithinDirectory(parent: string, candidate: string): boolean {
-  const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+  const candidateRelative = relative(parent, candidate);
+  return candidateRelative === "" || (!candidateRelative.startsWith("../") && candidateRelative !== ".." && !isAbsolute(candidateRelative));
 }
 
-function parseConfig(configPath: string): { config: ShaderConfig; path: string } | null {
+async function parseConfig(configPath: string): Promise<{ config: ShaderConfig; path: string } | null> {
   const openDocument = vscode.workspace.textDocuments.find((document) => (
-    document.uri.scheme === "file" && path.normalize(document.uri.fsPath) === path.normalize(configPath)
+    document.uri.scheme === "file" && normalize(document.uri.fsPath) === normalize(configPath)
   ));
   if (openDocument) {
     try {
@@ -222,7 +254,11 @@ function parseConfig(configPath: string): { config: ShaderConfig; path: string }
     }
   }
   try {
-    return { config: JSON.parse(fs.readFileSync(configPath, "utf8")) as ShaderConfig, path: configPath };
+    const text = await readTextFile(configPath);
+    if (text === null) {
+      return null;
+    }
+    return { config: JSON.parse(text) as ShaderConfig, path: configPath };
   } catch {
     return null;
   }
@@ -236,7 +272,7 @@ function findPass(config: ShaderConfig | null, shaderPath: string, configPath?: 
 }
 
 function findExplicitPass(config: ShaderConfig, shaderPath: string, configPath?: string) {
-  const resolved = path.resolve(shaderPath);
+  const resolved = resolve(shaderPath);
   const owningConfigPath = configPath ?? shaderPath;
   for (const [name, value] of Object.entries(config.passes)) {
     if (!value) {
@@ -276,53 +312,47 @@ function mainShaderPath(documentPath: string, language: "glsl" | "slang", config
   return configPath?.replace(/\.sha\.json$/i, language === "slang" ? ".slang" : ".glsl") ?? documentPath;
 }
 
-function collectVirtualFiles(
+async function collectVirtualFiles(
   source: string,
   ownerPath: string,
   language: "glsl" | "slang",
   passName: string,
-): { uri: string; text: string; version: number }[] {
+): Promise<{ uri: string; text: string; version: number }[]> {
   const files = new Map<string, { uri: string; text: string; version: number }>();
-  const readSource = (filePath: string): string | null => {
-    try {
-      return fs.readFileSync(filePath, "utf8");
-    } catch {
-      return null;
-    }
-  };
+  const readSource = (filePath: string): Promise<string | null> => readTextFile(filePath);
   if (language === "slang") {
-    const dependencies = collectSlangDependencies({ rootPath: ownerPath, rootSource: source, ownerPass: passName, readSource });
+    const dependencies = await collectSlangDependenciesAsync({ rootPath: ownerPath, rootSource: source, ownerPass: passName, readSource });
     for (const module of dependencies.modules) {
       files.set(module.path, { uri: vscode.Uri.file(module.path).toString(), text: module.source, version: 1 });
     }
-    const includes = resolveSlangIncludes(source, ownerPath, readSource).includedPaths;
+    const includes = (await resolveSlangIncludesAsync(source, ownerPath, readSource)).includedPaths;
     for (const includePath of includes) {
-      const text = readSource(includePath);
+      const text = await readSource(includePath);
       if (text !== null) {
         files.set(includePath, { uri: vscode.Uri.file(includePath).toString(), text, version: 1 });
       }
     }
     return [...files.values()];
   }
-  const visit = (text: string, currentPath: string) => {
+  const visit = async (text: string, currentPath: string): Promise<void> => {
     for (const match of text.matchAll(/^\s*#include\s+"([^"]+)"/gm)) {
       if (!match[1]) {
         continue;
       }
-      const includePath = path.resolve(path.dirname(currentPath), match[1]);
+      const includePath = resolve(dirname(currentPath), match[1]);
       if (files.has(includePath)) {
         continue;
       }
       try {
-        const includeText = readSource(includePath);
+        const includeText = await readSource(includePath);
         if (includeText === null) {
           continue;
         }
         files.set(includePath, { uri: vscode.Uri.file(includePath).toString(), text: includeText, version: 1 });
-        visit(includeText, includePath);
+        await visit(includeText, includePath);
       } catch { /* service diagnostics report missing files */ }
     }
   };
-  visit(source, ownerPath);
+  await visit(source, ownerPath);
   return [...files.values()];
 }

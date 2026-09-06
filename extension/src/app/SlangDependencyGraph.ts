@@ -1,4 +1,4 @@
-import * as path from "path";
+import { basename, dirname, extname, normalize, resolve } from "pathe";
 import type { SlangDependencyDiagnostic, SlangSourceModule } from "@shader-studio/types";
 
 interface CollectSlangDependenciesOptions {
@@ -13,6 +13,71 @@ export interface SlangDependencyGraphResult {
   errors: SlangDependencyDiagnostic[];
 }
 
+export type AsyncSlangReadSource = (filePath: string) => Promise<string | null>;
+
+/**
+ * Runs a synchronous traversal to a fixpoint over an asynchronous file
+ * reader. Each round records the paths the traversal asked for, fetches them,
+ * and reruns with a fuller cache; the first round with no misses sees every
+ * file the synchronous version would have seen, so its result is identical.
+ * Only the final round's result is kept — earlier rounds may report spurious
+ * "not found" errors for files that simply had not been fetched yet.
+ */
+async function driveAsyncTraversal<T>(
+  run: (readSource: (filePath: string) => string | null) => T,
+  readSource: AsyncSlangReadSource,
+): Promise<T> {
+  const cache = new Map<string, string | null>();
+  for (;;) {
+    const missing = new Set<string>();
+    const syncRead = (filePath: string): string | null => {
+      if (cache.has(filePath)) {
+        return cache.get(filePath) ?? null;
+      }
+      missing.add(filePath);
+      return null;
+    };
+    const result = run(syncRead);
+    if (missing.size === 0) {
+      return result;
+    }
+    await Promise.all([...missing].map(async (filePath) => {
+      if (!cache.has(filePath)) {
+        cache.set(filePath, await readSource(filePath));
+      }
+    }));
+  }
+}
+
+export interface CollectSlangDependenciesAsyncOptions {
+  rootPath: string;
+  rootSource: string;
+  ownerPass: string;
+  readSource: AsyncSlangReadSource;
+}
+
+/** Async variant of {@link collectSlangDependencies} for hosts without sync file access. */
+export function collectSlangDependenciesAsync(
+  options: CollectSlangDependenciesAsyncOptions,
+): Promise<SlangDependencyGraphResult> {
+  return driveAsyncTraversal(
+    (readSource) => collectSlangDependencies({ ...options, readSource }),
+    options.readSource,
+  );
+}
+
+/** Async variant of {@link resolveSlangIncludes} for hosts without sync file access. */
+export function resolveSlangIncludesAsync(
+  source: string,
+  sourcePath: string,
+  readSource: AsyncSlangReadSource,
+): Promise<ResolvedIncludesResult> {
+  return driveAsyncTraversal(
+    (syncRead) => resolveSlangIncludes(source, sourcePath, syncRead),
+    readSource,
+  );
+}
+
 interface SlangImport {
   moduleName: string;
   relativePath: string;
@@ -23,7 +88,7 @@ const IMPORT_PATTERN = /^\s*(?:__exported\s+)?import\s+(?:"([^"]+)"|([A-Za-z_]\w
 export function collectSlangDependencies(
   options: CollectSlangDependenciesOptions,
 ): SlangDependencyGraphResult {
-  const rootPath = path.normalize(options.rootPath);
+  const rootPath = normalize(options.rootPath);
   const modules: SlangSourceModule[] = [];
   const errors: SlangDependencyDiagnostic[] = [];
   const visiting = new Set<string>([rootPath]);
@@ -34,7 +99,7 @@ export function collectSlangDependencies(
       if (isShaderStudioEditorModule(dependency.moduleName)) {
         continue;
       }
-      const resolvedPath = path.normalize(path.resolve(path.dirname(importerPath), dependency.relativePath));
+      const resolvedPath = normalize(resolve(dirname(importerPath), dependency.relativePath));
       if (visiting.has(resolvedPath) || visited.has(resolvedPath)) {
         continue;
       }
@@ -89,11 +154,11 @@ function findSlangImports(source: string): SlangImport[] {
 }
 
 function moduleNameToPath(moduleName: string): string {
-  return `${moduleName.replace(/\./g, path.sep).replace(/_/g, "-")}.slang`;
+  return `${moduleName.replace(/\./g, '/').replace(/_/g, "-")}.slang`;
 }
 
 function moduleNameFromPath(filePath: string): string {
-  return path.basename(filePath, path.extname(filePath));
+  return basename(filePath, extname(filePath));
 }
 
 const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
@@ -125,10 +190,10 @@ export function resolveSlangIncludes(
   visited = new Set<string>(),
   includedPaths: string[] = [],
 ): ResolvedIncludesResult {
-  const sourceDir = path.dirname(path.normalize(sourcePath));
+  const sourceDir = dirname(normalize(sourcePath));
 
   function resolveFile(filePath: string, fallback: () => string): string {
-    const resolved = path.normalize(path.resolve(sourceDir, filePath));
+    const resolved = normalize(resolve(sourceDir, filePath));
     if (visited.has(resolved)) {
       return fallback();
     }
@@ -176,7 +241,7 @@ export function resolveSlangImports(
   sourcePath: string,
   readSource: (filePath: string) => string | null,
 ): string {
-  const sourceDir = path.dirname(path.normalize(sourcePath));
+  const sourceDir = dirname(normalize(sourcePath));
   const visited = new Set<string>();
   return resolveNested(source, sourceDir, readSource, visited);
 }
@@ -198,7 +263,7 @@ function resolveNested(
       ? importPath.slice(1, -1)
       : importPath.replace(/_/g, "-").replace(/\./g, "/") + ".slang";
 
-    const resolved = path.normalize(path.resolve(sourceDir, cleanPath));
+    const resolved = normalize(resolve(sourceDir, cleanPath));
     if (visited.has(resolved)) {
       return match; // cycle
     }
@@ -215,7 +280,7 @@ function resolveNested(
       .replace(SHADER_STUDIO_MODULE_DECL_PATTERN, "");
 
     // Recursively resolve imports in the inlined source
-    inlined = resolveNested(inlined, path.dirname(resolved), readSource, visited);
+    inlined = resolveNested(inlined, dirname(resolved), readSource, visited);
 
     return inlined;
   });

@@ -101,9 +101,9 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     const uniformSemanticLegend = new vscode.SemanticTokensLegend(["shaderUniform"], ["readonly"]);
     this.disposables.push(vscode.languages.registerDocumentSemanticTokensProvider(selector, {
       onDidChangeSemanticTokens: this.semanticTokensChanged.event,
-      provideDocumentSemanticTokens: (document) => {
+      provideDocumentSemanticTokens: async (document) => {
         const builder = new vscode.SemanticTokensBuilder(uniformSemanticLegend);
-        const environment = this.environments.environmentFor(document);
+        const environment = await this.environments.environmentFor(document);
         for (const range of findUniformTokenRanges(document.getText(), dynamicUniformNames(environment))) {
           builder.push(
             new vscode.Range(range.line, range.startCharacter, range.line, range.endCharacter),
@@ -231,7 +231,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     if (!language || !enabled(language)) {
       return undefined;
     }
-    const environment = this.environments.environmentFor(document);
+    const environment = await this.environments.environmentFor(document);
     if (!environment) {
       return undefined;
     }
@@ -265,7 +265,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       return;
     }
     await this.publishDiagnostics(document, opened.service, opened.generation);
-    if (this.environments.environmentFor(document)?.passName.toLowerCase() === "common") {
+    if ((await this.environments.environmentFor(document))?.passName.toLowerCase() === "common") {
       await this.refreshCommonDependents(document, language);
     }
   }
@@ -278,7 +278,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       if (document.uri.toString() === commonDocument.uri.toString() || shaderLanguage(document) !== language) {
         continue;
       }
-      const environment = this.environments.environmentFor(document);
+      const environment = await this.environments.environmentFor(document);
       if (environment?.commonFile?.uri !== commonDocument.uri.toString()) {
         continue;
       }
@@ -307,13 +307,13 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       return fallback;
     }
     await this.ensureOpen(document);
-    const environment = this.environments.environmentFor(document);
+    const environment = await this.environments.environmentFor(document);
     if (!environment) {
       return fallback;
     }
     const revision = { uri: document.uri.toString(), languageId: language, version: document.version, environmentGeneration: environment.generation };
     const result = await run(await this.service(language), revision);
-    const currentGeneration = this.environments.environmentFor(document)?.generation;
+    const currentGeneration = (await this.environments.environmentFor(document))?.generation;
     return isCurrentRevision(document, currentGeneration, revision) ? result : fallback;
   }
 
@@ -324,7 +324,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     }
     const revision = { uri: document.uri.toString(), languageId: language, version: document.version, environmentGeneration: generation };
     const diagnostics = await service.diagnostics({ document: revision });
-    const currentGeneration = this.environments.environmentFor(document)?.generation;
+    const currentGeneration = (await this.environments.environmentFor(document))?.generation;
     if (!isCurrentRevision(document, currentGeneration, revision)) {
       return;
     }

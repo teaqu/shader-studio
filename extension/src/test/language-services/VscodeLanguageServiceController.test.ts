@@ -146,7 +146,7 @@ suite("VS Code language-service revisions", () => {
       fs.writeFileSync(modulePath, "module palette;\npublic float3 paletteColor() { return float3(1, 0, 0); }");
       const document = await vscode.workspace.openTextDocument(rootPath);
 
-      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+      const environment = await new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
       assert.deepStrictEqual(environment?.virtualFiles, [{
         uri: vscode.Uri.file(modulePath).toString(),
@@ -158,7 +158,7 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("provides the configured compute output-layer count to Slang authoring", () => {
+  test("provides the configured compute output-layer count to Slang authoring", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-ls-"));
     const shaderDirectory = path.join(directory, "compute-lab", "passes");
     const shaderPath = path.join(shaderDirectory, "compute.slang");
@@ -188,7 +188,7 @@ suite("VS Code language-service revisions", () => {
         getText: () => shaderSource,
       };
 
-      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+      const environment = await new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
       assert.strictEqual(environment?.stage, "compute");
       assert.strictEqual(environment?.outputLayers, 3);
@@ -223,7 +223,7 @@ suite("VS Code language-service revisions", () => {
         getText: () => fs.readFileSync(shaderPath, "utf8"),
       };
 
-      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(shaderDocument);
+      const environment = await new ShaderAuthoringEnvironmentProvider().environmentFor(shaderDocument);
 
       assert.deepStrictEqual(environment?.resources, [{ name: "abbbb", kind: "texture-2d", slot: 0 }]);
     } finally {
@@ -272,7 +272,7 @@ suite("VS Code language-service revisions", () => {
   });
 
   for (const language of ["glsl", "slang"] as const) {
-    test(`provides configured Common source to a nested ${language} buffer`, () => {
+    test(`provides configured Common source to a nested ${language} buffer`, async () => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-common-`));
       const passesDirectory = path.join(directory, "passes");
       const bufferPath = path.join(passesDirectory, `buffer-a.${language}`);
@@ -300,7 +300,7 @@ suite("VS Code language-service revisions", () => {
         };
         const provider = new ShaderAuthoringEnvironmentProvider();
 
-        const first = provider.environmentFor(document);
+        const first = await provider.environmentFor(document);
 
         assert.strictEqual(first?.passName, "BufferA");
         assert.deepStrictEqual(first?.commonFile, {
@@ -310,7 +310,7 @@ suite("VS Code language-service revisions", () => {
         });
 
         fs.writeFileSync(commonPath, `${commonSource}\n// changed`);
-        const changed = provider.environmentFor(document);
+        const changed = await provider.environmentFor(document);
         assert.strictEqual(changed?.generation, (first?.generation ?? 0) + 1);
       } finally {
         fs.rmSync(directory, { recursive: true, force: true });
@@ -318,7 +318,7 @@ suite("VS Code language-service revisions", () => {
     });
   }
 
-  test("does not inject configured Common into the Common document itself", () => {
+  test("does not inject configured Common into the Common document itself", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-self-"));
     const commonPath = path.join(directory, "common.glsl");
     const commonSource = "float sharedTone(float value) { return value; }";
@@ -334,7 +334,7 @@ suite("VS Code language-service revisions", () => {
         getText: () => commonSource,
       };
 
-      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+      const environment = await new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
       assert.strictEqual(environment?.passName, "common");
       assert.strictEqual(environment?.commonFile, undefined);
@@ -343,7 +343,7 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("advances the environment when a configured Common dependency changes", () => {
+  test("advances the environment when a configured Common dependency changes", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-dependency-"));
     const bufferPath = path.join(directory, "buffer-a.glsl");
     const commonPath = path.join(directory, "common.glsl");
@@ -364,10 +364,10 @@ suite("VS Code language-service revisions", () => {
         getText: () => fs.readFileSync(bufferPath, "utf8"),
       };
       const provider = new ShaderAuthoringEnvironmentProvider();
-      const first = provider.environmentFor(document);
+      const first = await provider.environmentFor(document);
 
       fs.writeFileSync(dependencyPath, "float halfValue(float value) { return value * 0.25; }");
-      const changed = provider.environmentFor(document);
+      const changed = await provider.environmentFor(document);
 
       assert.strictEqual(changed?.generation, (first?.generation ?? 0) + 1);
       assert.ok(changed?.virtualFiles.some((file) => file.text.includes("0.25")));
@@ -426,7 +426,7 @@ suite("VS Code language-service revisions", () => {
       });
       const document = await vscode.workspace.openTextDocument(bufferPath);
 
-      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+      const environment = await new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
       assert.strictEqual(environment?.passName, "BufferA");
       assert.strictEqual(environment?.commonFile?.uri, vscode.Uri.file(commonPath).toString());

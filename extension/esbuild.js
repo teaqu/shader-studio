@@ -25,17 +25,17 @@ const esbuildProblemMatcherPlugin = {
 	},
 };
 
-async function main() {
+async function buildEntry(entryPoints, outfile, platform, external) {
 	const ctx = await esbuild.context({
-		entryPoints: ['src/extension.ts'],
+		entryPoints,
 		bundle: true,
 		format: 'cjs',
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,
-		platform: 'node',
-		outfile: 'dist/extension.js',
-		external: ['vscode', 'glsl-transpiler', 'esbuild'],
+		platform,
+		outfile,
+		external,
 		logLevel: 'silent',
 		plugins: [
 			esbuildProblemMatcherPlugin,
@@ -43,14 +43,28 @@ async function main() {
 	});
 	if (watch) {
 		await ctx.watch();
-	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
-		fs.mkdirSync('dist', { recursive: true });
-		fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
-		fs.copyFileSync(path.resolve(__dirname, '../ui/src/slang/slang-wasm.js'), path.resolve(__dirname, 'dist/slang-wasm.mjs'));
-		fs.copyFileSync(path.resolve(__dirname, '../language-servers/slang/THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'dist/SLANG_THIRD_PARTY_NOTICES.md'));
+		return undefined;
 	}
+	await ctx.rebuild();
+	await ctx.dispose();
+	return outfile;
+}
+
+async function main() {
+	const desktop = buildEntry(['src/extension.ts'], 'dist/extension.js', 'node', ['vscode', 'glsl-transpiler', 'esbuild']);
+	// The web worker has no Node.js builtins, so the browser bundle must not
+	// import them: platform 'browser' fails the build if any creep in, which
+	// is the firewall that keeps extension-web.ts web-safe.
+	const web = buildEntry(['src/extension-web.ts'], 'dist/extension-web.js', 'browser', ['vscode']);
+	if (watch) {
+		await Promise.all([desktop, web]);
+		return;
+	}
+	await Promise.all([desktop, web]);
+	fs.mkdirSync('dist', { recursive: true });
+	fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
+	fs.copyFileSync(path.resolve(__dirname, '../ui/src/slang/slang-wasm.js'), path.resolve(__dirname, 'dist/slang-wasm.mjs'));
+	fs.copyFileSync(path.resolve(__dirname, '../language-servers/slang/THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'dist/SLANG_THIRD_PARTY_NOTICES.md'));
 }
 
 main().catch(e => {
