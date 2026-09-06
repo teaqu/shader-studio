@@ -1,6 +1,6 @@
 # Shader Studio
 
-A VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL fragment shaders for the WebGL pipeline or Slang shaders for the WebGPU pipeline — with real-time preview, visual debugging that shows what every line computes, and a full pipeline for multi-pass effects including compute shaders.
+A VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL fragment shaders or Slang shaders — with real-time preview, visual debugging that shows what every line computes, and multi-pass effects including compute shaders.
 
 Want to try Shader Studio before installing? [Try it in standalone web mode](https://teaqu.github.io/shader-studio/app/).
 
@@ -26,7 +26,7 @@ See the [Quick Start guide](https://teaqu.github.io/shader-studio/docs/quick-sta
 | Feature | Description |
 |---------|-------------|
 | [Live Preview](https://teaqu.github.io/shader-studio/docs/quick-start/) | Edit GLSL or Slang and see the result instantly, in a panel, window, or browser |
-| [Buffers & Channels](https://teaqu.github.io/shader-studio/docs/features/config-buffers/) | Multi-pass pipelines with textures, video, audio, cubemaps, buffers, and keyboard input |
+| [Buffers & Channels](https://teaqu.github.io/shader-studio/docs/features/config-buffers/) | Multi-pass shaders with textures, video, audio, cubemaps, buffers, and keyboard input |
 | [Visual Debugging](https://teaqu.github.io/shader-studio/docs/debugging/) | Inspect what every line computes — pixel inspector, inline rendering, variable inspector |
 | [Time & Playback](https://teaqu.github.io/shader-studio/docs/features/time-controls/) | Scrub, loop, pause, and change playback speed |
 | [Recording](https://teaqu.github.io/shader-studio/docs/features/recording/) | Capture screenshots or record video and GIF directly from the preview |
@@ -51,7 +51,7 @@ For the best performance, run the preview in your web browser. Browsers tend to 
 
 ## Visual Config Editor
 
-The **Config** panel is a visual editor for setting up multi-pass pipelines and binding assets to your shader inputs — no manual uniform declarations or hand-written config required. Open it with the gear icon in the toolbar.
+The **Config** panel is a visual editor for setting up multi-pass shaders and binding assets to your shader inputs — no manual uniform declarations or hand-written config required. Open it with the gear icon in the toolbar.
 
 ![Visual config editor](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/docs/assets/images/config.png)
 
