@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MemoryWorkspaceStore,
   VirtualWorkspace,
@@ -60,6 +60,21 @@ describe('VirtualWorkspace', () => {
     expect(() => workspace.readText('/missing.glsl')).toThrow('File not found');
     expect(() => workspace.rename('/missing.glsl', '/shaders/new.glsl')).toThrow('File not found');
     expect(() => workspace.rename('/shaders/first.glsl', '/shaders/other.glsl')).toThrow('already exists');
+  });
+
+  it('notifies subscribers on local mutations and stops after unsubscribe', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const listener = vi.fn();
+    const unsubscribe = workspace.onChange(listener);
+
+    workspace.writeText('/shaders/new.glsl', 'new');
+    workspace.rename('/shaders/new.glsl', '/shaders/renamed.glsl');
+    workspace.delete('/shaders/renamed.glsl');
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    workspace.writeText('/shaders/quiet.glsl', 'quiet');
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 
   it('clears persisted files so the next workspace is seeded again', async () => {

@@ -109,6 +109,7 @@ export class IndexedDbWorkspaceStore implements VirtualWorkspaceStore {
 export class VirtualWorkspace {
   private readonly files = new Map<string, VirtualWorkspaceFile>();
   private pendingSave: Promise<void> = Promise.resolve();
+  private readonly changeListeners = new Set<() => void>();
 
   private constructor(
     private readonly store: VirtualWorkspaceStore,
@@ -135,6 +136,14 @@ export class VirtualWorkspace {
     return workspace;
   }
 
+  /** Subscribe to local workspace mutations (write/rename/delete/clear). */
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
   exists(path: string): boolean {
     return this.files.has(this.normalizePath(path));
   }
@@ -154,6 +163,7 @@ export class VirtualWorkspace {
       modifiedAt: timestamp,
     });
     this.queueSave();
+    this.notifyChanged();
   }
 
   stat(path: string): VirtualWorkspaceFile {
@@ -179,6 +189,7 @@ export class VirtualWorkspace {
     this.files.delete(source);
     this.files.set(destination, { ...file, path: destination });
     this.queueSave();
+    this.notifyChanged();
   }
 
   delete(path: string): void {
@@ -187,6 +198,7 @@ export class VirtualWorkspace {
       throw new Error(`File not found: ${normalizedPath}`);
     }
     this.queueSave();
+    this.notifyChanged();
   }
 
   async flush(): Promise<void> {
@@ -197,6 +209,7 @@ export class VirtualWorkspace {
     this.files.clear();
     this.pendingSave = this.pendingSave.then(() => this.store.clear());
     await this.pendingSave;
+    this.notifyChanged();
   }
 
   private getFile(path: string): VirtualWorkspaceFile {
@@ -229,5 +242,11 @@ export class VirtualWorkspace {
   private queueSave(): void {
     const snapshot = this.list();
     this.pendingSave = this.pendingSave.then(() => this.store.save(snapshot));
+  }
+
+  private notifyChanged(): void {
+    for (const listener of [...this.changeListeners]) {
+      listener();
+    }
   }
 }

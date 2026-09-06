@@ -529,3 +529,42 @@ it.each([0, 1, 2])('keeps a replaced editor at tab index %i', (index) => {
   expected[index] = 'editor:/replacement.glsl';
   expect(api.getPanel('editor:/replacement.glsl')?.api.group.panels.map((panel) => panel.id)).toEqual(expected);
 });
+
+describe('files and source control panels', () => {
+  it('opens the on-demand panels tabbed with the explorer', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.showPanel('files');
+    controller.showPanel('git');
+    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'files', component: 'files', title: 'Files',
+      position: { referencePanel: 'explorer', direction: 'within' },
+    }));
+    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'git', component: 'git', title: 'Source Control',
+      position: { referencePanel: 'explorer', direction: 'within' },
+    }));
+  });
+
+  it('restores saved layouts containing the files and git panels', () => {
+    const api = createApi();
+    const saved = { panels: Object.fromEntries(
+      ['preview', 'editor', 'explorer', 'files', 'git'].map((id) => [id, { contentComponent: id }]),
+    ) };
+    const storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
+    new StandaloneLayoutController(api, storage).initialize();
+    expect(api.fromJSON).toHaveBeenCalledWith(saved);
+    expect(api.addPanel).not.toHaveBeenCalled();
+  });
+
+  it('toggles the files panel visibility', () => {
+    const api = createApi();
+    const controller = new StandaloneLayoutController(api, null);
+    controller.initialize();
+    controller.showPanel('files');
+    expect(controller.isPanelVisible('files')).toBe(true);
+    controller.togglePanel('files');
+    expect(controller.isPanelVisible('files')).toBe(false);
+  });
+});

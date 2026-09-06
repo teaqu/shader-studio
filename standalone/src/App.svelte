@@ -8,6 +8,8 @@
   import ShaderExplorer from '@shader-studio/shader-explorer/lib/components/ShaderExplorer.svelte';
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
+  import FileViewer from './FileViewer.svelte';
+  import GitPanel from './GitPanel.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport } from './WebTransport';
   import {
@@ -24,7 +26,7 @@
   let workspaceError = $state('');
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
-  let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let panelVisibility = $state({ explorer: true, editor: true, preview: true, files: false, git: false });
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
 
@@ -74,6 +76,8 @@
         explorer: layout?.isPanelVisible('explorer') ?? false,
         editor: layout?.isPanelVisible('editor') ?? false,
         preview: layout?.isPanelVisible('preview') ?? false,
+        files: layout?.isPanelVisible('files') ?? false,
+        git: layout?.isPanelVisible('git') ?? false,
       };
     }
   }
@@ -83,7 +87,7 @@
     viewMenuOpen = false;
   }
 
-  function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  function togglePanel(panel: 'explorer' | 'editor' | 'preview' | 'files' | 'git') {
     layout?.togglePanel(panel);
     panelVisibility[panel] = layout?.isPanelVisible(panel) ?? false;
     viewMenuOpen = false;
@@ -130,6 +134,12 @@
           <button role="menuitemcheckbox" aria-checked={panelVisibility.preview} onclick={() => togglePanel('preview')}>
             <span aria-hidden="true">{panelVisibility.preview ? '✓' : ''}</span> Preview
           </button>
+          <button role="menuitemcheckbox" aria-checked={panelVisibility.files} onclick={() => togglePanel('files')}>
+            <span aria-hidden="true">{panelVisibility.files ? '✓' : ''}</span> Files
+          </button>
+          <button role="menuitemcheckbox" aria-checked={panelVisibility.git} onclick={() => togglePanel('git')}>
+            <span aria-hidden="true">{panelVisibility.git ? '✓' : ''}</span> Source Control
+          </button>
         </div>
       {/if}
     </div>
@@ -161,6 +171,12 @@
     {/snippet}
     {#snippet preview()}
       <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
+    {/snippet}
+    {#snippet files()}
+      <div class="panel-content" data-testid="web-files"><FileViewer {transport} /></div>
+    {/snippet}
+    {#snippet git()}
+      <div class="panel-content" data-testid="web-git"><GitPanel {transport} /></div>
     {/snippet}
   </StandaloneLayout>
   {#if getNewShaderVisible()}

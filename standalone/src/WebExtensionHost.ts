@@ -289,6 +289,33 @@ export class WebExtensionHost {
     return this.workspace.exists(path) ? this.workspace.readText(path) : null;
   }
 
+  listWorkspaceFiles(): { path: string; modifiedAt: number }[] {
+    return this.workspace.list().map((file) => ({ path: file.path, modifiedAt: file.modifiedAt }));
+  }
+
+  onWorkspaceChange(handler: () => void): () => void {
+    return this.workspace.onChange(handler);
+  }
+
+  /** Bulk-replace tracked files during git sync; internal state paths are left alone. */
+  applySyncedFiles(
+    writes: { path: string; contents: string }[],
+    removes: string[],
+  ): void {
+    for (const path of removes) {
+      if (this.workspace.exists(path)) {
+        this.workspace.delete(path);
+      }
+    }
+    for (const file of writes) {
+      this.workspace.writeText(file.path, file.contents);
+    }
+    this.sendShaderList();
+    if (this.activeShaderPath && this.workspace.exists(this.activeShaderPath)) {
+      this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+    }
+  }
+
   async handleExplorerMessage(message: HostMessage): Promise<void> {
     switch (message.type) {
       case 'requestShaders':

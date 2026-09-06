@@ -1,6 +1,6 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
-export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type StandalonePanelId = 'explorer' | 'editor' | 'preview' | 'files' | 'git';
 
 interface Disposable {
   dispose(): void;
@@ -51,6 +51,9 @@ const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Re
   preview: { title: 'Preview' },
   explorer: { title: 'Shader Explorer', position: { referencePanel: 'preview', direction: 'left' }, initialWidth: 220 },
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
+  // On-demand panels tab alongside the explorer so opening them never disturbs the default split.
+  files: { title: 'Files', position: { referencePanel: 'explorer', direction: 'within' } },
+  git: { title: 'Source Control', position: { referencePanel: 'explorer', direction: 'within' } },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

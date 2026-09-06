@@ -24,16 +24,20 @@
     explorer: Snippet;
     editor: Snippet;
     preview: Snippet;
+    files?: Snippet;
+    git?: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, editor, preview, files, git, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
   let explorerSource: HTMLElement;
   let editorSource: HTMLElement;
   let previewSource: HTMLElement;
+  let filesSource: HTMLElement;
+  let gitSource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
   let dropDisposable: DockviewIDisposable | null = null;
@@ -89,6 +93,8 @@
     sources.set('explorer', explorerSource);
     sources.set('editor', editorSource);
     sources.set('preview', previewSource);
+    sources.set('files', filesSource);
+    sources.set('git', gitSource);
 
     dockviewApi = createDockview(dockviewElement, {
       createComponent: (options) => ['debug', 'config', 'performance', 'recording'].includes(options.name)
@@ -154,6 +160,8 @@
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
     <div class="standalone-panel-source" bind:this={editorSource}>{@render editor()}</div>
     <div class="standalone-panel-source" bind:this={previewSource}>{@render preview()}</div>
+    <div class="standalone-panel-source" bind:this={filesSource}>{#if files}{@render files()}{/if}</div>
+    <div class="standalone-panel-source" bind:this={gitSource}>{#if git}{@render git()}{/if}</div>
   </div>
 </div>
 

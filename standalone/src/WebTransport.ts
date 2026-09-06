@@ -91,6 +91,41 @@ export class WebTransport implements Transport {
     return (await this.host).readEditorFile(path);
   }
 
+  async listWorkspaceFiles(): Promise<{ path: string; modifiedAt: number }[]> {
+    return (await this.host).listWorkspaceFiles();
+  }
+
+  async readWorkspaceSnapshot(): Promise<{ path: string; contents: string }[]> {
+    const host = await this.host;
+    return host.listWorkspaceFiles()
+      .map((file) => ({ path: file.path, contents: host.readEditorFile(file.path) ?? '' }));
+  }
+
+  onWorkspaceChange(handler: () => void): () => void {
+    let cleanup: (() => void) | undefined;
+    let disposed = false;
+    void this.host.then((host) => {
+      if (!disposed && this.connected) {
+        cleanup = host.onWorkspaceChange(handler);
+      }
+    });
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }
+
+  async applySyncedFiles(
+    writes: { path: string; contents: string }[],
+    removes: string[],
+  ): Promise<void> {
+    const host = await this.host;
+    host.applySyncedFiles(writes, removes);
+    for (const file of writes) {
+      setEditorDocument(file.path, host.readEditorFile(file.path));
+    }
+  }
+
   getShaderExplorerHostApi(): ShaderExplorerHostApi {
     return {
       postMessage: (message) => {
