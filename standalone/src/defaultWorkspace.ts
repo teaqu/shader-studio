@@ -63,7 +63,6 @@ const SOURCES: ReadonlyArray<{
     code: `// Drag in the preview to look around.
 // Cubemap: Rogland Sunset by Greg Zaal / Poly Haven, released under CC0.
 // https://polyhaven.com/a/rogland_sunset
-
 mat2 rotate(float angle) {
 	float c = cos(angle);
 	float s = sin(angle);
@@ -84,7 +83,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     path: '/shaders/glow-trails.glsl',
     code: `// Glow Trails: Trails (feedback) -> Glow (blur) -> Image.
 // Open Config to inspect the buffers. Drag in the preview to paint.
-
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord / iResolution.xy;
     vec3 trails = texture(iChannel0, uv).rgb;
