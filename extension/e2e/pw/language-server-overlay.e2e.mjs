@@ -25,15 +25,39 @@ function helpers(vscode) {
     await overlayReady();
   }
 
-  /** Monaco splits a line into nested spans; match the exact token text. */
-  const token = (text) => app()
-    .locator('.editor-overlay .view-line span span')
-    .filter({ hasText: new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })
-    .first();
+  /**
+   * Monaco merges adjacent tokens that share a colour into one span, so a token
+   * is not addressable as an element of its own - `unknownValue` is rendered
+   * inside the span `unknownValue + remainder`. Measure the substring with a
+   * DOM range and return the span plus the token's centre within it.
+   */
+  async function tokenTarget(text) {
+    const span = app()
+      .locator('.editor-overlay .view-line span span')
+      .filter({ hasText: text })
+      .first();
+    await span.waitFor({ state: 'visible', timeout: 30_000 });
+    const position = await span.evaluate((element, needle) => {
+      const node = Array.from(element.childNodes).find(
+        (candidate) => candidate.nodeType === Node.TEXT_NODE && candidate.textContent?.includes(needle),
+      );
+      const index = node ? (node.textContent ?? '').indexOf(needle) : -1;
+      if (index < 0) return null;
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + needle.length);
+      const token = range.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return { x: token.left - box.left + token.width / 2, y: token.top - box.top + token.height / 2 };
+    }, text);
+    if (!position) throw new Error(`token ${text} was not found in the overlay`);
+    return { span, position };
+  }
 
   async function hoverTextForToken(text, expected) {
     await app().locator('body').press('Escape').catch(() => { /* nothing focused */ });
-    await token(text).hover({ timeout: 30_000 });
+    const { span, position } = await tokenTarget(text);
+    await span.hover({ position, timeout: 30_000 });
     const hover = app().locator('.editor-overlay .monaco-hover-content').first();
     await expect.poll(async () => (await hover.count()) ? hover.innerText() : '', {
       message: `Monaco hover for ${text} did not contain ${expected}`,
@@ -42,7 +66,7 @@ function helpers(vscode) {
     return hover.innerText();
   }
 
-  return { app, refreshFrame, overlayReady, setSlangLanguageServerEnabled, hoverTextForToken, token };
+  return { app, refreshFrame, overlayReady, setSlangLanguageServerEnabled, hoverTextForToken, tokenTarget };
 }
 
 test.use({ vscodeKey: 'language-server-overlay' });
@@ -134,7 +158,8 @@ test.describe('Shader language servers in the Monaco overlay', () => {
     // service reached the widget.
     // Clicking places the cursor; keys then go through the editor's own input
     // element so they land in the webview rather than the editor behind it.
-    await h.token('remainder').click({ timeout: 30_000 });
+    const cursor = await h.tokenTarget('remainder');
+    await cursor.span.click({ position: cursor.position, timeout: 30_000 });
     const input = h.app().locator('.editor-overlay textarea.inputarea').first();
     await input.press('End');
     await input.press('Enter');
