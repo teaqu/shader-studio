@@ -33,15 +33,50 @@ export function findLiteralConstructorColors(
   return results;
 }
 
+/**
+ * Rewrites the constructor under `range` with `color`, keeping the arity the
+ * source already uses: editing a `vec3`/`float3` must not turn it into a
+ * `vec4`/`float4`. `source` is the current document text; without it the
+ * four-component form is the only safe guess.
+ */
 export function createLiteralColorPresentations(
   language: ShaderLanguage,
   color: Color,
   range: Range,
+  source?: string,
 ): ColorPresentation[] {
-  const constructor = language === "slang" ? "float4" : "vec4";
-  const values = [color.red, color.green, color.blue, color.alpha].map(formatColorComponent);
-  const label = `${constructor}(${values.join(", ")})`;
+  const components = componentCountAt(source, range) ?? 4;
+  const constructor = `${language === "slang" ? "float" : "vec"}${components}`;
+  const channels = components === 3
+    ? [color.red, color.green, color.blue]
+    : [color.red, color.green, color.blue, color.alpha];
+  const label = `${constructor}(${channels.map(formatColorComponent).join(", ")})`;
   return [{ label, textEdit: { range, newText: label } }];
+}
+
+function componentCountAt(source: string | undefined, range: Range): 3 | 4 | undefined {
+  if (source === undefined) {
+    return undefined;
+  }
+  const start = offsetAt(source, range.start);
+  const end = offsetAt(source, range.end);
+  if (start === undefined || end === undefined) {
+    return undefined;
+  }
+  const match = /^(?:vec|float)([34])\s*\(/.exec(source.slice(start, end).trim());
+  return match?.[1] === "3" ? 3 : match?.[1] === "4" ? 4 : undefined;
+}
+
+function offsetAt(source: string, position: Position): number | undefined {
+  const lines = source.split("\n");
+  if (position.line < 0 || position.line >= lines.length) {
+    return undefined;
+  }
+  let offset = 0;
+  for (let line = 0; line < position.line; line += 1) {
+    offset += (lines[line]?.length ?? 0) + 1;
+  }
+  return offset + position.character;
 }
 
 function positionAt(source: string, offset: number): Position {

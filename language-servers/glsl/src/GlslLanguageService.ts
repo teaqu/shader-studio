@@ -393,7 +393,10 @@ export class GlslLanguageService implements LanguageService {
   }
 
   async colorPresentations(params: ColorPresentationParams) {
-    return this.store.isCurrent(params.document) ? createLiteralColorPresentations("glsl", params.color, params.range) : [];
+    if (!this.store.isCurrent(params.document)) {
+      return [];
+    }
+    return createLiteralColorPresentations("glsl", params.color, params.range, this.store.getDocument(params.document.uri)?.text);
   }
 
   async dispose(): Promise<void> {

@@ -566,6 +566,28 @@ float4 mainImage(float2 p)
       .toContain("Canvas dimensions");
   });
 
+  it("edits float3 and float4 colors without changing their component count", async () => {
+    const { module } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({
+      uri,
+      languageId: "slang",
+      version: 1,
+      text: "float3 a = float3(1.0, 0.25, 0.0);\nfloat4 b = float4(1.0, 0.25, 0.0, 1.0);",
+    });
+    const colors = await service.documentColors({ document: revision });
+    expect(colors).toHaveLength(2);
+
+    const presentations = await Promise.all(colors.map((color) => service.colorPresentations({
+      document: revision,
+      color: { red: 0, green: 0.5, blue: 1, alpha: 1 },
+      range: color.range,
+    })));
+    expect(presentations.map((items) => items[0]?.textEdit?.newText))
+      .toEqual(["float3(0.0, 0.5, 1.0)", "float4(0.0, 0.5, 1.0, 1.0)"]);
+  });
+
   it("provides documentation and signatures for common Slang functions", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);
