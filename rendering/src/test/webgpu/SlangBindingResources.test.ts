@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildSlangBindingPlan, getSlangChannels } from "../../webgpu/SlangBindingPlan";
-import { slangChannelLayoutEntries, slangChannelResourceEntries } from "../../webgpu/SlangBindingResources";
+import { missingSlangChannelSlots, slangChannelLayoutEntries, slangChannelResourceEntries } from "../../webgpu/SlangBindingResources";
 import { getWebGPUSampler } from "../../webgpu/WebGPUSamplerCache";
 import { wrapSlangComputeSource, wrapSlangImageSource } from "../../webgpu/SlangPrelude";
 
@@ -22,6 +22,16 @@ describe("Slang shared resource bindings", () => {
       ]);
     }
   });
+  it("names the slots a bind group is still waiting on", () => {
+    const view = {} as GPUTextureView;
+    expect(missingSlangChannelSlots(plan, [
+      { slot: 0, textureView: view }, { slot: 5, textureView: view }, { slot: 9, textureView: view },
+    ])).toEqual([]);
+    expect(missingSlangChannelSlots(plan, [{ slot: 5, textureView: view }])).toEqual([0, 9]);
+    expect(missingSlangChannelSlots(plan, [])).toEqual([0, 5, 9]);
+    expect(missingSlangChannelSlots(buildSlangBindingPlan([]), [])).toEqual([]);
+  });
+
   it("binds one entry per unique resource and requires every logical input", () => {
     const a = {} as GPUTextureView, b = {} as GPUTextureView;
     const repeat = {} as GPUSampler, clamp = {} as GPUSampler;

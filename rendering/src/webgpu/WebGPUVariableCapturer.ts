@@ -1,6 +1,6 @@
 /// <reference types="@webgpu/types" />
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
-import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
+import { missingSlangChannelSlots, slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type {
   IVariableCapturer,
   CaptureCompileContext,
@@ -653,7 +653,15 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
     const plan = buildSlangBindingPlan(channels);
     const channelEntries = slangChannelResourceEntries(plan, channelResources, this.sampler);
-    if (!channelEntries) return null;
+    if (!channelEntries) {
+      // Without this the caller reports the generic capture failure and the
+      // unbound channel stays invisible.
+      const missing = missingSlangChannelSlots(plan, channelResources);
+      this.pendingError = missing.length > 0
+        ? `Capture channels not bound yet: iChannel${missing.join(", iChannel")}`
+        : "Capture channel sampler is not available yet";
+      return null;
+    }
     entries.push(...channelEntries);
     const storageBaseBinding = plan.nextBinding;
     for (const node of storage) {

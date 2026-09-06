@@ -11,6 +11,16 @@ export function slangChannelLayoutEntries(plan: SlangBindingPlan, visibility: GP
   ].sort((a, b) => a.binding - b.binding);
 }
 
+/**
+ * Slots the plan needs that the resources do not carry yet. Callers report
+ * these: a bind group that cannot be built is otherwise indistinguishable
+ * from any other capture failure.
+ */
+export function missingSlangChannelSlots(plan: SlangBindingPlan, resources: readonly SlangChannelResource[]): number[] {
+  const bySlot = new Set(resources.map(resource => resource.slot));
+  return plan.channels.filter(channel => !bySlot.has(channel.slot)).map(channel => channel.slot);
+}
+
 /** Require every logical channel, including aliases, before binding a pass. */
 export function slangChannelResourceEntries(plan: SlangBindingPlan, resources: readonly SlangChannelResource[], fallback: GPUSampler | null): GPUBindGroupEntry[] | null {
   const bySlot = new Map(resources.map(resource => [resource.slot, resource]));
