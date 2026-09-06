@@ -181,3 +181,40 @@ it('opens an empty file', async () => {
   expect(getEditorDocument('/shaders/aurora.glsl')).toBe('');
   transport.dispose();
 });
+
+it('opens the config file in the editor instead of forwarding it to the viewer', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  const viewer = vi.fn();
+  transport.onMessage(viewer);
+  await vi.waitFor(() => expect(viewer).toHaveBeenCalled());
+
+  transport.postMessage({ type: 'showConfig', payload: { shaderPath: '/shaders/aurora.sha.json', sourcePath: '/shaders/aurora.glsl' } });
+
+  await vi.waitFor(() => expect(getRequestedEditor()).toBe('/shaders/aurora.sha.json'));
+  expect(getEditorDocument('/shaders/aurora.sha.json')).toContain('passes');
+  expect(viewer.mock.calls.filter(([event]) => event.data.type === 'openEditorFile')).toHaveLength(0);
+  transport.dispose();
+});
+
+it('keeps manual edits out of the preview until a compile is requested', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  const viewer = vi.fn();
+  transport.onMessage(viewer);
+  await vi.waitFor(() => expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+    data: expect.objectContaining({ type: 'shaderSource' }),
+  })));
+
+  transport.postMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+  viewer.mockClear();
+  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'manual edit' } });
+  await vi.waitFor(() => expect(getEditorDocument('/shaders/aurora.glsl')).toBe('manual edit'));
+  expect(viewer).not.toHaveBeenCalled();
+
+  transport.postMessage({ type: 'extensionCommand', payload: { command: 'manualCompile' } });
+  await vi.waitFor(() => expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+    data: expect.objectContaining({ type: 'shaderSource', code: 'manual edit' }),
+  })));
+  transport.dispose();
+});

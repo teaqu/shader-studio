@@ -8,6 +8,7 @@
     activeBufferName: string;
     onCodeChange: (code: string) => void;
     onBufferSwitch: (bufferName: string) => void;
+    onManualCompile?: () => void;
   }
 
   let {
@@ -19,6 +20,7 @@
     activeBufferName,
     onCodeChange,
     onBufferSwitch,
+    onManualCompile = () => {},
   }: Props = $props();
 </script>
 
@@ -33,3 +35,4 @@
 ></div>
 <button type="button" onclick={() => onCodeChange('edited source')}>Edit</button>
 <button type="button" onclick={() => onBufferSwitch('Buffer B')}>Switch buffer</button>
+<button type="button" onclick={() => onManualCompile()}>Manual compile</button>

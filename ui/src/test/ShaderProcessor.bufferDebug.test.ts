@@ -130,6 +130,26 @@ describe('ShaderProcessor — buffer debugging', () => {
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 
+  it('reports an unreadable shader config instead of compiling without it', async () => {
+    const result = await processor.processMainShaderCompilation(makeMessage({
+      config: null,
+      configError: 'Failed to parse config: /shaders/image.sha.json',
+    }));
+
+    expect(result).toEqual({
+      success: false,
+      errors: ['Failed to parse config: /shaders/image.sha.json'],
+    });
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
+  it('compiles normally when the config is absent but readable', async () => {
+    const result = await processor.processMainShaderCompilation(makeMessage({ config: null }));
+
+    expect(result.success).toBe(true);
+    expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalled();
+  });
+
   // -------------------------------------------------------------------------
   describe('Image pass debugging (existing behaviour unchanged)', () => {
     it('uses Image code when activeBufferName is Image', async () => {

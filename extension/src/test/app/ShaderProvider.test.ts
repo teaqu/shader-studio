@@ -487,6 +487,39 @@ suite('ShaderProvider Test Suite', () => {
       }]);
     });
 
+    test('should report an unreadable config on the shader source message', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns(null);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'getConfigError')
+        .returns('Failed to parse config: /path/to/shader.sha.json');
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSource');
+      assert.strictEqual(message.configError, 'Failed to parse config: /path/to/shader.sha.json');
+    });
+
+    test('should leave the config error off the message when the config is readable', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+      sandbox.stub(ShaderConfigProcessor.prototype, 'getConfigError').returns(undefined);
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.configError, undefined);
+    });
+
     test('should include reload in message when option is provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
 
@@ -908,6 +941,39 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(clearPersistentErrorsStub);
     });
 
+    test('should report an unreadable config on the shader source message', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns(null);
+      sandbox.stub(ShaderConfigProcessor.prototype, 'getConfigError')
+        .returns('Failed to parse config: /path/to/shader.sha.json');
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.type, 'shaderSource');
+      assert.strictEqual(message.configError, 'Failed to parse config: /path/to/shader.sha.json');
+    });
+
+    test('should leave the config error off the message when the config is readable', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const fs = require('fs');
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      sandbox.stub(fs, 'readFileSync').returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+      sandbox.stub(ShaderConfigProcessor.prototype, 'getConfigError').returns(undefined);
+
+      await provider.sendShaderFromPath(shaderPath);
+
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.configError, undefined);
+    });
+
     test('should include reload in message when option is provided', async () => {
       const shaderPath = '/path/to/shader.glsl';
       const fs = require('fs');
@@ -1222,6 +1288,37 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(recordSpy);
       sinon.assert.calledWithExactly(recordSpy, configPath, rawConfigText);
       assert.notStrictEqual(recordSpy.firstCall.args[1], JSON.stringify(mockConfig));
+    });
+
+    test('snapshots the live open document, not stale disk content, so a live edit classifies correctly', async () => {
+      const shaderPath = '/path/to/shader.glsl';
+      const configPath = '/path/to/shader.sha.json';
+      const fs = require('fs');
+      const shaderCode = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) {}';
+      // On disk the config is still the ORIGINAL text — the editor buffer
+      // holds an unsaved edit that loadAndProcessConfig actually sent.
+      const diskConfigText = '{"version":"1.0","passes":{"Image":{"inputs":{}}}}';
+      const liveBufferText = '{"version":"1.0","passes":{"Image":{"inputs":{},"vertex":"v.glsl"}}}';
+
+      sandbox.stub(fs, 'existsSync').returns(true);
+      const readStub = sandbox.stub(fs, 'readFileSync');
+      readStub.withArgs(shaderPath, 'utf-8').returns(shaderCode);
+      readStub.withArgs(configPath, 'utf-8').returns(diskConfigText);
+      sandbox.stub(vscode.workspace, 'textDocuments').value([{
+        uri: { fsPath: configPath },
+        getText: () => liveBufferText,
+      }]);
+
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      const classifier = new ConfigChangeClassifier();
+      const recordSpy = sandbox.spy(classifier, 'recordSentConfig');
+      const providerWithClassifier = new ShaderProvider(mockMessenger, undefined, classifier);
+
+      await providerWithClassifier.sendShaderFromPath(shaderPath);
+
+      sinon.assert.calledOnce(recordSpy);
+      sinon.assert.calledWithExactly(recordSpy, configPath, liveBufferText);
     });
 
     test('records null when the config file cannot be read', async () => {

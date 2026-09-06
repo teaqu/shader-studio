@@ -22,6 +22,7 @@ export interface ViewerSession {
   onCodeChange: (code: string) => void;
   onBufferSwitch: (bufferName: string) => void;
   onCursorChange: (line: number, lineContent: string, bufferName: string) => void;
+  onManualCompile: () => void;
 }
 
 let session = $state<ViewerSession | null>(null);

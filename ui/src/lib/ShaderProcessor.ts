@@ -39,6 +39,12 @@ export class ShaderProcessor {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
 
+    // A config that cannot be read would compile as a shader with no inputs,
+    // which renders as an unexplained black frame. Report it instead.
+    if (message.configError) {
+      return { success: false, errors: [message.configError] };
+    }
+
     if (message.slangDependencyDiagnostics?.length) {
       return {
         success: false,

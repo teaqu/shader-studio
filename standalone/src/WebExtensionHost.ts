@@ -1,4 +1,4 @@
-import type { ShaderConfig } from '@shader-studio/types';
+import type { ProfileData, ProfileIndex, ShaderConfig } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 
 type HostMessage = { type: string; [key: string]: unknown };
@@ -6,6 +6,8 @@ type MessageHandler = (message: HostMessage) => void;
 const DEFAULT_SHADER_PATH = '/shaders/aurora.glsl';
 const ACTIVE_SHADER_PATH = '/.shader-studio/active-shader';
 const EXPLORER_STATE_PATH = '/.shader-studio/explorer-state.json';
+const PROFILE_INDEX_PATH = '/.shader-studio/profiles/index.json';
+const DEFAULT_CONFIG_TEXT = JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }, null, 2);
 
 const GLSL_STARTER_SHADER = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
@@ -46,6 +48,14 @@ function configPathForShader(shaderPath: string): string {
   return shaderPath.replace(/\.(glsl|frag|slang)$/i, '.sha.json');
 }
 
+function profilePath(id: string): string {
+  return `/.shader-studio/profiles/${id}.json`;
+}
+
+function isProfileId(id: unknown): id is string {
+  return typeof id === 'string' && /^[a-z0-9-]+$/i.test(id);
+}
+
 function shaderLanguage(path: string): 'glsl' | 'slang' {
   return path.toLowerCase().endsWith('.slang') ? 'slang' : 'glsl';
 }
@@ -62,6 +72,7 @@ export class WebExtensionHost {
   private readonly viewerHandlers = new Set<MessageHandler>();
   private readonly explorerHandlers = new Set<MessageHandler>();
   private activeShaderPath: string | null = null;
+  private compileMode: 'hot' | 'manual' = 'hot';
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
@@ -177,8 +188,24 @@ export class WebExtensionHost {
       case 'extensionCommand':
         if (payload.command === 'newShader') {
           this.emitViewer({ type: 'showNewShaderModal' });
+        } else if (payload.command === 'manualCompile' && this.activeShaderPath) {
+          this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
         }
         return;
+      case 'setCompileMode': {
+        // The workspace saves every edit, so compile-on-save behaves like hot.
+        const next = payload.mode === 'manual' ? 'manual' : 'hot';
+        const previous = this.compileMode;
+        this.compileMode = next;
+        // Edits made in manual mode are held back from the preview. Flushing
+        // them when leaving manual mode keeps the preview (and the editor
+        // session derived from it) from staying stale behind the workspace,
+        // where a later stale refresh could clobber the editor.
+        if (previous === 'manual' && next !== 'manual' && this.activeShaderPath) {
+          this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+        }
+        return;
+      }
       case 'createShader': {
         const name = typeof payload.name === 'string' ? payload.name.trim() : '';
         const language = payload.language === 'slang' ? 'slang' : 'glsl';
@@ -193,7 +220,7 @@ export class WebExtensionHost {
         }
         const source = language === 'slang' ? SLANG_STARTER_SHADER : GLSL_STARTER_SHADER;
         this.workspace.writeText(path, source);
-        this.workspace.writeText(configPathForShader(path), JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }, null, 2));
+        this.workspace.writeText(configPathForShader(path), DEFAULT_CONFIG_TEXT);
         this.setActiveShader(path);
         this.sendShaderList();
         this.emitViewer(this.shaderSourceMessage(path));
@@ -252,7 +279,10 @@ export class WebExtensionHost {
           this.workspace.writeText(path, payload.code);
           const owner = this.activeShaderPath;
           const isBuffer = owner && Object.values(this.sourcePaths(owner)).includes(path);
-          if (owner && (path === owner || isBuffer)) {
+          const isConfig = owner !== null && configPathForShader(owner) === path;
+          // Manual mode waits for an explicit compile before source edits reach the
+          // preview; config changes apply straight away, as they do in the extension.
+          if (owner && (isConfig || (this.compileMode !== 'manual' && (path === owner || isBuffer)))) {
             this.emitViewer(this.shaderSourceMessage(owner));
           }
           this.sendShaderList();
@@ -269,6 +299,49 @@ export class WebExtensionHost {
         }
         return;
       }
+      case 'showConfig':
+      case 'generateConfig': {
+        const shaderPath = this.resolveConfigTarget(payload);
+        if (!shaderPath) {
+          return;
+        }
+        const configPath = configPathForShader(shaderPath);
+        const generated = !this.workspace.exists(configPath);
+        if (generated) {
+          this.workspace.writeText(configPath, DEFAULT_CONFIG_TEXT);
+        }
+        this.emitViewer({ type: 'openEditorFile', payload: { path: configPath } });
+        if (generated) {
+          this.emitViewer(this.shaderSourceMessage(shaderPath));
+          this.sendShaderList();
+        }
+        return;
+      }
+      case 'profile:readIndex':
+        this.emitViewer({ type: 'profile:indexData', requestId: message.requestId, index: this.readProfileIndex() });
+        return;
+      case 'profile:readProfile':
+        this.emitViewer({
+          type: 'profile:profileData',
+          requestId: message.requestId,
+          data: isProfileId(message.id) ? this.readProfileData(message.id) : null,
+        });
+        return;
+      case 'profile:writeProfile':
+        if (isProfileId(message.id) && message.data && typeof message.data === 'object') {
+          this.workspace.writeText(profilePath(message.id), JSON.stringify(message.data, null, 2));
+        }
+        return;
+      case 'profile:writeIndex':
+        if (message.index && typeof message.index === 'object') {
+          this.workspace.writeText(PROFILE_INDEX_PATH, JSON.stringify(message.index, null, 2));
+        }
+        return;
+      case 'profile:deleteProfile':
+        if (isProfileId(message.id) && this.workspace.exists(profilePath(message.id))) {
+          this.workspace.delete(profilePath(message.id));
+        }
+        return;
       case 'refresh':
         if (this.activeShaderPath) {
           this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
@@ -511,6 +584,39 @@ export class WebExtensionHost {
     }
   }
 
+  /** The shader a config request targets: an explicit source, a shader path, or the active shader. */
+  private resolveConfigTarget(payload: Record<string, unknown>): string | null {
+    const source = typeof payload.sourcePath === 'string' ? payload.sourcePath : null;
+    const requested = typeof payload.shaderPath === 'string' ? payload.shaderPath : null;
+    const candidate = source ?? (requested && !/\.sha\.json$/i.test(requested) ? requested : null);
+    const shaderPath = candidate ?? this.activeShaderPath;
+    return shaderPath && this.workspace.exists(shaderPath) ? shaderPath : null;
+  }
+
+  private readProfileIndex(): ProfileIndex | null {
+    if (!this.workspace.exists(PROFILE_INDEX_PATH)) {
+      return null;
+    }
+    try {
+      const index = JSON.parse(this.workspace.readText(PROFILE_INDEX_PATH)) as ProfileIndex;
+      return typeof index?.active === 'string' && Array.isArray(index.order) ? index : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private readProfileData(id: string): ProfileData | null {
+    const path = profilePath(id);
+    if (!this.workspace.exists(path)) {
+      return null;
+    }
+    try {
+      return JSON.parse(this.workspace.readText(path)) as ProfileData;
+    } catch {
+      return null;
+    }
+  }
+
   private navigationPaths(shaderPath: string, config: ShaderConfig | null): Record<string, string> {
     const paths: Record<string, string> = { ...this.sourcePaths(shaderPath), Image: shaderPath };
     const references = [config?.script, ...Object.values(config?.passes ?? {}).map((pass) =>
@@ -535,6 +641,7 @@ export class WebExtensionHost {
       code: codeMessage.code,
       originalCode: codeMessage.code,
       config,
+      ...(codeMessage.configError ? { configError: codeMessage.configError } : {}),
       buffers: codeMessage.buffers,
       bufferPathMap: this.navigationPaths(path, config),
       pathMap: this.assetPathMap(config),

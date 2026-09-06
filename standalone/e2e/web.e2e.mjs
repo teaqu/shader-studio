@@ -1090,3 +1090,195 @@ test('the shader-preview overlay keeps its dark tokens without darkening the lig
   // Turning the overlay on changes nothing at all about the pane's palette.
   await expect.poll(paneTokenColors).toEqual(paneBefore);
 });
+
+test('opens the config file of the selected shader from the preview menu', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Open options menu').click();
+  await page.getByLabel('Open config', { exact: true }).click();
+
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  await expect(configEditor.locator('.monaco-editor')).toBeVisible();
+  await expect(configEditor.locator('.view-lines')).toContainText('passes');
+  // JSON is not shader source: the GLSL language service must not mark it up.
+  await page.waitForTimeout(750);
+  await expect(configEditor.locator('.squiggly-error')).toHaveCount(0);
+  await expect(configEditor.locator('.mtk1').first()).toBeVisible();
+  await page.reload();
+  await expect(configEditor.locator('.monaco-editor')).toBeVisible();
+});
+
+test('generates a missing config file and opens it', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const request = indexedDB.open('shader-studio-web', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('state', 'readwrite');
+      const store = tx.objectStore('state');
+      const read = store.get('workspace');
+      read.onsuccess = () => {
+        store.put(read.result.filter((file) => file.path !== '/shaders/aurora.sha.json'), 'workspace');
+      };
+      tx.oncomplete = () => {
+        db.close(); resolve();
+      };
+      tx.onerror = () => {
+        db.close(); reject(tx.error);
+      };
+    };
+  }));
+  await page.reload();
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Open options menu').click();
+  await page.getByLabel('Open config', { exact: true }).click();
+
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  await expect(configEditor.locator('.view-lines')).toContainText('"version": "1.0"');
+});
+
+test('switches layout profiles in the standalone shell and keeps the active one after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const preview = page.getByTestId('web-preview');
+  const layoutTrigger = page.getByLabel('Switch layout profile');
+  const configTab = page.locator('.dv-tab').filter({ hasText: /^Config$/ });
+  const openLayoutMenu = async () => {
+    await preview.getByLabel('Open options menu').click();
+    await layoutTrigger.click();
+  };
+
+  await openLayoutMenu();
+  await page.getByText('Save current layout').click();
+  await page.getByRole('button', { name: 'Yes', exact: true }).click();
+
+  await preview.getByLabel('Toggle config panel').click();
+  await expect(configTab).toBeVisible();
+  await openLayoutMenu();
+  await page.getByText('Manage profiles\u2026').click();
+  await page.getByPlaceholder('Profile name\u2026').fill('Debugging');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Manage Profiles' }).getByLabel('Close').click();
+  await expect(configTab).toBeVisible();
+
+  await openLayoutMenu();
+  await expect(layoutTrigger).toContainText('Debugging');
+  await page.getByRole('button', { name: 'Default', exact: true }).click();
+  await expect(configTab).toHaveCount(0);
+
+  await openLayoutMenu();
+  await page.getByRole('button', { name: 'Debugging', exact: true }).click();
+  await expect(configTab).toBeVisible();
+  // Reload only once the active profile has reached the persisted workspace.
+  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('shader-studio-web', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const database = open.result;
+      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
+      read.onerror = () => {
+        database.close(); reject(read.error);
+      };
+      read.onsuccess = () => {
+        database.close();
+        const index = (read.result ?? []).find((file) => file.path === '/.shader-studio/profiles/index.json');
+        resolve(index ? JSON.parse(index.contents).active : null);
+      };
+    };
+  }))).toBe('debugging');
+
+  await page.reload();
+  await expect(configTab).toBeVisible();
+  await preview.getByLabel('Open options menu').click();
+  await expect(layoutTrigger).toContainText('Debugging');
+});
+
+test('manual compile mode holds edits back until the compile button is pressed', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const preview = page.getByTestId('web-preview');
+  const editor = page.getByTestId('web-editor');
+  const status = preview.getByLabel('Toggle pause');
+  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+
+  await preview.getByLabel('Open options menu').click();
+  await expect(page.getByLabel('Set save compile mode')).toHaveCount(0);
+  await page.getByLabel('Set manual compile mode').click();
+  await preview.locator('canvas').first().click({ position: { x: 5, y: 5 } });
+
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await page.keyboard.insertText('this is not a shader');
+  await page.waitForTimeout(750);
+  await expect(status).not.toHaveClass(/error/);
+
+  await preview.getByLabel('Compile shader').click();
+  await expect(status).toHaveClass(/error/);
+});
+
+test('switching from manual back to hot keeps held-back editor changes', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const preview = page.getByTestId('web-preview');
+  const editor = page.getByTestId('web-editor');
+  const status = preview.getByLabel('Toggle pause');
+  await expect(editor.locator('.view-lines')).toContainText('mainImage');
+
+  await preview.getByLabel('Open options menu').click();
+  await page.getByLabel('Set manual compile mode').click();
+  await preview.locator('canvas').first().click({ position: { x: 5, y: 5 } });
+
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+Home');
+  await page.keyboard.insertText('// e2e held-back edit\n');
+  await page.waitForTimeout(750);
+
+  await preview.getByLabel('Open options menu').click();
+  await page.getByLabel('Set hot compile mode').click();
+  await preview.locator('canvas').first().click({ position: { x: 5, y: 5 } });
+
+  // The mode switch must not clobber the edit with the stale pre-manual source.
+  await expect(editor.locator('.view-lines')).toContainText('e2e held-back edit');
+  await expect(status).not.toHaveClass(/error/);
+
+  await page.reload();
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('e2e held-back edit');
+});
+
+
+test('an unreadable shader config reports an error instead of a silent black preview', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const preview = page.getByTestId('web-preview');
+  const status = preview.getByLabel('Toggle pause');
+  await expect(status).not.toHaveClass(/error/);
+
+  await preview.getByLabel('Open options menu').click();
+  await page.getByLabel('Open config', { exact: true }).click();
+  const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
+  await expect(configEditor.locator('.monaco-editor')).toBeVisible();
+
+  // Monaco auto-closes brackets and quotes as text is inserted; drop whatever
+  // it appended after the cursor so the file holds exactly what the test wrote.
+  const replaceConfig = async (text) => {
+    await configEditor.locator('.inputarea').press('ControlOrMeta+A');
+    await page.keyboard.insertText(text);
+    await configEditor.locator('.inputarea').press('Shift+ControlOrMeta+End');
+    await configEditor.locator('.inputarea').press('Delete');
+  };
+
+  await configEditor.locator('.view-lines').click();
+  await replaceConfig('{ "version": ');
+  await expect(status).toHaveClass(/error/);
+
+  // Undo restores the generated config exactly, without Monaco's auto-closing edits.
+  for (let undo = 0; undo < 6; undo += 1) {
+    await configEditor.locator('.inputarea').press('ControlOrMeta+Z');
+  }
+  await expect(configEditor.locator('.view-lines')).toContainText('"version": "1.0"');
+  await expect(status).not.toHaveClass(/error/);
+});
+
+

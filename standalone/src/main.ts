@@ -31,7 +31,7 @@ const transport = new WebTransport();
 configureHost({
   createTransport: () => transport,
   defaultAssets: defaultAssets(),
-  capabilities: { layoutProfiles: false },
+  capabilities: { compileOnSave: false },
 });
 
 const app = mount(App, {

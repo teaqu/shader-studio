@@ -349,9 +349,40 @@ describe('MenuBar', () => {
 
       const compileButton = screen.getByLabelText('Compile shader');
       expect(compileButton).toBeTruthy();
+      expect(compileButton.getAttribute('title')).toContain('Ctrl+Enter');
 
       await fireEvent.click(compileButton);
       expect(defaultProps.onManualCompile).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows Cmd+Enter in the compile tooltip on macOS', async () => {
+      const originalPlatform = navigator.platform;
+      Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+      try {
+        renderMenuBar({ ...defaultProps, compileMode: 'manual' as const });
+        await tick();
+
+        expect(screen.getByLabelText('Compile shader').getAttribute('title'))
+          .toBe('Compile shader (Cmd+Enter)');
+      } finally {
+        Object.defineProperty(navigator, 'platform', { value: originalPlatform, configurable: true });
+      }
+    });
+
+    it('hides save mode for a shell that saves every edit, keeping hot and manual', async () => {
+      configureHost({ capabilities: { compileOnSave: false } });
+      renderMenuBar();
+      await tick();
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      await tick();
+
+      expect(screen.queryByLabelText('Set save compile mode')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Set hot compile mode')).toBeInTheDocument();
+
+      const manualButton = screen.getByLabelText('Set manual compile mode');
+      await fireEvent.click(manualButton);
+      expect(defaultProps.onSetCompileMode).toHaveBeenCalledWith('manual');
     });
   });
 
@@ -455,15 +486,14 @@ describe('MenuBar', () => {
       expect(screen.getByText('Save current layout')).toBeTruthy();
     });
   });
-  it('keeps reset available but hides unsupported profile actions', async () => {
-    configureHost({ capabilities: { layoutProfiles: false } });
+  it('offers every layout profile action to any host', async () => {
     renderMenuBar(defaultProps);
     await fireEvent.click(screen.getByLabelText('Open options menu'));
     await fireEvent.click(screen.getByLabelText('Switch layout profile'));
     expect(screen.getByLabelText('Reset default layout')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Restore saved layout')).not.toBeInTheDocument();
-    expect(screen.queryByText('Save current layout')).not.toBeInTheDocument();
-    expect(screen.queryByText('Manage profiles…')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Restore saved layout')).toBeInTheDocument();
+    expect(screen.getByText('Save current layout')).toBeInTheDocument();
+    expect(screen.getByText('Manage profiles…')).toBeInTheDocument();
   });
 
 });

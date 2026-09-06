@@ -373,6 +373,7 @@ export class ShaderStudio {
   private registerEventHandlers(): void {
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       this.compileController.handleActiveEditorChange(editor);
+      this.handleConfigEditorActivated(editor);
     });
 
     vscode.workspace.onDidChangeTextDocument((event) => {
@@ -397,6 +398,36 @@ export class ShaderStudio {
 
   private isGlslEditor(editor: vscode.TextEditor): boolean {
     return this.glslFileTracker.isGlslEditor(editor);
+  }
+
+  /**
+   * Opening a shader's config shows that shader immediately, the same way
+   * opening its .glsl/.slang file does — otherwise the preview sits on
+   * whatever it last showed until the config is actually edited.
+   */
+  private handleConfigEditorActivated(editor: vscode.TextEditor | undefined): void {
+    if (!editor) {
+      return;
+    }
+    const fsPath = editor.document.uri.fsPath;
+    if (!isConfigPath(fsPath)) {
+      return;
+    }
+    const shaderPath = getShaderPathFromConfigPath(fsPath);
+    if (!shaderPath) {
+      return;
+    }
+
+    // Superseded by the immediate send below; without this, a pending
+    // debounced refresh from an edit made just before switching focus would
+    // fire a second time shortly after.
+    const pending = this.configChangeDebounce.get(shaderPath);
+    if (pending) {
+      clearTimeout(pending);
+      this.configChangeDebounce.delete(shaderPath);
+    }
+
+    void this.shaderProvider.sendShaderFromPath(shaderPath);
   }
 
   private handleConfigDocumentChange(document: vscode.TextDocument): void {

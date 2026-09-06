@@ -78,6 +78,14 @@ export class WebTransport implements Transport {
           setNewShaderVisible(true);
           return;
         }
+        if (message.type === 'openEditorFile') {
+          const path = (message.payload as { path?: unknown } | undefined)?.path;
+          if (typeof path === 'string') {
+            setEditorDocument(path, host.readEditorFile(path));
+            requestEditor(path);
+          }
+          return;
+        }
         handler(new MessageEvent('message', { data: message }));
       }));
       if (!this.started) {

@@ -62,6 +62,8 @@ export interface ShaderSourceMessage extends BaseMessage {
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
   scriptBundleError?: string;
+  /** The shader's config file could not be read; the host sends the source without it. */
+  configError?: string;
   customUniformDeclarations?: string;
   customUniformInfo?: { name: string; type: string }[];
   /** In-memory Slang modules, grouped by the pass that imports them. */

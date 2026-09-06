@@ -38,6 +38,7 @@ function createSession(overrides: Partial<ViewerSession> = {}): ViewerSession {
     onCodeChange: vi.fn(),
     onBufferSwitch: vi.fn(),
     onCursorChange: vi.fn(),
+    onManualCompile: vi.fn(),
     ...overrides,
   };
 }
@@ -68,9 +69,11 @@ describe('EditorPane', () => {
 
     await getByRole('button', { name: 'Edit' }).click();
     await getByRole('button', { name: 'Switch buffer' }).click();
+    await getByRole('button', { name: 'Manual compile' }).click();
 
     expect(session.onCodeChange).toHaveBeenCalledWith('edited source');
     expect(session.onBufferSwitch).toHaveBeenCalledWith('Buffer B');
+    expect(session.onManualCompile).toHaveBeenCalled();
   });
 
   it('reacts to a replacement session and hides when the viewer disposes', async () => {

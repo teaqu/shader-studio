@@ -621,7 +621,6 @@ describe('ShaderViewer', () => {
   });
 
   it('keeps shell panels and notices outside the viewer', async () => {
-    configureHost({ capabilities: { layoutProfiles: false } });
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();
     expect(screen.queryByTestId('web-alpha-warning')).not.toBeInTheDocument();
@@ -3277,6 +3276,47 @@ describe('ShaderViewer', () => {
       type: 'setCompileMode',
       payload: { mode: 'hot' }
     });
+  });
+
+  it('falls back to hot compile when the host saves every edit', async () => {
+    configureHost({ capabilities: { compileOnSave: false } });
+    compileModeStore.setMode('save');
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(get(compileModeStore).mode).toBe('hot');
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'setCompileMode',
+      payload: { mode: 'hot' }
+    });
+    expect(mockTransport.postMessage).not.toHaveBeenCalledWith({
+      type: 'setCompileMode',
+      payload: { mode: 'save' }
+    });
+  });
+
+  it('keeps compile-on-save for hosts that have a save step', async () => {
+    compileModeStore.setMode('save');
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(get(compileModeStore).mode).toBe('save');
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'setCompileMode',
+      payload: { mode: 'save' }
+    });
+  });
+
+  it('initializes layout profiles for every host', async () => {
+    const { init } = await import('../../lib/state/profileStore.svelte');
+    configureHost({ capabilities: { compileOnSave: false } });
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(init).toHaveBeenCalledTimes(1);
   });
 
   it('should not toggle config panel when no shader is loaded', async () => {

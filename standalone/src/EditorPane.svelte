@@ -56,6 +56,7 @@
         onBufferSwitch={session.onBufferSwitch}
         errors={session.errors}
         compileMode={session.compileMode}
+        onManualCompile={session.onManualCompile}
         config={session.config}
         customUniformInfo={session.customUniformInfo}
         slangModules={session.slangModules}

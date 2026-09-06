@@ -18,6 +18,8 @@ const noopErrorHandler = {
 export class ShaderConfigProcessor {
   private logger = Logger.getInstance();
   private errorHandler: Pick<ErrorHandler, 'handleError' | 'handlePersistentError'>;
+  /** Parse failures from the last load, keyed by config path. */
+  private readonly configErrors = new Map<string, string>();
 
   constructor(errorHandler?: ErrorHandler) {
     this.errorHandler = errorHandler || noopErrorHandler;
@@ -43,6 +45,7 @@ export class ShaderConfigProcessor {
       configContent = configDocument.getText();
     } else {
       if (!fs.existsSync(configPath)) {
+        this.configErrors.delete(configPath);
         return null;
       }
       configContent = fs.readFileSync(configPath, 'utf-8');
@@ -55,15 +58,29 @@ export class ShaderConfigProcessor {
         this.processConfig(config, shaderPath, buffers);
       }
 
+      this.configErrors.delete(configPath);
       return config;
     } catch (e) {
-      this.logger.warn(`Failed to parse config: ${configPath}`);
+      const message = `Failed to parse config: ${configPath}`;
+      this.logger.warn(message);
+      this.configErrors.set(configPath, message);
       this.errorHandler.handleError({
         type: 'error',
-        payload: [`Failed to parse config: ${configPath}`]
+        payload: [message]
       });
       return null;
     }
+  }
+
+  /**
+   * The parse failure from the most recent load of this shader's config.
+   *
+   * The viewer renders a shader whose config failed to parse as if it had no
+   * inputs, which looks like an unexplained black frame; carrying the failure
+   * on the shader source message lets it report the real cause instead.
+   */
+  public getConfigError(shaderPath: string): string | undefined {
+    return this.configErrors.get(ShaderConfigProcessor.getConfigPath(shaderPath));
   }
 
   /**

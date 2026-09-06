@@ -12,7 +12,6 @@
   import EditorOverlay from "./EditorOverlay.svelte";
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
-  import { getHostCapabilities } from "../state/hostState.svelte";
   import { setViewerSession } from "../state/viewerSession.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
@@ -61,6 +60,7 @@
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
   import { init as initProfiles } from "../state/profileStore.svelte";
   import { setLanguageServiceSettings } from "../state/languageServiceState.svelte";
+  import { getHostCapabilities } from "../state/hostState.svelte";
 
   // --- Web layout slot helpers (inlined from deleted util/layoutSlot.ts) ---
   const WEB_SLOT_SESSION_KEY = "shader-studio.web-layout-slot";
@@ -273,6 +273,13 @@
   let lastSentCompileMode = $state<CompileMode | null>(null);
   let lastSentDebugEnabled = $state<boolean | null>(null);
 
+  // A shell that persists every edit has no save step, so compile-on-save cannot apply.
+  $effect(() => {
+    if (!getHostCapabilities().compileOnSave && $compileModeStore.mode === 'save') {
+      compileModeStore.setMode('hot');
+    }
+  });
+
   $effect(() => {
     if (initialized && $compileModeStore.mode !== lastSentCompileMode) {
       transport.postMessage({
@@ -377,14 +384,13 @@
       onCodeChange: handleEditorCodeChange,
       onBufferSwitch: handleOverlayBufferSwitch,
       onCursorChange: (line, lineContent, bufferName) => pipeline?.handleOverlayCursor(line, lineContent, bufferName),
+      onManualCompile: handleManualCompile,
     });
   });
 
   // Initialize layout profiles — must run before DockviewLayout restores from layoutState
   onMount(async () => {
-    if (getHostCapabilities().layoutProfiles) {
-      await initProfiles(profileAdapter);
-    }
+    await initProfiles(profileAdapter);
   });
 
   // Subscribe to config/debug panel stores
@@ -1531,6 +1537,7 @@
           {transport}
           onCodeChange={handleEditorCodeChange}
           compileMode={$compileModeStore.mode}
+          onManualCompile={handleManualCompile}
           config={currentConfig}
           customUniformInfo={authoringUniformInfo}
           {slangModules}

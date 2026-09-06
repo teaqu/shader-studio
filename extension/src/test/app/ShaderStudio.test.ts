@@ -1083,6 +1083,75 @@ suite('Shader Studio Test Suite', () => {
     });
   });
 
+  suite('opening a config file shows its shader immediately', () => {
+    function makeConfigEditor(fsPath: string): vscode.TextEditor {
+      return {
+        document: {
+          uri: vscode.Uri.file(fsPath),
+          fileName: fsPath,
+          languageId: 'json',
+          getText: () => '{}',
+        },
+      } as any;
+    }
+
+    test('sends the shader as soon as its config becomes the active editor', () => {
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateActiveEditorChange(makeConfigEditor('/mock/path/shader.sha.json'));
+
+      sinon.assert.calledOnce(sendFromPathSpy);
+      sinon.assert.calledWith(sendFromPathSpy, '/mock/path/shader.glsl');
+    });
+
+    test('does nothing for a config file with no matching shader', () => {
+      const fs = require('fs');
+      fs.existsSync.returns(false);
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateActiveEditorChange(makeConfigEditor('/mock/path/orphan.sha.json'));
+
+      sinon.assert.notCalled(sendFromPathSpy);
+    });
+
+    test('ignores editors that are not shader configs', () => {
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateActiveEditorChange(createMockGLSLEditor());
+
+      sinon.assert.notCalled(sendFromPathSpy);
+    });
+
+    test('does nothing when no editor is active', () => {
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+      simulateActiveEditorChange(undefined);
+
+      sinon.assert.notCalled(sendFromPathSpy);
+    });
+
+    test('cancels a pending debounced edit refresh so opening does not double-send', () => {
+      const clock = sandbox.useFakeTimers();
+      const sendFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+      const configPath = '/mock/path/shader.sha.json';
+
+      if (textDocumentChangeListener) {
+        textDocumentChangeListener({
+          document: { uri: vscode.Uri.file(configPath), fileName: configPath, languageId: 'json', getText: () => '{}' },
+        } as vscode.TextDocumentChangeEvent);
+      }
+      // The immediate open-time send below must supersede the still-pending
+      // 150ms edit debounce, not merely race it — advance the clock past
+      // where that debounce would fire and confirm it never does.
+      simulateActiveEditorChange(makeConfigEditor(configPath));
+      sinon.assert.calledOnce(sendFromPathSpy);
+      clock.tick(150);
+      sinon.assert.calledOnce(sendFromPathSpy);
+
+      clock.restore();
+    });
+  });
+
   suite('.sha.json change watcher (live updates)', () => {
     function makeConfigDoc(fsPath: string, text: string = '{}'): vscode.TextDocument {
       return {

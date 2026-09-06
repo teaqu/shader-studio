@@ -583,3 +583,409 @@ describe('standalone initial shader selection', () => {
     }
   });
 });
+
+describe('standalone config files', () => {
+  it('opens the existing config of the active shader in the editor', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleViewerMessage({
+      type: 'showConfig',
+      payload: { shaderPath: '/shaders/aurora.sha.json', sourcePath: '/shaders/aurora.glsl' },
+    });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'openEditorFile', payload: { path: '/shaders/aurora.sha.json' } });
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+  });
+
+  it('generates a missing config, opens it, and reloads the shader', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/shaders/clouds.slang', 'float4 mainImage(float2 coord) { return 1; }');
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    const explorer = vi.fn();
+    host.onViewerMessage(viewer);
+    host.onExplorerMessage(explorer);
+
+    await host.handleViewerMessage({
+      type: 'showConfig',
+      payload: { shaderPath: '/shaders/clouds.sha.json', sourcePath: '/shaders/clouds.slang' },
+    });
+
+    expect(JSON.parse(workspace.readText('/shaders/clouds.sha.json'))).toEqual({
+      version: '1.0',
+      passes: { Image: { inputs: {} } },
+    });
+    expect(viewer).toHaveBeenCalledWith({ type: 'openEditorFile', payload: { path: '/shaders/clouds.sha.json' } });
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: '/shaders/clouds.slang' }));
+    expect(explorer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shadersUpdate',
+      shaders: [expect.objectContaining({ path: '/shaders/clouds.slang', hasConfig: true })],
+    }));
+  });
+
+  it('falls back to the active shader when a config request carries no path', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/clouds.slang' });
+    viewer.mockClear();
+
+    await host.handleViewerMessage({ type: 'generateConfig', payload: {} });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'openEditorFile', payload: { path: '/shaders/clouds.sha.json' } });
+  });
+
+  it('ignores config requests for shaders that are not in the workspace', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'showConfig', payload: { sourcePath: '/shaders/missing.glsl' } });
+    await host.handleViewerMessage({ type: 'generateConfig', payload: {} });
+
+    expect(viewer).not.toHaveBeenCalled();
+    expect(workspace.exists('/shaders/missing.sha.json')).toBe(false);
+  });
+
+  it('reloads the preview when the active shader config is edited', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/aurora.glsl' });
+    viewer.mockClear();
+    const edited = JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.sha.json', code: edited },
+    });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource',
+      path: '/shaders/aurora.glsl',
+      config: { version: '1.0', passes: { Image: { inputs: {} } } },
+    }));
+  });
+});
+
+describe('standalone config errors', () => {
+  it('reports an unparsable config with the shader source', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/aurora.glsl' });
+    viewer.mockClear();
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.sha.json', code: '{ "passes": ' },
+    });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource',
+      path: '/shaders/aurora.glsl',
+      config: null,
+      configError: 'Failed to parse config: /shaders/aurora.sha.json',
+    }));
+  });
+
+  it.each([
+    ['a valid config', '/shaders/aurora.glsl'],
+    ['no config at all', '/shaders/clouds.slang'],
+  ])('sends no config error for %s', async (_label, shaderPath) => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleExplorerMessage({ type: 'activateShader', path: shaderPath });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: shaderPath }));
+    const message = viewer.mock.calls.map(([entry]) => entry).find((entry) => entry.type === 'shaderSource');
+    expect(message.configError).toBeUndefined();
+  });
+
+  it('clears the config error once the config parses again', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/aurora.glsl' });
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.sha.json', code: 'broken' },
+    });
+    viewer.mockClear();
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: {
+        path: '/shaders/aurora.sha.json',
+        code: JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }),
+      },
+    });
+
+    const message = viewer.mock.calls.map(([entry]) => entry).find((entry) => entry.type === 'shaderSource');
+    expect(message.configError).toBeUndefined();
+    expect(message.config).toEqual({ version: '1.0', passes: { Image: { inputs: {} } } });
+  });
+});
+
+describe('standalone compile modes', () => {
+  async function activeHost() {
+    const host = await createHost();
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/aurora.glsl' });
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    return { host, viewer };
+  }
+
+  it('holds edits back from the preview in manual mode until a compile is requested', async () => {
+    const { host, viewer } = await activeHost();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: 'manual edit' },
+    });
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+
+    await host.handleViewerMessage({ type: 'extensionCommand', payload: { command: 'manualCompile' } });
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: 'manual edit',
+    }));
+  });
+
+  it.each(['hot', 'save'])('sends edits straight to the preview in %s mode', async (mode) => {
+    const { host, viewer } = await activeHost();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: `${mode} edit` },
+    });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: `${mode} edit`,
+    }));
+  });
+
+  it('flushes edits held back in manual mode when switching back to hot', async () => {
+    const { host, viewer } = await activeHost();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: 'held-back edit' },
+    });
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+
+    viewer.mockClear();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'hot' } });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: 'held-back edit',
+    }));
+  });
+
+  it('round-trips edits across hot -> manual -> hot without losing them', async () => {
+    const { host, viewer } = await activeHost();
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: 'hot edit' },
+    });
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: 'hot edit',
+    }));
+
+    viewer.mockClear();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: 'manual edit' },
+    });
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+
+    viewer.mockClear();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'hot' } });
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: 'manual edit',
+    }));
+  });
+
+  it('does not push held-back edits to the preview when switching to manual', async () => {
+    const { host, viewer } = await activeHost();
+
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+
+    expect(viewer.mock.calls.filter(([message]) => message.type === 'shaderSource')).toHaveLength(0);
+  });
+
+  it('resumes live edits when manual mode is switched back to hot', async () => {
+    const { host, viewer } = await activeHost();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'hot' } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: { path: '/shaders/aurora.glsl', code: 'live again' },
+    });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', code: 'live again' }));
+  });
+
+  it('applies config edits in manual mode without waiting for a compile', async () => {
+    const { host, viewer } = await activeHost();
+    await host.handleViewerMessage({ type: 'setCompileMode', payload: { mode: 'manual' } });
+
+    await host.handleViewerMessage({
+      type: 'updateShaderSource',
+      payload: {
+        path: '/shaders/aurora.sha.json',
+        code: JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }),
+      },
+    });
+
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource',
+      path: '/shaders/aurora.glsl',
+      config: { version: '1.0', passes: { Image: { inputs: {} } } },
+    }));
+  });
+
+  it('ignores a manual compile request with no active shader', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'extensionCommand', payload: { command: 'manualCompile' } });
+
+    expect(viewer).not.toHaveBeenCalled();
+  });
+});
+
+describe('standalone layout profiles', () => {
+  const profileData = {
+    theme: 'light',
+    layout: { grid: { root: 'preview' } },
+    configPanel: { isVisible: true },
+    debugPanel: { isVisible: false },
+    performancePanel: { isVisible: true },
+  };
+
+  it('stores and reads back a profile and its index', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id: 'debugging', data: profileData });
+    await host.handleViewerMessage({
+      type: 'profile:writeIndex',
+      index: { active: 'debugging', order: [{ id: 'default', name: 'Default' }, { id: 'debugging', name: 'Debugging' }] },
+    });
+    await host.handleViewerMessage({ type: 'profile:readIndex', requestId: 'r1' });
+    await host.handleViewerMessage({ type: 'profile:readProfile', id: 'debugging', requestId: 'r2' });
+
+    expect(viewer).toHaveBeenCalledWith({
+      type: 'profile:indexData',
+      requestId: 'r1',
+      index: { active: 'debugging', order: [{ id: 'default', name: 'Default' }, { id: 'debugging', name: 'Debugging' }] },
+    });
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:profileData', requestId: 'r2', data: profileData });
+  });
+
+  it('survives a reload of the workspace', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    const host = new WebExtensionHost(workspace);
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id: 'default', data: profileData });
+    await host.handleViewerMessage({ type: 'profile:writeIndex', index: { active: 'default', order: [{ id: 'default', name: 'Default' }] } });
+    await workspace.flush();
+
+    const reloaded = new WebExtensionHost(await VirtualWorkspace.open(store, []));
+    const viewer = vi.fn();
+    reloaded.onViewerMessage(viewer);
+    await reloaded.handleViewerMessage({ type: 'profile:readProfile', id: 'default', requestId: 'r1' });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:profileData', requestId: 'r1', data: profileData });
+  });
+
+  it('reports no index and no profile before anything is saved', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'profile:readIndex', requestId: 'r1' });
+    await host.handleViewerMessage({ type: 'profile:readProfile', id: 'missing', requestId: 'r2' });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:indexData', requestId: 'r1', index: null });
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:profileData', requestId: 'r2', data: null });
+  });
+
+  it.each([
+    ['a malformed index', '/.shader-studio/profiles/index.json', 'not json'],
+    ['an index missing its fields', '/.shader-studio/profiles/index.json', '{"active":"default"}'],
+  ])('reports no index for %s', async (_label, path, contents) => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText(path, contents);
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'profile:readIndex', requestId: 'r1' });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:indexData', requestId: 'r1', index: null });
+  });
+
+  it('reports no data for a malformed profile', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/.shader-studio/profiles/default.json', '{oops');
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'profile:readProfile', id: 'default', requestId: 'r1' });
+
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:profileData', requestId: 'r1', data: null });
+  });
+
+  it('deletes a profile and leaves the others alone', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const host = new WebExtensionHost(workspace);
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id: 'default', data: profileData });
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id: 'debugging', data: profileData });
+
+    await host.handleViewerMessage({ type: 'profile:deleteProfile', id: 'debugging' });
+    await host.handleViewerMessage({ type: 'profile:deleteProfile', id: 'debugging' });
+
+    expect(workspace.exists('/.shader-studio/profiles/debugging.json')).toBe(false);
+    expect(workspace.exists('/.shader-studio/profiles/default.json')).toBe(true);
+  });
+
+  it.each(['../escape', 'nested/profile', '', 42])('rejects the unusable profile id %s', async (id) => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const host = new WebExtensionHost(workspace);
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id, data: profileData });
+    await host.handleViewerMessage({ type: 'profile:readProfile', id, requestId: 'r1' });
+
+    expect(workspace.list('/').filter((file) => file.path.startsWith('/.shader-studio/profiles'))).toEqual([]);
+    expect(viewer).toHaveBeenCalledWith({ type: 'profile:profileData', requestId: 'r1', data: null });
+  });
+
+  it('ignores profile writes with nothing to store', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const host = new WebExtensionHost(workspace);
+
+    await host.handleViewerMessage({ type: 'profile:writeProfile', id: 'default' });
+    await host.handleViewerMessage({ type: 'profile:writeIndex' });
+
+    expect(workspace.list('/')).toEqual([]);
+  });
+});

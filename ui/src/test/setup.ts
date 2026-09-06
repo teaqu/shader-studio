@@ -269,6 +269,7 @@ vi.mock('@shader-studio/monaco', async () => ({
   ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoJson: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
     setEnabled: vi.fn(),
     setColorDecoratorsEnabled: vi.fn(),

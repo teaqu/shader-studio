@@ -19,7 +19,7 @@
   import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl, setupMonacoSlang, setCompilerMarkers } from "@shader-studio/monaco";
+  import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
   import { isAuthoringValueType } from "@shader-studio/types";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
@@ -48,6 +48,7 @@
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
     compileMode?: CompileMode;
+    onManualCompile?: () => void;
     config?: ShaderConfig | null;
     customUniformInfo?: { name: string; type: string }[];
     slangModules?: SlangSourceModule[];
@@ -83,6 +84,7 @@
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
     compileMode = "hot",
+    onManualCompile = () => {},
     config = null,
     customUniformInfo = [],
     slangModules = [],
@@ -139,8 +141,11 @@
     return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
   }
 
-  function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" {
+  function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" | "json" {
     const lower = path.toLowerCase();
+    if (lower.endsWith(".json")) {
+      return "json";
+    }
     if (lower.endsWith(".ts") || lower.endsWith(".tsx")) {
       return "typescript";
     }
@@ -521,6 +526,7 @@
 
     setupMonacoGlsl(monaco as any);
     setupMonacoSlang(monaco as any);
+    setupMonacoJson(monaco as any);
 
     if (overflowWidgetsDomNode) {
       // Monaco scopes widget layout and colour variables to .monaco-editor.
@@ -602,6 +608,12 @@
       if ((metaKey || ctrlKey) && browserKey?.toLowerCase() === "s") {
         stopKeyEvent(event);
         handleOverlaySave();
+        return;
+      }
+
+      if ((metaKey || ctrlKey) && browserKey === "Enter") {
+        stopKeyEvent(event);
+        onManualCompile();
         return;
       }
 

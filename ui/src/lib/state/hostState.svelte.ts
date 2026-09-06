@@ -2,8 +2,8 @@ import type { WorkspaceFileInfo } from '@shader-studio/types';
 import type { Transport } from '../transport/MessageTransport';
 
 export interface ViewerCapabilities {
-  /** Named layout profiles require a host with file-backed profile support. */
-  layoutProfiles: boolean;
+  /** Compile-on-save needs a host with an explicit save step; shells that persist every edit have none. */
+  compileOnSave: boolean;
 }
 
 /** Configure services before mounting the shared viewer. Shell UI lives in the host. */
@@ -32,5 +32,5 @@ export function getHostDefaultAssets(): WorkspaceFileInfo[] {
 }
 
 export function getHostCapabilities(): ViewerCapabilities {
-  return { layoutProfiles: host.capabilities?.layoutProfiles ?? true };
+  return { compileOnSave: host.capabilities?.compileOnSave ?? true };
 }

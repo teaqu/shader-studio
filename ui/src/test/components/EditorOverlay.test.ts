@@ -9,6 +9,7 @@ vi.mock('@shader-studio/monaco', async () => ({
   ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoJson: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
     setEnabled: vi.fn(),
     setColorDecoratorsEnabled: vi.fn(),
@@ -645,6 +646,16 @@ describe('EditorOverlay', () => {
       expect(createCall?.[1]).toMatchObject({ language: 'glsl' });
     });
 
+    it('should use JSON as the model language for shader config files', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, {
+        props: { ...defaultProps, shaderPath: '/shaders/aurora.sha.json' },
+      });
+
+      const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
+      expect(createCall?.[1]).toMatchObject({ language: 'json' });
+    });
+
     it('should use TypeScript as the model language for .ts files', async () => {
       const monaco = await import('monaco-editor');
       render(EditorOverlay, {
@@ -938,6 +949,89 @@ describe('EditorOverlay', () => {
         type: 'extensionCommand',
         payload: { command: 'saveCurrentShader' },
       });
+    });
+  });
+
+  describe('manual compile shortcut', () => {
+    it('should call onManualCompile when cmd+Enter is pressed', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+      const onManualCompile = vi.fn();
+
+      render(EditorOverlay, { props: { ...defaultProps, onManualCompile } });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 'Enter',
+          metaKey: true,
+          ctrlKey: false,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(stopPropagation).toHaveBeenCalled();
+      expect(onManualCompile).toHaveBeenCalled();
+    });
+
+    it('should call onManualCompile when ctrl+Enter is pressed', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+      const onManualCompile = vi.fn();
+
+      render(EditorOverlay, { props: { ...defaultProps, onManualCompile } });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 'Enter',
+          metaKey: false,
+          ctrlKey: true,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(stopPropagation).toHaveBeenCalled();
+      expect(onManualCompile).toHaveBeenCalled();
+    });
+
+    it('should not call onManualCompile for plain Enter keypress', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getKeyDownCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+      const onManualCompile = vi.fn();
+
+      render(EditorOverlay, { props: { ...defaultProps, onManualCompile } });
+
+      const onKeyDown = getKeyDownCallback();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      onKeyDown?.({
+        browserEvent: {
+          key: 'Enter',
+          metaKey: false,
+          ctrlKey: false,
+          preventDefault,
+          stopPropagation,
+        },
+      });
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(stopPropagation).not.toHaveBeenCalled();
+      expect(onManualCompile).not.toHaveBeenCalled();
     });
   });
 

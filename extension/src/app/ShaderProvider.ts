@@ -238,6 +238,7 @@ export class ShaderProvider {
       const pathMap = this.buildPathMap(config, shaderPath);
       const bufferPathMap = this.buildBufferPathMap(config, shaderPath);
 
+      const configError = this.configProcessor.getConfigError(shaderPath);
       const message: ShaderSourceMessage = {
         type: "shaderSource",
         code,
@@ -246,6 +247,7 @@ export class ShaderProvider {
         buffers,
         pathMap,
         bufferPathMap,
+        ...(configError ? { configError } : {}),
       };
       if (getShaderLanguage(shaderPath) === "slang") {
         message.language = "slang";
@@ -621,6 +623,7 @@ export class ShaderProvider {
     this.logger.debug(`Sending shader update for ${shaderPath}`);
     this.logger.debug(`Sending ${Object.keys(buffers).length} buffer(s)`);
 
+    const configError = this.configProcessor.getConfigError(shaderPath);
     const message: ShaderSourceMessage = {
       type: "shaderSource",
       code,
@@ -632,6 +635,7 @@ export class ShaderProvider {
       pathMap: this.buildPathMap(config, shaderPath),
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
       cursorPosition,
+      ...(configError ? { configError } : {}),
     };
 
     if (message.language === "slang") {
@@ -639,12 +643,22 @@ export class ShaderProvider {
       this.attachSlangDependencies(message);
     }
 
-    // Snapshot the RAW config file text (not the processed `config` above, which
-    // injects resolved_path etc. and would make every diff look structural) so the
-    // next watcher/fallback change can be classified against what we actually sent.
+    // Snapshot the RAW config text this send was actually built from (not the
+    // processed `config` above, which injects resolved_path etc. and would make
+    // every diff look structural) so the next watcher/fallback change is
+    // classified against what we actually sent. loadAndProcessConfig prefers an
+    // open TextDocument's live buffer over disk — an unsaved edit is real config
+    // updates should apply as you type, not only on save — so the snapshot must
+    // read the same source or it silently reverts to whatever is on disk.
     const configPath = getConfigPathForShaderPath(shaderPath);
+    const openConfigDocument = vscode.workspace.textDocuments.find(
+      (doc) => doc.uri.fsPath === configPath,
+    );
     try {
-      this.configChangeClassifier.recordSentConfig(configPath, fs.readFileSync(configPath, "utf-8"));
+      const rawConfigText = openConfigDocument
+        ? openConfigDocument.getText()
+        : fs.readFileSync(configPath, "utf-8");
+      this.configChangeClassifier.recordSentConfig(configPath, rawConfigText);
     } catch {
       this.configChangeClassifier.recordSentConfig(configPath, null);
     }

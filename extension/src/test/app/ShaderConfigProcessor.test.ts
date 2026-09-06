@@ -40,6 +40,57 @@ suite('ShaderConfigProcessor Test Suite', () => {
     sandbox.restore();
   });
 
+  suite('config parse failures', () => {
+    test('remembers the parse failure for the shader whose config is broken', () => {
+      fsExistsSyncStub.returns(true);
+      const fs = require('fs');
+      sandbox.stub(fs, 'readFileSync').returns('{ "version": ');
+
+      const config = configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      assert.strictEqual(config, null);
+      assert.strictEqual(
+        configProcessor.getConfigError('/path/to/shader.glsl'),
+        `Failed to parse config: ${path.join('/path/to', 'shader.sha.json')}`,
+      );
+      sinon.assert.calledOnce(mockErrorHandler.handleError);
+    });
+
+    test('forgets the parse failure once the config parses again', () => {
+      fsExistsSyncStub.returns(true);
+      const fs = require('fs');
+      const readFileSyncStub = sandbox.stub(fs, 'readFileSync').returns('{ "version": ');
+      configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      readFileSyncStub.returns('{ "version": "1.0", "passes": { "Image": { "inputs": {} } } }');
+      const config = configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      assert.ok(config);
+      assert.strictEqual(configProcessor.getConfigError('/path/to/shader.glsl'), undefined);
+    });
+
+    test('reports no error for a shader that has no config file', () => {
+      fsExistsSyncStub.returns(false);
+
+      const config = configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      assert.strictEqual(config, null);
+      assert.strictEqual(configProcessor.getConfigError('/path/to/shader.glsl'), undefined);
+    });
+
+    test('forgets a stale parse failure when the config file is deleted', () => {
+      fsExistsSyncStub.returns(true);
+      const fs = require('fs');
+      sandbox.stub(fs, 'readFileSync').returns('nonsense');
+      configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      fsExistsSyncStub.returns(false);
+      configProcessor.loadAndProcessConfig('/path/to/shader.glsl', {});
+
+      assert.strictEqual(configProcessor.getConfigError('/path/to/shader.glsl'), undefined);
+    });
+  });
+
   suite('processInputs - video handling', () => {
     test('should resolve video path when file exists', () => {
       fsExistsSyncStub.returns(true);

@@ -19,6 +19,7 @@
     onBufferSwitch?: (bufferName: string) => void;
     errors?: string[];
     compileMode?: CompileMode;
+    onManualCompile?: () => void;
     config?: ShaderConfig | null;
     customUniformInfo?: { name: string; type: string }[];
     slangModules?: SlangSourceModule[];
@@ -39,6 +40,7 @@
     onBufferSwitch = (_bufferName: string) => {},
     errors = [],
     compileMode = "hot",
+    onManualCompile = () => {},
     config = null,
     customUniformInfo = [],
     slangModules = [],
@@ -60,6 +62,7 @@
   {onBufferSwitch}
   {errors}
   {compileMode}
+  {onManualCompile}
   {config}
   {customUniformInfo}
   {slangModules}

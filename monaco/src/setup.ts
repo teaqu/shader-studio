@@ -6,9 +6,11 @@ import {
   shaderStudioTransparentTheme,
 } from './glsl-theme';
 import { slangLanguageDefinition } from './slang-language';
+import { jsonLanguageConfiguration, jsonLanguageDefinition } from './json-language';
 
 let registered = false;
 const slangRegistrations = new WeakSet<object>();
+const jsonRegistrations = new WeakSet<object>();
 
 /**
  * Register the GLSL language, themes, and worker stub for Monaco.
@@ -66,4 +68,17 @@ export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
   monaco.languages.setLanguageConfiguration('slang', shaderLanguageConfiguration);
 
   slangRegistrations.add(monaco);
+}
+
+/** Register the worker-free JSON tokenizer used for shader config files. */
+export function setupMonacoJson(monaco: typeof import('monaco-editor')) {
+  if (jsonRegistrations.has(monaco)) return;
+
+  if (!monaco.languages.getLanguages().some((language) => language.id === 'json')) {
+    monaco.languages.register({ id: 'json', extensions: ['.json'] });
+  }
+  monaco.languages.setMonarchTokensProvider('json', jsonLanguageDefinition);
+  monaco.languages.setLanguageConfiguration('json', jsonLanguageConfiguration);
+
+  jsonRegistrations.add(monaco);
 }
