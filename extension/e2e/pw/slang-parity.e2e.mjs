@@ -7,11 +7,19 @@ const commonPath = join(workspacePath, 'common.slang');
 
 function helpers(vscode) {
   let frame;
+  const diagLog = [];
+  vscode.window.on('console', (message) => {
+    const text = message.text();
+    if (text.startsWith('[CaptureDiag]')) diagLog.push(text);
+  });
 
   const app = () => frame;
 
   async function refreshFrame() {
     frame = await vscode.shaderFrame();
+    // The capture pipeline logs why it bailed only when this flag is on, and
+    // the webview is rebuilt on every file switch, so re-arm it each time.
+    await frame.evaluate(() => { window.__captureDiag = true; }).catch(() => {});
     return frame;
   }
 
@@ -81,6 +89,7 @@ function helpers(vscode) {
         failure.message,
         lastError ? `last capture error: ${lastError}` : 'no capture error reported',
         `panel state: ${JSON.stringify(state)}`,
+        `capture diagnostics:\n${diagLog.slice(-15).join('\n') || '(none logged)'}`,
       ].join('\n'));
     }
   }
