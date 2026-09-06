@@ -68,12 +68,21 @@ function helpers(vscode) {
         return found.includes(expected);
       }, { message: `expected captured ${selector} to contain ${expected}` }).toBe(true);
     } catch (failure) {
-      // An empty capture error says nothing about why the value is missing, so
-      // report what the panel actually held instead of just the timeout.
+      // The per-variable capture errors only exist inside the tooltip, so open
+      // it before reading: without this the report is just the generic
+      // "Failed to capture variables" with nothing saying why.
+      await app().locator('.variables-section [aria-label="Show capture errors"]')
+        .first()
+        .hover({ timeout: 5_000 })
+        .catch(() => { /* no issue indicator: the panel captured nothing at all */ });
       const state = await app().evaluate(() => ({
         vars: Array.from(document.querySelectorAll('.var-name'), (el) => el.textContent?.trim() ?? ''),
         fns: Array.from(document.querySelectorAll('.fn-name'), (el) => el.textContent?.trim() ?? ''),
         errors: Array.from(document.querySelectorAll('.error-tooltip-block'), (el) => el.textContent?.trim() ?? ''),
+        issueTooltip: Array.from(
+          document.querySelectorAll('.variables-section .error-tooltip-block, .error-tooltip.visible .error-tooltip-block'),
+          (el) => el.textContent?.trim() ?? '',
+        ),
         debugPanel: !!document.querySelector('.debug-panel'),
         variablesSection: !!document.querySelector('.variables-section'),
       })).catch((probeFailure) => ({ probeFailure: String(probeFailure) }));

@@ -414,10 +414,16 @@ export class VariableCaptureManager {
       return; 
     }
     this.dirty = true;
-    if (!this.loopRunning && !this.disposed) {
-      this.loopRunning = true;
-      this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
+    this.ensureLoopRunning();
+  }
+
+  /** Starts the capture loop unless it is already running (or disposed). */
+  private ensureLoopRunning(): void {
+    if (this.loopRunning || this.disposed) {
+      return;
     }
+    this.loopRunning = true;
+    this.rafHandle = requestAnimationFrame((ts) => this.captureLoop(ts));
   }
 
   setHistogramExpanded(varName: string, expanded: boolean): void {
@@ -812,6 +818,17 @@ export class VariableCaptureManager {
     }
 
     if (!this.isCurrentRequest(requestId)) {
+      return;
+    }
+
+    // A batch that issued nothing because the pipeline was still settling -
+    // channel views or storage buffers mid-resolve, a compile context replaced
+    // under it - has to be reissued. Reporting it as a capture failure leaves
+    // the inspector stuck on an error until the user moves the cursor, because
+    // clearing lastParams below stops the loop from ever retrying.
+    if (issued === 0 && this.capturer.issueDeferred?.()) {
+      this.dirty = true;
+      this.ensureLoopRunning();
       return;
     }
 

@@ -148,6 +148,7 @@ describe('VariableCaptureManager', () => {
   let mockCollectResults: ReturnType<typeof vi.fn>;
   let mockIssueCaptureAtPixel: ReturnType<typeof vi.fn>;
   let mockIssueCaptureGrid: ReturnType<typeof vi.fn>;
+  let mockIssueDeferred: ReturnType<typeof vi.fn>;
   let mockCancelPendingCaptures: ReturnType<typeof vi.fn>;
   let mockCapturerDispose: ReturnType<typeof vi.fn>;
   let mockCreateVariableCapturer: ReturnType<typeof vi.fn>;
@@ -195,6 +196,7 @@ describe('VariableCaptureManager', () => {
     mockCollectResults = vi.fn().mockReturnValue([]);
     mockIssueCaptureAtPixel = vi.fn().mockResolvedValue(0);
     mockIssueCaptureGrid = vi.fn().mockResolvedValue(0);
+    mockIssueDeferred = vi.fn().mockReturnValue(false);
     mockCancelPendingCaptures = vi.fn();
     mockCapturerDispose = vi.fn();
 
@@ -209,6 +211,7 @@ describe('VariableCaptureManager', () => {
       clearLastError: vi.fn(),
       getLastError: vi.fn().mockReturnValue(null),
       getCaptureErrors: vi.fn().mockReturnValue([]),
+      issueDeferred: mockIssueDeferred,
     };
 
     mockCreateVariableCapturer = vi.fn().mockReturnValue(mockCapturer);
@@ -836,6 +839,57 @@ describe('VariableCaptureManager', () => {
 
       expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(2);
       expect(onUpdate).not.toHaveBeenCalled();
+    });
+
+    it('retries instead of failing when the capturer deferred for resources it did not have yet', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockIssueDeferred.mockReturnValue(true);
+      mockIssueCaptureGrid.mockResolvedValue(0);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      await flushRAF();
+
+      expect(onError).not.toHaveBeenCalledWith([{ message: 'Failed to capture variables' }]);
+
+      // The deferral resolves; the retry must run without a new state change.
+      mockIssueDeferred.mockReturnValue(false);
+      mockIssueCaptureGrid.mockResolvedValue(1);
+      await flushRAF();
+
+      expect(mockIssueCaptureGrid).toHaveBeenCalledTimes(2);
+    });
+
+    it('still reports a genuine zero-issued failure that was not a deferral', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockIssueDeferred.mockReturnValue(false);
+      mockIssueCaptureGrid.mockResolvedValue(0);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      await flushRAF();
+
+      expect(onError).toHaveBeenCalledWith([{ message: 'Failed to capture variables' }]);
+    });
+
+    it('treats a capturer without the deferral hook as a genuine failure', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([{ varName: 'x', varType: 'float' }]);
+      mockCreateVariableCapturer.mockReturnValueOnce({
+        issueCaptureAtPixel: mockIssueCaptureAtPixel,
+        issueCaptureGrid: mockIssueCaptureGrid,
+        collectResults: mockCollectResults,
+        cancelPendingCaptures: mockCancelPendingCaptures,
+        dispose: mockCapturerDispose,
+        setCustomUniforms: vi.fn(),
+        setCompileContext: vi.fn(),
+        clearLastError: vi.fn(),
+        getLastError: vi.fn().mockReturnValue(null),
+        getCaptureErrors: vi.fn().mockReturnValue([]),
+      });
+      mockIssueCaptureGrid.mockResolvedValue(0);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      await flushRAF();
+
+      expect(onError).toHaveBeenCalledWith([{ message: 'Failed to capture variables' }]);
     });
   });
 
