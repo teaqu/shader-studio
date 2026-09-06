@@ -24,16 +24,18 @@
     explorer: Snippet;
     editor: Snippet;
     preview: Snippet;
+    history: Snippet;
     hostedPanels?: HostedPanels;
   }
 
-  let { transport, explorer, editor, preview, hostedPanels = new HostedPanels() }: Props = $props();
+  let { transport, explorer, editor, preview, history, hostedPanels = new HostedPanels() }: Props = $props();
 
   let dockviewElement: HTMLElement;
   let sourceElement: HTMLElement;
   let explorerSource: HTMLElement;
   let editorSource: HTMLElement;
   let previewSource: HTMLElement;
+  let historySource: HTMLElement;
   let controller = $state<StandaloneLayoutController | null>(null);
   let dockviewApi: DockviewApi | null = null;
   let dropDisposable: DockviewIDisposable | null = null;
@@ -89,6 +91,7 @@
     sources.set('explorer', explorerSource);
     sources.set('editor', editorSource);
     sources.set('preview', previewSource);
+    sources.set('history', historySource);
 
     dockviewApi = createDockview(dockviewElement, {
       createComponent: (options) => ['debug', 'config', 'performance', 'recording'].includes(options.name)
@@ -154,6 +157,7 @@
     <div class="standalone-panel-source" bind:this={explorerSource}>{@render explorer()}</div>
     <div class="standalone-panel-source" bind:this={editorSource}>{@render editor()}</div>
     <div class="standalone-panel-source" bind:this={previewSource}>{@render preview()}</div>
+    <div class="standalone-panel-source" bind:this={historySource}>{@render history()}</div>
   </div>
 </div>
 

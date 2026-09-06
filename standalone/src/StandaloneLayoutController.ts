@@ -1,6 +1,6 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
-export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type StandalonePanelId = 'explorer' | 'editor' | 'preview' | 'history';
 
 interface Disposable {
   dispose(): void;
@@ -51,6 +51,7 @@ const panelDefinitions: Record<StandalonePanelId, { title: string; position?: Re
   preview: { title: 'Preview' },
   explorer: { title: 'Shader Explorer', position: { referencePanel: 'preview', direction: 'left' }, initialWidth: 220 },
   editor: { title: 'No file open', position: { referencePanel: 'explorer', direction: 'right' }, initialWidth: 820 },
+  history: { title: 'File History', position: { referencePanel: 'explorer', direction: 'below' } },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,6 +285,7 @@ export class StandaloneLayoutController {
     this.addPanel('preview');
     this.addPanel('explorer');
     this.addPanel('editor');
+    this.addPanel('history');
     // Adding splits redistributes widths; apply the defaults after all panels exist.
     // Explorer and preview take fixed defaults so the editor keeps the remaining width.
     this.api.getPanel('explorer')?.api.setSize({ width: 260 });

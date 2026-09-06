@@ -5,6 +5,8 @@ export interface VirtualWorkspaceFile {
   modifiedAt: number;
 }
 
+import type { WorkspaceHistorySink } from './FileHistory';
+
 export interface VirtualWorkspaceStore {
   load(): Promise<VirtualWorkspaceFile[] | null>;
   save(files: VirtualWorkspaceFile[]): Promise<void>;
@@ -109,6 +111,7 @@ export class IndexedDbWorkspaceStore implements VirtualWorkspaceStore {
 export class VirtualWorkspace {
   private readonly files = new Map<string, VirtualWorkspaceFile>();
   private pendingSave: Promise<void> = Promise.resolve();
+  private historySink: WorkspaceHistorySink | null = null;
 
   private constructor(
     private readonly store: VirtualWorkspaceStore,
@@ -135,6 +138,11 @@ export class VirtualWorkspace {
     return workspace;
   }
 
+  /** Attaches edit-history recording after construction so seeding and migrations stay unrecorded. */
+  setHistorySink(sink: WorkspaceHistorySink | null): void {
+    this.historySink = sink;
+  }
+
   exists(path: string): boolean {
     return this.files.has(this.normalizePath(path));
   }
@@ -147,6 +155,9 @@ export class VirtualWorkspace {
     const normalizedPath = this.normalizePath(path);
     const existing = this.files.get(normalizedPath);
     const timestamp = this.now();
+    if (existing && existing.contents !== contents) {
+      this.historySink?.recordOverwrite(normalizedPath, existing.contents);
+    }
     this.files.set(normalizedPath, {
       path: normalizedPath,
       contents,
@@ -178,6 +189,7 @@ export class VirtualWorkspace {
     }
     this.files.delete(source);
     this.files.set(destination, { ...file, path: destination });
+    this.historySink?.renameHistory(source, destination);
     this.queueSave();
   }
 
@@ -186,6 +198,7 @@ export class VirtualWorkspace {
     if (!this.files.delete(normalizedPath)) {
       throw new Error(`File not found: ${normalizedPath}`);
     }
+    this.historySink?.dropHistory(normalizedPath);
     this.queueSave();
   }
 
@@ -195,6 +208,7 @@ export class VirtualWorkspace {
 
   async clear(): Promise<void> {
     this.files.clear();
+    this.historySink?.clearHistory();
     this.pendingSave = this.pendingSave.then(() => this.store.clear());
     await this.pendingSave;
   }

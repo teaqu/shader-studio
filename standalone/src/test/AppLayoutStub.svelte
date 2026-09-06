@@ -6,7 +6,7 @@
     openEditor: vi.fn(),
     showPanel: vi.fn(),
     togglePanel: vi.fn(),
-    isPanelVisible: vi.fn((_panel: 'explorer' | 'editor' | 'preview') => true),
+    isPanelVisible: vi.fn((_panel: 'explorer' | 'editor' | 'preview' | 'history') => true),
     resetLayout: vi.fn(),
   };
 </script>
@@ -18,9 +18,10 @@
     explorer: Snippet;
     editor: Snippet;
     preview: Snippet;
+    history: Snippet;
   }
 
-  let { explorer, editor, preview }: Props = $props();
+  let { explorer, editor, preview, history }: Props = $props();
 
   export function selectEditor(path: string) {
     layoutStub.selectEditor(path);
@@ -30,15 +31,15 @@
     layoutStub.openEditor(path);
   }
 
-  export function showPanel(panel: 'explorer' | 'editor' | 'preview') {
+  export function showPanel(panel: 'explorer' | 'editor' | 'preview' | 'history') {
     layoutStub.showPanel(panel);
   }
 
-  export function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  export function togglePanel(panel: 'explorer' | 'editor' | 'preview' | 'history') {
     layoutStub.togglePanel(panel);
   }
 
-  export function isPanelVisible(panel: 'explorer' | 'editor' | 'preview') {
+  export function isPanelVisible(panel: 'explorer' | 'editor' | 'preview' | 'history') {
     return layoutStub.isPanelVisible(panel);
   }
 
@@ -51,4 +52,5 @@
   <section data-testid="explorer-panel">{@render explorer()}</section>
   <section data-testid="editor-panel">{@render editor()}</section>
   <section data-testid="preview-panel">{@render preview()}</section>
+  <section data-testid="history-panel">{@render history()}</section>
 </div>

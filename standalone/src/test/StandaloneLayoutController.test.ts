@@ -107,12 +107,13 @@ describe('StandaloneLayoutController', () => {
     storage = createStorage();
   });
 
-  it('creates the explorer, editor, and preview default outer layout', () => {
+  it('creates the explorer, editor, preview, and history default outer layout', () => {
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'preview', title: 'Preview' }));
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'explorer', initialWidth: 220, position: { referencePanel: 'preview', direction: 'left' } }));
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'editor', initialWidth: 820, position: { referencePanel: 'explorer', direction: 'right' } }));
-    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({ id: 'history', title: 'File History', position: { referencePanel: 'explorer', direction: 'below' } }));
+    expect(api.addPanel).toHaveBeenCalledTimes(4);
     expect(api.getPanel('explorer')?.api.setSize).toHaveBeenCalledWith({ width: 260 });
     expect(api.getPanel('preview')?.api.setSize).toHaveBeenCalledWith({ width: 560 });
     expect(api.getPanel('editor')?.api.setSize).not.toHaveBeenCalled();
@@ -196,7 +197,7 @@ describe('StandaloneLayoutController', () => {
 
   it('restores tools docked alongside shell panels', () => {
     const saved = { panels: Object.fromEntries(
-      ['preview', 'editor', 'explorer', 'debug', 'config', 'performance', 'recording']
+      ['preview', 'editor', 'explorer', 'history', 'debug', 'config', 'performance', 'recording']
         .map((id) => [id, { contentComponent: id }]),
     ) };
     storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: JSON.stringify(saved) });
@@ -210,7 +211,7 @@ describe('StandaloneLayoutController', () => {
       api = createApi(); storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: saved });
       new StandaloneLayoutController(api, storage).initialize();
       expect(storage.removeItem).toHaveBeenCalledWith(STANDALONE_LAYOUT_STORAGE_KEY);
-      expect(api.addPanel).toHaveBeenCalledTimes(3);
+      expect(api.addPanel).toHaveBeenCalledTimes(4);
     }
   });
 
@@ -221,7 +222,7 @@ describe('StandaloneLayoutController', () => {
     expect(api.getPanel('preview')?.api.setActive).toHaveBeenCalled();
     api.remove('explorer');
     controller.showPanel('explorer');
-    expect(api.addPanel).toHaveBeenCalledTimes(4);
+    expect(api.addPanel).toHaveBeenCalledTimes(5);
     expect(api.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'explorer' }));
   });
 
@@ -240,7 +241,19 @@ describe('StandaloneLayoutController', () => {
     expect(controller.isPanelVisible('editor')).toBe(true);
     expect(editor?.api.group.api.setVisible).toHaveBeenCalledWith(true);
     expect(editor?.api.setActive).toHaveBeenCalledOnce();
-    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    expect(api.addPanel).toHaveBeenCalledTimes(4);
+  });
+
+  it('toggles the file history panel from the view menu', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+
+    expect(controller.isPanelVisible('history')).toBe(true);
+    controller.togglePanel('history');
+    expect(controller.isPanelVisible('history')).toBe(false);
+    controller.togglePanel('history');
+    expect(controller.isPanelVisible('history')).toBe(true);
+    expect(api.addPanel).toHaveBeenCalledTimes(4);
   });
 
   it('restores a grouped panel to its previous tab group and index', () => {
@@ -264,7 +277,7 @@ describe('StandaloneLayoutController', () => {
     controller.resetLayout();
     expect(api.clear).toHaveBeenCalledTimes(1);
     expect(storage.removeItem).toHaveBeenCalledWith(STANDALONE_LAYOUT_STORAGE_KEY);
-    expect(api.addPanel).toHaveBeenCalledTimes(6);
+    expect(api.addPanel).toHaveBeenCalledTimes(8);
   });
 
   it('falls back cleanly when restoring a valid layout throws after partially applying it', () => {
@@ -274,7 +287,7 @@ describe('StandaloneLayoutController', () => {
     });
     new StandaloneLayoutController(api, storage).initialize();
     expect(api.clear).toHaveBeenCalledTimes(1);
-    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    expect(api.addPanel).toHaveBeenCalledTimes(4);
   });
 
   it('does not throw when reading the browser localStorage global is unavailable', () => {
@@ -303,7 +316,7 @@ describe('StandaloneLayoutController', () => {
       storage = createStorage({ [STANDALONE_LAYOUT_STORAGE_KEY]: saved });
       new StandaloneLayoutController(api, storage).initialize();
       expect(api.fromJSON).not.toHaveBeenCalled();
-      expect(api.addPanel).toHaveBeenCalledTimes(3);
+      expect(api.addPanel).toHaveBeenCalledTimes(4);
     }
   });
 
@@ -350,7 +363,7 @@ describe('file editor panels', () => {
     api.getPanel('editor:/shaders/image.glsl')?.api.group.api.setVisible(false);
     controller.openEditor('/shaders/image.glsl');
     expect(api.getPanel('editor:/shaders/image.glsl')?.api.group.api.isVisible).toBe(true);
-    expect(api.addPanel).toHaveBeenCalledTimes(5);
+    expect(api.addPanel).toHaveBeenCalledTimes(6);
     expect(api.addPanel).toHaveBeenCalledWith(expect.objectContaining({
       id: 'editor:/shaders/buffer.glsl', component: 'file-editor',
       params: { path: '/shaders/buffer.glsl' }, title: 'buffer.glsl',
@@ -389,7 +402,7 @@ describe('file editor panels', () => {
     const controller = new StandaloneLayoutController(api, null);
     controller.initialize();
     controller.openEditor('');
-    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    expect(api.addPanel).toHaveBeenCalledTimes(4);
     api.remove('editor');
     controller.openEditor('/buffer.glsl');
     expect(api.addPanel).toHaveBeenLastCalledWith(expect.not.objectContaining({ position: expect.anything() }));
@@ -414,7 +427,7 @@ it.each([{}, { path: '' }, { path: 123 }, { path: '/other.glsl' }])('rejects inv
   } }) });
   new StandaloneLayoutController(api, storage).initialize();
   expect(api.fromJSON).not.toHaveBeenCalled();
-  expect(api.addPanel).toHaveBeenCalledTimes(3);
+  expect(api.addPanel).toHaveBeenCalledTimes(4);
 });
 
 it('previews the activated file editor and ignores other panels, empty paths, and disposed events', () => {
@@ -425,7 +438,7 @@ it('previews the activated file editor and ignores other panels, empty paths, an
   api.activate('editor:/shaders/aurora.glsl');
   api.activate('editor:/shaders/example.slang');
   expect(preview.mock.calls).toEqual([['/shaders/aurora.glsl'], ['/shaders/example.slang']]);
-  for (const id of ['preview', 'editor', 'explorer', 'config', 'editor:', 'editor:/script.ts', 'editor:/shader.sha.json', undefined]) {
+  for (const id of ['preview', 'editor', 'explorer', 'history', 'config', 'editor:', 'editor:/script.ts', 'editor:/shader.sha.json', undefined]) {
     api.activate(id);
   }
   expect(preview).toHaveBeenCalledTimes(2);
@@ -475,7 +488,7 @@ describe('shader selection editor targeting', () => {
     api.activate('editor:/first.glsl');
     controller.selectEditor('/next.glsl');
     expect(api.getPanel('editor:/first.glsl')).toBeDefined();
-    expect(api.panels).toHaveLength(5);
+    expect(api.panels).toHaveLength(6);
     expect(api.getPanel('editor:/next.glsl')?.api.setActive).toHaveBeenCalled();
   });
 

@@ -52,22 +52,22 @@ describe('StandaloneLayout', () => {
   });
 
   it('keeps each snippet mounted once across reset and returns it on unmount', async () => {
-    const result = render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+    const result = render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview'), history: source('history') } });
     await tick();
     const api = vi.mocked(createDockview).mock.results.at(-1)!.value;
     expect(api.layout).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
     expect(api.layout.mock.invocationCallOrder[0]).toBeLessThan(api.addPanel.mock.invocationCallOrder[0]);
     const preview = renderers[0].element.querySelector('.standalone-panel-source');
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     result.component.resetLayout();
-    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(3);
+    expect(renderers.filter((renderer) => renderer.element.querySelector('.standalone-panel-source')).length).toBe(4);
     expect(renderers[0].element.querySelector('.standalone-panel-source')).toBe(preview);
     result.unmount();
     expect(renderers).toHaveLength(0);
   });
 
   it('rejects a drop from the nested preview dock but accepts an outer-panel drop', async () => {
-    render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+    render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview'), history: source('history') } });
     await tick();
     const reject = { getData: () => ({ viewId: 'nested-preview-dock' }), preventDefault: vi.fn() };
     willDrop?.(reject);

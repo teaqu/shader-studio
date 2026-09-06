@@ -8,6 +8,7 @@
   import ShaderExplorer from '@shader-studio/shader-explorer/lib/components/ShaderExplorer.svelte';
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
+  import FileHistoryPanel from './FileHistoryPanel.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
   import type { WebTransport } from './WebTransport';
   import {
@@ -24,7 +25,7 @@
   let workspaceError = $state('');
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
-  let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let panelVisibility = $state({ explorer: true, editor: true, preview: true, history: true });
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
 
@@ -74,6 +75,7 @@
         explorer: layout?.isPanelVisible('explorer') ?? false,
         editor: layout?.isPanelVisible('editor') ?? false,
         preview: layout?.isPanelVisible('preview') ?? false,
+        history: layout?.isPanelVisible('history') ?? false,
       };
     }
   }
@@ -83,7 +85,7 @@
     viewMenuOpen = false;
   }
 
-  function togglePanel(panel: 'explorer' | 'editor' | 'preview') {
+  function togglePanel(panel: 'explorer' | 'editor' | 'preview' | 'history') {
     layout?.togglePanel(panel);
     panelVisibility[panel] = layout?.isPanelVisible(panel) ?? false;
     viewMenuOpen = false;
@@ -130,6 +132,9 @@
           <button role="menuitemcheckbox" aria-checked={panelVisibility.preview} onclick={() => togglePanel('preview')}>
             <span aria-hidden="true">{panelVisibility.preview ? '✓' : ''}</span> Preview
           </button>
+          <button role="menuitemcheckbox" aria-checked={panelVisibility.history} onclick={() => togglePanel('history')}>
+            <span aria-hidden="true">{panelVisibility.history ? '✓' : ''}</span> File History
+          </button>
         </div>
       {/if}
     </div>
@@ -161,6 +166,9 @@
     {/snippet}
     {#snippet preview()}
       <div class="panel-content" data-testid="web-preview"><ShaderStudioApp /></div>
+    {/snippet}
+    {#snippet history()}
+      <div class="panel-content" data-testid="web-history"><FileHistoryPanel {transport} /></div>
     {/snippet}
   </StandaloneLayout>
   {#if getNewShaderVisible()}

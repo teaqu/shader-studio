@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MemoryWorkspaceStore,
   VirtualWorkspace,
@@ -72,5 +72,57 @@ describe('VirtualWorkspace', () => {
 
     const restored = await VirtualWorkspace.open(store, seedFiles);
     expect(restored.list()).toEqual(seedFiles);
+  });
+
+  it('notifies the history sink when an existing file is overwritten', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const sink = {
+      recordOverwrite: (...args: unknown[]) => void args,
+      renameHistory: (...args: unknown[]) => void args,
+      dropHistory: (...args: unknown[]) => void args,
+      clearHistory: (...args: unknown[]) => void args,
+    };
+    const record = vi.fn(sink.recordOverwrite);
+    workspace.setHistorySink({ ...sink, recordOverwrite: record });
+
+    workspace.writeText('/shaders/first.glsl', 'edited');
+
+    expect(record).toHaveBeenCalledOnce();
+    expect(record).toHaveBeenCalledWith('/shaders/first.glsl', 'first');
+  });
+
+  it('skips history for new files, identical writes, and detached sinks', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const record = vi.fn();
+    const rename = vi.fn();
+    const drop = vi.fn();
+    const clear = vi.fn();
+    workspace.setHistorySink({ recordOverwrite: record, renameHistory: rename, dropHistory: drop, clearHistory: clear });
+
+    workspace.writeText('/shaders/created.glsl', 'new');
+    workspace.writeText('/shaders/first.glsl', 'first');
+
+    expect(record).not.toHaveBeenCalled();
+
+    workspace.setHistorySink(null);
+    workspace.writeText('/shaders/first.glsl', 'edited without sink');
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('forwards rename, delete, and clear to the history sink', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const rename = vi.fn();
+    const drop = vi.fn();
+    const clear = vi.fn();
+    workspace.setHistorySink({ recordOverwrite: vi.fn(), renameHistory: rename, dropHistory: drop, clearHistory: clear });
+
+    workspace.rename('/shaders/first.glsl', '/shaders/renamed.glsl');
+    expect(rename).toHaveBeenCalledWith('/shaders/first.glsl', '/shaders/renamed.glsl');
+
+    workspace.delete('/shaders/renamed.glsl');
+    expect(drop).toHaveBeenCalledWith('/shaders/renamed.glsl');
+
+    await workspace.clear();
+    expect(clear).toHaveBeenCalledOnce();
   });
 });

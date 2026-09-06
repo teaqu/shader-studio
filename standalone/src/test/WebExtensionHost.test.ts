@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultWorkspaceFiles } from '../defaultWorkspace';
+import { FileHistory, MemoryFileHistoryStore } from '../FileHistory';
 import { WebExtensionHost } from '../WebExtensionHost';
 import { MemoryWorkspaceStore, VirtualWorkspace } from '../VirtualWorkspace';
 
@@ -548,6 +549,153 @@ describe('standalone export downloads', () => {
   });
 });
 
+
+describe('standalone file history', () => {
+  async function createHostWithHistory(now: () => number = () => 1000) {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+      { path: '/shaders/aurora.glsl', contents: 'original', createdAt: 1, modifiedAt: 1 },
+    ]);
+    const history = await FileHistory.open(new MemoryFileHistoryStore(), { minIntervalMs: 0 }, now);
+    workspace.setHistorySink(history);
+    const host = new WebExtensionHost(workspace, { history });
+    return { workspace, history, host };
+  }
+
+  it('records viewer edits and skips internal bookkeeping writes', async () => {
+    const { host, history } = await createHostWithHistory();
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+    await host.handleExplorerMessage({ type: 'saveState', state: { layoutMode: 'row' } });
+
+    expect(history.listPaths()).toEqual(['/shaders/aurora.glsl']);
+    expect(history.listRevisions('/shaders/aurora.glsl').map((revision) => revision.contents)).toEqual(['original']);
+  });
+
+  it('restores a revision, keeps the restore undoable, and refreshes viewers', async () => {
+    let now = 1000;
+    const { host, workspace, history } = await createHostWithHistory(() => now);
+    const viewer = vi.fn();
+    const explorer = vi.fn();
+    host.onViewerMessage(viewer);
+    host.onExplorerMessage(explorer);
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+    const revisionId = history.listRevisions('/shaders/aurora.glsl')[0].id;
+
+    now += 1000;
+    expect(host.restoreHistoryRevision('/shaders/aurora.glsl', revisionId)).toBe(true);
+
+    expect(workspace.readText('/shaders/aurora.glsl')).toBe('original');
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', code: 'original' }));
+    expect(explorer).toHaveBeenCalledWith(expect.objectContaining({ type: 'shadersUpdate' }));
+    const undoId = history.listRevisions('/shaders/aurora.glsl')[0].id;
+    expect(history.listRevisions('/shaders/aurora.glsl').map((revision) => revision.contents))
+      .toEqual(['edited', 'original']);
+    expect(host.restoreHistoryRevision('/shaders/aurora.glsl', undoId)).toBe(true);
+    expect(workspace.readText('/shaders/aurora.glsl')).toBe('edited');
+  });
+
+  it('rejects unknown revisions and no-op restores', async () => {
+    const { host, workspace } = await createHostWithHistory();
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+
+    expect(host.restoreHistoryRevision('/shaders/aurora.glsl', 'missing')).toBe(false);
+    expect(host.restoreHistoryRevision('/missing.glsl', 'missing')).toBe(false);
+    expect(workspace.readText('/shaders/aurora.glsl')).toBe('edited');
+  });
+
+  it('moves history on rename and drops it on delete', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+      { path: '/shaders/aurora.glsl', contents: 'original', createdAt: 1, modifiedAt: 1 },
+    ]);
+    const history = await FileHistory.open(new MemoryFileHistoryStore(), { minIntervalMs: 0 }, () => 1000);
+    workspace.setHistorySink(history);
+    const host = new WebExtensionHost(workspace, {
+      history,
+      prompt: () => 'renamed.glsl',
+      confirm: () => true,
+    });
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+    expect(history.listPaths()).toEqual(['/shaders/aurora.glsl']);
+
+    await host.handleExplorerMessage({ type: 'renameShader', path: '/shaders/aurora.glsl' });
+    expect(history.listPaths()).toEqual(['/shaders/renamed.glsl']);
+
+    await host.handleExplorerMessage({ type: 'deleteShader', path: '/shaders/renamed.glsl' });
+    expect(history.listPaths()).toEqual([]);
+  });
+
+  it('clears history for one file after confirmation', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+      { path: '/shaders/aurora.glsl', contents: 'original', createdAt: 1, modifiedAt: 1 },
+      { path: '/shaders/other.glsl', contents: 'other', createdAt: 1, modifiedAt: 1 },
+    ]);
+    const history = await FileHistory.open(new MemoryFileHistoryStore(), { minIntervalMs: 0 }, () => 1000);
+    workspace.setHistorySink(history);
+    const confirm = vi.fn(() => true);
+    const host = new WebExtensionHost(workspace, { history, confirm });
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/other.glsl', code: 'edited other' },
+    });
+
+    host.clearFileHistory('/shaders/aurora.glsl');
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(history.listRevisions('/shaders/aurora.glsl')).toEqual([]);
+    expect(history.listRevisions('/shaders/other.glsl')).toHaveLength(1);
+  });
+
+  it('keeps history when clearing is cancelled', async () => {
+    const { workspace, host, history } = await createHostWithHistory();
+    const hostWithCancel = new WebExtensionHost(workspace, { history, confirm: () => false });
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' },
+    });
+
+    hostWithCancel.clearFileHistory('/shaders/aurora.glsl');
+
+    expect(history.listRevisions('/shaders/aurora.glsl')).toHaveLength(1);
+  });
+
+  it('does not confirm when the file has no history', async () => {
+    const { workspace } = await createHostWithHistory();
+    const confirm = vi.fn(() => true);
+    const hostWithConfirm = new WebExtensionHost(workspace, {
+      history: await FileHistory.open(new MemoryFileHistoryStore(), {}, () => 1000),
+      confirm,
+    });
+
+    hostWithConfirm.clearFileHistory('/shaders/aurora.glsl');
+
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('forwards history change subscriptions and works without history', async () => {
+    const { host } = await createHostWithHistory();
+    const handler = vi.fn();
+    const unsubscribe = host.onHistoryChange(handler);
+    await host.handleViewerMessage({
+      type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited again' },
+    });
+    expect(handler).toHaveBeenCalled();
+    unsubscribe();
+
+    const plain = new WebExtensionHost(await VirtualWorkspace.open(new MemoryWorkspaceStore(), []));
+    expect(plain.listHistoryPaths()).toEqual([]);
+    expect(plain.listHistoryRevisions('/a.glsl')).toEqual([]);
+    expect(plain.restoreHistoryRevision('/a.glsl', 'x')).toBe(false);
+    expect(() => plain.onHistoryChange(() => {})()).not.toThrow();
+  });
+});
 
 describe('standalone initial shader selection', () => {
   it.each([null, '/missing.glsl', '/shaders/desert-cubemap.glsl'])(

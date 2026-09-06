@@ -1,4 +1,5 @@
 import type { ShaderConfig } from '@shader-studio/types';
+import type { FileHistory, FileRevision } from './FileHistory';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 
 type HostMessage = { type: string; [key: string]: unknown };
@@ -40,6 +41,7 @@ interface WebExtensionHostOptions {
   resolveDefaultAsset?: (path: string) => string | null;
   prompt?: (message: string, initialValue: string) => string | null;
   confirm?: (message: string) => boolean;
+  history?: FileHistory | null;
 }
 
 function configPathForShader(shaderPath: string): string {
@@ -62,6 +64,7 @@ export class WebExtensionHost {
   private readonly viewerHandlers = new Set<MessageHandler>();
   private readonly explorerHandlers = new Set<MessageHandler>();
   private activeShaderPath: string | null = null;
+  private readonly history: FileHistory | null;
   private readonly resolveDefaultAsset: (path: string) => string | null;
   private readonly prompt: (message: string, initialValue: string) => string | null;
   private readonly confirm: (message: string) => boolean;
@@ -73,6 +76,7 @@ export class WebExtensionHost {
     this.resolveDefaultAsset = options.resolveDefaultAsset ?? (() => null);
     this.prompt = options.prompt ?? ((message, initialValue) => window.prompt(message, initialValue));
     this.confirm = options.confirm ?? ((message) => window.confirm(message));
+    this.history = options.history ?? null;
     const restoredPath = this.workspace.exists(ACTIVE_SHADER_PATH)
       ? this.workspace.readText(ACTIVE_SHADER_PATH)
       : null;
@@ -250,12 +254,7 @@ export class WebExtensionHost {
         const path = typeof payload.path === 'string' ? payload.path : this.activeShaderPath;
         if (path && typeof payload.code === 'string' && this.workspace.exists(path)) {
           this.workspace.writeText(path, payload.code);
-          const owner = this.activeShaderPath;
-          const isBuffer = owner && Object.values(this.sourcePaths(owner)).includes(path);
-          if (owner && (path === owner || isBuffer)) {
-            this.emitViewer(this.shaderSourceMessage(owner));
-          }
-          this.sendShaderList();
+          this.refreshAfterSourceWrite(path);
         }
         return;
       }
@@ -287,6 +286,48 @@ export class WebExtensionHost {
 
   readEditorFile(path: string): string | null {
     return this.workspace.exists(path) ? this.workspace.readText(path) : null;
+  }
+
+  listHistoryPaths(): string[] {
+    return this.history?.listPaths() ?? [];
+  }
+
+  listHistoryRevisions(path: string): FileRevision[] {
+    return this.history?.listRevisions(path) ?? [];
+  }
+
+  clearFileHistory(path: string): void {
+    if (!this.history || this.history.listRevisions(path).length === 0) {
+      return;
+    }
+    if (this.confirm(`Clear all recorded history for "${fileName(path)}"? This cannot be undone.`)) {
+      this.history.dropHistory(path);
+    }
+  }
+
+  onHistoryChange(handler: () => void): () => void {
+    return this.history?.onChange(handler) ?? (() => {});
+  }
+
+  /**
+   * Restores a recorded revision. The pre-restore contents are snapshotted
+   * first, so restoring stays undoable by restoring the newest revision.
+   */
+  restoreHistoryRevision(path: string, revisionId: string): boolean {
+    const revision = this.history?.getRevision(path, revisionId);
+    if (!revision) {
+      return false;
+    }
+    const current = this.workspace.exists(path) ? this.workspace.readText(path) : null;
+    if (current === revision.contents) {
+      return false;
+    }
+    if (current !== null) {
+      this.history?.recordRestorePoint(path, current);
+    }
+    this.workspace.writeText(path, revision.contents);
+    this.refreshAfterSourceWrite(path);
+    return true;
   }
 
   async handleExplorerMessage(message: HostMessage): Promise<void> {
@@ -387,6 +428,16 @@ export class WebExtensionHost {
 
   async flush(): Promise<void> {
     await this.workspace.flush();
+    await this.history?.flush();
+  }
+
+  private refreshAfterSourceWrite(path: string): void {
+    const owner = this.activeShaderPath;
+    const isBuffer = owner && Object.values(this.sourcePaths(owner)).includes(path);
+    if (owner && (path === owner || isBuffer)) {
+      this.emitViewer(this.shaderSourceMessage(owner));
+    }
+    this.sendShaderList();
   }
 
   private shaderFiles() {

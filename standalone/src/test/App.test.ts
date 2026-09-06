@@ -36,6 +36,10 @@ function createTransport(): TestTransport {
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
+    listFileHistoryPaths: vi.fn().mockResolvedValue([]),
+    listFileRevisions: vi.fn().mockResolvedValue([]),
+    restoreFileRevision: vi.fn().mockResolvedValue(true),
+    onHistoryChange: vi.fn(() => () => {}),
   } as unknown as TestTransport;
 }
 
@@ -102,6 +106,7 @@ describe('standalone App', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Editor' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'File History' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('toggles panels from View and groups workspace actions separately', async () => {
@@ -117,6 +122,9 @@ describe('standalone App', () => {
     expect(layoutStub.togglePanel).toHaveBeenNthCalledWith(1, 'explorer');
     expect(layoutStub.togglePanel).toHaveBeenNthCalledWith(2, 'editor');
     expect(layoutStub.togglePanel).toHaveBeenNthCalledWith(3, 'preview');
+    await fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'File History' }));
+    expect(layoutStub.togglePanel).toHaveBeenNthCalledWith(4, 'history');
 
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Reset workspace layout' }));

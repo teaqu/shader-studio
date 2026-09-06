@@ -8,13 +8,19 @@ import type {
 } from '@shader-studio/ui';
 import { createDefaultWorkspaceFiles, resolveDefaultAssetUrl } from './defaultWorkspace';
 import {
+  FileHistory,
+  IndexedDbFileHistoryStore,
+  MemoryFileHistoryStore,
+  type FileRevision,
+} from './FileHistory';
+import {
   IndexedDbWorkspaceStore,
   MemoryWorkspaceStore,
   VirtualWorkspace,
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
 
-function createWorkspace() {
+function openWorkspace() {
   const seeds = createDefaultWorkspaceFiles();
   if (typeof indexedDB === 'undefined') {
     return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds);
@@ -23,12 +29,29 @@ function createWorkspace() {
     .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds));
 }
 
+function openFileHistory() {
+  if (typeof indexedDB === 'undefined') {
+    return FileHistory.open(new MemoryFileHistoryStore());
+  }
+  return FileHistory.open(new IndexedDbFileHistoryStore())
+    .catch(() => FileHistory.open(new MemoryFileHistoryStore()));
+}
+
 export class WebTransport implements Transport {
   private connected = true;
   private started = false;
-  private readonly host = createWorkspace().then((workspace) => new WebExtensionHost(workspace, {
-    resolveDefaultAsset: resolveDefaultAssetUrl,
-  }));
+  private readonly host = (async () => {
+    const workspace = await openWorkspace();
+    const history = await openFileHistory();
+    // Attached after the host constructor runs its one-time starter
+    // migrations so those are not recorded as user edits.
+    const host = new WebExtensionHost(workspace, {
+      resolveDefaultAsset: resolveDefaultAssetUrl,
+      history,
+    });
+    workspace.setHistorySink(history);
+    return host;
+  })();
   private readonly viewerCleanups = new Set<() => void>();
 
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void {
@@ -89,6 +112,41 @@ export class WebTransport implements Transport {
 
   async readEditorFile(path: string): Promise<string | null> {
     return (await this.host).readEditorFile(path);
+  }
+
+  async listFileHistoryPaths(): Promise<string[]> {
+    return (await this.host).listHistoryPaths();
+  }
+
+  async listFileRevisions(path: string): Promise<FileRevision[]> {
+    return (await this.host).listHistoryRevisions(path);
+  }
+
+  async clearFileHistory(path: string): Promise<void> {
+    (await this.host).clearFileHistory(path);
+  }
+
+  async restoreFileRevision(path: string, revisionId: string): Promise<boolean> {
+    const host = await this.host;
+    const restored = host.restoreHistoryRevision(path, revisionId);
+    if (restored) {
+      setEditorDocument(path, host.readEditorFile(path));
+    }
+    return restored;
+  }
+
+  onHistoryChange(handler: () => void): () => void {
+    let cleanup: (() => void) | undefined;
+    let disposed = false;
+    void this.host.then((host) => {
+      if (!disposed && this.connected) {
+        cleanup = host.onHistoryChange(handler);
+      }
+    });
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
   }
 
   getShaderExplorerHostApi(): ShaderExplorerHostApi {

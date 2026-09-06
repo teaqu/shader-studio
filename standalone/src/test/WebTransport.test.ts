@@ -181,3 +181,57 @@ it('opens an empty file', async () => {
   expect(getEditorDocument('/shaders/aurora.glsl')).toBe('');
   transport.dispose();
 });
+
+
+it('records edit history through viewer messages and restores it', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  const original = await transport.readEditorFile('/shaders/aurora.glsl');
+  expect(original).toContain('mainImage');
+
+  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited via viewer' } });
+  await vi.waitFor(async () => expect(await transport.listFileHistoryPaths()).toEqual(['/shaders/aurora.glsl']));
+
+  const revisions = await transport.listFileRevisions('/shaders/aurora.glsl');
+  expect(revisions).toHaveLength(1);
+  expect(revisions[0].contents).toBe(original);
+
+  const changed = vi.fn();
+  const unsubscribe = transport.onHistoryChange(changed);
+  expect(await transport.restoreFileRevision('/shaders/aurora.glsl', revisions[0].id)).toBe(true);
+  expect(await transport.readEditorFile('/shaders/aurora.glsl')).toBe(original);
+  expect(getEditorDocument('/shaders/aurora.glsl')).toBe(original);
+  expect(changed).toHaveBeenCalled();
+  unsubscribe();
+
+  expect(await transport.restoreFileRevision('/shaders/aurora.glsl', 'missing')).toBe(false);
+  transport.dispose();
+});
+
+it('clears file history together with the workspace', async () => {
+  resetShellState();
+  const transport = new WebTransport();
+  transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' } });
+  await vi.waitFor(async () => expect(await transport.listFileHistoryPaths()).toEqual(['/shaders/aurora.glsl']));
+
+  await transport.clearWorkspace();
+  expect(await transport.listFileHistoryPaths()).toEqual([]);
+  transport.dispose();
+});
+
+it('clears one file history through the transport', async () => {
+  resetShellState();
+  vi.stubGlobal('confirm', () => true);
+  try {
+    const transport = new WebTransport();
+    transport.postMessage({ type: 'updateShaderSource', payload: { path: '/shaders/aurora.glsl', code: 'edited' } });
+    await vi.waitFor(async () => expect(await transport.listFileHistoryPaths()).toEqual(['/shaders/aurora.glsl']));
+
+    await transport.clearFileHistory('/shaders/aurora.glsl');
+
+    expect(await transport.listFileHistoryPaths()).toEqual([]);
+    transport.dispose();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
