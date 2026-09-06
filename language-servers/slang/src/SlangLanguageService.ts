@@ -522,7 +522,7 @@ export class SlangLanguageService implements LanguageService {
     const prelude = buildSlangAuthoringModule(environment).text;
     const commonSource = environment.commonFile
       ? resolveCompilerDependencies(
-        stripEditorImport(environment.commonFile.text),
+        environment.commonFile.text,
         environment.commonFile.uri,
         environment.virtualFiles,
       )
@@ -581,13 +581,13 @@ export class SlangLanguageService implements LanguageService {
       const prelude = buildSlangAuthoringModule(state.environment).text;
       const commonSource = state.environment.commonFile
         ? resolveCompilerDependencies(
-          stripEditorImport(state.environment.commonFile.text),
+          state.environment.commonFile.text,
           state.environment.commonFile.uri,
           state.environment.virtualFiles,
         )
         : "";
       const authoredSource = resolveCompilerDependencies(
-        stripEditorImport(state.document.text),
+        state.document.text,
         state.document.uri,
         state.environment.virtualFiles,
       );
@@ -882,10 +882,6 @@ function rangesOverlap(left: Range, right: Range): boolean {
 
 function consumeCompilerTargets(targets: import("./slangLanguageServerTypes.js").SlangCompileTarget[] | SlangList<import("./slangLanguageServerTypes.js").SlangCompileTarget>) {
   return Array.isArray(targets) ? targets : consumeList(targets, (item) => item);
-}
-
-function stripEditorImport(source: string): string {
-  return source.replace(/^\s*import\s+(?:shader_studio|"shader-studio\.slang")\s*;?.*$/gm, (line) => `//${" ".repeat(Math.max(0, line.length - 2))}`);
 }
 
 const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;

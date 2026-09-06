@@ -31,9 +31,6 @@ export function collectSlangDependencies(
 
   const visit = (importerPath: string, source: string): void => {
     for (const dependency of findSlangImports(source)) {
-      if (isShaderStudioEditorModule(dependency.moduleName)) {
-        continue;
-      }
       const resolvedPath = path.normalize(path.resolve(path.dirname(importerPath), dependency.relativePath));
       if (visiting.has(resolvedPath) || visited.has(resolvedPath)) {
         continue;
@@ -66,10 +63,6 @@ export function collectSlangDependencies(
 
   visit(rootPath, options.rootSource);
   return { modules, errors };
-}
-
-function isShaderStudioEditorModule(moduleName: string): boolean {
-  return moduleName === "shader_studio" || moduleName === "shader-studio";
 }
 
 function findSlangImports(source: string): SlangImport[] {
@@ -160,7 +153,6 @@ export function resolveSlangIncludes(
 const IMPORT_PATTERN_HOST = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"[^"]+")[ \t]*;?[ \t]*$/gm;
 const MODULE_DECL_PATTERN = /^[ \t]*module\s+[A-Za-z_]\w*\s*;[ \t]*[\r\n]*/m;
 const IMPLEMENTING_DECL_PATTERN = /^[ \t]*implementing\s+[A-Za-z_]\w*\s*;[ \t]*[\r\n]*/m;
-const SHADER_STUDIO_MODULE_DECL_PATTERN = /^[ \t]*module\s+(shader_studio|shader-studio)\s*;[ \t]*[\r\n]*/m;
 
 /**
  * Resolve `import` declarations by inlining the imported module's source.
@@ -188,11 +180,6 @@ function resolveNested(
   visited: Set<string>,
 ): string {
   return source.replace(IMPORT_PATTERN_HOST, (match: string, importPath: string) => {
-    // Skip shader_studio editor imports — handled separately
-    if (importPath === "shader_studio" || importPath === '"shader-studio.slang"' || importPath === '"shader-studio"') {
-      return match;
-    }
-
     // Strip quotes for string form: "path/to/file.slang" → path/to/file.slang
     const cleanPath = importPath.startsWith('"')
       ? importPath.slice(1, -1)
@@ -211,8 +198,7 @@ function resolveNested(
     // Strip module/implementing declarations from inlined source
     let inlined = content
       .replace(MODULE_DECL_PATTERN, "")
-      .replace(IMPLEMENTING_DECL_PATTERN, "")
-      .replace(SHADER_STUDIO_MODULE_DECL_PATTERN, "");
+      .replace(IMPLEMENTING_DECL_PATTERN, "");
 
     // Recursively resolve imports in the inlined source
     inlined = resolveNested(inlined, path.dirname(resolved), readSource, visited);

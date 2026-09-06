@@ -1,5 +1,3 @@
-import shader_studio;
-
 // Texture input smoke test for Slang/WebGPU.
 //
 // Config: texture.sha.json binds assets/orientation-texture.svg to iChannel0.

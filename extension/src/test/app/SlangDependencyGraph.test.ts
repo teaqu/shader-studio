@@ -57,13 +57,12 @@ suite("SlangDependencyGraph", () => {
     }]);
   });
 
-  test("ignores only the reserved Shader Studio editor module", () => {
+  test("treats the retired shader_studio module as an ordinary missing import", () => {
     const readPaths: string[] = [];
     const result = collectSlangDependencies({
       rootPath: "/shader/image.slang",
       rootSource: [
         "import shader_studio;",
-        "import \"shader-studio.slang\";",
         "import palette;",
       ].join("\n"),
       ownerPass: "Image",
@@ -73,9 +72,14 @@ suite("SlangDependencyGraph", () => {
       },
     });
 
-    assert.deepStrictEqual(result.errors, []);
+    assert.deepStrictEqual(result.errors.map((error) => error.moduleName), ["shader_studio"]);
+    assert.strictEqual(result.errors[0].code, "slang-module-not-found");
+    assert.strictEqual(result.errors[0].resolvedPath, path.normalize("/shader/shader-studio.slang"));
     assert.deepStrictEqual(result.modules.map((module) => module.moduleName), ["palette"]);
-    assert.deepStrictEqual(readPaths, [path.normalize("/shader/palette.slang")]);
+    assert.deepStrictEqual(readPaths, [
+      path.normalize("/shader/shader-studio.slang"),
+      path.normalize("/shader/palette.slang"),
+    ]);
   });
 });
 
@@ -204,12 +208,6 @@ suite("resolveSlangImports", () => {
     const result = resolveSlangImports(source, "/shader/passes/glow.slang", readSource(files));
     assert.ok(result.includes("float3 paletteColor()"));
     assert.ok(!result.includes("import"));
-  });
-
-  test("leaves shader_studio editor import intact", () => {
-    const source = "import shader_studio;\nfloat4 mainImage() { return 1; }";
-    const result = resolveSlangImports(source, "/shader/image.slang", readSource({}));
-    assert.ok(result.includes("import shader_studio"));
   });
 
   test("leaves source without imports unchanged", () => {

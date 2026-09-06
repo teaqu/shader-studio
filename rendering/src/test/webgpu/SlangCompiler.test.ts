@@ -309,7 +309,7 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
-  it("neutralizes the Shader Studio editor import without changing line numbers", () => {
+  it("strips every unresolved import, including the retired shader_studio module", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
     compiler.compileImagePass([
@@ -319,15 +319,14 @@ describe("SlangCompiler", () => {
     ].join("\n"));
 
     const wrapped = onLoad.mock.calls[0][0] as string;
+    // No dependency was supplied, so both are stripped rather than asking the
+    // filesystem-less WASM runtime to resolve them.
     expect(wrapped).not.toContain("import shader_studio;");
-    expect(wrapped).toContain("// Shader Studio editor support import");
-    // No dependency was supplied, so palette is stripped rather than asking
-    // the filesystem-less WASM runtime to resolve it.
     expect(wrapped).not.toContain("import palette;");
     expect(wrapped).toContain("float4 mainImage");
   });
 
-  it("neutralizes the editor import in common code", () => {
+  it("passes common code through verbatim, with no reserved editor module", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
     compiler.compileImagePass("float4 mainImage(float2 c) { return helper(); }", {
@@ -335,7 +334,9 @@ describe("SlangCompiler", () => {
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).not.toContain("import \"shader-studio.slang\";");
+    // Common-code imports are resolved on the host; the renderer no longer
+    // rewrites any of them, including the retired shader-studio module.
+    expect(wrapped).toContain("import \"shader-studio.slang\";");
     expect(wrapped).toContain("float4 helper() { return 1; }");
   });
 

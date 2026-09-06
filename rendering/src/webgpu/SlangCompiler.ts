@@ -10,7 +10,6 @@ import {
   wrapSlangComputeSource,
   wrapSlangImageSource,
   getNativeComputeEntryPoints,
-  stripShaderStudioEditorImport,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
@@ -60,7 +59,7 @@ export class SlangCompiler {
     try {
       for (const dependency of options.modules ?? []) {
         const dependencyModule = session.loadModuleFromSource(
-          stripShaderStudioEditorImport(dependency.source),
+          dependency.source,
           dependency.moduleName,
           dependency.path,
         );
@@ -213,25 +212,16 @@ export class SlangCompiler {
   }
 }
 
-const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"[^"]+")[ \t]*;?[ \t]*$/gm;
+const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|"[^"]+")[ \t]*;?[ \t]*$/gm;
 
 /**
  * Strip import declarations from Slang source before passing it to the WASM
  * runtime. The WASM has no filesystem, so any form of `import` triggers
  * "cannot open file". Dependencies are pre-loaded as separate modules and
  * linked via the composite.
- *
- * The `shader_studio` editor import is left intact — it is handled separately
- * by `stripShaderStudioEditorImport` which replaces it with a line-preserving
- * comment inside the wrap functions.
  */
 function stripImports(source: string, preserveImports: boolean): string {
-  return source.replace(IMPORT_STRIP_PATTERN, (_match, target: string) => {
-    if (target === "shader_studio" || target === '"shader-studio.slang"') {
-      return _match; // leave for stripShaderStudioEditorImport
-    }
-    return preserveImports ? _match : "";
-  });
+  return source.replace(IMPORT_STRIP_PATTERN, (match: string) => preserveImports ? match : "");
 }
 
 function errMessage(e: unknown): string {

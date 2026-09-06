@@ -25,15 +25,6 @@ import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragment
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
 
-const SHADER_STUDIO_EDITOR_IMPORT = /^(\s*)(?:__exported\s+)?import\s+(?:shader_studio|"shader-studio(?:\.slang)?")\s*;[^\r\n]*$/gm;
-
-export function stripShaderStudioEditorImport(source: string): string {
-  return source.replace(
-    SHADER_STUDIO_EDITOR_IMPORT,
-    "$1// Shader Studio editor support import",
-  );
-}
-
 // Uniform-buffer layout is pass-specific. Scalar arrays in uniform buffers
 // have a 16-byte stride; float3 arrays likewise occupy one 16-byte slot.
 export interface ShaderToyUniformLayout {
@@ -278,9 +269,8 @@ ${bufferType}<${renderElementType(node.elementType)}> ${node.name};
 /** Wrap a user image-shader source into a full, compilable Slang module. */
 export function wrapSlangImageSource(userSource: string, options: SlangWrapOptions = {}): string {
   const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
-  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
-  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
-  const strippedUserSource = stripShaderStudioEditorImport(userSource);
+  const trimmedCommonCode = (options.commonCode ?? "").trim();
+  const commonCode = trimmedCommonCode ? `${trimmedCommonCode}\n` : "";
   const channelPrelude = buildChannelPrelude(options.channels);
   const storageDeclarations = buildStorageDeclarations(
     options.storage ?? [],
@@ -292,7 +282,7 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     // Capture uniforms bind after the channel texture/sampler pairs and storage buffers.
     const captureBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
     const capturePrelude = buildCapturePrelude(captureBinding);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${capturePrelude}\n#line 1\n${userSource}\n${CAPTURE_ENTRY_POINTS}`;
   }
   // `#line 1` renumbers the line that follows it, so it must sit directly
   // above the user source (after commonCode and custom storage declarations)
@@ -300,9 +290,9 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
   const vertexCode = options.vertexCode?.trim() ?? "";
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
-    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${strippedUserSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
+    return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${userSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
   }
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${strippedUserSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {
@@ -386,9 +376,8 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
   const prelude = buildPrelude(getShaderToyChannelCount(options.channels), options.customUniforms);
   const channels = options.channels ?? [];
   const storage = options.storage ?? [];
-  const strippedCommonCode = stripShaderStudioEditorImport(options.commonCode ?? "").trim();
-  const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
-  const strippedUserSource = stripShaderStudioEditorImport(userSource);
+  const trimmedCommonCode = (options.commonCode ?? "").trim();
+  const commonCode = trimmedCommonCode ? `${trimmedCommonCode}\n` : "";
   const channelPrelude = buildChannelPrelude(channels);
   const storageDeclarations = buildStorageDeclarations(storage, channels.length, "compute", buildSlangBindingPlan(channels).nextBinding);
   const outputBinding = buildSlangBindingPlan(channels).nextBinding + storage.length;
@@ -397,5 +386,5 @@ export function wrapSlangComputeSource(userSource: string, options: SlangCompute
     : "";
   const dispatchBinding = outputBinding + (options.hasOutput ? 1 : 0);
   const dispatchPrelude = buildDispatchPrelude(dispatchBinding);
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${strippedUserSource}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${outputPrelude}${dispatchPrelude}#line 1\n${userSource}`;
 }
