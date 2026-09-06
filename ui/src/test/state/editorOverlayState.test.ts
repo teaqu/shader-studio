@@ -1,52 +1,68 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  getEditorOverlayVisible,
+  getVimMode,
+  restoreFromStorage,
+  setEditorOverlayVisible,
+  setLayoutSlot,
+  toggleEditorOverlay,
+  toggleVimMode,
+} from '../../lib/state/editorOverlayState.svelte';
 
 describe('editorOverlayStore', () => {
   const SLOT_KEY = 'shader-studio-editor-overlay-state:vscode:1';
   const OTHER_SLOT_KEY = 'shader-studio-editor-overlay-state:vscode:2';
 
+  // setLayoutSlot resets every field, so tests share one module instance
+  // instead of paying a fresh transform per case.
   beforeEach(() => {
     localStorage.clear();
+    setLayoutSlot('vscode:1');
+  });
+
+  it('should have default initial state when localStorage is empty', () => {
+    expect(getEditorOverlayVisible()).toBe(false);
+    expect(getVimMode()).toBe(false);
+  });
+
+  it('should not restore from localStorage on a slot change (deferred restore)', () => {
+    localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true, vimMode: true }));
+
+    setLayoutSlot('vscode:1');
+
+    expect(getEditorOverlayVisible()).toBe(false);
+    expect(getVimMode()).toBe(false);
+  });
+
+  it('does not read localStorage while the module loads', async () => {
+    localStorage.setItem('shader-studio-editor-overlay-state', JSON.stringify({ isVisible: true, vimMode: true }));
+    localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true, vimMode: true }));
     vi.resetModules();
+
+    const fresh = await import('../../lib/state/editorOverlayState.svelte');
+
+    expect(fresh.getEditorOverlayVisible()).toBe(false);
+    expect(fresh.getVimMode()).toBe(false);
   });
 
-  async function importState() {
-    const modulePath = '../../lib/state/editorOverlayState.svelte.ts';
-    return import(/* @vite-ignore */ modulePath);
-  }
-
-  it('should have default initial state when localStorage is empty', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    expect(s.getEditorOverlayVisible()).toBe(false);
-    expect(s.getVimMode()).toBe(false);
-  });
-
-  it('should not restore from localStorage on creation (deferred restore)', async () => {
+  it('restoreFromStorage should load state from localStorage', () => {
     localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true, vimMode: true }));
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    expect(s.getEditorOverlayVisible()).toBe(false);
-    expect(s.getVimMode()).toBe(false);
+
+    restoreFromStorage();
+
+    expect(getEditorOverlayVisible()).toBe(true);
+    expect(getVimMode()).toBe(true);
   });
 
-  it('restoreFromStorage should load state from localStorage', async () => {
-    localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true, vimMode: true }));
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.restoreFromStorage();
-    expect(s.getEditorOverlayVisible()).toBe(true);
-    expect(s.getVimMode()).toBe(true);
-  });
-
-  it('should fall back to defaults on invalid localStorage', async () => {
+  it('should fall back to defaults on invalid localStorage', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       localStorage.setItem(SLOT_KEY, 'not-json');
-      const s = await importState();
-      s.setLayoutSlot('vscode:1');
-      s.restoreFromStorage();
-      expect(s.getEditorOverlayVisible()).toBe(false);
-      expect(s.getVimMode()).toBe(false);
+
+      restoreFromStorage();
+
+      expect(getEditorOverlayVisible()).toBe(false);
+      expect(getVimMode()).toBe(false);
       expect(warnSpy).toHaveBeenCalledWith(
         'Failed to load editor overlay state from localStorage:',
         expect.any(SyntaxError),
@@ -56,90 +72,112 @@ describe('editorOverlayStore', () => {
     }
   });
 
-  it('toggleEditorOverlay should flip isVisible', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    expect(s.getEditorOverlayVisible()).toBe(false);
-    s.toggleEditorOverlay();
-    expect(s.getEditorOverlayVisible()).toBe(true);
-    s.toggleEditorOverlay();
-    expect(s.getEditorOverlayVisible()).toBe(false);
+  it('restoreFromStorage should fall back to defaults when the slot has no entry', () => {
+    setEditorOverlayVisible(true);
+    toggleVimMode();
+    localStorage.clear();
+
+    restoreFromStorage();
+
+    expect(getEditorOverlayVisible()).toBe(false);
+    expect(getVimMode()).toBe(false);
   });
 
-  it('toggleEditorOverlay should persist to localStorage', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.toggleEditorOverlay();
-    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
-    expect(stored.isVisible).toBe(true);
+  it('toggleEditorOverlay should flip isVisible', () => {
+    expect(getEditorOverlayVisible()).toBe(false);
+    toggleEditorOverlay();
+    expect(getEditorOverlayVisible()).toBe(true);
+    toggleEditorOverlay();
+    expect(getEditorOverlayVisible()).toBe(false);
   });
 
-  it('toggleEditorOverlay should not affect vimMode', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.toggleVimMode();
-    expect(s.getVimMode()).toBe(true);
-    s.toggleEditorOverlay();
-    expect(s.getVimMode()).toBe(true);
+  it('toggleEditorOverlay should persist to localStorage', () => {
+    toggleEditorOverlay();
+
+    expect(JSON.parse(localStorage.getItem(SLOT_KEY)!).isVisible).toBe(true);
   });
 
-  it('setEditorOverlayVisible should set visibility directly', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.setEditorOverlayVisible(true);
-    expect(s.getEditorOverlayVisible()).toBe(true);
-    s.setEditorOverlayVisible(false);
-    expect(s.getEditorOverlayVisible()).toBe(false);
+  it('toggleEditorOverlay should not affect vimMode', () => {
+    toggleVimMode();
+    expect(getVimMode()).toBe(true);
+    toggleEditorOverlay();
+    expect(getVimMode()).toBe(true);
   });
 
-  it('setEditorOverlayVisible should persist to localStorage', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.setEditorOverlayVisible(true);
-    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
-    expect(stored.isVisible).toBe(true);
+  it('setEditorOverlayVisible should set visibility directly', () => {
+    setEditorOverlayVisible(true);
+    expect(getEditorOverlayVisible()).toBe(true);
+    setEditorOverlayVisible(false);
+    expect(getEditorOverlayVisible()).toBe(false);
   });
 
-  it('toggleVimMode should flip vimMode', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    expect(s.getVimMode()).toBe(false);
-    s.toggleVimMode();
-    expect(s.getVimMode()).toBe(true);
-    s.toggleVimMode();
-    expect(s.getVimMode()).toBe(false);
+  it('setEditorOverlayVisible should persist to localStorage', () => {
+    setEditorOverlayVisible(true);
+
+    expect(JSON.parse(localStorage.getItem(SLOT_KEY)!).isVisible).toBe(true);
   });
 
-  it('toggleVimMode should persist to localStorage', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.toggleVimMode();
-    const stored = JSON.parse(localStorage.getItem(SLOT_KEY)!);
-    expect(stored.vimMode).toBe(true);
+  it('toggleVimMode should flip vimMode', () => {
+    expect(getVimMode()).toBe(false);
+    toggleVimMode();
+    expect(getVimMode()).toBe(true);
+    toggleVimMode();
+    expect(getVimMode()).toBe(false);
   });
 
-  it('toggleVimMode should not affect isVisible', async () => {
-    const s = await importState();
-    s.setLayoutSlot('vscode:1');
-    s.toggleEditorOverlay();
-    expect(s.getEditorOverlayVisible()).toBe(true);
-    s.toggleVimMode();
-    expect(s.getEditorOverlayVisible()).toBe(true);
+  it('toggleVimMode should persist to localStorage', () => {
+    toggleVimMode();
+
+    expect(JSON.parse(localStorage.getItem(SLOT_KEY)!).vimMode).toBe(true);
   });
 
-  it('restores state independently per slot', async () => {
+  it('toggleVimMode should not affect isVisible', () => {
+    toggleEditorOverlay();
+    expect(getEditorOverlayVisible()).toBe(true);
+    toggleVimMode();
+    expect(getEditorOverlayVisible()).toBe(true);
+  });
+
+  it('restores state independently per slot', () => {
     localStorage.setItem(SLOT_KEY, JSON.stringify({ isVisible: true, vimMode: false }));
     localStorage.setItem(OTHER_SLOT_KEY, JSON.stringify({ isVisible: false, vimMode: true }));
-    const s = await importState();
 
-    s.setLayoutSlot('vscode:1');
-    s.restoreFromStorage();
-    expect(s.getEditorOverlayVisible()).toBe(true);
-    expect(s.getVimMode()).toBe(false);
+    setLayoutSlot('vscode:1');
+    restoreFromStorage();
+    expect(getEditorOverlayVisible()).toBe(true);
+    expect(getVimMode()).toBe(false);
 
-    s.setLayoutSlot('vscode:2');
-    s.restoreFromStorage();
-    expect(s.getEditorOverlayVisible()).toBe(false);
-    expect(s.getVimMode()).toBe(true);
+    setLayoutSlot('vscode:2');
+    restoreFromStorage();
+    expect(getEditorOverlayVisible()).toBe(false);
+    expect(getVimMode()).toBe(true);
+  });
+
+  it('persists under the unslotted key before a slot is assigned', () => {
+    setLayoutSlot(null);
+
+    toggleEditorOverlay();
+
+    expect(JSON.parse(localStorage.getItem('shader-studio-editor-overlay-state')!).isVisible).toBe(true);
+    expect(localStorage.getItem(SLOT_KEY)).toBe(null);
+  });
+
+  it('warns and keeps state when persisting fails', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    try {
+      toggleEditorOverlay();
+
+      expect(getEditorOverlayVisible()).toBe(true);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to save editor overlay state to localStorage:',
+        expect.any(Error),
+      );
+    } finally {
+      setItem.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });

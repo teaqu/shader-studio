@@ -771,7 +771,7 @@ suite("VS Code language-service revisions", () => {
     const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
 
     assert.strictEqual(diagnostic.source, "shader-studio-glsl-ls");
-    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Hint);
     assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
@@ -788,7 +788,7 @@ suite("VS Code language-service revisions", () => {
     const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
 
     assert.strictEqual(diagnostic.source, "shader-studio-slang-ls");
-    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Hint);
     assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
