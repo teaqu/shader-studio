@@ -68,9 +68,20 @@ function helpers(vscode) {
         return found.includes(expected);
       }, { message: `expected captured ${selector} to contain ${expected}` }).toBe(true);
     } catch (failure) {
-      throw new Error(lastError
-        ? `${failure.message}\nlast capture error: ${lastError}`
-        : failure.message);
+      // An empty capture error says nothing about why the value is missing, so
+      // report what the panel actually held instead of just the timeout.
+      const state = await app().evaluate(() => ({
+        vars: Array.from(document.querySelectorAll('.var-name'), (el) => el.textContent?.trim() ?? ''),
+        fns: Array.from(document.querySelectorAll('.fn-name'), (el) => el.textContent?.trim() ?? ''),
+        errors: Array.from(document.querySelectorAll('.error-tooltip-block'), (el) => el.textContent?.trim() ?? ''),
+        debugPanel: !!document.querySelector('.debug-panel'),
+        variablesSection: !!document.querySelector('.variables-section'),
+      })).catch((probeFailure) => ({ probeFailure: String(probeFailure) }));
+      throw new Error([
+        failure.message,
+        lastError ? `last capture error: ${lastError}` : 'no capture error reported',
+        `panel state: ${JSON.stringify(state)}`,
+      ].join('\n'));
     }
   }
 
