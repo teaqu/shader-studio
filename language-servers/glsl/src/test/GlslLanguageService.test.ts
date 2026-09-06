@@ -280,6 +280,27 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord
     expect(colors[0]?.color.green).toBe(0.25);
   });
 
+  it("edits vec3 and vec4 colors without changing their component count", async () => {
+    const instance = await service();
+    await instance.changeDocument({
+      uri,
+      languageId: "glsl",
+      version: 2,
+      text: "vec3 a = vec3(1.0, 0.25, 0.0);\nvec4 b = vec4(1.0, 0.25, 0.0, 1.0);",
+    });
+    const document = { ...revision, version: 2 };
+    const colors = await instance.documentColors({ document });
+    expect(colors).toHaveLength(2);
+
+    const presentations = await Promise.all(colors.map((color) => instance.colorPresentations({
+      document,
+      color: { red: 0, green: 0.5, blue: 1, alpha: 1 },
+      range: color.range,
+    })));
+    expect(presentations.map((items) => items[0]?.textEdit?.newText))
+      .toEqual(["vec3(0.0, 0.5, 1.0)", "vec4(0.0, 0.5, 1.0, 1.0)"]);
+  });
+
   it("reports unresolved GLSL symbols while accepting authoring, include, and stage built-ins", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({
