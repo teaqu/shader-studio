@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "Live GLSL and Slang shader preview, editor, and visual debugger with WebGL and WebGPU pipelines.",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "publisher": "teaqu",
   "repository": {
     "type": "git",

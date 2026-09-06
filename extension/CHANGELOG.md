@@ -1,4 +1,20 @@
 # Change Log
+### 1.1.0
+- Write shaders in Slang as well as GLSL, with the same preview, config panel, inputs, and debugging.
+- Run compute passes over storage buffers and read the results from your image pass.
+- Render onto 3D geometry: load a GLB model, orbit the camera around it, and light it with the surface position and normal. Each pass chooses 2D or 3D.
+- Move vertices before they are shaded with a vertex shader, in either language.
+- GLSL and Slang language servers: completions, hover documentation, errors as you type, go to definition, find references, rename, symbol highlighting, colour swatches, and greyed-out unused variables — across your Common file and imports.
+- Debug Slang shaders: inspect values line by line, follow them into imported files, and see which lines never ran.
+- Browse your shaders from the sidebar, with previews, renaming, and deletion.
+- Watch GPU time per frame in the performance panel to see whether the GPU or the frame loop is the bottleneck.
+- Name buffer passes anything you like, and rename them from the config tabs.
+- Use a video file as an audio input, and mute channels individually — muting is saved with the shader.
+- Open a shader in the browser with the same docked layout as the panel.
+- Toggle the shader lock with `Ctrl+L` / `Cmd+L`.
+- Spell checking knows shader vocabulary, and the Shader Validator extension no longer conflicts.
+- Fixes: a broken config reports the error instead of showing a black frame, error markers no longer linger after the code is fixed, the mouse position holds still while paused and follows hover, and cubemaps work in the variable inspector.
+
 ### 1.0.2
 - Added a toggleable canvas marker for the locked pixel inspector position, with the preference persisted across sessions.
 
