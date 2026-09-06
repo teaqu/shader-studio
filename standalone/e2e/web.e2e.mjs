@@ -997,3 +997,96 @@ test('pressing Enter after an open brace indents the new line like VS Code', asy
     '}',
   ]);
 });
+
+test('the overlay keeps its dark tokens across workspace theme switches', async ({ page }) => {
+  const LIGHT_TYPE_TOKEN = 'rgb(99, 54, 168)';
+  const DARK_TYPE_TOKEN = 'rgb(204, 153, 255)';
+  await page.addInitScript(() => localStorage.setItem('shader-studio-theme', 'light'));
+  await page.goto('/');
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+
+  const tokenColor = (root, word) => root.evaluate((el, text) => {
+    const span = [...el.querySelectorAll('.view-lines .view-line > span > span')]
+      .find((candidate) => candidate.textContent.trim() === text);
+    return span ? getComputedStyle(span).color : null;
+  }, word);
+
+  await page.getByLabel('Open options menu').click();
+  await page.getByLabel('Open editor submenu').click();
+  await page.getByLabel('Enable editor overlay').click();
+  const overlay = page.locator('.editor-wrapper:not(.pane)');
+  await expect(overlay).toBeVisible();
+  await expect.poll(() => tokenColor(overlay, 'void')).toBe(DARK_TYPE_TOKEN);
+
+  // Toggling the overlay leaves the options menu open, so the first click can
+  // close it instead of opening it.
+  const openOptionsMenu = async () => {
+    const trigger = page.getByLabel('Open options menu');
+    const themeButton = page.getByLabel('Toggle theme');
+    await trigger.click();
+    if (!(await themeButton.isVisible())) {
+      await trigger.click();
+    }
+    await expect(themeButton).toBeVisible();
+  };
+
+  const toggleTheme = async () => {
+    await openOptionsMenu();
+    await page.getByLabel('Toggle theme').click();
+  };
+
+  await toggleTheme();
+  await expect.poll(() => tokenColor(editor, 'void')).toBe(DARK_TYPE_TOKEN);
+  await expect.poll(() => tokenColor(overlay, 'void')).toBe(DARK_TYPE_TOKEN);
+
+  await toggleTheme();
+  await expect.poll(() => tokenColor(editor, 'void')).toBe(LIGHT_TYPE_TOKEN);
+  await expect.poll(() => tokenColor(overlay, 'void')).toBe(DARK_TYPE_TOKEN);
+
+  // Closing the overlay leaves the pane on the workspace palette.
+  await openOptionsMenu();
+  await page.getByLabel('Open editor submenu').click();
+  await page.getByLabel('Enable editor overlay').click();
+  await expect(overlay).toHaveCount(0);
+  await expect.poll(() => tokenColor(editor, 'void')).toBe(LIGHT_TYPE_TOKEN);
+});
+
+test('the shader-preview overlay keeps its dark tokens without darkening the light editor pane', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('shader-studio-theme', 'light'));
+  await page.goto('/');
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+
+  const tokenColor = (root, word) => root.evaluate((el, text) => {
+    const span = [...el.querySelectorAll('.view-lines .view-line > span > span')]
+      .find((candidate) => candidate.textContent.trim() === text);
+    return span ? getComputedStyle(span).color : null;
+  }, word);
+
+  // Every distinct token colour on screen, so a regression in any scope is
+  // caught rather than only the one type keyword sampled below. Monaco's theme
+  // is page-wide, so an overlay that claimed it would repaint all of these.
+  const paneTokenColors = () => editor.evaluate((el) => [...new Set(
+    [...el.querySelectorAll('.view-lines .view-line > span > span')]
+      .map((span) => getComputedStyle(span).color),
+  )].sort());
+
+  // Light theme type token: #6336A8.
+  await expect.poll(() => tokenColor(editor, 'void')).toBe('rgb(99, 54, 168)');
+  const paneBefore = await paneTokenColors();
+  expect(paneBefore.length).toBeGreaterThan(1);
+
+  await page.getByLabel('Open options menu').click();
+  await page.getByLabel('Open editor submenu').click();
+  await page.getByLabel('Enable editor overlay').click();
+  const overlay = page.locator('.editor-wrapper:not(.pane)');
+  await expect(overlay).toBeVisible();
+
+  // Dark theme type token: #CC99FF.
+  await expect.poll(() => tokenColor(overlay, 'void')).toBe('rgb(204, 153, 255)');
+  // The pane keeps the light palette while the overlay is open.
+  await expect.poll(() => tokenColor(editor, 'void')).toBe('rgb(99, 54, 168)');
+  // Turning the overlay on changes nothing at all about the pane's palette.
+  await expect.poll(paneTokenColors).toEqual(paneBefore);
+});

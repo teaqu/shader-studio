@@ -263,7 +263,10 @@ vi.mock('monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlig
 });
 
 // Mock @shader-studio/monaco — delegates to mocked monaco-editor above
-vi.mock('@shader-studio/monaco', () => ({
+vi.mock('@shader-studio/monaco', async () => ({
+  // The scoped token-colour helpers are pure and stay real; only the parts
+  // that reach into monaco-editor are stubbed.
+  ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({

@@ -26,6 +26,11 @@
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
   import { currentTheme, type Theme } from "../stores/themeStore";
+  import {
+    releaseOverlayTokenColors,
+    retainOverlayTokenColors,
+    syncOverlayTokenColors,
+  } from "../editor/overlayTokenTheme";
 
   type CompileMode = "hot" | "save" | "manual";
 
@@ -125,11 +130,12 @@
   let markerUpdateCount = 0;
   let editorTheme: Theme = "light";
   let unsubscribeTheme: (() => void) | null = null;
+  let overlayTokensRetained = false;
 
+  // Monaco's theme is global to the page, so the overlay shares the
+  // workspace theme with any docked pane and recolours its own tokens through
+  // scoped overrides instead of stealing the global theme.
   function monacoThemeFor(theme: Theme): string {
-    if (displayMode === "overlay") {
-      return "shader-studio-transparent";
-    }
     return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
   }
 
@@ -520,6 +526,8 @@
       // Monaco scopes widget layout and colour variables to .monaco-editor.
       // Preserve that scope when the widgets escape a clipped dock pane.
       popupContainer = document.createElement("div");
+      // Overflowing widgets stay on the workspace palette: they sit on the
+      // theme's own opaque background, not on the shader render.
       popupContainer.className = "monaco-editor shader-editor-popups";
       overflowWidgetsDomNode.appendChild(popupContainer);
     }
@@ -574,6 +582,12 @@
     };
 
     editor = monaco.editor.create(containerEl, editorOptions);
+    // Monaco has now generated its token classes for the workspace theme, so
+    // the overlay's scoped overrides can be derived from them.
+    if (displayMode === "overlay" && !overlayTokensRetained) {
+      overlayTokensRetained = true;
+      retainOverlayTokenColors(editorTheme);
+    }
     languageServiceController = createLanguageServiceController(monaco);
 
     if (shaderPath && savedViewStates.has(shaderPath)) {
@@ -711,6 +725,10 @@
     }
     popupContainer?.remove();
     popupContainer = null;
+    if (overlayTokensRetained) {
+      overlayTokensRetained = false;
+      releaseOverlayTokenColors();
+    }
     editorReady = false;
     lastSentCode = null;
   }
@@ -942,12 +960,13 @@
   });
 
   onMount(() => {
-    if (displayMode === "pane") {
-      unsubscribeTheme = currentTheme.subscribe((theme) => {
-        editorTheme = theme;
-        monaco.editor.setTheme(monacoThemeFor(theme));
-      });
-    }
+    unsubscribeTheme = currentTheme.subscribe((theme) => {
+      editorTheme = theme;
+      monaco.editor.setTheme(monacoThemeFor(theme));
+      // Monaco regenerates its token classes on setTheme, so the overlay's
+      // overrides have to be rebuilt from the rules it just emitted.
+      syncOverlayTokenColors(theme);
+    });
     if (isVisible) {
       createEditor();
     }
@@ -982,6 +1001,7 @@
   <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
     <div
       class="editor-overlay"
+      class:shader-studio-overlay-tokens={displayMode === "overlay"}
       data-active-buffer={activeBufferName}
       bind:this={containerEl}
     ></div>

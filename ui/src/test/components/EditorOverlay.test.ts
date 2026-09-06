@@ -4,7 +4,9 @@ import { tick } from 'svelte';
 import EditorOverlay from '../../lib/components/ShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
-vi.mock('@shader-studio/monaco', () => ({
+vi.mock('@shader-studio/monaco', async () => ({
+  // The scoped token-colour helpers are pure and stay real.
+  ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
@@ -527,15 +529,49 @@ describe('EditorOverlay', () => {
       });
     });
 
-    it('keeps the overlay on its original dark theme', async () => {
+    it('shares the workspace theme with the editor pane, since Monaco themes are page-wide', async () => {
       const monaco = await import('monaco-editor');
       render(EditorOverlay, { props: defaultProps });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ theme: 'shader-studio-transparent' });
+      expect(createCall?.[1]).toMatchObject({ theme: 'shader-studio-transparent-light' });
     });
 
-    it('does not retheme the overlay when the workspace theme changes', async () => {
+    it('marks the overlay container as the scope for its own token colours', async () => {
+      const { container } = render(EditorOverlay, { props: defaultProps });
+
+      expect(container.querySelector('.editor-overlay')?.classList
+        .contains('shader-studio-overlay-tokens')).toBe(true);
+    });
+
+    it('publishes overlay token overrides for as long as the overlay is mounted', async () => {
+      const styleId = '#shader-studio-overlay-token-colors';
+      const { unmount } = render(EditorOverlay, { props: defaultProps });
+
+      expect(document.querySelector(styleId)).not.toBeNull();
+
+      unmount();
+      await tick();
+
+      expect(document.querySelector(styleId)).toBeNull();
+    });
+
+    it('publishes no overlay token overrides for the editor pane', async () => {
+      render(EditorOverlay, { props: { ...defaultProps, displayMode: 'pane' } });
+
+      expect(document.querySelector('#shader-studio-overlay-token-colors')).toBeNull();
+    });
+
+    it('leaves the pane container off the overlay token scope', async () => {
+      const { container } = render(EditorOverlay, {
+        props: { ...defaultProps, displayMode: 'pane' },
+      });
+
+      expect(container.querySelector('.editor-overlay')?.classList
+        .contains('shader-studio-overlay-tokens')).toBe(false);
+    });
+
+    it('follows the workspace theme when it changes', async () => {
       const monaco = await import('monaco-editor');
       const { currentTheme } = await import('../../lib/stores/themeStore');
       render(EditorOverlay, { props: defaultProps });
@@ -543,7 +579,7 @@ describe('EditorOverlay', () => {
 
       currentTheme.set('dark');
 
-      expect(monaco.editor.setTheme).not.toHaveBeenCalled();
+      expect(monaco.editor.setTheme).toHaveBeenCalledWith('shader-studio-transparent');
       currentTheme.set('light');
     });
 
