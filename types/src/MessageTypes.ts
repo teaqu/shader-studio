@@ -8,7 +8,22 @@ export interface BaseMessage {
   type: string;
 }
 
-export interface LogMessage extends BaseMessage {
+/**
+ * Revision marker for compile reports. The host stamps every `shaderSource`
+ * with a per-path sequence, and the client echoes it on the error, warning,
+ * and log messages that compile produced. Reports are advisory strings with
+ * no ordering otherwise, so without the echo a slow client's stale failure
+ * can land after a fast client's success and stick until the next edit.
+ * Reports without a sequence predate the marker and are always processed.
+ */
+export interface CompileReportMarker {
+  /** Shader path the report's compile was triggered for. */
+  shaderPath?: string;
+  /** Per-path send sequence of the `shaderSource` the report answers. */
+  compileSequence?: number;
+}
+
+export interface LogMessage extends BaseMessage, CompileReportMarker {
   type: "log";
   payload: string[];
 }
@@ -18,12 +33,12 @@ export interface DebugMessage extends BaseMessage {
   payload: string[];
 }
 
-export interface ErrorMessage extends BaseMessage {
+export interface ErrorMessage extends BaseMessage, CompileReportMarker {
   type: "error";
   payload: string[];
 }
 
-export interface WarningMessage extends BaseMessage {
+export interface WarningMessage extends BaseMessage, CompileReportMarker {
   type: "warning";
   payload: string[];
 }
@@ -72,6 +87,12 @@ export interface ShaderSourceMessage extends BaseMessage {
   originalCode?: string;
   /** Dependency discovery failures produced by the extension host. */
   slangDependencyDiagnostics?: SlangDependencyDiagnostic[];
+  /**
+   * Per-path send sequence. The client echoes it on the compile's reports so
+   * the host can drop reports a newer send already superseded. See
+   * CompileReportMarker.
+   */
+  compileSequence?: number;
   cursorPosition?: {
     line: number;
     character: number;

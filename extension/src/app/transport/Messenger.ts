@@ -36,6 +36,7 @@ export class Messenger {
           config: message.config,
           shaderPath: message.path,
           bufferPathMap: message.bufferPathMap,
+          compileSequence: message.compileSequence,
         });
         if (message.config && message.path && this.hasActiveClients()) {
           publishLoadedShaderProjectSnapshot(message.path, message.config);

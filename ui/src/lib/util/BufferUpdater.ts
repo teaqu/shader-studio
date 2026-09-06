@@ -1,6 +1,7 @@
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
 import type { Transport } from "../transport/MessageTransport";
 import type {
+  CompileReportMarker,
   ErrorMessage,
   LogMessage,
 } from "@shader-studio/types";
@@ -34,6 +35,7 @@ export class BufferUpdater {
     buffers: Record<string, string>,
     code: string,
     resolvedBufferName?: string,
+    marker?: CompileReportMarker,
   ): void {
     // Extract buffer name from path
     const bufferName = this.extractBufferNameFromPath(path);
@@ -78,6 +80,7 @@ export class BufferUpdater {
             const errorMessage: ErrorMessage = {
               type: "error",
               payload: result?.errors || ["Unknown compilation error"],
+              ...marker,
             };
             this.transport.postMessage(errorMessage);
             return;
@@ -89,6 +92,7 @@ export class BufferUpdater {
           const logMessage: LogMessage = {
             type: "log",
             payload: [`Buffer '${bufferName}' updated and pipeline recompiled`],
+            ...marker,
           };
           this.transport.postMessage(logMessage);
         })

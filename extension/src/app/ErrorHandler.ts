@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ErrorMessage, WarningMessage } from "@shader-studio/types";
+import { CompileReportMarker, ErrorMessage, WarningMessage } from "@shader-studio/types";
 import type { DiagnosticSink } from "./DiagnosticArbiter";
 
 export class ErrorHandler {
@@ -7,6 +7,7 @@ export class ErrorHandler {
   private recentErrors = new Map<string, number>();
   private readonly DEBOUNCE_MS = 500; // 0.5 second debounce
   private persistentErrors = new Map<string, { diagnostic: vscode.Diagnostic; uri: vscode.Uri; lastSeen: number }>(); // Track persistent errors until editor change
+  private readonly latestCompileSequence = new Map<string, number>();
   private cleanupTimer: NodeJS.Timeout | null = null;
   private textChangeDisposable: vscode.Disposable | null = null;
   private lastChangedShaderUri: vscode.Uri | null = null;
@@ -29,8 +30,32 @@ export class ErrorHandler {
     }
   }
 
-  public setShaderConfig(config: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null): void {
+  public setShaderConfig(config: { config: any; shaderPath: string; bufferPathMap?: Record<string, string>; compileSequence?: number } | null): void {
     this.currentShaderConfig = config;
+    // Remember the newest send per path so reports from an older send — a
+    // slow client answering after a fast one already did — are dropped
+    // instead of sticking over current diagnostics. See CompileReportMarker.
+    if (config?.compileSequence !== undefined) {
+      this.latestCompileSequence.set(config.shaderPath, config.compileSequence);
+      for (const bufferPath of Object.values(config.bufferPathMap ?? {})) {
+        if (typeof bufferPath === "string") {
+          this.latestCompileSequence.set(bufferPath, config.compileSequence);
+        }
+      }
+    }
+  }
+
+  /**
+   * True when a compile report answers a send the host already superseded
+   * with a newer one for the same path. Unmarked reports predate the marker
+   * and are always processed.
+   */
+  private isStaleCompileReport(marker: CompileReportMarker | undefined): boolean {
+    if (marker?.shaderPath === undefined || marker?.compileSequence === undefined) {
+      return false;
+    }
+    const latest = this.latestCompileSequence.get(marker.shaderPath);
+    return latest !== undefined && marker.compileSequence < latest;
   }
 
   private setupEditorChangeListener(): void {
@@ -55,6 +80,11 @@ export class ErrorHandler {
   public handleError(message: ErrorMessage): void {
     if (!message || !message.payload) {
       return; // Skip invalid messages
+    }
+
+    if (this.isStaleCompileReport(message)) {
+      return; // A newer send already superseded this compile; its reports
+      // must not stick over (or duplicate) current diagnostics.
     }
 
     const errors = Array.isArray(message.payload) ? message.payload : [message.payload];
@@ -175,6 +205,10 @@ export class ErrorHandler {
       return; // Skip invalid messages
     }
 
+    if (this.isStaleCompileReport(message)) {
+      return; // Superseded compile; see handleError.
+    }
+
     let errorText = Array.isArray(message.payload)
       ? message.payload.join(" ")
       : message.payload;
@@ -218,7 +252,11 @@ export class ErrorHandler {
     }
   }
 
-  public clearErrors(): void {
+  public clearErrors(report?: CompileReportMarker): void {
+    // A stale success must not wipe errors a newer compile just reported.
+    if (report && this.isStaleCompileReport(report)) {
+      return;
+    }
     // Clear only regular errors when shader compilation succeeds
     // Keep persistent errors (warnings) until editor change
     this.diagnosticCollection.clear();

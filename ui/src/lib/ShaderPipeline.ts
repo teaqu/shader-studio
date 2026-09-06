@@ -2,6 +2,7 @@ import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngi
 import type { ShaderLocker } from "./ShaderLocker";
 import type { Transport } from "./transport/MessageTransport";
 import type {
+  CompileReportMarker,
   CursorPositionMessage,
   ErrorMessage,
   LogMessage,
@@ -23,6 +24,18 @@ export type ShaderMessageTarget =
   | { kind: 'vertex'; passName: string };
 
 const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
+
+/**
+ * Revision marker echoed on a compile's reports so the host can drop reports
+ * from a send it already superseded. Messages without a sequence predate the
+ * marker; their reports carry none and are always processed.
+ */
+function reportMarkerFor(message: ShaderSourceMessage | undefined): CompileReportMarker | undefined {
+  if (!message || message.compileSequence === undefined) {
+    return undefined;
+  }
+  return { shaderPath: message.path, compileSequence: message.compileSequence };
+}
 
 export class ShaderPipeline {
   private renderEngine: RenderingEngine;
@@ -77,6 +90,7 @@ export class ShaderPipeline {
   ): Promise<CompilationResult | undefined> {
     try {
       const message = event.data as ShaderSourceMessage;
+      const marker = reportMarkerFor(message);
       const { type, code, config, path, buffers = {}, cursorPosition } = message;
 
       if (!this.isValidShaderMessage(type)) {
@@ -119,7 +133,7 @@ export class ShaderPipeline {
         }
 
         this.syncStoredShaderContextForBufferUpdate(bufferName, code);
-        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName);
+        this.bufferUpdater.updateBuffer(path, buffers, code, bufferName, marker);
         return undefined;
       }
 
@@ -211,7 +225,7 @@ export class ShaderPipeline {
       message,
       message.reload || false,
     );
-    this.handleCompilationResult(result);
+    this.handleCompilationResult(result, message);
 
     if (this.pendingShaderEvent) {
       const pending = this.pendingShaderEvent;
@@ -226,28 +240,28 @@ export class ShaderPipeline {
     return result;
   }
 
-  private handleCompilationResult(result: CompilationResult): void {
+  private handleCompilationResult(result: CompilationResult, message?: ShaderSourceMessage): void {
     if (result.superseded) {
       return;
     }
 
     this.compilationState?.setResult(result);
-    this.reportCompilationResult(result);
+    this.reportCompilationResult(result, reportMarkerFor(message));
   }
 
-  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }): void {
+  private reportCompilationResult(result: { success: boolean; errors?: string[]; warnings?: string[] }, marker?: CompileReportMarker): void {
     if (result.success) {
       if (result.warnings && result.warnings.length > 0) {
         for (const warning of result.warnings) {
-          this.sendWarningMessage(warning);
+          this.sendWarningMessage(warning, marker);
         }
       }
 
-      this.sendSuccessMessage();
+      this.sendSuccessMessage(marker);
       return;
     }
 
-    this.sendErrorMessage(result.errors || ["Unknown compilation error"]);
+    this.sendErrorMessage(result.errors || ["Unknown compilation error"], marker);
   }
 
   private syncStoredShaderContextForBufferUpdate(
@@ -275,26 +289,29 @@ export class ShaderPipeline {
     this.setDebugShaderContext(nextMessage);
   }
 
-  private sendErrorMessage(errors: string[]): void {
+  private sendErrorMessage(errors: string[], marker?: CompileReportMarker): void {
     const errorMessage: ErrorMessage = {
       type: "error",
       payload: errors,
+      ...marker,
     };
     this.transport.postMessage(errorMessage);
   }
 
-  private sendWarningMessage(warning: string): void {
+  private sendWarningMessage(warning: string, marker?: CompileReportMarker): void {
     const warningMessage: WarningMessage = {
       type: "warning",
       payload: [warning],
+      ...marker,
     };
     this.transport.postMessage(warningMessage);
   }
 
-  private sendSuccessMessage(): void {
+  private sendSuccessMessage(marker?: CompileReportMarker): void {
     const logMessage: LogMessage = {
       type: "log",
       payload: ["Shader compiled and linked"],
+      ...marker,
     };
     this.transport.postMessage(logMessage);
   }
@@ -468,7 +485,7 @@ export class ShaderPipeline {
     try {
       const message = this.lastEvent.data as ShaderSourceMessage;
       const result = await this.shaderProcessor.debugCompile(message);
-      this.handleCompilationResult(result);
+      this.handleCompilationResult(result, message);
       return result;
     } finally {
       this.debugCompileInFlight = false;

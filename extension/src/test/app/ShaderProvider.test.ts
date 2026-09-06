@@ -435,6 +435,7 @@ suite('ShaderProvider Test Suite', () => {
         originalCode: dependencySource,
         reload: true,
         cursorPosition: undefined,
+        compileSequence: 1,
         slangModules: [],
         slangDependencyDiagnostics: [],
       });
@@ -821,6 +822,7 @@ suite('ShaderProvider Test Suite', () => {
         language: 'glsl',
         reload: true,
         cursorPosition: undefined,
+        compileSequence: 1,
       });
     });
 
@@ -1042,6 +1044,7 @@ suite('ShaderProvider Test Suite', () => {
         language: 'glsl',
         reload: true,
         cursorPosition: undefined,
+        compileSequence: 1,
       });
     });
 
@@ -1065,6 +1068,7 @@ suite('ShaderProvider Test Suite', () => {
         language: 'glsl',
         reload: true,
         cursorPosition: undefined,
+        compileSequence: 1,
       });
     });
 
@@ -1241,6 +1245,7 @@ suite('ShaderProvider Test Suite', () => {
         language: 'glsl',
         reload: true,
         cursorPosition: undefined,
+        compileSequence: 1,
       });
     });
 

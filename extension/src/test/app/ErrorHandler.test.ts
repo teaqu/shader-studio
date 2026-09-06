@@ -684,4 +684,118 @@ suite('ErrorHandler Test Suite', () => {
 
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
   });
+
+  test('drops a compile error from a send a newer send superseded', () => {
+    // Two clients answer the same keystrokes at different speeds: the slow
+    // client's failure for the transient `floatcircle2` text must not stick
+    // over the fast client's clean compile of `float2 circle2`.
+    const staleError = [
+      "Image: error[E30015]: undefined identifier 'floatcircle2'",
+      '  --> /test/dots.slang:22:5',
+      '   |',
+      '22 |     floatcircle2 = smoothstep(0.5, 0.2, length(ouv));',
+      "   |     ^^^^^^^^^^^^ undefined identifier 'floatcircle2'.",
+    ].join('\n');
+
+    let setCalls = 0;
+    let errorCalls = 0;
+    mockDiagnosticCollection.set = (() => {
+      setCalls++;
+    }) as typeof mockDiagnosticCollection.set;
+    mockOutputChannel.error = () => {
+      errorCalls++;
+    };
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.handleError({
+      type: 'error',
+      payload: [staleError],
+      shaderPath: '/test/dots.slang',
+      compileSequence: 10,
+    });
+
+    assert.strictEqual(setCalls, 0, 'Stale error should not reach the diagnostics collection');
+    assert.strictEqual(errorCalls, 0, 'Stale error should not be logged');
+  });
+
+  test('keeps processing compile reports without a sequence', () => {
+    let setCalls = 0;
+    mockDiagnosticCollection.set = (() => {
+      setCalls++;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.handleError({ type: 'error', payload: ['General shader compilation failed'] });
+
+    assert.strictEqual(setCalls, 1, 'Unmarked reports predate the marker and must still be processed');
+  });
+
+  test('processes a compile error matching the newest send', () => {
+    let setCalls = 0;
+    mockDiagnosticCollection.set = (() => {
+      setCalls++;
+    }) as typeof mockDiagnosticCollection.set;
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['General shader compilation failed'],
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+
+    assert.strictEqual(setCalls, 1, 'The newest send answers for the current diagnostics');
+  });
+
+  test('ignores a stale success that would wipe a newer error', () => {
+    let clears = 0;
+    mockDiagnosticCollection.set = (() => {}) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.clear = (() => {
+      clears++;
+    }) as typeof mockDiagnosticCollection.clear;
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.handleError({
+      type: 'error',
+      payload: ['General shader compilation failed'],
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.clearErrors({ shaderPath: '/test/dots.slang', compileSequence: 10 });
+
+    assert.strictEqual(clears, 0, 'Stale success must not clear the newer error');
+  });
+
+  test('clears errors for a success matching the newest send', () => {
+    let clears = 0;
+    mockDiagnosticCollection.set = (() => {}) as typeof mockDiagnosticCollection.set;
+    mockDiagnosticCollection.clear = (() => {
+      clears++;
+    }) as typeof mockDiagnosticCollection.clear;
+
+    errorHandler.setShaderConfig({
+      config: { passes: {} },
+      shaderPath: '/test/dots.slang',
+      compileSequence: 12,
+    });
+    errorHandler.clearErrors({ shaderPath: '/test/dots.slang', compileSequence: 12 });
+
+    assert.strictEqual(clears, 1, 'Fresh success still clears');
+  });
 });

@@ -248,6 +248,8 @@ export class ShaderProvider {
         pathMap,
         bufferPathMap,
         ...(configError ? { configError } : {}),
+        // Same freshness marker as the main send. See CompileReportMarker.
+        compileSequence: preparationGeneration,
       };
       if (getShaderLanguage(shaderPath) === "slang") {
         message.language = "slang";
@@ -636,6 +638,11 @@ export class ShaderProvider {
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
       cursorPosition,
       ...(configError ? { configError } : {}),
+      // Echoed back on this compile's reports so a newer send's reports win
+      // over this one's when clients answer out of order. The counter is
+      // claimed up front, so even a send dropped later still supersedes older
+      // reports. See CompileReportMarker.
+      compileSequence: preparationGeneration,
     };
 
     if (message.language === "slang") {
@@ -775,6 +782,9 @@ export class ShaderProvider {
       language: getShaderLanguage(filePath),
       reload: true,
       cursorPosition,
+      // Same per-path counter the main send uses, so a newer send of any kind
+      // supersedes this message's reports. See CompileReportMarker.
+      compileSequence: this.beginPreparation(filePath),
     };
     if (message.language === "slang") {
       message.originalCode = code;
