@@ -368,6 +368,27 @@ describe("WebGPUVariableCapturer", () => {
     expect(capturer.getLastError()).toBe("Capture channels are not resolvable yet");
   });
 
+  it("defers instead of failing when the resolver returns an empty list for slots the plan needs", async () => {
+    // getChannelResources can report "resolved, nothing yet" as an empty
+    // array rather than null - e.g. mid pass-switch, before that pass's
+    // textures are bound. The null check above does not catch this: the
+    // plan still expects its channel slots, and the bind group build must
+    // treat the shortfall as a retry, not a silent, unattributed failure.
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(
+      gpu.device,
+      gpu.compiler,
+      { commonCode: "", slangChannels: [{ slot: 0, key: "iChannel0" }] },
+      () => [],
+    );
+
+    const count = await capturer.issueCaptureGrid(captures, uniforms, 8, 4);
+
+    expect(count).toBe(0);
+    expect(gpu.submit).not.toHaveBeenCalled();
+    expect(capturer.issueDeferred()).toBe(true);
+  });
+
   it("marks a capture deferred when resources are not ready, and not when a compile fails", async () => {
     const gpu = mockGpu();
     let resources: Array<{ slot: number; textureView: GPUTextureView }> | null = null;

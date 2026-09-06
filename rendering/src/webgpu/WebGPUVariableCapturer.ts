@@ -667,12 +667,26 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     storageBuffers: Map<string, GPUBuffer>,
   ): GPUBindGroup | null {
     if (!this.uniformBuffer || !this.captureUniformBuffer) {
+      // Both are created together in ensureUniformBuffers before the batch
+      // starts; a miss here means dispose() raced the batch rather than a
+      // real failure, so the caller has to retry it.
+      this.deferred = true;
+      this.pendingError = "Capture uniform buffers are not resolvable yet";
       return null;
     }
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
     const plan = buildSlangBindingPlan(channels);
     const channelEntries = slangChannelResourceEntries(plan, channelResources, this.sampler);
-    if (!channelEntries) return null;
+    if (!channelEntries) {
+      // The resolver can report "resolved, nothing yet" as an empty array
+      // instead of null - e.g. mid pass-switch, before that pass's textures
+      // are bound - which the null check above does not catch. The plan
+      // still expects its channel slots, so this is the same not-ready
+      // condition, not a permanent failure.
+      this.deferred = true;
+      this.pendingError = "Capture channel resources are not resolvable yet";
+      return null;
+    }
     entries.push(...channelEntries);
     const storageBaseBinding = plan.nextBinding;
     for (const node of storage) {
