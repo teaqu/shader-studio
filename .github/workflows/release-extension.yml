@@ -20,10 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  package:
-    name: Verify and Package
+  meta:
+    name: Read release metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.meta.outputs.version }}
       vsix_path: ${{ steps.meta.outputs.vsix_path }}
@@ -32,24 +32,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
-      - name: Install pinned Slang WASM test binary
-        run: |
-          curl -fsSL https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-wasm.zip -o /tmp/slang-wasm.zip
-          echo "bff18e4a0a0f1d377d4f8ac8bc0e9c631351f2e223a0482a279c1742f3d5bcc6  /tmp/slang-wasm.zip" | sha256sum --check
-          unzip -j /tmp/slang-wasm.zip slang-wasm.wasm -d ui/src/slang
-
+      # First, and on its own runner: a tag that does not match the version is
+      # worth knowing in seconds rather than after the gates have run.
       - name: Read release metadata
         id: meta
         shell: bash
@@ -65,45 +49,48 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "vsix_path=${VSIX_PATH}" >> "${GITHUB_OUTPUT}"
 
+  # The same gates every commit passes on its way to main, macOS runners and
+  # all. Running them here on Linux is what published nothing for two tags:
+  # the WebGPU e2e cannot read back pixels without a GPU.
+  verify:
+    name: Verify
+    needs: meta
+    uses: ./.github/workflows/verify.yml
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    needs: [meta, verify]
+    timeout-minutes: 30
+    outputs:
+      version: ${{ needs.meta.outputs.version }}
+      vsix_path: ${{ needs.meta.outputs.vsix_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build workspace dependencies
         run: npm run build:deps -w extension
 
-      - name: Run workspace Vitest suite
-        run: npm test
-
-      - name: Run rendering browser E2E tests
-        run: npm run test:e2e -w rendering
-
-      - name: Run UI type check
-        run: npm run check -w ui
-
-      - name: Run extension tests
-        run: xvfb-run -a npm test -w extension
-
-      - name: Run VS Code webview E2E tests
-        id: vscode-e2e
-        run: xvfb-run -a npm run test:e2e:vscode:run -w extension
-        env:
-          SHADER_STUDIO_E2E_GREP: 'Shader language servers|parameter overrides|inline rendering'
-
-      - name: Upload VS Code webview E2E traces
-        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: vscode-webview-e2e-failures
-          path: extension/.playwright/
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: Package VSIX
         working-directory: extension
-        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
+        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ needs.meta.outputs.vsix_path }}"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:
-          name: shader-studio-${{ steps.meta.outputs.version }}-vsix
-          path: ${{ steps.meta.outputs.vsix_path }}
+          name: shader-studio-${{ needs.meta.outputs.version }}-vsix
+          path: ${{ needs.meta.outputs.vsix_path }}
           if-no-files-found: error
 
   publish-vscode:
