@@ -1,5 +1,7 @@
 import type { languages } from 'monaco-editor';
-import { shaderStudioBuiltinUniformNames } from '@shader-studio/types';
+import {
+  SLANG_TYPE_KEYWORDS, shaderStudioBuiltinUniformNames
+} from '@shader-studio/types';
 
 // These concrete vocabularies mirror extension/syntaxes/slang.tmLanguage.json.
 // The parity tests intentionally compare both surfaces to prevent editor drift.
@@ -74,20 +76,7 @@ const slangMatrixTypePattern = new RegExp(
   `(?:${slangMatrixBases.join('|')})[2-4]x[2-4](?!\\w)`,
 );
 
-export const slangTypes = [
-  'void', 'bool', 'bool2', 'bool3', 'bool4', 'half', 'half2', 'half3', 'half4',
-  'float', 'float2', 'float3', 'float4', 'double', 'double2', 'double3', 'double4',
-  'int', 'int2', 'int3', 'int4', 'uint', 'uint2', 'uint3', 'uint4',
-  'float16_t', 'float32_t', 'float64_t',
-  'int8_t', 'uint8_t', 'int16_t', 'uint16_t', 'int32_t', 'uint32_t', 'int64_t', 'uint64_t',
-  'vector', 'matrix', 'Texture1D', 'Texture2D', 'Texture3D', 'TextureCube',
-  'Texture1DArray', 'Texture2DArray', 'Texture3DArray', 'TextureCubeArray',
-  'RWTexture1D', 'RWTexture2D', 'RWTexture3D', 'RWTexture1DArray',
-  'RWTexture2DArray', 'RWTexture3DArray', 'SamplerState', 'SamplerComparisonState',
-  'Buffer', 'RWBuffer', 'StructuredBuffer', 'RWStructuredBuffer',
-  'ByteAddressBuffer', 'RWByteAddressBuffer', 'ParameterBlock', 'ConstantBuffer',
-  'RaytracingAccelerationStructure',
-];
+export const slangTypes = [...SLANG_TYPE_KEYWORDS];
 
 const preprocessorAlternation = slangPreprocessorDirectives.join('|');
 const attributeAlternation = slangAttributeKeywords.join('|');

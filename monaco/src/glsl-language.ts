@@ -3,34 +3,11 @@
  * Provides syntax highlighting for GLSL/Shadertoy shaders.
  */
 import {
+  GLSL_TYPE_KEYWORDS,
   SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE,
   SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE,
   shaderStudioBuiltinUniformNames,
 } from '@shader-studio/types';
-
-const glslVectorTypes = ['vec', 'dvec', 'ivec', 'uvec', 'bvec']
-  .flatMap((prefix) => [2, 3, 4].map((size) => `${prefix}${size}`));
-const glslMatrixTypes = ['mat', 'dmat'].flatMap((prefix) => [
-  ...[2, 3, 4].map((size) => `${prefix}${size}`),
-  ...[2, 3, 4].flatMap((rows) => (
-    [2, 3, 4].map((columns) => `${prefix}${rows}x${columns}`)
-  )),
-]);
-const glslResourceShapes = [
-  '1D', '2D', '3D', 'Cube', '2DRect', '1DArray', '2DArray', 'CubeArray',
-  'Buffer', '2DMS', '2DMSArray',
-];
-const glslSamplerTypes = ['', 'i', 'u'].flatMap((prefix) => (
-  glslResourceShapes.map((shape) => `${prefix}sampler${shape}`)
-));
-const glslShadowSamplerTypes = [
-  'sampler1DShadow', 'sampler2DShadow', 'samplerCubeShadow',
-  'sampler2DRectShadow', 'sampler1DArrayShadow', 'sampler2DArrayShadow',
-  'samplerCubeArrayShadow',
-];
-const glslImageTypes = ['', 'i', 'u'].flatMap((prefix) => (
-  glslResourceShapes.map((shape) => `${prefix}image${shape}`)
-));
 
 export const glslPredefinedVariables = [
   'gl_Position', 'gl_PointSize', 'gl_ClipDistance', 'gl_CullDistance',
@@ -86,14 +63,7 @@ export const glslLanguageDefinition = {
     'buffer', 'shared', 'patch', 'coherent', 'volatile', 'restrict',
     'readonly', 'writeonly',
   ],
-  types: [
-    'float', 'double', 'int', 'uint', 'void', 'bool', 'atomic_uint',
-    ...glslVectorTypes,
-    ...glslMatrixTypes,
-    ...glslSamplerTypes,
-    ...glslShadowSamplerTypes,
-    ...glslImageTypes,
-  ],
+  types: [...GLSL_TYPE_KEYWORDS],
   builtins: [
     'radians', 'degrees', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
     'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh',

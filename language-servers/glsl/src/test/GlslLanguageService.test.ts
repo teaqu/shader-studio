@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CompletionItemKind, DiagnosticSeverity, DiagnosticTag, DocumentHighlightKind } from "vscode-languageserver-protocol";
-import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import { isShaderEntryPointName, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
 const uri = "file:///workspace/image.glsl";
@@ -69,6 +69,94 @@ describe("GlslLanguageService", () => {
     expect(labels).not.toContain("texture2D");
     expect(labels).not.toContain("iChannelN");
     expect(labels).not.toContain("mainVertex");
+  });
+
+  describe("type keywords", () => {
+    const body = (line: string) => `void mainImage(out vec4 color, in vec2 coord) {
+  ${line}
+  color = vec4(0.0);
+}`;
+
+    async function completeAt(text: string, character: number) {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+      return instance.completion({ document: revision, position: { line: 1, character } });
+    }
+
+    it("offers types at the start of a statement", async () => {
+      const items = await completeAt(body(""), 2);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["float", "vec3", "vec4", "mat4"]));
+      expect(items.find((item) => item.label === "vec3")).toEqual(
+        expect.objectContaining({ kind: CompletionItemKind.Keyword, detail: "type" }),
+      );
+    });
+
+    it("sorts types above functions at the start of a statement", async () => {
+      const items = await completeAt(body(""), 2);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(sortTextOf("vec3")! < sortTextOf("normalize")!).toBe(true);
+      expect(sortTextOf("vec3")! < sortTextOf("coord")!).toBe(true);
+      expect(sortTextOf("float")! < sortTextOf("iResolution")!).toBe(true);
+    });
+
+    it("sorts types below symbols in an expression, where they are only constructors", async () => {
+      const text = body("color = ");
+      const items = await completeAt(text, "  color = ".length);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(items.map((item) => item.label)).toContain("vec3");
+      expect(sortTextOf("normalize")! < sortTextOf("vec3")!).toBe(true);
+      expect(sortTextOf("coord")! < sortTextOf("vec3")!).toBe(true);
+    });
+
+    it("offers no existing symbol while a declared name is being written after a type", async () => {
+      const authored = async (line: string, character: number) => (await completeAt(body(line), character))
+        .map((item) => item.label)
+        .filter((label) => !isShaderEntryPointName(label));
+
+      expect(await authored("vec3 ", "  vec3 ".length)).toEqual([]);
+      expect(await authored("vec3 up", "  vec3 up".length)).toEqual([]);
+      expect(await authored("const vec3 up", "  const vec3 up".length)).toEqual([]);
+    });
+
+    it("still offers the entry point while its own name is being written", async () => {
+      const items = await completeAt(body("vec3 up"), "  vec3 up".length);
+
+      expect(items.map((item) => item.label)).toEqual(["mainImage"]);
+    });
+
+    it("offers nothing after a struct declared by the shader", async () => {
+      const text = `struct Material { float roughness; };
+void mainImage(out vec4 color, in vec2 coord) {
+  Material surface
+  color = vec4(0.0);
+}`;
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+      const items = await instance.completion({
+        document: revision,
+        position: { line: 2, character: "  Material surface".length },
+      });
+
+      expect(items.map((item) => item.label).filter((label) => !isShaderEntryPointName(label))).toEqual([]);
+    });
+
+    it("still offers types while the type word itself is being written", async () => {
+      const items = await completeAt(body("ve"), "  ve".length);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["vec2", "vec3", "vec4"]));
+    });
+
+    it("keeps types out of member completions", async () => {
+      const items = await completeAt(body("coord."), "  coord.".length);
+
+      expect(items.map((item) => item.label)).not.toContain("vec3");
+    });
   });
 
   it("offers generated metadata aliases for configured higher GLSL channel slots", async () => {
@@ -206,9 +294,9 @@ void mainImage(out vec4 color, in vec2 coord) {
       uri,
       languageId: "glsl",
       version: 1,
-      text: "#version 100\nvoid mainImage(out vec4 color, in vec2 coord) {}",
+      text: "#version 100\nvoid mainImage(out vec4 color, in vec2 coord) {\n  color = \n}",
     });
-    const labels = (await instance.completion({ document: revision, position: { line: 1, character: 10 } }))
+    const labels = (await instance.completion({ document: revision, position: { line: 2, character: "  color = ".length } }))
       .map((item) => item.label);
     expect(labels).toContain("texture2D");
     expect(labels).not.toContain("texture");

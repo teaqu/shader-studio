@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CompletionItemKind, DiagnosticSeverity, DiagnosticTag } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import { isShaderEntryPointName } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_INTRINSICS } from "../intrinsics";
 import type { SlangLanguageServerModule, SlangList } from "../slangLanguageServerTypes";
@@ -83,6 +84,97 @@ describe("SlangLanguageService", () => {
 
     const completions = await service.completion({ document: revision, position: { line: 1, character: 25 } });
     expect(completions.map((item) => item.label)).not.toContain("pixelPosition");
+  });
+
+  describe("type keywords", () => {
+    const body = (line: string) => `float4 mainImage(float2 coord)
+{
+    ${line}
+    return float4(0.0);
+}`;
+
+    async function completeAt(text: string, character: number) {
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([]));
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+      return service.completion({ document: revision, position: { line: 2, character } });
+    }
+
+    it("offers types at the start of a statement", async () => {
+      const items = await completeAt(body(""), 4);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["float", "float3", "float4", "uint2"]));
+      expect(items.find((item) => item.label === "float3")).toEqual(
+        expect.objectContaining({ kind: CompletionItemKind.Keyword, detail: "type" }),
+      );
+    });
+
+    it("sorts types above symbols at the start of a statement", async () => {
+      const items = await completeAt(body(""), 4);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(sortTextOf("float3")! < sortTextOf("iResolution")!).toBe(true);
+      expect(sortTextOf("float3")! < sortTextOf("tint")!).toBe(true);
+    });
+
+    it("sorts types below symbols in an expression, where they are only constructors", async () => {
+      const items = await completeAt(body("float3 col = "), "    float3 col = ".length);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(items.map((item) => item.label)).toContain("float3");
+      expect(sortTextOf("iResolution")! < sortTextOf("float3")!).toBe(true);
+    });
+
+    it("offers no existing symbol while a declared name is being written after a type", async () => {
+      const authored = async (line: string, character: number) => (await completeAt(body(line), character))
+        .map((item) => item.label)
+        .filter((label) => !isShaderEntryPointName(label));
+
+      expect(await authored("float3 ", "    float3 ".length)).toEqual([]);
+      expect(await authored("float3 col", "    float3 col".length)).toEqual([]);
+      expect(await authored("const float3 col", "    const float3 col".length)).toEqual([]);
+    });
+
+    it("still offers the entry point while its own name is being written", async () => {
+      const items = await completeAt(body("float3 col"), "    float3 col".length);
+
+      expect(items.map((item) => item.label)).toEqual(["mainImage"]);
+    });
+
+    it("offers nothing after a struct declared by the shader", async () => {
+      const text = `struct Material { float roughness; };
+float4 mainImage(float2 coord)
+{
+    Material surface
+    return float4(0.0);
+}`;
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([]));
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+      const items = await service.completion({
+        document: revision,
+        position: { line: 3, character: "    Material surface".length },
+      });
+
+      expect(items.map((item) => item.label).filter((label) => !isShaderEntryPointName(label))).toEqual([]);
+    });
+
+    it("still offers types while the type word itself is being written", async () => {
+      const items = await completeAt(body("flo"), "    flo".length);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["float", "float2", "float3"]));
+    });
+
+    it("keeps types out of member completions", async () => {
+      const items = await completeAt(body("coord."), "    coord.".length);
+
+      expect(items.map((item) => item.label)).not.toContain("float3");
+    });
   });
 
   it("uses concise intrinsic descriptions without return-value boilerplate", () => {
@@ -418,11 +510,15 @@ float4 mainImage(float2 p)
     const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
-    const completions = await service.completion({ document: revision, position: { line: 0, character: 5 } });
-    expect(completions.filter((item) => item.label === "mainVertex")).toHaveLength(1);
-    expect(completions.filter((item) => item.label === "position")).toHaveLength(1);
-    expect(completions.find((item) => item.label === "mainVertex")?.documentation)
+    // The hook name is offered while it is being declared; its parameters belong
+    // to the body, where they can actually be used.
+    const named = await service.completion({ document: revision, position: { line: 0, character: 5 } });
+    expect(named.filter((item) => item.label === "mainVertex")).toHaveLength(1);
+    expect(named.find((item) => item.label === "mainVertex")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex hook") }));
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("position +=") } });
+    expect(completions.filter((item) => item.label === "position")).toHaveLength(1);
     expect(completions.find((item) => item.label === "position")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
     expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))

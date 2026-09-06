@@ -20,6 +20,8 @@ import {
   DocumentStore,
   VirtualFileSystem,
   createLiteralColorPresentations,
+  declarationContext,
+  rankCompletionsForContext,
   findLiteralConstructorColors,
   findMemberAccess,
   isPositionInComment,
@@ -36,6 +38,10 @@ import {
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildGlslAuthoringPreamble,
+  isShaderEntryPointName,
+  isShaderTypeKeyword,
+  shaderTypeCompletionKeywords,
+  shaderValueTypeKeywords,
   isShaderLanguageReservedTerm,
   isValidShaderIdentifier,
   validateShaderAuthoringEnvironment,
@@ -143,7 +149,6 @@ export class GlslLanguageService implements LanguageService {
         params.document.uri,
       );
     }
-    const items = new Map<string, CompletionItem>();
     // The statement being completed is rarely valid GLSL, and a failed parse leaves the
     // analysis with no symbols at all, so recover the declarations that precede it.
     const analysis = state.analysis.parsedSuccessfully
@@ -154,6 +159,13 @@ export class GlslLanguageService implements LanguageService {
         state.environment.stage,
         params.position,
       );
+    // A name is being invented after a type, so nothing that already exists fits.
+    const context = declarationContext(
+      state.document.text,
+      params.position,
+      (word) => isShaderTypeKeyword("glsl", word) || this.isDeclaredType(params.document.uri, analysis, word),
+    );
+    const items = new Map<string, CompletionItem>();
     for (const symbol of visibleSymbolsAtPosition(analysis, params.position)) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(analysis, symbol) : undefined;
       const fragmentHook = state.environment.stage === "fragment" ? mainImageFeature(analysis, symbol) : undefined;
@@ -208,7 +220,33 @@ export class GlslLanguageService implements LanguageService {
     for (const resource of state.environment.resources) {
       items.set(resource.name, completionFromDoc(resource.name, resource.kind, "Shader Studio shader resource."));
     }
-    return [...items.values()];
+    // A name is being invented, so the author's own symbols do not belong. The
+    // renderer's entry points do: they have to be spelled exactly.
+    if (context === "declarator") {
+      return [...items.values()].filter((item) => isShaderEntryPointName(item.label));
+    }
+    for (const type of shaderTypeCompletionKeywords("glsl")) {
+      if (!items.has(type)) {
+        items.set(type, { label: type, kind: CompletionItemKind.Keyword, detail: "type" });
+      }
+    }
+    return rankCompletionsForContext(
+      [...items.values()],
+      context,
+      (label) => isShaderTypeKeyword("glsl", label),
+    );
+  }
+
+  /** Whether the word names a struct declared by the document or anything it includes. */
+  private isDeclaredType(uri: string, analysis: GlslAnalysisDocument, word: string): boolean {
+    const analyses = [
+      analysis,
+      ...(this.includeAnalyses.get(uri) ?? []),
+      ...(this.generatedAnalyses.has(uri) ? [this.generatedAnalyses.get(uri)!] : []),
+    ];
+    return analyses.some((analysis) => analysis.symbols.some((symbol) => (
+      symbol.kind === "type" && symbol.name === word
+    )));
   }
 
   async hover(params: DocumentPositionParams): Promise<Hover | null> {

@@ -41,6 +41,48 @@ describe("SlangLanguageService with bundled WASM", () => {
     }
   }, 20_000);
 
+  it("leads with types at a statement start and offers no symbol after one", async () => {
+    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
+    const module = await createSlangModule({ wasmBinary });
+    const service = new SlangLanguageService(module);
+    const uri = "file:///types.slang";
+    const environment: ShaderAuthoringEnvironment = {
+      documentUri: uri,
+      languageId: "slang",
+      generation: 1,
+      passName: "Image",
+      stage: "fragment",
+      customUniforms: [],
+      resources: [],
+      virtualFiles: [],
+    };
+    const text = `float4 mainImage(float2 coord)
+{
+    float2 uv = coord;
+    fl
+    return float4(uv, 0.0, 1.0);
+}`;
+    const document = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
+    try {
+      await service.syncEnvironment(environment);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+      const started = await service.completion({ document, position: { line: 3, character: 6 } });
+      const labels = started.map((item) => item.label);
+      expect(labels).toEqual(expect.arrayContaining(["float", "float2", "float3", "float4"]));
+      const sortTextOf = (label: string) => started.find((item) => item.label === label)?.sortText;
+      expect(sortTextOf("float4")! < sortTextOf("floor")!).toBe(true);
+
+      const declaring = await service.completion({
+        document,
+        position: { line: 2, character: "    float2 uv".length },
+      });
+      expect(declaring.map((item) => item.label).filter((label) => label !== "mainImage")).toEqual([]);
+    } finally {
+      await service.dispose();
+    }
+  }, 30_000);
+
   it("uses the official browser language server for completion and diagnostics", async () => {
     const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
     const module = await createSlangModule({ wasmBinary });

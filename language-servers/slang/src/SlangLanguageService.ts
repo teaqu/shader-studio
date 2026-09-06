@@ -18,8 +18,10 @@ import {
   DocumentStore,
   VirtualFileSystem,
   createLiteralColorPresentations,
+  declarationContext,
   findLiteralConstructorColors,
   findMemberAccess,
+  rankCompletionsForContext,
   isPositionInComment,
   swizzleSelections,
   type ColorPresentationParams,
@@ -35,6 +37,9 @@ import {
   describeSlangChannel,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
+  isShaderEntryPointName,
+  isShaderTypeKeyword,
+  shaderTypeCompletionKeywords,
 } from "@shader-studio/types";
 import type {
   SlangDiagnostic,
@@ -131,6 +136,12 @@ export class SlangLanguageService implements LanguageService {
     if (isPositionInComment(state.document.text, params.position)) {
       return [];
     }
+    // A name is being invented after a type, so nothing that already exists fits.
+    const context = declarationContext(
+      state.document.text,
+      params.position,
+      (word) => isShaderTypeKeyword("slang", word) || declaresSlangType(state.document.text, word),
+    );
     const documentedFunctions = documentedSlangFunctions(state.environment);
     const computeFeatures = state.environment.stage === "compute" ? SLANG_COMPUTE_FEATURES : [];
     const vertexFeatures = state.environment.stage === "vertex"
@@ -281,7 +292,22 @@ export class SlangLanguageService implements LanguageService {
         detail: local.typeName,
       });
     }
-    return [...items.values()];
+    // A name is being invented, so the author's own symbols do not belong. The
+    // renderer's entry points do: they have to be spelled exactly.
+    if (context === "declarator") {
+      return [...items.values()].filter((item) => isShaderEntryPointName(item.label));
+    }
+    for (const type of shaderTypeCompletionKeywords("slang")) {
+      const key = `${type}:type`;
+      if (![...items.values()].some((item) => item.label === type)) {
+        items.set(key, { label: type, kind: CompletionItemKind.Keyword, detail: "type" });
+      }
+    }
+    return rankCompletionsForContext(
+      [...items.values()],
+      context,
+      (label) => isShaderTypeKeyword("slang", label),
+    );
   }
 
   async hover(params: DocumentPositionParams): Promise<Hover | null> {
@@ -1195,6 +1221,13 @@ interface SlangDeclaration {
   kind: SymbolKind;
   range: Range;
   selectionRange: Range;
+}
+
+/** Whether the shader declares a struct by this name, so it opens a declaration too. */
+function declaresSlangType(source: string, word: string): boolean {
+  return findSlangDeclarations(source).some((declaration) => (
+    declaration.kind === SymbolKind.Struct && declaration.name === word
+  ));
 }
 
 function findSlangDeclarations(source: string): SlangDeclaration[] {
