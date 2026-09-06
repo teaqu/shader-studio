@@ -88,11 +88,13 @@ When using 3D geometry, the fragment shader receives per-pixel interpolated valu
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
+    - `iCameraPosition` — world-space camera position
 
 === "Slang"
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
+    - `iCameraPosition` — world-space camera position
 
 ## Examples
 

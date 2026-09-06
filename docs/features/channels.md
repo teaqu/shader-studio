@@ -267,4 +267,4 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 
 ## Next
 
-[Time and Playback Controls](time-controls.md) — scrub, loop, and control playback speed
+[Uniforms](uniforms.md) — built-in and custom uniforms, including channel samplers
