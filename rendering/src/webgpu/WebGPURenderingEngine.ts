@@ -1786,7 +1786,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
     // Every failing pass reports a shared module's error, so collapse them
     // before the result leaves the engine.
-    return { ...result, errors: dedupeCompilerErrors(result.errors) };
+    const errors = dedupeCompilerErrors(result.errors);
+    captureDiagEvent("compilation failed", { path, generation, errors: errors.join(" || ") });
+    return { ...result, errors };
   }
 
   /** Release the active shader after switching to a different shader fails. */
