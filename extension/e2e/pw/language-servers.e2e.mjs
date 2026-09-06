@@ -290,7 +290,8 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.symbols.includes('shade')).toBeTruthy();
     expect(result.symbols.includes('mainImage')).toBeTruthy();
     expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
-    expect(result.colorPresentations.some((item) => item.includes('vec4')), JSON.stringify(result.colorPresentations)).toBeTruthy();
+    // The literal is a vec3; editing its colour must not widen it to a vec4.
+    expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['vec3(1.0, 0.5, 0.0)']);
   });
 
   test('resolves GLSL references, highlights, and renames', async ({ vscode }) => {
@@ -346,7 +347,7 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.symbols.includes('shade')).toBeTruthy();
     expect(result.symbols.includes('mainImage')).toBeTruthy();
     expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
-    expect(result.colorPresentations.some((item) => item.includes('float4')), JSON.stringify(result.colorPresentations)).toBeTruthy();
+    expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['float4(1.0, 0.5, 0.0, 1.0)']);
   });
 
   test('provides vertex and compute contracts only in their configured stages', async ({ vscode }) => {
