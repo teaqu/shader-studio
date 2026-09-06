@@ -104,6 +104,9 @@ export const test = base.extend({
     });
 
     const window = await app.firstWindow({ timeout: 60_000 });
+    // Arm the capture diagnostics before any webview script runs: setting the
+    // flag after the frame appears misses the shader compile that happens on load.
+    await window.addInitScript(() => { globalThis.__captureDiag = true; }).catch(() => {});
     await window.waitForSelector('.monaco-workbench', { timeout: 60_000 });
 
     const port = Number(await waitFor(

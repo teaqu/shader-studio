@@ -1248,6 +1248,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       const previousComputePipelines = this.computePipelines;
       const previousResourceManager = this.resourceManager;
       const hadInstalledPipeline = previousPipelines.size > 0 || previousComputePipelines.size > 0;
+      captureDiagEvent("pass graph installed", {
+        path,
+        generation,
+        passes: graph.passes.map((node) => node.name).join(",") || "(none)",
+      });
       this.passGraph = graph.passes;
       this.passPipelines = nextPipelines;
       this.passKeys = nextKeys;
@@ -1801,6 +1806,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.passKeys.clear();
     this.computePipelines.clear();
     this.computeKeys.clear();
+    captureDiagEvent("pass graph cleared", { site: "release-active-shader", had: this.passGraph.length });
     this.passGraph = [];
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
@@ -3246,6 +3252,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.computeKeys.clear();
     this.dispatchOnceRan.clear();
     this.hasSubmittedFrameForInstalledGeneration = false;
+    captureDiagEvent("pass graph cleared", { site: "discard-installed-generation", had: this.passGraph.length });
     this.passGraph = [];
     this.installedCompile = null;
     this.installedResourceKey = null;
