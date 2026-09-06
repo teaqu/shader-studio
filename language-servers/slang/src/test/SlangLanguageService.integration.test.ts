@@ -142,7 +142,7 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
     const uri = "file:///workspace/foundation.slang";
     const source = [
       "import lib.palette;",
-      "float4 mainImage(float2 p) { return float4(paletteColor(), 1.0); }",
+      "float4 mainImage(float2 p) { return float4(paletteColor() + p.x, 1.0); }",
     ].join("\n");
     const environment: ShaderAuthoringEnvironment = {
       documentUri: uri,
@@ -183,6 +183,7 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
       "void simulateSubstep(uint3 tid : SV_DispatchThreadID)",
       "{",
       "    bool readA = (iDispatch % 2) == 0;",
+      "    if (readA) {}",
       "}",
     ].join("\n");
     const environment: ShaderAuthoringEnvironment = {

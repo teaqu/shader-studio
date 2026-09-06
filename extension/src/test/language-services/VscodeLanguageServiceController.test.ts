@@ -759,6 +759,40 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("publishes GLSL unused-variable diagnostics in VS Code", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const document = await vscode.workspace.openTextDocument({
+      language: "glsl",
+      content: "void mainImage(out vec4 color, in vec2 p) { float unused = 1.0; color = vec4(p, 0.0, 1.0); }",
+    });
+    await vscode.window.showTextDocument(document);
+
+    const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
+
+    assert.strictEqual(diagnostic.source, "shader-studio-glsl-ls");
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
+  test("publishes Slang unused-variable diagnostics in VS Code", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const document = await vscode.workspace.openTextDocument({
+      language: "slang",
+      content: "float4 mainImage(float2 p) { float unused = p.x; return float4(p, 0.0, 1.0); }",
+    });
+    await vscode.window.showTextDocument(document);
+
+    const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
+
+    assert.strictEqual(diagnostic.source, "shader-studio-slang-ls");
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
   test("analyses the buffer that takes over a reused untitled name", async function() {
     this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
     // VS Code hands `Untitled-1` to the next buffer once the last one goes, so

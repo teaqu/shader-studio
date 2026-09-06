@@ -261,6 +261,26 @@ describe("MonacoLanguageServiceManager", () => {
     manager.dispose();
   });
 
+  it("forwards diagnostic tags to Monaco markers", async () => {
+    const fixture = monacoFixture();
+    const service = serviceFixture();
+    vi.mocked(service.diagnostics).mockResolvedValue([{
+      range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
+      severity: 2,
+      source: "shader-studio-glsl-ls",
+      code: "unused-variable",
+      message: "Unused variable 'unused'.",
+      tags: [1],
+    }]);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service });
+    await manager.syncEnvironment(ENVIRONMENT);
+
+    const calls = vi.mocked(fixture.monaco.editor.setModelMarkers).mock.calls;
+    const markers = calls.find((call) => call[1] === "shader-studio-glsl-ls")?.[2];
+    expect(markers).toEqual([expect.objectContaining({ tags: [1] })]);
+    manager.dispose();
+  });
+
   it("creates navigable Monaco models for virtual dependency files", async () => {
     const { monaco } = monacoFixture();
     const manager = new MonacoLanguageServiceManager(monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture() });

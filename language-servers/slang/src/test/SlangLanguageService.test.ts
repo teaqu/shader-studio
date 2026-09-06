@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CompletionItemKind } from "vscode-languageserver-protocol";
+import { CompletionItemKind, DiagnosticSeverity, DiagnosticTag } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_INTRINSICS } from "../intrinsics";
@@ -554,6 +554,47 @@ float4 mainImage(float2 p)
     expect(server.completion.mock.calls[0]?.[1].line).toBeGreaterThan(0);
     expect(server.completion.mock.results[0]?.value.delete).toHaveBeenCalledOnce();
     expect(await service.documentSymbols({ document: revision })).toEqual([]);
+  });
+
+  it("reports unused Slang locals and parameters as warnings", async () => {
+    const { module, server } = fixture();
+    server.getDiagnostics.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    const text = `float helper(float used, float unusedParam)
+{
+    return used;
+}
+float4 mainImage(float2 p)
+{
+    float unused = p.x * 2.0;
+    return float4(p, 0.0, 1.0);
+}`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const diagnostics = await service.diagnostics({ document: revision });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "unused-variable",
+        message: "Unused variable 'unused'.",
+        severity: DiagnosticSeverity.Warning,
+        tags: [DiagnosticTag.Unnecessary],
+        source: "shader-studio-slang-ls",
+        range: { start: { line: 6, character: 10 }, end: { line: 6, character: 16 } },
+      }),
+      expect.objectContaining({
+        code: "unused-parameter",
+        message: "Unused parameter 'unusedParam'.",
+        severity: DiagnosticSeverity.Warning,
+        tags: [DiagnosticTag.Unnecessary],
+        source: "shader-studio-slang-ls",
+        range: { start: { line: 0, character: 31 }, end: { line: 0, character: 42 } },
+      }),
+    ]));
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).not.toMatch(
+      /'used'|'p'|'helper'|'mainImage'/,
+    );
   });
 
   it("provides Shader Studio docs and Slang literal colors", async () => {

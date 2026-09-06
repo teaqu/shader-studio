@@ -1,6 +1,7 @@
 import {
   CompletionItemKind,
   DiagnosticSeverity,
+  DiagnosticTag,
   MarkupKind,
   SymbolKind,
   type CompletionItem,
@@ -47,7 +48,7 @@ import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
 import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
-import { resolveSlangExpressionType, visibleSlangLocals } from "./expressionType.js";
+import { findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals } from "./expressionType.js";
 import { SLANG_SWIZZLE_SETS, slangVectorTypeName } from "./slangTypes.js";
 
 const CAPABILITIES: ServerCapabilities = {
@@ -479,7 +480,7 @@ export class SlangLanguageService implements LanguageService {
       message: issue.message,
     }));
     const compiler = official.length === 0 ? this.compilerDiagnostics(state) : [];
-    return [...official, ...compiler, ...environment];
+    return [...official, ...compiler, ...environment, ...this.unusedLocalDiagnostics(state, official)];
   }
 
   async documentColors(params: DocumentParams) {
@@ -541,6 +542,28 @@ export class SlangLanguageService implements LanguageService {
     const environment = this.store.getEnvironment(params.document.uri);
     const offset = this.lineOffsets.get(params.document.uri);
     return document && environment && offset !== undefined ? { document, environment, offset } : undefined;
+  }
+
+  /**
+   * Warns about Slang locals and parameters nothing reads, recovered from
+   * source text because the bundled server exposes no reference index.
+   * Reports overlapping an official diagnostic are left to the official one
+   * so the same span is never squiggled twice.
+   */
+  private unusedLocalDiagnostics(
+    state: NonNullable<ReturnType<SlangLanguageService["current"]>>,
+    official: readonly Diagnostic[],
+  ): Diagnostic[] {
+    return findUnusedSlangLocals(state.document.text)
+      .filter((local) => !official.some((diagnostic) => rangesOverlap(diagnostic.range, local.range)))
+      .map((local): Diagnostic => ({
+        range: local.range,
+        severity: DiagnosticSeverity.Warning,
+        source: "shader-studio-slang-ls",
+        code: local.kind === "parameter" ? "unused-parameter" : "unused-variable",
+        message: `Unused ${local.kind} '${local.name}'.`,
+        tags: [DiagnosticTag.Unnecessary],
+      }));
   }
 
   private compilerDiagnostics(state: NonNullable<ReturnType<SlangLanguageService["current"]>>): Diagnostic[] {
@@ -842,6 +865,17 @@ function userRange(range: Range, offset: number, source: string): Range | undefi
 }
 function zeroRange(): Range {
   return { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+}
+
+function comparePositions(
+  left: { line: number; character: number },
+  right: { line: number; character: number },
+): number {
+  return left.line - right.line || left.character - right.character;
+}
+
+function rangesOverlap(left: Range, right: Range): boolean {
+  return comparePositions(left.start, right.end) < 0 && comparePositions(right.start, left.end) < 0;
 }
 
 function consumeCompilerTargets(targets: import("./slangLanguageServerTypes.js").SlangCompileTarget[] | SlangList<import("./slangLanguageServerTypes.js").SlangCompileTarget>) {

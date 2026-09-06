@@ -336,6 +336,9 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       );
       diagnostic.source = item.source;
       diagnostic.code = item.code;
+      if (item.tags) {
+        diagnostic.tags = item.tags.map(toDiagnosticTag);
+      }
       return diagnostic;
     }));
   }
@@ -557,4 +560,9 @@ function toHighlightKind(kind: number | undefined): vscode.DocumentHighlightKind
 
 function toSeverity(value: number | undefined): vscode.DiagnosticSeverity {
   return value === 2 ? vscode.DiagnosticSeverity.Warning : value === 3 ? vscode.DiagnosticSeverity.Information : value === 4 ? vscode.DiagnosticSeverity.Hint : vscode.DiagnosticSeverity.Error;
+}
+
+/** LSP diagnostic tags are Unnecessary=1, Deprecated=2, matching the VS Code values. */
+function toDiagnosticTag(value: number): vscode.DiagnosticTag {
+  return value === 2 ? vscode.DiagnosticTag.Deprecated : vscode.DiagnosticTag.Unnecessary;
 }

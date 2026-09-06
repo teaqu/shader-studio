@@ -318,6 +318,7 @@ export class MonacoLanguageServiceManager {
       severity: markerSeverity(item.severity),
       source: item.source,
       code: item.code === undefined ? undefined : String(item.code),
+      tags: item.tags?.map((tag) => tag as unknown as Monaco.MarkerTag),
     })));
 
   }

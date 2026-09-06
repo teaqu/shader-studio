@@ -1,6 +1,7 @@
 import {
   CompletionItemKind,
   DiagnosticSeverity,
+  DiagnosticTag,
   DocumentHighlightKind,
   MarkupKind,
   SymbolKind,
@@ -376,6 +377,7 @@ export class GlslLanguageService implements LanguageService {
       message: item.message,
     }));
     diagnostics.push(...unresolvedReferenceDiagnostics(state.analysis, state.environment, this.includeAnalyses));
+    diagnostics.push(...unusedSymbolDiagnostics(state.analysis));
     diagnostics.push(...includeDiagnostics(state.document.uri, state.document.text, this.files));
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
@@ -482,6 +484,34 @@ function unresolvedReferenceDiagnostics(
       code: `undefined-${label}`,
       message: `Undefined ${label} '${reference.name}'.`,
     }));
+  });
+}
+
+/**
+ * Warns about local variables and parameters nothing reads. Globals stay
+ * quiet because uniforms and shared helpers are often set or used outside the
+ * document, and functions are entry points or API surface rather than dead
+ * locals. Assignments count as references in the analysis, so an `out`
+ * parameter the body writes to is considered used.
+ */
+function unusedSymbolDiagnostics(analysis: GlslAnalysisDocument): Diagnostic[] {
+  const scopesById = new Map(analysis.scopes.map((scope) => [scope.id, scope]));
+  return analysis.symbols.flatMap((symbol) => {
+    if ((symbol.kind !== "variable" && symbol.kind !== "parameter") || symbol.references.length > 0) {
+      return [];
+    }
+    if ((scopesById.get(symbol.scopeId)?.kind ?? "global") === "global") {
+      return [];
+    }
+    const label = symbol.kind === "parameter" ? "parameter" : "variable";
+    return [{
+      range: symbol.declaration,
+      severity: DiagnosticSeverity.Warning,
+      source: "shader-studio-glsl-ls",
+      code: `unused-${label}`,
+      message: `Unused ${label} '${symbol.name}'.`,
+      tags: [DiagnosticTag.Unnecessary],
+    }];
   });
 }
 

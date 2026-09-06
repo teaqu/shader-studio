@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CompletionItemKind, DocumentHighlightKind } from "vscode-languageserver-protocol";
+import { CompletionItemKind, DiagnosticSeverity, DiagnosticTag, DocumentHighlightKind } from "vscode-languageserver-protocol";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
@@ -334,6 +334,42 @@ void mainImage(out vec4 color, in vec2 position) {
     ]));
     expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).not.toMatch(
       /sky|includedValue|tint|iResolution|gl_FragCoord/,
+    );
+  });
+
+  it("reports unused locals and parameters without flagging used outputs or globals", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = `float unusedGlobal = 1.0;
+float helper(float usedParam, float unusedParam) {
+  float unusedLocal = usedParam * 2.0;
+  return usedParam;
+}
+void mainImage(out vec4 color, in vec2 coord) {
+  color = vec4(helper(coord.x, 1.0));
+}`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const diagnostics = await instance.diagnostics({ document: revision });
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "unused-variable",
+        message: "Unused variable 'unusedLocal'.",
+        severity: DiagnosticSeverity.Warning,
+        tags: [DiagnosticTag.Unnecessary],
+        range: { start: { line: 2, character: 8 }, end: { line: 2, character: 19 } },
+      }),
+      expect.objectContaining({
+        code: "unused-parameter",
+        message: "Unused parameter 'unusedParam'.",
+        severity: DiagnosticSeverity.Warning,
+        tags: [DiagnosticTag.Unnecessary],
+        range: { start: { line: 1, character: 36 }, end: { line: 1, character: 47 } },
+      }),
+    ]));
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).not.toMatch(
+      /'usedParam'|'unusedGlobal'|'helper'|'color'|'coord'/,
     );
   });
 

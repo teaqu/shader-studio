@@ -1,5 +1,5 @@
 import { parseMemberExpression, type MemberExpressionStep } from "@shader-studio/language-server-core";
-import type { Position } from "vscode-languageserver-protocol";
+import type { Position, Range } from "vscode-languageserver-protocol";
 import {
   canonicalizeSlangType,
   isSlangScalarType,
@@ -275,6 +275,137 @@ export function visibleSlangLocals(source: string, position: Position): readonly
     }
   }
   return [...visible.values()];
+}
+
+export interface SlangUnusedLocal {
+  readonly name: string;
+  readonly kind: SlangLocalKind;
+  readonly range: Range;
+}
+
+const MASKABLE_SPAN = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g;
+
+/** Blanks comments and string literals while preserving offsets, so only real code is scanned. */
+function maskNonCode(source: string): string {
+  return source.replace(MASKABLE_SPAN, (match) => match.replace(/[^\n]/g, " "));
+}
+
+function offsetToPosition(source: string, offset: number): Position {
+  const lines = source.split("\n");
+  let remaining = offset;
+  for (let line = 0; line < lines.length; line++) {
+    const length = lines[line]?.length ?? 0;
+    if (remaining <= length) {
+      return { line, character: remaining };
+    }
+    remaining -= length + 1;
+  }
+  const last = lines.length - 1;
+  return { line: last, character: lines[last]?.length ?? 0 };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Offset of a parameter's name. Declaration candidates anchor parameters at
+ * the function body's opening brace, so the parameter list just before it is
+ * searched for the declaring occurrence.
+ */
+function parameterNameOffset(masked: string, name: string, bodyOpen: number): number | undefined {
+  const listClose = masked.lastIndexOf(")", bodyOpen);
+  if (listClose < 0) {
+    return undefined;
+  }
+  let depth = 0;
+  let listOpen = -1;
+  for (let index = listClose - 1; index >= 0; index--) {
+    if (masked[index] === ")") {
+      depth++;
+    } else if (masked[index] === "(") {
+      if (depth === 0) {
+        listOpen = index;
+        break;
+      }
+      depth--;
+    }
+  }
+  if (listOpen < 0) {
+    return undefined;
+  }
+  let nameOffset: number | undefined;
+  for (const match of masked.slice(listOpen + 1, listClose).matchAll(new RegExp(`\\b${escapeRegExp(name)}\\b`, "g"))) {
+    nameOffset = listOpen + 1 + (match.index ?? 0);
+  }
+  return nameOffset;
+}
+
+/**
+ * Locals and parameters nothing reads. Slang ships no reference index here,
+ * so each declaration's scope is scanned for word occurrences attributed to
+ * the innermost visible declaration, matching block scoping rules. Only
+ * declarations inside a function body count: file-scope globals, cbuffer
+ * members, and struct fields are set or consumed outside the document and
+ * stay quiet.
+ */
+export function findUnusedSlangLocals(source: string): readonly SlangUnusedLocal[] {
+  const masked = maskNonCode(source);
+  const pairs = bracePairs(masked);
+  const bodies = findSlangFunctions(masked)
+    .map((fn) => masked.indexOf("{", fn.parameterListEnd))
+    .filter((open) => open >= 0)
+    .map((open) => ({ open, close: enclosingScopeEnd(pairs, open, masked.length) }));
+  const candidates = declarationCandidates(masked).filter((candidate) => (
+    candidate.scopeEnd !== masked.length
+    && (candidate.kind === "parameter"
+      || bodies.some((body) => body.open < candidate.offset && candidate.offset < body.close))
+  ));
+  const nameOffsets = new Map<VariableDeclaration, number>();
+  for (const candidate of candidates) {
+    nameOffsets.set(
+      candidate,
+      candidate.kind === "parameter"
+        ? parameterNameOffset(masked, candidate.name, candidate.offset) ?? candidate.offset
+        : candidate.offset,
+    );
+  }
+  const byName = new Map<string, VariableDeclaration[]>();
+  for (const candidate of candidates) {
+    const group = byName.get(candidate.name) ?? [];
+    group.push(candidate);
+    byName.set(candidate.name, group);
+  }
+  const unused: SlangUnusedLocal[] = [];
+  for (const candidate of candidates) {
+    const sameName = byName.get(candidate.name) ?? [];
+    const declarationOffsets = new Set(sameName.map((entry) => nameOffsets.get(entry) ?? entry.offset));
+    const nameOffset = nameOffsets.get(candidate) ?? candidate.offset;
+    const occurrences = new RegExp(`\\b${escapeRegExp(candidate.name)}\\b`, "g");
+    let read = false;
+    for (const match of masked.matchAll(occurrences)) {
+      const occurrence = match.index ?? -1;
+      if (occurrence <= nameOffset || occurrence >= candidate.scopeEnd || declarationOffsets.has(occurrence)) {
+        continue;
+      }
+      const owner = sameName
+        .filter((entry) => (nameOffsets.get(entry) ?? entry.offset) < occurrence && occurrence <= entry.scopeEnd)
+        .sort((left, right) => (nameOffsets.get(right) ?? right.offset) - (nameOffsets.get(left) ?? left.offset))[0];
+      if (owner === candidate) {
+        read = true;
+        break;
+      }
+    }
+    if (!read) {
+      const start = offsetToPosition(source, nameOffset);
+      unused.push({
+        name: candidate.name,
+        kind: candidate.kind,
+        range: { start, end: { line: start.line, character: start.character + candidate.name.length } },
+      });
+    }
+  }
+  return unused;
 }
 
 /** Finds the nearest declaration of `name` whose scope contains `cursorOffset`, so inner shadows outer. */
