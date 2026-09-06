@@ -10,15 +10,19 @@ export default defineConfig({
   testDir: here,
   testMatch: '**/*.e2e.mjs',
   outputDir: join(extensionPath, '.playwright'),
-  // Two workers, not more: there are only four spec files, and measured locally
-  // 1 -> 23.0s, 2 -> 14.7s, 4 -> 15.6s, so the fourth window buys nothing while
-  // each one costs a full VS Code with its own GPU context. CI runners have
-  // fewer cores than a dev machine, which is the other reason not to push it.
+  // Two workers locally, not more: measured 1 -> 23.0s, 2 -> 14.7s, 4 -> 15.6s,
+  // so a fourth window buys nothing while each one costs a full VS Code with its
+  // own GPU context.
   //
   // This only works because the launch disables occluded-window backgrounding:
   // parallel windows overlap, and Chromium marks occluded windows hidden, which
   // stops requestAnimationFrame and stalls the webview's capture loop.
-  workers: 2,
+  //
+  // One worker on CI: the dedup spec drives 24 textures through a VS Code window
+  // and a second Chromium, and sharing the runner's GPU with another window
+  // starves the other spec's capture loop past the 60s expect timeout. The
+  // runner has the headroom in wall time but not in GPU.
+  workers: process.env.CI ? 1 : 2,
   // Tests within a file share one VS Code and build state across each other, so
   // they must stay serial; separate files parallelise across workers.
   fullyParallel: false,
