@@ -1252,6 +1252,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         path,
         generation,
         passes: graph.passes.map((node) => node.name).join(",") || "(none)",
+        totalMs: this.ms(this.now() - startedAt),
+        resourceMs: this.ms(readyMs),
+        graphMs: this.ms(graphMs),
+        passMs: passTimings.map((pass) => `${pass.name}:${pass.totalMs ?? 0}`).join(","),
       });
       this.passGraph = graph.passes;
       this.passPipelines = nextPipelines;

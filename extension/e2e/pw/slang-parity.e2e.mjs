@@ -8,9 +8,10 @@ const commonPath = join(workspacePath, 'common.slang');
 function helpers(vscode) {
   let frame;
   const diagLog = [];
+  const diagStartedAt = Date.now();
   vscode.window.on('console', (message) => {
     const text = message.text();
-    if (text.startsWith('[CaptureDiag]')) diagLog.push(text);
+    if (text.startsWith('[CaptureDiag]')) diagLog.push(`+${Date.now() - diagStartedAt}ms ${text}`);
   });
 
   const app = () => frame;
@@ -89,7 +90,7 @@ function helpers(vscode) {
         failure.message,
         lastError ? `last capture error: ${lastError}` : 'no capture error reported',
         `panel state: ${JSON.stringify(state)}`,
-        `capture diagnostics:\n${diagLog.slice(-15).join('\n') || '(none logged)'}`,
+        `capture diagnostics:\n${diagLog.slice(-40).join('\n') || '(none logged)'}`,
       ].join('\n'));
     }
   }
