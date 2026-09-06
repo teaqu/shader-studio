@@ -396,7 +396,9 @@ void main() { shade(float2(0.)); }`,
         ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
         'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
       ];
-      if (language === 'slang') unscoped.push('iCh7');
+      if (language === 'slang') {
+        unscoped.push('iCh7');
+      }
       const lines = tokenizeLines([...scoped, ...unscoped].join(';\n'), grammar);
 
       assert.ok(names.length > 0, `${language} must declare built-in uniforms`);

@@ -3,7 +3,9 @@ import { render } from '@testing-library/svelte';
 import EditorOverlay from '../../lib/components/EditorOverlay.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
 
-vi.mock('@shader-studio/monaco', () => ({
+vi.mock('@shader-studio/monaco', async () => ({
+  // The scoped token-colour helpers are pure and stay real.
+  ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
