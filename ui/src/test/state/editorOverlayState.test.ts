@@ -164,8 +164,20 @@ describe('editorOverlayStore', () => {
 
   it('warns and keeps state when persisting fails', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
-      throw new Error('quota exceeded');
+    // Replace the whole object rather than spying on its method: jsdom's
+    // Storage answers through a proxy that an own property does not shadow,
+    // and a polyfilled plain object behaves differently again.
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => null,
+        removeItem: () => {},
+        clear: () => {},
+        setItem: () => {
+          throw new Error('quota exceeded');
+        },
+      },
     });
     try {
       toggleEditorOverlay();
@@ -176,7 +188,11 @@ describe('editorOverlayStore', () => {
         expect.any(Error),
       );
     } finally {
-      setItem.mockRestore();
+      if (original) {
+        Object.defineProperty(globalThis, 'localStorage', original);
+      } else {
+        delete (globalThis as { localStorage?: unknown }).localStorage;
+      }
       warnSpy.mockRestore();
     }
   });
