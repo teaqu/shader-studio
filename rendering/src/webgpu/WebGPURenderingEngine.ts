@@ -13,6 +13,7 @@ import type {
 import { WebGPUVariableCapturer } from "./WebGPUVariableCapturer";
 import { TimeManager } from "../util/TimeManager";
 import { MouseManager } from "../input/MouseManager";
+import { captureDiagEvent } from "../capture/captureDiagnostics";
 import { KeyboardManager } from "../input/KeyboardManager";
 import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
@@ -3383,7 +3384,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
           ?? this.passGraph[0];
         // Paused capture reads the keyboard texture the frozen frame was drawn
         // with, matching the render path and the WebGL capturer.
-        return pass ? this.getChannelResources(pass, this.timeManager.isPaused()) : [];
+        if (!pass) {
+          captureDiagEvent("capture channel lookup found no pass", {
+            wanted: context.slangPassName ?? "(none)",
+            graph: this.passGraph.map((candidate) => candidate.name).join(",") || "(empty)",
+          });
+          return [];
+        }
+        const resolved = this.getChannelResources(pass, this.timeManager.isPaused());
+        captureDiagEvent("capture channel lookup", {
+          wanted: context.slangPassName ?? "(none)",
+          using: pass.name,
+          graph: this.passGraph.map((candidate) => candidate.name).join(",") || "(empty)",
+          passChannels: pass.channels.map((channel) => `${channel.slot}:${channel.kind}`).join(",") || "(none)",
+          contextChannels: (context.slangChannels ?? []).length,
+          resolvedCount: resolved === null ? "null" : resolved.length,
+        });
+        return resolved;
       },
       () => this.storageBuffers,
     );
