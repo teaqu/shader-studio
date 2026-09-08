@@ -1,6 +1,7 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 import { centrePixel } from './canvas-pixel.mjs';
+import { openConfigPanel } from './config-panel.mjs';
 
 export function registerScriptConstantTests(language) {
   const suffix = language === 'slang' ? '-slang' : '';
@@ -60,7 +61,7 @@ export function registerScriptConstantTests(language) {
       // The panel is opened before the detour: a failed compile hides the
       // toolbar, so nothing here can click afterwards - but the rows are already
       // rendered, and losing the uniform state takes them away reactively.
-      await frame.getByLabel('Toggle config panel').click();
+      await openConfigPanel(frame);
       const scriptTab = frame.locator('.tab-label', { hasText: 'Script' });
       await expect.poll(() => scriptTab.count(), { timeout: 30_000 }).toBeGreaterThan(0);
       await scriptTab.first().click();

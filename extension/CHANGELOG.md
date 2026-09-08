@@ -4,6 +4,7 @@
 - Fixed scripts not loading, missing uniform values, and scripts running while paused.
 - Fixed variable inspector clicks and hover previews sometimes not working.
 - Fixed the GLSL language server not recognising Common-file `#define` macros.
+- Fixed false syntax errors in empty or comment-only GLSL Common files.
 - Fixed helper files replacing the shader preview and GLSL-to-JavaScript conversion failing.
 
 ### 1.1.0

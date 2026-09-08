@@ -32,6 +32,17 @@ async function service(): Promise<GlslLanguageService> {
 const revision = { uri, languageId: "glsl" as const, version: 1, environmentGeneration: 1 };
 
 describe("GlslLanguageService", () => {
+  it.each(['', '\n', ' \t\n'])("clears syntax diagnostics when Common is emptied to %j", async (text) => {
+    const instance = new GlslLanguageService();
+    const commonUri = 'file:///workspace/common.glsl';
+    await instance.syncEnvironment({ ...environment(), documentUri: commonUri, passName: 'Common' });
+    await instance.openDocument({ uri: commonUri, languageId: 'glsl', version: 1, text: 'float broken = ;' });
+    expect(await instance.diagnostics({ document: { ...revision, uri: commonUri } }))
+      .toContainEqual(expect.objectContaining({ code: 'syntax' }));
+    await instance.changeDocument({ uri: commonUri, languageId: 'glsl', version: 2, text });
+    expect(await instance.diagnostics({ document: { ...revision, uri: commonUri, version: 2 } })).toEqual([]);
+  });
+
   it("documents the mainImage contract by parameter role instead of parameter name", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment(environment());

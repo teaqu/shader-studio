@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { openConfigPanel } from './config-panel.mjs';
 
 export function registerPollingRateScenario(test, expect, scenario) {
   const originalConfig = readFileSync(scenario.configPath, 'utf8');
@@ -18,7 +19,7 @@ export function registerPollingRateScenario(test, expect, scenario) {
       await expect.poll(() => frame.locator('.menu-bar').count(), { timeout: 60_000 }).toBeGreaterThan(0);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('notifications.clearAll'));
       if (!await frame.locator('.polling-section').count()) {
-        await frame.getByLabel('Toggle config panel').click();
+        await openConfigPanel(frame);
         const scriptTab = frame.locator('.tab-label', { hasText: 'Script' });
         await expect.poll(() => scriptTab.count(), { timeout: 30_000 }).toBeGreaterThan(0);
         await scriptTab.first().click();

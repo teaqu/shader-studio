@@ -1,4 +1,5 @@
 import { rmSync, writeFileSync } from 'node:fs';
+import { openConfigPanel } from './config-panel.mjs';
 
 export function registerScriptUniformErrorScenario(test, expect, scenario) {
   const tooltipText = (frame) => frame.evaluate(() => document.querySelector('.error-tooltip')?.textContent ?? '');
@@ -26,7 +27,7 @@ export function registerScriptUniformErrorScenario(test, expect, scenario) {
       const frame = await open(vscode, scenario.scriptTabShaderPath);
       await expect.poll(() => tooltipText(frame), { message: 'the broken shader was never reported', timeout: 90_000 }).toMatch(/error/i);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('notifications.clearAll'));
-      await frame.getByLabel('Toggle config panel').click();
+      await openConfigPanel(frame);
       const scriptTab = frame.locator('.tab-label', { hasText: 'Script' });
       await expect.poll(() => scriptTab.count(), { timeout: 30_000 }).toBeGreaterThan(0);
       await scriptTab.first().click();

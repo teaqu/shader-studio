@@ -30,6 +30,23 @@ function offsetAtPosition(source: string, position: { line: number; character: n
 }
 
 describe("parseGlslDocument", () => {
+  it.each(['', '\n', ' \t\r\n\n', '// Common helpers go here\n', '/* Common helpers */\n', '#if 0\nfloat ignored;\n#endif\n'])(
+    'accepts a Common file with no active declarations: %j', (source) => {
+      const document = parseGlslDocument('file:///common.glsl', source, 'fragment');
+      expect(document.parsedSuccessfully).toBe(true);
+      expect(document.diagnostics).toEqual([]);
+      expect(document.symbols).toEqual([]);
+      expect(document.unresolvedReferences).toEqual([]);
+      expect(document.originalToProcessed).toHaveLength(source.split('\n').length);
+    },
+  );
+
+  it.each(['float broken = ;', '/* unterminated', '#if 1\n'])(
+    'still reports malformed Common source: %j', (source) => {
+      expect(parseGlslDocument('file:///common.glsl', source, 'fragment').diagnostics.length).toBeGreaterThan(0);
+    },
+  );
+
   describe("macros", () => {
     /**
      * The preprocessor expands and then discards every #define, so without

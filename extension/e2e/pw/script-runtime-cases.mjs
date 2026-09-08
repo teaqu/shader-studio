@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { openConfigPanel } from './config-panel.mjs';
 
 const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -21,7 +22,7 @@ async function openShader(vscode, name) {
 async function scriptTab(frame) {
   if (!await frame.locator('.script-tab-content').count()) {
     if (!await frame.locator('.tab-label').filter({ hasText: /^Script$/ }).count()) {
-      await frame.getByLabel('Toggle config panel').click();
+      await openConfigPanel(frame);
     }
     await frame.locator('.tab-label').filter({ hasText: /^Script$/ }).first().click();
   }

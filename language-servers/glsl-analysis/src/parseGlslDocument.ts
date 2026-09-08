@@ -142,11 +142,19 @@ export function parseGlslDocument(
   let parsedSuccessfully = true;
 
   try {
-    parsed = parse(processedSource, {
-      includeLocation: true,
-      quiet: true,
-      stage: parserStage(stage),
-    }) as unknown as ParserProgram;
+    // Common/helper files may contain no declarations. The third-party parser
+    // requires at least one, even after preprocessing removes inactive code.
+    // Keep normal source maps and macro indexing for these valid empty files.
+    // Only complete comments are stripped; an unterminated comment still
+    // reaches the parser and reports its real syntax error.
+    const activeSource = processedSource.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, '').trim();
+    if (activeSource.length > 0) {
+      parsed = parse(processedSource, {
+        includeLocation: true,
+        quiet: true,
+        stage: parserStage(stage),
+      }) as unknown as ParserProgram;
+    }
   } catch (error) {
     parsedSuccessfully = false;
     diagnostics.push(createDiagnostic(

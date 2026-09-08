@@ -1033,6 +1033,48 @@ describe('MenuBar Component', () => {
   });
 
   describe('Config Panel Button', () => {
+    function stubMenuBarWidth(width: number) {
+      vi.stubGlobal('ResizeObserver', class {
+        private callback: ResizeObserverCallback;
+
+        constructor(callback: ResizeObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe() {
+          this.callback([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+
+        unobserve() {}
+        disconnect() {}
+      });
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('keeps the config control ready in the toolbar when the menu bar is wide', async () => {
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
+
+      expect(screen.getByLabelText('Toggle config panel')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      expect(screen.queryAllByLabelText('Toggle config panel')).toHaveLength(1);
+    });
+
+    it('moves the config control into Options when the menu bar is narrow', async () => {
+      const onToggleConfigPanel = vi.fn();
+      stubMenuBarWidth(390);
+      renderMenuBar({ props: { ...defaultProps, hasShader: true, onToggleConfigPanel } });
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      const configButtons = screen.getAllByLabelText('Toggle config panel');
+      expect(configButtons).toHaveLength(2);
+      await fireEvent.click(configButtons[1]);
+
+      expect(onToggleConfigPanel).toHaveBeenCalledOnce();
+    });
+
     it('should call onToggleConfigPanel when config panel button is clicked and hasShader', async () => {
       const onToggleConfigPanel = vi.fn();
       renderMenuBar({
