@@ -30,6 +30,8 @@
     };
   });
   const session = $derived(getViewerSession());
+  // File panes stay on their own document when the preview switches shaders.
+  const fileSession = $derived(session?.shaderPath === path ? session : null);
   let vimMode = $state(false);
 </script>
 
@@ -39,6 +41,7 @@
     {#if fileCode !== null}
       <div class="editor-content">
         <ShaderEditor isVisible={true} shaderCode={fileCode} shaderPath={path} {transport}
+          errors={fileSession?.errors ?? []} activeBufferName={fileSession?.activeBufferName ?? 'Image'}
           {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} />
       </div>
     {/if}

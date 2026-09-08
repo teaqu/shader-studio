@@ -130,6 +130,26 @@ describe('file-specific editors', () => {
     expect(getByTestId('shader-editor').getAttribute('data-code')).toBe('buffer source');
   });
 
+  it('routes compile errors to the matching file and clears stale diagnostics', async () => {
+    setViewerSession(createSession({ shaderPath: '/buffer.glsl', activeBufferName: 'Buffer B', errors: ['Buffer B: ERROR: 0:2: broken'] }));
+    const transport = { readEditorFile: vi.fn().mockResolvedValue('buffer source') } as unknown as WebTransport;
+    const { getByTestId } = render(EditorPane, { path: '/buffer.glsl', transport });
+    await vi.waitFor(() => expect(getByTestId('shader-editor').getAttribute('data-errors')).toBe('Buffer B: ERROR: 0:2: broken'));
+    expect(getByTestId('shader-editor').getAttribute('data-buffer')).toBe('Buffer B');
+
+    setViewerSession(createSession({ shaderPath: '/buffer.glsl', errors: [] }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-errors')).toBe('');
+
+    setViewerSession(createSession({ errors: ['Image: ERROR: 0:2: unrelated'] }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-errors')).toBe('');
+
+    setViewerSession(null);
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-errors')).toBe('');
+  });
+
   it.each([null, new Error('unavailable')])('reports missing or unreadable files', async (result) => {
     const readEditorFile = result instanceof Error ? vi.fn().mockRejectedValue(result) : vi.fn().mockResolvedValue(result);
     const { getByRole, queryByTestId } = render(EditorPane, {

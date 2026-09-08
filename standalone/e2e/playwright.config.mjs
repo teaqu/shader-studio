@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: '.',
   projects: [
-    { name: 'chromium', testMatch: 'web.e2e.mjs', use: { browserName: 'chromium' } },
+    { name: 'chromium', testMatch: ['web.e2e.mjs', 'compile-errors.e2e.mjs'], use: { browserName: 'chromium' } },
     { name: 'firefox-exports', testMatch: 'web.e2e.mjs', use: { browserName: 'firefox' }, grep: /exports a standalone/ },
     // The dev server ships the app unbundled, which breaks language-service
     // paths the built bundle hides.
