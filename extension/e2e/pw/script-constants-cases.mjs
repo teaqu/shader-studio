@@ -40,11 +40,17 @@ export function registerScriptConstantTests(language) {
       await vscode.window.showTextDocument(document, {
         viewColumn: vscode.ViewColumn.One, preserveFocus: false, preview: false,
       });
-      await vscode.commands.executeCommand('shader-studio.view');
     }, targetPath);
 
     test('keeps the constant after opening a helper with no mainImage', async ({ vscode }) => {
+      // Exercise the responsive layout used by the macOS CI window as well.
+      await vscode.app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].setBounds({ width: 900, height: 800 });
+      });
       await openFile(vscode, shaderPath);
+      await vscode.evaluateInHost(async (api) => {
+        await api.commands.executeCommand('shader-studio.view');
+      });
 
       const frame = await vscode.shaderFrame();
       await expect.poll(() => frame.locator('.menu-bar').count(), { timeout: 60_000 }).toBeGreaterThan(0);
@@ -87,6 +93,10 @@ export function registerScriptConstantTests(language) {
       }).toEqual(expect.arrayContaining(['0.750']));
 
       await openFile(vscode, shaderPath);
+      // File switches update the existing preview. Re-running New Panel here
+      // creates extra columns, clipping the cached canvas under VS Code's UI.
+      expect(await vscode.evaluateInHost(async (api) => api.window.tabGroups.all
+        .flatMap(group => group.tabs).filter(tab => tab.label === 'Shader Studio').length)).toBe(1);
       await expect.poll(() => centreRed(frame), {
         message: 'the constant was displayed but not restored to the renderer',
         timeout: 30_000,
