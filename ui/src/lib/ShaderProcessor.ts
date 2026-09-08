@@ -10,11 +10,20 @@ export interface CompilationResult {
   superseded?: true;
 }
 
+interface BaselineInputs {
+  code: string;
+  config: ShaderConfig | null;
+  path: string;
+  buffers: Record<string, string>;
+  customUniformDeclarations?: string;
+}
+
 export class ShaderProcessor {
   private renderEngine: RenderingEngine;
   private shaderDebugManager: ShaderDebugManager;
   private imageShaderCode: string | null = null;
   private isProcessing = false;
+  private verifiedBaseline: BaselineInputs | null = null;
 
   constructor(
     renderEngine: RenderingEngine,
@@ -32,12 +41,36 @@ export class ShaderProcessor {
     return this.imageShaderCode;
   }
 
+  /**
+   * The custom uniforms a message speaks for. A bare-file preview - a common
+   * pass, a helper with no mainImage - carries no config and so declares none,
+   * but it is not saying the shader has none: compiling it with none clears the
+   * engine's uniform state, and because the host sends only values that changed
+   * after its first batch, every uniform the script holds constant would stay
+   * at zero for the life of the shader. The engine's own declarations stand in.
+   */
+  private resolveCustomUniforms(message: ShaderSourceMessage): {
+    declarations?: string;
+    info?: { name: string; type: string }[];
+  } {
+    if (message.customUniformDeclarations || !message.scriptContextOmitted) {
+      return {
+        declarations: message.customUniformDeclarations,
+        info: message.customUniformInfo,
+      };
+    }
+    const declarations = this.renderEngine.getCustomUniformDeclarations?.() || undefined;
+    const info = this.renderEngine.getCustomUniformInfo?.() ?? [];
+    return declarations && info.length > 0 ? { declarations, info } : {};
+  }
+
   public async processMainShaderCompilation(
     message: ShaderSourceMessage,
     reload: boolean = false,
   ): Promise<CompilationResult> {
     const { code, config, path, buffers } = message;
     const scriptBundleError = message.scriptBundleError;
+    const customUniforms = this.resolveCustomUniforms(message);
 
     // A config that cannot be read would compile as a shader with no inputs,
     // which renders as an unexplained black frame. Report it instead.
@@ -74,7 +107,7 @@ export class ShaderProcessor {
       if (codeToCompile !== code) {
         const baselineFailure = await this.compileUninstrumentedBaseline(message, code, config ?? null, path, buffers);
         if (baselineFailure) {
-          return baselineFailure;
+          return this.withScriptCause(baselineFailure, scriptBundleError);
         }
       }
 
@@ -85,8 +118,8 @@ export class ShaderProcessor {
           configToCompile,
           path,
           buffersToCompile,
-          message.customUniformDeclarations,
-          message.customUniformInfo,
+          customUniforms.declarations,
+          customUniforms.info,
           debugSlangModules ?? message.slangModules,
           debugSourcePath,
           message.bufferPathMap,
@@ -95,6 +128,21 @@ export class ShaderProcessor {
       // Handle compilation failure
       if (result?.superseded) {
         return this.supersededResult(result.errors);
+      }
+
+      // An uninstrumented compile is a baseline in its own right, so the first
+      // line the cursor lands on afterwards has nothing left to verify.
+      if (
+        !debugPlan
+        && codeToCompile === code
+        && configToCompile === (config ?? null)
+        && buffersToCompile === buffers
+      ) {
+        if (result?.success) {
+          this.markBaselineVerified(code, config ?? null, path, buffers, customUniforms.declarations);
+        } else {
+          this.verifiedBaseline = null;
+        }
       }
 
       if (!result?.success) {
@@ -114,8 +162,8 @@ export class ShaderProcessor {
               config,
               path,
               buffers,
-              message.customUniformDeclarations,
-              message.customUniformInfo,
+              customUniforms.declarations,
+              customUniforms.info,
               message.slangModules,
               undefined,
               message.bufferPathMap,
@@ -123,13 +171,13 @@ export class ShaderProcessor {
           if (fallbackResult.success) {
             this.renderEngine.startRenderLoop();
           }
-          return fallbackResult;
+          return this.withScriptCause(fallbackResult, scriptBundleError);
         }
 
-        return {
+        return this.withScriptCause({
           success: false,
-          errors: result?.errors || ["Unknown compilation error"]
-        };
+          errors: result?.errors || ["Unknown compilation error"],
+        }, scriptBundleError);
       }
 
       // Success
@@ -155,6 +203,26 @@ export class ShaderProcessor {
 
 
   /**
+   * A script that failed to load declares none of its uniforms, so the shader
+   * fails on identifiers that are spelled correctly. On its own the compile
+   * error sends the user hunting a typo in the shader, so the script failure -
+   * the actual cause - leads the report. A superseded compile is replaced by a
+   * newer one that carries its own copy of the error, so it is left alone.
+   */
+  private withScriptCause(
+    result: CompilationResult,
+    scriptBundleError?: string,
+  ): CompilationResult {
+    if (!scriptBundleError || result.success || result.superseded) {
+      return result;
+    }
+    return {
+      ...result,
+      errors: [`Script: ${scriptBundleError}`, ...(result.errors ?? [])],
+    };
+  }
+
+  /**
    * Debug instrumentation rewrites the shader - truncating the body at the
    * inspected line, or post-processing it for inline rendering - so a broken
    * statement below that line simply is not in what gets compiled. Reporting
@@ -172,13 +240,14 @@ export class ShaderProcessor {
     path: string,
     buffers: Record<string, string>,
   ): Promise<CompilationResult | null> {
+    const customUniforms = this.resolveCustomUniforms(message);
     const result = await this.compileWithSlangContext(
       code,
       config,
       path,
       buffers,
-      message.customUniformDeclarations,
-      message.customUniformInfo,
+      customUniforms.declarations,
+      customUniforms.info,
       message.slangModules,
       undefined,
       message.bufferPathMap,
@@ -186,9 +255,49 @@ export class ShaderProcessor {
     if (result?.superseded) {
       return this.supersededResult(result.errors);
     }
-    return result?.success
-      ? null
-      : { success: false, errors: result?.errors || ["Unknown compilation error"] };
+    if (!result?.success) {
+      this.verifiedBaseline = null;
+      return { success: false, errors: result?.errors || ["Unknown compilation error"] };
+    }
+    this.markBaselineVerified(code, config, path, buffers, customUniforms.declarations);
+    return null;
+  }
+
+  /**
+   * The untouched source compiles the same way wherever the cursor sits, so its
+   * verdict holds until the shader, its config, its buffers or its uniform
+   * declarations change. Recompiling it on every line move installs it, and the
+   * render loop shows the whole shader until the instrumented compile that
+   * follows lands - a flash of the full image between two debugged lines.
+   *
+   * Only successes are remembered: a source that fails to compile must keep
+   * reporting that failure rather than letting a truncated instrumented compile
+   * claim the shader is fine.
+   */
+  private markBaselineVerified(
+    code: string,
+    config: ShaderConfig | null,
+    path: string,
+    buffers: Record<string, string>,
+    customUniformDeclarations?: string,
+  ): void {
+    this.verifiedBaseline = { code, config, path, buffers, customUniformDeclarations };
+  }
+
+  private isBaselineVerified(
+    code: string,
+    config: ShaderConfig | null,
+    path: string,
+    buffers: Record<string, string>,
+    customUniformDeclarations?: string,
+  ): boolean {
+    const verified = this.verifiedBaseline;
+    return verified !== null
+      && verified.code === code
+      && verified.config === config
+      && verified.path === path
+      && verified.buffers === buffers
+      && verified.customUniformDeclarations === customUniformDeclarations;
   }
 
   private getDebugCompileArgs(
@@ -360,7 +469,7 @@ export class ShaderProcessor {
       if (!result?.success) {
         return {
           success: false,
-          errors: result?.errors || ["Unknown compilation error"]
+          errors: result?.errors || ["Unknown compilation error"],
         };
       }
 
@@ -383,8 +492,7 @@ export class ShaderProcessor {
     const { config, path, buffers } = message;
 
     // Pass custom uniform declarations through debug recompilations
-    const cuDecl = message.customUniformDeclarations;
-    const cuInfo = message.customUniformInfo;
+    const { declarations: cuDecl, info: cuInfo } = this.resolveCustomUniforms(message);
 
     const {
       code: codeToCompile,
@@ -405,7 +513,14 @@ export class ShaderProcessor {
       this.imageShaderCode,
     );
 
-    if (codeToCompile !== this.imageShaderCode) {
+    // Cursor movement re-enters here with the shader it already verified, so
+    // the untouched compile is skipped rather than flashing the whole shader
+    // between lines. A failed instrumented compile still restores the original
+    // below, which is what the baseline install would otherwise have covered.
+    if (
+      codeToCompile !== this.imageShaderCode
+      && !this.isBaselineVerified(this.imageShaderCode, config ?? null, path, buffers, cuDecl)
+    ) {
       const baselineFailure = await this.compileUninstrumentedBaseline(
         message,
         this.imageShaderCode,

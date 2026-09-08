@@ -11,6 +11,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_existing_version:
+        description: 'Release a version a registry already carries (recovering a half-finished publish)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -49,54 +54,25 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "vsix_path=${VSIX_PATH}" >> "${GITHUB_OUTPUT}"
 
-  # The same gates every commit passes on its way to main, macOS runners and
-  # all. Running them here on Linux is what published nothing for two tags:
-  # the WebGPU e2e cannot read back pixels without a GPU.
+      # A registry keys on the version, so `--skip-duplicate` turns a repeat
+      # release into a green run that uploaded nothing: the tag moves and users
+      # keep the old build. Refuse the version before anything is built.
+      - name: Refuse a version the registries already carry
+        env:
+          ALLOW_EXISTING_VERSION: ${{ inputs.allow_existing_version || 'false' }}
+        run: node extension/scripts/check-version-published.mjs
+
+  # Package once and run the same installed-VSIX gates as push/PR CI. The
+  # publishing jobs download that tested artifact without rebuilding it.
   verify:
     name: Verify
     needs: meta
     uses: ./.github/workflows/verify.yml
 
-  package:
-    name: Package
-    runs-on: ubuntu-latest
-    needs: [meta, verify]
-    timeout-minutes: 30
-    outputs:
-      version: ${{ needs.meta.outputs.version }}
-      vsix_path: ${{ needs.meta.outputs.vsix_path }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build workspace dependencies
-        run: npm run build:deps -w extension
-
-      - name: Package VSIX
-        working-directory: extension
-        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ needs.meta.outputs.vsix_path }}"
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: shader-studio-${{ needs.meta.outputs.version }}-vsix
-          path: ${{ needs.meta.outputs.vsix_path }}
-          if-no-files-found: error
-
   publish-vscode:
     name: Publish VS Code Marketplace and GitHub Release
     runs-on: ubuntu-latest
-    needs: package
+    needs: verify
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -111,7 +87,7 @@ jobs:
       - name: Download VSIX artifact
         uses: actions/download-artifact@v8
         with:
-          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+          name: shader-studio-${{ needs.verify.outputs.version }}-vsix
 
       - name: Check publishing secret
         shell: bash
@@ -123,16 +99,16 @@ jobs:
       - name: Publish to VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx --yes @vscode/vsce publish --packagePath "${{ needs.package.outputs.vsix_path }}" --skip-duplicate
+        run: npx --yes @vscode/vsce publish --packagePath "${{ needs.verify.outputs.vsix_path }}" --skip-duplicate
 
       - name: Create checksum
-        run: sha256sum "${{ needs.package.outputs.vsix_path }}" > "${{ needs.package.outputs.vsix_path }}.sha256"
+        run: sha256sum "${{ needs.verify.outputs.vsix_path }}" > "${{ needs.verify.outputs.vsix_path }}.sha256"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.package.outputs.version }}
-          VSIX_PATH: ${{ needs.package.outputs.vsix_path }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          VSIX_PATH: ${{ needs.verify.outputs.vsix_path }}
         run: |
           cat > release-notes.md <<EOF
           Shader Studio ${VERSION}
@@ -157,7 +133,7 @@ jobs:
   publish-open-vsx:
     name: Publish Open VSX
     runs-on: ubuntu-latest
-    needs: package
+    needs: verify
     # A tag publishes to both registries, in parallel: the two jobs share only
     # the packaged VSIX, so an Open VSX outage cannot hold up or undo the
     # Marketplace release. It does turn the run red, which is the point - the
@@ -176,7 +152,7 @@ jobs:
       - name: Download VSIX artifact
         uses: actions/download-artifact@v8
         with:
-          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+          name: shader-studio-${{ needs.verify.outputs.version }}-vsix
 
       - name: Check Open VSX publishing secret
         shell: bash
@@ -187,4 +163,4 @@ jobs:
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: bash .github/scripts/publish-open-vsx.sh "${{ needs.package.outputs.vsix_path }}"
+        run: bash .github/scripts/publish-open-vsx.sh "${{ needs.verify.outputs.vsix_path }}"

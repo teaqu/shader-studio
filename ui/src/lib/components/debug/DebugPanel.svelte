@@ -601,6 +601,7 @@
         <div
           class="line-tooltip"
           class:visible={isLineTooltipVisible}
+          style:pointer-events={isLineTooltipVisible ? 'auto' : 'none'}
           class:error={debugError}
           class:has-line-content={!debugError && !debugNotice && debugState?.lineContent}
           role="presentation"

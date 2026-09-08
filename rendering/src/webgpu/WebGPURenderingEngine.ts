@@ -259,6 +259,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private installedCompile: ShaderCompileSnapshot | null = null;
   private customUniformManager = new CustomUniformManager();
   private pendingCustomUniformValues: CustomUniform[] | null = null;
+  private pausedCustomUniformValues: CaptureCustomUniform[] | null = null;
   /**
    * Bumped on every compileShaderPipeline call. Concurrent compiles aren't
    * serialized upstream (BufferUpdater is fire-and-forget, worker compiles
@@ -2409,6 +2410,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // captured when the pause began, so e.g. mouse movement can't keep
     // driving a "paused" shader.
     if (isPaused && this.pausedUniformInput === null) {
+      // Script uniforms freeze with the rest: the extension host polls on its
+      // own clock, and a paused picture that keeps moving because values are
+      // still arriving is not paused.
+      this.pausedCustomUniformValues = this.customUniformManager.getCurrentValues();
       this.pausedUniformInput = {
         time: this.timeManager.getCurrentTime(time),
         timeDelta: this.timeManager.getDeltaTime(),
@@ -2421,7 +2426,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       };
     } else if (!isPaused) {
       this.pausedUniformInput = null;
+      this.pausedCustomUniformValues = null;
     }
+
+    const frameCustomUniformValues = this.pausedCustomUniformValues
+      ?? this.customUniformManager.getCurrentValues();
 
     const frameInput = this.pausedUniformInput ?? {
       time: this.timeManager.getCurrentTime(time),
@@ -2487,7 +2496,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         ...frameInput,
         ...this.getChannelUniforms(pass),
-      }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
+      }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(uniformBuffer, 0, data);
 
       const computePass = encoder.beginComputePass();
@@ -2553,7 +2562,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         ...frameInput,
         ...this.getChannelUniforms(pass),
-      }, this.customUniformManager.getUniformInfo(), this.customUniformManager.getCurrentValues());
+      }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
         const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
@@ -3541,6 +3550,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   // ---- Custom uniforms ----
 
+  getMouse(): [number, number, number, number] {
+    const mouse = this.mouseManager.getMouse();
+    return [mouse[0] ?? 0, mouse[1] ?? 0, mouse[2] ?? 0, mouse[3] ?? 0];
+  }
+
+  getChannelTimes(): number[] {
+    const imagePass = this.passGraph.find((pass) => pass.name === "Image");
+    if (!imagePass) {
+      return [0, 0, 0, 0];
+    }
+    return this.getChannelUniforms(imagePass).channelTime;
+  }
+
+  getAudioSampleRate(): number {
+    return this.resourceManager?.getAudioSampleRate?.() || 44100;
+  }
+
   getCustomUniformInfo(): { name: string; type: string }[] {
     return this.customUniformManager.getUniformInfo();
   }
@@ -3551,11 +3577,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.customUniformManager.getCurrentValues();
   }
   setCustomUniformValues(values: CustomUniform[]): void {
-    this.pendingCustomUniformValues = values;
+    this.pendingCustomUniformValues = values.map((value) => this.copyCustomUniform(value));
     this.customUniformManager.setValues(values);
   }
   updateCustomUniformValues(changed: CustomUniform[]): void {
+    const pending = new Map((this.pendingCustomUniformValues ?? []).map((value) => [value.name, value]));
+    for (const value of changed) {
+      pending.set(value.name, this.copyCustomUniform(value));
+    }
+    this.pendingCustomUniformValues = [...pending.values()];
     this.customUniformManager.updateValues(changed);
-    this.pendingCustomUniformValues = this.customUniformManager.getCurrentValues();
+  }
+
+  private copyCustomUniform(value: CustomUniform): CustomUniform {
+    return {
+      ...value,
+      value: Array.isArray(value.value) ? [...value.value] : value.value,
+    };
   }
 }

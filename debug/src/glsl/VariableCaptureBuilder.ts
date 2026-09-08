@@ -114,6 +114,25 @@ export class VariableCaptureBuilder {
   }
 
   /**
+   * Custom uniforms are declared in the compiler's header for the whole shader,
+   * so every pass compiles with every one of them in scope. The variable list
+   * belongs to one pass, so keep only the uniforms that pass mentions - the
+   * rest are used by common code or another buffer and are not values of this
+   * capture.
+   */
+  static filterUsedCustomUniforms<T extends { name: string }>(
+    code: string,
+    uniforms: readonly T[],
+  ): T[] {
+    if (uniforms.length === 0 || code.trim() === '') {
+      return [];
+    }
+
+    const usedIdentifiers = GlslParser.collectUsedIdentifiers(code.split('\n'));
+    return uniforms.filter((uniform) => usedIdentifiers.has(uniform.name));
+  }
+
+  /**
    * Generate one capture shader that can output any mainImage variable by setting
    * uniform int _dbgVarIndex before drawing.
    *

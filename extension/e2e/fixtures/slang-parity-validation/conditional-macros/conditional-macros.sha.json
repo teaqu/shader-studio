@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "passes": {
+    "common": { "path": "./common.glsl" },
+    "Image": { "path": "./image.glsl" }
+  }
+}

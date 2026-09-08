@@ -7,6 +7,7 @@ import ConfigPanel from '../../../lib/components/config/ConfigPanel.svelte';
 import type { Transport } from '../../../lib/transport/MessageTransport';
 import type { ShaderConfig } from '@shader-studio/types';
 import { ConfigManager } from '../../../lib/ConfigManager';
+import { reactiveConfig } from './reactiveConfig.svelte';
 import {
   getOverlayActiveFile,
   setEditorOverlayVisible,
@@ -444,6 +445,76 @@ describe('ConfigPanel', () => {
 
       const activeTab = container.querySelector('.tab-button.active');
       expect(activeTab?.textContent).toContain('Common');
+    });
+  });
+
+  describe('script polling rate', () => {
+    function scriptConfig(): ShaderConfig {
+      return reactiveConfig({
+        version: '1.0',
+        passes: { Image: { inputs: {} } },
+        script: './shader.uniforms.ts',
+        scriptMaxPollingFps: 30,
+      });
+    }
+
+    async function openScriptTab() {
+      // The real transport structured-clones what it posts; the mock does the
+      // same so a payload carrying reactive proxies fails here too.
+      const posting = vi.fn((message: any) => structuredClone(message));
+      mockTransport = { ...mockTransport, postMessage: posting } as Transport;
+      const rendered = render(ConfigPanel, {
+        config: scriptConfig(),
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/shader.glsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+      await tick();
+      const scriptTab = Array.from(rendered.container.querySelectorAll('.tab-button'))
+        .find((tab) => tab.textContent?.includes('Script')) as HTMLButtonElement;
+      await fireEvent.click(scriptTab);
+      await tick();
+      return rendered;
+    }
+
+    it('persists the chosen rate to the config, not just to the running poll loop', async () => {
+      // The rate belongs to the shader's .sha.json: send it to the poll loop
+      // alone and it is gone the next time the shader loads.
+      const { container } = await openScriptTab();
+
+      const preset = Array.from(container.querySelectorAll('.preset-btn'))
+        .find((button) => button.textContent?.trim() === '60fps') as HTMLButtonElement;
+      expect(preset).toBeTruthy();
+      await fireEvent.click(preset);
+      await tick();
+
+      const posted = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls.map(([message]) => message);
+      const configUpdate = posted.find((message) => message.type === 'updateConfig');
+      expect(configUpdate, JSON.stringify(posted)).toBeTruthy();
+      expect(configUpdate.payload.config.scriptMaxPollingFps).toBe(60);
+      expect(JSON.parse(configUpdate.payload.text).scriptMaxPollingFps).toBe(60);
+      expect(configUpdate.payload.shaderPath).toBe('/test/shader.glsl');
+      // The written config keeps the rest of the shader's declarations.
+      expect(JSON.parse(configUpdate.payload.text).script).toBe('./shader.uniforms.ts');
+      expect(JSON.parse(configUpdate.payload.text).passes.Image).toBeTruthy();
+
+      expect(posted.some((message) => message.type === 'updateScriptPollingRate'
+        && message.payload.fps === 60)).toBe(true);
+    });
+
+    it('sends the rate the slider commits the same way', async () => {
+      const { container } = await openScriptTab();
+
+      const slider = container.querySelector('.polling-slider') as HTMLInputElement;
+      await fireEvent.change(slider, { target: { value: '45' } });
+      await tick();
+
+      const posted = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls.map(([message]) => message);
+      const configUpdate = posted.find((message) => message.type === 'updateConfig');
+      expect(configUpdate?.payload.config.scriptMaxPollingFps).toBe(45);
     });
   });
 

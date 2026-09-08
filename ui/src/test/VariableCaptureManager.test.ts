@@ -9,6 +9,9 @@ vi.mock('@shader-studio/debug', () => ({
   VariableCaptureBuilder: {
     getAllInScopeVariables: vi.fn(),
     generateMultiCaptureShader: vi.fn(),
+    // Stands in for the real word-boundary scan over the pass source.
+    filterUsedCustomUniforms: vi.fn((code: string, uniforms: Array<{ name: string; type: string }>) =>
+      uniforms.filter((uniform) => new RegExp(`\\b${uniform.name}\\b`).test(code))),
   },
 }));
 
@@ -633,7 +636,10 @@ describe('VariableCaptureManager', () => {
       (VariableCaptureBuilder.generateMultiCaptureShader as any).mockReturnValue('selector shader');
       mockIssueCaptureGrid.mockResolvedValue(3);
 
-      manager.notifyStateChange(BASE_PARAMS);
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        code: 'void mainImage(out vec4 fc, in vec2 co) { float x = customGain; }',
+      });
       await flushRAF();
 
       expect(VariableCaptureBuilder.generateMultiCaptureShader).toHaveBeenCalledWith(
@@ -662,6 +668,57 @@ describe('VariableCaptureManager', () => {
         BASE_GRID.gridHeight,
         expect.any(Function),
       );
+    });
+
+    // Custom uniforms are declared once for the whole shader, so the Image pass
+    // used to list every uniform its buffers and common file use.
+    it('leaves out custom uniforms the inspected pass never mentions', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([
+        { varName: 'uv', varType: 'vec2', declarationLine: 1 },
+      ]);
+      mockRenderingEngine.getCustomUniformInfo.mockReturnValue([
+        { name: 'uUsedHere', type: 'float' },
+        { name: 'uBufferOnly', type: 'vec3' },
+      ]);
+      (VariableCaptureBuilder.generateMultiCaptureShader as any).mockReturnValue('selector shader');
+      mockIssueCaptureGrid.mockResolvedValue(2);
+
+      manager.notifyStateChange({
+        ...BASE_PARAMS,
+        code: 'void mainImage(out vec4 fc, in vec2 co) { fc = vec4(uUsedHere); }',
+      });
+      await flushRAF();
+
+      expect(VariableCaptureBuilder.filterUsedCustomUniforms).toHaveBeenCalledWith(
+        'void mainImage(out vec4 fc, in vec2 co) { fc = vec4(uUsedHere); }',
+        [
+          { name: 'uUsedHere', type: 'float' },
+          { name: 'uBufferOnly', type: 'vec3' },
+        ],
+      );
+      expect(mockIssueCaptureGrid).toHaveBeenCalledWith(
+        [
+          { varName: 'uv', varType: 'vec2', captureShader: 'selector shader', selectorIndex: 0 },
+          { varName: 'uUsedHere', varType: 'float', captureShader: 'selector shader', selectorIndex: 1 },
+        ],
+        UNIFORMS,
+        BASE_GRID.gridWidth,
+        BASE_GRID.gridHeight,
+        expect.any(Function),
+      );
+    });
+
+    it('reports no variables when the only candidates are unused custom uniforms', async () => {
+      (VariableCaptureBuilder.getAllInScopeVariables as any).mockReturnValue([]);
+      mockRenderingEngine.getCustomUniformInfo.mockReturnValue([
+        { name: 'uBufferOnly', type: 'vec3' },
+      ]);
+
+      manager.notifyStateChange(BASE_PARAMS);
+      await flushRAF();
+
+      expect(mockIssueCaptureGrid).not.toHaveBeenCalled();
+      expect(onUpdate).toHaveBeenCalledWith([]);
     });
   });
 

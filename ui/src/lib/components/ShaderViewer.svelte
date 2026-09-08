@@ -13,11 +13,13 @@
   import ConfigPanel from "./config/ConfigPanel.svelte";
   import DebugPanel from "./debug/DebugPanel.svelte";
   import { setViewerSession } from "../state/viewerSession.svelte";
+  import { setCommonShaderSource } from "../state/commonSourceState.svelte";
   import DockviewLayout from "./DockviewLayout.svelte";
   import { RecordingManager } from "../RecordingManager";
   import type { RenderingEngine as IRenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
   import { createEngineForLanguage } from "../engineFactory";
   import { PixelInspectorManager } from "../PixelInspectorManager";
+  import { ScriptRuntimeReporter } from "../ScriptRuntimeReporter";
   import { getInspectorState, setInspectorState, registerLockAtHandler } from "../state/pixelInspectorState.svelte";
   import { ShaderDebugManager } from "../ShaderDebugManager";
   import type { ShaderDebugState } from "../types/ShaderDebugState";
@@ -162,6 +164,9 @@
   let pipeline: ShaderPipeline;
   let shaderLocker: ShaderLocker;
   let renderingEngine = $state<IRenderingEngine>(undefined!);
+  // Uniform scripts run in the extension host, which has no clock of the
+  // shader's own; this keeps it told what the viewer is showing.
+  let scriptRuntimeReporter: ScriptRuntimeReporter | null = null;
   // The active rendering backend, chosen by shader language. Changing it remounts
   // the canvas (a canvas's context mode is fixed once acquired) and rebuilds the engine.
   let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
@@ -527,6 +532,8 @@
     } catch { /* prior engine already gone */ }
 
     renderingEngine = createEngineForLanguage(engineLanguage);
+    scriptRuntimeReporter?.dispose();
+    scriptRuntimeReporter = null;
     try {
       renderingEngine.initialize(glCanvas, true);
     } catch (err) {
@@ -563,6 +570,9 @@
       if (wasPaused) {
         renderingEngine.togglePause();
       }
+      // The reporter holds the engine it reads, so a swap needs a fresh one.
+      scriptRuntimeReporter = new ScriptRuntimeReporter(renderingEngine, transport);
+      scriptRuntimeReporter.start();
     }
 
     logSwitchTiming('setupRenderingEngine initialized', {
@@ -583,6 +593,8 @@
       return;
     }
     renderingEngine.handleCanvasResize(data.width, data.height);
+    // Resolution is script context; report it without waiting for the sample.
+    scriptRuntimeReporter?.sync();
   }
 
   function handleCanvasClick() {
@@ -590,7 +602,12 @@
   }
 
   function handleCanvasMouseMove(event: MouseEvent) {
-    if (!pixelInspectorManager || !initialized) {
+    if (!initialized) {
+      return;
+    }
+    // Mouse is script context; the reporter throttles bursts itself.
+    scriptRuntimeReporter?.sync();
+    if (!pixelInspectorManager) {
       return;
     }
     pixelInspectorManager.handleMouseMove(event);
@@ -653,6 +670,7 @@
       return;
     }
     renderingEngine.togglePause();
+    scriptRuntimeReporter?.sync();
   }
 
   function handleToggleLock() {
@@ -1020,6 +1038,34 @@
     return firstPath.replace(/\\/g, '/') === secondPath.replace(/\\/g, '/');
   }
 
+  /**
+   * Publish the common pass for the in-app editor's language service.
+   *
+   * A buffer-only update carries the edited file in `code` rather than in
+   * `buffers`, so a common edit made outside the app arrives that way and has
+   * to be read from there - otherwise the editor keeps analysing against the
+   * common source the shader was loaded with.
+   */
+  function publishCommonShaderSource(data: {
+    path?: string;
+    code?: string;
+    buffers?: Record<string, string>;
+    bufferPathMap?: Record<string, string>;
+  }) {
+    const paths = { ...bufferPathMap, ...(data.bufferPathMap ?? {}) };
+    const commonPath = paths.common ?? paths.Common;
+    if (!commonPath) {
+      setCommonShaderSource(null);
+      return;
+    }
+    const text = data.path && shaderPathsEqual(data.path, commonPath)
+      ? data.code
+      : data.buffers?.common ?? data.buffers?.Common;
+    if (typeof text === 'string') {
+      setCommonShaderSource({ path: commonPath, text });
+    }
+  }
+
   function handleShaderSource(event: MessageEvent) {
     const locked = shaderLocker.isLocked();
     const lockedPath = shaderLocker.getLockedShaderPath();
@@ -1053,25 +1099,53 @@
       if (isFirstShader && renderingEngine.getTimeManager().isPaused()) {
         renderingEngine.togglePause();
       }
-      customUniformValues = {};
-      authoringUniformInfo = event.data.customUniformInfo ?? [];
       slangModules = event.data.slangModules ?? [];
-      uniformTimestamps = {};
-      uniformActualFps = {};
       if (shaderPath !== prevShaderPath) {
         configSelectedBuffer = 'Image';
       }
-      scriptInfo = currentConfig?.script
-        ? {
-          filename: currentConfig.script,
-          uniforms: [],
-          fileExists: !event.data.scriptBundleError?.includes('not found'),
-        }
-        : null;
+      // A bare-file preview carries no config and no script context. Clearing
+      // the uniforms on it would empty the panel and leave it empty: after its
+      // first batch the host sends only values that changed, so every uniform
+      // the script holds constant would never be heard from again.
+      if (!event.data.scriptContextOmitted) {
+        customUniformValues = {};
+        authoringUniformInfo = event.data.customUniformInfo ?? [];
+        uniformTimestamps = {};
+        uniformActualFps = {};
+        scriptInfo = currentConfig?.script
+          ? {
+            filename: currentConfig.script,
+            // What the extension loaded from the script, which it reports
+            // whether or not the shader goes on to compile. A failed compile
+            // says nothing about the script, so it must not empty this list.
+            uniforms: authoringUniformInfo,
+            fileExists: !event.data.scriptBundleError?.includes('not found'),
+          }
+          : null;
+      }
       editorOverlayManager?.setShaderSource(currentShaderCode, shaderPath);
       editorOverlayManager?.setConfig(currentConfig);
       resolutionController.handleShaderLoaded(currentConfig, isSameShader);
     }
+  }
+
+  /**
+   * A compile installs a uniform manager that starts with nothing in it, and
+   * the host sends only values that changed after its first batch - so without
+   * asking, every uniform the script holds constant sits at zero for the life
+   * of the shader and the effects driven by them quietly do nothing.
+   */
+  function requestFullCustomUniformValues(): void {
+    // The host has already loaded the script and sent its declarations in the
+    // shaderSource message. A Slang compile publishes those declarations to
+    // its engine only on success, so asking the engine here loses constant
+    // values after a failed compile or a backend switch. Keep using the
+    // authoring list through a bare-file preview too: that message omits its
+    // script context and must not erase the shader's known declarations.
+    if (authoringUniformInfo.length === 0) {
+      return;
+    }
+    transport.postMessage({ type: 'requestCustomUniformValues' });
   }
 
   function applyCompilationResult(result: CompilationResult) {
@@ -1161,6 +1235,7 @@
       if (messageTarget.kind === 'main') {
         handleShaderSource(event);
       }
+      publishCommonShaderSource(event.data);
       try {
         const result: CompilationResult | undefined = await pipeline?.handleShaderMessage(event);
         logSwitchTiming('shaderSource pipeline complete', {
@@ -1176,11 +1251,8 @@
         }
         if (result) {
           applyCompilationResult(result);
-          if (result.success && scriptInfo) {
-            authoringUniformInfo = renderingEngine.getCustomUniformInfo();
-            scriptInfo = { ...scriptInfo, uniforms: authoringUniformInfo };
-          }
         }
+        requestFullCustomUniformValues();
         isLocked = shaderLocker.isLocked();
       } catch (err) {
         resolutionController.handleShaderLoadFailed();
@@ -1295,6 +1367,9 @@
       });
 
       renderingEngine.togglePause();
+
+      scriptRuntimeReporter = new ScriptRuntimeReporter(renderingEngine, transport);
+      scriptRuntimeReporter.start();
 
       initialized = true;
       routerInitialized = true;
@@ -1483,6 +1558,8 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
+    scriptRuntimeReporter?.dispose();
+    scriptRuntimeReporter = null;
     setViewerSession(null);
     resetVariablePreview();
     if (transport?.getType() !== 'vscode') {

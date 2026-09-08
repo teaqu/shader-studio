@@ -101,7 +101,12 @@ async function saveConfig(vscode, text) {
   await showShader(vscode);
 }
 
-test.describe('Slang dedup full app flows', () => {
+/**
+ * @gpu - measured, not assumed: under software rendering
+ * (SHADER_STUDIO_E2E_SOFTWARE_GL=1) the 24-texture capture times out; the
+ * headless adapter reports 16 textures and presents black.
+ */
+test.describe('Slang dedup full app flows @gpu', () => {
   test.afterEach(async ({ vscode }, info) => {
     if (info.status !== info.expectedStatus) {
       await info.attach('vscode-window', { body: await vscode.window.screenshot(), contentType: 'image/png' });

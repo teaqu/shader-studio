@@ -28,6 +28,7 @@ export class FrameRenderer {
   private static MAX_HISTORY = 3600;
   private previousFrameTimestamp: number | null = null;
   private pausedUniforms: PassUniforms | null = null;
+  private pausedCustomUniforms: CustomUniform[] | undefined = undefined;
 
   private timeManager: TimeManager;
   private keyboardManager: KeyboardManager;
@@ -130,31 +131,9 @@ export class FrameRenderer {
       if (!input) {
         continue;
       }
-
-      if (input.type === 'video' && input.path) {
-        const path = input.resolved_path || input.path;
-        const video = this.resourceManager.getVideoElement(path);
-        if (video) {
-          channelTime[i] = video.currentTime;
-          channelLoaded[i] = 1;
-        }
-      } else if (input.type === 'audio' && input.path) {
-        const path = input.resolved_path || input.path;
-        const audioState = this.resourceManager.getAudioState(path);
-        if (audioState) {
-          channelTime[i] = audioState.currentTime;
-          channelLoaded[i] = 1;
-        }
-      } else if (input.type === 'texture' && input.path) {
-        const path = input.resolved_path || input.path;
-        const tex = this.resourceManager.getImageTextureCache()[path];
-        channelLoaded[i] = tex ? 1 : 0;
-      } else if (input.type === 'buffer') {
-        const passBuffers = this.bufferManager.getPassBuffers();
-        channelLoaded[i] = passBuffers[input.source]?.front?.mTex0 ? 1 : 0;
-      } else if (input.type === 'keyboard') {
-        channelLoaded[i] = this.resourceManager.getKeyboardTexture() ? 1 : 0;
-      }
+      const resolved = this.resolveChannelTime(input);
+      channelTime[i] = resolved.time;
+      channelLoaded[i] = resolved.loaded;
     }
 
     return {
@@ -163,6 +142,54 @@ export class FrameRenderer {
       channelTime,
       channelLoaded,
     };
+  }
+
+  /**
+   * One channel's clock and loaded flag. Shared by per-pass rendering and the
+   * script-context channel clocks, so the two never drift apart.
+   */
+  private resolveChannelTime(input: { type?: string; path?: string; resolved_path?: string; source?: string }): { time: number; loaded: number } {
+    if (input.type === 'video' && input.path) {
+      const path = input.resolved_path || input.path;
+      const video = this.resourceManager.getVideoElement(path);
+      if (video) {
+        return { time: video.currentTime, loaded: 1 };
+      }
+    } else if (input.type === 'audio' && input.path) {
+      const path = input.resolved_path || input.path;
+      const audioState = this.resourceManager.getAudioState(path);
+      if (audioState) {
+        return { time: audioState.currentTime, loaded: 1 };
+      }
+    } else if (input.type === 'texture' && input.path) {
+      const path = input.resolved_path || input.path;
+      const tex = this.resourceManager.getImageTextureCache()[path];
+      if (tex) {
+        return { time: 0, loaded: 1 };
+      }
+    } else if (input.type === 'buffer') {
+      const passBuffers = this.bufferManager.getPassBuffers();
+      if (input.source && passBuffers[input.source]?.front?.mTex0) {
+        return { time: 0, loaded: 1 };
+      }
+    } else if (input.type === 'keyboard') {
+      if (this.resourceManager.getKeyboardTexture()) {
+        return { time: 0, loaded: 1 };
+      }
+    }
+    return { time: 0, loaded: 0 };
+  }
+
+  /**
+   * Channel clocks for the Image pass, for script uniform contexts. Zeros
+   * when nothing is compiled yet.
+   */
+  public getChannelTimes(): number[] {
+    const imagePass = this.shaderPipeline.getPasses().find((p) => p.name === "Image");
+    if (!imagePass) {
+      return [0, 0, 0, 0];
+    }
+    return this.getPassUniforms(imagePass, this.getUniforms()).channelTime;
   }
 
   private getPassResolution(pass: Pass, baseUniforms: PassUniforms): Float32Array {
@@ -288,15 +315,22 @@ export class FrameRenderer {
 
     const isPaused = this.timeManager.isPaused();
 
-    // Freeze all uniforms while paused: cache on entering pause, reuse until unpaused
+    // Freeze all uniforms while paused: cache on entering pause, reuse until
+    // unpaused. Script uniforms freeze with them - values keep arriving from
+    // the extension host, and a paused picture that keeps moving because of
+    // them is not paused.
     if (isPaused && this.pausedUniforms === null) {
       this.pausedUniforms = this.getUniforms();
+      this.pausedCustomUniforms = this.evaluateCustomUniforms();
     } else if (!isPaused) {
       this.pausedUniforms = null;
+      this.pausedCustomUniforms = undefined;
     }
 
     const uniforms = this.pausedUniforms ?? this.getUniforms();
-    const customUniforms = this.evaluateCustomUniforms();
+    const customUniforms = isPaused
+      ? this.pausedCustomUniforms
+      : this.evaluateCustomUniforms();
 
     if (!isPaused || currentFrame === 0) {
       this.renderBufferPasses(uniforms, customUniforms);

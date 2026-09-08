@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {}
+    }
+  },
+  "script": "./script-runtime-slang.uniforms.ts",
+  "scriptMaxPollingFps": 30
+}

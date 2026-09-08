@@ -9,6 +9,71 @@ describe("CustomUniformManager", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
+  describe("values that arrive before the declarations", () => {
+    // The extension host starts polling as soon as it has sent the shader, so
+    // its first values routinely reach the webview before the shader has
+    // finished compiling and the declarations have been loaded. Dropping them
+    // used to leave externalValues as an empty list that no later update could
+    // ever match, so the uniform stayed at zero in the shader for good while
+    // the config panel happily showed it changing.
+    it("applies an update that arrived before the declarations", () => {
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.5 }]);
+
+      manager.loadDeclarations("uniform float uTick;", [{ name: "uTick", type: "float" }]);
+
+      expect(manager.getValues()).toEqual([{ name: "uTick", type: "float", value: 0.5 }]);
+    });
+
+    it("keeps taking updates after a pre-declaration update", () => {
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.5 }]);
+      manager.loadDeclarations("uniform float uTick;", [{ name: "uTick", type: "float" }]);
+
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.9 }]);
+
+      expect(manager.getValues()).toEqual([{ name: "uTick", type: "float", value: 0.9 }]);
+    });
+
+    it("keeps the newest value when several arrive before the declarations", () => {
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.1 }]);
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.2 }]);
+
+      manager.loadDeclarations("uniform float uTick;", [{ name: "uTick", type: "float" }]);
+
+      expect(manager.getValues()).toEqual([{ name: "uTick", type: "float", value: 0.2 }]);
+    });
+
+    it("zero-fills a declared uniform no value ever arrived for", () => {
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.5 }]);
+
+      manager.loadDeclarations("uniform float uTick;\nuniform vec2 uPoint;", [
+        { name: "uTick", type: "float" },
+        { name: "uPoint", type: "vec2" },
+      ]);
+
+      expect(manager.getValues()).toEqual([
+        { name: "uTick", type: "float", value: 0.5 },
+        { name: "uPoint", type: "vec2", value: [0, 0] },
+      ]);
+    });
+
+    it("forgets an early value for a uniform the script no longer declares", () => {
+      manager.updateValues([{ name: "uGone", type: "float", value: 0.5 }]);
+
+      manager.loadDeclarations("uniform float uTick;", [{ name: "uTick", type: "float" }]);
+
+      expect(manager.getValues()).toEqual([{ name: "uTick", type: "float", value: 0 }]);
+    });
+
+    it("adds a declared uniform that was missing from externalValues", () => {
+      manager.loadDeclarations("uniform float uTick;", [{ name: "uTick", type: "float" }]);
+      manager.setValues([]);
+
+      manager.updateValues([{ name: "uTick", type: "float", value: 0.75 }]);
+
+      expect(manager.getValues()).toEqual([{ name: "uTick", type: "float", value: 0.75 }]);
+    });
+  });
+
   describe("loadDeclarations", () => {
     it("should set declarations and type info without script evaluation", () => {
       const declarations = "uniform float uSpeed;\nuniform vec3 uColor;";
@@ -325,6 +390,19 @@ describe("CustomUniformManager", () => {
       manager.updateValues([{ name: "uVal", type: "float" as const, value: 9.0 }]);
 
       expect(manager.getValues().find(v => v.name === "uVal")?.value).toBe(9.0);
+    });
+
+    it("ignores a stale update whose type no longer matches the declaration", () => {
+      manager.loadDeclarations("uniform vec2 uVal;", [
+        { name: "uVal", type: "vec2" },
+      ]);
+      manager.setValues([{ name: "uVal", type: "vec2", value: [1, 2] }]);
+
+      manager.updateValues([{ name: "uVal", type: "float", value: 9 }]);
+
+      expect(manager.getValues()).toEqual([
+        { name: "uVal", type: "vec2", value: [1, 2] },
+      ]);
     });
   });
 });

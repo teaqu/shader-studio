@@ -1,5 +1,10 @@
 import { parse } from "@shaderfrog/glsl-parser";
-import { preprocess } from "@shaderfrog/glsl-parser/preprocessor/index.js";
+import {
+  generate as generatePreprocessor,
+  parse as parsePreprocessor,
+  preprocess,
+  preprocessAst,
+} from "@shaderfrog/glsl-parser/preprocessor/index.js";
 import type { ShaderStage } from "@shader-studio/types";
 import type { Position, Range } from "vscode-languageserver-protocol";
 import type {
@@ -482,6 +487,22 @@ function normalizeProgram(
     );
   }
 
+  for (const macro of collectMacroDefinitions(originalLines)) {
+    symbols.push({
+      id: `symbol:${symbolSequence++}`,
+      name: macro.name,
+      kind: macro.parameters ? "function" : "variable",
+      signature: macro.parameters
+        ? `#define ${macro.name}(${macro.parameters.join(", ")})`
+        : `#define ${macro.name}`,
+      declaration: macro.range,
+      definition: macro.range,
+      references: [],
+      scopeId: globalScope.id,
+    });
+    globalScope.symbolIds.push(`symbol:${symbolSequence - 1}`);
+  }
+
   return {
     symbols,
     unresolvedReferences: [...unresolved.values()].map((reference) => ({
@@ -493,6 +514,77 @@ function normalizeProgram(
       name: publicScopeName(scope.name),
     })),
   };
+}
+
+/**
+ * Macros defined by this document, read from the source before preprocessing.
+ *
+ * The preprocessor expands and then discards every `#define`, so by the time a
+ * document is parsed its macros have left no symbol behind. That is invisible
+ * within one file - uses are substituted too - but a shader built on a common
+ * file's macros sees none of them, and every use is reported as an undefined
+ * identifier.
+ */
+function collectMacroDefinitions(
+  originalLines: readonly string[],
+): { name: string; parameters?: readonly string[]; range: Range }[] {
+  // Keep macro nodes while the parser's own preprocessor evaluates conditionals
+  // and expands continuations. This gives macro indexing exactly the same active
+  // branches as compilation, without reimplementing its expression evaluator.
+  let effectiveSource: string;
+  try {
+    const program = parsePreprocessor(originalLines.join("\n"));
+    effectiveSource = generatePreprocessor(preprocessAst(program, {
+      preserve: {
+        define: () => true,
+        define_arguments: () => true,
+        undef: () => true,
+      },
+    }));
+  } catch {
+    return [];
+  }
+
+  const effectiveLines = effectiveSource.split("\n");
+  const lineMapping = buildGlslLineMapping(originalLines, effectiveLines);
+  const macros = new Map<string, { name: string; parameters?: readonly string[]; range: Range }>();
+  const pattern = /^\s*#\s*(define|undef)\s+([A-Za-z_]\w*)(\()?/;
+
+  effectiveLines.forEach((line, effectiveLine) => {
+    const match = pattern.exec(line);
+    if (!match) {
+      return;
+    }
+    const [, command, name, functionLike] = match;
+    if (command === "undef") {
+      macros.delete(name);
+      return;
+    }
+    const originalLine = mapProcessedLine(lineMapping.processedToOriginal, effectiveLine);
+    const original = originalLines[originalLine] ?? line;
+    const character = original.indexOf(name, original.indexOf("define"));
+    if (character < 0) {
+      return;
+    }
+    const openIndex = character + name.length;
+    const closeIndex = functionLike ? original.indexOf(")", openIndex) : -1;
+    const parameters = closeIndex === -1
+      ? undefined
+      : original.slice(openIndex + 1, closeIndex)
+        .split(",")
+        .map((parameter) => parameter.trim())
+        .filter((parameter) => parameter.length > 0);
+    macros.set(name, {
+      name,
+      parameters,
+      range: {
+        start: { line: originalLine, character },
+        end: { line: originalLine, character: character + name.length },
+      },
+    });
+  });
+
+  return [...macros.values()];
 }
 
 function parserScopeKind(

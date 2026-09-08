@@ -675,9 +675,14 @@ export class VariableCaptureManager {
       return;
     }
 
-    // Append custom uniforms (declared in compiler header, not in user code)
+    // Append custom uniforms (declared in compiler header, not in user code).
+    // The header declares them for every pass, so only the ones this pass
+    // mentions are values of this capture.
     if (!params.slangCapture) {
-      const customUniforms = this.renderingEngine.getCustomUniformInfo();
+      const customUniforms = VariableCaptureBuilder.filterUsedCustomUniforms(
+        params.code,
+        this.renderingEngine.getCustomUniformInfo(),
+      );
       for (const { name, type } of customUniforms) {
         if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
           vars.push({ varName: name, varType: type, declarationLine: -1 });

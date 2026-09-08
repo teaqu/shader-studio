@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {}
+    }
+  },
+  "script": "./script-tab-error.uniforms.ts"
+}

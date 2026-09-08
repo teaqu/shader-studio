@@ -232,6 +232,62 @@ describe("FrameRenderer", () => {
     });
   });
 
+  describe("pausing", () => {
+    /** One image pass, so a paused frame still reaches the pass renderer. */
+    const singleImagePass = () => {
+      const pass = { name: "Image", inputs: {} } as any;
+      mockShaderPipeline.getPasses = vi.fn(() => [pass]);
+      mockShaderPipeline.getPassShader = vi.fn(() => ({ mProgram: {} }));
+      mockShaderPipeline.getPassShaders = vi.fn(() => ({ Image: { mProgram: {} } }));
+      return pass;
+    };
+
+    const customUniformsOf = (call: number) => mockPassRenderer.renderPass.mock.calls[call][4];
+
+    it("freezes script uniforms with the rest of them while paused", () => {
+      singleImagePass();
+      let value = 1;
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value }],
+      } as any);
+      frameRenderer.setRunning(true);
+
+      frameRenderer.render(0);
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(16);
+      const whilePaused = customUniformsOf(mockPassRenderer.renderPass.mock.calls.length - 1);
+
+      // Values keep arriving from the extension host while the shader is
+      // paused; a paused picture must not move because of them.
+      value = 99;
+      frameRenderer.render(32);
+
+      const stillPaused = customUniformsOf(mockPassRenderer.renderPass.mock.calls.length - 1);
+      expect(whilePaused).toEqual([{ name: "uFast", type: "float", value: 1 }]);
+      expect(stillPaused).toEqual([{ name: "uFast", type: "float", value: 1 }]);
+    });
+
+    it("picks up the latest script uniforms again once unpaused", () => {
+      singleImagePass();
+      let value = 1;
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value }],
+      } as any);
+      frameRenderer.setRunning(true);
+
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(0);
+      value = 42;
+      mockTimeManager.isPaused = vi.fn(() => false);
+      frameRenderer.render(16);
+
+      const afterResume = customUniformsOf(mockPassRenderer.renderPass.mock.calls.length - 1);
+      expect(afterResume).toEqual([{ name: "uFast", type: "float", value: 42 }]);
+    });
+  });
+
   describe("running state", () => {
     it("should track running state correctly", () => {
       expect(frameRenderer.isRunning()).toBe(false);
@@ -1114,6 +1170,25 @@ describe("FrameRenderer", () => {
       const uniforms = frameRenderer.getUniforms();
 
       expect(uniforms.channelLoaded).toEqual([0, 0, 0, 0]);
+    });
+  });
+
+  describe("getChannelTimes", () => {
+    it("should return the Image pass channel times", () => {
+      mockResourceManager.getAudioState.mockReturnValue({ currentTime: 12.5 });
+      mockShaderPipeline.getPasses.mockReturnValue([{
+        name: 'Image',
+        shaderSrc: 'image shader',
+        inputs: { iChannel1: { type: 'audio', path: 'music.mp3' } },
+      }]);
+
+      expect(frameRenderer.getChannelTimes()).toEqual([0, 12.5, 0, 0]);
+    });
+
+    it("should return zeros when there is no Image pass", () => {
+      mockShaderPipeline.getPasses.mockReturnValue([]);
+
+      expect(frameRenderer.getChannelTimes()).toEqual([0, 0, 0, 0]);
     });
   });
 

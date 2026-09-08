@@ -35,7 +35,9 @@ async function main() {
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode', 'glsl-transpiler', 'esbuild'],
+		// The VSIX ships no node_modules, so anything left external must come
+		// from the host. Everything else is bundled or copied in as an asset.
+		external: ['vscode'],
 		logLevel: 'silent',
 		plugins: [
 			esbuildProblemMatcherPlugin,
@@ -49,6 +51,9 @@ async function main() {
 		fs.mkdirSync('dist', { recursive: true });
 		fs.rmSync(path.resolve(__dirname, 'dist/slang-wasm.wasm'), { force: true });
 		fs.copyFileSync(path.resolve(__dirname, '../ui/src/slang/slang-wasm.js'), path.resolve(__dirname, 'dist/slang-wasm.mjs'));
+		// The script bundler's engine. It is loaded from beside the bundle at
+		// runtime, so a missing copy here kills custom uniform scripts.
+		fs.copyFileSync(require.resolve('esbuild-wasm/esbuild.wasm'), path.resolve(__dirname, 'dist/esbuild.wasm'));
 		fs.copyFileSync(path.resolve(__dirname, '../language-servers/slang/THIRD_PARTY_NOTICES.md'), path.resolve(__dirname, 'dist/SLANG_THIRD_PARTY_NOTICES.md'));
 	}
 }

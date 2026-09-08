@@ -8,6 +8,7 @@
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
   import StoragePanel from "./StoragePanel.svelte";
+  import { persistConfig } from "../../config/ConfigPersistence";
   import type { ConfigFieldErrors } from "../../config/ComputeConfigMutations";
   import type { AudioVideoController } from "../../AudioVideoController";
   import type { ShaderLanguage } from "../../engineFactory";
@@ -316,14 +317,14 @@
       return;
     }
 
+    // Spreading `config` keeps its nested reactive proxies, which structured
+    // clone refuses: posting one throws and the rate never leaves the webview.
+    // persistConfig serialises the config first, so what goes over the wire is
+    // plain data.
     const updatedConfig = { ...config, scriptMaxPollingFps: fps };
     config = updatedConfig;
-    const text = JSON.stringify(updatedConfig, null, 2);
 
-    transport.postMessage({
-      type: 'updateConfig',
-      payload: { config: updatedConfig, text, shaderPath, skipRefresh: true },
-    });
+    persistConfig(transport, { config: updatedConfig, shaderPath, skipRefresh: true });
     transport.postMessage({
       type: 'updateScriptPollingRate',
       payload: { fps },

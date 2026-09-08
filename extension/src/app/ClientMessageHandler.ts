@@ -105,6 +105,15 @@ export class ClientMessageHandler {
       case 'resetScriptTime':
         this.shaderProvider.resetScriptTime();
         break;
+      case 'requestCustomUniformValues':
+        // The client lost its uniform state and needs the full set, not the
+        // deltas the poll loop would otherwise be its only source of.
+        this.shaderProvider.resendScriptValues();
+        break;
+      case 'scriptRuntimeState':
+        // Normalised by the evaluator, which is the only thing that reads it.
+        this.shaderProvider.updateScriptRuntimeState(message.payload);
+        break;
       case 'saveLayout':
         await this.layoutStateStore.save(message.payload?.layoutSlot ?? null, message.payload?.state ?? null);
         break;

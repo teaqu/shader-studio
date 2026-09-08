@@ -688,6 +688,30 @@ describe("WebGPURenderingEngine", () => {
       expect(Array.from(uniforms.slice(cameraDir, cameraDir + 3))).toEqual([0.25, 0.5, -0.75]);
     });
 
+    it("freezes script uniforms at pause entry while the host keeps sending values", () => {
+      const { engine } = pausableEngine();
+      const custom = { value: 7 };
+      (engine as any).customUniformManager = {
+        getUniformInfo: () => [{ name: "uFast", type: "float" }],
+        getCurrentValues: () => [{ name: "uFast", type: "float", value: custom.value }],
+        hasUniforms: () => true,
+        getDeclarations: () => "uniform float uFast;",
+      };
+
+      engine.render(1000);
+      engine.togglePause();
+      engine.render(1016);
+
+      // The extension host polls on its own clock and keeps sending values.
+      custom.value = 99;
+      engine.render(1033);
+
+      const [uniforms] = lastFrameUniformWrites(engine, 1);
+      const written = Array.from(uniforms);
+      expect(written).toContain(7);
+      expect(written).not.toContain(99);
+    });
+
     it("renderForCapture preserves the frozen paused uniform snapshot", () => {
       const { engine, mouse } = pausableEngine();
 
@@ -1563,6 +1587,45 @@ describe("WebGPURenderingEngine", () => {
       ]);
     });
 
+    it("preserves a delta that arrives before custom declarations compile", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      engine.updateCustomUniformValues([{ name: "gain", type: "float", value: 2.5 }]);
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2.5 },
+      ]);
+    });
+
+    it("keeps a newer delta after a full snapshot through compilation", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      stubEngineInternals(engine);
+      engine.setCustomUniformValues([{ name: "gain", type: "float", value: 1 }]);
+      engine.updateCustomUniformValues([{ name: "gain", type: "float", value: 2.5 }]);
+
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+
+      expect(engine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2.5 },
+      ]);
+    });
+
     it("clears script uniforms when a later compile has no script", async () => {
       const engine = new WebGPURenderingEngine(assets);
       stubEngineInternals(engine);
@@ -2037,6 +2100,47 @@ describe("WebGPURenderingEngine", () => {
       expect(resourceManager.getAudioFFTData).toHaveBeenCalledWith("music.wav");
       expect(engine.getAudioFFTData("video", "music.wav")).toBeNull();
       expect(engine.getAudioFFTData("audio")).toBeNull();
+    });
+
+    it("reports the Image pass channel times", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      (engine as any).resourceManager = {
+        getAudioState: vi.fn(() => ({ paused: false, muted: false, currentTime: 12.5, duration: 60 })),
+        getAudioSampleRate: vi.fn(() => 48000),
+        getVideoElement: vi.fn(() => undefined),
+        getVideoTexture: vi.fn(() => undefined),
+        getImageTextureCache: vi.fn(() => ({})),
+        getCubemapTexture: vi.fn(() => undefined),
+        getKeyboardTexture: vi.fn(() => null),
+      };
+      (engine as any).passGraph = [{
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        channels: [{ kind: "audio", slot: 1, key: "iChannel1", path: "/audio.wav" }],
+      }];
+
+      expect(engine.getChannelTimes()).toEqual([0, 12.5, 0, 0]);
+    });
+
+    it("returns zeros when no Image pass is installed", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      (engine as any).passGraph = [];
+
+      expect(engine.getChannelTimes()).toEqual([0, 0, 0, 0]);
+    });
+
+    it("delegates the audio sample rate with a 44100 fallback", () => {
+      const engine = new WebGPURenderingEngine(assets);
+      (engine as any).resourceManager = { getAudioSampleRate: vi.fn(() => 48000) };
+      expect(engine.getAudioSampleRate()).toBe(48000);
+
+      (engine as any).resourceManager = { getAudioSampleRate: vi.fn(() => 0) };
+      expect(engine.getAudioSampleRate()).toBe(44100);
+
+      (engine as any).resourceManager = null;
+      expect(engine.getAudioSampleRate()).toBe(44100);
     });
 
     it("loads audio with playback options and updates its loop without autoplaying", async () => {

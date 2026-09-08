@@ -1,6 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +18,48 @@ const VSCODE_VERSION = process.env.SHADER_STUDIO_E2E_VSCODE_VERSION ?? '1.109.5'
  * publishes the path here. Resolving it per worker instead would have every
  * worker race to populate the same cache directory on a cold checkout.
  */
-const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN
-  ?? join(extensionPath, '.vscode-test', `vscode-darwin-arm64-${VSCODE_VERSION}`,
-    'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+const platformBinary = () => {
+  const cache = join(extensionPath, '.vscode-test');
+  if (process.platform === 'darwin') {
+    const arch = process.arch === 'x64' ? 'x64' : 'arm64';
+    return join(cache, `vscode-darwin-${arch}-${VSCODE_VERSION}`,
+      'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+  }
+  if (process.platform === 'win32') {
+    return join(cache, `vscode-win32-x64-archive-${VSCODE_VERSION}`, 'Code.exe');
+  }
+  return join(cache, `vscode-linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}-${VSCODE_VERSION}`, 'code');
+};
+
+const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN ?? platformBinary();
+
+/**
+ * Set SHADER_STUDIO_E2E_VSIX to drive the packaged artifact instead of the
+ * source tree. The development host resolves everything through the repo's
+ * node_modules, so it cannot see what `--no-dependencies` leaves out - which is
+ * how 1.1.0 shipped a script bundler that could not load its own engine.
+ */
+const packagedVsix = process.env.SHADER_STUDIO_E2E_VSIX
+  ? resolve(process.env.SHADER_STUDIO_E2E_VSIX)
+  : null;
+
+/** Unpacks the VSIX into an extensions directory VS Code will load it from. */
+function installPackagedExtension(extensionsDir) {
+  const manifest = JSON.parse(readFileSync(join(extensionPath, 'package.json'), 'utf8'));
+  const target = join(extensionsDir, `${manifest.publisher}.${manifest.name}-${manifest.version}`);
+  const staging = mkdtempSync(join(tmpdir(), 'ss-vsix-install-'));
+  try {
+    execFileSync('unzip', ['-q', '-o', packagedVsix, '-d', staging], { stdio: 'inherit' });
+    mkdirSync(dirname(target), { recursive: true });
+    rmSync(target, { recursive: true, force: true });
+    // The VSIX keeps the extension under `extension/`; VS Code expects its
+    // contents at the root of the installed folder.
+    execFileSync('cp', ['-R', join(staging, 'extension'), target], { stdio: 'inherit' });
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+  return target;
+}
 
 const USER_SETTINGS = {
   'security.workspace.trust.enabled': false,
@@ -47,8 +87,12 @@ async function waitFor(predicate, { timeout = 60_000, interval = 250, message })
   const deadline = Date.now() + timeout;
   for (;;) {
     const value = await predicate();
-    if (value) return value;
-    if (Date.now() >= deadline) throw new Error(message ?? 'condition never became true');
+    if (value) {
+      return value;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(message ?? 'condition never became true');
+    }
     await new Promise((r) => setTimeout(r, interval));
   }
 }
@@ -77,6 +121,11 @@ export const test = base.extend({
     mkdirSync(join(userDataDir, 'User'), { recursive: true });
     writeFileSync(join(userDataDir, 'User', 'settings.json'), JSON.stringify(USER_SETTINGS, null, 2), 'utf8');
 
+    const extensionsDir = join(userDataDir, 'extensions');
+    if (packagedVsix) {
+      installPackagedExtension(extensionsDir);
+    }
+
     const app = await electron.launch({
       executablePath: vscodeBinary(),
       env: cleanEnv({ SHADER_STUDIO_PW_PORT_FILE: portFile, SHADER_STUDIO_E2E_WORKSPACE: workspacePath }),
@@ -86,12 +135,18 @@ export const test = base.extend({
         '--skip-welcome',
         '--skip-release-notes',
         '--disable-workspace-trust',
-        '--disable-extensions',
-        `--extensionDevelopmentPath=${extensionPath}`,
+        // Against a packaged build the installed extension IS the subject, so
+        // it must not be disabled and must not be loaded from source as well.
+        ...(packagedVsix ? [] : ['--disable-extensions', `--extensionDevelopmentPath=${extensionPath}`]),
         `--extensionDevelopmentPath=${join(extensionPath, 'e2e', 'pw', 'bridge-extension')}`,
         `--user-data-dir=${userDataDir}`,
-        `--extensions-dir=${join(userDataDir, 'extensions')}`,
+        `--extensions-dir=${extensionsDir}`,
         '--enable-unsafe-webgpu',
+        // Reproduces a runner with no GPU (the Linux CI machines) so a spec can
+        // be checked against software rendering before it is trusted there.
+        ...(process.env.SHADER_STUDIO_E2E_SOFTWARE_GL
+          ? ['--disable-gpu', '--use-gl=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+          : []),
         // rAF does not fire in a hidden document, and Chromium marks occluded
         // windows hidden. Without these, any window covering the test window
         // stalls the webview's capture loop.
@@ -122,7 +177,9 @@ export const test = base.extend({
         body: JSON.stringify({ source: fn.toString(), args }),
       });
       const result = await response.json();
-      if (!result.ok) throw new Error(`extension host: ${result.error}`);
+      if (!result.ok) {
+        throw new Error(`extension host: ${result.error}`);
+      }
       return result.value;
     };
 
@@ -140,7 +197,9 @@ export const test = base.extend({
         } catch (error) {
           const detail = String(error?.message ?? error) + String(error?.cause?.code ?? '');
           const transient = /Canceled|ECONNREFUSED|ECONNRESET|fetch failed/i.test(detail);
-          if (!transient || Date.now() >= deadline) throw error;
+          if (!transient || Date.now() >= deadline) {
+            throw error;
+          }
           await new Promise((r) => setTimeout(r, 500));
         }
       }
@@ -154,7 +213,9 @@ export const test = base.extend({
     const shaderFrame = async (timeout = 90_000) => waitFor(async () => {
       for (const frame of window.frames()) {
         try {
-          if (await frame.locator('.canvas-container').count()) return frame;
+          if (await frame.locator('.canvas-container').count()) {
+            return frame;
+          }
         } catch { /* frame detached mid-scan */ }
       }
       return null;
@@ -168,7 +229,9 @@ export const test = base.extend({
       app.close(),
       new Promise((resolve) => setTimeout(resolve, 15_000)),
     ]).catch(() => { /* the process is going away regardless */ });
-    try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
+    try {
+      rmSync(userDataDir, { recursive: true, force: true });
+    } catch { /* best effort */ }
   }, { scope: 'worker' }],
 });
 

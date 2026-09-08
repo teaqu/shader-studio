@@ -115,6 +115,31 @@ describe('ShaderProcessor', () => {
     expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
   });
 
+  it('never rebuilds the untouched Slang source while the cursor moves between lines', async () => {
+    const planForLine = (line: number) => ({
+      workspaceHash: `hash-${line}`, rootUri: 'file:///main.slang', selectedSourceUri: 'file:///main.slang',
+      executionMarkerSlot: line, captureSlots: [], files: [],
+    });
+    const message: ShaderSourceMessage = {
+      type: 'shaderSource', code: 'float4 mainImage(float2 c) { return 1; }', config: null,
+      path: '/main.slang', buffers: {}, language: 'slang',
+    };
+    (mockShaderDebugManager as any).getLanguage = vi.fn(() => 'slang');
+    (mockShaderDebugManager as any).getSlangPreviewPlan = vi.fn()
+      .mockReturnValueOnce(planForLine(3))
+      .mockReturnValueOnce(planForLine(4));
+    (mockRenderEngine as any).compileSlangDebugPlan = vi.fn().mockResolvedValue({ success: true });
+    (shaderProcessor as unknown as { imageShaderCode: string }).imageShaderCode = message.code;
+
+    await shaderProcessor.debugCompile(message);
+    await shaderProcessor.debugCompile(message);
+
+    expect((mockRenderEngine as any).compileSlangDebugPlan).toHaveBeenCalledTimes(2);
+    // Compiling the untouched source would install it, flashing the whole
+    // shader between two debugged lines.
+    expect(mockRenderEngine.compileShaderPipeline).not.toHaveBeenCalled();
+  });
+
   it('keeps the last-good Slang render when an imported-module preview fails', async () => {
     const plan = {
       workspaceHash: 'hash', rootUri: 'file:///main.slang', selectedSourceUri: 'file:///helper.slang', executionMarkerSlot: 0, captureSlots: [],
@@ -250,6 +275,65 @@ describe('ShaderProcessor', () => {
       );
       expect(mockRenderEngine.startRenderLoop).toHaveBeenCalled();
       expect(result.success).toBe(true);
+    });
+
+    it('reuses the engine declarations for a bare-file preview with no script context', async () => {
+      // A common pass or helper with no mainImage carries no config and declares
+      // none of the script's uniforms, but it is not saying the shader has none:
+      // compiling it with none clears the engine's uniform state, and the host
+      // sends only changed values after its first batch, so every constant the
+      // script holds would sit at zero for the life of the shader.
+      (mockRenderEngine as any).getCustomUniformDeclarations = vi.fn()
+        .mockReturnValue('uniform float uStatic;');
+      (mockRenderEngine as any).getCustomUniformInfo = vi.fn()
+        .mockReturnValue([{ name: 'uStatic', type: 'float' }]);
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'float helper() { return 1.0; }',
+        config: null,
+        path: 'common.glsl',
+        buffers: {},
+        scriptContextOmitted: true,
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        'uniform float uStatic;',
+        [{ name: 'uStatic', type: 'float' }],
+      );
+    });
+
+    it('prefers the message declarations when a bare-file preview carries its own', async () => {
+      (mockRenderEngine as any).getCustomUniformDeclarations = vi.fn()
+        .mockReturnValue('uniform float uStale;');
+      (mockRenderEngine as any).getCustomUniformInfo = vi.fn()
+        .mockReturnValue([{ name: 'uStale', type: 'float' }]);
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+        customUniformDeclarations: 'uniform float uFresh;',
+        customUniformInfo: [{ name: 'uFresh', type: 'float' }],
+        scriptContextOmitted: true,
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(mockRenderEngine.compileShaderPipeline).toHaveBeenCalledWith(
+        message.code,
+        message.config,
+        message.path,
+        message.buffers,
+        'uniform float uFresh;',
+        [{ name: 'uFresh', type: 'float' }],
+      );
     });
 
     it('passes resolved Slang paths for every pass to the rendering engine', async () => {
@@ -408,6 +492,111 @@ describe('ShaderProcessor', () => {
       expect(result.errors).toEqual([errorMessage]);
       expect(mockRenderEngine.startRenderLoop).not.toHaveBeenCalled();
       expect(mockRenderEngine.render).not.toHaveBeenCalled();
+    });
+
+    it('names the failed script when its uniforms are what the shader is missing', async () => {
+      // A script that never loaded declares no uniforms, so the shader fails on
+      // the identifiers it was meant to provide. Reporting only the GLSL error
+      // sends the user hunting a typo in a name that is spelled correctly.
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ["ERROR: 0:6: 'iDayOfWeek' : undeclared identifier"],
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage(out vec4 c, in vec2 f) { c = vec4(iDayOfWeek); }',
+        config: {},
+        path: 'mix.glsl',
+        buffers: {},
+        scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual([
+        'Script: Script file not found: ./mix.uniforms.ts',
+        "ERROR: 0:6: 'iDayOfWeek' : undeclared identifier",
+      ]);
+    });
+
+    it('names the failed script when the untouched compile fails under instrumentation', async () => {
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 5,
+        lineContent: 'some code',
+        filePath: 'mix.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any)
+        .mockReturnValue('void mainImage() { /* debug */ }');
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ["ERROR: 0:6: 'iDayOfWeek' : undeclared identifier"],
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage(out vec4 c, in vec2 f) { c = vec4(iDayOfWeek); }',
+        config: {},
+        path: 'mix.glsl',
+        buffers: {},
+        scriptBundleError: 'Script evaluation error: ctx.iDate is not iterable',
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result.success).toBe(false);
+      expect(result.errors).toEqual([
+        'Script: Script evaluation error: ctx.iDate is not iterable',
+        "ERROR: 0:6: 'iDayOfWeek' : undeclared identifier",
+      ]);
+    });
+
+    it('leaves a superseded compile unannotated by the script error', async () => {
+      // A superseded result is replaced by the newer compile's report, which
+      // carries its own copy of the script error.
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'mix.glsl',
+        buffers: {},
+        scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result).toEqual({
+        success: false,
+        errors: ['Superseded by a newer compile'],
+        superseded: true,
+      });
+    });
+
+    it('keeps the script error a warning when the shader still compiles', async () => {
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: 'void mainImage() {}',
+        config: {},
+        path: 'mix.glsl',
+        buffers: {},
+        scriptBundleError: 'Script file not found: ./mix.uniforms.ts',
+      };
+
+      const result = await shaderProcessor.processMainShaderCompilation(message, false);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toEqual(['Script: Script file not found: ./mix.uniforms.ts']);
+      expect(result.errors).toBeUndefined();
     });
 
     it('should preserve superseded main compile results without starting the render loop', async () => {
@@ -876,6 +1065,157 @@ describe('ShaderProcessor', () => {
         undefined,
       );
       expect(result.success).toBe(true);
+    });
+
+    it('does not rebuild the untouched source when only the debug line moved', async () => {
+      const imageShaderCode = 'void mainImage() {}';
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+      vi.clearAllMocks();
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 10,
+        lineContent: 'debug line',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any)
+        .mockReturnValueOnce('void mainImage() { /* line 10 */ }')
+        .mockReturnValueOnce('void mainImage() { /* line 11 */ }');
+
+      await shaderProcessor.debugCompile(message);
+      await shaderProcessor.debugCompile(message);
+
+      // Rebuilding the untouched source installs it, and the render loop shows
+      // the whole shader until the instrumented compile lands - a flash of the
+      // full image between two debugged lines.
+      expect(
+        (mockRenderEngine.compileShaderPipeline as any).mock.calls.map((call: any[]) => call[0]),
+      ).toEqual([
+        'void mainImage() { /* line 10 */ }',
+        'void mainImage() { /* line 11 */ }',
+      ]);
+    });
+
+    it('rebuilds the untouched source when the compile inputs change', async () => {
+      const imageShaderCode = 'void mainImage() {}';
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+      vi.clearAllMocks();
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 4,
+        lineContent: 'debug line',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue('instrumented');
+
+      // Same source, new buffers: the verdict from the previous inputs says
+      // nothing about whether this one compiles.
+      await shaderProcessor.debugCompile({
+        ...message,
+        buffers: { BufferA: 'void mainImage() {}' },
+      });
+
+      expect(
+        (mockRenderEngine.compileShaderPipeline as any).mock.calls.map((call: any[]) => call[0]),
+      ).toEqual([imageShaderCode, 'instrumented']);
+    });
+
+    it('re-checks the untouched source while it fails to compile', async () => {
+      const imageShaderCode = 'void mainImage() { bad; }';
+      (shaderProcessor as unknown as { imageShaderCode: string }).imageShaderCode = imageShaderCode;
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 3,
+        lineContent: 'debug line',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue('instrumented');
+      (mockRenderEngine.compileShaderPipeline as any).mockResolvedValue({
+        success: false,
+        errors: ["ERROR: 0:1: 'bad' : undeclared identifier"],
+      });
+
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      const first = await shaderProcessor.debugCompile(message);
+      const second = await shaderProcessor.debugCompile(message);
+
+      // A source that does not compile is never verified, so the error keeps
+      // being reported instead of the instrumented compile hiding it.
+      expect(first.success).toBe(false);
+      expect(second.success).toBe(false);
+      expect(
+        (mockRenderEngine.compileShaderPipeline as any).mock.calls.map((call: any[]) => call[0]),
+      ).toEqual([imageShaderCode, imageShaderCode]);
+    });
+
+    it('falls back to the untouched source when a line move fails to instrument', async () => {
+      const imageShaderCode = 'void mainImage() {}';
+      const message: ShaderSourceMessage = {
+        type: 'shaderSource',
+        code: imageShaderCode,
+        config: {},
+        path: 'test.glsl',
+        buffers: {},
+      };
+
+      await shaderProcessor.processMainShaderCompilation(message, false);
+      vi.clearAllMocks();
+
+      (mockShaderDebugManager.getState as any).mockReturnValue({
+        isEnabled: true,
+        isActive: true,
+        currentLine: 7,
+        lineContent: 'debug line',
+        filePath: 'test.glsl',
+        activeBufferName: 'Image',
+      });
+      (mockShaderDebugManager.modifyShaderForDebugging as any).mockReturnValue('instrumented');
+      (mockRenderEngine.compileShaderPipeline as any)
+        .mockResolvedValueOnce({ success: false, errors: ['Debug compilation failed'] })
+        .mockResolvedValue({ success: true });
+
+      const result = await shaderProcessor.debugCompile(message);
+
+      // Skipping the verified baseline leaves the previous instrumented program
+      // installed, so the failed line still has to restore the original.
+      expect(result.success).toBe(true);
+      expect(
+        (mockRenderEngine.compileShaderPipeline as any).mock.calls.map((call: any[]) => call[0]),
+      ).toEqual(['instrumented', imageShaderCode]);
+      expect(mockShaderDebugManager.setDebugError).toHaveBeenCalledWith(
+        expect.stringContaining('Debug shader compilation failed'),
+      );
     });
   });
 });

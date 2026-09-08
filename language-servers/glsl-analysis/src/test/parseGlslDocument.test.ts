@@ -30,6 +30,110 @@ function offsetAtPosition(source: string, position: { line: number; character: n
 }
 
 describe("parseGlslDocument", () => {
+  describe("macros", () => {
+    /**
+     * The preprocessor expands and then discards every #define, so without
+     * this a common file full of macros contributes no symbols at all and
+     * every use of one in a shader reads as an undefined identifier.
+     */
+    it("indexes an object-like macro as a variable", () => {
+      const document = parseGlslDocument("file:///c.glsl", "#define uKaleido 0.65\n", "fragment");
+
+      const macro = document.symbols.find((symbol) => symbol.name === "uKaleido");
+      expect(macro?.kind).toBe("variable");
+      expect(macro?.signature).toBe("#define uKaleido");
+      expect(macro?.declaration).toEqual({
+        start: { line: 0, character: 8 },
+        end: { line: 0, character: 16 },
+      });
+    });
+
+    it("indexes a function-like macro as a function, with its parameters", () => {
+      const document = parseGlslDocument("file:///c.glsl", "#define lfo(rate, phase) (rate + phase)\n", "fragment");
+
+      const macro = document.symbols.find((symbol) => symbol.name === "lfo");
+      expect(macro?.kind).toBe("function");
+      expect(macro?.signature).toBe("#define lfo(rate, phase)");
+    });
+
+    it("treats a parenthesised body as object-like, not as parameters", () => {
+      // `#define uKGlow  vec3(...)` is how most of these are written; the
+      // parentheses belong to the body, not to a parameter list.
+      const document = parseGlslDocument(
+        "file:///c.glsl",
+        "#define uKGlow      vec3(0.55, 0.30, 1.00)\n",
+        "fragment",
+      );
+
+      const macro = document.symbols.find((symbol) => symbol.name === "uKGlow");
+      expect(macro?.kind).toBe("variable");
+      expect(macro?.signature).toBe("#define uKGlow");
+    });
+
+    it("indexes a macro the preprocessor is asked for with whitespace", () => {
+      const document = parseGlslDocument("file:///c.glsl", "  #  define  uSpaced 1.0\n", "fragment");
+
+      expect(document.symbols.map((symbol) => symbol.name)).toContain("uSpaced");
+    });
+
+    it("indexes macros alongside the declarations around them", () => {
+      const document = parseGlslDocument(
+        "file:///c.glsl",
+        "#define uTint 0.5\nfloat sharedTone(float value) { return value * uTint; }\n",
+        "fragment",
+      );
+
+      expect(document.symbols.map((symbol) => symbol.name)).toEqual(
+        expect.arrayContaining(["sharedTone", "uTint"]),
+      );
+    });
+
+    it("does not export macros from inactive branches, after undefinition, or comments", () => {
+      const document = parseGlslDocument(
+        "file:///c.glsl",
+        [
+          "#if 0",
+          "#define uDisabled 1.0",
+          "#endif",
+          "#define uRemoved 1.0",
+          "#undef uRemoved",
+          "/*",
+          "#define uCommented 1.0",
+          "*/",
+          "#define uVisible 1.0",
+        ].join("\n"),
+        "fragment",
+      );
+
+      expect(document.symbols.map((symbol) => symbol.name)).toContain("uVisible");
+      expect(document.symbols.map((symbol) => symbol.name)).not.toContain("uDisabled");
+      expect(document.symbols.map((symbol) => symbol.name)).not.toContain("uRemoved");
+      expect(document.symbols.map((symbol) => symbol.name)).not.toContain("uCommented");
+    });
+
+    it("uses the GLSL preprocessor for compound conditions, continued directives, and recursive aliases", () => {
+      const document = parseGlslDocument(
+        "file:///c.glsl",
+        [
+          "#define VERSION 3",
+          "#define A A",
+          "#if VERSION >= 2 && defined(A) \\",
+          "  && !defined(MISSING)",
+          "#define uCompound 1.0",
+          "#else",
+          "#define uWrongBranch 1.0",
+          "#endif",
+        ].join("\n"),
+        "fragment",
+      );
+
+      expect(document.symbols.map((symbol) => symbol.name)).toEqual(
+        expect.arrayContaining(["VERSION", "A", "uCompound"]),
+      );
+      expect(document.symbols.map((symbol) => symbol.name)).not.toContain("uWrongBranch");
+    });
+  });
+
   it("indexes declarations, references, overloads, fields, and nested scopes", () => {
     const document = parseGlslDocument("file:///image.glsl", SOURCE, "fragment");
 

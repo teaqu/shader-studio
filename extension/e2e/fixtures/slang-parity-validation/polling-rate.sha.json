@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {}
+    }
+  },
+  "script": "./polling-rate.uniforms.ts",
+  "scriptMaxPollingFps": 30
+}

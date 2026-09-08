@@ -294,6 +294,21 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['vec3(1.0, 0.5, 0.0)']);
   });
 
+  test('sees the macros the common file defines', async ({ vscode }) => {
+    // Every document is preprocessed on its own, so a #define in the common
+    // file used to leave no symbol behind: a shader built on common macros -
+    // the usual way these files are written - lit up as undefined identifiers.
+    const document = await openDiagnosticDocument(vscode, join(fixturePath, 'image.glsl'));
+
+    const undefinedIdentifiers = document.diagnostics
+      .filter((item) => `${item.code}`.startsWith('undefined-'));
+    expect(undefinedIdentifiers, JSON.stringify(document.diagnostics)).toEqual([]);
+
+    const result = await languageSnapshot(vscode, join(fixturePath, 'image.glsl'), 'glsl');
+    expect(result.labels.includes('uKaleido')).toBeTruthy();
+    expect(result.labels.includes('lfo')).toBeTruthy();
+  });
+
   test('resolves GLSL references, highlights, and renames', async ({ vscode }) => {
     const result = await navigationSnapshot(vscode, join(fixturePath, 'image.glsl'));
 

@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "Live GLSL and Slang shader preview, editor, and visual debugger with WebGL and WebGPU pipelines.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
@@ -323,7 +323,10 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "test:e2e:vscode": "npm run compile && npm run test:e2e:vscode:run",
-    "test:e2e:vscode:run": "playwright test --config ./e2e/pw/playwright.config.mjs"
+    "test:e2e:vscode:run": "playwright test --config ./e2e/pw/playwright.config.mjs",
+    "verify:vsix": "node scripts/verify-vsix.mjs",
+    "test:e2e:vsix": "node scripts/run-vsix-e2e.mjs",
+    "verify:version": "node scripts/check-version-published.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -336,6 +339,7 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.24.0",
+    "js-yaml": "^4.3.2",
     "sinon": "^21.0.0",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
@@ -347,7 +351,7 @@
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
     "entities": "^6.0.1",
-    "esbuild": "^0.24.0",
+    "esbuild-wasm": "^0.24.0",
     "glsl-transpiler": "^3.0.3",
     "ws": "^8.18.3"
   }

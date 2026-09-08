@@ -509,6 +509,66 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await instance.diagnostics({ document: revision })).not.toContainEqual(expect.objectContaining({ code: "include-not-found" }));
   });
 
+  it("knows the macros the common file defines", async () => {
+    // Each document is preprocessed on its own, so a #define in the common
+    // file is expanded away there and never reaches the main document as a
+    // symbol. A shader built on common macros - the usual way a Shader Studio
+    // common file is written - is then a wall of undeclared identifiers.
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: "#define uKaleido 0.65\n#define uKGlow vec3(0.55, 0.30, 1.00)\n",
+      },
+    });
+    const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(uKGlow * uKaleido, 1.0); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    expect(await instance.diagnostics({ document: revision }))
+      .not.toContainEqual(expect.objectContaining({ code: "undefined-identifier" }));
+
+    const position = { line: 0, character: text.indexOf("uKaleido") + 3 };
+    expect((await instance.completion({ document: revision, position })).map((item) => item.label))
+      .toContain("uKaleido");
+    expect((await instance.definition({ document: revision, position }))[0]?.uri)
+      .toBe("file:///workspace/common.glsl");
+  });
+
+  it("does not make inactive, undefined, or commented common macros visible", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: [
+          "#if 0",
+          "#define uDisabled 1.0",
+          "#endif",
+          "#define uRemoved 1.0",
+          "#undef uRemoved",
+          "/*",
+          "#define uCommented 1.0",
+          "*/",
+        ].join("\n"),
+      },
+    });
+    const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(1.0); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const labels = (await instance.completion({
+      document: revision,
+      position: { line: 0, character: text.indexOf("vec4") },
+    })).map((item) => item.label);
+    expect(labels).not.toContain("uDisabled");
+    expect(labels).not.toContain("uRemoved");
+    expect(labels).not.toContain("uCommented");
+  });
+
   it("provides completion, hover, signatures, and navigation for implicit Shader Studio Common", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({

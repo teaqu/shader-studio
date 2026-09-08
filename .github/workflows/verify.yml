@@ -7,11 +7,67 @@ name: Verify
 
 on:
   workflow_call:
+    outputs:
+      version:
+        description: Version of the tested extension
+        value: ${{ jobs.package.outputs.version }}
+      vsix_path:
+        description: Filename of the tested VSIX artifact
+        value: ${{ jobs.package.outputs.vsix_path }}
 
 permissions:
   contents: read
 
 jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      vsix_path: ${{ steps.meta.outputs.vsix_path }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Read artifact metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./extension/package.json').version")"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "vsix_path=shader-studio-${VERSION}.vsix" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspace dependencies
+        run: npm run build:deps -w extension
+
+      - name: Package VSIX
+        working-directory: extension
+        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
+
+      # --no-dependencies ships no node_modules, so a module left external in
+      # the bundle resolves in the development host and nowhere else. That is
+      # how 1.1.0 published a dead script bundler. Check the artifact itself.
+      - name: Verify the VSIX carries what it needs at runtime
+        run: node extension/scripts/verify-vsix.mjs "${{ steps.meta.outputs.vsix_path }}"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: shader-studio-${{ steps.meta.outputs.version }}-vsix
+          path: ${{ steps.meta.outputs.vsix_path }}
+          if-no-files-found: error
+
   test:
     name: Unit and extension tests
     runs-on: ubuntu-latest
@@ -83,8 +139,9 @@ jobs:
         run: npm run test:e2e:corpus -w rendering
 
   vscode-e2e:
-    name: VS Code webview E2E
+    name: Installed VSIX E2E (GPU)
     runs-on: macos-15
+    needs: package
     timeout-minutes: 45
 
     steps:
@@ -97,33 +154,76 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: npm ci
 
-      # The same script the build uses, so the binary under test and the one
-      # that ships are fetched and verified by one mechanism.
-      - name: Install pinned Slang WASM binary
-        run: node ui/scripts/ensure-slang-wasm.mjs
+      - name: Download tested extension artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: shader-studio-${{ needs.package.outputs.version }}-vsix
 
-      - name: Build workspace test dependencies
-        run: npm run build:deps -w extension
-
-      # The suite drives VS Code's own Electron through _electron.launch(), but
-      # the Slang dedup spec also opens the browser-connected UI in Chromium.
-      # It needs the full build: the headless shell's only WebGPU adapter is
-      # SwiftShader, which reports 16 textures and presents black.
+      # The connected-browser spec needs Chromium with a real WebGPU adapter.
       - name: Install Playwright browser
         run: npx playwright install chromium
 
-      - name: Run full VS Code webview E2E suite
-        id: vscode-e2e
-        run: npm run test:e2e:vscode -w extension
+      # These selections are complementary: every spec runs once, using the
+      # same archive that a release publishes. No development build is loaded.
+      - name: Run installed-VSIX E2E tests
+        id: vsix-e2e
+        env:
+          SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
+          SHADER_STUDIO_E2E_GREP: '@gpu'
+          # Override the runner's default GPU exclusion for this selection.
+          SHADER_STUDIO_E2E_GREP_INVERT: '(?!)'
+        run: npm run test:e2e:vsix -w extension
 
-      - name: Upload VS Code webview E2E traces
-        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+      - name: Upload installed-VSIX E2E traces
+        if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: vscode-webview-e2e-failures
+          name: packaged-vsix-e2e-GPU-failures
+          path: extension/.playwright/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vscode-e2e-linux:
+    name: Installed VSIX E2E (no GPU)
+    runs-on: ubuntu-latest
+    needs: package
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Download tested extension artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+
+      # These selections are complementary: every spec runs once, using the
+      # same archive that a release publishes. No development build is loaded.
+      - name: Run installed-VSIX E2E tests
+        id: vsix-e2e
+        env:
+          SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
+          SHADER_STUDIO_E2E_GREP_INVERT: '@gpu'
+        run: xvfb-run -a npm run test:e2e:vsix -w extension
+
+      - name: Upload installed-VSIX E2E traces
+        if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: packaged-vsix-e2e-no-GPU-failures
           path: extension/.playwright/
           if-no-files-found: ignore
           retention-days: 7

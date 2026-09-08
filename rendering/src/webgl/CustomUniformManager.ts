@@ -10,6 +10,13 @@ export class CustomUniformManager {
   private declarations = "";
   private inferredTypes: Record<string, CustomUniformType> = {};
   private externalValues: CustomUniform[] | null = null;
+  /**
+   * Values that arrived before the declarations did. The extension host starts
+   * polling as soon as it has sent the shader, so its first values routinely
+   * beat the compile that loads the declarations - and a value dropped there
+   * used to be dropped for the life of the shader.
+   */
+  private earlyValues = new Map<string, CustomUniform>();
 
   /**
    * Load pre-computed declarations and type info from the extension host.
@@ -18,14 +25,34 @@ export class CustomUniformManager {
   public loadDeclarations(declarations: string, uniformInfo: { name: string; type: string }[]): void {
     // Preserve external values across reloads so static uniforms survive recompilation
     const savedValues = this.externalValues;
+    // Copied, not aliased: clear() empties the live map.
+    const earlyValues = new Map(this.earlyValues);
     this.clear();
-    this.externalValues = savedValues;
     this.declarations = declarations;
     for (const { name, type } of uniformInfo) {
       if (['float', 'vec2', 'vec3', 'vec4', 'bool'].includes(type)) {
         this.inferredTypes[name] = type as CustomUniformType;
       }
     }
+
+    if (savedValues === null && earlyValues.size === 0) {
+      return;
+    }
+
+    // One entry per declared uniform, taking the newest value known for it and
+    // zero where none is: a uniform the script stopped declaring goes away, and
+    // a uniform declared but never sent renders as zero rather than nothing.
+    const known = new Map<string, CustomUniform>();
+    for (const value of savedValues ?? []) {
+      known.set(value.name, value);
+    }
+    for (const [name, value] of earlyValues) {
+      known.set(name, value);
+    }
+    this.externalValues = this.getZeroUniforms().map((zero) => {
+      const value = known.get(zero.name);
+      return value && value.type === zero.type ? { ...value } : zero;
+    });
   }
 
   /**
@@ -43,16 +70,35 @@ export class CustomUniformManager {
    * Only touches named entries; leaves others unchanged.
    */
   public updateValues(changed: CustomUniform[]): void {
+    const copy = (u: CustomUniform): CustomUniform => ({
+      ...u,
+      value: Array.isArray(u.value) ? [...u.value] : u.value,
+    });
+
+    // Before the declarations arrive there is nothing to merge into, so the
+    // update is held until loadDeclarations can place it.
+    if (!this.hasUniforms()) {
+      for (const u of changed) {
+        this.earlyValues.set(u.name, copy(u));
+      }
+      return;
+    }
+
     if (!this.externalValues) {
       this.externalValues = this.getZeroUniforms();
     }
     for (const u of changed) {
+      if (!(u.name in this.inferredTypes)) {
+        continue;
+      }
+      if (u.type !== this.inferredTypes[u.name]) {
+        continue;
+      }
       const idx = this.externalValues.findIndex(v => v.name === u.name);
       if (idx >= 0) {
-        this.externalValues[idx] = {
-          ...u,
-          value: Array.isArray(u.value) ? [...u.value] : u.value,
-        };
+        this.externalValues[idx] = copy(u);
+      } else {
+        this.externalValues.push(copy(u));
       }
     }
   }
@@ -69,6 +115,7 @@ export class CustomUniformManager {
     this.declarations = "";
     this.inferredTypes = {};
     this.externalValues = null;
+    this.earlyValues.clear();
   }
 
   public hasUniforms(): boolean {

@@ -609,6 +609,32 @@ describe('DebugPanel', () => {
     expect(lineInfo?.classList.contains('error')).toBe(false);
   });
 
+  it.each([
+    { lineContent: 'float d = length(p) - r;' },
+    { debugError: 'Some error' },
+    { debugNotice: 'No debuggable variable on this line' },
+  ])('only lets the visible line tooltip receive pointer events: %j', async (overrides) => {
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState(overrides),
+      getUniforms: mockGetUniforms,
+    });
+    const lineInfo = container.querySelector('.header-info') as HTMLElement;
+    const tooltip = container.querySelector('.line-tooltip') as HTMLElement;
+
+    expect(tooltip).toHaveStyle({ pointerEvents: 'none' });
+    await fireEvent.mouseEnter(lineInfo);
+    expect(tooltip).toHaveStyle({ pointerEvents: 'auto' });
+
+    await fireEvent.mouseLeave(lineInfo, { relatedTarget: tooltip });
+    await fireEvent.mouseEnter(tooltip);
+    expect(tooltip).toHaveClass('visible');
+    expect(tooltip).toHaveStyle({ pointerEvents: 'auto' });
+
+    await fireEvent.mouseLeave(tooltip, { relatedTarget: container });
+    expect(tooltip).not.toHaveClass('visible');
+    expect(tooltip).toHaveStyle({ pointerEvents: 'none' });
+  });
+
   it('does not show the line error tooltip when hovered directly without first hovering the line badge', async () => {
     const { container } = render(DebugPanel, {
       debugState: makeDebugState({ debugError: 'Some error' }),

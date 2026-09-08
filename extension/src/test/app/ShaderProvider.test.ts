@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { ShaderProvider } from '../../app/ShaderProvider';
+import { ScriptEvaluator } from '../../app/ScriptEvaluator';
 import { ShaderConfigProcessor } from '../../app/ShaderConfigProcessor';
 import { PathResolver } from '../../app/PathResolver';
 import { Logger } from '../../app/services/Logger';
@@ -436,6 +437,7 @@ suite('ShaderProvider Test Suite', () => {
         reload: true,
         cursorPosition: undefined,
         compileSequence: 1,
+        scriptContextOmitted: true,
         slangModules: [],
         slangDependencyDiagnostics: [],
       });
@@ -823,7 +825,52 @@ suite('ShaderProvider Test Suite', () => {
         reload: true,
         cursorPosition: undefined,
         compileSequence: 1,
+        scriptContextOmitted: true,
       });
+    });
+
+    test('routes a helper that only mentions mainImage in a comment as a bare preview', async () => {
+      // The old substring test read the comment as an entry point and sent the
+      // helper as a whole shader, replacing the picture and taking the running
+      // shader's script uniforms with it.
+      const shaderPath = '/path/to/helpers.glsl';
+      const code = '// Helpers used by mainImage in dope.glsl.\nfloat helper(float x) { return x * 2.0; }';
+      const mockEditor = {
+        document: {
+          getText: sandbox.stub().returns(code),
+          uri: { fsPath: shaderPath },
+          languageId: 'glsl',
+        },
+      };
+
+      await provider.sendShaderFromEditor(mockEditor as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.config, null);
+      assert.strictEqual(message.scriptContextOmitted, true);
+    });
+
+    test('sends a file that defines mainImage as a shader of its own', async () => {
+      const shaderPath = '/path/to/real.glsl';
+      const code = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }';
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+      const mockEditor = {
+        document: {
+          getText: sandbox.stub().returns(code),
+          uri: { fsPath: shaderPath },
+          languageId: 'glsl',
+          lineAt: sandbox.stub().returns({ text: code }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      };
+
+      await provider.sendShaderFromEditor(mockEditor as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      const message = sendSpy.firstCall.args[0];
+      assert.notStrictEqual(message.config, null);
+      assert.strictEqual(message.scriptContextOmitted, undefined);
     });
 
     test('should not show VS Code warning for GLSL files without mainImage', () => {
@@ -1045,6 +1092,7 @@ suite('ShaderProvider Test Suite', () => {
         reload: true,
         cursorPosition: undefined,
         compileSequence: 1,
+        scriptContextOmitted: true,
       });
     });
 
@@ -1069,6 +1117,7 @@ suite('ShaderProvider Test Suite', () => {
         reload: true,
         cursorPosition: undefined,
         compileSequence: 1,
+        scriptContextOmitted: true,
       });
     });
 
@@ -1246,6 +1295,7 @@ suite('ShaderProvider Test Suite', () => {
         reload: true,
         cursorPosition: undefined,
         compileSequence: 1,
+        scriptContextOmitted: true,
       });
     });
 
@@ -1350,6 +1400,36 @@ suite('ShaderProvider Test Suite', () => {
       sinon.assert.calledOnce(sendSpy);
       sinon.assert.calledOnce(recordSpy);
       sinon.assert.calledWithExactly(recordSpy, configPath, null);
+    });
+  });
+
+  suite('resendScriptValues', () => {
+    // The poll loop sends only values that changed after its first batch, so a
+    // client that rebuilt its uniform state (a swapped engine, a reinstalled
+    // manager) sits at zero for every uniform the script holds constant until
+    // it is given the full set again.
+    test('sends every current value, not just the changed ones', () => {
+      const values = [
+        { name: 'uMoves', type: 'float', value: 1.5 },
+        { name: 'uHolds', type: 'float', value: 12.0 },
+      ];
+      sandbox.stub(ScriptEvaluator.prototype, 'currentValues').returns(values as any);
+
+      provider.resendScriptValues();
+
+      sinon.assert.calledOnce(sendSpy);
+      sinon.assert.calledWith(sendSpy, {
+        type: 'customUniformValues',
+        payload: { values },
+      });
+    });
+
+    test('sends nothing when no script is loaded', () => {
+      sandbox.stub(ScriptEvaluator.prototype, 'currentValues').returns([]);
+
+      provider.resendScriptValues();
+
+      sinon.assert.notCalled(sendSpy);
     });
   });
 });

@@ -13,6 +13,7 @@ import { getShaderLanguage } from "./GlslFileTracker";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
+import { definesMainImage } from "./ShaderEntryPoint";
 import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
 import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
 
@@ -677,18 +678,15 @@ export class ShaderExplorerBackend {
   }
 
   private hasMainImage(filePath: string): boolean {
-    // Match an actual mainImage function definition (Slang: float4 mainImage(...), GLSL: void mainImage(...))
-    const mainImagePattern = /\bmainImage\s*\(/;
     // Check open document first (for unsaved changes)
     const openDocument = vscode.workspace.textDocuments.find(
       (document) => path.normalize(document.uri.fsPath) === path.normalize(filePath),
     );
     if (openDocument) {
-      return mainImagePattern.test(openDocument.getText());
+      return definesMainImage(openDocument.getText());
     }
     try {
-      const content = fs.readFileSync(filePath, "utf-8");
-      return mainImagePattern.test(content);
+      return definesMainImage(fs.readFileSync(filePath, "utf-8"));
     } catch {
       return false;
     }

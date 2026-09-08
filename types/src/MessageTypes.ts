@@ -81,6 +81,13 @@ export interface ShaderSourceMessage extends BaseMessage {
   configError?: string;
   customUniformDeclarations?: string;
   customUniformInfo?: { name: string; type: string }[];
+  /**
+   * A bare preview of a file that declares no `mainImage` - a common pass, a
+   * helper. It carries no config, so it says nothing about the shader's script:
+   * a client must not read the absent `customUniform*` fields as "this shader
+   * has no script uniforms" and throw the ones it holds away.
+   */
+  scriptContextOmitted?: boolean;
   /** In-memory Slang modules, grouped by the pass that imports them. */
   slangModules?: SlangSourceModule[];
   /** Original unprocessed source before #include/import expansion — used by the debugger for accurate line mapping. */
@@ -195,6 +202,35 @@ export interface CustomUniformValuesMessage extends BaseMessage {
   type: "customUniformValues";
   payload: {
     values: { name: string; type: string; value: number | number[] | boolean }[];
+  };
+}
+
+/**
+ * Asks the host to send every custom uniform value again, not just the ones
+ * that changed. After its first batch the host sends deltas, so a client that
+ * rebuilt its uniform state - a swapped engine, a compile that reinstalled the
+ * declarations - would hold zero for every uniform the script never changes.
+ */
+export interface RequestCustomUniformValuesMessage extends BaseMessage {
+  type: "requestCustomUniformValues";
+}
+
+/**
+ * What the viewer is showing, so a uniform script running in the extension host
+ * sees the shader's own time and inputs instead of inventing them from wall
+ * clock - and stops running while the shader is paused.
+ */
+export interface ScriptRuntimeStateMessage extends BaseMessage {
+  type: "scriptRuntimeState";
+  payload: {
+    paused: boolean;
+    time: number;
+    frame: number;
+    frameRate: number;
+    resolution: [number, number, number];
+    mouse: [number, number, number, number];
+    channelTimes: number[];
+    sampleRate: number;
   };
 }
 
@@ -316,4 +352,4 @@ export interface ProfileDeleteProfileMessage extends BaseMessage {
   id: string;
 }
 
-export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;
+export type MessageEvent = LogMessage | DebugMessage | ErrorMessage | WarningMessage | RefreshMessage | GenerateConfigMessage | ShowConfigMessage | ShaderSourceMessage | CursorPositionMessage | UpdateConfigMessage | DebugModeStateMessage | ShaderLockStateMessage | UpdateShaderSourceMessage | ToggleEditorOverlayMessage | ResetLayoutMessage | ManualCompileMessage | SetCompileModeMessage | NavigateToBufferMessage | RequestWorkspaceFilesMessage | WorkspaceFilesMessage | ForkShaderMessage | GoToLineMessage | SaveFileMessage | SaveFileResultMessage | SelectFileMessage | CreateFileMessage | FileSelectedMessage | CustomUniformValuesMessage | RequestCustomUniformValuesMessage | ScriptRuntimeStateMessage | LanguageServiceSettingsMessage | ShaderAuthoringEnvironmentMessage | ProfileReadIndexMessage | ProfileIndexDataMessage | ProfileReadProfileMessage | ProfileDataMessage | ProfileWriteProfileMessage | ProfileWriteIndexMessage | ProfileDeleteProfileMessage;

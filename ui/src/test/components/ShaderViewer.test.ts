@@ -18,6 +18,7 @@ import { audioStore } from '../../lib/stores/audioStore';
 import { compileModeStore } from '../../lib/stores/compileModeStore';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 import { aspectRatioStore } from '../../lib/stores/aspectRatioStore';
+import { clearCommonShaderSource, getCommonShaderSource } from '../../lib/state/commonSourceState.svelte';
 import { setInspectorState } from '../../lib/state/pixelInspectorState.svelte';
 import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
@@ -1017,6 +1018,52 @@ describe('ShaderViewer', () => {
       });
     },
   );
+
+  it('publishes the common source the editor language service builds its symbols from', async () => {
+    // The in-app editor holds one pass at a time, so without this the language
+    // service parses a pass alone: every macro and helper the common file
+    // defines reads as an undefined identifier.
+    clearCommonShaderSource();
+    const mainPath = '/test/dope.glsl';
+    const commonPath = '/test/common.glsl';
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      path: mainPath,
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { passes: { Image: {}, common: { path: commonPath } } },
+      buffers: { common: '#define PI 3.14159\n' },
+      bufferPathMap: { Image: mainPath, common: commonPath },
+    });
+
+    expect(getCommonShaderSource()).toMatchObject({ path: commonPath, text: '#define PI 3.14159\n' });
+    const published = getCommonShaderSource();
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    await sendMessage({
+      type: 'shaderSource',
+      path: commonPath,
+      code: '#define PI 3.14159\n#define TAU 6.28318\n',
+      buffers: {},
+    });
+
+    expect(getCommonShaderSource()?.text).toBe('#define PI 3.14159\n#define TAU 6.28318\n');
+    expect(getCommonShaderSource()?.version).toBeGreaterThan(published?.version ?? 0);
+
+    await fireEvent.click(screen.getByLabelText('Toggle lock'));
+    await sendMessage({
+      type: 'shaderSource',
+      path: '/test/plain.glsl',
+      code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+      config: { passes: { Image: {} } },
+      buffers: {},
+      bufferPathMap: { Image: '/test/plain.glsl' },
+    });
+
+    expect(getCommonShaderSource()).toBeNull();
+  });
 
   it('keeps the locked Slang main canvas for a language-less common update', async () => {
     const monaco = await import('monaco-editor');
@@ -2114,8 +2161,12 @@ describe('ShaderViewer', () => {
       onInitialized
     });
 
-    // Only layout-related and initialization messages should be sent on mount
-    const allowedTypes = new Set(['requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady']);
+    // Only layout-related and initialization messages should be sent on mount.
+    // scriptRuntimeState is one of them: the host needs the viewer's opening
+    // state before a script's first poll, not after it.
+    const allowedTypes = new Set([
+      'requestLayout', 'debug', 'refresh', 'setCompileMode', 'languageServiceReady', 'scriptRuntimeState',
+    ]);
     const calls = (mockTransport.postMessage as ReturnType<typeof vi.fn>).mock.calls;
     const unexpectedCalls = calls.filter((c: any[]) => !allowedTypes.has(c[0]?.type));
     expect(unexpectedCalls).toHaveLength(0);
@@ -6103,16 +6154,10 @@ describe('ShaderViewer', () => {
     // Helper: set up config panel on the Script tab with 2 uniforms declared
     async function setupWithUniforms(messageHandler: (e: any) => Promise<void>, container: Element) {
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
-      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
       const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
-      const origGetCustomUniformInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
 
-      // Return success so scriptInfo.uniforms is populated
+      // Return success; the uniform list comes from the message itself.
       ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
-      (RenderingEngine.prototype as any).getCustomUniformInfo = vi.fn().mockReturnValue([
-        { name: 'uFast', type: 'float' },
-        { name: 'uStatic', type: 'float' },
-      ]);
 
       await messageHandler({
         data: {
@@ -6120,6 +6165,10 @@ describe('ShaderViewer', () => {
           path: '/test/shader.glsl',
           code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
           config: { passes: { Image: {} }, script: 'uniforms.ts' },
+          customUniformInfo: [
+            { name: 'uFast', type: 'float' },
+            { name: 'uStatic', type: 'float' },
+          ],
           pathMap: {},
         },
       });
@@ -6136,8 +6185,120 @@ describe('ShaderViewer', () => {
 
       // Restore after setup so other tests are unaffected
       ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
-      (RenderingEngine.prototype as any).getCustomUniformInfo = origGetCustomUniformInfo;
     }
+
+    it('lists the script\'s uniforms even when the shader fails to compile', async () => {
+      // The extension loads the script and reports its uniforms with the shader
+      // message, so a shader that does not compile says nothing about whether
+      // the script worked. Claiming "No uniforms detected" there sends the user
+      // to debug a script that is fine.
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+      ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({
+        success: false,
+        errors: ["Image: ERROR: 0:6: 'iDayOfWeek' : undeclared identifier"],
+      });
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/mix.glsl',
+          code: 'void mainImage(out vec4 o, vec2 c) { o = vec4(iDayOfWeek); }',
+          config: { passes: { Image: {} }, script: './mix.uniforms.ts' },
+          customUniformInfo: [{ name: 'iDayOfWeek', type: 'float' }],
+          customUniformDeclarations: 'uniform float iDayOfWeek;',
+          pathMap: {},
+        },
+      });
+      await tick();
+
+      configPanelStore.setVisible(true);
+      await tick();
+      const scriptTabLabel = Array.from(container.querySelectorAll('.tab-label'))
+        .find(el => el.textContent?.trim() === 'Script');
+      fireEvent.click(scriptTabLabel!);
+      await tick();
+
+      ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
+
+      const names = Array.from(container.querySelectorAll('.uniform-name'))
+        .map(el => el.textContent?.trim());
+      expect(container.querySelector('.uniforms-empty')).toBeNull();
+      expect(names).toContain('iDayOfWeek');
+    });
+
+    it('does not show the previous shader uniforms when a compile returns early', async () => {
+      // The success path used to re-read the uniform list from the engine,
+      // which is per-engine state: a message whose compile returns early
+      // (Slang dependency diagnostics, a superseded compile) never installs
+      // its uniforms there, so the read picks up the previous shader's list.
+      // The message already carries the list, so it is the only source.
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
+      const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+      const origGetCustomUniformInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
+
+      // B's compile reports success without installing anything, the way a
+      // real early return leaves the engine holding shader A's uniforms.
+      ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
+      (RenderingEngine.prototype as any).getCustomUniformInfo = vi.fn().mockReturnValue([
+        { name: 'uStale', type: 'float' },
+      ]);
+
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/a.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {} }, script: './a.uniforms.ts' },
+          customUniformInfo: [{ name: 'uStale', type: 'float' }],
+          pathMap: {},
+        },
+      });
+      await tick();
+
+      await messageHandler({
+        data: {
+          type: 'shaderSource',
+          path: '/test/b.glsl',
+          code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+          config: { passes: { Image: {} }, script: './b.uniforms.ts' },
+          customUniformInfo: [{ name: 'uFresh', type: 'float' }],
+          slangDependencyDiagnostics: [{
+            code: 'slang-module-not-found',
+            importerPath: '/test/b.slang',
+            moduleName: 'missing-module',
+            resolvedPath: '',
+            message: 'Could not resolve module missing-module',
+          }],
+          pathMap: {},
+        },
+      });
+      await tick();
+
+      configPanelStore.setVisible(true);
+      await tick();
+      const scriptTabLabel = Array.from(container.querySelectorAll('.tab-label'))
+        .find(el => el.textContent?.trim() === 'Script');
+      fireEvent.click(scriptTabLabel!);
+      await tick();
+
+      ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
+      (RenderingEngine.prototype as any).getCustomUniformInfo = origGetCustomUniformInfo;
+
+      const names = Array.from(container.querySelectorAll('.uniform-name'))
+        .map(el => el.textContent?.trim());
+      expect(names).toContain('uFresh');
+      expect(names).not.toContain('uStale');
+    });
 
     it('should merge partial customUniformValues update without clearing unchanged uniforms', async () => {
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
@@ -6168,6 +6329,138 @@ describe('ShaderViewer', () => {
       expect(texts.some(t => t?.includes('2.000'))).toBe(true);  // uFast updated
       expect(texts.some(t => t?.includes('42.00'))).toBe(true);  // uStatic preserved
     });
+
+    it('keeps uniform values and the script uniform list when a bare-file preview arrives', async () => {
+      // Opening a common pass or helper with no mainImage sends a shaderSource
+      // with no config and no script context. It must not empty the panel: the
+      // host sends only changed values after its first batch, so constants the
+      // script holds would never be heard from again.
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await setupWithUniforms(messageHandler, container);
+
+      await messageHandler({
+        data: { type: 'customUniformValues', payload: { values: [
+          { name: 'uFast', type: 'float', value: 2.0 },
+          { name: 'uStatic', type: 'float', value: 42.0 },
+        ]}},
+      });
+      await tick();
+
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+      ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
+      try {
+        await messageHandler({
+          data: {
+            type: 'shaderSource',
+            path: '/test/common.glsl',
+            code: 'float helper() { return 1.0; }',
+            config: null,
+            buffers: {},
+            scriptContextOmitted: true,
+            pathMap: {},
+          },
+        });
+        await tick();
+      } finally {
+        ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
+      }
+
+      const names = Array.from(container.querySelectorAll('.uniform-name'))
+        .map(el => el.textContent?.trim());
+      expect(names).toContain('uFast');
+      expect(names).toContain('uStatic');
+      const texts = Array.from(container.querySelectorAll('.uniform-value'))
+        .map(el => el.textContent?.trim());
+      expect(texts.some(t => t?.includes('2.000'))).toBe(true);
+      expect(texts.some(t => t?.includes('42.00'))).toBe(true);
+    });
+
+    it('asks the host for the full uniform set after a compile installs declarations', async () => {
+      // A fresh uniform manager starts with nothing in it while the host sends
+      // only deltas, so the client has to ask for the full set back.
+      const { RenderingEngine } = await import('../../../../rendering/src/webgl/RenderingEngine');
+      const origGetInfo = (RenderingEngine.prototype as any).getCustomUniformInfo;
+      (RenderingEngine.prototype as any).getCustomUniformInfo = vi.fn().mockReturnValue([
+        { name: 'uFast', type: 'float' },
+      ]);
+      const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+      const origHandleShaderMessage = ShaderPipeline.prototype.handleShaderMessage;
+      ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({ success: true });
+      try {
+        const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+        await tick();
+        const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        mockTransport.postMessage.mockClear();
+        await messageHandler({
+          data: {
+            type: 'shaderSource',
+            path: '/test/shader.glsl',
+            code: 'void mainImage(out vec4 o, vec2 uv) { o = vec4(1.0); }',
+            config: { passes: { Image: {} } },
+            customUniformInfo: [{ name: 'uFast', type: 'float' }],
+            pathMap: {},
+          },
+        });
+        await tick();
+        expect(container).toBeTruthy();
+        expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'requestCustomUniformValues' });
+      } finally {
+        ShaderPipeline.prototype.handleShaderMessage = origHandleShaderMessage;
+        (RenderingEngine.prototype as any).getCustomUniformInfo = origGetInfo;
+      }
+    });
+
+    it.each([
+      ['GLSL', 'glsl', '/test/broken.glsl'],
+      ['Slang', 'slang', '/test/broken.slang'],
+    ] as const)(
+      'asks for a full script snapshot after a failed %s compile even when the engine has no declarations',
+      async (_label, language, path) => {
+        // Slang only publishes its prospective uniform manager after a compile
+        // succeeds. The Script tab still has the declarations from the host,
+        // and constant values must be resent even though the engine is empty.
+        const initialLanguage = document.createElement('meta');
+        initialLanguage.name = 'shader-studio-initial-language';
+        initialLanguage.content = language;
+        document.head.append(initialLanguage);
+
+        const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
+        const originalHandle = ShaderPipeline.prototype.handleShaderMessage;
+        ShaderPipeline.prototype.handleShaderMessage = vi.fn().mockResolvedValue({
+          success: false,
+          errors: ['syntax error'],
+        });
+
+        try {
+          render(ShaderViewer, { onInitialized: vi.fn() });
+          await tick();
+          const messageHandler = (mockTransport.onMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+          mockTransport.postMessage.mockClear();
+
+          await messageHandler({
+            data: {
+              type: 'shaderSource',
+              language,
+              path,
+              code: 'SYNTAX_ERROR',
+              config: { passes: { Image: {} }, script: './uniforms.ts' },
+              customUniformDeclarations: 'uniform float uConstant;',
+              customUniformInfo: [{ name: 'uConstant', type: 'float' }],
+              pathMap: {},
+            },
+          });
+          await tick();
+
+          expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'requestCustomUniformValues' });
+        } finally {
+          ShaderPipeline.prototype.handleShaderMessage = originalHandle;
+          initialLanguage.remove();
+        }
+      },
+    );
 
     it('should reset per-uniform fps to 0 after a new shaderSource arrives', async () => {
       let mockNow = 0;

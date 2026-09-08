@@ -34,6 +34,12 @@ export interface RenderingEngine {
   stopRenderLoop(): void;
   render(time?: number): void;
   getCurrentFPS(): number;
+  /** Mouse in shader convention: xy position, zw click. */
+  getMouse(): [number, number, number, number];
+  /** Per-channel clocks for the Image pass, in channel-index order. */
+  getChannelTimes(): number[];
+  /** Audio sample rate, or 44100 when no audio is loaded. */
+  getAudioSampleRate(): number;
   getFrameTimeHistory(): number[];
   getFrameTimeCount(): number;
   /**

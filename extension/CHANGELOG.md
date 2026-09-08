@@ -1,4 +1,11 @@
 # Change Log
+### 1.1.1
+
+- Fixed scripts not loading, missing uniform values, and scripts running while paused.
+- Fixed variable inspector clicks and hover previews sometimes not working.
+- Fixed the GLSL language server not recognising Common-file `#define` macros.
+- Fixed helper files replacing the shader preview and GLSL-to-JavaScript conversion failing.
+
 ### 1.1.0
 - Write shaders in Slang as well as GLSL, with the same preview, config panel, inputs, and debugging.
 - Run compute passes over storage buffers and read the results from your image pass.

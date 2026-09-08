@@ -24,7 +24,8 @@
   import { isAuthoringValueType } from "@shader-studio/types";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
-  import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { getCommonShaderSource } from "../state/commonSourceState.svelte";
   import { currentTheme, type Theme } from "../stores/themeStore";
   import {
     releaseOverlayTokenColors,
@@ -763,6 +764,7 @@
     const modules = slangModules;
     const bufferName = activeBufferName;
     const passName = activePassName;
+    const common = getCommonShaderSource();
     if (!controller || !model?.uri || (language !== "glsl" && language !== "slang")) {
       return;
     }
@@ -775,6 +777,11 @@
       stage: bufferName.startsWith("__shader_studio_vertex__:") ? "vertex" : authoringStage(currentConfig, passName),
       customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
       resources: authoringResources(currentConfig, passName),
+      // Slang reaches its common file as an imported module, already carried by
+      // the virtual files below; only GLSL needs it named as the common file.
+      commonFile: language === "glsl"
+        ? commonAuthoringFile(common, passName, (filePath) => monaco.Uri.file(filePath).toString())
+        : undefined,
       virtualFiles: language === "slang"
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
         : [],

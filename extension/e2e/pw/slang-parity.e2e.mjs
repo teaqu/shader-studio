@@ -157,7 +157,12 @@ function helpers(vscode) {
 
 test.use({ vscodeKey: 'slang-parity' });
 
-test.describe('Slang parity in the VS Code webview', () => {
+/**
+ * @gpu - measured, not assumed: under software rendering
+ * (SHADER_STUDIO_E2E_SOFTWARE_GL=1) the Slang capture specs time out;
+ * they pass on a real adapter.
+ */
+test.describe('Slang parity in the VS Code webview @gpu', () => {
   /** @type {ReturnType<typeof helpers>} */
   let h;
 

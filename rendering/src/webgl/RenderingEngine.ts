@@ -22,7 +22,7 @@ import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "..
 import type { ShaderConfig, StorageBufferSnapshot } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
-import { CustomUniformManager } from "./CustomUniformManager";
+import { CustomUniformManager, type CustomUniform } from "./CustomUniformManager";
 import { VariableCapturer } from "../capture/VariableCapturer";
 import type { CaptureCompileContext, CaptureUniforms } from "../capture/VariableCapturer";
 import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
@@ -347,7 +347,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.customUniformManager.loadDeclarations(customUniformDeclarations, customUniformInfo);
       // Re-apply any pending values that arrived before/during compilation
       if (this.pendingCustomUniformValues) {
-        this.customUniformManager.setValues(this.pendingCustomUniformValues);
+        this.customUniformManager.updateValues(this.pendingCustomUniformValues);
       }
       this.shaderPipeline.setCustomUniformManager(this.customUniformManager);
       this.frameRenderer.setCustomUniformManager(this.customUniformManager);
@@ -748,16 +748,41 @@ export class RenderingEngine implements RenderingEngineInterface {
 
   public setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void {
     // Always store latest values so they can be applied after compilation
-    this.pendingCustomUniformValues = values;
+    this.pendingCustomUniformValues = values.map((value) => this.copyCustomUniform(value));
     if (this.customUniformManager) {
       this.customUniformManager.setValues(values);
     }
   }
 
   public updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void {
+    const pending = new Map((this.pendingCustomUniformValues ?? []).map((value) => [value.name, value]));
+    for (const value of changed) {
+      pending.set(value.name, this.copyCustomUniform(value));
+    }
+    this.pendingCustomUniformValues = [...pending.values()];
     if (this.customUniformManager) {
       this.customUniformManager.updateValues(changed);
     }
+  }
+
+  private copyCustomUniform(value: CustomUniform): CustomUniform {
+    return {
+      ...value,
+      value: Array.isArray(value.value) ? [...value.value] : value.value,
+    };
+  }
+
+  public getMouse(): [number, number, number, number] {
+    const mouse = this.mouseManager?.getMouse() ?? [0, 0, 0, 0];
+    return [mouse[0] ?? 0, mouse[1] ?? 0, mouse[2] ?? 0, mouse[3] ?? 0];
+  }
+
+  public getChannelTimes(): number[] {
+    return this.frameRenderer?.getChannelTimes?.() ?? [0, 0, 0, 0];
+  }
+
+  public getAudioSampleRate(): number {
+    return this.resourceManager?.getAudioSampleRate?.() || 44100;
   }
 
   public getCanvas(): HTMLCanvasElement | null {
