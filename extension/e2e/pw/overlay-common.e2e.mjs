@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { openEditorOverlay } from './editor-overlay.mjs';
 
 const shaderPath = join(workspacePath, 'overlay-common.glsl');
 
@@ -29,15 +30,8 @@ test.describe('GLSL common symbols in the Monaco overlay', () => {
       await vscode.commands.executeCommand('shader-studio.view');
     }, shaderPath);
 
+    await openEditorOverlay(vscode);
     await refreshFrame(vscode);
-
-    if (!await app().locator('.editor-overlay .monaco-editor').count()) {
-      await vscode.evaluateInHost(async (vscode) => {
-        await vscode.commands.executeCommand('shader-studio.toggleEditorOverlay');
-      });
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await refreshFrame(vscode);
-    }
     await expect.poll(
       () => app().locator('.editor-overlay .monaco-editor').count(),
       { message: 'Monaco overlay never rendered', timeout: 30_000 },

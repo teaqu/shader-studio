@@ -9,7 +9,7 @@ interface Step {
   uses?: string;
   run?: string;
   env?: Record<string, string>;
-  with?: Record<string, string>;
+  with?: Record<string, string | boolean>;
 }
 
 interface Job {
@@ -61,6 +61,9 @@ suite('Packaged extension CI gates', () => {
         '${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}');
       const download = job.steps?.find(step => step.uses?.startsWith('actions/download-artifact@'));
       assert.strictEqual(download?.with?.name, 'shader-studio-${{ needs.package.outputs.version }}-vsix');
+      const traces = job.steps?.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+      assert.strictEqual(traces?.with?.['include-hidden-files'], true,
+        'the .playwright trace directory is hidden and must be included');
       assert.ok(!job.steps?.some(step => /vsce package|npm run (?:compile|build)/.test(step.run ?? '')),
         'installed-VSIX jobs must not rebuild the extension');
     }

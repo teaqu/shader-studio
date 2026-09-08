@@ -183,6 +183,7 @@ jobs:
         with:
           name: packaged-vsix-e2e-GPU-failures
           path: extension/.playwright/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
 
@@ -225,5 +226,6 @@ jobs:
         with:
           name: packaged-vsix-e2e-no-GPU-failures
           path: extension/.playwright/
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { openEditorOverlay } from './editor-overlay.mjs';
 
 const shaderPath = join(workspacePath, 'overlay-language-service.slang');
 
@@ -89,16 +90,8 @@ test.describe('Shader language servers in the Monaco overlay', () => {
       await vscode.commands.executeCommand('shader-studio.view');
     }, shaderPath);
 
+    await openEditorOverlay(vscode);
     await h.refreshFrame();
-
-    const overlayVisible = await h.app().locator('.editor-overlay .monaco-editor').count();
-    if (!overlayVisible) {
-      await vscode.evaluateInHost(async (vscode) => {
-        await vscode.commands.executeCommand('shader-studio.toggleEditorOverlay');
-      });
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await h.refreshFrame();
-    }
     await h.overlayReady();
   });
 
