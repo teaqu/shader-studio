@@ -796,7 +796,7 @@ test('focused standalone file editor selects the preview and persists after relo
   await expect(desert).toHaveAttribute('aria-pressed', 'true');
   await editor.locator('.view-lines').click();
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('Shader Studio Aurora');
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText(/void\s+mainImage\(out\s+vec4\s+fragColor,\s+in\s+vec2\s+fragCoord\)/);
   await desert.click();
   await page.locator('.dv-tab').filter({ hasText: /^aurora\.glsl$/ }).click();
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');

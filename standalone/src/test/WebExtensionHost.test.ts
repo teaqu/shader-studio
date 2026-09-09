@@ -259,6 +259,72 @@ describe('WebExtensionHost', () => {
     }));
   });
 
+  it('refreshes the requested shader instead of the active source file', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/shaders/clouds.slang' });
+    receive.mockClear();
+
+    await host.handleViewerMessage({ type: 'refresh', payload: { path: '/shaders/aurora.glsl' } });
+
+    expect(receive).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl',
+    }));
+    receive.mockClear();
+    await host.handleViewerMessage({ type: 'refresh' });
+    expect(receive).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl',
+    }));
+  });
+
+  it.each([{}, { path: undefined }])('refreshes the active shader when no path is requested: %j', async (payload) => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'refresh', payload });
+    expect(receive).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      type: 'shaderSource', path: '/shaders/aurora.glsl',
+    }));
+  });
+
+  it.each(['/missing.glsl', '', 42, null])('ignores an invalid refresh target: %j', async (path) => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'refresh', payload: { path } });
+    expect(receive).not.toHaveBeenCalled();
+  });
+
+  it.each(['common', 'vertex', 'buffer'])('keeps the owning shader active when focusing its %s file', async (source) => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    workspace.writeText('/main.glsl', 'main image');
+    workspace.writeText('/source.glsl', 'source');
+    workspace.writeText('/main.sha.json', JSON.stringify({ version: '1.0', passes: {
+      Image: source === 'vertex' ? { vertex: 'source.glsl' } : {},
+      ...(source === 'common' ? { common: { path: 'source.glsl' } } : {}),
+      ...(source === 'buffer' ? { Buffer: { path: 'source.glsl' } } : {}),
+    } }));
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleExplorerMessage({ type: 'openShader', path: '/main.glsl' });
+    receive.mockClear();
+
+    await host.handleExplorerMessage({ type: 'activateShader', path: '/source.glsl' });
+    expect(receive).not.toHaveBeenCalled();
+    await host.handleViewerMessage({ type: 'updateShaderSource', payload: { path: '/source.glsl', code: 'edited source' } });
+    expect(receive).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ path: '/main.glsl' }));
+
+    await host.flush();
+    const restored = new WebExtensionHost(await VirtualWorkspace.open(store, []));
+    const afterReload = vi.fn();
+    restored.onViewerMessage(afterReload);
+    await restored.start();
+    expect(afterReload).toHaveBeenCalledWith(expect.objectContaining({ path: '/main.glsl' }));
+  });
+
   it('activates explorer files on the viewer channel', async () => {
     const host = await createHost();
     const receive = vi.fn();
