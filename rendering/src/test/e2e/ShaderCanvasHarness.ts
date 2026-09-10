@@ -5,7 +5,7 @@ import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 
 export const TEST_CANVAS_SIZE = 2;
 
-export type ShaderLanguage = "glsl" | "slang";
+export type ShaderLanguage = "glsl" | "slang" | "wgsl";
 export type Pixel = [red: number, green: number, blue: number, alpha: number];
 
 export interface ShaderProgram {
@@ -44,8 +44,12 @@ function createCanvas(): HTMLCanvasElement {
 }
 
 function createEngine(language: ShaderLanguage): RenderingEngineContract {
-  return language === "glsl"
-    ? new RenderingEngine()
+  if (language === "glsl") {
+    return new RenderingEngine();
+  }
+  // WGSL needs no Slang worker/WASM assets; Slang keeps the existing path.
+  return language === "wgsl"
+    ? new WebGPURenderingEngine(undefined, "wgsl")
     : new WebGPURenderingEngine({ scriptUrl: slangScriptUrl, wasmUrl: slangWasmUrl });
 }
 
@@ -111,7 +115,7 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
         program.slangSourcePaths,
       );
       if (!result?.success) {
-        throw new Error(`Shader compilation failed: ${result?.errors.join("\n") ?? "no result"}`);
+        throw new Error(`Shader compilation failed: ${result?.errors?.join("\n") ?? "no result"}`);
       }
       const timeManager = engine.getTimeManager();
       timeManager.cleanup();

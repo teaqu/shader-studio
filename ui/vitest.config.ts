@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Browser-only corpus e2e; see vitest.browser.config.mts.
+    exclude: ['**/node_modules/**', 'src/test/e2e/**'],
     setupFiles: ['./src/test/setup.ts'],
     // Svelte rune modules re-imported after vi.resetModules() must be transformed
     // in a fresh process; vmThreads can return Svelte's raw rune stubs instead.
@@ -26,6 +28,10 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      {
+        find: '@shader-studio/wgsl-analysis',
+        replacement: path.resolve(__dirname, '../language-servers/wgsl-analysis/src'),
+      },
       {
         find: '@shader-studio/debug',
         replacement: path.resolve(__dirname, '../debug/src'),

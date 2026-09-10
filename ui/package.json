@@ -13,14 +13,18 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "vitest run --config vitest.browser.config.mts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/svelte": "^5.2.8",
     "@testing-library/user-event": "^14.5.2",
+    "@vitest/browser": "^4.0.18",
+    "@vitest/browser-playwright": "^4.0.18",
     "eslint-plugin-svelte": "^2.46.1",
+    "playwright": "^1.60.0",
     "svelte": "^5.28.1",
     "svelte-check": "^4.0.8",
     "svelte-eslint-parser": "^0.43.0"
@@ -29,6 +33,7 @@
     "@shader-studio/debug": "*",
     "@shader-studio/glsl-language-server": "*",
     "@shader-studio/language-server-core": "*",
+    "@shader-studio/wgsl-language-server": "*",
     "@shader-studio/monaco": "*",
     "@shader-studio/rendering": "*",
     "@shader-studio/slang-language-server": "*",
