@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "storage": {
+    "seed": {
+      "count": 1,
+      "stride": 16,
+      "elementType": "vec4<f32>"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "passes/one-shot-init.wgsl",
+      "dispatch": {
+        "cover": "seed"
+      },
+      "dispatchOnce": false,
+      "dispatchCount": 1
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

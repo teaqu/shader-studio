@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "storage": {
+    "particles": {
+      "count": 4096,
+      "elementType": "float4"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "init.slang",
+      "entryPoint": "initParticles",
+      "dispatch": { "cover": "particles" },
+      "dispatchOnce": true
+    },
+    "ComputePresent": {
+      "type": "compute",
+      "path": "present.slang",
+      "entryPoint": "renderParticles",
+      "resolution": { "scale": 0.5 }
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "ComputePresent"
+        }
+      }
+    }
+  }
+}

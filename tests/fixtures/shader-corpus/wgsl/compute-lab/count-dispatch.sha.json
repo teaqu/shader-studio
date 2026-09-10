@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "storage": {
+    "samples": {
+      "count": 256,
+      "stride": 4,
+      "elementType": "f32"
+    }
+  },
+  "passes": {
+    "ComputeGradient": {
+      "type": "compute",
+      "path": "passes/count-gradient.wgsl",
+      "dispatch": {
+        "count": 256
+      }
+    },
+    "Image": {
+      "resolution": {
+        "aspectRatio": "16:9"
+      }
+    }
+  }
+}

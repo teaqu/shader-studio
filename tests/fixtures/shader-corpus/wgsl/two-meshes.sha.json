@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "passes": {
+    "BufferA": {
+      "path": "visor.wgsl"
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      },
+      "geometry": {
+        "type": "model",
+        "path": "../assets/two-meshes.glb"
+      },
+      "vertex": "./visor.vertex.wgsl"
+    }
+  }
+}

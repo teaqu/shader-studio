@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "storage": {
+    "vertexTransform": {
+      "count": 1,
+      "stride": 16,
+      "elementType": "vec4<f32>"
+    }
+  },
+  "passes": {
+    "ComputeInit": {
+      "type": "compute",
+      "path": "vertex_init.wgsl",
+      "dispatch": {
+        "cover": "vertexTransform"
+      },
+      "dispatchOnce": true
+    },
+    "Image": {
+      "inputs": {
+        "iChannel3": {
+          "type": "texture",
+          "path": "@/assets/cubemap-cross.svg"
+        }
+      },
+      "vertex": "./vertex_vertex.wgsl"
+    }
+  }
+}

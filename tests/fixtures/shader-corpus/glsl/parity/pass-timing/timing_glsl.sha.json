@@ -1,0 +1,8 @@
+{
+  "version": "1",
+  "passes": {
+    "BufferA": { "path": "a_glsl.glsl", "inputs": {} },
+    "BufferB": { "path": "b_glsl.glsl", "inputs": { "iChannel0": { "type": "buffer", "source": "BufferA" } } },
+    "Image": { "inputs": { "iChannel0": { "type": "buffer", "source": "BufferB" } } }
+  }
+}

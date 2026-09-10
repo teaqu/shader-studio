@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./plane_glsl.vert.glsl",
+      "geometry": {
+        "type": "plane"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {}
+    },
+    "common": {
+      "path": ""
+    }
+  }
+}

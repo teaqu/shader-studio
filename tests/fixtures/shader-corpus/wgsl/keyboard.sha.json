@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}

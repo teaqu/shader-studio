@@ -1,0 +1,17 @@
+{
+  "version": "1",
+  "passes": {
+    "BufferA": {
+      "path": "a.wgsl",
+      "inputs": {}
+    },
+    "Image": {
+      "inputs": {
+        "iChannel0": {
+          "type": "buffer",
+          "source": "BufferA"
+        }
+      }
+    }
+  }
+}
