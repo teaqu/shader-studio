@@ -22,7 +22,7 @@ function marker(line: number, message: string, severity = ERROR, column = 1) {
   };
 }
 
-function fixture(languageId: "glsl" | "slang") {
+function fixture(languageId: "glsl" | "slang" | "wgsl") {
   const setModelMarkers = vi.fn();
   const monaco = { editor: { setModelMarkers } } as never as typeof import("monaco-editor/esm/vs/editor/editor.api.js");
   const model = { getLanguageId: () => languageId } as never as import("monaco-editor/esm/vs/editor/editor.api.js").editor.ITextModel;
@@ -36,12 +36,15 @@ function fixture(languageId: "glsl" | "slang") {
 describe("marker arbitration", () => {
   let slang: ReturnType<typeof fixture>;
   let glsl: ReturnType<typeof fixture>;
+  let wgsl: ReturnType<typeof fixture>;
 
   beforeEach(() => {
     slang = fixture("slang");
     glsl = fixture("glsl");
+    wgsl = fixture("wgsl");
     resetMarkerArbitration(slang.model);
     resetMarkerArbitration(glsl.model);
+    resetMarkerArbitration(wgsl.model);
   });
 
   it("drops the renderer marker a Slang language service already reported", () => {
@@ -67,6 +70,14 @@ describe("marker arbitration", () => {
 
     expect(glsl.published(RENDERER_COMPILER_MARKER_OWNER)).toHaveLength(1);
     expect(glsl.published(markerOwner("glsl"))).toEqual([]);
+  });
+
+  it("lets the renderer compiler win for WGSL while service hints survive", () => {
+    setLanguageServiceMarkers(wgsl.monaco, wgsl.model, [marker(5, "Unused variable 'x'.", WARNING)]);
+    setCompilerMarkers(wgsl.monaco, wgsl.model, [marker(5, "undeclared identifier 'x'")]);
+
+    expect(wgsl.published(RENDERER_COMPILER_MARKER_OWNER)).toHaveLength(1);
+    expect(wgsl.published(markerOwner("wgsl"))).toHaveLength(1);
   });
 
   it("keeps renderer markers the language service never sees", () => {
@@ -129,6 +140,53 @@ describe("marker arbitration", () => {
 
     it("suppresses by start line, not by exact column", () => {
       expect(suppressDuplicateMarkers([marker(9, "winner", ERROR, 2)], [marker(9, "loser", ERROR, 40)])).toEqual([]);
+    });
+  });
+
+  describe.each([
+    { language: "glsl", winner: "compiler" },
+    { language: "slang", winner: "service" },
+    { language: "wgsl", winner: "compiler" },
+  ] as const)("$language diagnostic lifecycle", ({ language, winner }) => {
+    it.each(["compiler", "service"] as const)("deduplicates when %s publishes first and restores cleared errors", (first) => {
+      const current = fixture(language);
+      const compiler = [marker(7, "compiler error", ERROR, 2)];
+      const service = [marker(7, "service error", ERROR, 12)];
+      const publishCompiler = () => setCompilerMarkers(current.monaco, current.model, compiler);
+      const publishService = () => setLanguageServiceMarkers(current.monaco, current.model, service);
+      if (first === "compiler") {
+        publishCompiler();
+        publishService();
+      } else {
+        publishService();
+        publishCompiler();
+      }
+
+      expect(current.published(RENDERER_COMPILER_MARKER_OWNER)).toEqual(winner === "compiler" ? compiler : []);
+      expect(current.published(markerOwner(language))).toEqual(winner === "service" ? service : []);
+
+      if (winner === "compiler") {
+        setCompilerMarkers(current.monaco, current.model, []);
+        expect(current.published(markerOwner(language))).toEqual(service);
+      } else {
+        setLanguageServiceMarkers(current.monaco, current.model, []);
+        expect(current.published(RENDERER_COMPILER_MARKER_OWNER)).toEqual(compiler);
+      }
+      setCompilerMarkers(current.monaco, current.model, []);
+      setLanguageServiceMarkers(current.monaco, current.model, []);
+      expect(current.published(RENDERER_COMPILER_MARKER_OWNER)).toEqual([]);
+      expect(current.published(markerOwner(language))).toEqual([]);
+    });
+
+    it("preserves warnings and unrelated errors from both sources", () => {
+      const current = fixture(language);
+      const compiler = [marker(2, "compiler warning", WARNING), marker(3, "compiler error"), marker(8, "link failure")];
+      const service = [marker(2, "service error"), marker(3, "service warning", WARNING), marker(9, "unrelated error")];
+      setCompilerMarkers(current.monaco, current.model, compiler);
+      setLanguageServiceMarkers(current.monaco, current.model, service);
+
+      expect(current.published(RENDERER_COMPILER_MARKER_OWNER)).toEqual(compiler);
+      expect(current.published(markerOwner(language))).toEqual(service);
     });
   });
 });

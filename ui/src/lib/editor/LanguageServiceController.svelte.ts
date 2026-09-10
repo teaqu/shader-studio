@@ -15,6 +15,7 @@ export class LanguageServiceController {
         const settings = getLanguageServiceSettings();
         void manager.setEnabled("glsl", settings.glslEnabled);
         void manager.setEnabled("slang", settings.slangEnabled);
+        void manager.setEnabled("wgsl", settings.wgslEnabled);
         manager.setColorDecoratorsEnabled(settings.colorDecorators);
       });
     });

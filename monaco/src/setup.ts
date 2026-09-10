@@ -6,10 +6,12 @@ import {
   shaderStudioTransparentTheme,
 } from './glsl-theme';
 import { slangLanguageDefinition } from './slang-language';
+import { wgslLanguageDefinition } from './wgsl-language';
 import { jsonLanguageConfiguration, jsonLanguageDefinition } from './json-language';
 
 let registered = false;
 const slangRegistrations = new WeakSet<object>();
+const wgslRegistrations = new WeakSet<object>();
 const jsonRegistrations = new WeakSet<object>();
 
 /**
@@ -68,6 +70,19 @@ export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
   monaco.languages.setLanguageConfiguration('slang', shaderLanguageConfiguration);
 
   slangRegistrations.add(monaco);
+}
+
+/** Register the WGSL Monarch tokenizer independently from GLSL and Slang. */
+export function setupMonacoWgsl(monaco: typeof import('monaco-editor')) {
+  if (wgslRegistrations.has(monaco)) return;
+
+  if (!monaco.languages.getLanguages().some((language) => language.id === 'wgsl')) {
+    monaco.languages.register({ id: 'wgsl' });
+  }
+  monaco.languages.setMonarchTokensProvider('wgsl', wgslLanguageDefinition);
+  monaco.languages.setLanguageConfiguration('wgsl', shaderLanguageConfiguration);
+
+  wgslRegistrations.add(monaco);
 }
 
 /** Register the worker-free JSON tokenizer used for shader config files. */

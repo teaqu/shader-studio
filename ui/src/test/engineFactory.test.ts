@@ -49,7 +49,7 @@ describe('createEngineForLanguage', () => {
     const engine = createEngineForLanguage('slang');
 
     expect(engine).toBe(mockWebGPUEngine);
-    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(mockGetSlangAssetUrls());
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(mockGetSlangAssetUrls(), 'slang');
     expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
   });
 
@@ -58,5 +58,14 @@ describe('createEngineForLanguage', () => {
 
     expect(engine).toBe(mockWebGLEngine);
     expect(MockWebGPURenderingEngine).not.toHaveBeenCalled();
+  });
+
+  it('creates a WebGPU engine for wgsl without Slang asset URLs', () => {
+    const engine = createEngineForLanguage('wgsl');
+
+    expect(engine).toBe(mockWebGPUEngine);
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(undefined, 'wgsl');
+    expect(mockGetSlangAssetUrls).not.toHaveBeenCalled();
+    expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
   });
 });

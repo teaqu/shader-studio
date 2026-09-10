@@ -4,6 +4,7 @@
   import { getEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
   import { portal } from "../../actions/portal";
   import type { ShaderConfig, BufferPass, ComputePass, ImagePass, StorageBufferConfig, StorageBufferSnapshot } from "@shader-studio/types";
+  import { SHADER_LANGUAGES } from "@shader-studio/types";
   import type { Transport } from "../../transport/MessageTransport";
   import BufferConfig from "./BufferConfig.svelte";
   import ScriptInfo from "./ScriptInfo.svelte";
@@ -392,7 +393,7 @@
       tabs.push("Common");
     }
     tabs.push(...bufferTabs);
-    if (language === "slang") {
+    if (SHADER_LANGUAGES[language].engine === "webgpu") {
       tabs.push("Storage");
     }
     if (config && config.script !== undefined) {
@@ -743,7 +744,7 @@
             bind:this={addMenu}
           >
             <button class="dropdown-item" role="menuitem" onclick={() => runAddMenuAction(addBuffer)}>Buffer</button>
-            {#if language === "slang"}
+            {#if SHADER_LANGUAGES[language].engine === "webgpu"}
               <button
                 class="dropdown-item"
                 role="menuitem"
@@ -794,6 +795,7 @@
         <BufferConfig
           bufferName={activeTab}
           config={activeTabConfig}
+          {language}
           onUpdate={(_passName, updatedConfig) => {
             configManager?.updateImagePass(updatedConfig as ImagePass);
           }}
@@ -823,7 +825,7 @@
           {getWebviewUri}
           suggestedPath={configManager?.generateBufferPath(
             getActualBufferName(activeTab),
-            language === 'slang' ? 'slang' : 'glsl',
+            language,
           ) || ''}
           postMessage={(msg) => transport.postMessage(msg)}
           onMessage={(handler) => transport.onMessage(handler)}

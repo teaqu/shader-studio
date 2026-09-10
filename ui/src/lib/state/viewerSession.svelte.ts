@@ -15,6 +15,8 @@ export interface ViewerSession {
   config: ShaderConfig | null;
   customUniformInfo: { name: string; type: string }[];
   slangModules: SlangSourceModule[];
+  commonPath?: string;
+  commonSource?: string;
   compileMode: CompileMode;
   bufferNames: string[];
   activeBufferName: string;

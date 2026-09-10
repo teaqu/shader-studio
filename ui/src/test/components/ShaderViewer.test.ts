@@ -890,6 +890,65 @@ describe('ShaderViewer', () => {
     },
   );
 
+  it('swaps to the WebGPU backend when a WGSL main shader arrives', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    const initialCanvas = container.querySelector('canvas');
+    expect(initialCanvas).toBeTruthy();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'wgsl',
+      path: '/test/shader.wgsl',
+      code: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }',
+      config: { passes: { Image: {} } },
+      bufferPathMap: { Image: '/test/shader.wgsl' },
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('canvas')).not.toBe(initialCanvas);
+    });
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path: '/test/shader.wgsl' }),
+    }));
+  });
+
+  it('swaps the engine when navigating from Slang to WGSL', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'slang',
+      path: '/test/shader.slang',
+      code: 'float4 mainImage(float2 fragCoord) { return float4(1.0); }',
+      config: { passes: { Image: {} } },
+      bufferPathMap: { Image: '/test/shader.slang' },
+    });
+    await vi.waitFor(() => {
+      expect(mockPipelineHandleShaderMessage).toHaveBeenCalled();
+    });
+    mockPipelineHandleShaderMessage.mockClear();
+    const slangCanvas = container.querySelector('canvas');
+
+    await sendMessage({
+      type: 'shaderSource',
+      language: 'wgsl',
+      path: '/test/shader.wgsl',
+      code: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }',
+      config: { passes: { Image: {} } },
+      bufferPathMap: { Image: '/test/shader.wgsl' },
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('canvas')).not.toBe(slangCanvas);
+    });
+    expect(mockPipelineHandleShaderMessage).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ path: '/test/shader.wgsl' }),
+    }));
+  });
+
   it.each([
     ['GLSL', 'glsl', '/test/locked.glsl'],
     ['Slang', 'slang', '/test/locked.slang'],
@@ -4178,6 +4237,33 @@ describe('ShaderViewer', () => {
       });
     });
 
+    it('should derive the config path from a WGSL shader and retain its source path', async () => {
+      render(ShaderViewer, { onInitialized: vi.fn() });
+      await tick();
+      await tick();
+      await sendMessage({
+        type: 'shaderSource',
+        path: '/test/shader.wgsl',
+        language: 'wgsl',
+        code: 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1.0); }',
+        config: { passes: { Image: {} } },
+        pathMap: { Image: '/test/shader.wgsl' },
+      });
+      vi.clearAllMocks();
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      await tick();
+      await fireEvent.click(screen.getByLabelText('Open config'));
+
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({
+        type: 'showConfig',
+        payload: {
+          shaderPath: '/test/shader.sha.json',
+          sourcePath: '/test/shader.wgsl',
+        },
+      });
+    });
+
     it('should send generateConfig when no shader path is available', async () => {
       // Override getLastShaderEvent to return no path
       const { ShaderPipeline } = await import('../../lib/ShaderPipeline');
@@ -4449,6 +4535,7 @@ describe('ShaderViewer', () => {
         onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
         getOption: vi.fn(() => 0),
         getModel: vi.fn(() => ({
+          uri: { toString: () => "inmemory://test-viewer-editor" },
           getLineMaxColumn: vi.fn(() => 80),
           getLineCount: vi.fn(() => 1),
           getLineContent: vi.fn(() => ''),

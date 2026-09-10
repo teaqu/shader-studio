@@ -1,12 +1,14 @@
 export interface LanguageServiceSettings {
   glslEnabled: boolean;
   slangEnabled: boolean;
+  wgslEnabled: boolean;
   colorDecorators: boolean;
 }
 
 const DEFAULT_SETTINGS: LanguageServiceSettings = {
   glslEnabled: true,
   slangEnabled: true,
+  wgslEnabled: true,
   colorDecorators: true,
 };
 

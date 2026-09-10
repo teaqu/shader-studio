@@ -10,6 +10,7 @@
   import type { CaptureIssue, VariableCaptureManager, RefreshMode } from "../../VariableCaptureManager";
   import { dragScrub } from "../../actions/dragScrub";
   import { debugPanelStore } from "../../stores/debugPanelStore";
+  import { SHADER_LANGUAGES } from "@shader-studio/types";
   import { getInspectorState } from "../../state/pixelInspectorState.svelte";
   import VariablesSection from "./VariablesSection.svelte";
   import PixelInspectorSection from "./PixelInspectorSection.svelte";
@@ -65,8 +66,12 @@
   const hasPixelSelected = $derived(
     (isInspectorActive || isInspectorLocked) && inspectorState.canvasPosition !== null
   );
-  const enableSlangGridRowPreview = $derived(
-    shaderDebugManager?.getLanguage() === 'slang' && !isInspectorActive && !isInspectorLocked
+  const managerLanguage = $derived(shaderDebugManager?.getLanguage());
+  const enableRowPreview = $derived(
+    managerLanguage !== undefined
+    && SHADER_LANGUAGES[managerLanguage].hasDebugger
+    && !isInspectorActive
+    && !isInspectorLocked
   );
 
   let liveUniforms = $state<PassUniforms | null>(null);
@@ -695,7 +700,7 @@
       <VariablesSection
         {capturedVariables}
         isPixelMode={isInspectorActive || isInspectorLocked}
-        enableRowPreview={enableSlangGridRowPreview}
+        enableRowPreview={enableRowPreview}
         isLoading={variableCaptureLoading}
         captureIssues={variableCaptureIssues}
         onExpandToggle={onExpandVarHistogram}

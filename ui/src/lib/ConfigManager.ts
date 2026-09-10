@@ -99,7 +99,7 @@ export class ConfigManager {
     // Extract just the filename without path
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.(?:glsl|slang)$/i, '');
+    const baseName = filename.replace(/\.(?:glsl|slang|wgsl)$/i, '');
 
     const suffix = bufferName.toLowerCase();
     return `${baseName}.${suffix}.${language}`;
@@ -522,7 +522,7 @@ export class ConfigManager {
     }
     const parts = this.shaderPath.replace(/\\/g, '/').split('/');
     const filename = parts[parts.length - 1];
-    const baseName = filename.replace(/\.(?:glsl|frag|slang)$/i, '');
+    const baseName = filename.replace(/\.(?:glsl|frag|slang|wgsl)$/i, '');
     return `./${baseName}.uniforms.ts`;
   }
 

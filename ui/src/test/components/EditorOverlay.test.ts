@@ -9,6 +9,7 @@ vi.mock('@shader-studio/monaco', async () => ({
   ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoWgsl: vi.fn(),
   setupMonacoJson: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
     setEnabled: vi.fn(),
@@ -64,6 +65,7 @@ function createMockEditorWithCallbacks() {
     getLineMaxColumn: vi.fn((_line: number) => 80),
     getLineCount: vi.fn(() => 10),
     getLineContent: vi.fn(() => ''),
+    uri: { toString: () => 'file:///test' },
   };
   const mockEditor = {
     dispose: vi.fn(),
@@ -191,10 +193,91 @@ describe('EditorOverlay', () => {
     });
   });
 
+  describe('language service environment', () => {
+    it('syncs configured Common source for WGSL cross-document operations', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('fn mainImage() {}');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/shader/image.wgsl',
+          shaderCode: 'fn mainImage() {}',
+          commonPath: '/shader/common.wgsl',
+          commonSource: 'fn sharedTone() -> f32 { return 1.0; }',
+        },
+      });
+      await tick();
+
+      const controllers = await import('@shader-studio/monaco');
+      const setup = vi.mocked(controllers.setupMonacoLanguageServices);
+      const controller = setup.mock.results[setup.mock.results.length - 1].value;
+      expect(controller.syncEnvironment).toHaveBeenCalledWith(expect.objectContaining({
+        commonFile: {
+          uri: 'file:///shader/common.wgsl',
+          text: 'fn sharedTone() -> f32 { return 1.0; }',
+          version: 1,
+        },
+      }));
+    });
+
+    it('does not inject a physical Common file while its in-memory editor is active', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('fn sharedTone() -> f32 { return 1.0; }');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/shader/common.wgsl',
+          shaderCode: 'fn sharedTone() -> f32 { return 1.0; }',
+          activeBufferName: 'common',
+          commonPath: '/shader/common.wgsl',
+          commonSource: 'stale Common source',
+        },
+      });
+      await tick();
+
+      const controllers = await import('@shader-studio/monaco');
+      const setup = vi.mocked(controllers.setupMonacoLanguageServices);
+      const controller = setup.mock.results[setup.mock.results.length - 1].value;
+      const environment = vi.mocked(controller.syncEnvironment).mock.calls.at(-1)?.[0];
+      expect(environment).not.toHaveProperty('commonFile');
+    });
+
+    it('syncs the WGSL authoring environment without virtual files', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getValue.mockReturnValue('fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }');
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
+
+      render(EditorOverlay, {
+        props: {
+          ...defaultProps,
+          shaderPath: '/test.wgsl',
+          shaderCode: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }',
+        },
+      });
+      await tick();
+
+      const controllers = await import('@shader-studio/monaco');
+      const setup = vi.mocked(controllers.setupMonacoLanguageServices);
+      const controller = setup.mock.results[setup.mock.results.length - 1].value;
+      expect(controller.syncEnvironment).toHaveBeenCalledWith(expect.objectContaining({
+        languageId: 'wgsl',
+        virtualFiles: [],
+      }));
+    });
+  });
+
   describe('custom uniform highlighting', () => {
     it.each([
       { language: 'GLSL', shaderPath: '/test.glsl', shaderCode: 'vec3 color = uTint;' },
       { language: 'Slang', shaderPath: '/test.slang', shaderCode: 'float3 color = uTint;' },
+      { language: 'WGSL', shaderPath: '/test.wgsl', shaderCode: 'let color: vec3f = uTint;' },
     ])('highlights custom uniforms in $language', async ({ shaderPath, shaderCode }) => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();
@@ -503,7 +586,7 @@ describe('EditorOverlay', () => {
 
     it('should initialize the GLSL and Slang Monaco tokenizers once', async () => {
       const monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
-      const { setupMonacoGlsl, setupMonacoSlang } = await import('@shader-studio/monaco');
+      const { setupMonacoGlsl, setupMonacoSlang, setupMonacoWgsl } = await import('@shader-studio/monaco');
 
       render(EditorOverlay, { props: defaultProps });
 
@@ -511,6 +594,8 @@ describe('EditorOverlay', () => {
       expect(setupMonacoSlang).toHaveBeenNthCalledWith(1, monaco);
       expect(setupMonacoGlsl).toHaveBeenCalledTimes(1);
       expect(setupMonacoGlsl).toHaveBeenNthCalledWith(1, monaco);
+      expect(setupMonacoWgsl).toHaveBeenCalledTimes(1);
+      expect(setupMonacoWgsl).toHaveBeenNthCalledWith(1, monaco);
     });
 
     it('should create the overlay editor with Monaco options suited to the overlay', async () => {

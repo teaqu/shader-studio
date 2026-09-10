@@ -150,6 +150,9 @@ const monacoMock = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
   KeyMod: { Shift: 1024 },
   KeyCode: { KeyA: 31, KeyI: 39, KeyO: 45 },
+  Uri: {
+    file: (path: string) => ({ toString: () => `file://${path}` }),
+  },
   Range: class Range {
     startLineNumber: number;
     startColumn: number;
@@ -187,6 +190,7 @@ const monacoMock = {
       getOption: vi.fn(() => 0),
       getModel: (() => {
         const model = {
+          uri: { toString: () => "inmemory://test-editor" },
           getLineMaxColumn: vi.fn(() => 80),
           getLineCount: vi.fn(() => 0),
           getLineContent: vi.fn(() => ''),
@@ -269,6 +273,7 @@ vi.mock('@shader-studio/monaco', async () => ({
   ...(await vi.importActual<typeof import('@shader-studio/monaco')>('@shader-studio/monaco/scoped-theme')),
   setupMonacoGlsl: vi.fn(),
   setupMonacoSlang: vi.fn(),
+  setupMonacoWgsl: vi.fn(),
   setupMonacoJson: vi.fn(),
   setupMonacoLanguageServices: vi.fn(() => ({
     setEnabled: vi.fn(),

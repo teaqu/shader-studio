@@ -2,6 +2,7 @@ export { glslLanguageDefinition } from './glsl-language';
 export { shaderLanguageConfiguration } from './language-configuration';
 export { shaderStudioTheme, shaderStudioTransparentTheme } from './glsl-theme';
 export { slangLanguageDefinition } from './slang-language';
+export { wgslLanguageDefinition } from './wgsl-language';
 export { jsonLanguageConfiguration, jsonLanguageDefinition } from './json-language';
 export {
   EDITOR_TOKEN_SCOPES,
@@ -17,7 +18,7 @@ export {
   type TokenColorConflict,
   type TokenColorTranslationOptions,
 } from './scoped-theme';
-export { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang } from './setup';
+export { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl } from './setup';
 export {
   MonacoLanguageServiceManager,
   setupMonacoLanguageServices,

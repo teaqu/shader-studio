@@ -1071,6 +1071,11 @@ describe('ConfigManager', () => {
       configManager.setShaderPath('/path/to/myshader.slang');
       expect(configManager.generateScriptPath()).toBe('./myshader.uniforms.ts');
     });
+
+    it('generateScriptPath should strip the WGSL extension', () => {
+      configManager.setShaderPath('/path/to/myshader.wgsl');
+      expect(configManager.generateScriptPath()).toBe('./myshader.uniforms.ts');
+    });
   });
 
   describe('compute and storage configuration', () => {

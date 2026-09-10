@@ -1,15 +1,12 @@
 import type { DebugFunctionContext, ShaderDebugState, NormalizeMode } from "./types/ShaderDebugState";
-import {
-  applySlangFullShaderPostProcessing,
-  extractSlangFunctionContext,
-  ShaderDebugger,
-  SlangDebugEngine,
-} from "@shader-studio/debug";
+import { ShaderDebugger } from "@shader-studio/debug";
 import type { CapturedVariable } from "./VariableCaptureManager";
-import type { ShaderConfig, ConfigInput, SlangSourceModule } from "@shader-studio/types";
-import type { DebugAnalysisRequest, DebugInstrumentationPlan, DebugVisibleValue } from "@shader-studio/types";
+import type { ShaderConfig, ConfigInput, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
+import { SHADER_LANGUAGES } from "@shader-studio/types";
+import type { DebugAnalysisRequest, DebugInstrumentationPlan, DebugPlanResult, DebugVisibleValue } from "@shader-studio/types";
+import { debugPlanStrategy, type DebugPlanStrategy, type DebugRequestInputs } from "./debugLanguageStrategies";
 
-type ShaderDialect = 'glsl' | 'slang';
+type ShaderDialect = ShaderLanguageId;
 
 export interface DebugTarget {
   passName: string;
@@ -74,7 +71,15 @@ export class ShaderDebugManager {
   private slangModules: SlangSourceModule[] = [];
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
-  private readonly slangDebugEngine = new SlangDebugEngine();
+
+  /**
+   * Plan-based debugging strategy for Slang/WGSL, or null when the language
+   * uses GLSL source rewriting. Selected through the registry, never a
+   * per-language `if` arm at the use site.
+   */
+  private planStrategy(): DebugPlanStrategy | null {
+    return debugPlanStrategy(this.language);
+  }
 
   public setLanguage(language: ShaderDialect): void {
     this.language = language;
@@ -82,6 +87,14 @@ export class ShaderDebugManager {
 
   public getLanguage(): ShaderDialect {
     return this.language;
+  }
+
+  /**
+   * Languages without debugger support (see SHADER_LANGUAGES) must flow
+   * through untouched: the GLSL transforms below would corrupt their syntax.
+   */
+  private isLanguageSupported(): boolean {
+    return SHADER_LANGUAGES[this.language].hasDebugger;
   }
 
   public setShaderContext(
@@ -166,39 +179,41 @@ export class ShaderDebugManager {
     };
   }
 
-  public getSlangPreviewPlan(
+  public getPreviewPlan(
     imageCode: string,
     config: ShaderConfig | null,
     originalImageCode = imageCode,
   ): DebugInstrumentationPlan | null {
-    if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
+    const strategy = this.planStrategy();
+    if (!strategy || !this.state.isActive || this.state.currentLine === null) {
       return null;
     }
     if (!this.state.isInlineRenderingEnabled && !this.variablePreview) {
       return null;
     }
-    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode);
+    const request = strategy.buildRequest(this.requestInputs(imageCode, config, originalImageCode));
     if (!request) {
       return null;
     }
-    const options = {
+    const options = strategy.buildPreviewOptions({
       normalizeMode: this.state.normalizeMode,
       stepEdge: this.state.isStepEnabled ? this.state.stepEdge : null,
-      customParameters: this.getEffectiveSlangParameters(),
+      functionContext: this.state.functionContext,
+      customParameters: this.customParameters,
       loopMaxIterations: this.loopMaxIterations,
-    };
+    });
     const preview = this.variablePreview;
     const result = preview
-      ? this.planSlangInspectorPreview(request, preview, options)
-      : this.slangDebugEngine.planPreview(request, options);
+      ? this.planInspectorPreview(strategy, request, preview, options)
+      : strategy.engine.planPreview(request, options);
     if (!result.ok) {
-      this.setDebugError(result.diagnostics[0]?.message ?? 'Slang debug planning failed');
+      this.setDebugError(result.diagnostics[0]?.message ?? `${strategy.label} debug planning failed`);
       return null;
     }
     return result.plan;
   }
 
-  public getSlangCapturePlan(
+  public getCapturePlan(
     imageCode: string,
     config: ShaderConfig | null,
     originalImageCode = imageCode,
@@ -209,80 +224,66 @@ export class ShaderDebugManager {
      */
     lineOverride?: number,
   ): { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | { error: string } | null {
-    const request = this.createSlangDebugRequest(imageCode, config, originalImageCode, lineOverride);
+    const strategy = this.planStrategy();
+    if (!strategy) {
+      return null;
+    }
+    const request = strategy.buildRequest(this.requestInputs(imageCode, config, originalImageCode, lineOverride));
     if (!request) {
-      if (this.language === 'slang' && this.state.isActive && this.state.currentLine !== null) {
-        return { error: 'Slang debug source path could not be resolved' };
+      if (this.state.isActive && this.state.currentLine !== null) {
+        return { error: `${strategy.label} debug source path could not be resolved` };
       }
       return null;
     }
-    const analysis = this.slangDebugEngine.analyze(request);
+    const analysis = strategy.engine.analyze(request);
     if (!analysis.ok) {
-      return { error: analysis.diagnostics[0]?.message ?? 'Slang capture analysis failed' };
+      return { error: analysis.diagnostics[0]?.message ?? `${strategy.label} capture analysis failed` };
     }
-    const result = this.slangDebugEngine.planCapture(
+    const result = strategy.engine.planCapture(
       request,
       analysis.analysis.visibleValues.map((value) => value.id),
-      {
+      strategy.buildPreviewOptions({
         normalizeMode: 'off',
         stepEdge: null,
-        customParameters: this.getEffectiveSlangParameters(),
+        functionContext: this.state.functionContext,
+        customParameters: this.customParameters,
         loopMaxIterations: this.loopMaxIterations,
-      },
+      }),
     );
     if (!result.ok) {
-      return { error: result.diagnostics[0]?.message ?? 'Slang capture planning failed' };
+      return { error: result.diagnostics[0]?.message ?? `${strategy.label} capture planning failed` };
     }
     return { plan: result.plan, values: analysis.analysis.visibleValues };
   }
 
-  private createSlangDebugRequest(
+  private requestInputs(
     imageCode: string,
     config: ShaderConfig | null,
-    originalImageCode = imageCode,
+    originalImageCode: string,
     lineOverride?: number,
-  ): DebugAnalysisRequest | null {
-    if (this.language !== 'slang' || !this.state.isActive || this.state.currentLine === null) {
-      return null;
-    }
-    const target = this.getDebugTarget(imageCode, config);
-    const isCommonTarget = target.passName === 'common';
-    const ownerPassName = isCommonTarget ? 'Image' : target.passName;
-    const rootPath = ownerPassName === 'Image' ? this.imagePassPath : this.bufferPathMap[ownerPassName];
-    if (!rootPath) {
-      return null;
-    }
-    const rootSource = ownerPassName === 'Image' ? imageCode : this.bufferCodes[ownerPassName] ?? imageCode;
-    const commonPath = this.bufferPathMap.common;
-    const commonSource = this.bufferCodes.common;
-    const files = [
-      { uri: rootPath, path: rootPath, source: rootSource, version: 1, moduleName: '', ownerPass: ownerPassName },
-      ...(isCommonTarget && commonPath && commonSource !== undefined
-        ? [{ uri: commonPath, path: commonPath, source: commonSource, version: 1, moduleName: '', ownerPass: ownerPassName }]
-        : []),
-      ...this.slangModules.filter((module) => module.ownerPass === ownerPassName).map((module) => ({ ...module, uri: module.path, version: 1 })),
-    ];
-    const selectedPath = this.variablePreview?.filePath ?? this.state.filePath ?? rootPath;
-    const rawLine = lineOverride ?? this.variablePreview?.debugLine ?? this.state.currentLine;
-    const selectedLine = rawLine + (
-      selectedPath === rootPath && this.pathsEqual(rootPath, this.imagePassPath ?? '')
-        ? computeSlangLineOffset(imageCode, originalImageCode)
-        : 0
-    );
-    const selectedSource = selectedPath === rootPath
-      ? rootSource
-      : isCommonTarget && commonPath && this.pathsEqual(selectedPath, commonPath)
-        ? commonSource ?? ''
-        : this.findSlangModule(selectedPath)?.source ?? '';
-    const selectedLineContent = selectedSource.split('\n')[selectedLine] ?? this.state.lineContent ?? '';
+  ): DebugRequestInputs {
     return {
-      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, contentHash: this.slangWorkspaceHash(files) },
-      sourceUri: selectedPath,
-      position: { line: selectedLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
+      imageCode,
+      config,
+      originalImageCode,
+      lineOverride,
+      currentLine: this.state.currentLine ?? -1,
+      lineContent: this.state.lineContent ?? '',
+      filePath: this.state.filePath,
+      variablePreview: this.variablePreview && {
+        filePath: this.variablePreview.filePath,
+        debugLine: this.variablePreview.debugLine,
+      },
+      imagePassPath: this.imagePassPath,
+      bufferPathMap: this.bufferPathMap,
+      bufferCodes: this.bufferCodes,
+      slangModules: this.slangModules,
+      getDebugTarget: (code, targetConfig) => this.getDebugTarget(code, targetConfig),
     };
   }
 
-  private planSlangInspectorPreview(
+  private planInspectorPreview(
+    strategy: DebugPlanStrategy,
     request: DebugAnalysisRequest,
     preview: VariablePreviewState,
     options: {
@@ -291,8 +292,8 @@ export class ShaderDebugManager {
       customParameters?: ReadonlyMap<number, string>;
       loopMaxIterations?: ReadonlyMap<number, number>;
     },
-  ) {
-    const analysis = this.slangDebugEngine.analyze(request);
+  ): DebugPlanResult {
+    const analysis = strategy.engine.analyze(request);
     if (!analysis.ok) {
       return analysis;
     }
@@ -302,25 +303,10 @@ export class ShaderDebugManager {
     if (!value) {
       return {
         ok: false as const,
-        diagnostics: [{
-          code: 'slang-debug-stale-request' as const,
-          message: `The selected variable '${preview.varName}' is no longer visible at this location.`,
-          sourceUri: request.sourceUri,
-          range: analysis.analysis.selectedRange,
-        }],
+        diagnostics: [strategy.staleVariableError(request, analysis.analysis.selectedRange, preview.varName)],
       };
     }
-    return this.slangDebugEngine.planPreviewValue(request, value.id, options);
-  }
-
-  private slangWorkspaceHash(files: Array<{ path: string; source: string; version: number }>): string {
-    let hash = 2166136261;
-    for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
-      for (const character of `${file.path}\0${file.version}\0${file.source}`) {
-        hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-      }
-    }
-    return (hash >>> 0).toString(16).padStart(8, '0');
+    return strategy.engine.planPreviewValue(request, value.id, options);
   }
 
   private findSlangModule(filePath: string | null): SlangSourceModule | undefined {
@@ -683,19 +669,6 @@ export class ShaderDebugManager {
     );
   }
 
-  private getEffectiveSlangParameters(): ReadonlyMap<number, string> {
-    const effective = new Map<number, string>();
-    if (this.state.functionContext?.isFunction) {
-      this.state.functionContext.parameters.forEach((parameter, index) => {
-        effective.set(index, parameter.defaultExpression);
-      });
-    }
-    for (const [index, expression] of this.customParameters) {
-      effective.set(index, expression);
-    }
-    return effective;
-  }
-
   private notifyStateChange(): void {
     if (this.stateCallback) {
       this.stateCallback(this.getState());
@@ -707,11 +680,16 @@ export class ShaderDebugManager {
    * Used when no line is selected or inline rendering is off.
    */
   public applyFullShaderPostProcessing(originalCode: string): string | null {
-    if (this.language === 'slang') {
-      return applySlangFullShaderPostProcessing(originalCode, {
-        normalizeMode: this.state.normalizeMode,
-        stepEdge: this.state.isStepEnabled ? this.state.stepEdge : null,
-      });
+    const strategy = this.planStrategy();
+    if (strategy) {
+      return strategy.postProcessFullShader(
+        originalCode,
+        this.state.normalizeMode,
+        this.state.isStepEnabled ? this.state.stepEdge : null,
+      );
+    }
+    if (!this.isLanguageSupported()) {
+      return null;
     }
     const stepEdge = this.state.isStepEnabled ? this.state.stepEdge : null;
     if (this.state.normalizeMode === 'off' && stepEdge === null) {
@@ -733,7 +711,10 @@ export class ShaderDebugManager {
     originalCode: string,
     debugLine: number,
   ): string | null {
-    if (this.language === 'slang') {
+    if (this.planStrategy()) {
+      return null;
+    }
+    if (!this.isLanguageSupported()) {
       return null;
     }
     const effectiveState = this.getState();
@@ -795,14 +776,13 @@ export class ShaderDebugManager {
 
   private extractFunctionContext(line: number | null, activeBufferName: string): DebugFunctionContext | null {
     const codeToAnalyse = this.getCodeForActiveBuffer(activeBufferName);
-    if (!codeToAnalyse || line === null) {
+    if (!codeToAnalyse || line === null || !this.isLanguageSupported()) {
       return null;
     }
 
     try {
-      return this.language === 'slang'
-        ? extractSlangFunctionContext(codeToAnalyse, line)
-        : ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
+      return this.planStrategy()?.extractFunctionContext(codeToAnalyse, line)
+        ?? ShaderDebugger.extractFunctionContext(codeToAnalyse, line);
     } catch {
       return null;
     }
@@ -824,20 +804,4 @@ export class ShaderDebugManager {
       })),
     };
   }
-}
-
-function computeSlangLineOffset(processed: string, original: string): number {
-  const processedLines = processed.split('\n');
-  const originalLines = original.split('\n');
-  for (let index = 0; index < originalLines.length; index++) {
-    const trimmed = originalLines[index].trim();
-    if (!trimmed || originalLines.filter((line) => line.trim() === trimmed).length !== 1) {
-      continue;
-    }
-    const processedIndex = processedLines.findIndex((line) => line.trim() === trimmed);
-    if (processedIndex >= 0 && processedIndex !== index) {
-      return processedIndex - index;
-    }
-  }
-  return 0;
 }

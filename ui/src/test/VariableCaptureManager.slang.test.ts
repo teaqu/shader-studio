@@ -83,13 +83,13 @@ describe('VariableCaptureManager - Slang engine', () => {
       files: [{ uri: 'file:///shaders/image.slang', path: '/shaders/image.slang', source: 'native capture source', version: 1, moduleName: '', ownerPass: 'Image' }],
     };
 
-    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: { plan, values: [{ id: 'uv', name: 'uv', typeName: 'float2', sourceUri: plan.rootUri, declarationRange: { start: { line: 2, character: 4 }, end: { line: 2, character: 6 } }, access: 'readwrite' }] } });
+    manager.notifyStateChange({ ...captureParams(slangShader), planCapture: { plan, values: [{ id: 'uv', name: 'uv', typeName: 'float2', sourceUri: plan.rootUri, declarationRange: { start: { line: 2, character: 4 }, end: { line: 2, character: 6 } }, access: 'readwrite' }] } });
     await vi.waitFor(() => expect(capturer.issueCaptureGrid).toHaveBeenCalled());
 
-    const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; selectorIndex?: number; slangPlan?: unknown }>;
+    const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; selectorIndex?: number; debugPlan?: unknown }>;
     expect(captures).toEqual([
-      expect.objectContaining({ varName: '_marker', selectorIndex: 0, hidden: true, slangPlan: plan }),
-      expect.objectContaining({ varName: 'uv', selectorIndex: 1, slangPlan: plan }),
+      expect.objectContaining({ varName: '_marker', selectorIndex: 0, hidden: true, debugPlan: plan }),
+      expect.objectContaining({ varName: 'uv', selectorIndex: 1, debugPlan: plan }),
     ]);
     manager.dispose();
   });
@@ -98,7 +98,7 @@ describe('VariableCaptureManager - Slang engine', () => {
     const { engine, capturer } = mockEngine('slang');
     const manager = new VariableCaptureManager(engine, () => {});
 
-    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: null });
+    manager.notifyStateChange({ ...captureParams(slangShader), planCapture: null });
     await vi.waitFor(() => expect(capturer.issueCaptureGrid).not.toHaveBeenCalled());
 
     manager.dispose();
@@ -111,7 +111,7 @@ describe('VariableCaptureManager - Slang engine', () => {
     const manager = new VariableCaptureManager(engine, updates);
     manager.setErrorCallback(errors);
 
-    manager.notifyStateChange({ ...captureParams(slangShader), slangCapture: null });
+    manager.notifyStateChange({ ...captureParams(slangShader), planCapture: null });
 
     await vi.waitFor(() => expect(updates).toHaveBeenCalledWith([]));
     expect(errors).not.toHaveBeenCalledWith(expect.arrayContaining([expect.anything()]));
@@ -128,8 +128,8 @@ describe('VariableCaptureManager - Slang engine', () => {
     manager.notifyStateChange({
       ...captureParams(slangShader),
       activeBufferName: 'ComputeLife',
-      slangCapture: null,
-      slangCaptureError: 'Native Slang capture planning failed.',
+      planCapture: null,
+      planCaptureError: 'Native Slang capture planning failed.',
     });
 
     await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(
@@ -163,7 +163,7 @@ describe('VariableCaptureManager - Slang engine', () => {
 
     manager.notifyStateChange({
       ...captureParams(slangShader),
-      slangCapture: {
+      planCapture: {
         plan,
         values: [{
           id: 'helper-value', name: 'helperValue', typeName: 'float', sourceUri: plan.selectedSourceUri,

@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { StorageBufferSnapshot } from '@shader-studio/types';
+  import { floatToHalf, halfToFloat } from '../../halfFloat';
 
   interface Props {
     name: string;
@@ -12,8 +13,8 @@
     onClose: () => void;
   }
 
-  type ScalarKind = 'float' | 'int' | 'uint';
-  interface Layout { kind: ScalarKind; columns: number; }
+  type ScalarKind = 'float' | 'half' | 'int' | 'uint';
+  interface Layout { kind: ScalarKind; columns: number; bytes: number; }
 
   let { name, count, onRead, onWrite, onClose }: Props = $props();
   const PAGE_SIZE = 100;
@@ -29,8 +30,7 @@
     if (!snapshot) {
       return null;
     }
-    const match = /^(float|int|uint)([1-4])?$/.exec(snapshot.elementType.trim());
-    return match ? { kind: match[1] as ScalarKind, columns: Number(match[2] ?? '1') } : null;
+    return storageLayout(snapshot.elementType);
   });
   const pageCount = $derived(Math.max(1, Math.ceil(count / PAGE_SIZE)));
   const pageItems = $derived.by<Array<number | 'ellipsis'>>(() => {
@@ -53,9 +53,12 @@
   function snapshotValues(next: StorageBufferSnapshot, nextLayout: Layout): number[][] {
     const view = new DataView(next.data);
     return Array.from({ length: next.count }, (_, row) => Array.from({ length: nextLayout.columns }, (_, column) => {
-      const offset = row * next.stride + column * 4;
-      if (offset + 4 > next.data.byteLength) {
+      const offset = row * next.stride + column * nextLayout.bytes;
+      if (offset + nextLayout.bytes > next.data.byteLength) {
         return 0;
+      }
+      if (nextLayout.kind === 'half') {
+        return halfToFloat(view.getUint16(offset, true));
       }
       if (nextLayout.kind === 'float') {
         return view.getFloat32(offset, true);
@@ -71,14 +74,13 @@
     error = null;
     try {
       const next = await onRead(name, rangeStart, rangeCount);
-      const match = /^(float|int|uint)([1-4])?$/.exec(next.elementType.trim());
-      if (!match) {
-        error = `${next.elementType} is not editable yet. Use float, int, uint, or their 2–4 component forms.`;
+      const nextLayout = storageLayout(next.elementType);
+      if (!nextLayout) {
+        error = `${next.elementType} is not editable yet. Use scalar or vector f16, f32, i32, or u32 values.`;
         snapshot = next;
         values = [];
         return;
       }
-      const nextLayout = { kind: match[1] as ScalarKind, columns: Number(match[2] ?? '1') };
       snapshot = next;
       values = snapshotValues(next, nextLayout);
     } catch (reason) {
@@ -127,10 +129,12 @@
         const view = new DataView(data);
         for (let row = 0; row < values.length; row += 1) {
           for (let column = 0; column < activeLayout.columns; column += 1) {
-            const offset = row * activeSnapshot.stride + column * 4;
+            const offset = row * activeSnapshot.stride + column * activeLayout.bytes;
             const value = values[row]![column]!;
             if (activeLayout.kind === 'float') {
               view.setFloat32(offset, value, true);
+            } else if (activeLayout.kind === 'half') {
+              view.setUint16(offset, floatToHalf(value), true);
             } else if (activeLayout.kind === 'int') {
               view.setInt32(offset, value, true);
             } else {
@@ -151,6 +155,30 @@
   onMount(() => {
     void refresh();
   });
+
+  function storageLayout(elementType: string): Layout | null {
+    const type = elementType.trim();
+    const legacy = /^(float|int|uint)([1-4])?$/.exec(type);
+    if (legacy) {
+      return { kind: legacy[1] as ScalarKind, columns: Number(legacy[2] ?? '1'), bytes: 4 };
+    }
+    if (type === 'Atomic<int>' || type === 'atomic<i32>') {
+      return { kind: 'int', columns: 1, bytes: 4 };
+    }
+    if (type === 'Atomic<uint>' || type === 'atomic<u32>') {
+      return { kind: 'uint', columns: 1, bytes: 4 };
+    }
+    const vector = /^vec([2-4])<(f16|f32|i32|u32)>$/.exec(type);
+    const scalarMatch = /^(f16|f32|i32|u32)$/.exec(type);
+    const alias = /^vec([2-4])([fhiu])$/.exec(type);
+    if (!vector && !scalarMatch && !alias) {
+      return null;
+    }
+    const scalar = vector?.[2] ?? scalarMatch?.[1] ?? ({ f: 'f32', h: 'f16', i: 'i32', u: 'u32' } as const)[alias![2] as 'f' | 'h' | 'i' | 'u'];
+    const columns = vector ? Number(vector[1]) : alias ? Number(alias[1]) : 1;
+    return { kind: scalar === 'f16' ? 'half' : scalar === 'f32' ? 'float' : scalar === 'i32' ? 'int' : 'uint', columns, bytes: scalar === 'f16' ? 2 : 4 };
+  }
+
 </script>
 
 <section class="storage-inspector" aria-label="Inspect {name}">

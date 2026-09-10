@@ -122,6 +122,22 @@ describe('MenuBar', () => {
     mockResCtrl = createMockResCtrl();
   });
 
+  describe('debug toggle language support', () => {
+    it('disables the debug toggle when the language has no debugger', async () => {
+      renderMenuBar({ ...defaultProps, isDebugSupported: false });
+      await tick();
+
+      expect(screen.getByRole('button', { name: 'Toggle debug mode' })).toBeDisabled();
+    });
+
+    it('enables the debug toggle by default when a shader is loaded', async () => {
+      renderMenuBar(defaultProps);
+      await tick();
+
+      expect(screen.getByRole('button', { name: 'Toggle debug mode' })).not.toBeDisabled();
+    });
+  });
+
   describe('volume slider', () => {
     it('should render volume slider in options menu and dispatch volume changes', async () => {
       renderMenuBar();

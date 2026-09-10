@@ -14,3 +14,16 @@ export function slangAuthoringVirtualFiles(
   }
   return [...files.values()];
 }
+
+/** Returns Common context for passes; Common itself must not include its own source. */
+export function commonAuthoringFile(
+  activeBufferName: string,
+  commonPath: string | undefined,
+  commonSource: string | undefined,
+  toUri: (path: string) => string,
+): VirtualShaderFile | undefined {
+  if (activeBufferName === "common" || activeBufferName === "Common" || !commonPath) {
+    return undefined;
+  }
+  return commonSource === undefined ? undefined : { uri: toUri(commonPath), text: commonSource, version: 1 };
+}

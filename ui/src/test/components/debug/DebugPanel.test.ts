@@ -74,8 +74,11 @@ function mockGetUniforms(): PassUniforms | null {
   return mockUniforms;
 }
 
-function createMockShaderDebugManager() {
+function createMockShaderDebugManager(language = 'slang') {
   return {
+    getLanguage: vi.fn(() => language),
+    setVariablePreview: vi.fn(),
+    clearVariablePreview: vi.fn(),
     setCustomParameter: vi.fn(),
     resetCustomParameters: vi.fn(),
     setLoopMaxIterations: vi.fn(),
@@ -1264,6 +1267,37 @@ describe('DebugPanel', () => {
       expect(lineEl.textContent).toBe('L13');
       await fireEvent.click(lineEl);
       expect(onVarClick).toHaveBeenCalledWith('myVar', 12);
+    });
+
+    it('enables row hover previews for every language with debugger support', async () => {
+      for (const language of ['glsl', 'slang'] as const) {
+        const shaderDebugManager = createMockShaderDebugManager(language);
+        const { container, unmount } = render(DebugPanel, {
+          debugState: makeDebugState({
+            isVariableInspectorEnabled: true,
+            capturedVariables: [{
+              varName: 'myVar', varType: 'float', value: null,
+              channelMeans: [0.5], channelStats: [{ min: 0, max: 1, mean: 0.5 }],
+              stats: { min: 0, max: 1, mean: 0.5 }, histogram: null,
+              channelHistograms: null, colorFrequencies: null, thumbnail: null,
+              declarationLine: 12, gridWidth: 32, gridHeight: 32,
+              captureLine: 9, captureFilePath: '/test.glsl', captureBufferName: 'Image',
+            }],
+          }),
+          getUniforms: mockGetUniforms,
+          shaderDebugManager,
+        });
+
+        const row = container.querySelector('[aria-label="Preview myVar"]') as HTMLElement;
+        expect(row).toBeInTheDocument();
+        await fireEvent.mouseEnter(row);
+        expect(getVariablePreview()).toMatchObject({
+          varName: 'myVar',
+          debugLine: 9,
+        });
+        await fireEvent.mouseLeave(row);
+        unmount();
+      }
     });
 
     it('mini preview hover and focus update shared preview state with the displayed variable', async () => {

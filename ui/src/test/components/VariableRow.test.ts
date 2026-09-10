@@ -188,6 +188,29 @@ describe('VariableRow', () => {
     expect(content).toContain('0.800');
   });
 
+  it.each(['f32', 'f16', 'i32', 'u32'])('shows scalar WGSL %s grid captures', (varType) => {
+    const v = { ...makeGridScalarVar(), varName: 'wgslScalar', varType };
+    const { container } = render(VariableRow, { props: { variable: v, isPixelMode: false } });
+
+    expect(container.querySelector('.var-stats')).toBeInTheDocument();
+    expect(container.textContent).toContain('0.300');
+  });
+
+  it.each(['vec3f', 'vec3<f32>', 'vec4u', 'vec4<u32>'])('shows WGSL %s color vectors in grid captures', (varType) => {
+    const v = { ...makeGridVecVar(), varName: 'wgslColor', varType };
+    const { container } = render(VariableRow, { props: { variable: v, isPixelMode: false } });
+
+    expect(container.textContent).toContain('≈');
+    expect(container.querySelector('.vec-value')).toBeInTheDocument();
+  });
+
+  it.each(['vec3f', 'vec3<f32>', 'vec4u', 'vec4<u32>'])('shows a color swatch for WGSL %s pixel captures', (varType) => {
+    const v = { ...makeVec3Var(0.21, 0.45, 0.80), varName: 'wgslColor', varType };
+    const { container } = render(VariableRow, { props: { variable: v, isPixelMode: true } });
+
+    expect(container.querySelector('.color-swatch')).toBeInTheDocument();
+  });
+
   it('shows thumbnail canvas for vec3 in grid mode when thumbnail data is present', () => {
     const thumb = new Uint8ClampedArray(32 * 32 * 4).fill(128);
     const v = { ...makeGridVecVar(), thumbnail: thumb };

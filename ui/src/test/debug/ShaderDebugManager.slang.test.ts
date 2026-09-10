@@ -31,7 +31,7 @@ describe('ShaderDebugManager - Slang language mode', () => {
     manager.toggleEnabled();
     manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
 
-    const plan = manager.getSlangPreviewPlan(slangShader, null);
+    const plan = manager.getPreviewPlan(slangShader, null);
 
     expect(plan?.rootUri).toBe('file:///flow.slang');
     expect(plan?.selectedSourceUri).toBe('file:///flow.slang');
@@ -56,7 +56,7 @@ float4 mainImage(float2 fragCoord)
     manager.toggleEnabled();
     manager.updateDebugLine(2, '    float value = fragCoord.x;', '/flow.slang');
 
-    const plan = manager.getSlangPreviewPlan(processed, null, original);
+    const plan = manager.getPreviewPlan(processed, null, original);
 
     expect(plan?.files[0].source).toContain('float _ssdbg_');
   });
@@ -67,7 +67,7 @@ float4 mainImage(float2 fragCoord)
     manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
     manager.setInlineRenderingEnabled(false);
 
-    expect(manager.getSlangPreviewPlan(slangShader, null)).toBeNull();
+    expect(manager.getPreviewPlan(slangShader, null)).toBeNull();
   });
 
   it('still builds an explicit Slang variable preview while inline rendering is disabled', () => {
@@ -83,7 +83,7 @@ float4 mainImage(float2 fragCoord)
       filePath: '/flow.slang',
     })).toBe(true);
 
-    expect(manager.getSlangPreviewPlan(slangShader, null)?.files[0].source).toContain('_ssdbg_');
+    expect(manager.getPreviewPlan(slangShader, null)?.files[0].source).toContain('_ssdbg_');
   });
 
   it('keeps Image as the workspace root when previewing configured Slang common code', () => {
@@ -105,7 +105,7 @@ float4 mainImage(float2 fragCoord)
     manager.toggleEnabled();
     manager.updateDebugLine(2, '    float grid = uv.x * scale;', commonPath);
 
-    const plan = manager.getSlangPreviewPlan(slangShader, config);
+    const plan = manager.getPreviewPlan(slangShader, config);
 
     expect(plan?.rootUri).toBe('file:///shaders/validation.slang');
     expect(plan?.selectedSourceUri).toBe('file:///shaders/common.slang');
@@ -137,7 +137,7 @@ float4 mainImage(float2 fragCoord)
     manager.toggleEnabled();
     manager.updateDebugLine(4, '    return float4(col, 1.0);', '/default.slang');
 
-    const plan = manager.getSlangPreviewPlan(defaultShader, null);
+    const plan = manager.getPreviewPlan(defaultShader, null);
 
     expect(plan?.captureSlots[1]).toMatchObject({ name: '_dbgReturn', typeName: 'float4' });
     const output = plan?.files[0].source ?? '';
@@ -156,7 +156,7 @@ float4 mainImage(float2 fragCoord)
       filePath: '/flow.slang',
     })).toBe(true);
 
-    const plan = manager.getSlangPreviewPlan(slangShader, null);
+    const plan = manager.getPreviewPlan(slangShader, null);
 
     expect(plan?.captureSlots[1]).toMatchObject({ name: 'uv', typeName: 'float2' });
   });
@@ -173,7 +173,7 @@ float4 mainImage(float2 fragCoord)
       filePath: '/flow.slang',
     })).toBe(true);
 
-    const plan = manager.getSlangPreviewPlan(slangShader, null);
+    const plan = manager.getPreviewPlan(slangShader, null);
 
     expect(plan?.files[0].source).toMatch(/float4\(_ssdbg_\w+_slot1 \/ iResolution\.xy, 0\.0, 1\.0\)/);
   });
@@ -212,7 +212,7 @@ float4 mainImage(float2 fragCoord)
 
     manager.setCustomParameter(1, '0.75');
     manager.setLoopMaxIterations(0, 3);
-    const output = manager.getSlangPreviewPlan(helperShader, null)?.files[0].source ?? '';
+    const output = manager.getPreviewPlan(helperShader, null)?.files[0].source ?? '';
     expect(output).toContain('float _ssdbg_');
     expect(output).toContain('gain = 0.75;');
     expect(output).toMatch(/if \(_ssdbg_\w+_loop0\+\+ >= 3\) break;/);
@@ -226,14 +226,14 @@ float4 mainImage(float2 fragCoord)
       }),
       expect.objectContaining({ name: 'gain', expression: '0.5', defaultExpression: '0.5' }),
     ]);
-    const resetOutput = manager.getSlangPreviewPlan(helperShader, null)?.files[0].source ?? '';
+    const resetOutput = manager.getPreviewPlan(helperShader, null)?.files[0].source ?? '';
     expect(resetOutput).toMatch(/p = _ssdbg_\w+_fragCoord \/ iResolution\.xy;/);
     expect(resetOutput).toContain('gain = 0.5;');
 
     manager.setCustomParameter(1, '0.50');
-    const reformattedOutput = manager.getSlangPreviewPlan(helperShader, null)?.files[0].source ?? '';
+    const reformattedOutput = manager.getPreviewPlan(helperShader, null)?.files[0].source ?? '';
     expect(reformattedOutput).toContain('gain = 0.50;');
-    const capture = manager.getSlangCapturePlan(helperShader, null);
+    const capture = manager.getCapturePlan(helperShader, null);
     if (!capture || 'error' in capture) {
       throw new Error(capture?.error ?? 'Expected helper capture plan');
     }
@@ -245,7 +245,7 @@ float4 mainImage(float2 fragCoord)
     manager.toggleEnabled();
     manager.updateDebugLine(2, '    float2 uv = fragCoord / iResolution.xy;', '/flow.slang');
 
-    const capture = manager.getSlangCapturePlan(slangShader, null);
+    const capture = manager.getCapturePlan(slangShader, null);
     if (!capture || "error" in capture) {
       throw new Error(capture?.error ?? "Expected a Slang capture plan");
     }
@@ -272,7 +272,7 @@ void update(uint3 tid : SV_DispatchThreadID)
     manager.toggleEnabled();
     manager.updateDebugLine(4, '    float value = float(tid.x);', '/life.slang');
 
-    const capture = manager.getSlangCapturePlan(slangShader, config);
+    const capture = manager.getCapturePlan(slangShader, config);
 
     if (!capture || 'error' in capture) {
       throw new Error(capture?.error ?? 'Expected compute capture plan');
@@ -286,7 +286,7 @@ void update(uint3 tid : SV_DispatchThreadID)
     manager.toggleEnabled();
     manager.updateDebugLine(5, '    return float4(col, 1.0);', '/flow.slang');
 
-    const capture = manager.getSlangCapturePlan(slangShader, null);
+    const capture = manager.getCapturePlan(slangShader, null);
     if (!capture || "error" in capture) {
       throw new Error(capture?.error ?? "Expected a Slang capture plan");
     }

@@ -4,14 +4,15 @@ import { VariableCaptureBuilder } from '@shader-studio/debug';
 import { CaptureDecoder } from '../../../rendering/src/capture/CaptureDecoder';
 import { captureCounters, captureDiagTick, captureDiagEvent } from '../../../rendering/src/capture/captureDiagnostics';
 import type { ConfigInput, DebugInstrumentationPlan, DebugVisibleValue } from '@shader-studio/types';
+import { SHADER_LANGUAGES } from '@shader-studio/types';
 import type { CaptureError } from '../../../rendering/src/capture/CaptureErrorLog';
 import { dedupeCompilerErrors } from '../../../rendering/src/util/CompilerErrorDedupe';
+import {
+  captureDecoderType,
+  isCapturedScalarType,
+  isSupportedCapturedType,
+} from './capturedVariableTypes';
 
-const CAPTURABLE_TYPES = new Set([
-  'float', 'int', 'bool',
-  'vec2', 'vec3', 'vec4', 'mat2',
-  'float2', 'float3', 'float4', 'float2x2',
-]);
 const MAX_EMPTY_COLLECTION_FRAMES = 120;
 
 /** One capture failure, named against the variable it belongs to where known. */
@@ -127,7 +128,7 @@ function buildThumbnail(
 ): Uint8ClampedArray {
   const totalPixels = gridWidth * gridHeight;
   const pixels = new Uint8ClampedArray(totalPixels * 4);
-  const isScalar = varType === 'float' || varType === 'int' || varType === 'bool';
+  const isScalar = isCapturedScalarType(varType);
   const clamp = (v: number): number => Math.round(Math.max(0, Math.min(1, v)) * 255);
 
   // gl.readPixels returns bottom-to-top; putImageData expects top-to-bottom,
@@ -206,8 +207,8 @@ interface CaptureParams {
   sampleSize: number;
   refreshMode: RefreshMode;
   pollingMs: number;
-  slangCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
-  slangCaptureError?: string | null;
+  planCapture?: { plan: DebugInstrumentationPlan; values: DebugVisibleValue[] } | null;
+  planCaptureError?: string | null;
   /** First source line the shader compiler rejected, 1-based, when it named one. */
   compileErrorLine?: number | null;
   /** 1-based line range of the function that break sits in, when it is in one. */
@@ -594,8 +595,12 @@ export class VariableCaptureManager {
     }
     captureCounters.issueCalls++;
 
-    if (this.renderingEngine.getShaderLanguage?.() === 'slang' && params.slangCapture === null) {
-      this.emitErrorState(params.slangCaptureError ?? null);
+    // Plan-based languages (Slang, WGSL) capture exclusively through the debug
+    // plan: without one there is nothing to issue, so report the planning
+    // error instead of falling back to the GLSL capture builder.
+    const language = this.renderingEngine.getShaderLanguage?.() ?? 'glsl';
+    if (SHADER_LANGUAGES[language]?.hasDebugPlan && params.planCapture === null) {
+      this.emitErrorState(params.planCaptureError ?? null);
       this.finishCollection([]);
       return;
     }
@@ -614,7 +619,9 @@ export class VariableCaptureManager {
     if (!this.isCurrentRequest(requestId)) {
       return;
     }
-    const captureCompileContext = this.renderingEngine.getShaderLanguage?.() === 'slang'
+    // Plan-based languages resolve the compile context against the selected
+    // file so module/common ownership matches the debug request.
+    const captureCompileContext = SHADER_LANGUAGES[language]?.hasDebugPlan
       ? this.renderingEngine.getVariableCaptureCompileContext(
         params.code,
         params.activeBufferName,
@@ -659,8 +666,8 @@ export class VariableCaptureManager {
 
     let vars: Array<{ varName: string; varType: string; declarationLine: number }>;
     try {
-      vars = params.slangCapture
-        ? params.slangCapture.values.map((value) => ({ varName: value.name, varType: value.typeName, declarationLine: value.declarationRange.start.line }))
+      vars = params.planCapture
+        ? params.planCapture.values.map((value) => ({ varName: value.name, varType: value.typeName, declarationLine: value.declarationRange.start.line }))
         : VariableCaptureBuilder.getAllInScopeVariables(params.code, resolvedLine);
     } catch {
       if (!this.isCurrentRequest(requestId)) {
@@ -676,10 +683,10 @@ export class VariableCaptureManager {
     }
 
     // Append custom uniforms (declared in compiler header, not in user code)
-    if (!params.slangCapture) {
+    if (!params.planCapture) {
       const customUniforms = this.renderingEngine.getCustomUniformInfo();
       for (const { name, type } of customUniforms) {
-        if (CAPTURABLE_TYPES.has(type) && !vars.some(v => v.varName === name)) {
+        if (isSupportedCapturedType(type) && !vars.some(v => v.varName === name)) {
           vars.push({ varName: name, varType: type, declarationLine: -1 });
         }
       }
@@ -708,7 +715,7 @@ export class VariableCaptureManager {
       params.canvasHeight,
     );
 
-    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number; hidden?: boolean; slangPlan?: DebugInstrumentationPlan }> = [];
+    const captures: Array<{ varName: string; varType: string; captureShader: string; selectorIndex?: number; hidden?: boolean; debugPlan?: DebugInstrumentationPlan }> = [];
 
     // Store declaration lines for each variable
     this.varDeclarationLines.clear();
@@ -717,8 +724,8 @@ export class VariableCaptureManager {
     }
 
     const buildSelectorShader = (keepTrailingSource: boolean): string | undefined =>
-      params.slangCapture
-        ? params.slangCapture.plan.files.find((file) => file.uri === params.slangCapture!.plan.rootUri)?.source
+      params.planCapture
+        ? params.planCapture.plan.files.find((file) => file.uri === params.planCapture!.plan.rootUri)?.source
         : VariableCaptureBuilder.generateMultiCaptureShader(
           params.code,
           resolvedLine,
@@ -734,8 +741,8 @@ export class VariableCaptureManager {
     const selectorShader = buildSelectorShader(true);
 
     if (selectorShader) {
-      if (params.slangCapture) {
-        captures.push({ varName: params.slangCapture.plan.captureSlots[0].name, varType: 'bool', captureShader: selectorShader, selectorIndex: 0, hidden: true, slangPlan: params.slangCapture.plan });
+      if (params.planCapture) {
+        captures.push({ varName: params.planCapture.plan.captureSlots[0].name, varType: 'bool', captureShader: selectorShader, selectorIndex: 0, hidden: true, debugPlan: params.planCapture.plan });
       }
       for (let index = 0; index < vars.length; index++) {
         const v = vars[index];
@@ -743,8 +750,8 @@ export class VariableCaptureManager {
           varName: v.varName,
           varType: v.varType,
           captureShader: selectorShader,
-          selectorIndex: params.slangCapture ? index + 1 : index,
-          ...(params.slangCapture ? { slangPlan: params.slangCapture.plan } : {}),
+          selectorIndex: params.planCapture ? index + 1 : index,
+          ...(params.planCapture ? { debugPlan: params.planCapture.plan } : {}),
         });
       }
     }
@@ -807,7 +814,7 @@ export class VariableCaptureManager {
     // The capture keeps whatever follows the captured function so calls into
     // it still resolve. When that will not compile - a stray token below the
     // cut, say - fall back to the older cut that drops the rest of the file.
-    if (issued === 0 && !params.slangCapture && this.isCurrentRequest(requestId)) {
+    if (issued === 0 && !params.planCapture && this.isCurrentRequest(requestId)) {
       const wholeFileShader = buildSelectorShader(false);
       if (wholeFileShader && wholeFileShader !== selectorShader) {
         this.capturer.clearLastError();
@@ -872,7 +879,6 @@ export class VariableCaptureManager {
     const isPixelMode = this.lastCaptureMode === 'pixel';
     const capturedVars: CapturedVariable[] = [];
 
-    const isScalar = (t: string) => t === 'float' || t === 'int' || t === 'bool';
     const captureProvenance = {
       captureLine: this.lastCaptureLine,
       captureFilePath: this.lastCaptureFilePath,
@@ -889,7 +895,7 @@ export class VariableCaptureManager {
     for (const result of results.filter((result) => !result.hidden)) {
       if (isPixelMode) {
         // 1×1 capture: exact component values
-        const value = CaptureDecoder.decodePixel(result.rgba, result.varType);
+        const value = CaptureDecoder.decodePixel(result.rgba, captureDecoderType(result.varType));
         capturedVars.push({
           varName: result.varName,
           varType: result.varType,
@@ -910,7 +916,10 @@ export class VariableCaptureManager {
         // Grid capture
         const gridWidth = this.lastGridWidth;
         const gridHeight = this.lastGridHeight;
-        const compCount = CaptureDecoder.decodePixel(new Float32Array([0, 0, 0, 0]), result.varType).length;
+        const compCount = CaptureDecoder.decodePixel(
+          new Float32Array([0, 0, 0, 0]),
+          captureDecoderType(result.varType),
+        ).length;
         const componentStats: { min: number; max: number; mean: number }[] = [];
         const grids: Float32Array[] = [];
 
@@ -931,7 +940,7 @@ export class VariableCaptureManager {
         let channelHistograms: Array<{ bins: number[]; min: number; max: number; label: string }> | null = null;
         let colorFrequencies: ColorFrequency[] | null = null;
 
-        if (isScalar(result.varType)) {
+        if (isCapturedScalarType(result.varType)) {
           stats = componentStats[0];
           if (this.expandedVars.has(result.varName)) {
             histogram = CaptureDecoder.buildHistogram(grids[0], 20);

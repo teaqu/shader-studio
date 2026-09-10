@@ -230,6 +230,31 @@ describe('ConfigPanel', () => {
       expect(mockOnFileSelect).not.toHaveBeenCalled();
     });
 
+    it('renders the Storage tab for WGSL configurations', async () => {
+      const config: ShaderConfig = {
+        version: '1.0',
+        storage: { particles: { count: 1024, elementType: 'float4' } },
+        passes: { Image: { inputs: {} } },
+      };
+
+      const { getByRole } = render(ConfigPanel, {
+        config,
+        language: 'wgsl',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.wgsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+
+      await tick();
+      await fireEvent.click(getByRole('button', { name: 'Storage' }));
+
+      expect(getByRole('heading', { name: 'Storage' })).toBeInTheDocument();
+      expect(mockOnFileSelect).not.toHaveBeenCalled();
+    });
+
     it('reacts when a compute pass is added to the config prop', async () => {
       const config: ShaderConfig = {
         version: '1.0',
@@ -263,7 +288,7 @@ describe('ConfigPanel', () => {
       await tick();
 
       expect(queryByRole('button', { name: /^ComputeSim/ })).toBeInTheDocument();
-      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
     });
 
     it('should render tabs for buffers returned by getBufferList', async () => {
@@ -689,7 +714,7 @@ describe('ConfigPanel', () => {
       passes: { Image: { inputs: {} } },
     };
 
-    function renderPanel(language: 'glsl' | 'slang') {
+    function renderPanel(language: 'glsl' | 'slang' | 'wgsl') {
       return render(ConfigPanel, {
         config,
         language,
@@ -702,8 +727,8 @@ describe('ConfigPanel', () => {
       });
     }
 
-    it('shows the add-compute affordance for Slang', async () => {
-      const { getByRole, getByText, queryByText } = renderPanel('slang');
+    it.each(['slang', 'wgsl'] as const)('shows the add-compute affordance for %s', async (language) => {
+      const { getByRole, getByText, queryByText } = renderPanel(language);
 
       await tick();
       await fireEvent.click(getByRole('button', { name: '+ New' }));
@@ -719,13 +744,13 @@ describe('ConfigPanel', () => {
       await tick();
       await fireEvent.click(getByRole('button', { name: '+ New' }));
 
-      expect(queryByRole('button', { name: /add compute/i })).not.toBeInTheDocument();
+      expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
     });
 
-    it('reacts to active language changes without altering existing add options', async () => {
+    it.each(['slang', 'wgsl'] as const)('reacts to GLSL/%s switches without altering existing add options', async (language) => {
       const props = {
         config,
-        language: 'glsl' as 'glsl' | 'slang',
+        language: 'glsl' as 'glsl' | 'slang' | 'wgsl',
         pathMap: {},
         transport: mockTransport,
         shaderPath: '/test/image.glsl',
@@ -740,7 +765,7 @@ describe('ConfigPanel', () => {
       expect(queryByRole('menuitem', { name: /add compute/i })).not.toBeInTheDocument();
       expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
 
-      await rerender({ ...props, language: 'slang' });
+      await rerender({ ...props, language });
       await tick();
       expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
       expect(getByRole('menuitem', { name: 'Buffer' })).toBeInTheDocument();
@@ -937,6 +962,27 @@ describe('ConfigPanel', () => {
   });
 
   describe('add pass menu accessibility', () => {
+    it('offers the Compute pass action for WGSL configurations', async () => {
+      const { getByRole } = render(ConfigPanel, {
+        config: {
+          version: '1.0',
+          passes: { Image: { inputs: {} } },
+        },
+        language: 'wgsl',
+        pathMap: {},
+        transport: mockTransport,
+        shaderPath: '/test/image.wgsl',
+        isVisible: true,
+        onFileSelect: mockOnFileSelect,
+        selectedBuffer: 'Image',
+      });
+      await tick();
+
+      await fireEvent.click(getByRole('button', { name: '+ New' }));
+
+      expect(getByRole('menuitem', { name: /add compute/i })).toBeInTheDocument();
+    });
+
     function renderSlangPanel() {
       return render(ConfigPanel, {
         config: {

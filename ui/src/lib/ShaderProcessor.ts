@@ -1,5 +1,6 @@
 import type { RenderingEngine } from "../../../rendering/src/types/RenderingEngine";
 import type { ShaderDebugManager } from "./ShaderDebugManager";
+import { debugPlanStrategy } from "./debugLanguageStrategies";
 import type { ShaderSourceMessage, ShaderConfig } from "@shader-studio/types";
 import type { DebugInstrumentationPlan } from "@shader-studio/types";
 
@@ -78,8 +79,8 @@ export class ShaderProcessor {
         }
       }
 
-      const result = debugPlan && this.renderEngine.compileSlangDebugPlan
-        ? await this.renderEngine.compileSlangDebugPlan(debugPlan, config ?? null)
+      const result = debugPlan && this.renderEngine.compileDebugPlan
+        ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
         : await this.compileWithSlangContext(
           codeToCompile,
           configToCompile,
@@ -208,15 +209,17 @@ export class ShaderProcessor {
     const sourceCode = debugTarget.code;
     const debugConfig = debugTarget.config;
 
-    const slangPlan = this.shaderDebugManager.getSlangPreviewPlan?.(
+    const debugPlan = this.shaderDebugManager.getPreviewPlan?.(
       imageShaderCode,
       config,
       originalImageShaderCode,
     );
-    if (slangPlan) {
-      return { code: imageShaderCode, config, passName: 'Image', debugPlan: slangPlan };
+    if (debugPlan) {
+      return { code: imageShaderCode, config, passName: 'Image', debugPlan: debugPlan };
     }
-    if (this.shaderDebugManager.getLanguage?.() === 'slang') {
+    // Plan-based languages (Slang, WGSL) never go through the GLSL source
+    // modifier below; the strategy table owns the language dispatch.
+    if (debugPlanStrategy(this.shaderDebugManager.getLanguage?.() ?? 'glsl')) {
       const postProcessed = debugState.isEnabled
         ? this.shaderDebugManager.applyFullShaderPostProcessing(sourceCode)
         : null;
@@ -420,8 +423,8 @@ export class ShaderProcessor {
 
     // Cursor movement uses this path, so native Slang preview plans must be
     // routed here as well as through the initial shader-source compilation.
-    const structuredResult = debugPlan && this.renderEngine.compileSlangDebugPlan
-      ? await this.renderEngine.compileSlangDebugPlan(debugPlan, config ?? null)
+    const structuredResult = debugPlan && this.renderEngine.compileDebugPlan
+      ? await this.renderEngine.compileDebugPlan(debugPlan, config ?? null)
       : undefined;
     let result: CompilationResult = structuredResult ?? (debugPlan
       ? { success: false, errors: ["Native Slang debug compilation is unavailable"] }

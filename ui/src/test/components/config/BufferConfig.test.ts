@@ -77,7 +77,7 @@ describe('BufferConfig', () => {
     const postMessage = vi.fn();
     const { getByText } = render(BufferConfig, {
       bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
-      shaderPath: '/shaders/rays.slang', postMessage,
+      shaderPath: '/shaders/rays.slang', language: 'slang', postMessage,
     });
 
     await fireEvent.click(getByText('Create'));
@@ -86,6 +86,20 @@ describe('BufferConfig', () => {
       payload: expect.objectContaining({ fileType: 'slang-vertex', suggestedPath: '/shaders/rays.image.vert.slang' }),
     }));
   });
+  it('creates a WGSL vertex file for a WGSL shader', async () => {
+    const postMessage = vi.fn();
+    const { getByText } = render(BufferConfig, {
+      bufferName: 'Image', config: { inputs: {}, geometry: { type: 'cube' } }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
+      shaderPath: '/shaders/rays.wgsl', language: 'wgsl', postMessage,
+    });
+
+    await fireEvent.click(getByText('Create'));
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'createFile',
+      payload: expect.objectContaining({ fileType: 'wgsl-vertex', suggestedPath: '/shaders/rays.image.vert.wgsl' }),
+    }));
+  });
+
   let mockOnUpdate: ReturnType<typeof vi.fn>;
   let mockGetWebviewUri: ReturnType<typeof vi.fn>;
   let mockPostMessage: ReturnType<typeof vi.fn>;
@@ -252,6 +266,46 @@ describe('BufferConfig', () => {
       expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('slang-common');
     });
 
+    it('should create WGSL fragment buffers with a WGSL file type', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'BufferA', config, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        shaderPath: '/shaders/image.wgsl', language: 'wgsl',
+        suggestedPath: 'image.buffera.wgsl',
+      });
+
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('wgsl-buffer');
+    });
+
+    it('should create WGSL common files with a WGSL file type', async () => {
+      const config: BufferPass = { path: '', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'common', config, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        shaderPath: '/shaders/image.wgsl', language: 'wgsl',
+        suggestedPath: 'image.common.wgsl',
+      });
+
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('wgsl-common');
+    });
+
+    it('should create WGSL compute buffers with a WGSL file type', async () => {
+      const config: ComputePass = { type: 'compute', path: '', inputs: {} };
+      const { container } = render(BufferConfig, {
+        bufferName: 'ComputeSim', config, onUpdate: mockOnUpdate,
+        getWebviewUri: mockGetWebviewUri, postMessage: mockPostMessage,
+        shaderPath: '/shaders/image.wgsl', language: 'wgsl',
+        passType: 'compute',
+        suggestedPath: 'image.computesim.wgsl',
+      });
+
+      await fireEvent.click(getMainPathConfig(container).querySelector('.create-file-btn')!);
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('wgsl-compute');
+    });
+
     it('should not show create file button when no postMessage handler', () => {
       const config: BufferPass = { path: '', inputs: {} };
 
@@ -366,7 +420,7 @@ describe('BufferConfig', () => {
       });
     });
 
-    it('should preserve GLSL buffer selection for GLSL compute passes', async () => {
+    it('should use the GLSL compute file type for GLSL compute passes', async () => {
       const config: BufferPass = { path: 'existing.glsl', inputs: {} };
       const { container } = render(BufferConfig, {
         bufferName: 'BufferA',
@@ -380,7 +434,7 @@ describe('BufferConfig', () => {
 
       await fireEvent.click(getMainPathConfig(container).querySelector('.select-file-btn')!);
 
-      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-buffer');
+      expect(mockPostMessage.mock.calls[0][0].payload.fileType).toBe('glsl-compute');
     });
 
     it('should show path input instead of create button for common buffer with existing path', () => {

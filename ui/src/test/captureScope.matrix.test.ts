@@ -175,53 +175,54 @@ describe('capture scope with a break anywhere in the shader', () => {
       .toEqual(['revcol', 'hash21', 'noise', 'fbm', 'mainImage']);
   });
 
-  it('never reports another function\'s locals, for any break and any inspected line', () => {
+  const breakLocations = ranges.flatMap((broken) => {
+    const locations: { broken: typeof broken; breakAfter: number }[] = [];
+    for (let breakAfter = broken.start + 1; breakAfter < broken.end; breakAfter += 1) {
+      locations.push({ broken, breakAfter });
+    }
+    return locations;
+  });
+
+  it.each(breakLocations)('never reports another function\'s locals after a break in $broken.name at line $breakAfter', ({ broken, breakAfter }) => {
     const failures: string[] = [];
 
-    for (const broken of ranges) {
-      // Put the break after each statement of this function in turn, starting
-      // inside the body: between a signature and its brace is not a statement.
-      for (let breakAfter = broken.start + 1; breakAfter < broken.end; breakAfter += 1) {
-        const source = [
-          ...lines.slice(0, breakAfter),
-          'd',
-          ...lines.slice(breakAfter),
-        ].join('\n');
+    const source = [
+      ...lines.slice(0, breakAfter),
+      'd',
+      ...lines.slice(breakAfter),
+    ].join('\n');
 
-        const detected = firstUnterminatedStatementLine(source);
-        if (detected !== breakAfter + 1) {
-          failures.push(`break after ${breakAfter}: detected ${detected}`);
-          continue;
-        }
+    const detected = firstUnterminatedStatementLine(source);
+    if (detected !== breakAfter + 1) {
+      failures.push(`break after ${breakAfter}: detected ${detected}`);
+    } else {
+      for (const inspected of functionRanges(source)) {
+        const foreign = functionRanges(source)
+          .filter((range) => range.name !== inspected.name)
+          .flatMap((range) => [...localsOf(source, range)]);
 
-        for (const inspected of functionRanges(source)) {
-          const foreign = functionRanges(source)
-            .filter((range) => range.name !== inspected.name)
-            .flatMap((range) => [...localsOf(source, range)]);
+        for (let line = inspected.start + 1; line < inspected.end; line += 1) {
+          // Braces and blank lines are not positions a user inspects, and a
+          // position before a body opens belongs to no scope in particular.
+          const text = lines[line - 1]?.trim() ?? '';
+          if (text === '' || text === '{' || text === '}') {
+            continue;
+          }
+          const reported = inspect(source, detected, line);
+          const leaked = reported.filter((name) => foreign.includes(name)
+            && !localsOf(source, inspected).has(name));
+          if (leaked.length > 0) {
+            failures.push(
+              `break@${detected} inspect@${line} (${inspected.name}) leaked ${leaked.join(',')}`,
+            );
+          }
 
-          for (let line = inspected.start + 1; line < inspected.end; line += 1) {
-            // Braces and blank lines are not positions a user inspects, and a
-            // position before a body opens belongs to no scope in particular.
-            const text = lines[line - 1]?.trim() ?? '';
-            if (text === '' || text === '{' || text === '}') {
-              continue;
-            }
-            const reported = inspect(source, detected, line);
-            const leaked = reported.filter((name) => foreign.includes(name)
-              && !localsOf(source, inspected).has(name));
-            if (leaked.length > 0) {
-              failures.push(
-                `break@${detected} inspect@${line} (${inspected.name}) leaked ${leaked.join(',')}`,
-              );
-            }
-
-            // A capture that reports nothing at all is as useless as a wrong
-            // one, so the line must still see something it can name - unless
-            // the cut removed everything above it in this function.
-            const cutAbove = detected <= inspected.start + 1;
-            if (reported.length === 0 && !cutAbove && line > inspected.start + 1) {
-              failures.push(`break@${detected} inspect@${line} (${inspected.name}) reported nothing`);
-            }
+          // A capture that reports nothing at all is as useless as a wrong
+          // one, so the line must still see something it can name - unless
+          // the cut removed everything above it in this function.
+          const cutAbove = detected <= inspected.start + 1;
+          if (reported.length === 0 && !cutAbove && line > inspected.start + 1) {
+            failures.push(`break@${detected} inspect@${line} (${inspected.name}) reported nothing`);
           }
         }
       }

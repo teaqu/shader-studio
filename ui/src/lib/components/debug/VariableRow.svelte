@@ -6,6 +6,11 @@
   import GreyscaleFrequencyBar from './GreyscaleFrequencyBar.svelte';
   import CaptureThumbnail from './CaptureThumbnail.svelte';
   import { clearVariablePreview, setVariablePreview } from '../../state/variablePreviewState.svelte';
+  import {
+    isCapturedColorVectorType,
+    isCapturedScalarType,
+    isCapturedVectorType,
+  } from '../../capturedVariableTypes';
 
   interface Props {
     variable: CapturedVariable;
@@ -23,23 +28,9 @@
     onLineClick = () => {},
   }: Props = $props();
 
-  let isScalar = $derived(variable.varType === 'float' || variable.varType === 'int' || variable.varType === 'bool');
-  let isVec = $derived(
-    variable.varType === 'vec2'
-    || variable.varType === 'vec3'
-    || variable.varType === 'vec4'
-    || variable.varType === 'mat2'
-    || variable.varType === 'float2'
-    || variable.varType === 'float3'
-    || variable.varType === 'float4'
-    || variable.varType === 'float2x2'
-  );
-  let isColorVec = $derived(
-    variable.varType === 'vec3'
-    || variable.varType === 'vec4'
-    || variable.varType === 'float3'
-    || variable.varType === 'float4'
-  );
+  let isScalar = $derived(isCapturedScalarType(variable.varType));
+  let isVec = $derived(isCapturedVectorType(variable.varType));
+  let isColorVec = $derived(isCapturedColorVectorType(variable.varType));
   let isExpanded = $derived(variable.histogram !== null || variable.colorFrequencies !== null || variable.channelHistograms !== null);
   let isVecConstant = $derived(isVec && variable.channelStats !== null
     && variable.channelStats.every(s => s.min === s.max));

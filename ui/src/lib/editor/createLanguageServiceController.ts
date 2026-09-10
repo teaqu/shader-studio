@@ -1,11 +1,14 @@
+import type { Transport } from "../transport/MessageTransport";
 import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { setupMonacoLanguageServices } from "@shader-studio/monaco";
 import { WorkerLanguageServiceProxy } from "@shader-studio/language-server-core";
 import glslLanguageServiceWorkerUrl from "./glslLanguageService.worker?worker&url";
 import slangLanguageServiceWorkerUrl from "./slangLanguageService.worker?worker&url";
+import wgslLanguageServiceWorkerUrl from "./wgslLanguageService.worker?worker&url";
 import { LanguageServiceController } from "./LanguageServiceController.svelte";
 import { getSlangAssetUrls } from "../slangAssets";
 import { createWebviewWorker } from "./webviewWorker";
+import { setRenameFeedback } from "../state/renameFeedback.svelte";
 
 interface SharedManager {
   manager: ReturnType<typeof setupMonacoLanguageServices>;
@@ -14,10 +17,10 @@ interface SharedManager {
 
 const sharedManagers = new WeakMap<object, SharedManager>();
 
-export function createLanguageServiceController(monaco: typeof Monaco): LanguageServiceController {
+export function createLanguageServiceController(monaco: typeof Monaco, transport?: Transport): LanguageServiceController {
   let shared = sharedManagers.get(monaco);
   if (!shared) {
-    shared = { manager: createManager(monaco), references: 0 };
+    shared = { manager: createManager(monaco, transport), references: 0 };
     sharedManagers.set(monaco, shared);
   }
   const sharedManager = shared;
@@ -37,7 +40,7 @@ export function createLanguageServiceController(monaco: typeof Monaco): Language
   });
 }
 
-function createManager(monaco: typeof Monaco): ReturnType<typeof setupMonacoLanguageServices> {
+function createManager(monaco: typeof Monaco, transport?: Transport): ReturnType<typeof setupMonacoLanguageServices> {
   return setupMonacoLanguageServices(monaco, {
     glsl: async () => {
       const bundle = await createWebviewWorker({
@@ -69,5 +72,13 @@ function createManager(monaco: typeof Monaco): ReturnType<typeof setupMonacoLang
       });
       return new WorkerLanguageServiceProxy(bundle.port);
     },
-  });
+    wgsl: async () => {
+      const bundle = await createWebviewWorker({
+        url: wgslLanguageServiceWorkerUrl,
+        mimeType: "text/javascript",
+        mode: "text",
+      });
+      return new WorkerLanguageServiceProxy(bundle.port);
+    },
+  }, { onRenameFeedback: setRenameFeedback, applyWorkspaceEdit: transport?.applyWorkspaceEdit?.bind(transport), getWorkspaceDocuments: transport?.getWorkspaceDocuments?.bind(transport) });
 }

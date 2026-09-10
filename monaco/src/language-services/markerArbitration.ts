@@ -7,6 +7,8 @@
  *   columns and error codes the renderer payload loses, so it wins.
  * - GLSL: renderer errors come from the driver while the GLSL service is a
  *   hand-written analyser, so the compiler wins.
+ * - WGSL: the browser compiler is the only error source while the WGSL
+ *   service contributes hints, so the compiler wins.
  *
  * Only errors suppress errors, and only on the same line, so warnings and the
  * link/binding failures the language services never see always survive.
@@ -62,8 +64,11 @@ function entryFor(model: Monaco.editor.ITextModel): SubmittedMarkers {
 
 function republish(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {
   const entry = entryFor(model);
-  const language = model.getLanguageId() === "slang" ? "slang" : "glsl";
-  const compilerWins = language === "glsl";
+  const languageId = model.getLanguageId();
+  const language = languageId === "slang" ? "slang" : languageId === "wgsl" ? "wgsl" : "glsl";
+  // Only the Slang service runs its own compiler; for GLSL and WGSL the
+  // renderer compiler always wins.
+  const compilerWins = language !== "slang";
   const compiler = compilerWins
     ? entry.compiler
     : suppressDuplicateMarkers(entry.languageService, entry.compiler);

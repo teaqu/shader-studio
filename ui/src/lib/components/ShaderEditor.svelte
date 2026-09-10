@@ -19,13 +19,15 @@
   import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess";
   import "monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter";
   import { initVimMode, VimMode } from "monaco-vim";
-  import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setCompilerMarkers } from "@shader-studio/monaco";
-  import type { AuthoringResource, ShaderConfig, ShaderStage, SlangSourceModule } from "@shader-studio/types";
-  import { isAuthoringValueType } from "@shader-studio/types";
+  import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl, setCompilerMarkers } from "@shader-studio/monaco";
+  import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
+  import { isAuthoringValueType, isShaderLanguageId, shaderLanguageForPath, SHADER_LANGUAGES } from "@shader-studio/types";
+  import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
-  import { slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
   import { currentTheme, type Theme } from "../stores/themeStore";
+  import { getRenameFeedback } from "../state/renameFeedback.svelte";
   import {
     releaseOverlayTokenColors,
     retainOverlayTokenColors,
@@ -52,6 +54,8 @@
     config?: ShaderConfig | null;
     customUniformInfo?: { name: string; type: string }[];
     slangModules?: SlangSourceModule[];
+    commonPath?: string;
+    commonSource?: string;
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
     displayMode?: "overlay" | "pane";
     /** Portal for Monaco completion/hover widgets when an ancestor clips or transforms them. */
@@ -88,6 +92,8 @@
     config = null,
     customUniformInfo = [],
     slangModules = [],
+    commonPath = undefined,
+    commonSource = undefined,
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
     displayMode = "overlay",
     overflowWidgetsDomNode = undefined,
@@ -112,7 +118,10 @@
   let environmentGeneration = 0;
   let vimModeInstance: any = null;
   let popupContainer: HTMLDivElement | null = null;
+  let renamePopupKeyCleanup: (() => void) | null = null;
   let editorReady = $state(false);
+  let editorModelUri = $state("");
+  const renameFeedback = $derived(getRenameFeedback(editorModelUri));
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let applyingHostContent = false;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -141,7 +150,7 @@
     return theme === "light" ? "shader-studio-transparent-light" : "shader-studio-transparent";
   }
 
-  function languageForShaderPath(path: string): "glsl" | "slang" | "typescript" | "javascript" | "json" {
+  function languageForShaderPath(path: string): ShaderLanguageId | "typescript" | "javascript" | "json" {
     const lower = path.toLowerCase();
     if (lower.endsWith(".json")) {
       return "json";
@@ -152,10 +161,9 @@
     if (lower.endsWith(".js") || lower.endsWith(".jsx")) {
       return "javascript";
     }
-    if (lower.endsWith(".slang")) {
-      return "slang";
-    }
-    return "glsl";
+    // Shader extensions resolve through the registry, so a new language only
+    // touches this function if it needs a non-shader Monaco language.
+    return shaderLanguageForPath(path) ?? "glsl";
   }
 
   function focusMonacoTextInput() {
@@ -305,7 +313,7 @@
       return;
     }
     const language = languageForShaderPath(shaderPath);
-    const decorations = language === "glsl" || language === "slang"
+    const decorations = language in SHADER_LANGUAGES
       ? uniformDecorations(editor.getValue(), uniformNames)
       : [];
     uniformDecorationIds = editor.deltaDecorations(uniformDecorationIds, decorations);
@@ -526,6 +534,7 @@
 
     setupMonacoGlsl(monaco as any);
     setupMonacoSlang(monaco as any);
+    setupMonacoWgsl(monaco as any);
     setupMonacoJson(monaco as any);
 
     if (overflowWidgetsDomNode) {
@@ -539,8 +548,10 @@
     }
 
     const editorOptions: monaco.editor.IStandaloneEditorConstructionOptions & { editContext?: boolean } = {
-      value: shaderCode,
-      language: languageForShaderPath(shaderPath),
+      model: shaderPath
+        ? monaco.editor.getModel(monaco.Uri.file(shaderPath))
+          ?? monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath), monaco.Uri.file(shaderPath))
+        : monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath)),
       theme: monacoThemeFor(editorTheme),
       minimap: { enabled: false },
       scrollbar: {
@@ -588,13 +599,17 @@
     };
 
     editor = monaco.editor.create(containerEl, editorOptions);
+    editorModelUri = editor.getModel()?.uri.toString() ?? "";
+    if (popupContainer) {
+      renamePopupKeyCleanup = bindRenamePopupKeys(popupContainer, editor);
+    }
     // Monaco has now generated its token classes for the workspace theme, so
     // the overlay's scoped overrides can be derived from them.
     if (displayMode === "overlay" && !overlayTokensRetained) {
       overlayTokensRetained = true;
       retainOverlayTokenColors(editorTheme);
     }
-    languageServiceController = createLanguageServiceController(monaco);
+    languageServiceController = createLanguageServiceController(monaco, transport);
 
     if (shaderPath && savedViewStates.has(shaderPath)) {
       editor.restoreViewState(savedViewStates.get(shaderPath) ?? null);
@@ -732,8 +747,11 @@
       if (shaderPath) {
         savedViewStates.set(shaderPath, editor.saveViewState());
       }
+      renamePopupKeyCleanup?.();
+      renamePopupKeyCleanup = null;
       editor.dispose();
       editor = null;
+      editorModelUri = "";
     }
     popupContainer?.remove();
     popupContainer = null;
@@ -761,13 +779,17 @@
     const currentConfig = config;
     const uniforms = customUniformInfo;
     const modules = slangModules;
+    const configuredCommonPath = commonPath;
+    const configuredCommonSource = commonSource;
     const bufferName = activeBufferName;
     const passName = activePassName;
-    if (!controller || !model?.uri || (language !== "glsl" && language !== "slang")) {
+    if (!controller || !model?.uri || !isShaderLanguageId(language)) {
       return;
     }
+    const commonFile = commonAuthoringFile(bufferName, configuredCommonPath, configuredCommonSource,
+      (filePath) => monaco.Uri.file(filePath).toString());
     environmentGeneration += 1;
-    void controller.syncEnvironment({
+    const environment: import("@shader-studio/types").ShaderAuthoringEnvironment = {
       documentUri: model.uri.toString(),
       languageId: language,
       generation: environmentGeneration,
@@ -775,10 +797,19 @@
       stage: bufferName.startsWith("__shader_studio_vertex__:") ? "vertex" : authoringStage(currentConfig, passName),
       customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
       resources: authoringResources(currentConfig, passName),
-      virtualFiles: language === "slang"
+      ...(commonFile ? { commonFile } : {}),
+      virtualFiles: SHADER_LANGUAGES[language].hasImports
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
         : [],
-    });
+    };
+    let cancelled = false;
+    void controller.syncEnvironment(environment);
+    if (transport.getWorkspaceDocuments) {
+      void transport.getWorkspaceDocuments(language).then(workspaceDocuments => {
+        if (!cancelled) void controller.syncEnvironment({ ...environment, workspaceDocuments });
+      });
+    }
+    return () => { cancelled = true; };
   });
 
   $effect(() => {
@@ -934,10 +965,12 @@
         if (lastShaderPath) {
           savedViewStates.set(lastShaderPath, editor.saveViewState());
         }
-        const model = editor.getModel();
-        if (model) {
-          monaco.editor.setModelLanguage(model, languageForShaderPath(shaderPath));
-        }
+        const uri = shaderPath ? monaco.Uri.file(shaderPath) : null;
+        const model = uri ? monaco.editor.getModel(uri)
+          ?? monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath), uri)
+          : monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath));
+        editor.setModel(model);
+        editorModelUri = model.uri.toString();
         applyHostContent(shaderCode);
         contentReplaced = true;
         const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
@@ -1011,6 +1044,7 @@
 
 {#if isVisible}
   <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
+    {#if renameFeedback}<div class="rename-feedback" role="status">{renameFeedback}</div>{/if}
     <div
       class="editor-overlay"
       class:shader-studio-overlay-tokens={displayMode === "overlay"}

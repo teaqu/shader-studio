@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LanguageService } from "@shader-studio/language-server-core";
+import type { LanguageService, ShaderLanguage } from "@shader-studio/language-server-core";
 import { MonacoLanguageServiceManager } from "../language-services/MonacoLanguageServiceManager";
 
-function monacoFixture() {
+function monacoFixture(languageId: ShaderLanguage = "glsl") {
   const disposables: { dispose: ReturnType<typeof vi.fn> }[] = [];
-  const disposable = () => { const value = { dispose: vi.fn() }; disposables.push(value); return value; };
+  const disposable = () => {
+    const value = { dispose: vi.fn() }; disposables.push(value); return value;
+  };
   // Mutable so a test can simulate the user typing while a request is in flight.
   const state = { version: 1 };
   const model = {
-    uri: { toString: () => "file:///image.glsl" },
-    getLanguageId: () => "glsl",
+    uri: { toString: () => `file:///image.${languageId}` },
+    getLanguageId: () => languageId,
     getValue: () => "vec3(1.0, 0.0, 0.0)",
     getVersionId: () => state.version,
     getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
@@ -50,7 +52,9 @@ function monacoFixture() {
       setModelMarkers: vi.fn(),
     },
     Uri: { parse: (uri: string) => ({ toString: () => uri }) },
-    Range: class { constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) {} },
+    Range: class {
+      constructor(public startLineNumber: number, public startColumn: number, public endLineNumber: number, public endColumn: number) {}
+    },
   };
   return { monaco, model, languages, disposables, state };
 }
@@ -88,15 +92,15 @@ describe("MonacoLanguageServiceManager", () => {
   };
 
   async function providersFor(fixture: ReturnType<typeof monacoFixture>, service: LanguageService) {
-    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service });
-    await manager.syncEnvironment(ENVIRONMENT);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service, wgsl: async () => service });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: fixture.model.getLanguageId() });
     return {
       completion: fixture.languages.registerCompletionItemProvider.mock.calls[0][1] as never as {
         provideCompletionItems(model: unknown, position: unknown): Promise<{ incomplete?: boolean; suggestions: { label: string }[] }>;
       },
-      hover: fixture.languages.registerHoverProvider.mock.calls[0][1] as never as {
-        provideHover(model: unknown, position: unknown): Promise<unknown>;
-      },
+    hover: fixture.languages.registerHoverProvider.mock.calls[0][1] as never as {
+      provideHover(model: unknown, position: unknown): Promise<unknown>;
+    },
     };
   }
 
@@ -126,8 +130,12 @@ describe("MonacoLanguageServiceManager", () => {
     const fixture = monacoFixture();
     let syncedVersion = -1;
     const service = serviceFixture();
-    service.openDocument = vi.fn(async (doc) => { syncedVersion = doc.version; }) as never;
-    service.changeDocument = vi.fn(async (doc) => { syncedVersion = doc.version; }) as never;
+    service.openDocument = vi.fn(async (doc) => {
+      syncedVersion = doc.version;
+    }) as never;
+    service.changeDocument = vi.fn(async (doc) => {
+      syncedVersion = doc.version;
+    }) as never;
     service.completion = vi.fn(async (params) => {
       if (vi.mocked(service.completion).mock.calls.length === 1) {
         fixture.state.version += 1;
@@ -180,11 +188,17 @@ describe("MonacoLanguageServiceManager", () => {
     let syncedVersion = -1;
     let releaseChangeDocument: (() => void) | undefined;
     let changeDocumentStarted: (() => void) | undefined;
-    const changeDocumentStartedPromise = new Promise<void>((resolve) => { changeDocumentStarted = resolve; });
+    const changeDocumentStartedPromise = new Promise<void>((resolve) => {
+      changeDocumentStarted = resolve;
+    });
     const service = serviceFixture();
-    service.openDocument = vi.fn(async (doc) => { syncedVersion = doc.version; }) as never;
+    service.openDocument = vi.fn(async (doc) => {
+      syncedVersion = doc.version;
+    }) as never;
     service.changeDocument = vi.fn((doc) => new Promise<void>((resolve) => {
-      releaseChangeDocument = () => { syncedVersion = doc.version; resolve(); };
+      releaseChangeDocument = () => {
+        syncedVersion = doc.version; resolve();
+      };
       changeDocumentStarted?.();
     })) as never;
     service.completion = vi.fn(async (params) => (
@@ -221,8 +235,12 @@ describe("MonacoLanguageServiceManager", () => {
     const fixture = monacoFixture();
     let syncedVersion = -1;
     const service = serviceFixture();
-    service.openDocument = vi.fn(async (doc) => { syncedVersion = doc.version; }) as never;
-    service.changeDocument = vi.fn(async (doc) => { syncedVersion = doc.version; }) as never;
+    service.openDocument = vi.fn(async (doc) => {
+      syncedVersion = doc.version;
+    }) as never;
+    service.changeDocument = vi.fn(async (doc) => {
+      syncedVersion = doc.version;
+    }) as never;
     service.completion = vi.fn(async (params) => (
       params.document.version === syncedVersion ? [{ label: "normalize", kind: 3 }] : []
     )) as never;
@@ -239,44 +257,60 @@ describe("MonacoLanguageServiceManager", () => {
     expect(result.incomplete).toBe(false);
     expect(syncedVersion).toBe(2);
   });
-  it("registers every provider for GLSL and Slang", () => {
+  it("registers every provider for GLSL, Slang, and WGSL", () => {
     const { monaco, languages } = monacoFixture();
-    new MonacoLanguageServiceManager(monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture() });
+    const manager = new MonacoLanguageServiceManager(monaco as never, {
+      glsl: async () => serviceFixture(),
+      slang: async () => serviceFixture(),
+      wgsl: async () => serviceFixture(),
+    });
     for (const method of ["registerCompletionItemProvider", "registerHoverProvider", "registerDefinitionProvider", "registerSignatureHelpProvider", "registerDocumentSymbolProvider", "registerReferenceProvider", "registerDocumentHighlightProvider", "registerRenameProvider", "registerColorProvider"] as const) {
-      expect(languages[method]).toHaveBeenCalledTimes(2);
+      expect(languages[method]).toHaveBeenCalledTimes(3);
     }
-  });
-
-  it("lazily opens models after an environment arrives and disposes independently", async () => {
-    const { monaco } = monacoFixture();
-    const glsl = serviceFixture();
-    const slang = serviceFixture();
-    const manager = new MonacoLanguageServiceManager(monaco as never, { glsl: async () => glsl, slang: async () => slang });
-    expect(glsl.initialize).not.toHaveBeenCalled();
-    await manager.syncEnvironment({ documentUri: "file:///image.glsl", languageId: "glsl", generation: 1, passName: "Image", stage: "fragment", customUniforms: [], resources: [], virtualFiles: [] });
-    expect(glsl.openDocument).toHaveBeenCalled();
-    expect(slang.initialize).not.toHaveBeenCalled();
-    await manager.setEnabled("glsl", false);
-    expect(glsl.dispose).toHaveBeenCalledOnce();
     manager.dispose();
   });
 
-  it("forwards diagnostic tags to Monaco markers", async () => {
-    const fixture = monacoFixture();
+  it.each(["glsl", "slang", "wgsl"] as const)("lazily opens and independently disables %s", async (language) => {
+    const { monaco, model } = monacoFixture(language);
+    const services = { glsl: serviceFixture(), slang: serviceFixture(), wgsl: serviceFixture() };
+    const manager = new MonacoLanguageServiceManager(monaco as never, {
+      glsl: async () => services.glsl,
+      slang: async () => services.slang,
+      wgsl: async () => services.wgsl,
+    });
+    const selected = services[language];
+    expect(selected.initialize).not.toHaveBeenCalled();
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: model.uri.toString(), languageId: language });
+    expect(selected.openDocument).toHaveBeenCalledWith(expect.objectContaining({ uri: model.uri.toString(), languageId: language }));
+    for (const other of (["glsl", "slang", "wgsl"] as const).filter(id => id !== language)) {
+      expect(services[other].initialize).not.toHaveBeenCalled();
+    }
+    await manager.setEnabled(language, false);
+    expect(selected.dispose).toHaveBeenCalledOnce();
+    for (const other of (["glsl", "slang", "wgsl"] as const).filter(id => id !== language)) {
+      expect(services[other].dispose).not.toHaveBeenCalled();
+    }
+    manager.dispose();
+  });
+
+  it.each(["glsl", "slang", "wgsl"] as const)("forwards %s diagnostic tags to Monaco markers", async (language) => {
+    const fixture = monacoFixture(language);
     const service = serviceFixture();
     vi.mocked(service.diagnostics).mockResolvedValue([{
       range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
       severity: 2,
-      source: "shader-studio-glsl-ls",
+      source: `shader-studio-${language}-ls`,
       code: "unused-variable",
       message: "Unused variable 'unused'.",
       tags: [1],
     }]);
-    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service });
-    await manager.syncEnvironment(ENVIRONMENT);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
 
     const calls = vi.mocked(fixture.monaco.editor.setModelMarkers).mock.calls;
-    const markers = calls.find((call) => call[1] === "shader-studio-glsl-ls")?.[2];
+    const markers = calls.find((call) => call[1] === `shader-studio-${language}-ls`)?.[2];
     expect(markers).toEqual([expect.objectContaining({ tags: [1] })]);
     manager.dispose();
   });
@@ -293,4 +327,217 @@ describe("MonacoLanguageServiceManager", () => {
     await manager.syncEnvironment({ ...environment, generation: 2, virtualFiles: [] });
     expect(dependency?.dispose).toHaveBeenCalledOnce();
   });
+
+  it("registers providers for WGSL like the other shader languages", () => {
+    const { monaco, languages } = monacoFixture();
+    const manager = new MonacoLanguageServiceManager(monaco as never, {
+      glsl: async () => serviceFixture(),
+      slang: async () => serviceFixture(),
+      wgsl: async () => serviceFixture(),
+    });
+
+    expect(languages.registerCompletionItemProvider).toHaveBeenCalledWith("wgsl", expect.anything());
+    expect(languages.registerHoverProvider).toHaveBeenCalledWith("wgsl", expect.anything());
+    manager.dispose();
+  });
+
+  it.each(["glsl", "slang", "wgsl"] as const)("commits %s cross-file rename through the host transaction", async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    const uri = fixture.model.uri.toString();
+    const commonUri = `file:///common.${language}`;
+    const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } };
+    service.rename = vi.fn().mockResolvedValue({ changes: {
+      [uri]: [{ range, newText: "curve" }], [commonUri]: [{ range, newText: "curve" }],
+    } });
+    const applyWorkspaceEdit = vi.fn(async (_changes, current, commit) => { expect(current()).toBe(true); commit(); });
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { applyWorkspaceEdit });
+    Object.assign(fixture.model, { setValue: vi.fn() });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: uri, languageId: language,
+      virtualFiles: [{ uri: commonUri, text: 'tone', version: 1 }] });
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === language)![1];
+    const result = await provider.provideRenameEdits(fixture.model, POSITION, 'curve');
+    expect(result.rejectReason).toBeUndefined();
+    expect(applyWorkspaceEdit).toHaveBeenCalledWith([
+      { uri, before: 'vec3(1.0, 0.0, 0.0)', after: 'curve(1.0, 0.0, 0.0)' },
+      { uri: commonUri, before: 'tone', after: 'curve' },
+    ], expect.any(Function), expect.any(Function));
+    expect(fixture.model.setValue).toHaveBeenCalledWith('curve(1.0, 0.0, 0.0)');
+    manager.dispose();
+  });
+
+  for (const language of ['glsl', 'slang', 'wgsl'] as const) {
+    it.each(['cancelled', 'stale-source', 'stale-target', 'save-error', 'invalid-range', 'missing-target'])(`${language} rename rejects %s without applying partial model changes`, async mode => {
+      const fixture = monacoFixture(language);
+      const service = serviceFixture();
+      const uri = fixture.model.uri.toString();
+      const targetUri = `file:///common.${language}`;
+      const token = { isCancellationRequested: false };
+      const setValue = vi.fn();
+      Object.assign(fixture.model, { setValue });
+      const applyWorkspaceEdit = vi.fn(async (_changes, _current, _commit) => { throw new Error('save failed'); });
+      const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+        glsl: async () => service, slang: async () => service, wgsl: async () => service,
+      }, { applyWorkspaceEdit });
+      await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: uri, languageId: language,
+        virtualFiles: [{ uri: targetUri, text: 'tone', version: 1 }] });
+      service.rename = vi.fn(async () => {
+        if (mode === 'cancelled') token.isCancellationRequested = true;
+        if (mode === 'stale-source') fixture.state.version++;
+        if (mode === 'stale-target') Object.assign(fixture.monaco.editor.getModel(fixture.monaco.Uri.parse(targetUri))!, { getVersionId: () => 2 });
+        const range = { start: { line: 0, character: 0 }, end: { line: 0, character: mode === 'invalid-range' ? 999 : 4 } };
+        return { changes: { [uri]: [{ range, newText: 'curve' }], [mode === 'missing-target' ? 'file:///missing' : targetUri]: [{ range, newText: 'curve' }] } };
+      });
+      const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === language)![1];
+      expect((await provider.provideRenameEdits(fixture.model, POSITION, 'curve', token)).rejectReason).toBeTruthy();
+      expect(setValue).not.toHaveBeenCalled();
+      if (mode !== 'save-error') expect(applyWorkspaceEdit).not.toHaveBeenCalled();
+      manager.dispose();
+    });
+  }
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('keeps %s environment generations monotonic when a second editor opens the same file', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    let generation = 0;
+    service.syncEnvironment = vi.fn(async environment => { generation = Math.max(generation, environment.generation); });
+    service.hover = vi.fn(async params => params.document.environmentGeneration === generation ? { contents: 'resolved' } : null);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    const environment = { ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language };
+    await manager.syncEnvironment({ ...environment, generation: 7 });
+    await manager.syncEnvironment({ ...environment, generation: 1, passName: 'Common' });
+    const provider = fixture.languages.registerHoverProvider.mock.calls.find(call => call[0] === language)![1];
+    expect(await provider.provideHover(fixture.model, POSITION)).not.toBeNull();
+    expect(generation).toBe(8);
+    manager.dispose();
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('refreshes unopened %s workspace snapshots before reference search', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    const workspaceDocuments = [{ uri: `file:///closed.${language}`, text: 'float tone;', version: 1, stage: 'fragment' as const }];
+    const getWorkspaceDocuments = vi.fn(async () => workspaceDocuments);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { getWorkspaceDocuments });
+    service.references = vi.fn(async () => {
+      expect(service.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceDocuments }));
+      return [];
+    });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
+    const provider = fixture.languages.registerReferenceProvider.mock.calls.find(call => call[0] === language)![1];
+    await provider.provideReferences(fixture.model, POSITION, { includeDeclaration: true });
+    expect(getWorkspaceDocuments).toHaveBeenCalledWith(language);
+    manager.dispose();
+  });
+
+  it.each(["glsl", "slang", "wgsl"] as const)("rejects %s cross-file rename atomically instead of discarding dependency edits", async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } };
+    service.rename = vi.fn().mockResolvedValue({ changes: {
+      [fixture.model.uri.toString()]: [{ range, newText: "curve" }],
+      [`file:///common.${language}`]: [{ range, newText: "curve" }],
+    } });
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === language)?.[1] as {
+      provideRenameEdits(model: unknown, position: unknown, newName: string): Promise<{ edits: unknown[]; rejectReason?: string }>;
+    };
+    const result = await provider.provideRenameEdits(fixture.model, POSITION, "curve");
+    expect(result.edits).toEqual([]);
+    expect(result.rejectReason).toContain("across files");
+    manager.dispose();
+  });
+  it.each(["glsl", "slang", "wgsl"] as const)("uses the latest %s environment when worker startup overlaps a rename", async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    let ready!: () => void;
+    service.initialize = vi.fn(() => new Promise(resolve => {
+      ready = () => resolve({} as never);
+    }));
+    const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } };
+    service.rename = vi.fn(async () => ({ changes: { [fixture.model.uri.toString()]: [{ range, newText: "curve" }] } }));
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    const environment = { ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language };
+    const firstSync = manager.syncEnvironment(environment);
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === language)![1];
+    const pending = provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    const latestSync = manager.syncEnvironment({ ...environment, generation: 2 });
+    await vi.waitFor(() => expect(ready).toBeTypeOf("function"));
+    ready();
+    await Promise.all([firstSync, latestSync]);
+    expect((await pending).edits).toHaveLength(1);
+    expect(service.rename).toHaveBeenCalledWith(expect.objectContaining({ document: expect.objectContaining({ environmentGeneration: 2 }) }));
+    manager.dispose();
+  });
+
+  it.each(["glsl", "slang", "wgsl"] as const)("declines %s Common declaration rename when dependent files cannot be saved", async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    service.rename = vi.fn(async () => ({ changes: { [fixture.model.uri.toString()]: [] } }));
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language, passName: "Common" });
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === language)![1];
+    const result = await provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    expect(result.edits).toEqual([]);
+    expect(result.rejectReason).toContain("across files");
+    expect(service.rename).not.toHaveBeenCalled();
+    manager.dispose();
+  });
+
+  it("only publishes rename feedback after the request resolves and clears it on success", async () => {
+    const fixture = monacoFixture();
+    const service = serviceFixture();
+    let finish!: (value: null) => void;
+    service.rename = vi.fn(() => new Promise(resolve => {
+      finish = resolve;
+    }));
+    const onRenameFeedback = vi.fn();
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { onRenameFeedback });
+    await manager.syncEnvironment(ENVIRONMENT);
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === "glsl")![1];
+    const pending = provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    expect(onRenameFeedback.mock.calls).toEqual([[fixture.model.uri.toString(), undefined]]);
+    finish(null);
+    const rejected = await pending;
+    expect(onRenameFeedback).toHaveBeenLastCalledWith(fixture.model.uri.toString(), rejected.rejectReason);
+    const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } };
+    service.rename = vi.fn(async () => ({ changes: { [fixture.model.uri.toString()]: [{ range, newText: "curve" }] } }));
+    await provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    expect(onRenameFeedback).toHaveBeenLastCalledWith(fixture.model.uri.toString(), undefined);
+    manager.dispose();
+  });
+
+  it("clears obsolete rename feedback when content changes or the manager is disposed", async () => {
+    const fixture = monacoFixture();
+    const service = serviceFixture();
+    service.rename = vi.fn(async () => null);
+    const onRenameFeedback = vi.fn();
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { onRenameFeedback });
+    await manager.syncEnvironment(ENVIRONMENT);
+    const provider = fixture.languages.registerRenameProvider.mock.calls.find(call => call[0] === "glsl")![1];
+    await provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    (fixture.model.onDidChangeContent.mock.calls[0] as unknown as [() => void])[0]();
+    expect(onRenameFeedback).toHaveBeenLastCalledWith(fixture.model.uri.toString(), undefined);
+    await provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
+    manager.dispose();
+    expect(onRenameFeedback).toHaveBeenLastCalledWith(fixture.model.uri.toString(), undefined);
+  });
+
 });

@@ -53,6 +53,7 @@
     isDebugEnabled?: boolean;
     onToggleDebugEnabled?: () => void;
     debugState?: ShaderDebugState | null;
+    isDebugSupported?: boolean;
     isConfigPanelVisible?: boolean;
     onToggleConfigPanel?: () => void;
     isEditorOverlayVisible?: boolean;
@@ -95,6 +96,7 @@
     onFpsLimitChange = () => {},
     onConfig = () => {},
     isDebugEnabled = false,
+    isDebugSupported = true,
     onToggleDebugEnabled = () => {},
     debugState = null,
     isConfigPanelVisible = false,
@@ -651,7 +653,7 @@
       onclick={onToggleDebugEnabled}
       aria-label="Toggle debug mode"
       class:active={isDebugEnabled}
-      disabled={!hasShader}
+      disabled={!hasShader || !isDebugSupported}
       title={debugState?.isActive
         ? `Debugging line ${(debugState.currentLine ?? 0) + 1}`
         : "Enable debug mode"}
@@ -917,7 +919,7 @@
         }}
         aria-label="Toggle debug mode"
         class:active={isDebugEnabled}
-        disabled={!hasShader}
+        disabled={!hasShader || !isDebugSupported}
       >
         <i class="codicon codicon-bug"></i>
         <span>Debug</span>

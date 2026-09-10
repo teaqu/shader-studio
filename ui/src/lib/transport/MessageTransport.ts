@@ -18,6 +18,12 @@ export interface ShaderExplorerHostApi {
 }
 
 export interface Transport {
+  applyWorkspaceEdit?: (
+    changes: readonly { uri: string; before: string; after: string }[],
+    isCurrent: () => boolean,
+    commit: () => void,
+  ) => Promise<void>;
+  getWorkspaceDocuments?: (language: import('@shader-studio/types').ShaderLanguageId) => Promise<NonNullable<import('@shader-studio/types').ShaderAuthoringEnvironment['workspaceDocuments']>>;
   postMessage<const TMessage extends BaseMessage>(message: TransportMessage<TMessage>): void;
   onMessage(handler: (event: MessageEvent) => void): void;
   dispose(): void;

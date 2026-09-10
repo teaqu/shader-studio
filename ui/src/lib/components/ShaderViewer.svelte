@@ -53,7 +53,8 @@
   } from "@shader-studio/rendering";
   import { compileModeStore, type CompileMode } from "../stores/compileModeStore";
   import PerformancePanel from "./performance/PerformancePanel.svelte";
-  import type { AspectRatioMode, ShaderConfig, SlangSourceModule } from "@shader-studio/types";
+  import type { AspectRatioMode, ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
+  import { SHADER_LANGUAGES, isShaderLanguageId } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
@@ -89,14 +90,14 @@
     return document.querySelector('meta[name="shader-studio-layout-slot"]')?.getAttribute("content") ?? null;
   }
 
-  function getInitialShaderLanguage(): "glsl" | "slang" {
+  function getInitialShaderLanguage(): ShaderLanguageId {
     if (typeof document === "undefined") {
       return "glsl";
     }
     const lang = document
       .querySelector('meta[name="shader-studio-initial-language"]')
       ?.getAttribute("content");
-    return lang === "slang" ? "slang" : "glsl";
+    return lang !== null && lang !== undefined && isShaderLanguageId(lang) ? lang : "glsl";
   }
 
   function allocateWebLayoutSlot(): string {
@@ -164,7 +165,7 @@
   let renderingEngine = $state<IRenderingEngine>(undefined!);
   // The active rendering backend, chosen by shader language. Changing it remounts
   // the canvas (a canvas's context mode is fixed once acquired) and rebuilds the engine.
-  let engineLanguage = $state<"glsl" | "slang">(getInitialShaderLanguage());
+  let engineLanguage = $state<ShaderLanguageId>(getInitialShaderLanguage());
   let appInitialized = false;
   let pendingSwapMessage: MessageEvent | null = null;
   let pendingSwapStartedAt: number | null = null;
@@ -218,6 +219,8 @@
   let bufferPathMap = $state<Record<string, string>>({});
   let bufferSources = $state<Record<string, string>>({});
   let shaderPath = $state('');
+  const authoringCommonPath = $derived(bufferPathMap.common);
+  const authoringCommonSource = $derived(bufferSources.common);
 
   // Script info for config panel
   let scriptInfo = $state<{ filename: string; uniforms: { name: string; type: string }[]; fileExists?: boolean } | null>(null);
@@ -341,6 +344,7 @@
     onConfig: handleConfig,
     isDebugEnabled: debugState.isEnabled,
     onToggleDebugEnabled: handleToggleDebugEnabled,
+    isDebugSupported: SHADER_LANGUAGES[engineLanguage].hasDebugger,
     debugState,
     isConfigPanelVisible: $configPanelStore.isVisible,
     onToggleConfigPanel: handleToggleConfigPanel,
@@ -377,6 +381,8 @@
       config: currentConfig,
       customUniformInfo: authoringUniformInfo,
       slangModules,
+      commonPath: authoringCommonPath,
+      commonSource: authoringCommonSource,
       compileMode: $compileModeStore.mode,
       bufferNames: editorBufferNames,
       activeBufferName: editorBufferName,
@@ -629,6 +635,13 @@
     }
   }
 
+  // Every registered shader extension maps to its sibling `.sha.json` config.
+  // Built from the registry so new languages never need a second edit here.
+  const SHADER_CONFIG_PATH_PATTERN = new RegExp(
+    `\\.(${Object.values(SHADER_LANGUAGES).flatMap((language) => language.extensions).join("|")})$`,
+    "i",
+  );
+
   function handleConfig() {
     if (!initialized) {
       return;
@@ -642,7 +655,7 @@
     transport.postMessage({
       type: 'showConfig',
       payload: {
-        shaderPath: path.replace(/\.(?:glsl|frag|slang)$/i, '.sha.json'),
+        shaderPath: path.replace(SHADER_CONFIG_PATH_PATTERN, '.sha.json'),
         sourcePath: path,
       }
     });
@@ -921,10 +934,11 @@
       ? truncateFunctionBodyAt(currentShaderCode, compileErrorLine) ?? currentShaderCode
       : currentShaderCode;
 
-    // Slang keeps the untouched target: its plan carries the cut copy itself,
-    // and the target drives line mapping that the cut would shift.
+    // Plan-based languages (Slang, WGSL) keep the untouched target: the plan
+    // carries the cut copy itself, and the target drives line mapping that
+    // the cut would shift.
     const debugTarget = shaderDebugManager.getDebugTarget(
-      engineLanguage === 'slang' ? currentShaderCode : captureCode,
+      SHADER_LANGUAGES[engineLanguage].hasDebugPlan ? currentShaderCode : captureCode,
       currentConfig,
     );
     // A cursor at or below the break sits on a line the cut emptied, where
@@ -945,11 +959,11 @@
       ? compileErrorLine
       : undefined;
 
-    const slangResult = engineLanguage === 'slang'
-      ? shaderDebugManager.getSlangCapturePlan(captureCode, currentConfig, originalShaderCode, planLine)
+    const planResult = SHADER_LANGUAGES[engineLanguage].hasDebugPlan
+      ? shaderDebugManager.getCapturePlan(captureCode, currentConfig, originalShaderCode, planLine)
       : null;
-    const slangPlan = slangResult && 'plan' in slangResult ? slangResult : null;
-    const slangPlanError = slangResult && 'error' in slangResult ? slangResult.error : null;
+    const capturePlan = planResult && 'plan' in planResult ? planResult : null;
+    const capturePlanError = planResult && 'error' in planResult ? planResult.error : null;
     variableCaptureManager.notifyStateChange({
       code: debugTarget.code,
       inputConfig: debugTarget.inputConfig,
@@ -965,8 +979,8 @@
       sampleSize: variableCaptureManager.sampleSize,
       refreshMode: variableCaptureManager.getActiveRefreshMode(hasPixelCapture),
       pollingMs: variableCaptureManager.getActivePollingMs(hasPixelCapture),
-      slangCapture: slangPlan,
-      slangCaptureError: slangPlanError ?? (!slangPlan ? state.debugError : null),
+      planCapture: capturePlan,
+      planCaptureError: capturePlanError ?? (!capturePlan ? state.debugError : null),
       compileErrorLine,
       // The capture caps its line only when the line it is asked for is inside
       // the function that was cut; elsewhere the cut copy compiles as it is.
@@ -1129,7 +1143,7 @@
 
       // Only a main shader can select the renderer backend. Configured pass
       // updates often omit language and must stay on the locked main backend.
-      const msgLanguage = event.data.language === 'slang' ? 'slang' : 'glsl';
+      const msgLanguage = isShaderLanguageId(event.data.language) ? event.data.language : 'glsl';
       const shaderMessageStartedAt = performance.now();
       logSwitchTiming('shaderSource received', {
         path: event.data.path ?? null,
@@ -1541,6 +1555,8 @@
           config={currentConfig}
           customUniformInfo={authoringUniformInfo}
           {slangModules}
+          commonPath={authoringCommonPath}
+          commonSource={authoringCommonSource}
           vimMode={editorVimMode}
           bufferNames={editorBufferNames}
           activeBufferName={editorBufferName}
@@ -1579,8 +1595,8 @@
         {pathMap}
         {bufferPathMap}
         {bufferSources}
-        onReadStorage={engineLanguage === 'slang' ? readStorageBuffer : undefined}
-        onWriteStorage={engineLanguage === 'slang' ? writeStorageBuffer : undefined}
+        onReadStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? readStorageBuffer : undefined}
+        onWriteStorage={SHADER_LANGUAGES[engineLanguage].engine === 'webgpu' ? writeStorageBuffer : undefined}
         {transport}
         {shaderPath}
         isVisible={$configPanelStore.isVisible}

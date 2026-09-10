@@ -10,9 +10,12 @@
     ResolutionSettings,
     BufferResolution,
     AspectRatioMode,
+    FileDialogFileType,
     GeometryType,
     ComputePass,
+    ShaderLanguageId,
   } from "@shader-studio/types";
+  import { SHADER_LANGUAGES } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
@@ -36,7 +39,7 @@
     audioVideoController?: AudioVideoController;
     globalMuted?: boolean;
     availableBufferNames?: string[];
-    language?: 'glsl' | 'slang';
+    language?: ShaderLanguageId;
     passType?: 'render' | 'compute';
     storageNames?: string[];
     entryPointNames?: string[];
@@ -72,16 +75,12 @@
   const imageConfig = $derived(isImagePass ? (config as ImagePass) : undefined);
   const bufferPassConfig = $derived(!isImagePass ? (config as BufferPass) : undefined);
   const configModel = $derived(new BufferConfigModel(bufferName, config, onUpdate));
-  const fileType = $derived(
-    language === 'slang' && passType === 'compute'
-      ? 'slang-compute' as const
-      : language === 'slang' && bufferName === 'common'
-      ? 'slang-common' as const
-      : language === 'slang'
-      ? 'slang-buffer' as const
+  const fileType: FileDialogFileType = $derived(
+    passType === 'compute'
+      ? `${language}-compute` as const
       : bufferName === 'common'
-      ? 'glsl-common' as const
-      : 'glsl-buffer' as const,
+      ? `${language}-common` as const
+      : `${language}-buffer` as const,
   );
   const validation = $derived(configModel.validate() || { isValid: true, errors: [] });
   const configuredInputs = $derived(config.inputs || {});
@@ -103,9 +102,9 @@
     return 'none' as const;
   });
   const configuredChannelNames = $derived(Object.keys(configuredInputs));
-  const isSlangShader = $derived(shaderPath.toLowerCase().endsWith('.slang'));
-  const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${isSlangShader ? 'slang' : 'glsl'}`);
-  const vertexFileType = $derived(isSlangShader ? 'slang-vertex' as const : 'glsl-vertex' as const);
+  const vertexExtension = $derived(SHADER_LANGUAGES[language].extensions[0]);
+  const vertexSuggestedPath = $derived(`${shaderPath.replace(/\.[^.]+$/, '')}.${bufferName.toLowerCase()}.vert.${vertexExtension}`);
+  const vertexFileType = $derived(`${language}-vertex` as const);
   let modelSelectionPending = $state(false);
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
@@ -408,8 +407,8 @@
           hasError={!validation.isValid}
           note="Relative, absolute, or @ for workspace root"
           placeholder={suggestedPath || (bufferName === 'common'
-            ? `e.g., ./common.${language === 'slang' ? 'slang' : 'glsl'}`
-            : `e.g., ./buffer.${language === 'slang' ? 'slang' : 'glsl'}`)}
+            ? `e.g., ./common.${SHADER_LANGUAGES[language].extensions[0]}`
+            : `e.g., ./buffer.${SHADER_LANGUAGES[language].extensions[0]}`)}
           {fileType}
           {shaderPath}
           {suggestedPath}

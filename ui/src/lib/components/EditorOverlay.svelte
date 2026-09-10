@@ -23,6 +23,8 @@
     config?: ShaderConfig | null;
     customUniformInfo?: { name: string; type: string }[];
     slangModules?: SlangSourceModule[];
+    commonPath?: string;
+    commonSource?: string;
     onCursorChange?: (line: number, lineContent: string, bufferName: string) => void;
   }
 
@@ -44,6 +46,8 @@
     config = null,
     customUniformInfo = [],
     slangModules = [],
+    commonPath = undefined,
+    commonSource = undefined,
     onCursorChange = (_line: number, _lineContent: string, _bufferName: string) => {},
   }: Props = $props();
 </script>
@@ -66,6 +70,8 @@
   {config}
   {customUniformInfo}
   {slangModules}
+  {commonPath}
+  {commonSource}
   {onCursorChange}
   displayMode="overlay"
 />
