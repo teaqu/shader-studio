@@ -11,6 +11,8 @@ export default defineConfig({
       'language-servers/glsl-analysis/vitest.config.ts',
       'language-servers/glsl/vitest.config.ts',
       'language-servers/slang/vitest.config.ts',
+      'language-servers/wgsl-analysis/vitest.config.ts',
+      'language-servers/wgsl/vitest.config.ts',
       'rendering/vitest.config.ts',
       'utils/vitest.config.ts',
       'shader-explorer/vitest.config.ts',

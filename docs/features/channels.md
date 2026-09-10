@@ -2,13 +2,13 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on. In Slang, they appear under `inputs`, such as `inputs.iChannel0` and `inputs.iChannel1`.
+Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on. In Slang, they appear under `inputs`, such as `inputs.iChannel0` and `inputs.iChannel1`. In WGSL, each channel becomes module-scope free functions such as `iChannel0Sample(uv)`; see [Sampling Channels in WGSL](#sampling-channels-in-wgsl).
 
 Each pass has its own channels. `iChannel0` can refer to a different input in another pass.
 
-In Slang, each channel object provides sampling, metadata, and access to its native texture and sampler. GLSL provides the existing `iCh0`, `iCh1`, and related metadata accessors.
+In Slang, each channel object provides sampling, metadata, and access to its native texture and sampler. GLSL provides the existing `iCh0`, `iCh1`, and related metadata accessors. WGSL exposes the same operations as free functions (`<key>Sample`, `<key>SampleLevel`, `<key>Size`, `<key>Time`, `<key>Loaded`).
 
-Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. In Slang vertex and compute shaders, use `SampleLevel(uv, 0.0)` for a configured channel; see [Sampling Channels in Slang](#sampling-channels-in-slang). Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively.
+Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. In Slang vertex and compute shaders, use `SampleLevel(uv, 0.0)` for a configured channel; see [Sampling Channels in Slang](#sampling-channels-in-slang). In WGSL vertex and compute shaders, use the explicit-level free function instead: `iChannel0SampleLevel(uv, 0.0)`. Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively; the WGSL hook takes pointer parameters — see [Vertex Shaders](vertex-shaders.md).
 
 ## What Channels Can Do
 
@@ -88,6 +88,26 @@ float4 color = inputs.noise.Sample(inputs.reference.sampler, uv);
 ```
 
 Only configured input names exist. Referring to an undeclared input is a compile error; a configured resource that has not loaded exposes `loaded == false`.
+
+## Sampling Channels in WGSL
+
+WGSL has no objects with methods, so each channel exposes the same operations as module-scope free functions named after the configuration key: `iChannel0` becomes `iChannel0Sample(uv)`; a channel named `noise` becomes `noiseSample(uv)`.
+
+```wgsl
+vec4f inputColor = iChannel0Sample(uv);
+vec4f noise = noiseSample(uv);
+```
+
+| Function | Use it when |
+|----------|-------------|
+| `<key>Sample(uvOrDir)` | You want the mip level chosen from pixel derivatives. |
+| `<key>SampleLevel(uvOrDir, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
+| `<key>SampleGrad(uvOrDir, dx, dy)` | You want the level chosen from gradients you supply. |
+| `<key>Size()` | You need the channel resolution as `vec2<u32>`. |
+| `<key>Time()` | You need the channel clock as `f32`. |
+| `<key>Loaded()` | You need to know whether the resource has loaded as `bool`. |
+
+Cubemap channels take a direction instead of a UV. Vertex and compute shaders have no pixel derivatives, so use `SampleLevel(directionOrUv, 0.0)` or `SampleGrad` explicitly. Like Slang, 2D sampling uses bottom-left UV coordinates and corrects the Y component of supplied gradients.
 
 ## Choosing a Channel Type
 

@@ -53,7 +53,7 @@ barely moving the average.
 
 **gpu** is measured differently by each engine, so compare it against **p50**
 within one engine — or before and after a change on the same engine — rather
-than between GLSL and Slang. The Slang figure reflects GPU execution; the GLSL
+than between GLSL and Slang/WGSL. The Slang/WGSL figure reflects GPU execution; the GLSL
 one is taken from a fence that cannot pass until the frame has been presented,
 so it carries a refresh interval of waiting that is not shader work.
 

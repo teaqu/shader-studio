@@ -16,7 +16,7 @@ Fullscreen passes can also use vertex shaders for warping, custom projections, o
 ## Configuring a Vertex Shader
 
 1. In the config panel, select the pass you want to configure
-2. In the **Vertex shader** section, enter a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub
+2. In the **Vertex shader** section, enter a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub
 
 **Double-click the "Vertex shader" title** to open the file in the [editor overlay](editor-overlay.md).
 
@@ -41,6 +41,17 @@ Your vertex shader must define a `mainVertex` function. It receives the mesh ver
         // uv:       the vertex texture coordinates
     }
     ```
+
+=== "WGSL"
+    ```wgsl
+    fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+        // position: the vertex position in object space
+        // normal:   the vertex normal in object space
+        // uv:       the vertex texture coordinates
+    }
+    ```
+
+    WGSL has no `inout` parameters, so the hook receives pointers. Dereference them to read or modify the vertex data: `(*position).y += 0.1;`. The engine passes the address of each attribute (`&position, &normal, &uv`), so writing through the pointer changes the rendered geometry exactly as `inout` does in GLSL and Slang.
 
 ## Geometry Context
 
@@ -93,6 +104,11 @@ When using 3D geometry, the fragment shader receives per-pixel interpolated valu
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
+
+=== "WGSL"
+    The `mainImage` signature is unchanged, but the following globals are available:
+    - `iWorldPosition: vec3<f32>` — world-space position of the fragment
+    - `iNormal: vec3<f32>` — world-space interpolated normal
 
 ## Examples
 

@@ -24,9 +24,9 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 | Tab | Description |
 |-----|-------------|
 | **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
-| **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl` or `.slang` file. Names and pass counts are unrestricted. |
-| **Compute pass** | A Slang/WebGPU compute pass declared with `"type": "compute"` and backed by a `.slang` file. |
-| **Common** | Shared GLSL or Slang included at the top of every pass. Not a render pass — has no framebuffer. |
+| **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl`, `.slang`, or `.wgsl` file. Names and pass counts are unrestricted. |
+| **Compute pass** | A Slang/WebGPU compute pass declared with `"type": "compute"` and backed by a `.slang` or `.wgsl` file. |
+| **Common** | Shared GLSL, Slang, or WGSL included at the top of every pass. Not a render pass — has no framebuffer. |
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
@@ -44,7 +44,7 @@ The Image tab has no file path — it always corresponds to your main shader fil
 | **Aspect ratio** | 16:9, 4:3, 1:1, Fill, Auto | Constrains the canvas shape. Auto uses your screen's aspect ratio. |
 | **Custom dimensions** | e.g. `1920 × 1080` | Base width and height in pixels |
 
-The Image pass can also have input channels. GLSL accesses them as `iChannel0`, `iChannel1`, and so on, with matching `iCh0`, `iCh1`, and metadata accessors. Slang accesses them as `inputs.iChannel0`, `inputs.iChannel1`, and so on. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+The Image pass can also have input channels. GLSL accesses them as `iChannel0`, `iChannel1`, and so on, with matching `iCh0`, `iCh1`, and metadata accessors. Slang accesses them as `inputs.iChannel0`, `inputs.iChannel1`, and so on. WGSL accesses them through free functions such as `iChannel0Sample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 See [Resolution](resolution.md) for how these settings interact with the toolbar.
 
@@ -54,7 +54,7 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 ## Buffer Passes
 
-Each fragment buffer pass renders a `.glsl` or `.slang` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, while Slang uses `inputs.iChannelN`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+Each fragment buffer pass renders a `.glsl`, `.slang`, or `.wgsl` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, Slang uses `inputs.iChannelN`, and WGSL uses free functions such as `iChannelNSample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 **Path field** — points to the shader file for this buffer. Three path forms are supported:
 
@@ -87,11 +87,11 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 | **Sphere** | A UV-mapped sphere. |
 | **Model** | A custom GLB mesh. Shows a file picker to select a `.glb` file and, for multi-mesh models, a dropdown to pick which mesh to render. |
 
-When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl` or `.vert.slang` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
+When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
 
 ## Compute Passes
 
-For a Slang shader, declare a compute pass with `"type": "compute"`; its pass name can be any valid identifier. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
+For a Slang shader, declare a compute pass with `"type": "compute"`; its pass name can be any valid identifier. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. For a WGSL shader, give it a `.wgsl` path containing one `@compute` entry point with `@workgroup_size(...)`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
 
 See [Compute Passes](compute.md) for the authoring convention, storage layout rules, and executable examples.
 
@@ -138,6 +138,8 @@ Types are inferred from the return value on the first call. The returned values 
 | `[n, n, n, n]` | `uniform vec4 uRect;` |
 | `boolean` | `uniform bool uEnabled;` |
 
+WGSL and Slang shaders receive the same values as globals with the script's field names — no declaration needed. In WGSL they arrive as `var<private>` globals (`f32`, `vec2<f32>`, `vec3<f32>`, `vec4<f32>`, `bool`); in Slang as the corresponding `float` / `floatN` / `bool` globals.
+
 ### Polling Rate
 
 The **Max Polling Rate** slider (1–120 fps) controls how often the script runs. The config panel shows the actual vs. target polling rate for each uniform.
@@ -166,7 +168,7 @@ Because the script runs in Node.js, you can pull in values from anywhere — gam
 
 ## The Common Pass
 
-The Common pass points to a `.glsl` or `.slang` file whose contents are prepended to every other pass before compilation. Use it for shared utility functions, constants, and type definitions.
+The Common pass points to a `.glsl`, `.slang`, or `.wgsl` file whose contents are prepended to every other pass before compilation. Use it for shared utility functions, constants, and type definitions. The common file must be written in the same language as the passes that include it — WGSL has no `#include` mechanism, so shared WGSL code lives in the common file verbatim.
 
 === "GLSL"
     ```glsl
@@ -219,7 +221,7 @@ You can then use `hash`, `noise`, or `PI` in any Image or named buffer pass.
 
 ## Other: Editing the Config File Directly
 
-The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl` or `myshader.slang` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code, and the Config panel stays in sync with the file.
+The config is stored as JSON in a `.sha.json` file with the same base name as the shader (`myshader.glsl`, `myshader.slang`, or `myshader.wgsl` → `myshader.sha.json`), in the same directory. You can edit it directly in VS Code, and the Config panel stays in sync with the file.
 
 See [Config File Format](../help/config-file.md) for the full schema reference.
 

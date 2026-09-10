@@ -18,6 +18,8 @@ export const shaderStudioAliases = {
   '@shader-studio/monaco': path.resolve(root, 'monaco/src'),
   '@shader-studio/rendering': path.resolve(root, 'rendering/src'),
   '@shader-studio/slang-language-server': path.resolve(root, 'language-servers/slang/src'),
+  '@shader-studio/wgsl-analysis': path.resolve(root, 'language-servers/wgsl-analysis/src'),
+  '@shader-studio/wgsl-language-server': path.resolve(root, 'language-servers/wgsl/src'),
   '@shader-studio/types': path.resolve(root, 'types/src'),
   '@shader-studio/utils': path.resolve(root, 'utils/src'),
 };

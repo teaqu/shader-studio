@@ -12,7 +12,7 @@ Or install directly from the [VS Code Marketplace](https://marketplace.visualstu
 
 ## Step 2: Create a Shader
 
-Open an existing `.glsl` or `.slang` file, or create a new one and write a `mainImage` function. If you want a head start, click the <img src="../assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the status bar and choose **New Shader**, or open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **Shader Studio: New Shader** to generate a template.
+Open an existing `.glsl`, `.slang`, or `.wgsl` file, or create a new one and write a `mainImage` function. If you want a head start, click the <img src="../assets/shader-studio-icon.svg" width="16" height="16" style="vertical-align:middle;"> **Shader Studio** icon in the status bar and choose **New Shader**, or open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **Shader Studio: New Shader** to generate a template.
 
 ## Step 3: Write Your Shader
 
@@ -45,6 +45,20 @@ Shader Studio runs Shadertoy-style shaders. Your shader needs a `mainImage` func
 
         // Output to screen
         return float4(col, 1.0);
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    fn mainImage(coord: vec2f) -> vec4f {
+        // Normalized pixel coordinates (from 0 to 1)
+        let uv = coord / iResolution.xy;
+
+        // Time varying pixel color
+        let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));
+
+        // Output to screen
+        return vec4f(col, 1.0);
     }
     ```
 
@@ -134,6 +148,14 @@ Once a texture is bound to `iChannel0`, you can sample it in your shader:
         float2 uv = fragCoord / iResolution.xy;
         float4 tex = inputs.iChannel0.Sample(uv);
         return tex;
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    fn mainImage(coord: vec2f) -> vec4f {
+        let uv = coord / iResolution.xy;
+        return iChannel0Sample(uv);
     }
     ```
 

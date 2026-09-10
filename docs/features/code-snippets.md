@@ -9,6 +9,8 @@ Shader Studio provides bundled code snippets through VS Code's native completion
 - **Coordinate** — coordinate conversion and repetition utilities
 - **Math** — the PI mathematical constant
 
+The same categories ship for GLSL, Slang, and WGSL, so a prefix like `sdf2d-circle` expands to idiomatic code in whichever language you are editing.
+
 
 ## Enabling Bundled Snippets
 

@@ -9,10 +9,10 @@
 
 1. Open the standalone app and select an example in **Shader Explorer**.
 2. Edit the shader in the **Editor** pane and watch the **Preview** update. The default **Hot** compile mode recompiles as you type.
-3. To start your own shader, click **New Shader** in Shader Explorer, enter a unique name, choose **GLSL** or **Slang**, and click **Create Shader**.
+3. To start your own shader, click **New Shader** in Shader Explorer, enter a unique name, choose **GLSL**, **Slang**, or **WGSL**, and click **Create Shader**.
 4. Open **Config** in the preview toolbar to add buffer passes, channels, or uniforms.
 
-GLSL uses the WebGL renderer; Slang uses WebGPU and requires WebGPU support in your browser and device. The examples include both languages and shaders using the bundled texture and cubemap.
+GLSL uses the WebGL renderer; Slang and WGSL use WebGPU and require WebGPU support in your browser and device. The examples include all three languages and shaders using the bundled texture and cubemap.
 
 See the [Quick Start](quick-start.md#step-3-write-your-shader) for example shader code and [Configure Buffers and Inputs](features/config-buffers.md) for pass configuration. Instructions that refer to VS Code commands or workspace files apply to the extension.
 

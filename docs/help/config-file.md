@@ -221,10 +221,10 @@ Buffer passes use a simpler fixed-size resolution:
 |------|-------------|
 | **Image** | Main output pass (required, always present) |
 | **Any identifier** | An intermediate fragment pass. Names and pass counts are unrestricted; each renders to a texture other passes can read. |
-| **Compute\*** | A Slang/WebGPU compute pass. See [Compute Passes](../features/compute.md). |
-| **Common** | Shared GLSL or Slang code included in all passes. Useful for shared functions, types, and constants. |
+| **Compute\*** | A Slang or WGSL WebGPU compute pass. See [Compute Passes](../features/compute.md). |
+| **Common** | Shared GLSL, Slang, or WGSL code included in all passes. Useful for shared functions, types, and constants. |
 
-Each non-Image pass needs a `path` field pointing to its `.glsl` or `.slang` file. If the file doesn't exist, the visual editor offers a button to create it.
+Each non-Image pass needs a `path` field pointing to its `.glsl`, `.slang`, or `.wgsl` file. If the file doesn't exist, the visual editor offers a button to create it.
 
 ## Channel Types
 

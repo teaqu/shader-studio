@@ -21,10 +21,10 @@ Orbit uses yaw (around world Y axis) and pitch (clamped to ±90° to avoid flipp
 
 `iCameraPos` and `iCameraDir` are available in every shader, including 2D fullscreen passes:
 
-| Uniform | Type (GLSL) | Type (Slang) | Description |
-|---------|-------------|--------------|-------------|
-| `iCameraPos` | `vec3` | `float3` | Camera position in world space |
-| `iCameraDir` | `vec3` | `float3` | Camera forward direction (normalised) |
+| Uniform | Type (GLSL) | Type (Slang) | Type (WGSL) | Description |
+|---------|-------------|--------------|-------------|-------------|
+| `iCameraPos` | `vec3` | `float3` | `vec3<f32>` | Camera position in world space |
+| `iCameraDir` | `vec3` | `float3` | `vec3<f32>` | Camera forward direction (normalised) |
 
 In 2D fullscreen mode the camera defaults to `(0, 0, 0)` looking along `(0, 0, 1)` — still useful as a fixed ray origin and direction for raymarching. When a pass uses 3D geometry, the camera transforms update with your mouse and keyboard input.
 
