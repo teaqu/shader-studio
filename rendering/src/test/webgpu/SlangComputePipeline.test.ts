@@ -1155,4 +1155,31 @@ describe("SlangComputePipeline", () => {
     expect(compute.getPreviousLayerOutputView(0)).toBeNull();
     expect(compute.getBindGroup(0)).toBeNull();
   });
+
+  it("remaps WGSL errors by the compile offset", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 54, linePos: 4, message: "unknown identifier 'nope'" },
+    ]);
+    const compute = new SlangComputePipeline(device, descriptor({ sourceLineOffset: 50 }));
+
+    expect(await compute.rebuild("// wgsl")).toEqual(["ComputeA: WGSL L3:4 unknown identifier 'nope'"]);
+  });
+
+  it("keeps the compile offset when a diagnostic directive already exists", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 53, linePos: 4, message: "unknown identifier 'nope'" },
+    ]);
+    const compute = new SlangComputePipeline(device, descriptor({ sourceLineOffset: 50 }));
+    expect(await compute.rebuild("diagnostic(off, derivative_uniformity);\n// wgsl"))
+      .toEqual(["ComputeA: WGSL L3:4 unknown identifier 'nope'"]);
+  });
+
+  it("keeps absolute lines without a compile offset", async () => {
+    const device = fakeDevice([
+      { type: "error", lineNum: 53, linePos: 4, message: "unknown identifier 'nope'" },
+    ]);
+    const compute = new SlangComputePipeline(device, descriptor());
+
+    expect(await compute.rebuild("// wgsl")).toEqual(["ComputeA: WGSL L53:4 unknown identifier 'nope'"]);
+  });
 });

@@ -7,7 +7,7 @@ import { loadShaderFixtureCorpus } from "./scripts/shaderFixtureCorpus.mjs";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const fixtureRoot =
   process.env.SHADER_STUDIO_SHADER_FIXTURES ??
-  path.resolve(directory, "src/test/fixtures/shader-corpus");
+  path.resolve(directory, "../tests/fixtures/shader-corpus");
 const projects = loadShaderFixtureCorpus(fixtureRoot);
 export default defineConfig({
   resolve: {

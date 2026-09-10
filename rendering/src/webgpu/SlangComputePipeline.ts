@@ -5,6 +5,7 @@ import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangB
 import type { StorageBindingNode } from "../types/PassGraph";
 import { allowNonUniformDerivatives } from "./wgslDiagnostics";
 import {
+  formatWgslDiagnostic,
   type SlangChannelResource,
 } from "./SlangPassPipeline";
 import { createShaderToyUniformLayout, DISPATCH_UNIFORM_SIZE, getShaderToyChannelCount } from "./SlangPrelude";
@@ -24,13 +25,10 @@ export interface SlangComputePipelineDescriptor {
   /** Output texture format for compute texture writes. Prefer rgba32float
    *  when float32-filterable is available; rgba16float is the fallback. */
   bufferTextureFormat?: GPUTextureFormat;
-}
-
-async function shaderModuleErrors(shaderModule: GPUShaderModule, passName: string): Promise<string[]> {
-  const info = await shaderModule.getCompilationInfo?.();
-  return (info?.messages ?? [])
-    .filter((message) => message.type === "error")
-    .map((message) => `${passName}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
+  /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
+  sourceLineOffset?: number;
+  /** User-source lines after the prelude; clamps generated-code errors. */
+  sourceLineCount?: number;
 }
 
 export class SlangComputePipeline {
@@ -56,9 +54,12 @@ export class SlangComputePipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
-    const shaderModule = this.device.createShaderModule({
-      code: allowNonUniformDerivatives(wgsl),
-    });
+    const moduleSource = allowNonUniformDerivatives(wgsl);
+    // The diagnostic filter adds a generated line only when no filter exists.
+    const sourceLineOffset = this.descriptor.sourceLineOffset === undefined
+      ? undefined
+      : this.descriptor.sourceLineOffset + (moduleSource === wgsl ? 0 : 1);
+    const shaderModule = this.device.createShaderModule({ code: moduleSource });
     const bindGroupLayout = this.device.createBindGroupLayout({
       entries: this.buildBindGroupLayoutEntries(),
     });
@@ -80,7 +81,7 @@ export class SlangComputePipeline {
         if (generation !== this.rebuildGeneration) {
           return [];
         }
-        const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+        const diagnostics = await this.moduleErrors(shaderModule, sourceLineOffset);
         if (diagnostics.length > 0) {
           return diagnostics;
         }
@@ -123,11 +124,26 @@ export class SlangComputePipeline {
       }
     }
 
-    const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+    const diagnostics = await this.moduleErrors(shaderModule, sourceLineOffset);
     if (generation !== this.rebuildGeneration) {
       return [];
     }
     return diagnostics;
+  }
+
+  /** Browser-compiler errors, remapped from assembled-module lines onto user lines. */
+  private async moduleErrors(shaderModule: GPUShaderModule, sourceLineOffset?: number): Promise<string[]> {
+    const info = await shaderModule.getCompilationInfo?.();
+    return (info?.messages ?? [])
+      .filter((message) => message.type === "error")
+      .map((message) => formatWgslDiagnostic(
+        this.descriptor.name,
+        message.lineNum,
+        message.linePos,
+        message.message,
+        sourceLineOffset,
+        this.descriptor.sourceLineCount,
+      ));
   }
 
   resize(width: number, height: number): void {
@@ -226,7 +242,9 @@ export class SlangComputePipeline {
     }];
     const plan = buildSlangBindingPlan(this.descriptor.channels);
     const channelEntries = slangChannelResourceEntries(plan, sortedChannels, this.sampler);
-    if (!channelEntries) { this.invalidateBindGroups(); return; }
+    if (!channelEntries) {
+      this.invalidateBindGroups(); return;
+    }
     commonEntries.push(...channelEntries);
     const storageBase = plan.nextBinding;
     for (const node of this.descriptor.storage) {

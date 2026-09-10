@@ -30,11 +30,12 @@ export interface WgslStructInfo {
 
 interface WgslField {
   type: string;
-  size: number;
-  alignment: number;
+  size?: number;
+  alignment?: number;
 }
 
 const WGSL_TYPE_SIZES: Record<string, { size: number; alignment: number }> = {
+  f16: { size: 2, alignment: 2 },
   f32: { size: 4, alignment: 4 },
   i32: { size: 4, alignment: 4 },
   u32: { size: 4, alignment: 4 },
@@ -51,6 +52,15 @@ const WGSL_TYPE_SIZES: Record<string, { size: number; alignment: number }> = {
   vec2h: { size: 4, alignment: 4 },
   vec3h: { size: 6, alignment: 8 },
   vec4h: { size: 8, alignment: 8 },
+  mat2x2h: { size: 8, alignment: 4 },
+  mat3x2h: { size: 12, alignment: 4 },
+  mat4x2h: { size: 16, alignment: 4 },
+  mat2x3h: { size: 16, alignment: 8 },
+  mat3x3h: { size: 24, alignment: 8 },
+  mat4x3h: { size: 32, alignment: 8 },
+  mat2x4h: { size: 16, alignment: 8 },
+  mat3x4h: { size: 24, alignment: 8 },
+  mat4x4h: { size: 32, alignment: 8 },
   mat2x2f: { size: 16, alignment: 8 },
   mat3x2f: { size: 24, alignment: 8 },
   mat4x2f: { size: 32, alignment: 8 },
@@ -64,16 +74,23 @@ const WGSL_TYPE_SIZES: Record<string, { size: number; alignment: number }> = {
 
 /** Known built-in type sizes. Returns undefined for unknown/custom types. */
 function builtinTypeLayout(typeName: string): { size: number; alignment: number } | undefined {
-  const stripped = typeName.replace(/\s+/g, "");
-  return WGSL_TYPE_SIZES[stripped];
+  return WGSL_TYPE_SIZES[normalizeTypeName(typeName)];
+}
+
+/** Parse struct definitions across several WGSL sources for stride auto-fill. */
+export function parseWgslStructs(sources: string[]): Map<string, { size: number; alignment: number }> {
+  return extractStructSizes(sources.join("\n"));
 }
 
 /** Extract struct definitions from WGSL source. Returns a map of struct name → info. */
 export function extractStructSizes(wgsl: string): Map<string, WgslStructInfo> {
   const structs = new Map<string, WgslStructInfo>();
-  const structPattern = /^struct\s+(\w+)\s*\{([^}]*)\}/gm;
+  // Reuse the wrapper's WGSL-aware masking so comments (including nested
+  // block comments) cannot look like declarations or fields.
+  const source = maskWgslNonCode(wgsl);
+  const structPattern = /\bstruct\s+(\w+)\s*\{([^}]*)\}/g;
 
-  for (const match of wgsl.matchAll(structPattern)) {
+  for (const match of source.matchAll(structPattern)) {
     const name = match[1]!;
     const body = match[2]!;
     const size = structBodySize(body, structs);
@@ -86,9 +103,11 @@ export function extractStructSizes(wgsl: string): Map<string, WgslStructInfo> {
   let changed = true;
   while (changed) {
     changed = false;
-    for (const match of wgsl.matchAll(structPattern)) {
+    for (const match of source.matchAll(structPattern)) {
       const name = match[1]!;
-      if (structs.has(name)) continue;
+      if (structs.has(name)) {
+        continue;
+      }
       const body = match[2]!;
       const size = structBodySize(body, structs);
       if (size !== undefined) {
@@ -105,53 +124,26 @@ function structBodySize(
   body: string,
   knownStructs: Map<string, WgslStructInfo>,
 ): WgslStructInfo | undefined {
-  const lines = body
-    .split(/[;,\n]/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const lines = splitTopLevel(body, ",;");
 
-  // Skip size/align annotations like @size(16) @align(4) — they're optional
   let offset = 0;
   let maxAlignment = 1;
   let hasUnresolvedField = false;
 
   for (const line of lines) {
     const field = parseField(line);
-    if (!field) continue;
-
-    const builtin = builtinTypeLayout(field.type);
-    if (builtin) {
-      offset = alignUp(offset, builtin.alignment);
-      offset += builtin.size;
-      maxAlignment = Math.max(maxAlignment, builtin.alignment);
-    } else if (knownStructs.has(field.type)) {
-      const info = knownStructs.get(field.type)!;
-      offset = alignUp(offset, info.alignment);
-      offset += info.size;
-      maxAlignment = Math.max(maxAlignment, info.alignment);
-    } else {
-      // Unresolved type (could be an array of custom type, or a not-yet-seen struct)
-      // Try to match array syntax: array<T,N> or type[N]
-      const arrayMatch = field.type.match(/^(?:array<(\w+),\s*(\d+)>|(\w+)\[(\d+)\])$/);
-      if (arrayMatch) {
-        const elemType = arrayMatch[1] ?? arrayMatch[3]!;
-        const count = parseInt(arrayMatch[2] ?? arrayMatch[4]!, 10);
-        const elemBuiltin = builtinTypeLayout(elemType);
-        if (elemBuiltin) {
-          offset = alignUp(offset, elemBuiltin.alignment);
-          offset += elemBuiltin.size * count;
-          maxAlignment = Math.max(maxAlignment, elemBuiltin.alignment);
-          continue;
-        } else if (knownStructs.has(elemType)) {
-          const info = knownStructs.get(elemType)!;
-          offset = alignUp(offset, info.alignment);
-          offset += info.size * count;
-          maxAlignment = Math.max(maxAlignment, info.alignment);
-          continue;
-        }
-      }
-      hasUnresolvedField = true;
+    if (!field) {
+      continue;
     }
+
+    const layout = fieldLayout(field, knownStructs);
+    if (!layout) {
+      hasUnresolvedField = true;
+      continue;
+    }
+    offset = alignUp(offset, layout.alignment);
+    offset += layout.size;
+    maxAlignment = Math.max(maxAlignment, layout.alignment);
   }
 
   if (hasUnresolvedField) {
@@ -162,28 +154,98 @@ function structBodySize(
   return { name: "", size, alignment: maxAlignment };
 }
 
+function fieldLayout(field: WgslField, knownStructs: Map<string, WgslStructInfo>): { size: number; alignment: number } | undefined {
+  const natural = builtinTypeLayout(field.type) ?? knownStructs.get(field.type) ?? arrayLayout(field.type, knownStructs);
+  if (!natural) {
+    return undefined;
+  }
+  return {
+    alignment: Math.max(natural.alignment, field.alignment ?? 0),
+    size: Math.max(natural.size, field.size ?? 0),
+  };
+}
+
+function arrayLayout(type: string, knownStructs: Map<string, WgslStructInfo>): { size: number; alignment: number } | undefined {
+  if (!type.startsWith("array<") || !type.endsWith(">")) {
+    return undefined;
+  }
+  const parts = splitTopLevel(type.slice(6, -1), ",");
+  if (parts.length !== 2 || !/^\d+$/.test(parts[1]!)) {
+    return undefined;
+  }
+  const element = builtinTypeLayout(parts[0]!) ?? knownStructs.get(parts[0]!) ?? arrayLayout(parts[0]!, knownStructs);
+  if (!element) {
+    return undefined;
+  }
+  return { alignment: element.alignment, size: alignUp(element.size, element.alignment) * Number(parts[1]) };
+}
+
+/** Splits fields without treating generic type commas or attribute arguments as separators. */
+function splitTopLevel(source: string, separators: string): string[] {
+  const fields: string[] = [];
+  let start = 0;
+  let angleDepth = 0;
+  let parenDepth = 0;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]!;
+    if (char === "<") {
+      angleDepth++;
+    } else if (char === ">") {
+      angleDepth--;
+    } else if (char === "(") {
+      parenDepth++;
+    } else if (char === ")") {
+      parenDepth--;
+    } else if (angleDepth === 0 && parenDepth === 0 && separators.includes(char)) {
+      const field = source.slice(start, index).trim();
+      if (field) {
+        fields.push(field);
+      }
+      start = index + 1;
+    }
+  }
+  const finalField = source.slice(start).trim();
+  if (finalField) {
+    fields.push(finalField);
+  }
+  return fields;
+}
+
 function parseField(line: string): WgslField | null {
+  const alignment = layoutAttribute(line, "align");
+  const size = layoutAttribute(line, "size");
   // Skip attributes like @align, @size, @location, [[builtin(...)]]
   const cleanLine = line.replace(/@\w+(?:\([^)]*\))?/g, "").replace(/\[\[[^\]]+\]\]/g, "").trim();
 
   // Match: name : type
   const match = cleanLine.match(/^(\w+)\s*:\s*(.+)$/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
 
-  const typeStr = match[2]!.replace(/\s+/g, "").trim();
+  const type = normalizeTypeName(match[2]!);
 
-  // Normalize WGSL type syntax
-  let type = typeStr;
+  return { type, size, alignment };
+}
+
+function normalizeTypeName(typeName: string): string {
+  let type = typeName.replace(/\s+/g, "").trim();
   // vec4<f32> → vec4f
   type = type.replace(/^vec(\d)<f32>$/g, "vec$1f");
+  type = type.replace(/^vec(\d)<f16>$/g, "vec$1h");
   type = type.replace(/^vec(\d)<i32>$/g, "vec$1i");
   type = type.replace(/^vec(\d)<u32>$/g, "vec$1u");
   type = type.replace(/^mat(\d)x(\d)<f32>$/g, "mat$1x$2f");
-  type = type.replace(/^atomic<(\w+)>$/g, "atomic_$1");
+  type = type.replace(/^mat(\d)x(\d)<f16>$/g, "mat$1x$2h");
+  return type.replace(/^atomic<(\w+)>$/g, "atomic_$1");
+}
 
-  return { type, size: 0, alignment: 0 };
+function layoutAttribute(line: string, name: "align" | "size"): number | undefined {
+  const value = new RegExp(`@${name}\\(\\s*(\\d+)\\s*\\)`).exec(line)?.[1];
+  return value === undefined ? undefined : Number(value);
 }
 
 function alignUp(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
+import { maskWgslNonCode } from "./WgslPrelude";

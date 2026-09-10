@@ -3,6 +3,7 @@ import { getWebGPUSampler } from "../../webgpu/WebGPUSamplerCache";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { WgslCompiler } from "../../webgpu/WgslCompiler";
 import { SlangPassPipeline } from "../../webgpu/SlangPassPipeline";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { TimeManager } from "../../util/TimeManager";
@@ -106,7 +107,7 @@ describe("WebGPURenderingEngine", () => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
 
-    await engine.compileSlangDebugPlan({
+    await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///main.slang", executionMarkerSlot: 0, captureSlots: [],
       files: [
         { uri: "file:///main.slang", path: "/main.slang", source: "float4 mainImage(float2 c) { return 1; }", version: 1, moduleName: "", ownerPass: "ComputeUpdate" },
@@ -141,7 +142,7 @@ describe("WebGPURenderingEngine", () => {
       slangSourcePath: "/main.slang",
     };
 
-    await (engine.compileSlangDebugPlan as unknown as (
+    await (engine.compileDebugPlan as unknown as (
       plan: DebugInstrumentationPlan,
       config: ShaderConfig,
     ) => Promise<CompilationResult | undefined>)({
@@ -156,7 +157,7 @@ describe("WebGPURenderingEngine", () => {
     const engine = new WebGPURenderingEngine(assets);
     vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: false, errors: ["unexpected token"] });
 
-    const result = await engine.compileSlangDebugPlan({
+    const result = await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///main.slang", selectedSourceUri: "file:///helper.slang", executionMarkerSlot: 0, captureSlots: [],
       files: [
         { uri: "file:///main.slang", path: "/main.slang", source: "import helper;", version: 1, moduleName: "", ownerPass: "Image" },
@@ -181,7 +182,7 @@ describe("WebGPURenderingEngine", () => {
     };
     (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
-    await engine.compileSlangDebugPlan({
+    await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///image.slang", selectedSourceUri: "file:///common.slang", executionMarkerSlot: 0, captureSlots: [],
       files: [
         { uri: "file:///image.slang", path: "/image.slang", source: "instrumented image", version: 2, moduleName: "", ownerPass: "Image" },
@@ -202,6 +203,41 @@ describe("WebGPURenderingEngine", () => {
     );
   });
 
+  it("compiles WGSL common exactly once when the selected file is the image", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const previous = {
+      code: "float4 mainImage(float2 coord) { return shared(coord.x); }",
+      config: { version: "1.0", passes: { Image: {}, common: { path: "common.wgsl" } } },
+      path: "/image.wgsl",
+      buffers: { common: "float shared(float x) { return x; }" },
+      slangModules: [],
+      slangSourcePath: "/image.wgsl",
+      slangSourcePaths: { Image: "/image.wgsl", common: "/common.wgsl" },
+    };
+    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+
+    await engine.compileDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///image.wgsl", selectedSourceUri: "file:///image.wgsl", executionMarkerSlot: 0, captureSlots: [],
+      files: [
+        { uri: "file:///image.wgsl", path: "/image.wgsl", source: "instrumented image", version: 2, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///common.wgsl", path: "/common.wgsl", source: "instrumented common", version: 2, moduleName: "", ownerPass: "Image" },
+      ],
+    });
+
+    expect(compile).toHaveBeenCalledWith(
+      "instrumented image",
+      previous.config,
+      "/image.wgsl",
+      { common: "instrumented common" },
+      "",
+      [],
+      [],
+      "/image.wgsl",
+      previous.slangSourcePaths,
+    );
+  });
+
   it("preserves the installed compute workspace while compiling an image debug wrapper", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
@@ -217,7 +253,7 @@ describe("WebGPURenderingEngine", () => {
     };
     (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
 
-    await engine.compileSlangDebugPlan({
+    await engine.compileDebugPlan({
       workspaceHash: "hash", rootUri: "file:///update.slang", selectedSourceUri: "file:///update.slang", executionMarkerSlot: 0, captureSlots: [],
       files: [{ uri: "file:///update.slang", path: "/update.slang", source: "float4 mainImage(float2 coord) { return 0; }", version: 1, moduleName: "", ownerPass: "ComputeUpdate" }],
     });
@@ -225,6 +261,53 @@ describe("WebGPURenderingEngine", () => {
     expect(compile).toHaveBeenCalledWith(
       expect.any(String), previous.config, "/image.slang", previous.buffers,
       "", [], previous.slangModules, "/image.slang", undefined,
+    );
+  });
+
+  it("preserves the installed WGSL compute workspace while compiling its image debug replay", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });
+    const previous = {
+      code: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
+      config: {
+        version: "1.0",
+        passes: {
+          Image: { inputs: {} },
+          ComputeUpdate: { type: "compute" as const, path: "update.wgsl", entryPoint: "update" },
+        },
+      },
+      path: "/image.wgsl",
+      buffers: {
+        common: "fn shared() -> f32 { return 0.0; }",
+        ComputeUpdate: "@compute @workgroup_size(8) fn update(@builtin(global_invocation_id) id: vec3u) {}",
+      },
+      customUniformDeclarations: "",
+      customUniformInfo: [],
+      slangModules: [],
+      slangSourcePath: "/image.wgsl",
+      slangSourcePaths: { Image: "/image.wgsl", ComputeUpdate: "/update.wgsl" },
+    };
+    (engine as unknown as { lastCompile: typeof previous }).lastCompile = previous;
+
+    await engine.compileDebugPlan({
+      workspaceHash: "hash", rootUri: "file:///update.wgsl", selectedSourceUri: "file:///update.wgsl", executionMarkerSlot: 0, captureSlots: [],
+      files: [{
+        uri: "file:///update.wgsl", path: "/update.wgsl",
+        source: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
+        version: 2, moduleName: "", ownerPass: "ComputeUpdate",
+      }],
+    });
+
+    expect(compile).toHaveBeenCalledWith(
+      "fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
+      previous.config,
+      "/image.wgsl",
+      previous.buffers,
+      "",
+      [],
+      previous.slangModules,
+      "/image.wgsl",
+      previous.slangSourcePaths,
     );
   });
 
@@ -5545,4 +5628,88 @@ describe("WebGPURenderingEngine", () => {
       expect(spy.mock.calls.at(-1)![0][65]).toBe(0);
     });
   });
+
+  describe("WGSL compilation", () => {
+    const WGSL_IMAGE = "fn mainImage(coord: vec2<f32>) -> vec4<f32> { return vec4<f32>(coord.x / iResolution.x); }";
+
+    function wgslDevice(compilationMessages: unknown[] = []) {
+      return {
+        createShaderModule: vi.fn(() => ({
+          getCompilationInfo: vi.fn(async () => ({ messages: compilationMessages })),
+        })),
+        createRenderPipeline: vi.fn(() => ({ getBindGroupLayout: vi.fn(() => ({})) })),
+        createBindGroupLayout: vi.fn(() => ({})),
+        createPipelineLayout: vi.fn(() => ({})),
+        createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+        createSampler: vi.fn(() => ({})),
+        createBindGroup: vi.fn(() => ({})),
+        createTexture: vi.fn(() => ({
+          createView: vi.fn(() => ({})),
+          destroy: vi.fn(),
+        })),
+        pushErrorScope: vi.fn(),
+        popErrorScope: vi.fn(async () => null),
+      };
+    }
+
+    function wgslEngine(device: ReturnType<typeof wgslDevice>): WebGPURenderingEngine {
+      const engine = new WebGPURenderingEngine(undefined, "wgsl");
+      (engine as any).canvas = { width: 320, height: 180 };
+      (engine as any).device = device;
+      (engine as any).compiler = new WgslCompiler();
+      (engine as any).format = "bgra8unorm";
+      return engine;
+    }
+
+    it("compiles a WGSL image pass through the real WGSL wrapper", async () => {
+      const device = wgslDevice();
+      const engine = wgslEngine(device);
+
+      const result = await engine.compileShaderPipeline(
+        WGSL_IMAGE,
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.wgsl",
+      );
+
+      expect(result?.success).toBe(true);
+      expect(engine.getShaderLanguage()).toBe("wgsl");
+      const moduleCodes = (device.createShaderModule as ReturnType<typeof vi.fn>).mock.calls
+        .map((call) => (call[0] as { code: string }).code);
+      expect(moduleCodes.length).toBeGreaterThan(0);
+      for (const code of moduleCodes) {
+        expect(code).toContain("fn _ss_initGlobals()");
+        expect(code).toContain("fn mainImage(coord: vec2<f32>) -> vec4<f32>");
+      }
+    });
+
+    it("reports WGSL errors from the browser compiler remapped onto user lines", async () => {
+      const device = wgslDevice([
+        { type: "error", lineNum: 42, linePos: 7, message: "unknown identifier 'nope'", length: 4, offset: 100 },
+      ]);
+      const engine = wgslEngine(device);
+
+      const result = await engine.compileShaderPipeline(
+        "fn mainImage(coord: vec2<f32>) -> vec4<f32> { return nope; }",
+        { version: "1", passes: { Image: { inputs: {} } } },
+        "/image.wgsl",
+      );
+
+      expect(result?.success).toBe(false);
+      // Module line 42 sits inside the generated prelude, so it is reported
+      // as an internal error with its assembled line, never remapped.
+      expect(result?.errors).toEqual(["Image: WGSL internal: L42:7 unknown identifier 'nope'"]);
+    });
+  });
+});
+
+it('retains WGSL storage layout in capture context before a graph is installed', () => {
+  const engine = new WebGPURenderingEngine(undefined, 'wgsl');
+  (engine as unknown as { lastCompile: unknown }).lastCompile = {
+    code: 'struct Particle { value: vec4f, }\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }',
+    config: { version: '1.0', storage: { particles: { count: 4, elementType: 'Particle' } }, passes: { Image: {} } },
+    path: '/main.wgsl', buffers: {}, slangModules: [],
+  };
+  expect(engine.getVariableCaptureCompileContext().slangStorage).toContainEqual(expect.objectContaining({
+    name: 'particles', stride: 16, elementType: 'Particle',
+  }));
 });

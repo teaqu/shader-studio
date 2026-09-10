@@ -84,7 +84,7 @@ describe("ShaderCompiler", () => {
 
       for (const name of ["iWorldPosition", "iNormal", "iCameraPosition"]) {
         const fact = SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name);
-        expect(fact).toMatchObject({ name, glslType: "vec3", languages: ["glsl", "slang"] });
+        expect(fact).toMatchObject({ name, glslType: "vec3", languages: ["glsl", "slang", "wgsl"] });
         if (!fact?.glslType) {
           continue;
         }

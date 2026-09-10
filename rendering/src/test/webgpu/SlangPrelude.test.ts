@@ -9,7 +9,7 @@ describe('wrapSlangImageSource', () => {
     const source = wrapSlangImageSource(image);
     for (const name of ['iWorldPosition', 'iNormal', 'iCameraPosition']) {
       const fact = SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name);
-      expect(fact).toMatchObject({ name, slangType: 'float3', languages: ['glsl', 'slang'] });
+      expect(fact).toMatchObject({ name, slangType: 'float3', languages: ['glsl', 'slang', 'wgsl'] });
       expect(source).toContain(`static float3 ${name};`);
     }
   });

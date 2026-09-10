@@ -149,10 +149,26 @@ function restorePassPrefix(survivors: ErrorBlock[], entryPass: string | undefine
   return [text, ...rest.map((block) => block.text)].join("\n");
 }
 
+/**
+ * Browser-compiler WGSL errors, already mapped onto user lines by the pass
+ * pipelines (`<pass>: WGSL [internal: ]L<line>:<col> <message>`).
+ */
+const WGSL_REPORTED = /^(?<passName>[^:\n]+): WGSL (?:internal: )?L(?<line>\d+):(?<column>\d+) (?<message>[\s\S]*)$/;
+
 function parseErrorBlocks(entry: string): ErrorBlock[] {
   const headings = [...entry.matchAll(HEADING)];
   if (headings.length === 0) {
     const text = entry.trim();
+    const wgsl = text.match(WGSL_REPORTED);
+    if (wgsl?.groups) {
+      // The pass prefix rides on every entry; the same user error from two
+      // passes is one diagnostic.
+      return [{
+        text,
+        key: `wgsl|${wgsl.groups.line}:${wgsl.groups.column}|${normalize(wgsl.groups.message)}`,
+        located: true,
+      }];
+    }
     return [{ text, key: `raw|${normalize(text)}`, located: false }];
   }
 

@@ -1,7 +1,7 @@
 /// <reference types="@webgpu/types" />
 import { buildSlangBindingPlan, getSlangChannels, getSlangSamplerSettings, getSlangTextureIdentity, validateSlangBindingBudget } from "./SlangBindingPlan";
 import { getWebGPUSampler } from "./WebGPUSamplerCache";
-import type { DebugInstrumentationPlan, ShaderConfig, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
+import type { DebugInstrumentationPlan, ShaderConfig, ShaderLanguageId, SlangSourceModule, StorageBufferSnapshot } from "@shader-studio/types";
 import type { CompilationResult, PassUniforms } from "../models";
 import type { RenderingEngine } from "../types/RenderingEngine";
 import type {
@@ -18,6 +18,7 @@ import { CameraManager } from "../input/CameraManager";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { dedupeCompilerErrors } from "../util/CompilerErrorDedupe";
 import { SlangCompiler } from "./SlangCompiler";
+import { WgslCompiler } from "./WgslCompiler";
 import { loadSlangModule } from "./SlangModuleLoader";
 import { MainThreadSlangCompiler, WorkerSlangCompiler, type AsyncSlangCompiler } from "./AsyncSlangCompiler";
 import {
@@ -36,6 +37,7 @@ import {
 import type { RenderPassChannel, StorageBindingNode } from "../types/PassGraph";
 import { SlangComputePipeline } from "./SlangComputePipeline";
 import { createShaderToyUniformLayout, getShaderToyChannelCount } from "./SlangPrelude";
+import { WGSL_KNOWN_GPU_FEATURES, wgslUnsupportedFeatureMessage } from "./WgslPrelude";
 import {
   BUFFER_TEXTURE_FORMAT,
   HIGH_PRECISION_BUFFER_TEXTURE_FORMAT,
@@ -119,6 +121,12 @@ const SLANG_PIPELINE_CACHE_KEY_VERSION = 1;
 const DEFAULT_MAX_TEXTURE_DIMENSION_2D = 8192;
 const DEFAULT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE = 8;
 const DEFAULT_MAX_STORAGE_BUFFER_BINDING_SIZE = 128 * 1024 * 1024;
+const WEBGPU_BUFFER_SIZE_ALIGNMENT = 4;
+
+function storageBufferByteSize(node: StorageBindingNode): number {
+  const logicalSize = node.count * node.stride;
+  return Math.ceil(logicalSize / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+}
 const DEFAULT_MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = 65_535;
 const DEFAULT_MAX_COMPUTE_INVOCATIONS_PER_WORKGROUP = 256;
 const DEFAULT_MAX_COMPUTE_WORKGROUP_SIZE_X = 256;
@@ -306,7 +314,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     "time" | "timeDelta" | "frameRate" | "frame" | "mouse" | "date" | "cameraPos" | "cameraDir"
   > | null = null;
 
-  constructor(private slangAssets: SlangAssetUrls) {}
+  constructor(private slangAssets?: SlangAssetUrls, private language: ShaderLanguageId = "slang") {}
 
   initialize(glCanvas: HTMLCanvasElement, _preserveDrawingBuffer = false): void {
     if (this.disposed) {
@@ -470,7 +478,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ) {
       requiredLimits.maxTextureArrayLayers = adapterArrayLayersLimit;
     }
-    const supportsFloat32Filtering = adapter.features?.has?.("float32-filterable") ?? false;
     const adapterSampledTexturesLimit = adapter.limits?.maxSampledTexturesPerShaderStage;
     if (
       typeof adapterSampledTexturesLimit === "number" &&
@@ -487,13 +494,18 @@ export class WebGPURenderingEngine implements RenderingEngine {
     ) {
       requiredLimits.maxSamplersPerShaderStage = adapterSamplersLimit;
     }
-    if (!supportsFloat32Filtering && Object.keys(requiredLimits).length === 0) {
+    // Spec 7.2 option A: request every known feature the adapter supports up
+    // front, so a shader with `enable f16` just works when the hardware allows.
+    const requiredFeatures = WGSL_KNOWN_GPU_FEATURES.filter(
+      (feature) => adapter.features?.has?.(feature as GPUFeatureName) === true,
+    ) as GPUFeatureName[];
+    if (requiredFeatures.length === 0 && Object.keys(requiredLimits).length === 0) {
       return undefined;
     }
 
     const descriptor: GPUDeviceDescriptor = {};
-    if (supportsFloat32Filtering) {
-      descriptor.requiredFeatures = ["float32-filterable"];
+    if (requiredFeatures.length > 0) {
+      descriptor.requiredFeatures = requiredFeatures;
     }
     if (Object.keys(requiredLimits).length > 0) {
       descriptor.requiredLimits = requiredLimits;
@@ -541,9 +553,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
   /** Prefer a worker-hosted compiler; fall back to main-thread slang-wasm. */
   private async createCompiler(): Promise<AsyncSlangCompiler> {
     this.assertNotDisposed();
+    if (this.language === "wgsl") {
+      // The WGSL front end needs no worker, WASM, or asset URLs at all.
+      return new WgslCompiler();
+    }
     const abortController = new AbortController();
     this.compilerAbortController = abortController;
-    const { scriptUrl, wasmUrl, workerUrl } = this.slangAssets;
+    const slangAssets = this.slangAssets;
+    if (!slangAssets) {
+      throw new Error("Slang asset URLs are required for Slang compilation");
+    }
+    const { scriptUrl, wasmUrl, workerUrl } = slangAssets;
     const startedAt = this.now();
     try {
       if (workerUrl && typeof Worker !== "undefined") {
@@ -790,6 +810,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       buffers: attemptedCompile.buffers,
       canvasWidth: this.canvas?.width ?? 1,
       canvasHeight: this.canvas?.height ?? 1,
+      language: this.language,
       computeWorkgroupLimits: this.resolveComputeWorkgroupLimits(),
       maxOutputLayers: this.resolveMaxOutputLayers(),
       maxStorageBuffers: this.resolveMaxStorageBuffers(),
@@ -1005,6 +1026,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
           let wgsl = sharedSlangWgslCache.get(wgslKey);
           const wgslCacheHit = wgsl !== null;
           let slangMs = 0;
+          let sourceLineOffset: number | undefined;
+          let sourceLineCount: number | undefined;
           const channels = getSlangChannels(pass.channels);
           if (!wgsl) {
             const slangStartedAt = this.now();
@@ -1049,6 +1072,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
               continue;
             }
             wgsl = compiled.wgsl;
+            sourceLineOffset = compiled.sourceLineOffset;
+            sourceLineCount = compiled.sourceLineCount;
+            // A shader whose hoisted `enable` needs a feature the device lacks
+            // gets a clear error here instead of a raw Tint parse failure.
+            const unsupportedFeature = wgslUnsupportedFeatureMessage(
+              compiled.requiredFeatures ?? [],
+              (feature) => this.device?.features?.has?.(feature as GPUFeatureName) === true,
+            );
+            if (unsupportedFeature !== undefined) {
+              errors.push(WebGPURenderingEngine.prefixPassError(pass.name, unsupportedFeature));
+              passTimings.push({
+                name: pass.name,
+                cacheHit: false,
+                wgslCacheHit: false,
+                slangMs: this.ms(slangMs),
+                totalMs: this.ms(this.now() - passStartedAt),
+                errorCount: 1,
+              });
+              continue;
+            }
             sharedSlangWgslCache.set(wgslKey, wgsl);
           }
           // After the first successful compile, validate custom struct strides
@@ -1073,6 +1116,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
             pass,
             graph.storage,
             createSlangCustomUniformLayout(uniformInfo, getShaderToyChannelCount(pass.channels)).size,
+            sourceLineOffset,
+            sourceLineCount,
           );
           if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
             break;
@@ -1414,13 +1459,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       );
     }
     for (const node of storage) {
-      const byteSize = node.count * node.stride;
-      if (byteSize % 4 !== 0) {
-        errors.push(
-          `Storage ${node.name} requires ${byteSize} bytes, but its byte size ` +
-          "must be a multiple of 4 for a WebGPU storage binding",
-        );
-      }
+      const byteSize = storageBufferByteSize(node);
       if (byteSize > maxStorageBufferSize) {
         errors.push(
           `Storage ${node.name} requires ${byteSize} bytes, but the device ` +
@@ -1530,7 +1569,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           buffer = existing;
         } else {
           buffer = this.device.createBuffer({
-            size: node.count * node.stride,
+            size: storageBufferByteSize(node),
             usage: STORAGE | COPY_SRC | COPY_DST,
           });
           stagedBuffers.push(buffer);
@@ -1580,9 +1619,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     const offset = start * layout.stride;
     const size = count * layout.stride;
-    if (offset % 4 !== 0 || size % 4 !== 0) {
-      throw new Error(`Storage buffer "${name}" inspection requires a 4-byte-aligned stride`);
-    }
     return { buffer, layout, offset, size };
   }
 
@@ -1748,7 +1784,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     try {
       for (const node of this.storageLayouts.values()) {
         const buffer = this.device.createBuffer({
-          size: node.count * node.stride,
+          size: storageBufferByteSize(node),
           usage: STORAGE | COPY_SRC | COPY_DST,
         });
         stagedBuffers.push(buffer);
@@ -1919,7 +1955,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       warningCount: details.graph.warnings.length,
       errorCount: details.errors.length,
     });
-    if (this.slangAssets.debugTimings) {
+    if (this.slangAssets?.debugTimings) {
       console.log(
         "[SlangPerf] compile summary",
         `${status} ${details.path} total=${totalMs}ms ready=${readyMs}ms work=${compileWorkMs}ms passes=${details.graph.passes.length} cacheHits=${cacheHits} :: ${passSummary}`,
@@ -1928,7 +1964,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private logSlangPerf(event: string, data: Record<string, unknown>): void {
-    if (this.slangAssets.debugTimings) {
+    if (this.slangAssets?.debugTimings) {
       console.log(`[SlangPerf] ${event}`, data);
     }
   }
@@ -2195,6 +2231,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     storage: StorageBindingNode[],
     uniformBufferSize = createSlangCustomUniformLayout([], getShaderToyChannelCount(pass.channels)).size,
+    sourceLineOffset?: number,
+    sourceLineCount?: number,
   ): SlangPassPipeline | SlangComputePipeline {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while creating pass pipeline");
@@ -2219,6 +2257,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         storage,
         uniformBufferSize,
         bufferTextureFormat: this.bufferTextureFormat,
+        ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
+        ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
       })
       : new SlangPassPipeline(this.device, this.format, {
         name: pass.name,
@@ -2230,6 +2270,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         vertexChannels: Boolean(pass.vertexSrc),
         storage,
         uniformBufferSize,
+        ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
+        ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
       });
   }
 
@@ -3015,24 +3057,24 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return this.resourceManager;
   }
 
-  async compileSlangDebugPlan(
+  async compileDebugPlan(
     plan: DebugInstrumentationPlan,
     config?: ShaderConfig | null,
   ): Promise<CompilationResult | undefined> {
     const root = plan.files.find((file) => file.uri === plan.rootUri);
     if (!root) {
-      return { success: false, errors: ["Slang debug plan root is missing"] };
+      return { success: false, errors: ["Debug plan root is missing"] };
     }
     const previous = this.lastCompile;
     const selectedSource = plan.files.find((file) => file.uri === plan.selectedSourceUri);
-    const selectedIsCommon = Boolean(
-      selectedSource && previous?.slangSourcePaths?.common === selectedSource.path,
-    );
+    const commonSource = plan.files.find(file => file.uri !== root.uri && (
+      previous?.slangSourcePaths?.common === file.path
+      || (root.path.toLowerCase().endsWith(".wgsl") && file.moduleName === "")
+    ));
     const planModules: SlangSourceModule[] = plan.files
-      .filter((file) => file.uri !== root.uri && (!selectedIsCommon || file.uri !== selectedSource?.uri))
-      // A debug plan always compiles its generated wrapper as Image, even
-      // when the selected source belongs to a compute pass.
-      .map((file) => ({ ...file, ownerPass: "Image" }));
+      .filter(file => file.uri !== root.uri && file.uri !== commonSource?.uri)
+      // Debug wrappers render as Image, including compute replay.
+      .map(file => ({ ...file, ownerPass: "Image" }));
     const planModulePaths = new Set(planModules.map((module) => module.path));
     const modules = [
       ...(previous?.slangModules.filter((module) => !planModulePaths.has(module.path)) ?? []),
@@ -3042,8 +3084,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       root.source,
       config ?? previous?.config ?? this.currentConfig,
       previous?.path ?? root.path,
-      selectedIsCommon && selectedSource
-        ? { ...(previous?.buffers ?? {}), common: selectedSource.source }
+      commonSource
+        ? { ...(previous?.buffers ?? {}), common: commonSource.source }
         : previous?.buffers ?? {},
       previous?.customUniformDeclarations ?? this.customUniformManager.getDeclarations(),
       previous?.customUniformInfo ?? this.customUniformManager.getUniformInfo(),
@@ -3058,7 +3100,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const selectedLabel = selectedSource?.path ?? plan.selectedSourceUri;
     return {
       ...result,
-      errors: (result.errors?.length ? result.errors : ["Unknown Slang debug compilation error"])
+      errors: (result.errors?.length ? result.errors : ["Unknown debug plan compilation error"])
         .map((error) => error.includes(selectedLabel) || error.includes(plan.selectedSourceUri)
           ? error
           : `${selectedLabel}: ${error}`),
@@ -3071,6 +3113,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   async readStorageBuffer(name: string, start: number, count: number): Promise<StorageBufferSnapshot> {
     const { buffer, layout, offset, size } = this.resolveStorageRange(name, start, count);
+    const alignedOffset = Math.floor(offset / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+    const alignedEnd = Math.ceil((offset + size) / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+    const copied = await this.readStorageBytes(buffer, alignedOffset, alignedEnd - alignedOffset, name);
+    const data = copied.slice(offset - alignedOffset, offset - alignedOffset + size);
+    return { name, elementType: layout.elementType, stride: layout.stride, start, count, data };
+  }
+
+  private async readStorageBytes(buffer: GPUBuffer, offset: number, size: number, name: string): Promise<ArrayBuffer> {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while reading storage buffer");
     }
@@ -3084,7 +3134,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       await readback.mapAsync(globalThis.GPUMapMode?.READ ?? 0x0001);
       const data = readback.getMappedRange().slice(0);
       readback.unmap();
-      return { name, elementType: layout.elementType, stride: layout.stride, start, count, data };
+      return data;
     } finally {
       readback.destroy();
     }
@@ -3107,7 +3157,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (size !== data.byteLength || !this.device) {
       throw new Error("WebGPU device unavailable while writing storage buffer");
     }
-    this.device.queue.writeBuffer(buffer, offset, data);
+    const alignedOffset = Math.floor(offset / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+    const alignedEnd = Math.ceil((offset + size) / WEBGPU_BUFFER_SIZE_ALIGNMENT) * WEBGPU_BUFFER_SIZE_ALIGNMENT;
+    if (alignedOffset === offset && alignedEnd === offset + size) {
+      this.device.queue.writeBuffer(buffer, offset, data);
+      return;
+    }
+    const padded = new Uint8Array(await this.readStorageBytes(buffer, alignedOffset, alignedEnd - alignedOffset, name));
+    padded.set(new Uint8Array(data), offset - alignedOffset);
+    this.device.queue.writeBuffer(buffer, alignedOffset, padded);
   }
 
   getCanvas(): HTMLCanvasElement | null {
@@ -3452,6 +3510,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     const graph = buildSlangPassGraph({
+      language: this.language,
       imageCode: snapshot.code,
       config: snapshot.config,
       buffers: snapshot.buffers,
@@ -3463,8 +3522,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     });
     return { passes: graph.passes, storage: graph.storage };
   }
-  getShaderLanguage(): "glsl" | "slang" {
-    return "slang";
+  getShaderLanguage(): ShaderLanguageId {
+    return this.language;
   }
 
   getCaptureUniforms(): CaptureUniforms {

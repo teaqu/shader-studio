@@ -27,7 +27,7 @@ function numberedStorage(count: number): Record<string, StorageBufferConfig> {
   ]));
 }
 
-function engineHarness(limits: Partial<GPUSupportedLimits> = {}) {
+function engineHarness(limits: Partial<GPUSupportedLimits> = {}, language: "slang" | "wgsl" = "slang") {
   let bufferId = 0;
   const device = {
     limits,
@@ -63,7 +63,7 @@ function engineHarness(limits: Partial<GPUSupportedLimits> = {}) {
     compile: vi.fn(async (): Promise<CompilerResult> => ({ success: true, wgsl: "// wgsl" })),
     dispose: vi.fn(),
   };
-  const engine = new WebGPURenderingEngine(assets);
+  const engine = new WebGPURenderingEngine(assets, language);
   (engine as unknown as { canvas: { width: number; height: number } }).canvas = {
     width: 320,
     height: 180,
@@ -424,6 +424,18 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(result?.errors?.join("\n")).toMatch(
       new RegExp(`huge.*${requiredBytes}.*${128 * 1024 * 1024}`, "i"),
     );
+  });
+
+  it("pads an unaligned one-element WGSL f16 storage allocation to WebGPU's buffer granularity", async () => {
+    const { engine, device } = engineHarness({}, "wgsl");
+    const result = await engine.compileShaderPipeline(
+      "enable f16;\nfn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }",
+      storageConfig({ halfValues: { count: 1, stride: 2, elementType: "f16" } }),
+      "/image.wgsl",
+    );
+
+    expect(result?.success).toBe(true);
+    expect(storageCreateCalls(device)).toContainEqual(expect.objectContaining({ size: 4 }));
   });
 
   it("leaves existing storage untouched when count-limit validation fails", async () => {

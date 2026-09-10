@@ -1,4 +1,4 @@
-import type { ComputePass, ConfigInput, ShaderConfig } from "@shader-studio/types";
+import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
 import type {
   DispatchSpec,
   RenderPassChannel,
@@ -9,8 +9,10 @@ import type {
 } from "../types/PassGraph";
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
+import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
 import { resolvePassGeometry } from "../types/Geometry";
 import { parseSlangStructs } from "./slangStructSize";
+import { parseWgslStructs } from "./wgslStructSize";
 
 export type {
   ChannelReadTiming,
@@ -26,6 +28,8 @@ export interface BuildSlangPassGraphOptions {
   buffers: Record<string, string>;
   canvasWidth: number;
   canvasHeight: number;
+  /** Shader language of every pass source; defaults to Slang. */
+  language?: ShaderLanguageId;
   /** Limits granted by the active WebGPU device; omitted means portable WebGPU defaults. */
   computeWorkgroupLimits?: ComputeWorkgroupLimits;
   /** Maximum texture array layers for compute output; defaults to the WebGPU spec minimum of 256. */
@@ -49,13 +53,45 @@ export const BUILTIN_STORAGE_TYPES: ReadonlySet<string> = new Set([
   "float2x2", "float3x3", "float4x4",
 ]);
 
+/** WGSL spellings of the same built-in storage element types. */
+export const BUILTIN_STORAGE_TYPES_WGSL: ReadonlySet<string> = new Set([
+  "f16", "f32", "vec2<f16>", "vec3<f16>", "vec4<f16>", "vec2<f32>", "vec3<f32>", "vec4<f32>",
+  "i32", "vec2<i32>", "vec3<i32>", "vec4<i32>",
+  "u32", "vec2<u32>", "vec3<u32>", "vec4<u32>",
+  "vec2h", "vec3h", "vec4h", "vec2f", "vec3f", "vec4f",
+  "vec2i", "vec3i", "vec4i",
+  "vec2u", "vec3u", "vec4u",
+  "atomic<u32>", "atomic<i32>",
+  "mat2x2<f16>", "mat3x2<f16>", "mat4x2<f16>", "mat2x3<f16>", "mat3x3<f16>", "mat4x3<f16>", "mat2x4<f16>", "mat3x4<f16>", "mat4x4<f16>",
+  "mat2x2<f32>", "mat3x2<f32>", "mat4x2<f32>", "mat2x3<f32>", "mat3x3<f32>", "mat4x3<f32>", "mat2x4<f32>", "mat3x4<f32>", "mat4x4<f32>",
+  "mat2x2h", "mat3x2h", "mat4x2h", "mat2x3h", "mat3x3h", "mat4x3h", "mat2x4h", "mat3x4h", "mat4x4h",
+  "mat2x2f", "mat3x2f", "mat4x2f", "mat2x3f", "mat3x3f", "mat4x3f", "mat2x4f", "mat3x4f", "mat4x4f",
+]);
+
 /** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
 export const BUILTIN_STORAGE_SIZES: ReadonlyMap<string, number> = new Map([
-  ["float", 4], ["float2", 8], ["float3", 12], ["float4", 16],
-  ["int", 4], ["int2", 8], ["int3", 12], ["int4", 16],
-  ["uint", 4], ["uint2", 8], ["uint3", 12], ["uint4", 16],
+  ["float", 4], ["float2", 8], ["float3", 16], ["float4", 16],
+  ["int", 4], ["int2", 8], ["int3", 16], ["int4", 16],
+  ["uint", 4], ["uint2", 8], ["uint3", 16], ["uint4", 16],
   ["Atomic<uint>", 4], ["Atomic<int>", 4],
   ["float2x2", 16], ["float3x3", 48], ["float4x4", 64],
+]);
+
+/** WGSL storage sizes for built-in element types. Used to auto-fill stride. */
+export const BUILTIN_STORAGE_SIZES_WGSL: ReadonlyMap<string, number> = new Map([
+  ["f16", 2],
+  ["f32", 4], ["vec2<f32>", 8], ["vec3<f32>", 16], ["vec4<f32>", 16],
+  ["vec2<f16>", 4], ["vec3<f16>", 8], ["vec4<f16>", 8],
+  ["i32", 4], ["vec2<i32>", 8], ["vec3<i32>", 16], ["vec4<i32>", 16],
+  ["u32", 4], ["vec2<u32>", 8], ["vec3<u32>", 16], ["vec4<u32>", 16],
+  ["vec2h", 4], ["vec3h", 8], ["vec4h", 8], ["vec2f", 8], ["vec3f", 16], ["vec4f", 16],
+  ["vec2i", 8], ["vec3i", 16], ["vec4i", 16],
+  ["vec2u", 8], ["vec3u", 16], ["vec4u", 16],
+  ["atomic<u32>", 4], ["atomic<i32>", 4],
+  ["mat2x2<f16>", 8], ["mat3x2<f16>", 12], ["mat4x2<f16>", 16], ["mat2x3<f16>", 16], ["mat3x3<f16>", 24], ["mat4x3<f16>", 32], ["mat2x4<f16>", 16], ["mat3x4<f16>", 24], ["mat4x4<f16>", 32],
+  ["mat2x2<f32>", 16], ["mat3x2<f32>", 24], ["mat4x2<f32>", 32], ["mat2x3<f32>", 32], ["mat3x3<f32>", 48], ["mat4x3<f32>", 64], ["mat2x4<f32>", 32], ["mat3x4<f32>", 48], ["mat4x4<f32>", 64],
+  ["mat2x2h", 8], ["mat3x2h", 12], ["mat4x2h", 16], ["mat2x3h", 16], ["mat3x3h", 24], ["mat4x3h", 32], ["mat2x4h", 16], ["mat3x4h", 24], ["mat4x4h", 32],
+  ["mat2x2f", 16], ["mat3x2f", 24], ["mat4x2f", 32], ["mat2x3f", 32], ["mat3x3f", 48], ["mat4x3f", 64], ["mat2x4f", 32], ["mat3x4f", 48], ["mat4x4f", 64],
 ]);
 
 const SPECIAL_PASS_NAMES = new Set(["common", "Image"]);
@@ -81,10 +117,11 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   const warnings: string[] = [];
   const errors: string[] = [];
   const config = options.config;
+  const language = options.language ?? "slang";
 
   if (!config?.passes) {
     return {
-      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [], resolvePassGeometry(undefined), options.buffers["__shader_studio_vertex__:Image"])],
+      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [], resolvePassGeometry(undefined), options.buffers["__shader_studio_vertex__:Image"], {}, language)],
       storage: [],
       commonCode: "",
       warnings,
@@ -111,10 +148,10 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
   // Collect all Slang source files so we can parse struct definitions and
   // auto-infer strides for custom types without needing compilation first.
   const allSources = [options.imageCode, commonCode, ...Object.values(options.buffers).filter((v): v is string => typeof v === "string")];
-  const parsedStructs = parseSlangStructs(allSources);
+  const parsedStructs = language === "wgsl" ? parseWgslStructs(allSources) : parseSlangStructs(allSources);
   const outputLayersByPass = resolveOutputLayersByPass(passEntries, errors, options.maxOutputLayers ?? 256);
   const storage = resolveStorage(config.storage, warnings, errors, options.maxStorageBuffers ?? 8, parsedStructs);
-  warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings);
+  warnOnCustomStorageReferencesInCommon(storage, commonCode, warnings, language);
   const storageNames = new Set(storage.map(({ name }) => name));
   const computePasses: RenderPassNode[] = [];
   const renderPasses: RenderPassNode[] = [];
@@ -154,7 +191,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       const computeConfig = passConfig as ComputePass;
       const dispatch = resolveDispatch(name, computeConfig.dispatch, storageNames, channels, errors);
       const defaultWorkgroupSize = dispatch.mode === "count" ? COUNT_WORKGROUP_SIZE : TEXEL_WORKGROUP_SIZE;
-      const nativeEntries = getNativeComputeEntryPoints(source);
+      const nativeEntries = language === "wgsl" ? getWgslComputeEntryPoints(source) : getNativeComputeEntryPoints(source);
       const requestedEntryPoint = computeConfig.entryPoint;
       const nativeEntryPoint = requestedEntryPoint
         ? nativeEntries.find(({ name }) => name === requestedEntryPoint)
@@ -164,6 +201,8 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
           errors.push(`${name}: entry point "${requestedEntryPoint}" was not found in its compute source`);
         } else if (nativeEntries.length > 1) {
           errors.push(`${name}: compute source has multiple entry points; select one in the config UI`);
+        } else if (language === "wgsl") {
+          errors.push(`${name}: compute source must declare a native \`@compute\` entry point`);
         } else {
           errors.push(`${name}: compute source must declare a native \`[shader("compute")]\` entry point`);
         }
@@ -179,6 +218,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         name,
         source,
         path,
+        language,
         kind: "compute",
         geometry: "fullscreen",
         output: "none",
@@ -204,6 +244,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     renderPasses.push({
       name,
       source,
+      language,
       geometry: resolvePassGeometry(passConfig),
       ...resolveModelGeometry(passConfig),
       vertexSrc: options.buffers[`__shader_studio_vertex__:${name}`],
@@ -229,7 +270,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"], resolveModelGeometry(imageConfig));
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"], resolveModelGeometry(imageConfig), language);
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -250,10 +291,12 @@ function createImagePass(
   geometry: ReturnType<typeof resolvePassGeometry>,
   vertexSrc?: string,
   modelGeometry: { modelPath?: string; modelMesh?: string } = {},
+  language: ShaderLanguageId = "slang",
 ): RenderPassNode {
   return {
     name: "Image",
     source,
+    language,
     geometry,
     ...modelGeometry,
     vertexSrc,
@@ -325,8 +368,9 @@ function resolveStorage(
       errors.push(`Storage ${name}: elementType is required`);
       valid = false;
     }
-    const builtinSize = BUILTIN_STORAGE_SIZES.get(elementType);
-    const isBuiltin = BUILTIN_STORAGE_TYPES.has(elementType);
+    // Configs authored before WGSL support use Slang spellings, so both tables hit builtin.
+    const builtinSize = BUILTIN_STORAGE_SIZES.get(elementType) ?? BUILTIN_STORAGE_SIZES_WGSL.get(elementType);
+    const isBuiltin = BUILTIN_STORAGE_TYPES.has(elementType) || BUILTIN_STORAGE_TYPES_WGSL.has(elementType);
 
     // Stride is always auto-inferred: from the built-in table for known
     // Slang types, or from parsed struct definitions in source files.
@@ -370,8 +414,11 @@ function warnOnCustomStorageReferencesInCommon(
   storage: StorageBindingNode[],
   commonCode: string,
   warnings: string[],
+  language: ShaderLanguageId = "slang",
 ): void {
-  const identifiers = collectLikelyStorageAccesses(commonCode);
+  const identifiers = language === "wgsl"
+    ? collectWgslStorageAccesses(commonCode)
+    : collectLikelyStorageAccesses(commonCode);
   for (const node of storage) {
     if (node.builtin || !identifiers.has(node.name)) {
       continue;
@@ -389,7 +436,31 @@ interface SlangToken {
 }
 
 function collectLikelyStorageAccesses(source: string): Set<string> {
-  const tokens = collectSlangTokens(source);
+  return findLikelyStorageAccesses(collectSlangTokens(source));
+}
+
+/**
+ * WGSL storage-access scan. WGSL block comments nest and there is no
+ * preprocessor, so Slang's tokenizer cannot be reused; the declaration
+ * heuristics in findLikelyStorageAccesses are language-agnostic.
+ */
+export function collectWgslStorageAccesses(source: string): Set<string> {
+  return findLikelyStorageAccesses(collectWgslTokens(source));
+}
+
+/** Tokenizes WGSL for the storage-access scan: identifiers plus single symbols (`->` kept whole). */
+function collectWgslTokens(source: string): SlangToken[] {
+  const masked = maskWgslNonCode(source);
+  const tokens: SlangToken[] = [];
+  const pattern = /[A-Za-z_][A-Za-z0-9_]*|->|[^\sA-Za-z0-9_]/g;
+  for (const match of masked.matchAll(pattern)) {
+    const text = match[0];
+    tokens.push(/^[A-Za-z_]/.test(text) ? { kind: "identifier", text } : { kind: "symbol", text });
+  }
+  return tokens;
+}
+
+function findLikelyStorageAccesses(tokens: SlangToken[]): Set<string> {
   const locallyDeclared = new Set<string>();
   for (let index = 1; index < tokens.length; index++) {
     const token = tokens[index];

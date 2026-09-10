@@ -95,6 +95,44 @@ describe("dedupeCompilerErrors", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("collapses one WGSL user error reported by every pass", () => {
+    const result = dedupeCompilerErrors([
+      "Image: WGSL L3:7 unknown identifier 'stepp'",
+      "BufferA: WGSL L3:7 unknown identifier 'stepp'",
+    ]);
+
+    expect(result).toEqual(["Image: WGSL L3:7 unknown identifier 'stepp'"]);
+  });
+
+  it("keeps WGSL errors on different lines apart", () => {
+    const result = dedupeCompilerErrors([
+      "Image: WGSL L3:7 unknown identifier 'stepp'",
+      "BufferA: WGSL L9:7 unknown identifier 'stepp'",
+    ]);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("collapses repeated WGSL internal errors across passes", () => {
+    const result = dedupeCompilerErrors([
+      "Image: WGSL internal: L12:7 prelude broke",
+      "BufferA: WGSL internal: L12:7 prelude broke",
+    ]);
+
+    expect(result).toHaveLength(1);
+  });
+
+  it("keeps differently worded WGSL errors apart, even at one location", () => {
+    // Tint and naga word the same mistake differently; without a shared
+    // wording there is nothing safe to collapse.
+    const result = dedupeCompilerErrors([
+      "Image: WGSL L3:7 unknown identifier 'stepp'",
+      "Image: WGSL L3:7 cannot resolve 'stepp'",
+    ]);
+
+    expect(result).toHaveLength(2);
+  });
+
   it("collapses repeated messages that carry no error heading at all", () => {
     const result = dedupeCompilerErrors([
       "Superseded by a newer compile",

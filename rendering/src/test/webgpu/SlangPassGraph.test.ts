@@ -1771,3 +1771,164 @@ describe("SlangPassGraph public helpers", () => {
     ]);
   });
 });
+
+describe("WGSL pass graph language", () => {
+  const wgslImage = "fn mainImage(coord: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.0); }";
+  const wgslCompute = "@compute @workgroup_size(8, 8, 1)\nfn mainCompute(@builtin(global_invocation_id) id: vec3<u32>) {}";
+
+  function buildWgsl(config: ShaderConfig, buffers: Record<string, string> = {}) {
+    return buildSlangPassGraph({
+      imageCode: wgslImage,
+      config,
+      buffers,
+      canvasWidth: 320,
+      canvasHeight: 180,
+      language: "wgsl",
+    });
+  }
+
+  it("defaults every node to slang when no language is given", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: null,
+      buffers: {},
+      canvasWidth: 320,
+      canvasHeight: 180,
+    });
+    expect(graph.passes[0]?.language).toBe("slang");
+  });
+
+  it("tags every node with the graph language", () => {
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        BufferA: { path: "buffer-a.wgsl", inputs: {} },
+      },
+    }, { BufferA: wgslImage });
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes.map((pass) => [pass.name, pass.language])).toEqual([
+      ["BufferA", "wgsl"],
+      ["Image", "wgsl"],
+    ]);
+  });
+
+  it("detects WGSL compute entry points with their workgroup sizes", () => {
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        Simulate: { type: "compute", path: "sim.wgsl", inputs: {} },
+      },
+    }, { Simulate: wgslCompute });
+    expect(graph.errors).toEqual([]);
+    expect(graph.passes[0]).toMatchObject({
+      name: "Simulate",
+      kind: "compute",
+      language: "wgsl",
+      entryPoint: "mainCompute",
+      workgroupSize: [8, 8, 1],
+    });
+  });
+
+  it("reports a missing WGSL compute entry with the WGSL spelling", () => {
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        Simulate: { type: "compute", path: "sim.wgsl", inputs: {} },
+      },
+    }, { Simulate: "fn notAnEntry() {}" });
+    expect(graph.errors).toEqual([
+      "Simulate: compute source must declare a native `@compute` entry point",
+    ]);
+  });
+
+  it("reports multiple WGSL compute entries", () => {
+    const graph = buildWgsl({
+      version: "1",
+      passes: {
+        Image: { inputs: {} },
+        Simulate: { type: "compute", path: "sim.wgsl", inputs: {} },
+      },
+    }, { Simulate: "@compute @workgroup_size(1, 1, 1)\nfn a() {}\n@compute @workgroup_size(1, 1, 1)\nfn b() {}" });
+    expect(graph.errors).toEqual([
+      "Simulate: compute source has multiple entry points; select one in the config UI",
+    ]);
+  });
+
+  it("auto-fills stride for WGSL builtin spellings and keeps Slang spellings builtin", () => {
+    const graph = buildWgsl({
+      version: "1",
+      storage: {
+        half: { count: 8, elementType: "f16" },
+        half3: { count: 8, elementType: "vec3<f16>" },
+        native3: { count: 8, elementType: "vec3<f32>" },
+        legacy3: { count: 8, elementType: "float3" },
+        vec: { count: 8, elementType: "vec4<f32>" },
+        mat: { count: 2, elementType: "mat4x4<f32>" },
+        counter: { count: 4, elementType: "atomic<u32>" },
+        legacy: { count: 8, elementType: "float4" },
+        custom: { count: 4, elementType: "MyData" },
+      },
+      passes: { Image: { inputs: {} } },
+    }, {
+      common: "struct MyData { pos: vec4<f32>, count: f32, }",
+    });
+    expect(graph.errors).toEqual([]);
+    const strideOf = (name: string) => graph.storage.find((node) => node.name === name)?.stride;
+    expect(strideOf("half")).toBe(2);
+    expect(strideOf("half3")).toBe(8);
+    expect(strideOf("native3")).toBe(16);
+    expect(strideOf("legacy3")).toBe(16);
+    expect(strideOf("vec")).toBe(16);
+    expect(strideOf("mat")).toBe(64);
+    expect(strideOf("counter")).toBe(4);
+    expect(strideOf("legacy")).toBe(16);
+    expect(strideOf("custom")).toBe(32);
+    expect(graph.storage.find((node) => node.name === "vec")).toMatchObject({ builtin: true });
+    expect(graph.storage.find((node) => node.name === "custom")).toMatchObject({ builtin: false });
+  });
+
+  it("infers WGSL storage strides for f16 structs with arrays and explicit layout", () => {
+    const graph = buildWgsl({
+      version: "1",
+      storage: { particles: { count: 4, elementType: "Particle" } },
+      passes: { Image: { inputs: {} } },
+    }, {
+      common: `enable f16;
+struct Child { value: vec3<f32>, }
+struct Particle {
+  weight: f32,
+  @align(16) offset: f32,
+  @size(16) lifetime: f32,
+  samples: array<Child, 2>,
+  halfValue: f16,
+}`,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage).toContainEqual(expect.objectContaining({
+      name: "particles",
+      elementType: "Particle",
+      stride: 96,
+    }));
+  });
+
+  it("warns when WGSL common code references custom storage, ignoring comments", () => {
+    const config: ShaderConfig = {
+      version: "1",
+      storage: { custom: { count: 4, elementType: "MyData" } },
+      passes: { Image: { inputs: {} } },
+    };
+    const commented = buildWgsl(config, {
+      common: "/* nested /* custom[0] */ still commented */\n// custom[1]\nfn helper() -> f32 { return 1.0; }\nstruct MyData { x: f32, }",
+    });
+    expect(commented.warnings).toEqual([]);
+    const referenced = buildWgsl(config, {
+      common: "fn helper() -> f32 { return custom[0]; }\nstruct MyData { x: f32, }",
+    });
+    expect(referenced.warnings).toHaveLength(1);
+    expect(referenced.warnings[0]).toContain('Storage "custom"');
+  });
+});

@@ -31,6 +31,7 @@ vi.mock("../../webgpu/SlangCompiler", () => ({
 import { WorkerSlangCompiler, MainThreadSlangCompiler } from "../../webgpu/AsyncSlangCompiler";
 import { loadSlangModule } from "../../webgpu/SlangModuleLoader";
 import { SlangCompiler } from "../../webgpu/SlangCompiler";
+import { WgslCompiler } from "../../webgpu/WgslCompiler";
 
 const workerCreate = WorkerSlangCompiler.create as unknown as ReturnType<typeof vi.fn>;
 const mainThreadCtor = MainThreadSlangCompiler as unknown as ReturnType<typeof vi.fn>;
@@ -420,5 +421,25 @@ describe("WebGPURenderingEngine.createCompiler", () => {
     expect(workerCreate).not.toHaveBeenCalled();
     expect(loadSlangModuleMock).toHaveBeenCalledWith("s.js", "s.wasm");
     expect(mainThreadCtor).toHaveBeenCalledTimes(1);
+  });
+
+  it("(e) reports slang for the default engine and wgsl for a WGSL engine", () => {
+    expect(new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" }).getShaderLanguage()).toBe("slang");
+    expect(new WebGPURenderingEngine(undefined, "wgsl").getShaderLanguage()).toBe("wgsl");
+  });
+
+  it("(f) returns a WgslCompiler for WGSL without touching the worker/WASM path", async () => {
+    vi.stubGlobal("Worker", FakeWorker);
+    const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const engine = new WebGPURenderingEngine(undefined, "wgsl");
+    const compiler = await createCompiler(engine);
+
+    expect(compiler).toBeInstanceOf(WgslCompiler);
+    expect(workerCreate).not.toHaveBeenCalled();
+    expect(loadSlangModuleMock).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    compiler.dispose();
   });
 });

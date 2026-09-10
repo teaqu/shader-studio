@@ -17,6 +17,10 @@ export interface SlangPassPipelineDescriptor {
   storage?: StorageBindingNode[];
   geometry: GeometryType;
   uniformBufferSize?: number;
+  /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
+  sourceLineOffset?: number;
+  /** User-source lines after the prelude; clamps generated-code errors. */
+  sourceLineCount?: number;
 }
 
 export interface SlangChannelResource {
@@ -37,11 +41,46 @@ export const BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba16float";
 export const HIGH_PRECISION_BUFFER_TEXTURE_FORMAT: GPUTextureFormat = "rgba32float";
 export const MESH_UNIFORM_SIZE = 256;
 
-async function shaderModuleErrors(shaderModule: GPUShaderModule, passName: string): Promise<string[]> {
-  const info = await shaderModule.getCompilationInfo?.();
-  return (info?.messages ?? [])
-    .filter((message) => message.type === "error")
-    .map((message) => `${passName}: WGSL L${message.lineNum}:${message.linePos} ${message.message}`);
+/** An assembled-module line mapped onto user lines. */
+export interface RemappedWgslDiagnosticLine {
+  /** 1-based line to report. */
+  line: number;
+  /** True when the error sits in generated code (prelude or entry points). */
+  internal: boolean;
+}
+
+/** Maps assembled-module diagnostics onto user lines for this pass's language. */
+export function remapWgslDiagnosticLine(
+  lineNum: number,
+  sourceLineOffset: number | undefined,
+  userLineCount?: number,
+): RemappedWgslDiagnosticLine {
+  if (sourceLineOffset === undefined) {
+    return { line: lineNum, internal: false };
+  }
+  if (lineNum <= sourceLineOffset) {
+    // Inside the generated prelude — a shader-studio bug, never remapped.
+    return { line: lineNum, internal: true };
+  }
+  if (userLineCount !== undefined && lineNum > sourceLineOffset + userLineCount) {
+    // Past the end of user source (generated entry points): clamp to the
+    // last user line and mark it.
+    return { line: Math.max(1, sourceLineOffset + userLineCount), internal: true };
+  }
+  return { line: lineNum - sourceLineOffset, internal: false };
+}
+
+/** Formats one browser-compiler error, marking generated-code errors `internal:`. */
+export function formatWgslDiagnostic(
+  passName: string,
+  lineNum: number,
+  linePos: number,
+  message: string,
+  sourceLineOffset: number | undefined,
+  userLineCount?: number,
+): string {
+  const remapped = remapWgslDiagnosticLine(lineNum, sourceLineOffset, userLineCount);
+  return `${passName}: WGSL ${remapped.internal ? "internal: " : ""}L${remapped.line}:${linePos} ${message}`;
 }
 
 export class SlangPassPipeline {
@@ -69,9 +108,12 @@ export class SlangPassPipeline {
   async rebuild(wgsl: string): Promise<string[]> {
     const generation = ++this.rebuildGeneration;
     this.resetResources();
-    const shaderModule = this.device.createShaderModule({
-      code: allowNonUniformDerivatives(wgsl),
-    });
+    const moduleSource = allowNonUniformDerivatives(wgsl);
+    // The diagnostic filter adds a generated line only when no filter exists.
+    const sourceLineOffset = this.descriptor.sourceLineOffset === undefined
+      ? undefined
+      : this.descriptor.sourceLineOffset + (moduleSource === wgsl ? 0 : 1);
+    const shaderModule = this.device.createShaderModule({ code: moduleSource });
     // An explicit layout (instead of layout:"auto") covers every DECLARED
     // channel binding. With "auto", a shader that declares a channel but
     // never statically uses it gets a layout without those bindings, and the
@@ -115,7 +157,7 @@ export class SlangPassPipeline {
         if (generation !== this.rebuildGeneration) {
           return [];
         }
-        const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+        const diagnostics = await this.moduleErrors(shaderModule, sourceLineOffset);
         if (diagnostics.length > 0) {
           return diagnostics;
         }
@@ -164,11 +206,26 @@ export class SlangPassPipeline {
       });
     }
 
-    const diagnostics = await shaderModuleErrors(shaderModule, this.descriptor.name);
+    const diagnostics = await this.moduleErrors(shaderModule, sourceLineOffset);
     if (generation !== this.rebuildGeneration) {
       return [];
     }
     return diagnostics;
+  }
+
+  /** Browser-compiler errors, remapped from assembled-module lines onto user lines. */
+  private async moduleErrors(shaderModule: GPUShaderModule, sourceLineOffset?: number): Promise<string[]> {
+    const info = await shaderModule.getCompilationInfo?.();
+    return (info?.messages ?? [])
+      .filter((message) => message.type === "error")
+      .map((message) => formatWgslDiagnostic(
+        this.descriptor.name,
+        message.lineNum,
+        message.linePos,
+        message.message,
+        sourceLineOffset,
+        this.descriptor.sourceLineCount,
+      ));
   }
 
   updateDescriptor(descriptor: SlangPassPipelineDescriptor): void {
@@ -296,7 +353,9 @@ export class SlangPassPipeline {
     const entries: GPUBindGroupEntry[] = [{ binding: 0, resource: { buffer: this.uniformBuffer } }];
     const plan = buildSlangBindingPlan(this.descriptor.channels);
     const channelEntries = slangChannelResourceEntries(plan, sorted, this.sampler);
-    if (!channelEntries) { this.invalidateBindGroup(); return; }
+    if (!channelEntries) {
+      this.invalidateBindGroup(); return;
+    }
     entries.push(...channelEntries);
     const storageBaseBinding = plan.nextBinding;
     for (const { node, buffer } of resolvedStorage) {
@@ -331,15 +390,15 @@ export class SlangPassPipeline {
   }
 
   getMeshUniformBuffer(): GPUBuffer | null {
-    return this.meshUniformBuffer; 
+    return this.meshUniformBuffer;
   }
 
   getDepthView(): GPUTextureView | null {
-    return this.depthTexture?.createView() ?? null; 
+    return this.depthTexture?.createView() ?? null;
   }
 
   isMesh(): boolean {
-    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen"; 
+    return this.descriptor.geometry !== undefined && this.descriptor.geometry !== "fullscreen";
   }
 
   getOutputSize(): { width: number; height: number } {

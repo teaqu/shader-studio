@@ -7,8 +7,8 @@ import {
   type ShaderProgram,
 } from "./ShaderCanvasHarness";
 
-const videoPath = new URL("../fixtures/shader-corpus/assets/video-channel-test.mp4", import.meta.url).href;
-const audioPath = new URL("../fixtures/shader-corpus/assets/audio-channel-test.wav", import.meta.url).href;
+const videoPath = new URL("../../../../tests/fixtures/shader-corpus/assets/video-channel-test.mp4", import.meta.url).href;
+const audioPath = new URL("../../../../tests/fixtures/shader-corpus/assets/audio-channel-test.wav", import.meta.url).href;
 
 const inputPrograms: Record<ShaderLanguage, ShaderProgram> = {
   glsl: {

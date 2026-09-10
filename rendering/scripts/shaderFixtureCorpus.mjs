@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const CONFIG_SUFFIX = ".sha.json";
-const TEXT_EXTENSIONS = new Set([".glsl", ".slang"]);
+const TEXT_EXTENSIONS = new Set([".glsl", ".slang", ".wgsl"]);
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -117,7 +117,8 @@ function customUniforms(scriptPath) {
 
 function buildProject(root, configPath, shaderPath) {
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const language = path.extname(shaderPath) === ".slang" ? "slang" : "glsl";
+  const extension = path.extname(shaderPath);
+  const language = extension === ".slang" ? "slang" : extension === ".wgsl" ? "wgsl" : "glsl";
   const buffers = {};
   const sourcePaths = {};
 
@@ -180,7 +181,7 @@ export function loadShaderFixtureCorpus(root) {
     .filter((filePath) => filePath.endsWith(CONFIG_SUFFIX))
     .flatMap((configPath) => {
       const shaderStem = configPath.slice(0, -CONFIG_SUFFIX.length);
-      return [".slang", ".glsl"]
+      return [".slang", ".glsl", ".wgsl"]
         .map((extension) => `${shaderStem}${extension}`)
         .filter((shaderPath) => fs.existsSync(shaderPath) && TEXT_EXTENSIONS.has(path.extname(shaderPath)))
         .map((shaderPath) => buildProject(root, configPath, shaderPath));

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { ShaderDebugger, SlangDebugEngine, VariableCaptureBuilder } from "@shader-studio/debug";
+import { ShaderDebugger, SlangDebugEngine, VariableCaptureBuilder, WgslDebugEngine } from "@shader-studio/debug";
 import type { DebugAnalysisRequest } from "@shader-studio/types";
 import projects from "virtual:shader-fixture-corpus";
 import {
@@ -10,24 +10,33 @@ import {
 import type { CaptureRequest, IVariableCapturer } from "../../capture/VariableCapturer";
 
 const expectedCompileErrors = new Map<string, RegExp>([
-  ["foundation/versions/invalid-version/preview.slang", /unknown language version '2024'/],
+  ["slang/foundation/versions/invalid-version/preview.slang", /unknown language version '2024'/],
 ]);
 
 const slangSpecificRenderProjects = new Set([
-  "foundation/includes/include-preview.slang",
-  "foundation/modules/import-preview.slang",
-  "foundation/versions/invalid-version/preview.slang",
-  "foundation/versions/latest/preview.slang",
-  "foundation/versions/legacy/preview.slang",
-  "foundation/versions/slang-2025/preview.slang",
-  "foundation/versions/slang-2026/preview.slang",
-  "foundation/versions/version-mismatch/preview.slang",
-  "foundation/workspace/foundation.slang",
+  "slang/foundation/includes/include-preview.slang",
+  "slang/foundation/modules/import-preview.slang",
+  "slang/foundation/versions/invalid-version/preview.slang",
+  "slang/foundation/versions/latest/preview.slang",
+  "slang/foundation/versions/legacy/preview.slang",
+  "slang/foundation/versions/slang-2025/preview.slang",
+  "slang/foundation/versions/slang-2026/preview.slang",
+  "slang/foundation/versions/version-mismatch/preview.slang",
+  "slang/foundation/workspace/foundation.slang",
 ]);
 
 function expectedCompileError(project: (typeof projects)[number]): RegExp | undefined {
   return expectedCompileErrors.get(project.name);
 }
+
+/**
+ * Documented WGSL compute-replay limits (see compute debugging in
+ * docs/features/wgsl-authoring.md). A plan that fails ONLY with these
+ * diagnostics is pinned as expected, not a failure; anything else fails.
+ */
+const expectedWgslReplayLimits: RegExp[] = [
+  /does not support writes to configured storage/,
+];
 
 function mayExceedPortableImageLimit(project: (typeof projects)[number]): boolean {
   const imageInputs = Object.keys(project.config?.passes?.Image?.inputs ?? {}).length;
@@ -144,9 +153,92 @@ function slangRequest(
   };
 }
 
-function slangPlanKey(request: CaptureRequest): string {
-  return request.slangPlan
-    ? request.slangPlan.files.map((file) => `${file.uri}\0${file.source}`).join("\0")
+/** Resolve a config-relative pass path against the config directory. */
+function resolveCorpusPath(configDir: string, rel: string): string {
+  const parts: string[] = configDir.split("/");
+  for (const segment of rel.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") parts.pop();
+    else parts.push(segment);
+  }
+  return parts.join("/");
+}
+
+/** Absolute config-side path of a WGSL pass file (Image resolves to the opened shader). */
+function wgslPassPath(project: (typeof projects)[number], pass: string): string {
+  const configDir = (project.path ?? "/").split("/").slice(0, -1).join("/");
+  if (pass === "Image") return project.path ?? `/${project.name}`;
+  if (pass === "common") {
+    const commonRel = project.config?.passes?.common?.path;
+    return commonRel ? resolveCorpusPath(configDir, commonRel) : `/${project.name}/common.wgsl`;
+  }
+  const passRel = project.config?.passes?.[pass]?.path;
+  return passRel ? resolveCorpusPath(configDir, passRel) : `/${project.name}/${pass}.wgsl`;
+}
+
+/**
+ * WGSL analogue of slangRequest, mirroring WgslDebugStrategy.buildRequest:
+ * the root pass file plus the common file when configured, compute replay
+ * metadata for compute passes, and the selected file/line as source.
+ */
+function wgslRequest(
+  project: (typeof projects)[number],
+  pass: string,
+  source: string,
+  line: number,
+): DebugAnalysisRequest {
+  const isCommon = pass === "common";
+  const ownerPass = isCommon ? "Image" : pass;
+  const rootPath = ownerPass === "Image" ? project.path ?? `/${project.name}` : wgslPassPath(project, ownerPass);
+  const rootSource = ownerPass === "Image" ? project.image : source;
+  const files = [{
+    uri: rootPath,
+    path: rootPath,
+    source: rootSource,
+    version: 1,
+    moduleName: "",
+    ownerPass,
+  }];
+  const commonSource = (project.buffers as Record<string, string> | undefined)?.["common"];
+  const commonPath = project.config?.passes?.common?.path
+    ? wgslPassPath(project, "common")
+    : undefined;
+  if (commonPath && commonSource !== undefined && commonPath !== rootPath) {
+    files.push({
+      uri: commonPath,
+      path: commonPath,
+      source: commonSource,
+      version: 1,
+      moduleName: "",
+      ownerPass,
+    });
+  }
+  const selectedPath = isCommon && commonPath ? commonPath : rootPath;
+  const selectedSource = isCommon && commonSource !== undefined ? commonSource : rootSource;
+  const passConfig = project.config?.passes?.[ownerPass];
+  const compute = passConfig && "type" in passConfig && passConfig.type === "compute"
+    ? {
+      ...("entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
+      storageNames: Object.keys(project.config?.storage ?? {}),
+    }
+    : undefined;
+  return {
+    workspace: {
+      rootUri: rootPath,
+      rootPath,
+      passName: ownerPass,
+      ...(compute ? { compute } : {}),
+      files,
+      contentHash: `${project.name}:${pass}`,
+    },
+    sourceUri: selectedPath,
+    position: { line, character: Math.max(0, selectedSource.split("\n")[line]?.search(/\S/) ?? 0) },
+  };
+}
+
+function debugPlanKey(request: CaptureRequest): string {
+  return request.debugPlan
+    ? request.debugPlan.files.map((file) => `${file.uri}\0${file.source}`).join("\0")
     : request.captureShader;
 }
 
@@ -160,6 +252,7 @@ describe("slang-multipass-test shader corpus", () => {
     diagnosticGlobal.__captureDiag = false;
     harnesses.set("glsl", createShaderCanvasHarness("glsl"));
     harnesses.set("slang", createShaderCanvasHarness("slang"));
+    harnesses.set("wgsl", createShaderCanvasHarness("wgsl"));
   });
 
   afterAll(() => {
@@ -174,7 +267,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(78);
+    expect(projects).toHaveLength(123);
   });
 
   it("provides a GLSL counterpart for every portable Slang project", () => {
@@ -189,7 +282,9 @@ describe("slang-multipass-test shader corpus", () => {
     const violations: string[] = [];
 
     for (const slangProject of portableSlangProjects) {
-      const counterpartName = slangProject.name.replace(/\.slang$/, "_glsl.glsl");
+      const counterpartName = slangProject.name
+        .replace(/^slang\//, "glsl/")
+        .replace(/\.slang$/, "_glsl.glsl");
       const glslProject = projectsByName.get(counterpartName);
       if (!glslProject) {
         violations.push(`${slangProject.name}: missing ${counterpartName}`);
@@ -228,20 +323,73 @@ describe("slang-multipass-test shader corpus", () => {
     expect(violations).toEqual([]);
   });
 
+  it("provides a WGSL counterpart for every portable Slang project", () => {
+    const projectsByName = new Map(projects.map((project) => [project.name, project]));
+    const portableSlangProjects = projects
+      .filter((project) => project.language === "slang")
+      .filter((project) => {
+        const passes = Object.values(project.config?.passes ?? {});
+        return !project.config?.storage && !passes.some((pass) => pass?.type === "compute");
+      })
+      .filter((project) => !slangSpecificRenderProjects.has(project.name));
+    const violations: string[] = [];
+
+    for (const slangProject of portableSlangProjects) {
+      const counterpartName = slangProject.name
+        .replace(/^slang\//, "wgsl/")
+        .replace(/\.slang$/, ".wgsl");
+      const wgslProject = projectsByName.get(counterpartName);
+      if (!wgslProject) {
+        violations.push(`${slangProject.name}: missing ${counterpartName}`);
+        continue;
+      }
+      const slangPasses = slangProject.config?.passes ?? {};
+      const wgslPasses = wgslProject.config?.passes ?? {};
+      if (JSON.stringify(Object.keys(slangPasses).sort()) !== JSON.stringify(Object.keys(wgslPasses).sort())) {
+        violations.push(`${slangProject.name}: pass names differ`);
+        continue;
+      }
+      for (const [passName, slangPass] of Object.entries(slangPasses)) {
+        const wgslPass = wgslPasses[passName];
+        const inputContract = (pass: typeof slangPass) => Object.entries(pass?.inputs ?? {})
+          .map(([key, input]) => [key, input.type, "source" in input ? input.source : undefined]);
+        const geometryType = (pass: typeof slangPass) =>
+          pass && "geometry" in pass ? pass.geometry?.type : undefined;
+        const contract = (pass: typeof slangPass) => JSON.stringify({
+          inputs: inputContract(pass),
+          geometry: geometryType(pass),
+          path: Boolean(pass && "path" in pass && pass.path),
+          vertex: Boolean(pass && "vertex" in pass && pass.vertex),
+        });
+        if (contract(slangPass) !== contract(wgslPass)) {
+          violations.push(`${slangProject.name}: ${passName} contract differs`);
+        }
+        if (wgslPass && "path" in wgslPass && wgslPass.path && !wgslPass.path.endsWith(".wgsl")) {
+          violations.push(`${counterpartName}: ${passName} path is not WGSL`);
+        }
+        if (wgslPass && "vertex" in wgslPass && wgslPass.vertex && !wgslPass.vertex.endsWith(".wgsl")) {
+          violations.push(`${counterpartName}: ${passName} vertex is not WGSL`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("assigns feature-appropriate corpus resolutions", () => {
-    expect(canvasSize(projects.find((project) => project.name === "cat-glsl.glsl")!)).toBe(128);
-    expect(canvasSize(projects.find((project) => project.name === "video.slang")!)).toBe(96);
-    expect(canvasSize(projects.find((project) => project.name === "compute-lab/game-of-life.slang")!)).toBe(64);
-    expect(canvasSize(projects.find((project) => project.name === "foundation/versions/latest/preview.slang")!)).toBe(32);
-    expect(sampleTimes(projects.find((project) => project.name === "two-meshes.slang")!)).toEqual([1]);
-    expect(sampleTimes(projects.find((project) => project.name === "particles.slang")!)).toHaveLength(3);
+    expect(canvasSize(projects.find((project) => project.name === "glsl/cat-glsl.glsl")!)).toBe(128);
+    expect(canvasSize(projects.find((project) => project.name === "slang/video.slang")!)).toBe(96);
+    expect(canvasSize(projects.find((project) => project.name === "slang/compute-lab/game-of-life.slang")!)).toBe(64);
+    expect(canvasSize(projects.find((project) => project.name === "slang/foundation/versions/latest/preview.slang")!)).toBe(32);
+    expect(sampleTimes(projects.find((project) => project.name === "slang/two-meshes.slang")!)).toEqual([1]);
+    expect(sampleTimes(projects.find((project) => project.name === "slang/particles.slang")!)).toHaveLength(3);
   });
 
   it("keeps the paired portable feature-coverage contract comprehensive", () => {
-    const slang = projects.find((project) => project.name === "feature-coverage.slang")!;
-    const glsl = projects.find((project) => project.name === "feature-coverage_glsl.glsl")!;
+    const slang = projects.find((project) => project.name === "slang/feature-coverage.slang")!;
+    const glsl = projects.find((project) => project.name === "glsl/feature-coverage_glsl.glsl")!;
     for (const project of [slang, glsl]) {
-      expect(project.config?.script).toBe("./uniforms.ts");
+      expect(project.config?.script).toBe("uniforms.ts");
       expect(Object.keys(project.config?.passes ?? {}).sort()).toEqual(["BufferA", "Image", "common"]);
       expect(project.config?.passes?.Image?.inputs).toMatchObject({
         patternTex: { type: "texture" },
@@ -260,12 +408,39 @@ describe("slang-multipass-test shader corpus", () => {
     expect(glsl.buffers?.["__shader_studio_vertex__:Image"]).toContain("samplePatternTex");
   });
 
-  it("plans inline rendering and variable capture across every shader line", { timeout: 30_000 }, () => {
+  it("keeps the WGSL feature-coverage contract comprehensive", () => {
+    const wgsl = projects.find((project) => project.name === "wgsl/feature-coverage.wgsl")!;
+    expect(wgsl.config?.script).toBe("uniforms.ts");
+    expect(Object.keys(wgsl.config?.passes ?? {}).sort()).toEqual(["BufferA", "Image", "common"]);
+    expect(wgsl.config?.passes?.Image?.inputs).toMatchObject({
+      patternTex: { type: "texture" },
+      historyBuffer: { type: "buffer", source: "BufferA" },
+    });
+    expect(wgsl.buffers).toHaveProperty("BufferA");
+    expect(wgsl.buffers).toHaveProperty("common");
+    expect(wgsl.buffers).toHaveProperty("__shader_studio_vertex__:Image");
+    for (const featureToken of [
+      "CoverageSample",
+      "array<f32, 3>",
+      "uBool",
+      "u32(iFrame)",
+      "dpdx(sample.energy)",
+      "patternTexSize",
+      "coverageGainVec",
+    ]) {
+      expect(wgsl.image).toContain(featureToken);
+    }
+    expect(wgsl.buffers?.["__shader_studio_vertex__:Image"]).toContain("patternTexSampleLevel");
+  });
+
+  it("plans inline rendering and variable capture across every shader line", { timeout: 60_000 }, () => {
     const failures: DebugSweepFailure[] = [];
     const slangEngine = new SlangDebugEngine();
+    const wgslEngine = new WgslDebugEngine();
     let lineCount = 0;
     let inlinePlanCount = 0;
     let capturePlanCount = 0;
+    let wgslPlanCount = 0;
 
     for (const project of projects) {
       for (const { pass, source } of debugSources(project)) {
@@ -320,6 +495,59 @@ describe("slang-multipass-test shader corpus", () => {
             continue;
           }
 
+          if (project.language === "wgsl") {
+            const request = wgslRequest(project, pass, source, line);
+            const analysis = wgslEngine.analyze(request);
+            if (!analysis.ok) {
+              continue;
+            }
+            const pushUnlessLimited = (
+              stage: "inline" | "capture",
+              diagnostics: Array<{ message: string }>,
+            ) => {
+              // Every diagnostic must be a known replay limit; a real error
+              // bundled alongside one still fails.
+              if (
+                diagnostics.length > 0 &&
+                diagnostics.every((diagnostic) =>
+                  expectedWgslReplayLimits.some((limit) => limit.test(diagnostic.message)))) {
+                return;
+              }
+              failures.push({
+                project: project.name,
+                pass,
+                line,
+                stage,
+                source: lines[line],
+                message: diagnostics.map((diagnostic) => diagnostic.message).join("; "),
+              });
+            };
+            if (analysis.analysis.previewValueId) {
+              const inline = wgslEngine.planPreview(request, {
+                normalizeMode: "off",
+                stepEdge: null,
+              });
+              if (inline.ok) {
+                inlinePlanCount += 1;
+                wgslPlanCount += 1;
+              } else {
+                pushUnlessLimited("inline", inline.diagnostics);
+              }
+            }
+
+            const capture = wgslEngine.planCapture(
+              request,
+              analysis.analysis.visibleValues.map((value) => value.id),
+              { normalizeMode: "off", stepEdge: null },
+            );
+            if (capture.ok) {
+              capturePlanCount += 1;
+              wgslPlanCount += 1;
+            } else {
+              pushUnlessLimited("capture", capture.diagnostics);
+            }
+            continue;
+          }
           const request = slangRequest(project, pass, source, line);
           const analysis = slangEngine.analyze(request);
           if (!analysis.ok) {
@@ -368,12 +596,13 @@ describe("slang-multipass-test shader corpus", () => {
     expect(lineCount).toBeGreaterThan(3_000);
     expect(inlinePlanCount).toBeGreaterThan(500);
     expect(capturePlanCount).toBeGreaterThan(500);
+    expect(wgslPlanCount).toBeGreaterThan(500);
     expect(formatDebugSweepFailures(failures)).toBe("");
   });
 
   it("compiles and executes every debugger-coverage line on the real backends", { timeout: 60_000 }, async () => {
     const coverageProjects = projects.filter((project) =>
-      /foundation\/debugging\/debug-coverage(?:_glsl)?\.(?:glsl|slang)$/.test(project.name));
+      /foundation\/debugging\/debug-coverage(?:_glsl)?\.(?:glsl|slang|wgsl)$/.test(project.name));
     const failures: DebugSweepFailure[] = [];
     const compiled = new Set<string>();
     let executed = 0;
@@ -387,7 +616,7 @@ describe("slang-multipass-test shader corpus", () => {
       stage: "inline" | "capture",
       request: CaptureRequest,
     ): Promise<void> {
-      const key = `${project.language}\0${stage}\0${slangPlanKey(request)}`;
+      const key = `${project.language}\0${stage}\0${debugPlanKey(request)}`;
       if (compiled.has(key)) {
         return;
       }
@@ -421,13 +650,18 @@ describe("slang-multipass-test shader corpus", () => {
       harness.resize(32, 32);
       await harness.compile(project);
       const capturer = harness.engine.createVariableCapturer();
+      const wgslEngine = project.language === "wgsl" ? new WgslDebugEngine() : null;
       capturer.setCustomUniforms(
         harness.engine.getCustomUniformDeclarations(),
         harness.engine.getCurrentCustomUniforms(),
       );
       try {
         for (const { pass, source } of debugSources(project)) {
-          const path = pass === "Image" ? project.path : project.slangSourcePaths?.[pass];
+          const path = pass === "Image"
+            ? project.path
+            : project.language === "wgsl"
+              ? wgslPassPath(project, pass)
+              : project.slangSourcePaths?.[pass];
           capturer.setCompileContext(
             harness.engine.getVariableCaptureCompileContext(source, pass, path),
           );
@@ -460,14 +694,18 @@ describe("slang-multipass-test shader corpus", () => {
               continue;
             }
 
-            const analysisRequest = slangRequest(project, pass, source, line);
-            const slangEngine = new SlangDebugEngine();
-            const analysis = slangEngine.analyze(analysisRequest);
+            const analysisRequest = wgslEngine
+              ? wgslRequest(project, pass, source, line)
+              : slangRequest(project, pass, source, line);
+            const debugEngine = wgslEngine ?? new SlangDebugEngine();
+            const analysis = debugEngine.analyze(analysisRequest);
             if (!analysis.ok) {
               continue;
             }
+            // WGSL previews capture to vec4f; Slang captures to float4.
+            const inlineType = wgslEngine ? "vec4f" : "float4";
             if (analysis.analysis.previewValueId) {
-              const inline = slangEngine.planPreview(
+              const inline = debugEngine.planPreview(
                 analysisRequest,
                 { normalizeMode: "off", stepEdge: null },
               );
@@ -475,14 +713,14 @@ describe("slang-multipass-test shader corpus", () => {
                 const root = inline.plan.files.find((file) => file.uri === inline.plan.rootUri)!;
                 await execute(capturer, project, pass, line, lines[line], "inline", {
                   varName: "inline",
-                  varType: "float4",
+                  varType: inlineType,
                   captureShader: root.source,
                   selectorIndex: 0,
-                  slangPlan: inline.plan,
+                  debugPlan: inline.plan,
                 });
               }
             }
-            const capture = slangEngine.planCapture(
+            const capture = debugEngine.planCapture(
               analysisRequest,
               analysis.analysis.visibleValues.map((value) => value.id),
               { normalizeMode: "off", stepEdge: null },
@@ -491,10 +729,10 @@ describe("slang-multipass-test shader corpus", () => {
               const root = capture.plan.files.find((file) => file.uri === capture.plan.rootUri)!;
               await execute(capturer, project, pass, line, lines[line], "capture", {
                 varName: "capture",
-                varType: "float4",
+                varType: inlineType,
                 captureShader: root.source,
                 selectorIndex: 0,
-                slangPlan: capture.plan,
+                debugPlan: capture.plan,
               });
             }
           }
@@ -504,7 +742,7 @@ describe("slang-multipass-test shader corpus", () => {
       }
     }
 
-    expect(coverageProjects).toHaveLength(2);
+    expect(coverageProjects).toHaveLength(3);
     expect(executed).toBeGreaterThan(100);
     expect(formatDebugSweepFailures(failures)).toBe("");
   });

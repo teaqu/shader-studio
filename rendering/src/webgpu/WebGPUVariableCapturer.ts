@@ -322,7 +322,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
           storage,
           compileContextGeneration,
           compileContextKey,
-          capture.slangPlan,
+          capture.debugPlan,
         );
         if (
           !shouldContinue() ||
@@ -505,14 +505,14 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     storage: StorageBindingNode[],
     compileContextGeneration: number,
     compileContextKey: string,
-    slangPlan?: DebugInstrumentationPlan,
+    debugPlan?: DebugInstrumentationPlan,
   ): Promise<CachedPipeline | null> {
     if (!this.isCompileContextCurrent(compileContextGeneration, compileContextKey)) {
       return null;
     }
     const pipelineCacheKey = JSON.stringify([
       compileContextKey,
-      slangPlan?.workspaceHash ?? "",
+      debugPlan?.workspaceHash ?? "",
       captureShader,
     ]);
     const existing = this.pipelineCache.get(pipelineCacheKey);
@@ -522,31 +522,26 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
     }
 
     captureCounters.pipelineCompiles++;
-    const selectedPlanSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
-    const selectedPlanIsCommon = Boolean(
-      slangPlan
-      && selectedPlanSource
-      && selectedPlanSource.uri !== slangPlan.rootUri
-      && selectedPlanSource.moduleName === ""
-      && selectedPlanSource.path === this.compileContext.slangSourcePath,
-    );
+    const commonPlanSource = debugPlan?.files.find(file => file.uri !== debugPlan.rootUri
+      && file.moduleName === ""
+      && (file.path === this.compileContext.slangSourcePath || file.path.toLowerCase().endsWith(".wgsl")));
     const compileResult = await this.compiler.compile(captureShader, {
       passName: "capture",
-      commonCode: selectedPlanIsCommon ? selectedPlanSource!.source : commonCode,
+      commonCode: commonPlanSource?.source ?? commonCode,
       channels,
       storage,
       passKind: "render",
       captureMode: true,
       customUniforms: this.customUniforms.map(({ name, type }) => ({ name, type })),
-      ...(slangPlan
-        ? { modules: slangPlan.files
-          .filter((file) => file.uri !== slangPlan.rootUri && (!selectedPlanIsCommon || file.uri !== selectedPlanSource?.uri))
+      ...(debugPlan
+        ? { modules: debugPlan.files
+          .filter((file) => file.uri !== debugPlan.rootUri && file.uri !== commonPlanSource?.uri)
           .map((file) => ({ moduleName: file.moduleName, path: file.path, source: file.source })) }
         : this.compileContext.slangModules?.length
           ? { modules: this.compileContext.slangModules }
           : {}),
-      ...(slangPlan
-        ? { sourcePath: slangPlan.files.find((file) => file.uri === slangPlan.rootUri)?.path }
+      ...(debugPlan
+        ? { sourcePath: debugPlan.files.find((file) => file.uri === debugPlan.rootUri)?.path }
         : this.compileContext.slangSourcePath
           ? { sourcePath: this.compileContext.slangSourcePath }
           : {}),
@@ -555,10 +550,10 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       return null;
     }
     if (!compileResult.success) {
-      const selectedSource = slangPlan?.files.find((file) => file.uri === slangPlan.selectedSourceUri);
-      const selectedLabel = selectedSource?.path ?? slangPlan?.selectedSourceUri;
+      const selectedSource = debugPlan?.files.find((file) => file.uri === debugPlan.selectedSourceUri);
+      const selectedLabel = selectedSource?.path ?? debugPlan?.selectedSourceUri;
       this.pendingError = compileResult.errors
-        .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(slangPlan!.selectedSourceUri)
+        .map((error) => selectedLabel && !error.includes(selectedLabel) && !error.includes(debugPlan!.selectedSourceUri)
           ? `${selectedLabel}: ${error}`
           : error)
         .join("\n");

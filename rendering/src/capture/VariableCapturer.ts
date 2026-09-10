@@ -68,7 +68,7 @@ export interface CaptureRequest {
   captureShader: string;
   selectorIndex?: number;
   /** Complete Slang workspace for native capture; ignored by the WebGL capturer. */
-  slangPlan?: DebugInstrumentationPlan;
+  debugPlan?: DebugInstrumentationPlan;
   hidden?: boolean;
 }
 

@@ -2,6 +2,7 @@ import type {
   AudioConfigInput,
   CubemapConfigInput,
   GeometryType,
+  ShaderLanguageId,
   TextureConfigInput,
   VideoConfigInput,
 } from "@shader-studio/types";
@@ -63,6 +64,8 @@ export interface RenderPassNode {
   name: RenderPassName;
   source: string;
   vertexSrc?: string;
+  /** Shader language of the pass source; selected by the graph-level option. */
+  language: ShaderLanguageId;
   geometry: GeometryType;
   /** Webview-accessible GLB URL when geometry is `model`. */
   modelPath?: string;

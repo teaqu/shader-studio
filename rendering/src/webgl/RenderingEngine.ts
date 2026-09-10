@@ -19,7 +19,7 @@ import { FrameRenderer } from "./FrameRenderer";
 import { FPSCalculator } from "../util/FPSCalculator";
 import { ConfigValidator } from "../util/ConfigValidator";
 import type { PiRenderer, RenderingEngine as RenderingEngineInterface } from "../types";
-import type { ShaderConfig, StorageBufferSnapshot } from "@shader-studio/types";
+import type { ShaderConfig, ShaderLanguageId, StorageBufferSnapshot } from "@shader-studio/types";
 import type { ConfigInput } from "@shader-studio/types";
 import type { CompilationResult } from "../models";
 import { CustomUniformManager } from "./CustomUniformManager";
@@ -653,7 +653,7 @@ export class RenderingEngine implements RenderingEngineInterface {
     return this.timeManager;
   }
 
-  public getShaderLanguage(): "glsl" | "slang" {
+  public getShaderLanguage(): ShaderLanguageId {
     return "glsl";
   }
 

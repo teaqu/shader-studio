@@ -19,7 +19,8 @@
   "dependencies": {
     "@gltf-transform/core": "^4.4.2",
     "@shader-studio/debug": "*",
-    "@shader-studio/types": "*"
+    "@shader-studio/types": "*",
+    "@shader-studio/wgsl-analysis": "*"
   },
   "devDependencies": {
     "@vitest/browser": "^4.0.18",

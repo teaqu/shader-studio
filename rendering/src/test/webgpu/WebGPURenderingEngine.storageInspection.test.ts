@@ -53,4 +53,30 @@ describe('WebGPURenderingEngine storage inspection', () => {
 
     await expect(engine.readStorageBuffer('particles', 8, 1)).rejects.toThrow('invalid element range');
   });
+
+  it('copies an aligned envelope and trims it for an unaligned f16 element read', async () => {
+    const { engine, source, copyBufferToBuffer, readback } = engineWithStorage();
+    (engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
+      'particles', { name: 'particles', elementType: 'f16', stride: 2, count: 2 },
+    );
+    (readback.getMappedRange as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Uint8Array([9, 8, 7, 6]).buffer);
+
+    const snapshot = await engine.readStorageBuffer('particles', 1, 1);
+
+    expect(copyBufferToBuffer).toHaveBeenCalledWith(source, 0, readback, 0, 4);
+    expect(Array.from(new Uint8Array(snapshot.data))).toEqual([7, 6]);
+  });
+
+  it('read-modify-writes an aligned envelope for an unaligned f16 element edit', async () => {
+    const { engine, source, writeBuffer, readback } = engineWithStorage();
+    (engine as unknown as { storageLayouts: Map<string, unknown> }).storageLayouts.set(
+      'particles', { name: 'particles', elementType: 'f16', stride: 2, count: 2 },
+    );
+    (readback.getMappedRange as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Uint8Array([9, 8, 7, 6]).buffer);
+
+    await engine.writeStorageBuffer('particles', 1, new Uint8Array([1, 2]).buffer);
+
+    expect(writeBuffer).toHaveBeenCalledWith(source, 0, expect.any(Uint8Array));
+    expect(Array.from(writeBuffer.mock.calls[0]![2] as Uint8Array)).toEqual([9, 8, 1, 2]);
+  });
 });

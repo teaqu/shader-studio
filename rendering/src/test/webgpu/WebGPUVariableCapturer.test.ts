@@ -5,6 +5,7 @@ import { WebGPUVariableCapturer } from "../../webgpu/WebGPUVariableCapturer";
 import type { CaptureUniforms } from "../../capture/VariableCapturer";
 import type { StorageBindingNode } from "../../types/PassGraph";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { allowNonUniformDerivatives } from "../../webgpu/wgslDiagnostics";
 
 const uniforms: CaptureUniforms = {
   time: 1,
@@ -582,10 +583,79 @@ describe("WebGPUVariableCapturer", () => {
       ],
     };
 
-    const issued = await capturer.issueCaptureGrid([{ ...captures[0], slangPlan: plan }], uniforms, 8, 4);
+    const issued = await capturer.issueCaptureGrid([{ ...captures[0], debugPlan: plan }], uniforms, 8, 4);
 
     expect(issued).toBe(0);
     expect(capturer.getLastError()).toBe("/shaders/helper.slang: unexpected token");
+  });
+
+  it("compiles a single-file WGSL debug plan through the plan source in captureMode", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, { commonCode: "" });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "wgsl-hash",
+      rootUri: "/shaders/image.wgsl",
+      selectedSourceUri: "/shaders/image.wgsl",
+      executionMarkerSlot: 0,
+      captureSlots: [],
+      files: [
+        { uri: "/shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented wgsl root", version: 1, moduleName: "", ownerPass: "Image" },
+      ],
+    };
+
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented wgsl root", debugPlan: plan }], uniforms, 8, 4);
+
+    // The engine injects the WGSL compiler for WGSL shaders, so the already-
+    // WGSL plan source must reach it verbatim with no Slang module plumbing.
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(
+      "instrumented wgsl root",
+      expect.objectContaining({
+        captureMode: true,
+        passName: "capture",
+        commonCode: "",
+        modules: [],
+        sourcePath: "/shaders/image.wgsl",
+      }),
+    );
+    expect(gpu.device.createShaderModule).toHaveBeenCalledWith({
+      code: allowNonUniformDerivatives("// wgsl"),
+    });
+  });
+
+  it("captures a WGSL compute replay through the render capture pipeline", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, { commonCode: "" });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "wgsl-compute-hash",
+      rootUri: "/shaders/update.wgsl",
+      selectedSourceUri: "/shaders/update.wgsl",
+      executionMarkerSlot: 0,
+      captureSlots: [],
+      files: [{
+        uri: "/shaders/update.wgsl",
+        path: "/shaders/update.wgsl",
+        source: "instrumented wgsl compute replay",
+        version: 2,
+        moduleName: "",
+        ownerPass: "ComputeUpdate",
+      }],
+    };
+
+    await capturer.issueCaptureGrid([{
+      ...captures[0],
+      captureShader: "instrumented wgsl compute replay",
+      debugPlan: plan,
+    }], uniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(
+      "instrumented wgsl compute replay",
+      expect.objectContaining({
+        captureMode: true,
+        passKind: "render",
+        sourcePath: "/shaders/update.wgsl",
+        modules: [],
+      }),
+    );
   });
 
   it("compiles a selected common debug file as common code instead of a module", async () => {
@@ -606,7 +676,7 @@ describe("WebGPUVariableCapturer", () => {
       ],
     };
 
-    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented root", slangPlan: plan }], uniforms, 8, 4);
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented root", debugPlan: plan }], uniforms, 8, 4);
 
     expect(gpu.compiler.compile).toHaveBeenCalledWith(
       "instrumented root",
@@ -614,6 +684,36 @@ describe("WebGPUVariableCapturer", () => {
         commonCode: "instrumented common",
         modules: [],
         sourcePath: "/shaders/image.slang",
+      }),
+    );
+  });
+
+  it("compiles WGSL common exactly once when capturing the root", async () => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      commonCode: "old common",
+      slangSourcePath: "/shaders/image.wgsl",
+    });
+    const plan: DebugInstrumentationPlan = {
+      workspaceHash: "common-hash",
+      rootUri: "file:///shaders/image.wgsl",
+      selectedSourceUri: "file:///shaders/image.wgsl",
+      executionMarkerSlot: 0,
+      captureSlots: [],
+      files: [
+        { uri: "file:///shaders/image.wgsl", path: "/shaders/image.wgsl", source: "instrumented root", version: 2, moduleName: "", ownerPass: "Image" },
+        { uri: "file:///shaders/common.wgsl", path: "/shaders/common.wgsl", source: "instrumented common", version: 2, moduleName: "", ownerPass: "Image" },
+      ],
+    };
+
+    await capturer.issueCaptureGrid([{ ...captures[0], captureShader: "instrumented root", debugPlan: plan }], uniforms, 8, 4);
+
+    expect(gpu.compiler.compile).toHaveBeenCalledWith(
+      "instrumented root",
+      expect.objectContaining({
+        commonCode: "instrumented common",
+        modules: [],
+        sourcePath: "/shaders/image.wgsl",
       }),
     );
   });

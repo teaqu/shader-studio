@@ -16,7 +16,7 @@ import {
 } from "./SlangPrelude";
 
 export type SlangCompileResult =
-  | { success: true; wgsl: string }
+  | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; requiredFeatures?: string[] }
   | { success: false; errors: string[] };
 
 export type { SlangCompileOptions } from "./slangTypes";

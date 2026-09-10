@@ -1672,4 +1672,77 @@ describe("SlangPassPipeline", () => {
       expect(pass.getPipeline()).not.toBeNull();
     });
   });
+
+  describe("WGSL diagnostic line mapping", () => {
+    function mappedPass(
+      device: ReturnType<typeof fakeDevice>,
+      sourceLineOffset?: number,
+      sourceLineCount?: number,
+    ): SlangPassPipeline {
+      return new SlangPassPipeline(device, "bgra8unorm", {
+        name: "Image",
+        width: 800,
+        height: 600,
+        output: "canvas",
+        geometry: "fullscreen",
+        storage: [],
+        channels: [],
+        ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
+        ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
+      });
+    }
+
+    it("remaps a user-source error to the 1-based user line", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 104, linePos: 5, message: "unknown identifier 'nope'" },
+      ]);
+      const errors = await mappedPass(device, 100).rebuild("// wgsl");
+
+      expect(errors).toEqual(["Image: WGSL L3:5 unknown identifier 'nope'"]);
+    });
+
+    it("does not add an offset when the user already sets derivative uniformity", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 103, linePos: 5, message: "unknown identifier 'nope'" },
+      ]);
+      const errors = await mappedPass(device, 100).rebuild("diagnostic(off, derivative_uniformity);\n// wgsl");
+      expect(errors).toEqual(["Image: WGSL L3:5 unknown identifier 'nope'"]);
+    });
+
+    it("marks a prelude error internal and keeps its assembled line", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 50, linePos: 2, message: "prelude problem" },
+      ]);
+      const errors = await mappedPass(device, 100).rebuild("// wgsl");
+
+      expect(errors).toEqual(["Image: WGSL internal: L50:2 prelude problem"]);
+    });
+
+    it("marks a driver-attributed error inside the prelude internal", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 1, linePos: 1, message: "entry point missing" },
+      ]);
+      const errors = await mappedPass(device, 100).rebuild("// wgsl");
+
+      expect(errors).toEqual(["Image: WGSL internal: L1:1 entry point missing"]);
+    });
+
+    it("clamps an entry-point error to the last user line and marks it internal", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 1000, linePos: 1, message: "entry failure" },
+      ]);
+      const errors = await mappedPass(device, 100, 10).rebuild("// wgsl");
+
+      expect(errors).toEqual(["Image: WGSL internal: L111:1 entry failure"]);
+    });
+
+    it("keeps absolute lines for a Slang pass with no offset", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 103, linePos: 5, message: "unknown identifier 'nope'" },
+      ]);
+      const errors = await mappedPass(device).rebuild("// wgsl");
+
+      expect(errors).toEqual(["Image: WGSL L103:5 unknown identifier 'nope'"]);
+    });
+  });
 });
