@@ -74,7 +74,7 @@ describe("ShaderAuthoringEnvironment", () => {
         name,
         glslType,
         slangType,
-        languages: ["glsl", "slang"],
+        languages: ["glsl", "slang", "wgsl"],
         stages: ["fragment"],
       });
       expect(glsl).toContain(`${glslType} ${name};`);
@@ -83,7 +83,7 @@ describe("ShaderAuthoringEnvironment", () => {
         name,
         glslType,
         slangType,
-        languages: ["glsl", "slang"],
+        languages: ["glsl", "slang", "wgsl"],
         stages: ["fragment"],
       });
     }
@@ -372,7 +372,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(fragment).not.toContain("iDispatch");
     expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === "iDispatch")).toMatchObject({
       slangType: "int",
-      languages: ["slang"],
+      languages: ["slang", "wgsl"],
       stages: ["compute"],
     });
   });

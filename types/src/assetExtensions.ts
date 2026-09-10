@@ -1,4 +1,6 @@
 export const GLSL_EXTENSIONS = ["glsl", "frag", "vert"];
+export const SLANG_EXTENSIONS = ["slang"];
+export const WGSL_EXTENSIONS = ["wgsl"];
 export const SCRIPT_EXTENSIONS = ["ts", "js"];
 export const TEXTURE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tga", "hdr", "exr"];
 export const VIDEO_EXTENSIONS = ["mp4", "webm", "ogg", "mov"];

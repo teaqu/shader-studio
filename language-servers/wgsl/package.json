@@ -1,5 +1,5 @@
 {
-  "name": "@shader-studio/slang-language-server",
+  "name": "@shader-studio/wgsl-language-server",
   "version": "0.0.1",
   "license": "MIT",
   "private": true,
@@ -11,9 +11,9 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@shader-studio/wgsl-analysis": "*",
     "@shader-studio/language-server-core": "*",
     "@shader-studio/types": "*",
-    "vscode-languageserver-protocol": "3.18.2",
-    "@shader-studio/glsl-analysis": "*"
+    "vscode-languageserver-protocol": "3.18.2"
   }
 }

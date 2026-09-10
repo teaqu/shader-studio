@@ -645,6 +645,36 @@ void mainImage(out vec4 color, in vec2 coord) {
     });
 
     it.each([
+      { line: 0, character: 23 },
+      { line: 1, character: 22 },
+      { line: 2, character: 23 },
+    ])("renames a declaration or reference at its end ($line:$character)", async (position) => {
+      const instance = await open(scoped);
+
+      const result = await instance.rename({
+        document: revision,
+        position,
+        newName: "strength",
+      });
+      expect(result?.changes?.[uri]).toHaveLength(3);
+      expect(result?.changes?.[uri]?.map(edit => edit.newText)).toEqual(["strength", "strength", "strength"]);
+    });
+
+    it.each([
+      { line: 1, character: 23 },
+      { line: 99, character: 0 },
+      { line: 0, character: -1 },
+      { line: 0, character: 999 },
+    ])("does not rename whitespace or invalid positions ($line:$character)", async (position) => {
+      const instance = await open(scoped);
+      expect(await instance.rename({
+        document: revision,
+        position,
+        newName: "strength",
+      })).toBeNull();
+    });
+
+    it.each([
       ["an empty name", ""],
       ["a leading digit", "2bad"],
       ["embedded whitespace", "has space"],
@@ -694,7 +724,18 @@ void mainImage(out vec4 color, in vec2 coord) {
       })).toBeNull();
     });
 
-    it("declines to rename a symbol that the common file owns", async () => {
+    it("declines to rename a use of a host-provided builtin", async () => {
+      const text = "void mainImage(out vec4 color, in vec2 coord) { color = vec4(iTime, 0.0, 0.0, 1.0); }";
+      const instance = await open(text);
+
+      expect(await instance.rename({
+        document: revision,
+        position: positionOf(text, "iTime", 0),
+        newName: "other",
+      })).toBeNull();
+    });
+
+    it("renames a symbol that the common file owns", async () => {
       const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }";
       const instance = await open(text, {
         commonFile: {
@@ -708,7 +749,70 @@ void mainImage(out vec4 color, in vec2 coord) {
         document: revision,
         position: positionOf(text, "sharedTone"),
         newName: "toneCurve",
-      })).toBeNull();
+      })).toMatchObject({ changes: {
+        ["file:///workspace/common.glsl"]: expect.any(Array),
+        [uri]: expect.any(Array),
+      } });
+    });
+
+    it("finds and renames a Common helper across every open configured pass", async () => {
+      const commonUri = "file:///workspace/common.glsl";
+      const bufferUri = "file:///workspace/buffer.glsl";
+      const common = "float tone(float value) { return value * 0.5; }";
+      const pass = "void mainImage(out vec4 color, in vec2 coord) { color = vec4(tone(coord.x)); }";
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({ ...environment(), commonFile: { uri: commonUri, version: 1, text: common } });
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text: pass });
+      await instance.syncEnvironment({ ...environment(), documentUri: bufferUri, commonFile: { uri: commonUri, version: 1, text: common } });
+      await instance.openDocument({ uri: bufferUri, languageId: "glsl", version: 1, text: pass });
+      await instance.syncEnvironment({ ...environment(), documentUri: commonUri, passName: "Common", virtualFiles: [] });
+      await instance.openDocument({ uri: commonUri, languageId: "glsl", version: 1, text: common });
+
+      const commonRevision = { ...revision, uri: commonUri };
+      const passReferences = await instance.references({ document: revision, position: { line: 0, character: pass.indexOf("tone") + 1 }, includeDeclaration: true });
+      expect(passReferences.map((reference) => reference.uri).sort()).toEqual([bufferUri, commonUri, uri].sort());
+      expect(await instance.documentHighlights({ document: revision, position: { line: 0, character: pass.indexOf("tone") + 1 } }))
+        .toEqual([{ range: expect.objectContaining({ start: { line: 0, character: pass.indexOf("tone") } }), kind: DocumentHighlightKind.Read }]);
+      const references = await instance.references({ document: commonRevision, position: { line: 0, character: 7 }, includeDeclaration: true });
+      expect(references.map((reference) => reference.uri).sort()).toEqual([bufferUri, commonUri, uri].sort());
+      const edit = await instance.rename({ document: commonRevision, position: { line: 0, character: 7 }, newName: "curve" });
+      expect(edit?.changes?.[commonUri]).toHaveLength(1);
+      expect(edit?.changes?.[uri]).toHaveLength(1);
+      expect(edit?.changes?.[bufferUri]).toHaveLength(1);
+    });
+
+    it("renames Common across unopened workspace passes and declines an affected collision", async () => {
+      const commonUri = "file:///workspace/common.glsl";
+      const bufferUri = "file:///workspace/buffer.glsl";
+      const common = "float tone(float value) { return value; }";
+      const pass = "void mainImage(out vec4 color, in vec2 coord) { color = vec4(tone(coord.x)); }";
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({ ...environment(), documentUri: commonUri, passName: "Common", virtualFiles: [], workspaceDocuments: [
+        { uri: commonUri, version: 1, text: common, stage: "fragment" },
+        { uri, version: 1, text: pass, stage: "fragment", commonUri },
+        { uri: bufferUri, version: 1, text: pass, stage: "fragment", commonUri },
+      ] });
+      await instance.openDocument({ uri: commonUri, languageId: "glsl", version: 1, text: common });
+
+      const commonRevision = { ...revision, uri: commonUri };
+      expect((await instance.references({ document: commonRevision, position: { line: 0, character: 7 }, includeDeclaration: true }))
+        .map((reference) => reference.uri).sort()).toEqual([bufferUri, commonUri, uri].sort());
+      expect((await instance.rename({ document: commonRevision, position: { line: 0, character: 7 }, newName: "curve" }))?.changes)
+        .toMatchObject({ [commonUri]: expect.any(Array), [uri]: expect.any(Array), [bufferUri]: expect.any(Array) });
+
+      const collision = "void mainImage(out vec4 color, in vec2 coord) { float curve = 0.0; color = vec4(tone(coord.x) + curve); }";
+      await instance.syncEnvironment({ ...environment(), documentUri: commonUri, generation: 2, passName: "Common", virtualFiles: [], workspaceDocuments: [
+        { uri: commonUri, version: 1, text: common, stage: "fragment" },
+        { uri, version: 1, text: collision, stage: "fragment", commonUri },
+      ] });
+      expect(await instance.rename({ document: { ...commonRevision, environmentGeneration: 2 }, position: { line: 0, character: 7 }, newName: "curve" })).toBeNull();
+
+      await instance.syncEnvironment({ ...environment(), documentUri: commonUri, generation: 3, passName: "Common", virtualFiles: [], workspaceDocuments: [
+        { uri: commonUri, version: 1, text: common, stage: "fragment" },
+        { uri, version: 2, text: "void mainImage(out vec4 color, in vec2 coord) { color = vec4(coord, 0.0, 1.0); }", stage: "fragment", commonUri },
+      ] });
+      expect((await instance.references({ document: { ...commonRevision, environmentGeneration: 3 }, position: { line: 0, character: 7 }, includeDeclaration: true }))
+        .map((reference) => reference.uri)).toEqual([commonUri]);
     });
 
     it("declines when the cursor is not on a symbol", async () => {

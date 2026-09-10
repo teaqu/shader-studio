@@ -13,8 +13,9 @@ import type {
   SignatureHelp,
   WorkspaceEdit,
 } from "vscode-languageserver-protocol";
+import { isShaderLanguageId, type ShaderLanguageId } from "@shader-studio/types";
 
-export type ShaderLanguage = "glsl" | "slang";
+export type ShaderLanguage = ShaderLanguageId;
 
 export interface VersionedDocumentId {
   uri: string;
@@ -236,7 +237,8 @@ function isDocumentRevision(value: unknown): value is DocumentRevision {
   const revision = asRecord(value);
   return revision !== undefined
     && typeof revision.uri === "string"
-    && (revision.languageId === "glsl" || revision.languageId === "slang")
+    && typeof revision.languageId === "string"
+    && isShaderLanguageId(revision.languageId)
     && Number.isFinite(revision.version)
     && Number.isFinite(revision.environmentGeneration);
 }

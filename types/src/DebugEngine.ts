@@ -12,6 +12,11 @@ export interface DebugWorkspace {
   rootUri: string;
   rootPath: string;
   passName: string;
+  /** Compute replay metadata, present when the debug root is a compute pass. */
+  compute?: {
+    entryPoint?: string;
+    storageNames?: string[];
+  };
   files: DebugSourceUnit[];
   contentHash: string;
 }
@@ -28,13 +33,20 @@ export interface DebugFileEdits { sourceUri: string; edits: DebugSourceEdit[]; }
 export type DebugDiagnosticCode =
   | "debug-invalid-workspace"
   | "debug-overlapping-edits"
+  | "debug-unsupported-language"
   | "slang-debug-unsupported-syntax"
   | "slang-debug-no-writable-origin"
   | "slang-debug-site-not-executed"
   | "slang-debug-non-capturable-type"
   | "slang-debug-instrumentation-conflict"
   | "slang-debug-stale-request"
-  | "slang-debug-compile-failed";
+  | "slang-debug-compile-failed"
+  | "wgsl-debug-unsupported-syntax"
+  | "wgsl-debug-no-writable-origin"
+  | "wgsl-debug-site-not-executed"
+  | "wgsl-debug-non-capturable-type"
+  | "wgsl-debug-instrumentation-conflict"
+  | "wgsl-debug-stale-request";
 export interface DebugDiagnostic {
   code: DebugDiagnosticCode;
   message: string;
@@ -51,7 +63,7 @@ export interface DebugCallable {
   bodyRange: DebugSourceRange;
 }
 export interface DebugControlFlow {
-  kind: "if" | "switch" | "for" | "while" | "do";
+  kind: "if" | "switch" | "for" | "while" | "do" | "loop";
   range: DebugSourceRange;
 }
 export interface DebugOrigin {

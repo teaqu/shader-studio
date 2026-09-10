@@ -46,6 +46,82 @@ const environment: ShaderAuthoringEnvironment = {
 const revision = { uri, languageId: "slang" as const, version: 1, environmentGeneration: 1 };
 
 describe("SlangLanguageService", () => {
+  it("advertises and returns authored symbol rename edits", async () => {
+    const { module } = fixture();
+    module.createGlobalSession = () => ({ createSession: () => ({ loadModuleFromSource: () => ({}) }) });
+    module.getCompileTargets = () => [{ name: "wgsl", value: 1 }];
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float value;" });
+
+    expect((await service.initialize()).rename).toBe(true);
+    expect(await service.rename({ document: revision, position: { line: 0, character: 7 }, newName: "other" })).toEqual({
+      changes: { [uri]: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 11 } }, newText: "other" }] },
+    });
+  });
+
+  it('renames a Common declaration and unopened consumers from their explicit workspace links', async () => {
+    const { module } = fixture();
+    module.createGlobalSession = () => ({ createSession: () => ({ loadModuleFromSource: () => ({}) }) });
+    module.getCompileTargets = () => [{ name: 'wgsl', value: 1 }];
+    const service = new SlangLanguageService(module);
+    const common = 'float tone(float value) { return value; }';
+    const pass = 'float helper() { return tone(1.0); }';
+    const commonUri = 'file:///common.slang';
+    await service.syncEnvironment({ ...environment, documentUri: commonUri, passName: 'Common', workspaceDocuments: [
+      { uri: commonUri, text: common, version: 1, stage: 'fragment' },
+      { uri, text: pass, version: 1, stage: 'fragment', commonUri },
+      { uri: 'file:///unrelated.slang', text: 'float tone(float other) { return other; }', version: 1, stage: 'fragment' },
+    ] });
+    await service.openDocument({ uri: commonUri, languageId: 'slang', version: 1, text: common });
+    const edit = await service.rename({ document: { ...revision, uri: commonUri }, position: { line: 0, character: 7 }, newName: 'curve' });
+    expect(Object.keys(edit?.changes ?? {}).sort()).toEqual([commonUri, uri].sort());
+    expect(edit?.changes?.[uri]).toHaveLength(1);
+  });
+
+  it("finds authored references and highlights only the current document", async () => {
+    const { module } = fixture();
+    const service = new SlangLanguageService(module);
+    const text = "float tone(float value) { return value; }\nfloat4 mainImage(float2 p) { return float4(tone(p.x)); }";
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    expect(await service.initialize()).toMatchObject({ references: true, documentHighlights: true });
+    const callPosition = { line: 1, character: text.split("\n")[1]!.indexOf("tone") + 2 };
+    const references = await service.references({ document: revision, position: callPosition, includeDeclaration: true });
+    expect(references).toHaveLength(2);
+    expect(await service.documentHighlights({ document: revision, position: callPosition })).toEqual([
+      expect.objectContaining({ kind: 3 }), expect.objectContaining({ kind: 2 }),
+    ]);
+  });
+
+
+  it.each(["unavailable", "no-session", "rejected", "threw"])("declines rename when compiler validation is %s without mutating buffers", async failure => {
+    const { module, server } = fixture();
+    const release = vi.fn();
+    if (failure !== "unavailable") {
+      module.getCompileTargets = () => [{ name: "wgsl", value: 1 }];
+      module.createGlobalSession = () => ({ createSession: () => failure === "no-session" ? null : {
+        loadModuleFromSource: () => {
+          if (failure === "threw") {
+            throw new Error("compiler failed");
+          }
+          return null;
+        },
+        delete: release,
+      } });
+    }
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: "float value;" });
+    server.didOpenTextDocument.mockClear();
+    server.didCloseTextDocument.mockClear();
+    expect(await service.rename({ document: revision, position: { line: 0, character: 11 }, newName: "other" })).toBeNull();
+    expect(server.didOpenTextDocument).not.toHaveBeenCalled();
+    expect(server.didCloseTextDocument).not.toHaveBeenCalled();
+    expect(server.didChangeTextDocument).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(failure === "rejected" || failure === "threw" ? 1 : 0);
+    await service.dispose();
+  });
   it("documents the mainImage contract with a renamed coordinate parameter", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([

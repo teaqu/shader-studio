@@ -19,7 +19,6 @@ import {
 import {
   DocumentStore,
   VirtualFileSystem,
-  createLiteralColorPresentations,
   findLiteralConstructorColors,
   findMemberAccess,
   isPositionInComment,
@@ -35,28 +34,27 @@ import {
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
-  buildGlslAuthoringPreamble,
   isShaderLanguageReservedTerm,
   isValidShaderIdentifier,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
 import {
-  glslVectorTypeName,
-  parseGlslDocument,
-  parseGlslDocumentAtPosition,
-  resolveGlslExpressionType,
+  parseWgslDocument,
+  parseWgslDocumentAtPosition,
+  resolveWgslExpressionType,
   symbolAtPosition,
+  tokenizeWgsl,
   visibleSymbolsAtPosition,
-  type GlslAnalysisDocument,
-  type GlslSymbol,
-} from "@shader-studio/glsl-analysis";
-import { GLSL_INTRINSICS, findGlslIntrinsics } from "./intrinsics.js";
-import { GLSL_VERTEX_HOOK_FEATURES, type GlslVertexHookFeature } from "./vertexHook.js";
+  wgslVectorTypeName,
+  type WgslAnalysisDocument,
+  type WgslSymbol,
+} from "@shader-studio/wgsl-analysis";
+import { WGSL_INTRINSICS, findWgslIntrinsics } from "./intrinsics.js";
+import { WGSL_VERTEX_HOOK_FEATURES, type WgslVertexHookFeature } from "./vertexHook.js";
 import {
-  GLSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
-  GLSL_MAIN_IMAGE_DESCRIPTION,
-  GLSL_MAIN_IMAGE_OUTPUT_DESCRIPTION,
+  WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
+  WGSL_MAIN_IMAGE_DESCRIPTION,
 } from "./fragmentHook.js";
 
 const CAPABILITIES: ServerCapabilities = {
@@ -65,19 +63,20 @@ const CAPABILITIES: ServerCapabilities = {
   definition: true,
   signatureHelp: true,
   documentSymbols: true,
-  diagnostics: true,
+  // WGSL diagnostics come from the renderer compiler, which is the only WGSL
+  // error source. The service contributes only hints and warnings.
+  diagnostics: false,
   documentColors: true,
   references: true,
   documentHighlights: true,
   rename: true,
 };
 
-export class GlslLanguageService implements LanguageService {
+export class WgslLanguageService implements LanguageService {
   private readonly store = new DocumentStore();
   private readonly files = new VirtualFileSystem();
-  private readonly analyses = new Map<string, GlslAnalysisDocument>();
-  private readonly includeAnalyses = new Map<string, readonly GlslAnalysisDocument[]>();
-  private readonly generatedAnalyses = new Map<string, GlslAnalysisDocument>();
+  private readonly analyses = new Map<string, WgslAnalysisDocument>();
+  private readonly includeAnalyses = new Map<string, readonly WgslAnalysisDocument[]>();
   private readonly workspaceUris = new Set<string>();
 
   async initialize(): Promise<ServerCapabilities> {
@@ -85,22 +84,24 @@ export class GlslLanguageService implements LanguageService {
   }
 
   async syncEnvironment(environment: ShaderAuthoringEnvironment): Promise<void> {
-    if (environment.languageId !== "glsl" || !this.store.syncEnvironment(environment)) {
+    if (environment.languageId !== "wgsl" || !this.store.syncEnvironment(environment)) {
       return;
     }
+    // WGSL has no imports: common concatenation is the only multi-file
+    // mechanism, so every context file parses as plain WGSL.
     const contextFiles = environment.commonFile
       ? [environment.commonFile, ...environment.virtualFiles]
       : environment.virtualFiles;
     this.files.replaceEnvironment(contextFiles);
     this.syncWorkspace(environment);
     this.includeAnalyses.set(environment.documentUri, contextFiles.map((file) => (
-      parseGlslDocument(file.uri, stripIncludeDirectives(file.text), environment.stage)
+      parseWgslDocument(file.uri, file.text, environment.stage)
     )));
     this.rebuild(environment.documentUri);
   }
 
   async openDocument(document: ShaderDocumentSnapshot): Promise<void> {
-    if (document.languageId !== "glsl" || !this.store.open(document)) {
+    if (document.languageId !== "wgsl" || !this.store.open(document)) {
       return;
     }
     this.files.openOverlay(document);
@@ -108,7 +109,7 @@ export class GlslLanguageService implements LanguageService {
   }
 
   async changeDocument(document: ShaderDocumentSnapshot): Promise<void> {
-    if (document.languageId !== "glsl" || !this.store.change(document)) {
+    if (document.languageId !== "wgsl" || !this.store.change(document)) {
       return;
     }
     this.files.openOverlay(document);
@@ -120,7 +121,6 @@ export class GlslLanguageService implements LanguageService {
     this.files.closeOverlay(uri);
     this.analyses.delete(uri);
     this.includeAnalyses.delete(uri);
-    this.generatedAnalyses.delete(uri);
   }
 
   async completion(params: DocumentPositionParams): Promise<CompletionItem[]> {
@@ -138,21 +138,18 @@ export class GlslLanguageService implements LanguageService {
         params.position,
         state.document.text,
         state.environment,
-        [
-          ...(this.generatedAnalyses.has(params.document.uri) ? [this.generatedAnalyses.get(params.document.uri)!] : []),
-          ...(this.includeAnalyses.get(params.document.uri) ?? []),
-        ],
+        this.includeAnalyses.get(params.document.uri) ?? [],
         params.document.uri,
       );
     }
     const items = new Map<string, CompletionItem>();
-    // The statement being completed is rarely valid GLSL, and a failed parse leaves the
+    // The statement being completed is rarely valid WGSL, and a failed parse leaves the
     // analysis with no symbols at all, so recover the declarations that precede it.
     const analysis = state.analysis.parsedSuccessfully
       ? state.analysis
-      : parseGlslDocumentAtPosition(
+      : parseWgslDocumentAtPosition(
         params.document.uri,
-        stripIncludeDirectives(state.document.text),
+        state.document.text,
         state.environment.stage,
         params.position,
       );
@@ -173,7 +170,7 @@ export class GlslLanguageService implements LanguageService {
       }
     }
     if (state.environment.stage === "vertex") {
-      const hook = GLSL_VERTEX_HOOK_FEATURES[0];
+      const hook = WGSL_VERTEX_HOOK_FEATURES[0];
       if (hook && !items.has(hook.name)) {
         items.set(hook.name, {
           label: hook.name,
@@ -182,18 +179,8 @@ export class GlslLanguageService implements LanguageService {
           documentation: markdownDocumentation(hook.description),
         });
       }
-      for (const helper of vertexSamplerHelpers(state.environment)) {
-        if (!items.has(helper.name)) {
-          items.set(helper.name, {
-            label: helper.name,
-            kind: CompletionItemKind.Function,
-            detail: helper.signature,
-            documentation: markdownDocumentation(`Generated vertex-stage sampler for resource '${helper.resource}'.`),
-          });
-        }
-      }
     }
-    for (const intrinsic of visibleIntrinsics(state.document.text, state.environment.stage)) {
+    for (const intrinsic of visibleIntrinsics(state.environment.stage)) {
       const key = `${intrinsic.name}:${intrinsic.signature}`;
       items.set(key, {
         label: intrinsic.name,
@@ -203,19 +190,13 @@ export class GlslLanguageService implements LanguageService {
       });
     }
     for (const doc of SHADER_STUDIO_SYMBOL_DOCS) {
-      if (doc.name === "iChannelN" || !doc.languages.includes("glsl") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
+      if (doc.name === "iChannelN" || !doc.languages.includes("wgsl") || (doc.stages && !doc.stages.includes(state.environment.stage))) {
         continue;
       }
-      items.set(doc.name, completionFromDoc(doc.name, doc.glslType, doc.description));
-    }
-    for (const symbol of this.generatedAnalyses.get(params.document.uri)?.symbols ?? []) {
-      if (!/^iCh\d+$/.test(symbol.name)) {
-        continue;
-      }
-      items.set(symbol.name, completionFromDoc(symbol.name, symbol.typeName ?? "ShaderToy channel metadata struct", "Shader Studio input channel metadata."));
+      items.set(doc.name, completionFromDoc(doc.name, doc.wgslType, doc.description));
     }
     for (const uniform of state.environment.customUniforms) {
-      items.set(uniform.name, completionFromDoc(uniform.name, uniform.type, "Shader Studio custom uniform."));
+      items.set(uniform.name, completionFromDoc(uniform.name, authoringValueWgslType(uniform.type), "Shader Studio custom uniform."));
     }
     for (const resource of state.environment.resources) {
       items.set(resource.name, completionFromDoc(resource.name, resource.kind, "Shader Studio shader resource."));
@@ -258,23 +239,19 @@ export class GlslLanguageService implements LanguageService {
         return markdownHover(included.signature ?? `${included.typeName ?? included.kind} ${included.name}`, description);
       }
     }
-    const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("glsl"));
+    const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("wgsl"));
     if (doc) {
-      return markdownHover(`${doc.glslType ?? "built-in"} ${doc.name}`, doc.description);
+      return markdownHover(`${doc.wgslType ?? "built-in"} ${doc.name}`, doc.description);
     }
     const uniform = state.environment.customUniforms.find((item) => item.name === word);
     if (uniform) {
-      return markdownHover(`${uniform.type} ${uniform.name}`, "Shader Studio custom uniform.");
+      return markdownHover(`${authoringValueWgslType(uniform.type)} ${uniform.name}`, "Shader Studio custom uniform.");
     }
     const resource = state.environment.resources.find((item) => item.name === word);
     if (resource) {
       return markdownHover(`${resource.kind} ${resource.name}`, "Shader Studio shader resource.");
     }
-    const samplerHelper = vertexSamplerHelpers(state.environment).find((helper) => helper.name === word);
-    if (samplerHelper) {
-      return markdownHover(samplerHelper.signature, `Generated vertex-stage sampler for resource '${samplerHelper.resource}'.`);
-    }
-    const intrinsic = findGlslIntrinsics(word, glslVersion(state.document.text), glslStage(state.environment.stage))[0];
+    const intrinsic = findWgslIntrinsics(word).filter((item) => item.stages.includes(wgslStage(state.environment.stage)))[0];
     return intrinsic ? markdownHover(intrinsic.signature, intrinsic.description) : null;
   }
 
@@ -315,7 +292,7 @@ export class GlslLanguageService implements LanguageService {
     const contextual = (this.includeAnalyses.get(params.document.uri) ?? []).flatMap((analysis) => (
       analysis.symbols.filter((symbol) => symbol.kind === "function" && symbol.name === call.name && symbol.signature)
     ));
-    const intrinsic = findGlslIntrinsics(call.name, glslVersion(state.document.text), glslStage(state.environment.stage));
+    const intrinsic = findWgslIntrinsics(call.name).filter((item) => item.stages.includes(wgslStage(state.environment.stage)));
     const labels = [
       ...user.map((symbol) => symbol.signature!),
       ...contextual.map((symbol) => symbol.signature!),
@@ -332,8 +309,11 @@ export class GlslLanguageService implements LanguageService {
     if (!state) {
       return [];
     }
+    const globalScopeIds = new Set(
+      state.analysis.scopes.filter((scope) => scope.kind === "global").map((scope) => scope.id),
+    );
     return state.analysis.symbols
-      .filter((symbol) => symbol.scopeId === "scope:global" || symbol.kind === "function" || symbol.kind === "type")
+      .filter((symbol) => globalScopeIds.has(symbol.scopeId) || symbol.kind === "function" || symbol.kind === "type")
       .map((symbol) => ({
         name: symbol.name,
         detail: symbol.signature ?? symbol.typeName,
@@ -379,11 +359,13 @@ export class GlslLanguageService implements LanguageService {
   async rename(params: RenameParams): Promise<WorkspaceEdit | null> {
     const state = this.current(params);
     const symbol = state ? symbolAtRenamePosition(state.analysis, params.position) : null;
+    // Synthetic host globals (iTime, ...) resolve so hovers and completion
+    // see them, but they have no source declaration to rename.
     const included = state && !symbol ? this.includedSymbolAt(state, params.position) : undefined;
     const target = symbol ?? included?.symbol;
-    console.log('[rename-trace] glsl', params.document.uri, params.position, Boolean(state), state?.document.text, target?.name);
     const ownerUri = symbol ? params.document.uri : included?.analysis.uri;
-    if (!state || !target || !ownerUri || !isRenameableName(params.newName) || this.nameIsTaken(state, params)) {
+    if (!state || !target || !ownerUri || (symbol && state.analysis.hostGlobalIds.has(symbol.id))
+      || !isRenameableName(params.newName) || this.nameIsTaken(state, params)) {
       return null;
     }
     const shared = this.commonUses(target, ownerUri);
@@ -402,31 +384,27 @@ export class GlslLanguageService implements LanguageService {
     const edits = orderedRanges([symbol.declaration, ...symbol.references])
       .map((range) => ({ range, newText: params.newName }));
     const changes: Record<string, { range: Range; newText: string }[]> = { [params.document.uri]: edits };
-    for (const [uri, references] of shared) {
+    for (const [uri, references] of this.commonUses(symbol, params.document.uri)) {
       changes[uri] = orderedRanges(references).map((range) => ({ range, newText: params.newName }));
     }
     return { changes };
   }
 
+  /**
+   * Hints and warnings the renderer compiler cannot see. Errors are never
+   * reported here: for WGSL the browser compiler is the only error source and
+   * its diagnostics flow straight through the arbiter.
+   */
   async diagnostics(params: DocumentParams): Promise<Diagnostic[]> {
     const state = this.current(params);
     if (!state) {
       return [];
     }
-    const diagnostics: Diagnostic[] = state.analysis.diagnostics.map((item) => ({
-      range: item.range,
-      severity: DiagnosticSeverity.Error,
-      source: "shader-studio-glsl-ls",
-      code: item.code,
-      message: item.message,
-    }));
-    diagnostics.push(...unresolvedReferenceDiagnostics(state.analysis, state.environment, this.includeAnalyses));
-    diagnostics.push(...unusedSymbolDiagnostics(state.analysis));
-    diagnostics.push(...includeDiagnostics(state.document.uri, state.document.text, this.files));
+    const diagnostics: Diagnostic[] = unusedSymbolDiagnostics(state.analysis);
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
       severity: DiagnosticSeverity.Warning,
-      source: "shader-studio-glsl-ls",
+      source: "shader-studio-wgsl-ls",
       code: issue.code,
       message: issue.message,
     })));
@@ -435,44 +413,50 @@ export class GlslLanguageService implements LanguageService {
 
   async documentColors(params: DocumentParams) {
     const state = this.current(params);
-    return state ? findLiteralConstructorColors(state.document.text, ["vec3", "vec4"]) : [];
+    return state ? findLiteralConstructorColors(state.document.text, ["vec3f", "vec4f"]) : [];
   }
 
   async colorPresentations(params: ColorPresentationParams) {
     if (!this.store.isCurrent(params.document)) {
       return [];
     }
-    return createLiteralColorPresentations("glsl", params.color, params.range, this.store.getDocument(params.document.uri)?.text);
+    const source = this.store.getDocument(params.document.uri)?.text;
+    const components = componentCountAt(source, params.range) ?? 4;
+    const constructor = `vec${components}f`;
+    const channels = components === 3
+      ? [params.color.red, params.color.green, params.color.blue]
+      : [params.color.red, params.color.green, params.color.blue, params.color.alpha];
+    const label = `${constructor}(${channels.map(formatColorComponent).join(", ")})`;
+    return [{ label, textEdit: { range: params.range, newText: label } }];
   }
 
   async dispose(): Promise<void> {
     this.analyses.clear();
     this.includeAnalyses.clear();
-    this.generatedAnalyses.clear();
   }
 
   private nameIsTaken(
-    state: NonNullable<ReturnType<GlslLanguageService["current"]>>,
+    state: NonNullable<ReturnType<WgslLanguageService["current"]>>,
     params: RenameParams,
   ): boolean {
     const { newName } = params;
     return visibleSymbolsAtPosition(state.analysis, params.position).some((item) => item.name === newName)
       || state.environment.customUniforms.some((item) => item.name === newName)
       || state.environment.resources.some((item) => item.name === newName)
-      || SHADER_STUDIO_SYMBOL_DOCS.some((item) => item.languages.includes("glsl") && item.name === newName)
-      || visibleIntrinsics(state.document.text, state.environment.stage).some((item) => item.name === newName)
+      || SHADER_STUDIO_SYMBOL_DOCS.some((item) => item.languages.includes("wgsl") && item.name === newName)
+      || visibleIntrinsics(state.environment.stage).some((item) => item.name === newName)
       || (this.includeAnalyses.get(params.document.uri) ?? [])
         .some((analysis) => analysis.symbols.some((item) => item.name === newName));
   }
 
-  private includedSymbolAt(state: NonNullable<ReturnType<GlslLanguageService["current"]>>, position: Position): { analysis: GlslAnalysisDocument; symbol: GlslSymbol } | undefined {
+  private includedSymbolAt(state: NonNullable<ReturnType<WgslLanguageService["current"]>>, position: Position): { analysis: WgslAnalysisDocument; symbol: WgslSymbol } | undefined {
     const name = wordAt(state.document.text, identifierPosition(state.document.text, position));
     return name === undefined ? undefined : (this.includeAnalyses.get(state.document.uri) ?? [])
       .map((analysis) => ({ analysis, symbol: analysis.symbols.find((candidate) => candidate.name === name) }))
-      .find((candidate): candidate is { analysis: GlslAnalysisDocument; symbol: GlslSymbol } => candidate.symbol !== undefined);
+      .find((candidate): candidate is { analysis: WgslAnalysisDocument; symbol: WgslSymbol } => candidate.symbol !== undefined);
   }
 
-  private includedReferences(state: NonNullable<ReturnType<GlslLanguageService["current"]>>, params: ReferenceParams, includeDeclaration: boolean): Location[] {
+  private includedReferences(state: NonNullable<ReturnType<WgslLanguageService["current"]>>, params: ReferenceParams, includeDeclaration: boolean): Location[] {
     const included = this.includedSymbolAt(state, params.position);
     if (!included) {
       return [];
@@ -488,11 +472,11 @@ export class GlslLanguageService implements LanguageService {
     return deduplicateLocations(locations);
   }
 
-  /** Each pass parses Common independently, so join its unresolved use sites. */
-  private commonUses(symbol: GlslSymbol, ownerUri: string): Map<string, Range[]> {
+  /** Every open pass parses Common independently, so join their unresolved call sites here. */
+  private commonUses(symbol: WgslSymbol, ownerUri: string): Map<string, Range[]> {
     const uses = new Map<string, Range[]>();
     for (const [passUri, includes] of this.includeAnalyses) {
-      if (!includes.some((analysis) => analysis.uri === ownerUri && analysis.symbols.some((candidate) => sameIncludedSymbol(candidate, symbol)))) {
+      if (!includes.some((analysis) => analysis.uri === ownerUri && analysis.symbols.some((candidate) => candidate.id === symbol.id))) {
         continue;
       }
       const pass = this.analyses.get(passUri);
@@ -503,7 +487,7 @@ export class GlslLanguageService implements LanguageService {
     return uses;
   }
 
-  private commonRenameCollides(uses: ReadonlyMap<string, readonly Range[]>, symbol: GlslSymbol, newName: string): boolean {
+  private commonRenameCollides(uses: ReadonlyMap<string, readonly Range[]>, symbol: WgslSymbol, newName: string): boolean {
     for (const [uri, references] of uses) {
       const analysis = this.analyses.get(uri);
       if (analysis && references.some((reference) => visibleSymbolsAtPosition(analysis, reference.start)
@@ -514,15 +498,14 @@ export class GlslLanguageService implements LanguageService {
     return false;
   }
 
+
   private rebuild(uri: string): void {
     const document = this.store.getDocument(uri);
     const environment = this.store.getEnvironment(uri);
     if (!document || !environment) {
       return;
     }
-    const generated = buildGlslAuthoringPreamble(environment);
-    this.generatedAnalyses.set(uri, parseGlslDocument(generated.uri, generated.text, environment.stage));
-    this.analyses.set(uri, parseGlslDocument(uri, stripIncludeDirectives(document.text), environment.stage));
+    this.analyses.set(uri, parseWgslDocument(uri, document.text, environment.stage));
   }
 
   private syncWorkspace(environment: ShaderAuthoringEnvironment): void {
@@ -540,12 +523,10 @@ export class GlslLanguageService implements LanguageService {
     for (const file of workspaceDocuments) {
       this.workspaceUris.add(file.uri);
       const text = this.store.getDocument(file.uri)?.text ?? file.text;
-      this.analyses.set(file.uri, parseGlslDocument(file.uri, stripIncludeDirectives(text), file.stage));
+      this.analyses.set(file.uri, parseWgslDocument(file.uri, text, file.stage));
       const common = file.commonUri === undefined ? undefined : workspaceDocuments
         .find((candidate) => candidate.uri === file.commonUri);
-      this.includeAnalyses.set(file.uri, common
-        ? [parseGlslDocument(common.uri, stripIncludeDirectives(common.text), common.stage)]
-        : []);
+      this.includeAnalyses.set(file.uri, common ? [parseWgslDocument(common.uri, common.text, common.stage)] : []);
     }
   }
 
@@ -561,97 +542,13 @@ export class GlslLanguageService implements LanguageService {
 }
 
 /**
- * Names of the generated texture samplers a vertex hook runs with. Mirrors
- * ShaderCompiler.buildVertexChannelHelpers: slots 0-3 always get a
- * `sampleIChannelN` helper, each assigned texture slot gets one for its own
- * slot, and every custom-named channel additionally gets `sample<Name>`.
- * Without these the service reports false undefined-function errors for
- * every textured vertex hook.
- */
-function vertexSamplerHelpers(environment: ShaderAuthoringEnvironment): { name: string; signature: string; resource: string }[] {
-  if (environment.stage !== "vertex") return [];
-  const textures = environment.resources.filter((item) =>
-    (item.kind === "texture-2d" || item.kind === "texture-cube" || item.kind === "texture-3d")
-    && item.slot !== undefined && item.slot >= 0);
-  const maxSlot = Math.max(3, ...textures.map((item) => item.slot as number));
-  const coordinateFor = (slot: number): string => {
-    const resource = textures.find((item) => item.slot === slot);
-    return resource?.kind === "texture-2d" ? "vec2" : resource ? "vec3" : "vec2";
-  };
-  const helpers: { name: string; signature: string; resource: string }[] = [];
-  const seen = new Set<string>();
-  const push = (name: string, resource: string, coordinate: string): void => {
-    if (seen.has(name)) return;
-    seen.add(name);
-    helpers.push({ name, signature: `vec4 ${name}(${coordinate} uv)`, resource });
-  };
-  for (let slot = 0; slot <= maxSlot; slot++) {
-    push(`sampleIChannel${slot}`, `iChannel${slot}`, coordinateFor(slot));
-  }
-  for (const item of textures) {
-    if (item.name !== `iChannel${item.slot}`) {
-      const coordinate = item.kind === "texture-2d" ? "vec2" : "vec3";
-      push(`sample${item.name[0]!.toUpperCase()}${item.name.slice(1)}`, item.name, coordinate);
-    }
-  }
-  return helpers;
-}
-
-function unresolvedReferenceDiagnostics(
-  analysis: GlslAnalysisDocument,
-  environment: ShaderAuthoringEnvironment,
-  includeAnalyses: ReadonlyMap<string, readonly GlslAnalysisDocument[]>,
-): Diagnostic[] {
-  const knownNames = new Set<string>();
-  for (const symbol of (includeAnalyses.get(analysis.uri) ?? []).flatMap((included) => included.symbols)) {
-    knownNames.add(symbol.name);
-  }
-  for (const intrinsic of visibleIntrinsics(analysis.source, environment.stage)) {
-    knownNames.add(intrinsic.name);
-  }
-  for (const documentation of SHADER_STUDIO_SYMBOL_DOCS) {
-    if (
-      documentation.languages.includes("glsl")
-      && (!documentation.stages || documentation.stages.includes(environment.stage))
-    ) {
-      knownNames.add(documentation.name);
-    }
-  }
-  for (const uniform of environment.customUniforms) {
-    knownNames.add(uniform.name);
-  }
-  for (const resource of environment.resources) {
-    knownNames.add(resource.name);
-  }
-  for (const helper of vertexSamplerHelpers(environment)) {
-    knownNames.add(helper.name);
-  }
-
-  return analysis.unresolvedReferences.flatMap((reference) => {
-    if (knownNames.has(reference.name)) {
-      return [];
-    }
-    const label = reference.kind === "function" ? "function"
-      : reference.kind === "type" ? "type"
-        : "identifier";
-    return reference.ranges.map((range): Diagnostic => ({
-      range,
-      severity: DiagnosticSeverity.Error,
-      source: "shader-studio-glsl-ls",
-      code: `undefined-${label}`,
-      message: `Undefined ${label} '${reference.name}'.`,
-    }));
-  });
-}
-
-/**
  * Warns about local variables and parameters nothing reads. Globals stay
  * quiet because uniforms and shared helpers are often set or used outside the
  * document, and functions are entry points or API surface rather than dead
- * locals. Assignments count as references in the analysis, so an `out`
- * parameter the body writes to is considered used.
+ * locals. Assignments count as references in the analysis, so a variable the
+ * body writes to is considered used.
  */
-function unusedSymbolDiagnostics(analysis: GlslAnalysisDocument): Diagnostic[] {
+function unusedSymbolDiagnostics(analysis: WgslAnalysisDocument): Diagnostic[] {
   const scopesById = new Map(analysis.scopes.map((scope) => [scope.id, scope]));
   return analysis.symbols.flatMap((symbol) => {
     if ((symbol.kind !== "variable" && symbol.kind !== "parameter") || symbol.references.length > 0) {
@@ -666,7 +563,7 @@ function unusedSymbolDiagnostics(analysis: GlslAnalysisDocument): Diagnostic[] {
       // Hint, not Warning: the Unnecessary tag already greys the symbol, and
       // an unused local needs no squiggle.
       severity: DiagnosticSeverity.Hint,
-      source: "shader-studio-glsl-ls",
+      source: "shader-studio-wgsl-ls",
       code: `unused-${label}`,
       message: `Unused ${label} '${symbol.name}'.`,
       tags: [DiagnosticTag.Unnecessary],
@@ -675,7 +572,7 @@ function unusedSymbolDiagnostics(analysis: GlslAnalysisDocument): Diagnostic[] {
 }
 
 function isRenameableName(name: string): boolean {
-  return isValidShaderIdentifier(name) && !isShaderLanguageReservedTerm("glsl", name);
+  return isValidShaderIdentifier(name) && !isShaderLanguageReservedTerm("wgsl", name);
 }
 
 /** Sorts ranges by position and drops duplicates so edits never overlap. */
@@ -690,28 +587,28 @@ function orderedRanges(ranges: readonly Range[]): Range[] {
   return [...unique.values()].sort((left, right) => comparePosition(left.start, right.start));
 }
 
-function symbolAtRenamePosition(document: GlslAnalysisDocument, position: Position): GlslSymbol | null {
+/** VS Code places a word selection's active cursor just after the identifier. */
+function symbolAtRenamePosition(document: WgslAnalysisDocument, position: Position): WgslSymbol | null {
   return symbolAtPosition(document, position) ?? symbolAtPosition(document, identifierPosition(document.source, position));
 }
 
 function identifierPosition(source: string, position: Position): Position {
   const line = source.split("\n")[position.line];
-  return position.character > 0 && line?.[position.character - 1] !== undefined && /[A-Za-z0-9_]/.test(line[position.character - 1]!)
+  return position.character > 0 && line?.[position.character - 1] !== undefined
+    && /[A-Za-z0-9_]/.test(line[position.character - 1]!)
     ? { line: position.line, character: position.character - 1 }
     : position;
 }
 
-/** Include declarations are unresolved in the pass analysis and therefore have no symbol links there. */
-function includedReferenceRanges(analysis: GlslAnalysisDocument, symbol: GlslSymbol): Range[] {
-  return analysis.unresolvedReferences
-    .filter((reference) => reference.name === symbol.name)
-    .flatMap((reference) => reference.ranges);
-}
-
-function sameIncludedSymbol(left: GlslSymbol, right: GlslSymbol): boolean {
-  return left.name === right.name && left.kind === right.kind
-    && left.declaration.start.line === right.declaration.start.line
-    && left.declaration.start.character === right.declaration.start.character;
+function includedReferenceRanges(analysis: WgslAnalysisDocument, symbol: WgslSymbol): Range[] {
+  const unresolved = analysis.unresolvedReferences.filter((reference) => reference.name === symbol.name).flatMap((reference) => reference.ranges);
+  if (unresolved.length > 0 || symbol.kind !== "function") {
+    return unresolved;
+  }
+  const tokens = tokenizeWgsl(analysis.source);
+  return tokens.flatMap((token, index) => token.text === symbol.name && tokens[index + 1]?.text === "("
+    ? [{ start: { line: token.line, character: token.character }, end: { line: token.line, character: token.character + token.text.length } }]
+    : []);
 }
 
 function deduplicateLocations(locations: Location[]): Location[] {
@@ -723,8 +620,8 @@ function deduplicateLocations(locations: Location[]): Location[] {
   return [...unique.values()];
 }
 
-/** GLSL names the components of a vector three interchangeable ways. */
-const GLSL_SWIZZLE_SETS = ["xyzw", "rgba", "stpq"] as const;
+/** WGSL swizzle components come in two interchangeable sets. */
+const WGSL_SWIZZLE_SETS = ["xyzw", "rgba"] as const;
 
 /**
  * Completions for a member selection such as `uv.`, listing the members of the selected
@@ -736,13 +633,13 @@ function memberCompletions(
   position: Position,
   source: string,
   environment: ShaderAuthoringEnvironment,
-  includes: readonly GlslAnalysisDocument[],
+  includes: readonly WgslAnalysisDocument[],
   uri: string,
 ): CompletionItem[] {
-  const resolved = resolveGlslExpressionType({ uri, source, stage: environment.stage, position, expression }, {
+  const resolved = resolveWgslExpressionType({ uri, source, stage: environment.stage, position, expression }, {
     includes,
-    variableType: (name) => environmentTypeName(name, source, environment),
-    functionType: (name) => visibleIntrinsics(source, environment.stage)
+    variableType: (name) => environmentTypeName(name, environment),
+    functionType: (name) => visibleIntrinsics(environment.stage)
       .find((item) => item.kind === "function" && item.name === name)?.returnType,
   });
   if (!resolved) {
@@ -750,10 +647,10 @@ function memberCompletions(
   }
   const vector = resolved.vector;
   if (vector) {
-    return swizzleSelections(vector.size, GLSL_SWIZZLE_SETS).map((selection) => ({
+    return swizzleSelections(vector.size, WGSL_SWIZZLE_SETS).map((selection) => ({
       label: selection,
       kind: CompletionItemKind.Field,
-      detail: selection.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, selection.length),
+      detail: selection.length === 1 ? vector.componentType : wgslVectorTypeName(vector.componentType, selection.length),
       documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
     }));
   }
@@ -768,18 +665,26 @@ function memberCompletions(
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
 function environmentTypeName(
   name: string,
-  source: string,
   environment: ShaderAuthoringEnvironment,
 ): string | undefined {
   const uniform = environment.customUniforms.find((item) => item.name === name);
   if (uniform) {
-    return uniform.type;
+    return authoringValueWgslType(uniform.type);
   }
   const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
-    && item.languages.includes("glsl")
+    && item.languages.includes("wgsl")
     && (!item.stages || item.stages.includes(environment.stage)));
-  return documented?.glslType
-    ?? visibleIntrinsics(source, environment.stage).find((item) => item.kind === "variable" && item.name === name)?.returnType;
+  return documented ? documented.wgslType : undefined;
+}
+
+function authoringValueWgslType(type: string): string {
+  switch (type) {
+    case "float": return "f32";
+    case "vec2": return "vec2f";
+    case "vec3": return "vec3f";
+    case "vec4": return "vec4f";
+    default: return "bool";
+  }
 }
 
 function completionFromDoc(name: string, detail: string | undefined, description: string): CompletionItem {
@@ -791,29 +696,29 @@ function markdownDocumentation(description: string) {
 }
 
 function markdownHover(signature: string, description: string): Hover {
-  return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`glsl\n${signature}\n\`\`\`\n\n${description}` } };
+  return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`wgsl\n${signature}\n\`\`\`\n\n${description}` } };
 }
 
-function completionKind(symbol: GlslSymbol): CompletionItemKind {
+function completionKind(symbol: WgslSymbol): CompletionItemKind {
   return symbol.kind === "function" ? CompletionItemKind.Function
     : symbol.kind === "type" ? CompletionItemKind.Struct
       : symbol.kind === "field" ? CompletionItemKind.Field
         : CompletionItemKind.Variable;
 }
 
-function documentSymbolKind(symbol: GlslSymbol): SymbolKind {
+function documentSymbolKind(symbol: WgslSymbol): SymbolKind {
   return symbol.kind === "function" ? SymbolKind.Function
     : symbol.kind === "type" ? SymbolKind.Struct
       : symbol.kind === "field" ? SymbolKind.Field
         : SymbolKind.Variable;
 }
 
-function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): GlslVertexHookFeature | undefined {
+function vertexHookFeature(analysis: WgslAnalysisDocument, symbol: WgslSymbol): WgslVertexHookFeature | undefined {
   const scope = symbol.kind === "function"
     ? analysis.scopes.find((item) => (
       item.kind === "function"
       && item.name === "mainVertex"
-      && rangeContains(symbol.definition, item.range)
+      && rangeContains(item.range, symbol.definition)
     ))
     : analysis.scopes.find((item) => item.id === symbol.scopeId && item.kind === "function" && item.name === "mainVertex");
   if (!scope) {
@@ -821,51 +726,46 @@ function vertexHookFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): 
   }
   const parameters = scope.symbolIds
     .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
-    .filter((candidate): candidate is GlslSymbol => candidate?.kind === "parameter");
+    .filter((candidate): candidate is WgslSymbol => candidate?.kind === "parameter");
   const functionSymbol = analysis.symbols.find((candidate) => (
     candidate.kind === "function"
     && candidate.name === "mainVertex"
-    && candidate.typeName === "void"
-    && candidate.signature === "void mainVertex(vec3, vec3, vec2)"
-    && rangeContains(candidate.definition, scope.range)
+    && parameters.length === 3
+    && parameters.every((parameter) => parameter.typeName?.startsWith("ptr<function,") ?? false)
+    && rangeContains(scope.range, candidate.definition)
   ));
-  const definitionText = sourceForRange(analysis.source, functionSymbol?.definition);
-  if (
-    !functionSymbol
-    || parameters.length !== 3
-    || parameters[0]?.typeName !== "vec3"
-    || parameters[1]?.typeName !== "vec3"
-    || parameters[2]?.typeName !== "vec2"
-    || !/\bvoid\s+mainVertex\s*\(\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec3\b[\s\S]*,\s*inout\s+vec2\b/.test(definitionText)
-  ) {
+  const functionFeature = WGSL_VERTEX_HOOK_FEATURES[0];
+  if (!functionSymbol || !functionFeature) {
     return undefined;
   }
-  const functionFeature = GLSL_VERTEX_HOOK_FEATURES[0];
-  if (symbol.id === functionSymbol.id && functionFeature) {
+  if (symbol.id === functionSymbol.id) {
     return {
       ...functionFeature,
-      signature: `void mainVertex(inout vec3 ${parameters[0].name}, inout vec3 ${parameters[1].name}, inout vec2 ${parameters[2].name})`,
+      signature: `fn mainVertex(${parameters.map((parameter) => `${parameter.name}: ${parameter.typeName}`).join(", ")})`,
     };
   }
   const parameterIndex = parameters.findIndex((parameter) => parameter.id === symbol.id);
-  const role = GLSL_VERTEX_HOOK_FEATURES[parameterIndex + 1];
+  const role = WGSL_VERTEX_HOOK_FEATURES[parameterIndex + 1];
   const parameter = parameters[parameterIndex];
   return role && parameter
-    ? { ...role, name: parameter.name, signature: `inout ${parameter.typeName} ${parameter.name}` }
+    ? { ...role, name: parameter.name, signature: `${parameter.name}: ${parameter.typeName}` }
     : undefined;
 }
 
-interface GlslMainImageFeature {
+interface WgslMainImageFeature {
   readonly signature: string;
   readonly description: string;
 }
 
-function mainImageFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): GlslMainImageFeature | undefined {
+const WGSL_VEC2_TYPES = new Set(["vec2f", "vec2<f32>"]);
+const WGSL_VEC4_TYPES = new Set(["vec4f", "vec4<f32>"]);
+
+function mainImageFeature(analysis: WgslAnalysisDocument, symbol: WgslSymbol): WgslMainImageFeature | undefined {
   const scope = symbol.kind === "function"
     ? analysis.scopes.find((item) => (
       item.kind === "function"
       && item.name === "mainImage"
-      && rangeContains(symbol.definition, item.range)
+      && rangeContains(item.range, symbol.definition)
     ))
     : analysis.scopes.find((item) => item.id === symbol.scopeId && item.kind === "function" && item.name === "mainImage");
   if (!scope) {
@@ -873,40 +773,31 @@ function mainImageFeature(analysis: GlslAnalysisDocument, symbol: GlslSymbol): G
   }
   const parameters = scope.symbolIds
     .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
-    .filter((candidate): candidate is GlslSymbol => candidate?.kind === "parameter");
-  const [output, coordinate] = parameters;
+    .filter((candidate): candidate is WgslSymbol => candidate?.kind === "parameter");
+  const [coordinate] = parameters;
   const functionSymbol = analysis.symbols.find((candidate) => (
     candidate.kind === "function"
     && candidate.name === "mainImage"
-    && candidate.typeName === "void"
-    && candidate.signature === "void mainImage(vec4, vec2)"
-    && rangeContains(candidate.definition, scope.range)
+    && parameters.length === 1
+    && coordinate?.typeName !== undefined && WGSL_VEC2_TYPES.has(coordinate.typeName)
+    && candidate.typeName !== undefined && WGSL_VEC4_TYPES.has(candidate.typeName)
+    && rangeContains(scope.range, candidate.definition)
   ));
-  const definitionText = sourceForRange(analysis.source, functionSymbol?.definition);
-  if (
-    !functionSymbol
-    || parameters.length !== 2
-    || output?.typeName !== "vec4"
-    || coordinate?.typeName !== "vec2"
-    || !/\bvoid\s+mainImage\s*\(\s*out\s+vec4\b[\s\S]*,\s*(?:in\s+)?vec2\b/.test(definitionText)
-  ) {
+  if (!functionSymbol || !coordinate) {
     return undefined;
   }
   if (symbol.id === functionSymbol.id) {
     return {
-      signature: `void mainImage(out vec4 ${output.name}, in vec2 ${coordinate.name})`,
-      description: GLSL_MAIN_IMAGE_DESCRIPTION,
+      signature: `fn mainImage(${coordinate.name}: ${coordinate.typeName}) -> ${functionSymbol.typeName}`,
+      description: WGSL_MAIN_IMAGE_DESCRIPTION,
     };
   }
-  if (symbol.id === output.id) {
-    return { signature: `out vec4 ${output.name}`, description: GLSL_MAIN_IMAGE_OUTPUT_DESCRIPTION };
-  }
   return symbol.id === coordinate.id
-    ? { signature: `in vec2 ${coordinate.name}`, description: GLSL_MAIN_IMAGE_COORDINATE_DESCRIPTION }
+    ? { signature: `${coordinate.name}: ${coordinate.typeName}`, description: WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION }
     : undefined;
 }
 
-function rangeContains(outer: import("vscode-languageserver-protocol").Range, inner: import("vscode-languageserver-protocol").Range): boolean {
+function rangeContains(outer: Range, inner: Range): boolean {
   return comparePosition(outer.start, inner.start) <= 0 && comparePosition(outer.end, inner.end) >= 0;
 }
 
@@ -914,35 +805,36 @@ function comparePosition(left: Position, right: Position): number {
   return left.line === right.line ? left.character - right.character : left.line - right.line;
 }
 
-function sourceForRange(source: string, range: import("vscode-languageserver-protocol").Range | undefined): string {
-  if (!range) {
-    return "";
+function componentCountAt(source: string | undefined, range: Range): 3 | 4 | undefined {
+  if (source === undefined) {
+    return undefined;
   }
   const lines = source.split("\n");
-  return lines.slice(range.start.line, range.end.line + 1).map((line, index, selected) => (
-    index === 0 && index === selected.length - 1
-      ? line.slice(range.start.character, range.end.character)
-      : index === 0
-        ? line.slice(range.start.character)
-        : index === selected.length - 1
-          ? line.slice(0, range.end.character)
-          : line
-  )).join("\n");
+  const line = lines[range.start.line];
+  if (line === undefined) {
+    return undefined;
+  }
+  const before = line.slice(0, range.start.character);
+  if (/vec3f\s*\($/.test(before)) {
+    return 3;
+  }
+  if (/vec4f\s*\($/.test(before)) {
+    return 4;
+  }
+  return undefined;
 }
 
-function visibleIntrinsics(source: string, stage: ShaderAuthoringEnvironment["stage"]) {
-  const version = glslVersion(source);
-  const glsl = glslStage(stage);
-  return GLSL_INTRINSICS.filter((item) => item.minVersion <= version
-    && item.maxVersion >= version
-    && item.stages.includes(glsl));
+function formatColorComponent(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
 }
 
-function glslVersion(source: string): 100 | 300 {
-  return /^\s*#version\s+100\b/m.test(source) ? 100 : 300;
+function visibleIntrinsics(stage: ShaderAuthoringEnvironment["stage"]) {
+  const wgsl = wgslStage(stage);
+  return WGSL_INTRINSICS.filter((item) => item.stages.includes(wgsl));
 }
-function glslStage(stage: ShaderAuthoringEnvironment["stage"]): "fragment" | "vertex" {
-  return stage === "vertex" ? "vertex" : "fragment";
+
+function wgslStage(stage: ShaderAuthoringEnvironment["stage"]): "fragment" | "vertex" | "compute" {
+  return stage === "vertex" ? "vertex" : stage === "compute" ? "compute" : "fragment";
 }
 
 function wordAt(source: string, position: Position): string | undefined {
@@ -980,31 +872,6 @@ function callAt(source: string, position: Position): { name: string; parameter: 
     }
   }
   return undefined;
-}
-
-function stripIncludeDirectives(source: string): string {
-  return source.replace(/^\s*#include\s+["<][^">]+[">].*$/gm, "");
-}
-
-function includeDiagnostics(uri: string, source: string, files: VirtualFileSystem): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
-  const lines = source.split("\n");
-  lines.forEach((line, lineNumber) => {
-    const match = line.match(/^\s*#include\s+["<]([^">]+)[">]/);
-    if (!match?.[1]) {
-      return;
-    }
-    const resolved = files.resolve(uri, match[1]);
-    const range = { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: line.length } };
-    if (!resolved) {
-      diagnostics.push({ range, severity: DiagnosticSeverity.Error, source: "shader-studio-glsl-ls", code: "include-outside-roots", message: `Include escapes the shader workspace: ${match[1]}` });
-    } else if (!files.read(resolved)) {
-      diagnostics.push({ range, severity: DiagnosticSeverity.Error, source: "shader-studio-glsl-ls", code: "include-not-found", message: `Include not found: ${match[1]}` });
-    } else {
-      files.trackDependency(uri, resolved);
-    }
-  });
-  return diagnostics;
 }
 
 function zeroRange() {

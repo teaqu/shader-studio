@@ -191,6 +191,40 @@ describe("language-service protocol", () => {
     expect(isWorkerMessage({ kind: "response", id: 7, method: "initialize", error })).toBe(false);
   });
 
+  it.each(["glsl", "slang", "wgsl"] as const)("accepts a revision for language %s", (languageId) => {
+    expect(isWorkerMessage({
+      kind: "request",
+      id: 7,
+      method: "completion",
+      params: {
+        document: {
+          uri: "file:///image.glsl",
+          languageId,
+          version: 3,
+          environmentGeneration: 8,
+        },
+        position: { line: 2, character: 5 },
+      },
+    })).toBe(true);
+  });
+
+  it("rejects a revision with an unknown language id", () => {
+    expect(isWorkerMessage({
+      kind: "request",
+      id: 7,
+      method: "completion",
+      params: {
+        document: {
+          uri: "file:///image.glsl",
+          languageId: "hlsl",
+          version: 3,
+          environmentGeneration: 8,
+        },
+        position: { line: 2, character: 5 },
+      },
+    })).toBe(false);
+  });
+
   it("accepts a diagnostics notification", () => {
     const notification: DiagnosticsWorkerNotification = {
       kind: "notification",

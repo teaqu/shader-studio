@@ -1,14 +1,18 @@
+import type { ShaderLanguageId } from "./ShaderLanguages";
+
 export type ShaderStudioBuiltinStage = "fragment" | "vertex" | "compute" | "geometry" | "tess-control" | "tess-evaluation";
 
 export interface ShaderStudioBuiltinUniform {
   readonly name: string;
   readonly glslType?: string;
   readonly slangType: string;
+  /** WGSL spelling; required for every entry whose `languages` includes "wgsl". */
+  readonly wgslType?: string;
   /** Concrete declaration emitted into standalone GLSL authoring modules. */
   readonly glslDeclaration?: string;
   /** Concrete declaration emitted into standalone Slang authoring modules. */
   readonly slangDeclaration?: string;
-  readonly languages: readonly ("glsl" | "slang")[];
+  readonly languages: readonly ShaderLanguageId[];
   /** Stages that expose this symbol; omitted means every authoring stage. */
   readonly stages?: readonly ShaderStudioBuiltinStage[];
   readonly description: string;
@@ -18,9 +22,10 @@ export interface ShaderStudioFragmentContextSymbol extends ShaderStudioBuiltinUn
   readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition";
   readonly glslType: "vec3";
   readonly slangType: "float3";
+  readonly wgslType: "vec3f";
   readonly glslDeclaration: string;
   readonly slangDeclaration: string;
-  readonly languages: readonly ["glsl", "slang"];
+  readonly languages: readonly ["glsl", "slang", "wgsl"];
   readonly stages: readonly ["fragment"];
 }
 
@@ -75,9 +80,10 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStu
     name: "iWorldPosition",
     glslType: "vec3",
     slangType: "float3",
+    wgslType: "vec3f",
     glslDeclaration: "vec3 iWorldPosition;",
     slangDeclaration: "float3 iWorldPosition;",
-    languages: ["glsl", "slang"],
+    languages: ["glsl", "slang", "wgsl"],
     stages: ["fragment"],
     description: "World-space position of the current fragment; zero for fullscreen geometry.",
   },
@@ -85,9 +91,10 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStu
     name: "iNormal",
     glslType: "vec3",
     slangType: "float3",
+    wgslType: "vec3f",
     glslDeclaration: "vec3 iNormal;",
     slangDeclaration: "float3 iNormal;",
-    languages: ["glsl", "slang"],
+    languages: ["glsl", "slang", "wgsl"],
     stages: ["fragment"],
     description: "World-space interpolated normal of the current fragment; zero for fullscreen geometry.",
   },
@@ -95,9 +102,10 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStu
     name: "iCameraPosition",
     glslType: "vec3",
     slangType: "float3",
+    wgslType: "vec3f",
     glslDeclaration: "vec3 iCameraPosition;",
     slangDeclaration: "float3 iCameraPosition;",
-    languages: ["glsl", "slang"],
+    languages: ["glsl", "slang", "wgsl"],
     stages: ["fragment"],
     description: "World-space camera position for mesh fragments; zero for fullscreen geometry.",
   },
@@ -111,19 +119,19 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT = Object.freeze({
 });
 
 export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuiltinUniform>[] = deepFreezeBuiltinCatalog([
-  { name: "iResolution", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iResolution;", languages: ["glsl", "slang"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
-  { name: "iTime", glslType: "float", slangType: "float", slangDeclaration: "float iTime;", languages: ["glsl", "slang"], description: "Elapsed time in seconds." },
-  { name: "iTimeDelta", glslType: "float", slangType: "float", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang"], description: "Time since the previous frame in seconds." },
-  { name: "iFrameRate", glslType: "float", slangType: "float", slangDeclaration: "float iFrameRate;", languages: ["glsl", "slang"], description: "Current frames per second." },
-  { name: "iMouse", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang"], description: "Mouse position in xy and click position in zw." },
-  { name: "iFrame", glslType: "int", slangType: "int", slangDeclaration: "int iFrame;", languages: ["glsl", "slang"], description: "Frame counter starting at zero." },
-  { name: "iDate", glslType: "vec4", slangType: "float4", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang"], description: "Year, month, day, and seconds since midnight." },
+  { name: "iResolution", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iResolution;", languages: ["glsl", "slang", "wgsl"], description: "Canvas dimensions: xy is width and height, z is the aspect ratio." },
+  { name: "iTime", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iTime;", languages: ["glsl", "slang", "wgsl"], description: "Elapsed time in seconds." },
+  { name: "iTimeDelta", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iTimeDelta;", languages: ["glsl", "slang", "wgsl"], description: "Time since the previous frame in seconds." },
+  { name: "iFrameRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iFrameRate;", languages: ["glsl", "slang", "wgsl"], description: "Current frames per second." },
+  { name: "iMouse", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iMouse;", languages: ["glsl", "slang", "wgsl"], description: "Mouse position in xy and click position in zw." },
+  { name: "iFrame", glslType: "int", slangType: "int", wgslType: "i32", slangDeclaration: "int iFrame;", languages: ["glsl", "slang", "wgsl"], description: "Frame counter starting at zero." },
+  { name: "iDate", glslType: "vec4", slangType: "float4", wgslType: "vec4f", slangDeclaration: "float4 iDate;", languages: ["glsl", "slang", "wgsl"], description: "Year, month, day, and seconds since midnight." },
   { name: "iChannelTime", glslType: "float[1024]", slangType: "float[1024]", languages: ["glsl"], description: "Playback time for each configured input channel." },
   { name: "iChannelResolution", glslType: "vec3[1024]", slangType: "float3[1024]", languages: ["glsl"], description: "Resolution of each configured input channel." },
-  { name: "iSampleRate", glslType: "float", slangType: "float", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang"], description: "Audio sample rate in hertz." },
-  { name: "iCameraPos", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang"], description: "Camera position in world space." },
-  { name: "iCameraDir", glslType: "vec3", slangType: "float3", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang"], description: "Normalised camera look direction." },
-  { name: "iDispatch", slangType: "int", slangDeclaration: "int iDispatch;", languages: ["slang"], stages: ["compute"], description: "Zero-based repetition index for the current compute pass dispatch." },
+  { name: "iSampleRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang", "wgsl"], description: "Audio sample rate in hertz." },
+  { name: "iCameraPos", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang", "wgsl"], description: "Camera position in world space." },
+  { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
+  { name: "iDispatch", slangType: "int", wgslType: "i32", slangDeclaration: "int iDispatch;", languages: ["slang", "wgsl"], stages: ["compute"], description: "Zero-based repetition index for the current compute pass dispatch." },
   { name: "iChannelN", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "Any renderer-assigned input channel. Slots follow configured input order and are not inferred from resource names." },
   { name: "iChannel0", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "First input channel; its texture shape follows the configured resource." },
   { name: "iChannel1", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "Second input channel; its texture shape follows the configured resource." },
@@ -148,7 +156,7 @@ export const SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE = "iChannel\\d+";
 /** Legacy ShaderToy channel-metadata accessors are generated per configured slot. */
 export const SHADER_STUDIO_INDEXED_CHANNEL_METADATA_PATTERN_SOURCE = "iCh\\d+";
 
-function collectBuiltinUniformNames(language: "glsl" | "slang"): readonly string[] {
+function collectBuiltinUniformNames(language: ShaderLanguageId): readonly string[] {
   return Object.freeze(
     SHADER_STUDIO_BUILTIN_UNIFORMS
       .filter((uniform) => (
@@ -159,14 +167,15 @@ function collectBuiltinUniformNames(language: "glsl" | "slang"): readonly string
   );
 }
 
-const BUILTIN_UNIFORM_NAMES_BY_LANGUAGE = {
+const BUILTIN_UNIFORM_NAMES_BY_LANGUAGE: Record<ShaderLanguageId, readonly string[]> = {
   glsl: collectBuiltinUniformNames("glsl"),
   slang: collectBuiltinUniformNames("slang"),
-} as const;
+  wgsl: collectBuiltinUniformNames("wgsl"),
+};
 
 /** Every renderer-declared uniform an editor should colour for the language. */
 export function shaderStudioBuiltinUniformNames(
-  language: "glsl" | "slang",
+  language: ShaderLanguageId,
 ): readonly string[] {
   return BUILTIN_UNIFORM_NAMES_BY_LANGUAGE[language];
 }

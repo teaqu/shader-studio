@@ -7,11 +7,14 @@ import {
   type CompletionItem,
   type Diagnostic,
   type DocumentHighlight,
+  DocumentHighlightKind,
   type DocumentSymbol,
   type Hover,
   type Location,
+  type Position,
   type Range,
   type SignatureHelp,
+  type TextEdit,
   type WorkspaceEdit,
 } from "vscode-languageserver-protocol";
 import {
@@ -26,6 +29,8 @@ import {
   type DocumentParams,
   type DocumentPositionParams,
   type LanguageService,
+  type RenameParams,
+  type ReferenceParams,
   type ServerCapabilities,
   type ShaderDocumentSnapshot,
 } from "@shader-studio/language-server-core";
@@ -50,6 +55,7 @@ import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./verte
 import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
 import { findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals } from "./expressionType.js";
 import { SLANG_SWIZZLE_SETS, slangVectorTypeName } from "./slangTypes.js";
+import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "./rename.js";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -59,11 +65,11 @@ const CAPABILITIES: ServerCapabilities = {
   documentSymbols: true,
   diagnostics: true,
   documentColors: true,
-  // The bundled Slang language server exposes no reference index, so these
-  // stay unsupported rather than answering from a name match.
-  references: false,
-  documentHighlights: false,
-  rename: false,
+  // The bundled Slang language server exposes no reference index. Rename uses
+  // a separate strict scoped analysis; navigation still uses the native API.
+  references: true,
+  documentHighlights: true,
+  rename: true,
 };
 
 export class SlangLanguageService implements LanguageService {
@@ -453,16 +459,158 @@ export class SlangLanguageService implements LanguageService {
     }));
   }
 
-  async references(): Promise<Location[]> {
-    return [];
+  async references(params: ReferenceParams): Promise<Location[]> {
+    if (!this.current(params)) {
+      return [];
+    }
+    const target = resolveSlangSymbol(this.renameDocuments(), params.document.uri, params.position);
+    if (!target) {
+      return [];
+    }
+    const points = params.includeDeclaration ? [target.declaration, ...target.references] : target.references;
+    return points.flatMap(point => {
+      const range = authoredPointRange(this.documentText(point.uri), point.offset);
+      return range ? [{ uri: point.uri, range }] : [];
+    });
   }
 
-  async documentHighlights(): Promise<DocumentHighlight[]> {
-    return [];
+  async documentHighlights(params: DocumentPositionParams): Promise<DocumentHighlight[]> {
+    if (!this.current(params)) {
+      return [];
+    }
+    const target = resolveSlangSymbol(this.renameDocuments(), params.document.uri, params.position);
+    if (!target) {
+      return [];
+    }
+    const declaration = target.declaration.uri === params.document.uri
+      ? authoredPointRange(this.documentText(target.declaration.uri), target.declaration.offset) : undefined;
+    return [
+      ...(declaration ? [{ range: declaration, kind: DocumentHighlightKind.Write }] : []),
+      ...target.references.flatMap(point => {
+        const range = point.uri === params.document.uri ? authoredPointRange(this.documentText(point.uri), point.offset) : undefined;
+        return range ? [{ range, kind: DocumentHighlightKind.Read }] : [];
+      }),
+    ];
   }
 
-  async rename(): Promise<WorkspaceEdit | null> {
-    return null;
+  async rename(params: RenameParams): Promise<WorkspaceEdit | null> {
+    if (!this.current(params)) {
+      return null;
+    }
+    const documents = this.renameDocuments();
+    console.log('[rename-trace] slang docs', params.document.uri, JSON.stringify(documents.map(document => ({ uri: document.uri, common: document.environment.commonFile?.uri, pass: document.environment.passName, text: document.text.slice(0, 110) }))));
+    const source = this.store.getDocument(params.document.uri)?.text ?? "";
+    const native = /\bgeneric\s*<|\bimport\s+|\bstruct\s+\w+\s*\{[\s\S]*?\w+\s*\(/.test(source)
+      ? this.nativeRename(documents, params) : null;
+    const edit = native ?? renameSlangSymbol(documents, params.document.uri, params.position, params.newName);
+    const valid = edit && this.renameCompiles(documents, edit);
+    console.log('[rename-trace] slang edit', JSON.stringify(edit), valid);
+    return valid ? edit : null;
+  }
+
+  /** Use Slang's own declaration identity for syntax our GLSL-compatible
+   * fallback cannot model (generic specializations, methods, and imports). */
+  private nativeRename(documents: readonly SlangRenameDocument[], params: RenameParams): WorkspaceEdit | null {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(params.newName)) {
+      return null;
+    }
+    const state = this.current(params);
+    if (!state || isPositionInComment(state.document.text, params.position)) {
+      return null;
+    }
+    const target = nativeDefinitionKey(this.server, params.document.uri, shiftedPosition(params.position, state.offset));
+    if (!target || target.startsWith("shader-studio:")) {
+      return null;
+    }
+    const changes: Record<string, TextEdit[]> = {};
+    for (const document of documents) {
+      const offset = this.lineOffsets.get(document.uri) ?? 0;
+      for (const occurrence of identifierOccurrences(document.text)) {
+        if (occurrence.name !== wordAt(document.text, params.position) && document.uri === params.document.uri) {
+          continue;
+        }
+        const identity = nativeDefinitionKey(this.server, document.uri, shiftedPosition(occurrence.position, offset));
+        if (identity !== target) {
+          continue;
+        }
+        (changes[document.uri] ??= []).push({ range: occurrence.range, newText: params.newName });
+      }
+    }
+    return Object.keys(changes).length ? { changes } : null;
+  }
+
+  private renameDocuments(): SlangRenameDocument[] {
+    const documents = [...this.opened].flatMap(uri => {
+      const document = this.store.getDocument(uri);
+      const environment = this.store.getEnvironment(uri);
+      return document && environment ? [{ uri, text: document.text, environment }] : [];
+    });
+    for (const item of [...documents]) {
+      const workspaceDocuments = item.environment.workspaceDocuments ?? [];
+      for (const workspace of workspaceDocuments) {
+        if (documents.some(document => document.uri === workspace.uri)) {
+          continue;
+        }
+        const common = workspaceDocuments.find(file => file.uri === workspace.commonUri);
+        documents.push({
+          uri: workspace.uri,
+          text: workspace.text,
+          environment: { ...item.environment, documentUri: workspace.uri, stage: workspace.stage,
+            passName: workspaceDocuments.some(file => file.commonUri === workspace.uri) ? 'Common' : 'Image',
+            commonFile: common,
+          },
+        });
+      }
+    }
+    return documents;
+  }
+
+  private documentText(uri: string): string | undefined {
+    return this.store.getDocument(uri)?.text
+      ?? [...this.opened].map(openUri => this.store.getEnvironment(openUri)?.commonFile).find(file => file?.uri === uri)?.text
+      ?? this.renameDocuments().find(document => document.uri === uri)?.text;
+  }
+
+  private renameCompiles(documents: readonly SlangRenameDocument[], edit: WorkspaceEdit): boolean {
+    try {
+      const compiler = this.compiler();
+      if (!compiler || !edit.changes) {
+        return false;
+      }
+      // Validate in separate compiler sessions; never modify the language server's
+      // open buffers while the editor is still deciding whether to apply an edit.
+      for (const document of documents) {
+        const common = document.environment.commonFile;
+        if (!edit.changes[document.uri] && !(common && edit.changes[common.uri])) {
+          continue;
+        }
+        const session = compiler.globalSession.createSession(compiler.target);
+        if (!session) {
+          return false;
+        }
+        try {
+          const commonText = common ? documents.find(item => item.uri === common.uri)?.text ?? common.text : "";
+          const commonSource = common ? resolveCompilerDependencies(
+            applySlangRenameEdits(commonText, edit.changes[common.uri] ?? []), common.uri, document.environment.virtualFiles,
+          ) : "";
+          const authoredSource = resolveCompilerDependencies(
+            applySlangRenameEdits(document.text, edit.changes[document.uri] ?? []), document.uri, document.environment.virtualFiles,
+          );
+          const prefix = buildSlangAuthoringModule(document.environment).text;
+          const source = [prefix, stripEditorImport(commonSource), stripEditorImport(authoredSource)].filter(Boolean).join("\n");
+          const compiled = session.loadModuleFromSource(source, moduleName(document.text, document.uri), sourcePath(document.uri));
+          if (!compiled) {
+            return false;
+          }
+          compiled.delete?.();
+        } finally {
+          session.delete?.();
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async diagnostics(params: DocumentParams): Promise<Diagnostic[]> {
@@ -1239,6 +1387,36 @@ function offsetRange(source: string, start: number, end: number): Range {
 function positionAtOffset(source: string, offset: number) {
   const lines = source.slice(0, offset).split("\n");
   return { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
+}
+
+function authoredPointRange(source: string | undefined, offset: number): Range | undefined {
+  if (!source) {
+    return undefined;
+  }
+  const match = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(offset));
+  if (!match) {
+    return undefined;
+  }
+  return { start: positionAtOffset(source, offset), end: positionAtOffset(source, offset + match[0].length) };
+}
+
+function nativeDefinitionKey(server: SlangLanguageServer, uri: string, position: { line: number; character: number }): string | undefined {
+  const location = consumeList(server.gotoDefinition(uri, position), (item) => item)[0];
+  return location ? `${location.uri}\0${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}` : undefined;
+}
+
+function identifierOccurrences(source: string): { name: string; position: Position; range: Range }[] {
+  const result: { name: string; position: Position; range: Range }[] = [];
+  const tokens = /\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\r\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_][A-Za-z0-9_]*/g;
+  for (const match of source.matchAll(tokens)) {
+    const token = match[0];
+    if (token.startsWith("//") || token.startsWith("/*") || token.startsWith('"') || token.startsWith("'")) {
+      continue;
+    }
+    const start = positionAtOffset(source, match.index!);
+    result.push({ name: token, position: start, range: { start, end: positionAtOffset(source, match.index! + token.length) } });
+  }
+  return result;
 }
 
 function callAt(source: string, position: { line: number; character: number }): { name: string; parameter: number } | undefined {

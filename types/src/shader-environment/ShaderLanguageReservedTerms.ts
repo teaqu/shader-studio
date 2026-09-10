@@ -1,3 +1,5 @@
+import type { ShaderLanguageId } from "./ShaderLanguages";
+
 /**
  * Static GLSL ES 3.00 vocabulary rejected in a global declaration-name
  * position by the active compiler boundary. Compiler-backed tests keep later
@@ -51,12 +53,85 @@ const GLSL_ES_300_RESERVED_IDENTIFIERS = new Set<string>([
  */
 const SLANG_RESERVED_IDENTIFIERS = new Set<string>(["new", "operator"]);
 
+/**
+ * WGSL keywords and reserved words from sections 3.6 and 16 of the spec
+ * (https://www.w3.org/TR/WGSL/). An identifier must not share their spelling.
+ */
+const WGSL_KEYWORDS = [
+  "alias", "break", "case", "const", "const_assert", "continue", "continuing", "default",
+  "diagnostic", "discard", "else", "enable", "false", "fn", "for", "if", "let", "loop",
+  "override", "requires", "return", "struct", "switch", "true", "var", "while",
+] as const;
+
+const WGSL_RESERVED_WORDS = [
+  "NULL", "Self", "abstract", "active", "alignas", "alignof", "as", "asm", "asm_fragment",
+  "async", "attribute", "auto", "await", "become", "cast", "catch", "class", "co_await",
+  "co_return", "co_yield", "coherent", "column_major", "common", "compile", "compile_fragment",
+  "concept", "const_cast", "consteval", "constexpr", "constinit", "crate", "debugger", "decltype",
+  "delete", "demote", "demote_to_helper", "do", "dynamic_cast", "enum", "explicit", "export",
+  "extends", "extern", "external", "fallthrough", "filter", "final", "finally", "friend", "from",
+  "fxgroup", "get", "goto", "groupshared", "highp", "impl", "implements", "import", "inline",
+  "instanceof", "interface", "layout", "lowp", "macro", "macro_rules", "match", "mediump", "meta",
+  "mod", "module", "move", "mut", "mutable", "namespace", "new", "nil", "noexcept", "noinline",
+  "nointerpolation", "non_coherent", "noncoherent", "noperspective", "null", "nullptr", "of",
+  "operator", "package", "packoffset", "partition", "pass", "patch", "pixelfragment", "precise",
+  "precision", "premerge", "priv", "protected", "pub", "public", "readonly", "ref", "regardless",
+  "register", "reinterpret_cast", "require", "resource", "restrict", "self", "set", "shared",
+  "sizeof", "smooth", "snorm", "static", "static_assert", "static_cast", "std", "subroutine",
+  "super", "target", "template", "this", "thread_local", "throw", "trait", "try", "type",
+  "typedef", "typeid", "typename", "typeof", "union", "unless", "unorm", "unsafe", "unsized",
+  "use", "using", "varying", "virtual", "volatile", "wgsl", "where", "with", "writeonly", "yield",
+] as const;
+
+/**
+ * Predeclared scalar, vector, and matrix aliases (vec4f, mat3x3f, ...) that a
+ * generated `var<private>` declaration would collide with.
+ */
+const WGSL_PREDECLARED_TYPE_ALIASES = [
+  "bool", "f16", "f32", "i32", "u32",
+  "vec2f", "vec2h", "vec2i", "vec2u", "vec3f", "vec3h", "vec3i", "vec3u",
+  "vec4f", "vec4h", "vec4i", "vec4u",
+  "mat2x2f", "mat2x2h", "mat2x3f", "mat2x3h", "mat2x4f", "mat2x4h",
+  "mat3x2f", "mat3x2h", "mat3x3f", "mat3x3h", "mat3x4f", "mat3x4h",
+  "mat4x2f", "mat4x2h", "mat4x3f", "mat4x3h", "mat4x4f", "mat4x4h",
+] as const;
+
+/**
+ * Deliberately unprefixed generated names from `rendering/src/webgpu/WgslPrelude.ts`:
+ * the `i*` builtins users read, the fragment/vertex hooks, the entry points the
+ * pipelines look up, and the compute output helper. A config-provided uniform,
+ * storage buffer, or channel with one of these spellings would collide with the
+ * prelude, so config parsing rejects them with a config error instead.
+ */
+const WGSL_GENERATED_API_NAMES = [
+  "iResolution", "iMouse", "iTime", "iTimeDelta", "iFrameRate", "iFrame",
+  "iSampleRate", "iDate", "iCameraPos", "iCameraDir", "iDispatch",
+  "mainImage", "mainVertex", "vertexMain", "fragmentMain", "writeOutput",
+] as const;
+
+/**
+ * Per-channel free-function accessors (`iChannel0Sample`, `iChannel1Size`, …).
+ * The slot is parametric, so a pattern covers every slot; the fixed names above
+ * stay a plain set like the other vocabularies in this file.
+ */
+const WGSL_GENERATED_ACCESSOR_PATTERN = /^iChannel\d+(Sample|SampleLevel|SampleGrad|Size|Time|Loaded)$/;
+
+const WGSL_RESERVED_IDENTIFIERS = new Set<string>([
+  ...WGSL_KEYWORDS,
+  ...WGSL_RESERVED_WORDS,
+  ...WGSL_PREDECLARED_TYPE_ALIASES,
+  ...WGSL_GENERATED_API_NAMES,
+]);
+
 export function isShaderLanguageReservedTerm(
-  languageId: "glsl" | "slang",
+  languageId: ShaderLanguageId,
   name: string,
 ): boolean {
   if (languageId === "slang") {
     return SLANG_RESERVED_IDENTIFIERS.has(name);
+  }
+  if (languageId === "wgsl") {
+    return WGSL_RESERVED_IDENTIFIERS.has(name) || WGSL_GENERATED_ACCESSOR_PATTERN.test(name);
   }
   return GLSL_ES_300_RESERVED_IDENTIFIERS.has(name)
     || name.startsWith("gl_")

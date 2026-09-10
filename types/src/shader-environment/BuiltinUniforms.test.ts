@@ -10,7 +10,7 @@ import {
 
 describe("shaderStudioBuiltinUniformNames", () => {
   it("includes every catalog entry declared for the language, once each", () => {
-    for (const language of ["glsl", "slang"] as const) {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
       const names = shaderStudioBuiltinUniformNames(language);
       const expected = SHADER_STUDIO_BUILTIN_UNIFORMS
         .filter((uniform) => (
@@ -27,6 +27,7 @@ describe("shaderStudioBuiltinUniformNames", () => {
   it("excludes documentation-only entries that name a family rather than a real symbol", () => {
     expect(shaderStudioBuiltinUniformNames("glsl")).not.toContain("iChannelN");
     expect(shaderStudioBuiltinUniformNames("slang")).not.toContain("iChannelN");
+    expect(shaderStudioBuiltinUniformNames("wgsl")).not.toContain("iChannelN");
   });
 
   it("keeps Slang channel implementation details out of the public built-ins", () => {
@@ -37,8 +38,18 @@ describe("shaderStudioBuiltinUniformNames", () => {
     }
   });
 
+  it("exposes the shared ShaderToy builtins to WGSL without the GLSL channel spellings", () => {
+    const names = shaderStudioBuiltinUniformNames("wgsl");
+    for (const name of ["iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate", "iSampleRate", "iCameraPos", "iCameraDir", "iDispatch"]) {
+      expect(names).toContain(name);
+    }
+    for (const name of ["iChannelTime", "iChannelResolution", "iChannel0", "iCh0"]) {
+      expect(names).not.toContain(name);
+    }
+  });
+
   it("includes the camera and fragment-context symbols an editor should colour", () => {
-    for (const language of ["glsl", "slang"] as const) {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
       const names = shaderStudioBuiltinUniformNames(language);
       expect(names).toContain("iCameraPos");
       expect(names).toContain("iCameraDir");
@@ -52,6 +63,7 @@ describe("shaderStudioBuiltinUniformNames", () => {
     for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
       expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);
       expect(shaderStudioBuiltinUniformNames("slang")).not.toContain(name);
+      expect(shaderStudioBuiltinUniformNames("wgsl")).not.toContain(name);
     }
   });
 
@@ -76,6 +88,20 @@ describe("SHADER_STUDIO_INDEXED_CHANNEL_PATTERN_SOURCE", () => {
     expect(pattern.test("iChannelLoaded")).toBe(false);
     expect(pattern.test("iChannelN")).toBe(false);
     expect(pattern.test("iChannel")).toBe(false);
+  });
+});
+
+describe("builtin uniform WGSL spellings", () => {
+  it("gives every WGSL builtin a non-empty wgslType", () => {
+    const wgslUniforms = SHADER_STUDIO_BUILTIN_UNIFORMS.filter((uniform) =>
+      uniform.languages.includes("wgsl"),
+    );
+
+    expect(wgslUniforms.length).toBeGreaterThan(0);
+    for (const uniform of wgslUniforms) {
+      expect(typeof uniform.wgslType, uniform.name).toBe("string");
+      expect(uniform.wgslType?.length, uniform.name).toBeGreaterThan(0);
+    }
   });
 });
 

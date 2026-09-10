@@ -4,13 +4,17 @@ import {
   CUBEMAP_EXTENSIONS,
   GLSL_EXTENSIONS,
   SCRIPT_EXTENSIONS,
+  SLANG_EXTENSIONS,
   TEXTURE_EXTENSIONS,
   VIDEO_EXTENSIONS,
+  WGSL_EXTENSIONS,
 } from "./assetExtensions";
 
 describe("asset extension filters", () => {
   const extensionLists = [
     GLSL_EXTENSIONS,
+    SLANG_EXTENSIONS,
+    WGSL_EXTENSIONS,
     SCRIPT_EXTENSIONS,
     TEXTURE_EXTENSIONS,
     VIDEO_EXTENSIONS,
@@ -29,6 +33,11 @@ describe("asset extension filters", () => {
         expect(extension).not.toBe("");
       }
     }
+  });
+
+  it("registers one canonical extension per shader language", () => {
+    expect(SLANG_EXTENSIONS).toEqual(["slang"]);
+    expect(WGSL_EXTENSIONS).toEqual(["wgsl"]);
   });
 
   it("includes SVG anywhere image assets are browsed", () => {

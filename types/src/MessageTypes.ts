@@ -3,6 +3,7 @@
 import type { ProfileIndex, ProfileData } from './ProfileTypes';
 import type { SlangDependencyDiagnostic, SlangSourceModule } from './SlangSourceModule';
 import type { ShaderAuthoringEnvironment } from './shader-environment/ShaderAuthoringEnvironment';
+import type { ShaderLanguageId } from './shader-environment/ShaderLanguages';
 
 export interface BaseMessage {
   type: string;
@@ -72,7 +73,7 @@ export interface ShaderSourceMessage extends BaseMessage {
   path: string;
   buffers: Record<string, string>;
   /** Shader source language. Defaults to "glsl" when absent. */
-  language?: "glsl" | "slang";
+  language?: ShaderLanguageId;
   reload?: boolean;
   pathMap?: Record<string, string>;
   bufferPathMap?: Record<string, string>;
@@ -203,6 +204,7 @@ export interface LanguageServiceSettingsMessage extends BaseMessage {
   payload: {
     glslEnabled: boolean;
     slangEnabled: boolean;
+    wgslEnabled: boolean;
     colorDecorators: boolean;
     trace: "off" | "messages" | "verbose";
   };
@@ -242,13 +244,11 @@ export interface SaveFileResultMessage extends BaseMessage {
 export type FileDialogFileType =
   | 'script'
   | 'glsl'
-  | 'glsl-buffer'
-  | 'glsl-common'
-  | 'glsl-vertex'
-  | 'slang-buffer'
-  | 'slang-common'
-  | 'slang-compute'
-  | 'slang-vertex'
+  | 'wgsl'
+  | `${ShaderLanguageId}-buffer`
+  | `${ShaderLanguageId}-common`
+  | `${ShaderLanguageId}-compute`
+  | `${ShaderLanguageId}-vertex`
   | 'model'
   | 'texture'
   | 'video'

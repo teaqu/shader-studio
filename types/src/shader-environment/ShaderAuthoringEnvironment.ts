@@ -5,6 +5,7 @@ import {
   type ShaderStudioBuiltinStage,
 } from "./BuiltinUniforms";
 import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
+import type { ShaderLanguageId } from "./ShaderLanguages";
 
 export type ShaderStage = ShaderStudioBuiltinStage;
 
@@ -43,7 +44,7 @@ export interface VirtualShaderFile {
 
 export interface ShaderAuthoringEnvironment {
   readonly documentUri: string;
-  readonly languageId: "glsl" | "slang";
+  readonly languageId: ShaderLanguageId;
   readonly generation: number;
   readonly passName: string;
   readonly stage: ShaderStage;
@@ -55,6 +56,11 @@ export interface ShaderAuthoringEnvironment {
   /** Shader Studio Common source implicitly prepended to configured render passes. */
   readonly commonFile?: Readonly<VirtualShaderFile>;
   readonly virtualFiles: readonly Readonly<VirtualShaderFile>[];
+  /** Workspace search snapshots; these are independent compilation units, not includes. */
+  readonly workspaceDocuments?: readonly (Readonly<VirtualShaderFile> & {
+    readonly stage: ShaderStage;
+    readonly commonUri?: string;
+  })[];
 }
 
 export interface GeneratedAuthoringSource {
@@ -86,6 +92,16 @@ function collectFixedRendererNames(
     for (const name of GLSL_STABLE_NAMES) {
       names.add(name);
     }
+  } else if (languageId === "wgsl") {
+    // The WGSL prelude's deliberate public API: hooks, entry points, and the
+    // compute output helper. Builtins (iTime, ...) arrive via
+    // shaderStudioBuiltinUniformNames; keywords, aliases, and per-channel
+    // accessors via isShaderLanguageReservedTerm.
+    names.add("mainImage");
+    names.add("mainVertex");
+    names.add("vertexMain");
+    names.add("fragmentMain");
+    names.add("writeOutput");
   } else {
     for (const name of SLANG_RUNTIME_INTERNAL_NAMES) {
       names.add(name);
@@ -99,10 +115,11 @@ function collectFixedRendererNames(
   return names;
 }
 
-const FIXED_RENDERER_NAMES_BY_LANGUAGE = {
+const FIXED_RENDERER_NAMES_BY_LANGUAGE: Record<ShaderLanguageId, ReadonlySet<string>> = {
   glsl: collectFixedRendererNames("glsl"),
   slang: collectFixedRendererNames("slang"),
-} as const;
+  wgsl: collectFixedRendererNames("wgsl"),
+};
 const STORAGE_ELEMENT_TYPE = /^[A-Za-z_][A-Za-z0-9_]*(?:\s*<\s*[A-Za-z_][A-Za-z0-9_]*\s*>)?$/;
 const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
   "float", "float2", "float3", "float4", "int", "int2", "int3", "int4", "uint", "uint2", "uint3", "uint4",
@@ -261,11 +278,17 @@ export function validateShaderAuthoringEnvironment(
     const isBuiltinOrLanguageReserved = isReservedShaderStudioIdentifier(name, environment.languageId);
     const isSlangInternalGlobal = environment.languageId === "slang"
       && name.startsWith("_ss");
+    // The WGSL prelude shares the `_ss` implementation namespace (Phase 7), so
+    // a config-provided `_ss` name would collide with generated declarations.
+    // GLSL keeps its own `gl_`/`__` rule inside isShaderLanguageReservedTerm.
+    const isWgslInternalGlobal = environment.languageId === "wgsl"
+      && name.startsWith("_ss");
     const collidesWithRuntimeCustomUniform = isSlangInputMember
       && environment.customUniforms.some((uniform) => uniform.name === name);
     if (
       (isBuiltinOrLanguageReserved && !isInputsMember && !isGlslCanonicalChannel)
       || isSlangInternalGlobal
+      || isWgslInternalGlobal
       || (isGeneratedTypeDependency && !isSlangInputMember)
       || collidesWithRuntimeCustomUniform
     ) {
