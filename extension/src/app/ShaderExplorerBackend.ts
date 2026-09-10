@@ -14,7 +14,7 @@ import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
-import type { ShaderConfig, SlangSourceModule } from "@shader-studio/types";
+import type { ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
   name: string;
@@ -320,7 +320,7 @@ export class ShaderExplorerBackend {
         requestId?: number;
         path: string;
         previewPath: string;
-        language: "glsl" | "slang";
+        language: ShaderLanguageId;
         code: string;
         config: ShaderConfig | null;
         buffers: Record<string, string>;
@@ -677,7 +677,8 @@ export class ShaderExplorerBackend {
   }
 
   private hasMainImage(filePath: string): boolean {
-    // Match an actual mainImage function definition (Slang: float4 mainImage(...), GLSL: void mainImage(...))
+    // Match an actual mainImage function definition
+    // (Slang: float4 mainImage(...), GLSL: void mainImage(...), WGSL: fn mainImage(...))
     const mainImagePattern = /\bmainImage\s*\(/;
     // Check open document first (for unsaved changes)
     const openDocument = vscode.workspace.textDocuments.find(
@@ -705,7 +706,7 @@ export class ShaderExplorerBackend {
     for (const folder of workspaceFolders) {
       // Find all supported shader files
       const shaderFiles = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert,slang}"),
+        new vscode.RelativePattern(folder, "**/*.{glsl,frag,vert,slang,wgsl}"),
         "**/node_modules/**",
       );
       const shaderPaths = shaderFiles.map(file => file.fsPath);

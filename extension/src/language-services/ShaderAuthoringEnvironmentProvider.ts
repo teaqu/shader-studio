@@ -2,11 +2,14 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import {
+  SHADER_LANGUAGES,
   isAuthoringValueType,
+  isShaderLanguageId,
   type AuthoringResource,
   type CustomUniformDeclaration,
   type ShaderAuthoringEnvironment,
   type ShaderConfig,
+  type ShaderLanguageId,
   type ShaderStage,
 } from "@shader-studio/types";
 import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDependencyGraph";
@@ -24,7 +27,7 @@ export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: S
   loadedShaderProjects.delete(normalizedShaderPath);
   loadedShaderProjects.set(normalizedShaderPath, {
     config: JSON.parse(JSON.stringify(config)) as ShaderConfig,
-    configPath: shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json"),
+    configPath: shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang|wgsl)$/i, ".sha.json"),
     shaderPath: normalizedShaderPath,
   });
   // Every shaderSource message republishes the snapshot, so only a genuinely
@@ -78,7 +81,7 @@ export class ShaderAuthoringEnvironmentProvider {
   private readonly generations = new Map<string, { fingerprint: string; generation: number }>();
 
   environmentFor(document: AuthoringDocument): ShaderAuthoringEnvironment | undefined {
-    const languageId = document.languageId === "slang" ? "slang" : document.languageId === "glsl" ? "glsl" : undefined;
+    const languageId = isShaderLanguageId(document.languageId) ? document.languageId : undefined;
     if (!languageId) {
       return undefined;
     }
@@ -115,6 +118,52 @@ export class ShaderAuthoringEnvironmentProvider {
       virtualFiles,
     };
   }
+
+  /**
+   * Supplies independent shader documents for workspace symbol operations.
+   * This is intentionally opt-in: completions and diagnostics should not pay
+   * for a workspace scan on every keystroke.
+   */
+  async workspaceEnvironmentFor(document: AuthoringDocument): Promise<ShaderAuthoringEnvironment | undefined> {
+    const environment = this.environmentFor(document);
+    if (!environment) {
+      return undefined;
+    }
+    return { ...environment, workspaceDocuments: await this.workspaceDocumentsFor(document, environment.languageId) };
+  }
+
+  async workspaceSnapshotIsCurrent(document: AuthoringDocument, environment: ShaderAuthoringEnvironment): Promise<boolean> {
+    if (!environment.workspaceDocuments) {
+      return true;
+    }
+    const current = await this.workspaceDocumentsFor(document, environment.languageId);
+    return JSON.stringify(current) === JSON.stringify(environment.workspaceDocuments);
+  }
+
+  private async workspaceDocumentsFor(document: AuthoringDocument, languageId: ShaderLanguageId): Promise<NonNullable<ShaderAuthoringEnvironment["workspaceDocuments"]>> {
+    const uris = await vscode.workspace.findFiles(workspaceShaderGlob(languageId), "**/{node_modules,.git}/**");
+    const byUri = new Map(uris.map((uri) => [uri.toString(), uri]));
+    byUri.set(document.uri.toString(), document.uri);
+    const result: { uri: string; text: string; version: number; stage: ShaderStage; commonUri?: string }[] = [];
+    for (const uri of [...byUri.values()].sort((left, right) => left.toString().localeCompare(right.toString()))) {
+      const open = uri.toString() === document.uri.toString()
+        ? document
+        : vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString() === uri.toString())
+          ?? { uri, languageId, getText: () => fs.readFileSync(uri.fsPath, "utf8") };
+      const candidate = this.environmentFor(open);
+      if (!candidate || candidate.languageId !== languageId) {
+        continue;
+      }
+      const version = "version" in open && typeof open.version === "number" ? open.version : 1;
+      result.push({ uri: uri.toString(), text: open.getText(), version, stage: candidate.stage, commonUri: candidate.commonFile?.uri });
+    }
+    return result;
+  }
+}
+
+export function workspaceShaderGlob(languageId: ShaderLanguageId): string {
+  const extensions = SHADER_LANGUAGES[languageId].extensions;
+  return extensions.length === 1 ? `**/*.${extensions[0]}` : `**/*.{${extensions.join(",")}}`;
 }
 
 function configuredCommonFile(
@@ -162,7 +211,7 @@ function mergeVirtualFiles(
 }
 
 function readConfig(shaderPath: string): { config: ShaderConfig; path: string } | null {
-  const companion = shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang)$/i, ".sha.json");
+  const companion = shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang|wgsl)$/i, ".sha.json");
   const direct = parseConfig(companion);
   if (direct) {
     return direct;
@@ -272,14 +321,14 @@ function resourcesFor(config: ShaderConfig | null, pass: ShaderConfig["passes"][
   return resources;
 }
 
-function mainShaderPath(documentPath: string, language: "glsl" | "slang", configPath?: string): string {
-  return configPath?.replace(/\.sha\.json$/i, language === "slang" ? ".slang" : ".glsl") ?? documentPath;
+function mainShaderPath(documentPath: string, language: ShaderLanguageId, configPath?: string): string {
+  return configPath?.replace(/\.sha\.json$/i, `.${SHADER_LANGUAGES[language].extensions[0]}`) ?? documentPath;
 }
 
 function collectVirtualFiles(
   source: string,
   ownerPath: string,
-  language: "glsl" | "slang",
+  language: ShaderLanguageId,
   passName: string,
 ): { uri: string; text: string; version: number }[] {
   const files = new Map<string, { uri: string; text: string; version: number }>();
@@ -290,7 +339,7 @@ function collectVirtualFiles(
       return null;
     }
   };
-  if (language === "slang") {
+  if (SHADER_LANGUAGES[language].hasImports) {
     const dependencies = collectSlangDependencies({ rootPath: ownerPath, rootSource: source, ownerPass: passName, readSource });
     for (const module of dependencies.modules) {
       files.set(module.path, { uri: vscode.Uri.file(module.path).toString(), text: module.source, version: 1 });

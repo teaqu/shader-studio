@@ -41,6 +41,19 @@ export class ShaderCreator {
 }`;
   }
 
+  private getWgslShaderTemplate(): string {
+    return `fn mainImage(coord: vec2f) -> vec4f {
+    let st = coord / vec2f(iResolution.x, iResolution.y);
+    let uv = vec2f(st.x * iResolution.x / iResolution.y, st.y);
+
+    // Time varying pixel color
+    let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + vec3f(uv.x, uv.y, uv.x) + vec3f(0.0, 2.0, 4.0));
+
+    // Output to screen
+    return vec4f(col, 1.0);
+}`;
+  }
+
   private getDefaultUri(): vscode.Uri {
     const lastViewedFile = this.glslFileTracker.getLastViewedGlslFile();
     if (lastViewedFile) {
@@ -62,6 +75,7 @@ export class ShaderCreator {
         filters: {
           "GLSL Shader": ["glsl"],
           "Slang Shader": ["slang"],
+          "WGSL Shader": ["wgsl"],
         },
         title: "New Shader",
       });
@@ -74,9 +88,12 @@ export class ShaderCreator {
       const filePath = uri.fsPath;
 
       // Create a basic shader template
-      const shaderTemplate = filePath.toLowerCase().endsWith(".slang")
+      const lowerPath = filePath.toLowerCase();
+      const shaderTemplate = lowerPath.endsWith(".slang")
         ? this.getSlangShaderTemplate()
-        : this.getShaderTemplate();
+        : lowerPath.endsWith(".wgsl")
+          ? this.getWgslShaderTemplate()
+          : this.getShaderTemplate();
 
       // Write the shader file
       fs.writeFileSync(filePath, shaderTemplate);

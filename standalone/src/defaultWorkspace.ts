@@ -51,6 +51,17 @@ const SOURCES: ReadonlyArray<{
     config: EMPTY_CONFIG,
   },
   {
+    path: '/shaders/aurora-wgsl.wgsl',
+    code: `fn mainImage(coord: vec2f) -> vec4f {
+	let st = coord / vec2f(iResolution.x, iResolution.y);
+	let uv = vec2f(st.x * iResolution.x / iResolution.y, st.y);
+	let wave = sin(uv.x * 6.0 + iTime) + sin(uv.y * 8.0 - iTime * 0.7);
+	let sky = vec3f(0.5) + vec3f(0.5) * cos(iTime + vec3f(uv.x, uv.y, uv.x) * 3.0 + vec3f(0.0, 2.0, 4.0));
+	return vec4f(sky + 0.15 * wave, 1.0);
+}`,
+    config: EMPTY_CONFIG,
+  },
+  {
     path: '/shaders/nebula-texture.glsl',
     code: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 uv = fragCoord / iResolution.xy;
@@ -164,7 +175,7 @@ export function createDefaultWorkspaceFiles(): VirtualWorkspaceFile[] {
     return [
       { path, contents: code, createdAt: timestamp, modifiedAt: timestamp },
       {
-        path: path.replace(/\.(glsl|slang)$/i, '.sha.json'),
+        path: path.replace(/\.(glsl|slang|wgsl)$/i, '.sha.json'),
         contents: JSON.stringify(config, null, 2),
         createdAt: timestamp,
         modifiedAt: timestamp,

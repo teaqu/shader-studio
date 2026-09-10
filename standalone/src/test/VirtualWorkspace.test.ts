@@ -11,6 +11,52 @@ const seedFiles: VirtualWorkspaceFile[] = [
 ];
 
 describe('VirtualWorkspace', () => {
+  it.each(['glsl', 'slang', 'wgsl'])('commits all %s rename files in one persisted snapshot', async language => {
+    const store = new MemoryWorkspaceStore();
+    const files = ['main', 'common'].map(name => ({ path: `/shaders/${name}.${language}`, contents: 'tone', createdAt: 1, modifiedAt: 1 }));
+    const workspace = await VirtualWorkspace.open(store, files);
+    await workspace.applyTextTransaction(files.map(file => ({ path: file.path, before: 'tone', after: 'curve' })));
+    expect((await VirtualWorkspace.open(store, [])).list().map(file => file.contents)).toEqual(['curve', 'curve']);
+  });
+
+  it('rejects a stale or missing target without changing or saving any target', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    for (const path of ['/shaders/first.sha.json', '/missing']) {
+      await expect(workspace.applyTextTransaction([
+        { path: '/shaders/first.glsl', before: 'first', after: 'changed' },
+        { path, before: 'stale', after: 'changed' },
+      ])).rejects.toThrow();
+      expect(workspace.list()).toEqual(seedFiles);
+      expect(await store.load()).toEqual(seedFiles);
+    }
+  });
+
+  it('keeps every file unchanged when persistence fails and allows subsequent saves', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    const save = store.save.bind(store);
+    store.save = async () => { throw new Error('disk full'); };
+    await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }])).rejects.toThrow('disk full');
+    expect(workspace.list()).toEqual(seedFiles);
+    expect(await store.load()).toEqual(seedFiles);
+    store.save = save;
+    workspace.writeText('/shaders/first.glsl', 'recovered');
+    await workspace.flush();
+    expect((await store.load())?.[0].contents).toBe('recovered');
+  });
+
+  it('rolls back the whole persisted snapshot if cancellation arrives during save', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    const save = store.save.bind(store);
+    let current = true;
+    store.save = async files => { await save(files); current = false; };
+    await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }], () => current)).rejects.toThrow('stale');
+    expect(workspace.list()).toEqual(seedFiles);
+    expect(await store.load()).toEqual(seedFiles);
+  });
+
   it('seeds an empty store and persists edits across workspace instances', async () => {
     const store = new MemoryWorkspaceStore();
     const first = await VirtualWorkspace.open(store, seedFiles, () => 20);

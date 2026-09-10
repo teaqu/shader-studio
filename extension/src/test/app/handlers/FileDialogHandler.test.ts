@@ -129,6 +129,21 @@ suite('FileDialogHandler Test Suite', () => {
       assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'Slang files': ['slang'] });
     });
 
+    test('passes WGSL filters when fileType is wgsl-buffer or wgsl-common', async () => {
+      const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.wgsl', fileType: 'wgsl-buffer', requestId: 'buffer' },
+        respondFn,
+      );
+      await handler.handleSelectFile(
+        { shaderPath: '/test/image.wgsl', fileType: 'wgsl-common', requestId: 'common' },
+        respondFn,
+      );
+
+      assert.deepStrictEqual(showOpenStub.firstCall.args[0]!.filters, { 'WGSL files': ['wgsl'] });
+      assert.deepStrictEqual(showOpenStub.secondCall.args[0]!.filters, { 'WGSL files': ['wgsl'] });
+    });
+
     test('passes Slang filters when fileType is slang-buffer or slang-common', async () => {
       const showOpenStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       await handler.handleSelectFile(
@@ -342,6 +357,55 @@ suite('FileDialogHandler Test Suite', () => {
       assert.ok(!content.includes('out vec4'));
     });
 
+    test('passes WGSL filters when fileType is wgsl-buffer or wgsl-compute', async () => {
+      const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'buffer.wgsl', fileType: 'wgsl-buffer', requestId: 'wgsl-buffer' },
+        respondFn,
+      );
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'compute.wgsl', fileType: 'wgsl-compute', requestId: 'wgsl-compute' },
+        respondFn,
+      );
+
+      assert.deepStrictEqual(showSaveStub.firstCall.args[0]!.filters, { 'WGSL files': ['wgsl'] });
+      assert.deepStrictEqual(showSaveStub.secondCall.args[0]!.filters, { 'WGSL files': ['wgsl'] });
+    });
+
+    test('writes a WGSL mainImage template for wgsl-buffer fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/buffer.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'buffer.wgsl', fileType: 'wgsl-buffer', requestId: 'wgsl-buffer' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('fn mainImage'));
+      assert.ok(content.includes('-> vec4f'));
+      assert.ok(!content.includes('out vec4'));
+    });
+
+    test('writes a WGSL compute template for wgsl-compute fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/compute.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'compute.wgsl', fileType: 'wgsl-compute', requestId: 'wgsl-compute' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.ok(content.includes('@compute'));
+      assert.ok(content.includes('fn compute'));
+    });
+
     test('writes a Slang mainVertex template for slang-vertex fileType', async () => {
       const fs = require('fs');
       sandbox.stub(fs, 'existsSync').returns(false);
@@ -360,6 +424,24 @@ suite('FileDialogHandler Test Suite', () => {
       );
       assert.ok(content.includes('inout float3 position'));
       assert.ok(!content.includes('Deform position, normal, or UV'));
+    });
+
+    test('writes a pointer-based WGSL mainVertex template for wgsl-vertex fileType', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').returns(false);
+      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/test/image.vert.wgsl'));
+
+      await handler.handleCreateFile(
+        { shaderPath: '/test/shader.wgsl', suggestedPath: 'image.vert.wgsl', fileType: 'wgsl-vertex', requestId: 'vertex-wgsl' },
+        respondFn,
+      );
+
+      const content = writeStub.firstCall.args[1] as string;
+      assert.strictEqual(
+        content,
+        'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n',
+      );
     });
 
     test('writes a GLSL mainVertex template without boilerplate comments', async () => {
@@ -713,6 +795,18 @@ suite('FileDialogHandler Test Suite', () => {
       await handler.handleForkShader({ shaderPath: '/test/shader.slang' });
 
       assert.deepStrictEqual(showSaveStub.firstCall.args[0]!.filters, { 'Slang Shader': ['slang'] });
+    });
+
+    test('uses a WGSL save filter when forking a WGSL shader', async () => {
+      const fs = require('fs');
+      const existsStub = sandbox.stub(fs, 'existsSync');
+      existsStub.withArgs('/test/shader.wgsl').returns(true);
+      existsStub.withArgs('/test/shader.1.wgsl').returns(false);
+      const showSaveStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await handler.handleForkShader({ shaderPath: '/test/shader.wgsl' });
+
+      assert.deepStrictEqual(showSaveStub.firstCall.args[0]!.filters, { 'WGSL Shader': ['wgsl'] });
     });
 
     test('increments counter to find a free filename', async () => {

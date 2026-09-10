@@ -60,6 +60,11 @@ suite('ShaderGitMetadataProvider Test Suite', () => {
       assert.ok(result.has('shaders/modified.slang'));
     });
 
+    test('includes modified WGSL shaders', () => {
+      const result = ShaderGitMetadataProvider.parseDirtyPaths(' M shaders/modified.wgsl');
+      assert.ok(result.has('shaders/modified.wgsl'));
+    });
+
     test('excludes non-shader extensions', () => {
       const output = 'M  shaders/config.json\n M README.md\nA  shaders/script.js';
       const result = ShaderGitMetadataProvider.parseDirtyPaths(output);

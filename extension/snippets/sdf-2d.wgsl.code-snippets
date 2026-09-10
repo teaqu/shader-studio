@@ -1,0 +1,195 @@
+{
+  "SDF 2D Circle": {
+    "prefix": "sdf2d-circle",
+    "body": [
+      "fn sdCircle(p: vec2f, r: f32) -> f32 {",
+      "\treturn length(p) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D circle",
+    "call": "sdCircle(p, 0.4)"
+  },
+  "SDF 2D Box": {
+    "prefix": "sdf2d-box",
+    "body": [
+      "fn sdBox(p: vec2f, b: vec2f) -> f32 {",
+      "\tlet d = abs(p) - b;",
+      "\treturn length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D box",
+    "call": "sdBox(p, vec2f(0.4, 0.3))"
+  },
+  "SDF 2D Square": {
+    "prefix": "sdf2d-square",
+    "body": [
+      "fn sdSquare(p: vec2f, s: f32) -> f32 {",
+      "\tlet d = abs(p) - s;",
+      "\treturn length(max(d, vec2f(0.0))) + min(max(d.x, d.y), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D square",
+    "call": "sdSquare(p, 0.4)"
+  },
+  "SDF 2D Rounded Box": {
+    "prefix": "sdf2d-rounded-box",
+    "body": [
+      "fn sdRoundedBox(p: vec2f, b: vec2f, r: vec4f) -> f32 {",
+      "\t// r.xy = bottom, r.zw = top (right, left)",
+      "\tlet rxy = select(r.zw, r.xy, p.x > 0.0);",
+      "\tlet rx = select(rxy.y, rxy.x, p.y > 0.0);",
+      "\tlet q = abs(p) - b + rx;",
+      "\treturn min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - rx;",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D rounded box with per-corner radii",
+    "call": "sdRoundedBox(p, vec2f(0.4, 0.3), vec4f(0.1, 0.05, 0.1, 0.05))"
+  },
+  "SDF 2D Line Segment": {
+    "prefix": "sdf2d-segment",
+    "body": [
+      "fn sdSegment(p: vec2f, a: vec2f, b: vec2f) -> f32 {",
+      "\tlet pa = p - a;",
+      "\tlet ba = b - a;",
+      "\tlet h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);",
+      "\treturn length(pa - ba * h);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D line segment",
+    "call": "sdSegment(p, vec2f(-0.4, -0.3), vec2f(0.4, 0.3))"
+  },
+  "SDF 2D Triangle": {
+    "prefix": "sdf2d-triangle",
+    "body": [
+      "fn sdTriangle(p: vec2f, p0: vec2f, p1: vec2f, p2: vec2f) -> f32 {",
+      "\tlet e0 = p1 - p0;",
+      "\tlet e1 = p2 - p1;",
+      "\tlet e2 = p0 - p2;",
+      "\tlet v0 = p - p0;",
+      "\tlet v1 = p - p1;",
+      "\tlet v2 = p - p2;",
+      "\tlet pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);",
+      "\tlet pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);",
+      "\tlet pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);",
+      "\tlet s = sign(e0.x * e2.y - e0.y * e2.x);",
+      "\tlet d = min(min(",
+      "\t\tvec2f(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),",
+      "\t\tvec2f(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),",
+      "\t\tvec2f(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));",
+      "\treturn -sqrt(d.x) * sign(d.y);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D triangle",
+    "call": "sdTriangle(p, vec2f(0.0, 0.4), vec2f(-0.4, -0.3), vec2f(0.4, -0.3))"
+  },
+  "SDF 2D Hexagon": {
+    "prefix": "sdf2d-hexagon",
+    "body": [
+      "fn sdHexagon(p: vec2f, r: f32) -> f32 {",
+      "\tlet k = vec3f(-0.866025404, 0.5, 0.577350269);",
+      "\tvar q = abs(p);",
+      "\tq -= 2.0 * min(dot(k.xy, q), 0.0) * k.xy;",
+      "\tq -= vec2f(clamp(q.x, -k.z * r, k.z * r), r);",
+      "\treturn length(q) * sign(q.y);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D regular hexagon",
+    "call": "sdHexagon(p, 0.4)"
+  },
+  "SDF 2D Star": {
+    "prefix": "sdf2d-star",
+    "body": [
+      "fn sdStar(p: vec2f, r: f32, n: i32, m: f32) -> f32 {",
+      "\t// r = outer radius, n = number of points, m = inner/outer ratio (2..n)",
+      "\tlet an = 3.141593 / f32(n);",
+      "\tlet en = 3.141593 / m;",
+      "\tlet acs = vec2f(cos(an), sin(an));",
+      "\tlet ecs = vec2f(cos(en), sin(en));",
+      "\tlet sourceAngle = atan(p.x, p.y);",
+      "\tlet bn = sourceAngle - 2.0 * an * floor(sourceAngle / (2.0 * an)) - an;",
+      "\tvar q = length(p) * vec2f(cos(bn), abs(sin(bn)));",
+      "\tq -= r * acs;",
+      "\tq += ecs * clamp(-dot(q, ecs), 0.0, r * acs.y / ecs.y);",
+      "\treturn length(q) * sign(q.x);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D star polygon (IQ)",
+    "call": "sdStar(p, 0.4, 5, 2.5)"
+  },
+  "SDF 2D Ring": {
+    "prefix": "sdf2d-ring",
+    "body": [
+      "fn sdRing(p: vec2f, r: f32, w: f32) -> f32 {",
+      "\treturn abs(length(p) - r) - w;",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D ring (annulus)",
+    "call": "sdRing(p, 0.35, 0.05)"
+  },
+  "SDF 2D Arc": {
+    "prefix": "sdf2d-arc",
+    "body": [
+      "fn sdArc(p: vec2f, sc: vec2f, ra: f32, rb: f32) -> f32 {",
+      "\t// sc = vec2f(sin, cos) of the arc half-angle",
+      "\tvar q = p;",
+      "\tq.x = abs(q.x);",
+      "\treturn select(abs(length(q) - ra), length(q - sc * ra), sc.y * q.x > sc.x * q.y) - rb;",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D arc (IQ)",
+    "call": "sdArc(p, vec2f(sin(1.0), cos(1.0)), 0.4, 0.04)"
+  },
+  "SDF 2D Vesica": {
+    "prefix": "sdf2d-vesica",
+    "body": [
+      "fn sdVesica(p: vec2f, r: f32, d: f32) -> f32 {",
+      "\tlet q = abs(p);",
+      "\tlet b = sqrt(r * r - d * d);",
+      "\treturn select(length(q - vec2f(-d, 0.0)) - r, length(q - vec2f(0.0, b)), (q.y - b) * d > q.x * b);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D vesica piscis (IQ)",
+    "call": "sdVesica(p, 0.5, 0.2)"
+  },
+  "SDF 2D Ellipse": {
+    "prefix": "sdf2d-ellipse",
+    "body": [
+      "fn sdEllipse(p: vec2f, ab: vec2f) -> f32 {",
+      "\tvar q = abs(p);",
+      "\tvar aab = ab;",
+      "\tif (q.x > q.y) { q = q.yx; aab = aab.yx; }",
+      "\tlet l = aab.y * aab.y - aab.x * aab.x;",
+      "\tlet m = aab.x * q.x / l;",
+      "\tlet m2 = m * m;",
+      "\tlet n = aab.y * q.y / l;",
+      "\tlet n2 = n * n;",
+      "\tlet c = (m2 + n2 - 1.0) / 3.0;",
+      "\tlet c3 = c * c * c;",
+      "\tlet qq = c3 + m2 * n2 * 2.0;",
+      "\tlet d = c3 + m2 * n2;",
+      "\tlet g = m + m * n2;",
+      "\tvar co = 0.0;",
+      "\tif (d < 0.0) {",
+      "\t\tlet h = acos(qq / c3) / 3.0;",
+      "\t\tlet s = cos(h);",
+      "\t\tlet t = sin(h) * sqrt(3.0);",
+      "\t\tlet rx = sqrt(-c * (s + t + 2.0) + m2);",
+      "\t\tlet ry = sqrt(-c * (s - t + 2.0) + m2);",
+      "\t\tco = (ry + sign(l) * rx + abs(g) / (rx * ry) - m) / 2.0;",
+      "\t} else {",
+      "\t\tlet h = 2.0 * m * n * sqrt(d);",
+      "\t\tlet s = sign(qq + h) * pow(abs(qq + h), 1.0 / 3.0);",
+      "\t\tlet u = sign(qq - h) * pow(abs(qq - h), 1.0 / 3.0);",
+      "\t\tlet rx = -s - u - c * 4.0 + 2.0 * m2;",
+      "\t\tlet ry = (s - u) * sqrt(3.0);",
+      "\t\tlet rm = sqrt(rx * rx + ry * ry);",
+      "\t\tco = (ry / sqrt(rm - rx) + 2.0 * g / rm - m) / 2.0;",
+      "\t}",
+      "\tlet r = aab * vec2f(co, sqrt(1.0 - co * co));",
+      "\treturn length(r - q) * sign(q.y - r.y);",
+      "}"
+    ],
+    "description": "Signed distance function for a 2D ellipse (IQ)",
+    "call": "sdEllipse(p, vec2f(0.5, 0.3))"
+  }
+}

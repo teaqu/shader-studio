@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { getShaderPathFromConfigPath, isConfigPath } from '../../app/ShaderConfigPaths';
+import { getConfigPathForShaderPath, getShaderPathFromConfigPath, isConfigPath } from '../../app/ShaderConfigPaths';
 
 suite('ShaderConfigPaths', () => {
   let sandbox: sinon.SinonSandbox;
@@ -51,6 +51,18 @@ suite('ShaderConfigPaths', () => {
       existsStub.withArgs('/abs/foo.frag').returns(false);
       existsStub.withArgs('/abs/foo.slang').returns(true);
       assert.strictEqual(getShaderPathFromConfigPath('/abs/foo.sha.json'), '/abs/foo.slang');
+    });
+
+    test('falls back to .wgsl when only .wgsl exists', () => {
+      existsStub.withArgs('/abs/foo.glsl').returns(false);
+      existsStub.withArgs('/abs/foo.frag').returns(false);
+      existsStub.withArgs('/abs/foo.slang').returns(false);
+      existsStub.withArgs('/abs/foo.wgsl').returns(true);
+      assert.strictEqual(getShaderPathFromConfigPath('/abs/foo.sha.json'), '/abs/foo.wgsl');
+    });
+
+    test('maps a .wgsl shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.wgsl'), '/abs/foo.sha.json');
     });
 
     test('prefers .glsl over .frag when both exist', () => {

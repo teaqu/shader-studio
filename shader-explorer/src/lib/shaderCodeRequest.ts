@@ -1,6 +1,7 @@
-import type { SlangSourceModule } from '@shader-studio/types';
+import type { ShaderLanguageId, SlangSourceModule } from '@shader-studio/types';
+import { isShaderLanguageId } from '@shader-studio/types';
 
-export type ShaderLanguage = 'glsl' | 'slang';
+export type ShaderLanguage = ShaderLanguageId;
 
 export interface ShaderCodeResponse {
   code: string;
@@ -87,7 +88,7 @@ export function requestShaderCode({
         config: message.config || null,
         previewPath: message.previewPath,
         buffers: message.buffers || {},
-        language: message.language === 'slang' ? 'slang' : 'glsl',
+        language: isShaderLanguageId(message.language) ? message.language : 'glsl',
         scriptBundleError: message.scriptBundleError,
         customUniformDeclarations: message.customUniformDeclarations,
         customUniformInfo: message.customUniformInfo,

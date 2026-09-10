@@ -92,6 +92,22 @@ describe("SlangDebugEngine", () => {
     expect(output).toContain("step(float3(0.2500)");
   });
 
+  it("reports an unsupported language for WGSL sources until Phase 11 lands", () => {
+    const engine = new SlangDebugEngine();
+    const wgslRequest = {
+      ...request,
+      sourceUri: "/work/main.wgsl",
+      workspace: {
+        ...request.workspace,
+        files: [{ uri: "/work/main.wgsl", path: "/work/main.wgsl", version: 1, moduleName: "", ownerPass: "Image", source: "fn mainImage(coord: vec2<f32>) -> vec4<f32> {\n  return vec4<f32>(0.0);\n}\n" }],
+      },
+    };
+    expect(engine.analyze(wgslRequest)).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "debug-unsupported-language" }],
+    });
+  });
+
   it("applies absolute normalization to explicitly selected Slang values", () => {
     const engine = new SlangDebugEngine();
     const analysis = engine.analyze({ ...request, position: { line: 2, character: 2 } });

@@ -1,0 +1,17 @@
+{
+  "Math PI": {
+    "prefix": "math-pi",
+    "body": "const PI = 3.14159265359;",
+    "description": "PI constant",
+    "example": [
+      "const PI = 3.14159265359;",
+      "",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "    let uv = (2.0 * coord - iResolution.xy) / iResolution.y;",
+      "    let d = length(uv) - PI / 4.0;",
+      "    let col = mix(vec3f(0.4, 0.7, 0.3), vec3f(0.1), smoothstep(0.0, 0.01, d));",
+      "    return vec4f(col, 1.0);",
+      "}"
+    ]
+  }
+}

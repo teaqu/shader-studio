@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import * as sinon from "sinon";
 import type { DocumentRevision, LanguageService } from "@shader-studio/language-server-core";
 import type { ShaderAuthoringEnvironment, ShaderConfig } from "@shader-studio/types";
 import { Messenger } from "../../app/transport/Messenger";
@@ -19,6 +20,7 @@ import {
   clearLoadedShaderProjectSnapshots,
   onDidChangeLoadedShaderProjectSnapshot,
   publishLoadedShaderProjectSnapshot,
+  workspaceShaderGlob,
 } from "../../language-services/ShaderAuthoringEnvironmentProvider";
 
 suite("VS Code language-service revisions", () => {
@@ -158,6 +160,23 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
+  test("provides a WGSL authoring environment without virtual files", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-wgsl-ls-"));
+    const rootPath = path.join(directory, "image.wgsl");
+    const source = "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }";
+    try {
+      fs.writeFileSync(rootPath, source);
+      const document = await vscode.workspace.openTextDocument(rootPath);
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+      assert.strictEqual(environment?.languageId, "wgsl");
+      assert.deepStrictEqual(environment?.virtualFiles, []);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("provides the configured compute output-layer count to Slang authoring", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-compute-ls-"));
     const shaderDirectory = path.join(directory, "compute-lab", "passes");
@@ -240,9 +259,16 @@ suite("VS Code language-service revisions", () => {
     const service = countingLanguageService({ diagnostics: 0, openDocument: 0 }, (environment) => synced.push(environment));
     const noSink = { set: () => {}, delete: () => {}, clear: () => {} };
     const controller = new VscodeLanguageServiceController(
-      { glsl: async () => service, slang: async () => service },
+      {
+        glsl: async () => service,
+        slang: async () => service,
+        // No WGSL language service exists yet (Phase 9); no test opens a WGSL document.
+        wgsl: async () => {
+          throw new Error("WGSL language service is not implemented yet");
+        },
+      },
       new ShaderAuthoringEnvironmentProvider(),
-      { glsl: noSink, slang: noSink },
+      { glsl: noSink, slang: noSink, wgsl: noSink },
     );
     try {
       fs.writeFileSync(shaderPath, "float4 mainImage(float2 p) { return float4(p, 0, 1); }");
@@ -771,7 +797,7 @@ suite("VS Code language-service revisions", () => {
     const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
 
     assert.strictEqual(diagnostic.source, "shader-studio-glsl-ls");
-    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Hint);
     assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
@@ -788,9 +814,36 @@ suite("VS Code language-service revisions", () => {
     const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
 
     assert.strictEqual(diagnostic.source, "shader-studio-slang-ls");
-    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Warning);
+    assert.strictEqual(diagnostic.severity, vscode.DiagnosticSeverity.Hint);
     assert.deepStrictEqual(diagnostic.tags, [vscode.DiagnosticTag.Unnecessary]);
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
+  test("clears and republishes WGSL service diagnostics when the service is toggled", async function() {
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const configuration = vscode.workspace.getConfiguration("shader-studio");
+    const document = await vscode.workspace.openTextDocument({
+      language: "wgsl",
+      content: "fn mainImage(p: vec2f) -> vec4f { let unused = 1.0; return vec4f(p, 0.0, 1.0); }",
+    });
+    await vscode.window.showTextDocument(document);
+    const hasWgslServiceDiagnostic = () => vscode.languages.getDiagnostics(document.uri)
+      .some((item) => item.source === "shader-studio-wgsl-ls");
+    try {
+      const diagnostic = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
+      assert.strictEqual(diagnostic.source, "shader-studio-wgsl-ls");
+
+      await configuration.update("languageServers.wgsl.enabled", false, vscode.ConfigurationTarget.Global);
+      await waitFor(() => !hasWgslServiceDiagnostic());
+
+      await configuration.update("languageServers.wgsl.enabled", true, vscode.ConfigurationTarget.Global);
+      const republished = await waitForDiagnostic(document.uri, "Unused variable 'unused'");
+      assert.strictEqual(republished.source, "shader-studio-wgsl-ls");
+    } finally {
+      await configuration.update("languageServers.wgsl.enabled", undefined, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    }
   });
 
   test("analyses the buffer that takes over a reused untitled name", async function() {
@@ -826,9 +879,16 @@ suite("VS Code language-service revisions", () => {
     const service = countingLanguageService(counts);
     const noSink = { set: () => {}, delete: () => {}, clear: () => {} };
     const controller = new VscodeLanguageServiceController(
-      { glsl: async () => service, slang: async () => service },
+      {
+        glsl: async () => service,
+        slang: async () => service,
+        // No WGSL language service exists yet (Phase 9); no test opens a WGSL document.
+        wgsl: async () => {
+          throw new Error("WGSL language service is not implemented yet");
+        },
+      },
       new ShaderAuthoringEnvironmentProvider(),
-      { glsl: noSink, slang: noSink },
+      { glsl: noSink, slang: noSink, wgsl: noSink },
     );
     controller.start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
 
@@ -878,6 +938,101 @@ suite("VS Code language-service revisions", () => {
       assert.ok((await completionLabels()).includes("iTimeDelta"));
     } finally {
       await configuration.update("languageServers.slang.enabled", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  test("disables and re-enables a loaded WGSL language service", async () => {
+    await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+    const configuration = vscode.workspace.getConfiguration("shader-studio");
+    const document = await vscode.workspace.openTextDocument({ language: "wgsl", content: "fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(0.0);\n}" });
+    const completionLabels = async () => {
+      const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+        "vscode.executeCompletionItemProvider",
+        document.uri,
+        new vscode.Position(1, 2),
+      );
+      return completions.items.map((item) => typeof item.label === "string" ? item.label : item.label.label);
+    };
+
+    try {
+      assert.ok((await completionLabels()).includes("iTime"));
+      await configuration.update("languageServers.wgsl.enabled", false, vscode.ConfigurationTarget.Global);
+      assert.ok(!(await completionLabels()).includes("iTime"));
+      await configuration.update("languageServers.wgsl.enabled", true, vscode.ConfigurationTarget.Global);
+      assert.ok((await completionLabels()).includes("iTime"));
+    } finally {
+      await configuration.update("languageServers.wgsl.enabled", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  test("preserves rename edits for every URI returned by a language service", async () => {
+    const active = await vscode.workspace.openTextDocument({ language: "glsl", content: "void mainImage() { shared(); }" });
+    const otherUri = vscode.Uri.file("/workspace/common.glsl").toString();
+    const service = countingLanguageService({ diagnostics: 0, openDocument: 0 });
+    service.rename = async () => ({ changes: {
+      [active.uri.toString()]: [{ range: { start: { line: 0, character: 18 }, end: { line: 0, character: 24 } }, newText: "curve" }],
+      [otherUri]: [{ range: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } }, newText: "curve" }],
+    } });
+    const noSink = { set: () => {}, delete: () => {}, clear: () => {} };
+    const controller = new VscodeLanguageServiceController(
+      { glsl: async () => service, slang: async () => service, wgsl: async () => service },
+      new ShaderAuthoringEnvironmentProvider(), { glsl: noSink, slang: noSink, wgsl: noSink },
+    );
+    controller.start({ subscriptions: [] } as unknown as vscode.ExtensionContext);
+    try {
+      const edit = await vscode.commands.executeCommand<vscode.WorkspaceEdit>(
+        "vscode.executeDocumentRenameProvider", active.uri, new vscode.Position(0, 19), "curve",
+      );
+      const entries = [...(edit?.entries() ?? [])];
+      assert.deepStrictEqual(entries.map(([uri]) => uri.toString()).sort(), [active.uri.toString(), otherUri].sort());
+    } finally {
+      controller.dispose();
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
+  for (const languageId of ["glsl", "slang", "wgsl"] as const) {
+    test(`builds a ${languageId} workspace snapshot with unopened files and open-buffer overrides`, async () => {
+      const sandbox = sinon.createSandbox();
+      const extension = languageId;
+      const activeUri = vscode.Uri.file(`/workspace/active.${extension}`);
+      const closedUri = vscode.Uri.file(`/workspace/closed.${extension}`);
+      const active = { uri: activeUri, languageId, version: 7, getText: () => "float active;" } as unknown as vscode.TextDocument;
+      const openOverride = { uri: closedUri, languageId, version: 9, getText: () => "float unsavedOverride;" } as unknown as vscode.TextDocument;
+      try {
+        sandbox.stub(vscode.workspace, "findFiles").resolves([closedUri]);
+        sandbox.stub(vscode.workspace, "textDocuments").value([openOverride]);
+        const provider = new ShaderAuthoringEnvironmentProvider();
+        const environment = await provider.workspaceEnvironmentFor(active);
+        assert.ok(environment);
+        assert.deepStrictEqual(environment.workspaceDocuments?.map((file) => [file.uri, file.text, file.version]), [
+          [activeUri.toString(), "float active;", 7],
+          [closedUri.toString(), "float unsavedOverride;", 9],
+        ]);
+      } finally {
+        sandbox.restore();
+      }
+    });
+  }
+
+  test("uses valid multi- and single-extension workspace globs", () => {
+    assert.strictEqual(workspaceShaderGlob("glsl"), "**/*.{glsl,frag,vert}");
+    assert.strictEqual(workspaceShaderGlob("slang"), "**/*.slang");
+    assert.strictEqual(workspaceShaderGlob("wgsl"), "**/*.wgsl");
+  });
+
+  test("fails the complete workspace snapshot when a discovered closed shader cannot be read", async () => {
+    const sandbox = sinon.createSandbox();
+    const activeUri = vscode.Uri.file("/workspace/active.glsl");
+    const missingUri = vscode.Uri.file("/workspace/missing.glsl");
+    const active = { uri: activeUri, languageId: "glsl", version: 1, getText: () => "float active;" } as unknown as vscode.TextDocument;
+    try {
+      sandbox.stub(vscode.workspace, "findFiles").resolves([missingUri]);
+      sandbox.stub(vscode.workspace, "textDocuments").value([]);
+      sandbox.stub(fs, "readFileSync").throws(new Error("file vanished"));
+      await assert.rejects(new ShaderAuthoringEnvironmentProvider().workspaceEnvironmentFor(active), /file vanished/);
+    } finally {
+      sandbox.restore();
     }
   });
 });

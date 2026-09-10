@@ -30,6 +30,13 @@
     };
   });
   const session = $derived(getViewerSession());
+  // A separate editor keeps its file role when the preview navigates elsewhere.
+  let commonEditorPath = $state<string>();
+  $effect(() => {
+    if (path && session?.commonPath === path) {
+      commonEditorPath = path;
+    }
+  });
   let vimMode = $state(false);
 </script>
 
@@ -39,6 +46,9 @@
     {#if fileCode !== null}
       <div class="editor-content">
         <ShaderEditor isVisible={true} shaderCode={fileCode} shaderPath={path} {transport}
+          activeBufferName={commonEditorPath === path ? "Common" : "Image"}
+          commonPath={session?.commonPath}
+          commonSource={session?.commonSource}
           {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} />
       </div>
     {/if}
@@ -60,6 +70,8 @@
         config={session.config}
         customUniformInfo={session.customUniformInfo}
         slangModules={session.slangModules}
+        commonPath={session.commonPath}
+        commonSource={session.commonSource}
         onCursorChange={session.onCursorChange}
         displayMode="pane"
         overflowWidgetsDomNode={document.body}

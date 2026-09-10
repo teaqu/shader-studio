@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import type { ShaderLanguageId } from "@shader-studio/types";
 import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
@@ -191,6 +192,7 @@ export class PanelManager {
       payload: {
         glslEnabled: configuration.get("languageServers.glsl.enabled", true),
         slangEnabled: configuration.get("languageServers.slang.enabled", true),
+        wgslEnabled: configuration.get("languageServers.wgsl.enabled", true),
         colorDecorators: configuration.get("editor.colorDecorators", true),
       },
     };
@@ -238,7 +240,7 @@ export class PanelManager {
   private setupWebviewHtml(
     panel: vscode.WebviewPanel,
     layoutSlot: number,
-    initialLanguage: "glsl" | "slang" = "glsl",
+    initialLanguage: ShaderLanguageId = "glsl",
   ): void {
     const htmlPath = path.join(
       this.context.extensionPath,

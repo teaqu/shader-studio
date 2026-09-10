@@ -34,7 +34,28 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
-  it.each(['glsl', 'frag', 'slang', 'SLANG'])('forks %s source and config and restores the fork after reload', async (extension) => {
+  it.each(['glsl', 'slang', 'wgsl'] as const)('indexes unopened %s passes with their own Common dependency', async language => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    for (const name of ['main', 'common', 'buffer', 'unrelated']) workspace.writeText(`/shaders/${name}.${language}`, name);
+    workspace.writeText('/shaders/main.sha.json', JSON.stringify({ passes: { common: { path: `common.${language}` }, Image: {}, BufferA: { path: `buffer.${language}` } } }));
+    const host = new WebExtensionHost(workspace);
+    const documents = host.getWorkspaceDocuments(language);
+    expect(documents.find(file => file.uri.endsWith(`/main.${language}`))?.commonUri).toBe(`file:///shaders/common.${language}`);
+    expect(documents.find(file => file.uri.endsWith(`/buffer.${language}`))?.commonUri).toBe(`file:///shaders/common.${language}`);
+    expect(documents.find(file => file.uri.endsWith(`/unrelated.${language}`))?.commonUri).toBeUndefined();
+  });
+
+  it('publishes a transaction only after every target has been persisted', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/shaders/main.glsl', 'tone');
+    workspace.writeText('/shaders/common.glsl', 'tone');
+    const host = new WebExtensionHost(workspace);
+    const commit = vi.fn(() => expect(workspace.list().map(file => file.contents)).toEqual(['curve', 'curve']));
+    await host.applyWorkspaceEdit(['main', 'common'].map(name => ({ uri: `file:///shaders/${name}.glsl`, before: 'tone', after: 'curve' })), () => true, commit);
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  it.each(['glsl', 'frag', 'slang', 'SLANG', 'wgsl', 'WGSL'])('forks %s source and config and restores the fork after reload', async (extension) => {
     const store = new MemoryWorkspaceStore();
     const sourcePath = `/shaders/nested/example.${extension}`;
     const destination = `/shaders/nested/example.1.${extension}`;
@@ -65,6 +86,43 @@ describe('WebExtensionHost', () => {
     restored.onViewerMessage(restoredViewer);
     await restored.start();
     expect(restoredViewer).toHaveBeenCalledWith(expect.objectContaining({ path: destination, code: 'fork edit' }));
+  });
+
+  it.each(['glsl', 'slang', 'wgsl', 'WGSL'])('renames an active %s shader with its config and persists the selection', async (extension) => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    const sourcePath = `/shaders/original.${extension}`;
+    const destination = `/shaders/renamed.${extension}`;
+    workspace.writeText(sourcePath, 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1); }');
+    workspace.writeText('/shaders/original.sha.json', '{"version":"1.0","passes":{"Image":{}}}');
+    const host = new WebExtensionHost(workspace, { prompt: () => `renamed.${extension}` });
+    const viewer = vi.fn();
+    const explorer = vi.fn();
+    host.onViewerMessage(viewer);
+    host.onExplorerMessage(explorer);
+    await host.start();
+    await host.handleExplorerMessage({ type: 'renameShader', path: sourcePath });
+    expect(workspace.exists(sourcePath)).toBe(false);
+    expect(workspace.exists('/shaders/original.sha.json')).toBe(false);
+    expect(workspace.readText(destination)).toContain('fn mainImage');
+    expect(workspace.readText('/shaders/renamed.sha.json')).toContain('"Image"');
+    expect(viewer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderSource',
+      path: destination,
+      language: extension.toLowerCase() === 'slang' ? 'slang' : extension.toLowerCase() === 'wgsl' ? 'wgsl' : 'glsl',
+    }));
+    expect(explorer).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shadersUpdate', shaders: expect.arrayContaining([expect.objectContaining({ path: destination })]),
+    }));
+    await host.flush();
+    const restored = new WebExtensionHost(await VirtualWorkspace.open(store, []));
+    const restoredViewer = vi.fn();
+    restored.onViewerMessage(restoredViewer);
+    await restored.start();
+    expect(restoredViewer).toHaveBeenCalledWith(expect.objectContaining({
+      path: destination,
+      language: extension.toLowerCase() === 'slang' ? 'slang' : extension.toLowerCase() === 'wgsl' ? 'wgsl' : 'glsl',
+    }));
   });
 
   it('forks a numbered shader without config and skips occupied shader and config names', async () => {
@@ -106,6 +164,10 @@ describe('WebExtensionHost', () => {
     ['slang-compute', 'slang', '[shader("compute")]'],
     ['glsl-vertex', 'glsl', 'void mainVertex'],
     ['slang-vertex', 'slang', 'void mainVertex'],
+    ['wgsl-buffer', 'wgsl', 'fn mainImage'],
+    ['wgsl-common', 'wgsl', '// Common'],
+    ['wgsl-compute', 'wgsl', '@compute'],
+    ['wgsl-vertex', 'wgsl', 'position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>'],
   ])('creates and loads %s files through the config protocol', async (fileType, extension, expected) => {
     const host = await createHost({ prompt: (_message, initial) => initial });
     const receive = vi.fn();
@@ -340,6 +402,58 @@ describe('WebExtensionHost', () => {
     }));
   });
 
+  it('creates the animated WGSL starter template', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onExplorerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'createShader', payload: { name: 'new', language: 'wgsl' } });
+    await host.handleExplorerMessage({ type: 'requestShaderCode', path: '/shaders/new.wgsl', requestId: 14 });
+
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderCode',
+      path: '/shaders/new.wgsl',
+      requestId: 14,
+      code: expect.stringContaining('fn mainImage(coord: vec2f) -> vec4f'),
+    }));
+  });
+
+  it('defaults unknown createShader languages to WGSL', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onExplorerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'createShader', payload: { name: 'new', language: 'hlsl' } });
+    await host.handleExplorerMessage({ type: 'requestShaderCode', path: '/shaders/new.wgsl', requestId: 15 });
+
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shaderCode',
+      path: '/shaders/new.wgsl',
+      requestId: 15,
+    }));
+  });
+
+  it('lists WGSL shaders in the explorer shader list', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+      {
+        path: '/shaders/image.wgsl',
+        contents: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }',
+        createdAt: 1,
+        modifiedAt: 1,
+      },
+    ]);
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onExplorerMessage(receive);
+
+    await host.handleViewerMessage({ type: 'createShader', payload: { name: 'other', language: 'glsl' } });
+
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'shadersUpdate',
+      shaders: expect.arrayContaining([expect.objectContaining({ path: '/shaders/image.wgsl' })]),
+    }));
+  });
+
   it('routes every new shader request to the viewer modal and creates the selected language', async () => {
     const host = await createHost();
     const viewerReceive = vi.fn();
@@ -452,6 +566,26 @@ it('saves an inactive editor without switching the preview', async () => {
   expect(receive).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: '/shaders/clouds.slang' }));
   await host.handleViewerMessage({ type: 'refresh' });
   expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: '/shaders/aurora.glsl' }));
+});
+
+it.each(['glsl', 'slang', 'wgsl'])('refreshes the requested %s shader when an editor has made a related source active', async (extension) => {
+  const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), [
+    { path: `/shaders/main.${extension}`, contents: 'source', createdAt: 1, modifiedAt: 1 },
+    { path: `/shaders/main.vert.${extension}`, contents: 'vertex', createdAt: 1, modifiedAt: 1 },
+    { path: '/shaders/main.sha.json', contents: '{}', createdAt: 1, modifiedAt: 1 },
+  ]);
+  const host = new WebExtensionHost(workspace);
+  const receive = vi.fn();
+  host.onViewerMessage(receive);
+  await host.handleExplorerMessage({ type: 'activateShader', path: `/shaders/main.vert.${extension}` });
+  receive.mockClear();
+
+  await host.handleViewerMessage({ type: 'refresh', payload: { path: `/shaders/main.${extension}` } });
+  expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: `/shaders/main.${extension}` }));
+
+  receive.mockClear();
+  await host.handleViewerMessage({ type: 'refresh', payload: { path: '/shaders/main.sha.json' } });
+  expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'shaderSource', path: `/shaders/main.vert.${extension}` }));
 });
 
 

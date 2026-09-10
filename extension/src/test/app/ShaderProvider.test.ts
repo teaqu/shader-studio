@@ -143,6 +143,26 @@ suite('ShaderProvider Test Suite', () => {
       assert.strictEqual(sendSpy.firstCall.args[0].config, null);
     });
 
+    test('tags a WGSL mainImage shader with the wgsl language', async () => {
+      const shaderPath = '/path/to/image.wgsl';
+      const shaderSource = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+
+      await provider.sendShaderFromEditor({
+        document: {
+          getText: () => shaderSource,
+          uri: { fsPath: shaderPath },
+          fileName: shaderPath,
+          languageId: 'wgsl',
+          lineAt: () => ({ text: shaderSource }),
+        },
+        selection: { active: { line: 0, character: 0 } },
+      } as any);
+
+      sinon.assert.calledOnce(sendSpy);
+      assert.strictEqual(sendSpy.firstCall.args[0].path, shaderPath);
+      assert.strictEqual(sendSpy.firstCall.args[0].language, 'wgsl');
+    });
+
     test('does not re-route a locked compute pass to its shader root', async () => {
       const shaderPath = '/path/to/main.slang';
       const computePath = '/path/to/sim.slang';
@@ -773,6 +793,13 @@ suite('ShaderProvider Test Suite', () => {
         code: 'float someFunction() { return 1.0; }',
         language: 'slang',
       },
+      {
+        label: 'WGSL',
+        shaderPath: '/path/to/shader.wgsl',
+        languageId: 'wgsl',
+        code: 'fn someFunction() -> f32 { return 1.0; }',
+        language: 'wgsl',
+      },
     ] as const) {
       test(`should send unlocked ${fixture.label} files without mainImage through the normal shader switch path`, async () => {
         const mockEditor = {
@@ -1117,6 +1144,26 @@ suite('ShaderProvider Test Suite', () => {
         source: dependencySource,
         ownerPass: 'Image',
       }]);
+    });
+
+    test('tags WGSL shaders when script content changes', async () => {
+      const shaderPath = '/path/to/image.wgsl';
+      const rootSource = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+      const fs = require('fs');
+      sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => filePath === shaderPath);
+      sandbox.stub(fs, 'readFileSync').callsFake((filePath: unknown) => {
+        if (filePath === shaderPath) {
+          return rootSource;
+        }
+        throw new Error(`unexpected read: ${filePath}`);
+      });
+      loadAndProcessConfigStub.returns({ version: '1.0', passes: { Image: {} } });
+
+      await provider.sendShaderWithScriptContent(shaderPath, 'export default {}');
+
+      const message = sendSpy.firstCall.args[0];
+      assert.strictEqual(message.language, 'wgsl');
+      assert.strictEqual(message.originalCode, undefined);
     });
   });
 

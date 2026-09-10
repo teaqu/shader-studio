@@ -207,6 +207,33 @@ suite('ConfigGenerator Test Suite', () => {
     
   });
 
+  test('should offer WGSL files in the shader picker dialog', async () => {
+    const fs = require('fs');
+
+    glslFileTracker['lastViewedGlslFile'] = null;
+    sandbox.stub(messenger, 'hasActiveClients').returns(false);
+    sandbox.stub(fs, 'existsSync').returns(false);
+    sandbox.stub(fs, 'writeFileSync');
+
+    const selectedFile = vscode.Uri.file('/mock/path/selected_shader.wgsl');
+    const showOpenDialogStub = sandbox.stub(vscode.window, 'showOpenDialog').resolves([selectedFile]);
+
+    sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: null,
+      configurable: true,
+      writable: true
+    });
+
+    await configGenerator.generateConfig();
+
+    sinon.assert.calledOnce(showOpenDialogStub);
+    assert.deepStrictEqual(showOpenDialogStub.firstCall.args[0]!.filters, {
+      "Shader files": ["glsl", "frag", "slang", "wgsl"],
+    });
+  });
+
   test('should fall back to file dialog when last viewed GLSL file does not exist even with active preview', async () => {
     const fs = require('fs');
     const path = require('path');

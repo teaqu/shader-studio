@@ -168,7 +168,7 @@
         "shader-studio.enableSnippets": {
           "type": "boolean",
           "default": true,
-          "description": "Enable bundled GLSL and Slang code snippets (requires restart)"
+          "description": "Enable bundled GLSL, Slang, and WGSL code snippets (requires restart)"
         },
         "shader-studio.navigateOnBufferSwitch": {
           "type": "boolean",
@@ -190,10 +190,15 @@
           "default": true,
           "description": "Enable Shader Studio Slang completion, hover, navigation, diagnostics, symbols, and colors."
         },
+        "shader-studio.languageServers.wgsl.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Shader Studio WGSL completion, hover, navigation, diagnostics, symbols, and colors."
+        },
         "shader-studio.editor.colorDecorators": {
           "type": "boolean",
           "default": true,
-          "description": "Show editable color swatches for literal GLSL vec3/vec4 and Slang float3/float4 colors."
+          "description": "Show editable color swatches for literal GLSL vec3/vec4, Slang float3/float4, and WGSL vec3f/vec4f colors."
         }
       }
     },
@@ -202,6 +207,9 @@
         "editor.colorDecoratorsActivatedOn": "click"
       },
       "[slang]": {
+        "editor.colorDecoratorsActivatedOn": "click"
+      },
+      "[wgsl]": {
         "editor.colorDecoratorsActivatedOn": "click"
       }
     },
@@ -233,6 +241,17 @@
           ".slang"
         ],
         "configuration": "./slang-language-configuration.json"
+      },
+      {
+        "id": "wgsl",
+        "aliases": [
+          "WGSL",
+          "WebGPU Shading Language"
+        ],
+        "extensions": [
+          ".wgsl"
+        ],
+        "configuration": "./wgsl-language-configuration.json"
       }
     ],
     "grammars": [
@@ -245,6 +264,11 @@
         "language": "slang",
         "scopeName": "source.slang",
         "path": "./syntaxes/slang.tmLanguage.json"
+      },
+      {
+        "language": "wgsl",
+        "scopeName": "source.wgsl",
+        "path": "./syntaxes/wgsl.tmLanguage.json"
       }
     ],
     "semanticTokenTypes": [
@@ -301,6 +325,22 @@
       {
         "language": "slang",
         "path": "./snippets/coordinates.slang.code-snippets"
+      },
+      {
+        "language": "wgsl",
+        "path": "./snippets/sdf-2d.wgsl.code-snippets"
+      },
+      {
+        "language": "wgsl",
+        "path": "./snippets/sdf-3d.wgsl.code-snippets"
+      },
+      {
+        "language": "wgsl",
+        "path": "./snippets/math.wgsl.code-snippets"
+      },
+      {
+        "language": "wgsl",
+        "path": "./snippets/coordinates.wgsl.code-snippets"
       }
     ]
   },
@@ -314,7 +354,7 @@
     "compile-tests": "npm run build:deps && rimraf out && tsc -p ./tsconfig.test.json",
     "watch-tests": "rimraf out && tsc -p . -w --outDir out",
     "build:code": "npm run build:deps && node esbuild.js && tsc -p ./",
-    "build:deps": "turbo run build --filter=@shader-studio/types --filter=@shader-studio/language-server-core --filter=@shader-studio/glsl-analysis --filter=@shader-studio/glsl-language-server --filter=@shader-studio/slang-language-server --filter=@shader-studio/utils --filter=@shader-studio/debug --filter=@shader-studio/rendering",
+    "build:deps": "turbo run build --filter=@shader-studio/types --filter=@shader-studio/language-server-core --filter=@shader-studio/glsl-analysis --filter=@shader-studio/glsl-language-server --filter=@shader-studio/slang-language-server --filter=@shader-studio/wgsl-analysis --filter=@shader-studio/wgsl-language-server --filter=@shader-studio/utils --filter=@shader-studio/debug --filter=@shader-studio/rendering",
     "build:force": "npm run package",
     "build": "npm run package",
     "build:ui": "cd ../ui && npm run build && npm run copy-to-extension",
@@ -344,6 +384,7 @@
     "@shader-studio/glsl-language-server": "*",
     "@shader-studio/language-server-core": "*",
     "@shader-studio/slang-language-server": "*",
+    "@shader-studio/wgsl-language-server": "*",
     "@shader-studio/types": "*",
     "@shader-studio/utils": "*",
     "entities": "^6.0.1",

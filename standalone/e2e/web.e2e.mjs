@@ -127,7 +127,7 @@ test('captures variables while debugging a cubemap shader', async ({ page }) => 
   await page.goto('/');
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   const editor = page.getByTestId('web-editor');
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default cubemap');
+  await expect(editor.locator('.view-lines')).toContainText('Drag in the preview');
 
   await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
   const panel = page.locator('.debug-panel');
@@ -143,6 +143,36 @@ test('captures variables while debugging a cubemap shader', async ({ page }) => 
   const direction = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^direction$/ }) });
   await expect(direction).toBeVisible();
   await expect.poll(async () => (await direction.locator('.vec-value').first().textContent() ?? '').trim())
+    .toMatch(/^\(-?\d/);
+  await expect(panel.locator('.issue-button')).toHaveCount(0);
+  expect(captureFailures).toEqual([]);
+});
+
+test('captures WGSL variables while debugging', async ({ page }) => {
+  const captureFailures = [];
+  page.on('console', (message) => {
+    if (message.text().includes('[VariableCapture] Shader compile failed')) {
+      captureFailures.push(message.text());
+    }
+  });
+
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-wgsl-wgsl').click();
+  const editor = page.getByTestId('web-editor');
+  await expect(editor.locator('.view-lines')).toContainText('fn mainImage');
+
+  await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
+  const panel = page.locator('.debug-panel');
+  await expect(panel).toBeVisible();
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
+  await expect(panel.locator('.variables-section')).toBeVisible();
+
+  await editor.locator('.view-line').filter({ hasText: 'let sky' }).click();
+  const sky = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^sky$/ }) });
+  await expect(sky).toBeVisible();
+  await expect.poll(async () => (await sky.locator('.vec-value').first().textContent() ?? '').trim())
     .toMatch(/^\(-?\d/);
   await expect(panel.locator('.issue-button')).toHaveCount(0);
   expect(captureFailures).toEqual([]);
@@ -192,6 +222,7 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
 
   await explorer.getByTitle('New Shader').click();
   await page.getByRole('dialog', { name: 'New Shader' }).getByLabel('Shader name').fill('starter');
+  await page.getByRole('dialog', { name: 'New Shader' }).getByLabel('Shader language').selectOption('glsl');
   await page.getByRole('button', { name: 'Create Shader', exact: true }).click();
   await editor.getByLabel('Disable Vim mode').click();
   const starterShader = page.getByTestId('shader-option-starter-glsl');
@@ -232,15 +263,15 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
   await expect.poll(async () => (await editor.boundingBox())?.width).toBeGreaterThan(editorBox?.width ?? 0);
 
   await page.getByTestId('shader-option-aurora-slang-slang').click();
-  await expect(editor.locator('.view-lines')).toContainText('aurora-slang / WebGPU');
+  await expect(editor.locator('.view-lines')).toContainText('float3 colour');
   await expect.poll(() => [...languageWorkerRequests].some((url) => url.includes('/slangLanguageService.worker-'))).toBe(true);
 
   await page.getByTestId('shader-option-nebula-texture-glsl').click();
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default texture');
+  await expect(editor.locator('.view-lines')).toContainText('texture(iChannel0, uv)');
   await expect(page.getByTestId('shader-option-nebula-texture-glsl')).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default cubemap');
+  await expect(editor.locator('.view-lines')).toContainText('Drag in the preview');
   const previewCanvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   await expect(previewCanvas).toBeVisible();
   const cubemapBeforeDrag = await previewCanvas.screenshot();
@@ -453,7 +484,7 @@ test('forks a shader from the preview menu and persists the independent copy', a
   const fork = page.getByTestId('shader-option-nebula-texture-1-glsl');
   const editor = page.getByTestId('web-editor');
   await original.click();
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default texture');
+  await expect(editor.locator('.view-lines')).toContainText('texture(iChannel0, uv)');
 
   await page.getByLabel('Open options menu').click();
   await page.getByLabel('Fork shader', { exact: true }).click();
@@ -461,7 +492,7 @@ test('forks a shader from the preview menu and persists the independent copy', a
   await expect(fork).toBeVisible();
   await expect(fork).toHaveAttribute('aria-pressed', 'true');
   await expect(original).toHaveAttribute('aria-pressed', 'false');
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default texture');
+  await expect(editor.locator('.view-lines')).toContainText('texture(iChannel0, uv)');
   await expect(fork.locator('.shader-thumbnail img')).toBeVisible();
   await expect(fork.locator('.shader-error')).toHaveCount(0);
 
@@ -497,10 +528,70 @@ test('forks a shader from the preview menu and persists the independent copy', a
   await expect(fork).toHaveAttribute('aria-pressed', 'true');
   await expect(editor.locator('.view-lines')).toContainText('fork-only edit');
   await original.click();
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default texture');
+  await expect(editor.locator('.view-lines')).toContainText('texture(iChannel0, uv)');
   await expect(editor.locator('.view-lines')).not.toContainText('fork-only edit');
 });
 
+
+test('creates a WGSL shader when selected, edits it, renders it, and persists it across reload', async ({ page }) => {
+  const languageWorkerRequests = new Set();
+  page.on('request', (request) => {
+    const url = request.url();
+    if (/\/wgslLanguageService\.worker-[^/]+\.js$/.test(url)) {
+      languageWorkerRequests.add(url);
+    }
+  });
+
+  await page.goto('/');
+  const explorer = page.getByTestId('web-shader-explorer');
+  const editor = page.getByTestId('web-editor');
+
+  // The seeded WGSL sample loads through the WebGPU backend with no errors.
+  const sample = page.getByTestId('shader-option-aurora-wgsl-wgsl');
+  await sample.click();
+  await expect(editor.locator('.view-lines')).toContainText('fn mainImage');
+  await expect(sample.locator('.shader-error')).toHaveCount(0);
+  await expect.poll(() => [...languageWorkerRequests].length).toBeGreaterThan(0);
+
+  // New shaders offer WGSL starters through the language picker.
+  await explorer.getByTitle('New Shader').click();
+  await page.getByRole('dialog', { name: 'New Shader' }).getByLabel('Shader name').fill('wgsl-created');
+  await page.getByRole('dialog', { name: 'New Shader' }).getByLabel('Shader language').selectOption('wgsl');
+  await page.getByRole('button', { name: 'Create Shader', exact: true }).click();
+  const created = page.getByTestId('shader-option-wgsl-created-wgsl');
+  await expect(created).toBeVisible();
+  await expect(created).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor.locator('.view-lines')).toContainText('fn mainImage');
+  await expect(created.locator('.shader-error')).toHaveCount(0);
+  await expect(created.locator('.shader-thumbnail img')).toBeVisible();
+
+  const editedSource = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.25); } // wgsl-only edit';
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await page.keyboard.insertText(editedSource);
+  // Wait for the actual persisted edit before reloading.
+  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('shader-studio-web', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const database = open.result;
+      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
+      read.onerror = () => {
+        database.close(); reject(read.error);
+      };
+      read.onsuccess = () => {
+        database.close();
+        const files = read.result ?? [];
+        const copy = files.find((file) => file.path.endsWith('/wgsl-created.wgsl'));
+        resolve(Boolean(copy?.contents.includes('wgsl-only edit')));
+      };
+    };
+  }))).toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId('shader-option-wgsl-created-wgsl')).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor.locator('.view-lines')).toContainText('wgsl-only edit');
+});
 
 test('selecting shaders leaves their modification times unchanged after reload', async ({ page }) => {
   await page.goto('/');
@@ -517,14 +608,14 @@ test('selecting shaders leaves their modification times unchanged after reload',
       };
       read.onsuccess = () => {
         database.close();
-        resolve(read.result.filter((file) => /\.(glsl|slang)$/.test(file.path)));
+        resolve(read.result.filter((file) => /\.(glsl|slang|wgsl)$/.test(file.path)));
       };
     };
   }));
   const before = await readShaders();
   for (const [id, text] of [
-    ['nebula-texture-glsl', 'Shader Studio default texture'],
-    ['desert-cubemap-glsl', 'Shader Studio default cubemap'],
+    ['nebula-texture-glsl', 'texture(iChannel0, uv)'],
+    ['desert-cubemap-glsl', 'Drag in the preview'],
   ]) {
     const card = page.getByTestId(`shader-option-${id}`);
     await card.click();
@@ -536,7 +627,7 @@ test('selecting shaders leaves their modification times unchanged after reload',
   }
   await page.reload();
   await expect(page.getByTestId('shader-option-desert-cubemap-glsl')).toHaveAttribute('aria-pressed', 'true');
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio default cubemap');
+  await expect(editor.locator('.view-lines')).toContainText('Drag in the preview');
   expect(await readShaders()).toEqual(before);
 });
 
@@ -553,7 +644,7 @@ test('explicitly opens independent file editors and restores them after reload',
   const desert = page.locator('[data-testid="file-editor"][data-path="/shaders/desert-cubemap.glsl"]');
   await expect(desert.locator('.monaco-editor')).toBeVisible();
   await expect(aurora.locator('.monaco-editor')).toBeVisible();
-  await expect(aurora).toContainText('Shader Studio Aurora');
+  await expect(aurora).toContainText('sin(p.x * 3.0 + iTime)');
   await aurora.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+Home');
   await page.keyboard.type('// independent editor edit\n');
@@ -691,9 +782,9 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Open Files', { exact: true }).check();
   for (const [id, text] of [
-    ['aurora-glsl', 'Shader Studio Aurora'],
-    ['desert-cubemap-glsl', 'Shader Studio default cubemap'],
-    ['nebula-texture-glsl', 'Shader Studio default texture'],
+    ['aurora-glsl', 'sin(p.x * 3.0 + iTime)'],
+    ['desert-cubemap-glsl', 'Drag in the preview'],
+    ['nebula-texture-glsl', 'texture(iChannel0, uv)'],
   ]) {
     await page.getByTestId(`shader-option-${id}`).click();
     await expect(editor.locator('.view-lines')).toContainText(text);
@@ -720,7 +811,7 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(editorTab).toHaveCount(1);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
-  await expect(editor.locator('.view-lines')).toContainText('Shader Studio Aurora');
+  await expect(editor.locator('.view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
   await expect(page.getByTestId('file-editor')).toHaveCount(0);
 });
 
@@ -796,7 +887,7 @@ test('focused standalone file editor selects the preview and persists after relo
   await expect(desert).toHaveAttribute('aria-pressed', 'true');
   await editor.locator('.view-lines').click();
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('Shader Studio Aurora');
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
   await desert.click();
   await page.locator('.dv-tab').filter({ hasText: /^aurora\.glsl$/ }).click();
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');
@@ -867,7 +958,7 @@ test('shader selection updates the last active editor and restores it after relo
   await page.getByTestId('shader-option-desert-cubemap-glsl').click();
   await expect(fileEditor).toHaveCount(1);
   await expect(fileEditor).toHaveAttribute('data-path', '/shaders/desert-cubemap.glsl');
-  await expect(fileEditor.locator('.view-lines')).toContainText('Shader Studio default cubemap');
+  await expect(fileEditor.locator('.view-lines')).toContainText('Drag in the preview');
   await page.reload();
   await expect(fileEditor).toHaveAttribute('data-path', '/shaders/desert-cubemap.glsl');
   await expect(fileEditor.locator('.monaco-editor')).toBeVisible();
@@ -914,7 +1005,7 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await page.getByLabel('Open Files', { exact: true }).check();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
-  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('Shader Studio Aurora');
+  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
   await page.reload();
   // The main editor follows the restored preview; the file editors retain their slots.
   await expect(titles).toHaveText(['aurora.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
@@ -1282,3 +1373,143 @@ test('an unreadable shader config reports an error instead of a silent black pre
 });
 
 
+
+for (const { label, option, extension, sourceText } of [
+  { label: 'GLSL', option: 'aurora-glsl', extension: 'glsl', sourceText: 'void mainImage' },
+  { label: 'Slang', option: 'aurora-slang-slang', extension: 'slang', sourceText: 'float4 mainImage' },
+  { label: 'WGSL', option: 'aurora-wgsl-wgsl', extension: 'wgsl', sourceText: 'fn mainImage' },
+]) for (const action of ['forks', 'renames']) {
+  test(`${action} a ${label} shader through the menu and persists it across reload`, async ({ page }) => {
+    await page.goto('/');
+    const original = page.getByTestId(`shader-option-${option}`);
+    await original.click();
+    const editor = page.getByTestId('web-editor');
+    await expect(editor.locator('.view-lines')).toContainText(sourceText);
+    const baseName = option.replace(/-glsl$|-slang$|-wgsl$/, '');
+    const name = action === 'forks' ? `${baseName}.1` : `renamed-${baseName}`;
+    if (action === 'forks') {
+      await page.getByLabel('Open options menu').click();
+      await page.getByLabel('Fork shader', { exact: true }).click();
+    } else {
+      await original.click({ button: 'right' });
+      page.once('dialog', (dialog) => dialog.accept(`${name}.${extension}`));
+      await page.locator('.context-menu').getByRole('button', { name: 'Rename', exact: true }).click();
+    }
+    const result = page.getByTestId(`shader-option-${name.replaceAll('.', '-')}-${extension}`);
+    await expect(result).toBeVisible();
+    await expect(result).toHaveAttribute('aria-pressed', 'true');
+    await expect(editor.locator('.view-lines')).toContainText(sourceText);
+    await expect(result.locator('.shader-thumbnail img')).toBeVisible();
+    await expect(result.locator('.shader-error')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(({ name, extension }) => new Promise((resolve, reject) => {
+      const open = indexedDB.open('shader-studio-web', 1);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
+        read.onerror = () => { database.close(); reject(read.error); };
+        read.onsuccess = () => {
+          database.close();
+          const files = read.result ?? [];
+          resolve(files.some((file) => file.path.endsWith(`/${name}.${extension}`))
+            && files.some((file) => file.path.endsWith(`/${name}.sha.json`)));
+        };
+      };
+    }), { name, extension })).toBe(true);
+    await page.reload();
+    await expect(result).toHaveAttribute('aria-pressed', 'true');
+    await expect(editor.locator('.view-lines')).toContainText(sourceText);
+    await expect(original).toHaveCount(action === 'forks' ? 1 : 0);
+  });
+}
+
+async function seedWgslAuditFiles(page, entries) {
+  await page.goto('/');
+  await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
+  await page.evaluate((entries) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('shader-studio-web', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const tx = db.transaction('state', 'readwrite');
+      const store = tx.objectStore('state');
+      const read = store.get('workspace');
+      read.onsuccess = () => {
+        const files = read.result ?? [];
+        for (const [name, contents] of entries) {
+          files.push({ path: `/shaders/${name}`, contents, createdAt: Date.now(), modifiedAt: Date.now() });
+        }
+        store.put(files, 'workspace');
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    };
+  }), entries);
+  await page.reload();
+}
+
+test('renders WGSL storage structs with array members and explicit layout', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['layout.wgsl', `struct Child { value: vec3<f32>, }
+struct Particle {
+  weight: f32,
+  @align(16) offset: f32,
+  @size(16) lifetime: f32,
+  samples: array<Child, 2>,
+}
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.2, 0.4, 0.6, 1.0); }`],
+    ['layout.sha.json', JSON.stringify({ version: '1.0', storage: { particles: { count: 4, elementType: 'Particle' } }, passes: { Image: { inputs: {} } } })],
+  ]);
+  const shader = page.getByTestId('shader-option-layout-wgsl');
+  await shader.click();
+  const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect.poll(async () => {
+    // Read the presented WebGPU canvas directly: headless compositor screenshots
+    // return black here even when canvas.toDataURL contains the rendered pixels.
+    const png = await canvas.evaluate((element) => element.toDataURL());
+    const { width, height, data } = PNG.sync.read(Buffer.from(png.split(',')[1], 'base64'));
+    const index = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+    return [...data.subarray(index, index + 3)];
+  }).toEqual([51, 102, 153]);
+  await expect(shader.locator('.shader-error')).toHaveCount(0);
+});
+
+test('maps WGSL compute compiler diagnostics to the edited source line', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['diagnostic-image.wgsl', 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
+    ['diagnostic-compute.wgsl', '@compute @workgroup_size(1)\nfn compute() {\n  let broken = missingValue;\n}'],
+    ['diagnostic-image.sha.json', JSON.stringify({ version: '1.0', passes: {
+      Update: { type: 'compute', path: 'diagnostic-compute.wgsl', inputs: {} }, Image: { inputs: {} },
+    } })],
+  ]);
+  await page.getByTestId('shader-option-diagnostic-image-wgsl').click();
+  await page.getByTestId('shader-option-diagnostic-image-wgsl').hover();
+  await expect(page.locator('.error-tooltip-block').filter({ hasText: 'missingValue' }).first()).toContainText('L3:');
+});
+
+test('creates a valid WGSL vertex hook from the config panel', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-wgsl-wgsl').click();
+  await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
+  const vertex = page.locator('.config-item').filter({ has: page.getByRole('heading', { name: 'Vertex shader', exact: true }) });
+  page.once('dialog', (dialog) => dialog.accept(dialog.defaultValue()));
+  await vertex.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(vertex.locator('input')).toHaveValue(/\.vert\.wgsl$/);
+  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('shader-studio-web', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const read = db.transaction('state', 'readonly').objectStore('state').get('workspace');
+      read.onerror = () => { db.close(); reject(read.error); };
+      read.onsuccess = () => {
+        db.close();
+        resolve(read.result?.find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '');
+      };
+    };
+  }))).toContain('position: ptr<function, vec3f>');
+  await page.reload();
+  await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('web-preview').getByLabel('Change FPS limit')).not.toContainText('0.0 FPS');
+  await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl').locator('.shader-error')).toHaveCount(0);
+});

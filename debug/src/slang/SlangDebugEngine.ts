@@ -12,6 +12,18 @@ import { canonicalizeSlangUri, createSlangWorkspace, type SlangWorkspace, type S
 
 export class SlangDebugEngine implements ShaderDebugEngine {
   analyze(request: DebugAnalysisRequest): DebugAnalysisResult {
+    if (request.sourceUri.toLowerCase().endsWith(".wgsl")) {
+      // WGSL debugging lands in Phase 11; fail closed instead of mis-parsing.
+      return {
+        ok: false,
+        diagnostics: [{
+          code: "debug-unsupported-language",
+          message: "WGSL debugging is not supported yet.",
+          sourceUri: request.sourceUri,
+          range: { start: request.position, end: { ...request.position } },
+        }],
+      };
+    }
     const resolved = this.resolve(request);
     return resolved.ok ? analyzeSlangSite(resolved.file, request.position) : { ok: false, diagnostics: resolved.diagnostics };
   }

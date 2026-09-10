@@ -389,6 +389,25 @@ suite('PanelManager Test Suite', () => {
     assert.ok(expectedLocalResourceRoots.length >= 2);
   });
 
+  suite('languageServiceSettingsMessage', () => {
+    test('includes the WGSL service toggle from configuration', () => {
+      const get = sandbox.stub();
+      get.withArgs('languageServers.glsl.enabled', true).returns(true);
+      get.withArgs('languageServers.slang.enabled', true).returns(false);
+      get.withArgs('languageServers.wgsl.enabled', true).returns(true);
+      get.withArgs('editor.colorDecorators', true).returns(true);
+      sandbox.stub(vscode.workspace, 'getConfiguration').returns({ get } as any);
+
+      const message = (panelManager as any).languageServiceSettingsMessage();
+
+      assert.strictEqual(message.type, 'languageServiceSettings');
+      assert.strictEqual(message.payload.glslEnabled, true);
+      assert.strictEqual(message.payload.slangEnabled, false);
+      assert.strictEqual(message.payload.wgslEnabled, true);
+      assert.strictEqual(message.payload.colorDecorators, true);
+    });
+  });
+
   suite('Webview HTML Processing', () => {
     let createWebviewPanelStub: sinon.SinonStub;
     let readFileSyncStub: sinon.SinonStub;

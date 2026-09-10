@@ -8,7 +8,7 @@ import { writeWorkspaceTypeDefs } from "../WorkspaceTypeDefs";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
 import type { ErrorMessage } from "@shader-studio/types";
-import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS } from "@shader-studio/types";
+import { GLSL_EXTENSIONS, SCRIPT_EXTENSIONS, TEXTURE_EXTENSIONS, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, CUBEMAP_EXTENSIONS, WGSL_EXTENSIONS } from "@shader-studio/types";
 
 function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
   switch (fileType) {
@@ -21,6 +21,10 @@ function fileTypeToFilters(fileType: string): { [name: string]: string[] } {
     case 'slang-buffer':
     case 'slang-common':
     case 'slang-compute': return { 'Slang files': ['slang'] };
+    case 'wgsl-vertex':
+    case 'wgsl-buffer':
+    case 'wgsl-common':
+    case 'wgsl-compute': return { 'WGSL files': [...WGSL_EXTENSIONS] };
     case 'model': return { 'GLB models': ['glb'] };
     default:         return { 'GLSL files': GLSL_EXTENSIONS };
   }
@@ -113,6 +117,14 @@ export class FileDialogHandler {
           template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
+        } else if (payload.fileType === 'wgsl-common') {
+          template = `// Common functions shared across all passes\n`;
+        } else if (payload.fileType === 'wgsl-vertex') {
+          template = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
+        } else if (payload.fileType === 'wgsl-compute') {
+          template = `@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n\n}\n`;
+        } else if (payload.fileType === 'wgsl-buffer') {
+          template = `fn mainImage(coord: vec2f) -> vec4f {\n    let st = coord / vec2f(iResolution.x, iResolution.y);\n    return vec4f(st, 0.0, 1.0);\n}\n`;
         } else if (payload.fileType === 'slang-buffer') {
           template = `float4 mainImage(float2 fragCoord) {\n    float2 uv = fragCoord / iResolution.xy;\n    return float4(uv, 0.0, 1.0);\n}\n`;
         } else {
@@ -180,10 +192,15 @@ export class FileDialogHandler {
         counter++;
       }
 
-      const isSlang = sourceExt.toLowerCase() === '.slang';
+      const lowerExt = sourceExt.toLowerCase();
+      const filters: { [name: string]: string[] } = lowerExt === '.slang'
+        ? { 'Slang Shader': ['slang'] }
+        : lowerExt === '.wgsl'
+          ? { 'WGSL Shader': ['wgsl'] }
+          : { 'GLSL Shader': ['glsl'] };
       const result = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(sourceDir, `${rootBase}.${counter}${sourceExt}`)),
-        filters: isSlang ? { 'Slang Shader': ['slang'] } : { 'GLSL Shader': ['glsl'] },
+        filters,
       });
 
       if (!result) {

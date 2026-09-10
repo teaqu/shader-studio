@@ -72,6 +72,9 @@ suite('ShaderExplorerProvider Test Suite', () => {
       if (/\.(glsl|slang|frag|vert)$/i.test(path)) {
         return 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }';
       }
+      if (/\.wgsl$/i.test(path)) {
+        return 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+      }
       return '<html><head></head><body></body></html>';
     });
 
@@ -626,7 +629,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       await messageHandler({ type: 'requestShaders', skipCache: false });
 
       const pattern = findFilesStub.firstCall.args[0] as vscode.RelativePattern;
-      assert.strictEqual(pattern.pattern, '**/*.{glsl,frag,vert,slang}');
+      assert.strictEqual(pattern.pattern, '**/*.{glsl,frag,vert,slang,wgsl}');
       const shader = postMessageSpy.firstCall.args[0].shaders[0];
       assert.strictEqual(shader.name, 'example.slang');
       assert.strictEqual(shader.path, shaderUri.fsPath);
@@ -634,6 +637,30 @@ suite('ShaderExplorerProvider Test Suite', () => {
       assert.strictEqual(shader.hasConfig, true);
       assert.strictEqual(shader.modifiedTime, 2_000);
       assert.strictEqual(shader.createdTime, 1_000);
+    });
+
+    test('should discover WGSL shaders with config metadata', async () => {
+      const fs = require('fs');
+      const shaderUri = vscode.Uri.file('/workspace/shaders/example.wgsl');
+      sandbox.stub(vscode.workspace, 'workspaceFolders').value([
+        { uri: vscode.Uri.file('/workspace') },
+      ]);
+      sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockPanel);
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([shaderUri]);
+      existsSyncStub.callsFake((filePath: string) =>
+        filePath === '/workspace/shaders/example.sha.json'
+        || !filePath.includes('index.html')
+      );
+      sandbox.stub(fs, 'statSync').returns({ mtimeMs: 2_000, birthtimeMs: 1_000 });
+
+      const messageHandler = setupMessageHandler(mockPanel);
+      await messageHandler({ type: 'requestShaders', skipCache: false });
+
+      const shader = postMessageSpy.firstCall.args[0].shaders[0];
+      assert.strictEqual(shader.name, 'example.wgsl');
+      assert.strictEqual(shader.path, shaderUri.fsPath);
+      assert.strictEqual(shader.configPath, '/workspace/shaders/example.sha.json');
+      assert.strictEqual(shader.hasConfig, true);
     });
 
     test('should exclude shaders whose filename contains "buffer"', async () => {

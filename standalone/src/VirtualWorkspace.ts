@@ -109,6 +109,7 @@ export class IndexedDbWorkspaceStore implements VirtualWorkspaceStore {
 export class VirtualWorkspace {
   private readonly files = new Map<string, VirtualWorkspaceFile>();
   private pendingSave: Promise<void> = Promise.resolve();
+  private revision = 0;
 
   private constructor(
     private readonly store: VirtualWorkspaceStore,
@@ -156,6 +157,41 @@ export class VirtualWorkspace {
     this.queueSave();
   }
 
+  /** Persist one complete snapshot, then publish all targets together. */
+  async applyTextTransaction(
+    changes: readonly { path: string; before: string; after: string }[],
+    isCurrent: () => boolean = () => true,
+    onCommit: () => void = () => {},
+  ): Promise<void> {
+    const operation = this.pendingSave.then(async () => {
+      const revision = this.revision;
+      const original = this.list();
+      const targets = new Map<string, string>();
+      for (const change of changes) {
+        const path = this.normalizePath(change.path);
+        if (targets.has(path) || this.getFile(path).contents !== change.before) {
+          throw new Error('Rename target is stale or duplicated. No files were changed.');
+        }
+        targets.set(path, change.after);
+      }
+      const current = () => revision === this.revision && isCurrent();
+      if (!current()) throw new Error('Rename request is stale. No files were changed.');
+      const snapshot = original.map(file => targets.has(file.path)
+        ? { ...file, contents: targets.get(file.path)!, modifiedAt: this.now() } : file);
+      await this.store.save(snapshot);
+      if (!current()) {
+        await this.store.save(original);
+        throw new Error('Rename request is stale. No files were changed.');
+      }
+      for (const file of snapshot) this.files.set(file.path, file);
+      this.revision++;
+      onCommit();
+    });
+    // A failed transaction must not poison future editor saves.
+    this.pendingSave = operation.catch(() => {});
+    await operation;
+  }
+
   stat(path: string): VirtualWorkspaceFile {
     return { ...this.getFile(path) };
   }
@@ -194,6 +230,7 @@ export class VirtualWorkspace {
   }
 
   async clear(): Promise<void> {
+    this.revision++;
     this.files.clear();
     this.pendingSave = this.pendingSave.then(() => this.store.clear());
     await this.pendingSave;
@@ -227,6 +264,7 @@ export class VirtualWorkspace {
   }
 
   private queueSave(): void {
+    this.revision++;
     const snapshot = this.list();
     this.pendingSave = this.pendingSave.then(() => this.store.save(snapshot));
   }

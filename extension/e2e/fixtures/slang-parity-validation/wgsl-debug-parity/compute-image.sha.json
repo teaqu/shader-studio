@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "iChannel0": { "type": "buffer", "source": "Compute" }
+      }
+    },
+    "Compute": {
+      "type": "compute",
+      "path": "./compute-update.wgsl",
+      "resolution": { "scale": 0.5 },
+      "entryPoint": "update"
+    }
+  }
+}

@@ -30,7 +30,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const slangServiceCollection = vscode.languages.createDiagnosticCollection(
     "shader-studio-slang-ls",
   );
-  context.subscriptions.push(diagnosticCollection, glslServiceCollection, slangServiceCollection);
+  const wgslServiceCollection = vscode.languages.createDiagnosticCollection(
+    "shader-studio-wgsl-ls",
+  );
+  context.subscriptions.push(diagnosticCollection, glslServiceCollection, slangServiceCollection, wgslServiceCollection);
 
   // The renderer compiler and the language services report on the same lines;
   // the arbiter keeps one diagnostic per line instead of two.
@@ -38,6 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
     compiler: diagnosticCollection,
     glsl: glslServiceCollection,
     slang: slangServiceCollection,
+    wgsl: wgslServiceCollection,
   });
 
   languageServices = new VscodeLanguageServiceController(
@@ -46,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext) {
     {
       glsl: diagnosticArbiter.languageServiceSink("glsl"),
       slang: diagnosticArbiter.languageServiceSink("slang"),
+      wgsl: diagnosticArbiter.languageServiceSink("wgsl"),
     },
   );
   languageServices.start(context);

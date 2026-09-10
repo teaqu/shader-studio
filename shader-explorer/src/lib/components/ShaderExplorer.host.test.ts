@@ -64,3 +64,24 @@ it('subscribes before requesting the initial shader list and unsubscribes on unm
   unmount();
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
+
+it('mentions WGSL in the empty-state message when no shaders are found', async () => {
+  let receive: ((event: MessageEvent) => void) | undefined;
+  const hostApi = {
+    onMessage(handler: (event: MessageEvent) => void) {
+      receive = handler;
+      return () => { receive = undefined; };
+    },
+    postMessage: vi.fn((message: { type: string }) => {
+      if (message.type === 'requestShaders') {
+        receive?.(new MessageEvent('message', { data: {
+          type: 'shadersUpdate',
+          shaders: [],
+        } }));
+      }
+    }),
+  };
+  const { findByText, unmount } = render(ShaderExplorer, { props: { hostApi } });
+  await findByText('No GLSL, Slang, or WGSL shaders found in the workspace.');
+  unmount();
+});

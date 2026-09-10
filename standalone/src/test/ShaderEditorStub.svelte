@@ -6,6 +6,8 @@
     vimMode: boolean;
     errors: string[];
     activeBufferName: string;
+    commonPath?: string;
+    commonSource?: string;
     onCodeChange: (code: string) => void;
     onBufferSwitch: (bufferName: string) => void;
     onManualCompile?: () => void;
@@ -18,6 +20,8 @@
     vimMode,
     errors = [],
     activeBufferName,
+    commonPath = undefined,
+    commonSource = undefined,
     onCodeChange,
     onBufferSwitch,
     onManualCompile = () => {},
@@ -32,6 +36,8 @@
   data-vim={vimMode}
   data-errors={errors.join('|')}
   data-buffer={activeBufferName}
+  data-common-path={commonPath}
+  data-common-source={commonSource}
 ></div>
 <button type="button" onclick={() => onCodeChange('edited source')}>Edit</button>
 <button type="button" onclick={() => onBufferSwitch('Buffer B')}>Switch buffer</button>

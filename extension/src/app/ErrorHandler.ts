@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { CompileReportMarker, ErrorMessage, WarningMessage } from "@shader-studio/types";
 import type { DiagnosticSink } from "./DiagnosticArbiter";
+import { isShaderDocument } from "./GlslFileTracker";
 
 export class ErrorHandler {
   private currentShaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> } | null = null;
@@ -63,7 +64,7 @@ export class ErrorHandler {
     // produce fresh errors. Don't clear on editor switch — errors on other
     // files (e.g. common buffer) must remain visible.
     this.textChangeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
-      if (this.isShaderDocument(event.document)) {
+      if (isShaderDocument(event.document)) {
         this.lastChangedShaderUri = event.document.uri;
         this.clearPersistentErrors();
       }
@@ -310,7 +311,7 @@ export class ErrorHandler {
     }
 
     const activeDocument = vscode.window.activeTextEditor?.document;
-    if (activeDocument && this.isShaderDocument(activeDocument)) {
+    if (activeDocument && isShaderDocument(activeDocument)) {
       return activeDocument.uri;
     }
 
@@ -341,15 +342,6 @@ export class ErrorHandler {
         range: new vscode.Range(line, 0, line, 0),
       }),
     };
-  }
-
-  private isShaderDocument(document: vscode.TextDocument): boolean {
-    return document.languageId === 'glsl'
-      || document.languageId === 'frag'
-      || document.languageId === 'slang'
-      || document.fileName.endsWith('.glsl')
-      || document.fileName.endsWith('.frag')
-      || document.fileName.endsWith('.slang');
   }
 
   private normalizeErrorMessage(errorText: string): string {

@@ -22,9 +22,9 @@
     onCompilationFailed?: () => void;
   } = $props();
 
-  const displayName = shader.name.replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, '');
+  const displayName = shader.name.replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang|wgsl)$/, '');
   const testId = `shader-option-${shader.name
-    .replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang)$/, (extension) => `-${extension.slice(1)}`)
+    .replace(/\.(glsl|frag|vert|geom|tesc|tese|comp|slang|wgsl)$/, (extension) => `-${extension.slice(1)}`)
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .toLowerCase()}`;

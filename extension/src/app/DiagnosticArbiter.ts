@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { ShaderLanguage } from "@shader-studio/language-server-core";
+import { shaderLanguageForPath } from "@shader-studio/types";
 
 /** The slice of `vscode.DiagnosticCollection` diagnostic producers actually use. */
 export interface DiagnosticSink {
@@ -17,6 +18,9 @@ export interface DiagnosticSink {
  *   and error codes the renderer payload loses, so its diagnostics win.
  * - GLSL: the renderer errors come from the driver (`getShaderInfoLog`) while
  *   the GLSL service is a hand-written analyser, so the compiler wins.
+ * - WGSL: the renderer compiler always wins, because it is the only WGSL error
+ *   source. The service contributes only hints and warnings the compiler
+ *   cannot see (unused variables, style), which stay on their own collection.
  *
  * Only errors suppress errors, and only on the same line: warnings, and the
  * link/binding failures no language service can see, always survive.
@@ -26,6 +30,7 @@ export class DiagnosticArbiter {
   private readonly serviceEntries: Record<ShaderLanguage, Map<string, Entry>> = {
     glsl: new Map(),
     slang: new Map(),
+    wgsl: new Map(),
   };
 
   constructor(
@@ -56,9 +61,13 @@ export class DiagnosticArbiter {
    * buffer holds it next, and a file can have its language mode changed.
    */
   private recordService(language: ShaderLanguage, uri: vscode.Uri, diagnostics: readonly vscode.Diagnostic[] | undefined): void {
-    const other: ShaderLanguage = language === "slang" ? "glsl" : "slang";
-    if (this.serviceEntries[other].delete(uri.fsPath)) {
-      this.collections[other].delete(uri);
+    for (const other of Object.keys(this.serviceEntries) as ShaderLanguage[]) {
+      if (other === language) {
+        continue;
+      }
+      if (this.serviceEntries[other].delete(uri.fsPath)) {
+        this.collections[other].delete(uri);
+      }
     }
     this.record(this.serviceEntries[language], uri, diagnostics);
   }
@@ -87,6 +96,13 @@ export class DiagnosticArbiter {
       this.collections.slang.set(uri, service);
       return;
     }
+    // WGSL diagnostics come only from the renderer compiler (Phase 9), so the
+    // compiler always wins; the service side stays on its own collection.
+    if (language === "wgsl") {
+      this.collections.compiler.set(uri, compiler);
+      this.collections.wgsl.set(uri, suppressDuplicateDiagnostics(compiler, service));
+      return;
+    }
     this.collections.compiler.set(uri, compiler);
     this.collections.glsl.set(uri, suppressDuplicateDiagnostics(compiler, service));
   }
@@ -100,6 +116,9 @@ export class DiagnosticArbiter {
   private languageFor(uri: vscode.Uri): ShaderLanguage {
     if (this.serviceEntries.slang.has(uri.fsPath)) {
       return "slang";
+    }
+    if (this.serviceEntries.wgsl.has(uri.fsPath)) {
+      return "wgsl";
     }
     if (this.serviceEntries.glsl.has(uri.fsPath)) {
       return "glsl";
@@ -129,7 +148,7 @@ function isError(diagnostic: vscode.Diagnostic): boolean {
   return diagnostic.severity === vscode.DiagnosticSeverity.Error;
 }
 
-/** Slang files are the only ones the Slang service owns; everything else is GLSL. */
+/** Resolves the shader language from a file path, defaulting to GLSL. */
 export function languageForPath(fsPath: string): ShaderLanguage {
-  return fsPath.toLowerCase().endsWith(".slang") ? "slang" : "glsl";
+  return shaderLanguageForPath(fsPath) ?? "glsl";
 }

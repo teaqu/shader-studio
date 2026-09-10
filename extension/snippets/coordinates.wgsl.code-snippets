@@ -1,0 +1,100 @@
+{
+  "Coord Polar": {
+    "prefix": "coord-polar",
+    "body": [
+      "// Cartesian to polar coordinates",
+      "fn toPolar(p: vec2f) -> vec2f {",
+      "\treturn vec2f(length(p), atan(p.y, p.x));",
+      "}"
+    ],
+    "description": "Convert cartesian to polar coordinates (radius, angle)",
+    "example": [
+      "fn toPolar(p: vec2f) -> vec2f {",
+      "    return vec2f(length(p), atan(p.y, p.x));",
+      "}",
+      "",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "    let uv = (2.0 * coord - iResolution.xy) / iResolution.y;",
+      "    let polar = toPolar(uv);",
+      "    let r = polar.x;",
+      "    let a = polar.y;",
+      "    let rings = abs(fract(r * 2.5 - iTime * 0.3) - 0.5);",
+      "    let spokes = abs(sin(a * 3.0));",
+      "    let d = smoothstep(0.05, 0.15, rings);",
+      "    let s = smoothstep(0.03, 0.10, spokes);",
+      "    let col = mix(vec3f(0.55, 0.3, 0.85), vec3f(0.1, 0.05, 0.15), d * s);",
+      "    return vec4f(col * smoothstep(1.2, 0.3, r), 1.0);",
+      "}"
+    ]
+  },
+  "Coord Polar Inverse": {
+    "prefix": "coord-polar-inv",
+    "body": [
+      "// Polar to cartesian coordinates",
+      "fn fromPolar(p: vec2f) -> vec2f {",
+      "\treturn p.x * vec2f(cos(p.y), sin(p.y));",
+      "}"
+    ],
+    "description": "Convert polar to cartesian coordinates",
+    "example": [
+      "fn fromPolar(polar: vec2f) -> vec2f {",
+      "    return polar.x * vec2f(cos(polar.y), sin(polar.y));",
+      "}",
+      "",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "    let uv = (2.0 * coord - iResolution.xy) / iResolution.y;",
+      "    let r = length(uv);",
+      "    let a = atan(uv.y, uv.x);",
+      "    let wave = r + 0.15 * sin(a * 3.0 + iTime * 2.0);",
+      "    let warped = fromPolar(vec2f(wave, a));",
+      "    let d = abs(fract(length(warped) * 2.5) - 0.5);",
+      "    let rings = smoothstep(0.05, 0.15, d);",
+      "    let spokes = smoothstep(0.03, 0.10, abs(sin(a * 3.0 + iTime)));",
+      "    let col = mix(vec3f(0.55, 0.3, 0.85), vec3f(0.1, 0.05, 0.15), rings * spokes);",
+      "    return vec4f(col * smoothstep(1.2, 0.3, r), 1.0);",
+      "}"
+    ]
+  },
+  "Coord Pmod": {
+    "prefix": "coord-pmod",
+    "body": [
+      "// Polar modular repetition (radial symmetry)",
+      "// Derived from hg_sdf/Mercury library",
+      "// WGSL functions cannot mutate their parameters: pass the position by pointer.",
+      "fn pmod(p: ptr<function, vec2f>, n: f32) -> f32 {",
+      "\tlet angle = 3.14159265 / n;",
+      "\tlet a = atan((*p).y, (*p).x) + angle;",
+      "\tlet r = length(*p);",
+      "\tvar c = floor(a / (2.0 * angle));",
+      "\tlet wrapped = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;",
+      "\t*p = vec2f(cos(wrapped), sin(wrapped)) * r;",
+      "\tif (abs(c) >= n) { c = abs(c); }",
+      "\treturn c;",
+      "}"
+    ],
+    "description": "Polar modular repetition for radial symmetry (hg_sdf/Mercury)",
+    "example": [
+      "fn pmod(p: ptr<function, vec2f>, n: f32) -> f32 {",
+      "    let angle = 3.14159265 / n;",
+      "    let a = atan((*p).y, (*p).x) + angle;",
+      "    let r = length(*p);",
+      "    var c = floor(a / (2.0 * angle));",
+      "    let wrapped = a - 2.0 * angle * floor(a / (2.0 * angle)) - angle;",
+      "    *p = vec2f(cos(wrapped), sin(wrapped)) * r;",
+      "    if (abs(c) >= n) { c = abs(c); }",
+      "    return c;",
+      "}",
+      "",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "    let uv = (2.0 * coord - iResolution.xy) / iResolution.y;",
+      "    var p = uv;",
+      "    let c = pmod(&p, 6.0);",
+      "    let d = p.x - 0.4;",
+      "    let hue = c / 6.0;",
+      "    let segCol = 0.5 + 0.5 * cos(6.28 * (hue + vec3f(0.0, 0.33, 0.67)));",
+      "    let col = mix(vec3f(0.12, 0.12, 0.18), segCol, smoothstep(0.01, 0.0, d));",
+      "    return vec4f(col, 1.0);",
+      "}"
+    ]
+  }
+}

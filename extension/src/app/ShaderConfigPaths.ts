@@ -6,7 +6,7 @@ export function isConfigPath(filePath: string): boolean {
 }
 
 export function getConfigPathForShaderPath(shaderPath: string): string {
-  return shaderPath.replace(/\.(glsl|frag|slang)$/i, Constants.CONFIG_FILE_EXTENSION);
+  return shaderPath.replace(/\.(glsl|frag|slang|wgsl)$/i, Constants.CONFIG_FILE_EXTENSION);
 }
 
 export function getShaderPathFromConfigPath(configPath: string): string | undefined {
@@ -28,6 +28,11 @@ export function getShaderPathFromConfigPath(configPath: string): string | undefi
   const slangPath = `${base}.slang`;
   if (fs.existsSync(slangPath)) {
     return slangPath;
+  }
+
+  const wgslPath = `${base}.wgsl`;
+  if (fs.existsSync(wgslPath)) {
+    return wgslPath;
   }
 
   return undefined;

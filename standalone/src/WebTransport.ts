@@ -95,6 +95,22 @@ export class WebTransport implements Transport {
     });
   }
 
+  async getWorkspaceDocuments(language: import('@shader-studio/types').ShaderLanguageId) {
+    return (await this.host).getWorkspaceDocuments(language);
+  }
+
+  async applyWorkspaceEdit(
+    changes: readonly { uri: string; before: string; after: string }[],
+    isCurrent: () => boolean,
+    commit: () => void,
+  ): Promise<void> {
+    if (!this.connected) throw new Error('Editor disconnected. No files were changed.');
+    await (await this.host).applyWorkspaceEdit(changes, () => this.connected && isCurrent(), () => {
+      commit();
+      for (const change of changes) setEditorDocument(decodeURIComponent(new URL(change.uri).pathname), change.after);
+    });
+  }
+
   async readEditorFile(path: string): Promise<string | null> {
     return (await this.host).readEditorFile(path);
   }

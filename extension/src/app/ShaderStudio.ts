@@ -402,7 +402,7 @@ export class ShaderStudio {
 
   /**
    * Opening a shader's config shows that shader immediately, the same way
-   * opening its .glsl/.slang file does — otherwise the preview sits on
+   * opening its .glsl/.slang/.wgsl file does — otherwise the preview sits on
    * whatever it last showed until the config is actually edited.
    */
   private handleConfigEditorActivated(editor: vscode.TextEditor | undefined): void {

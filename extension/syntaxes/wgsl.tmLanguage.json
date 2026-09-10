@@ -1,0 +1,186 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "WGSL",
+  "scopeName": "source.wgsl",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#attributes" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtin-functions" },
+    { "include": "#function-definition" },
+    { "include": "#function-call" },
+    { "include": "#numbers" },
+    { "include": "#builtins" },
+    { "include": "#constants" },
+    { "include": "#operators" },
+    { "include": "#swizzle" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.wgsl",
+          "begin": "//",
+          "end": "$",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.wgsl" }
+          }
+        },
+        {
+          "name": "comment.block.wgsl",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.wgsl" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.wgsl" }
+          }
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "storage.modifier.attribute.wgsl",
+          "match": "@(vertex|fragment|compute|group|binding|location|builtin|interpolate|invariant|workgroup_size|align|size|diagnostic|blend_src|color|const|id|must_use|fn|struct)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wgsl",
+          "match": "\\b(break|case|continue|continuing|default|discard|else|fallthrough|fn|for|if|loop|return|switch|while)\\b"
+        },
+        {
+          "name": "keyword.declaration.wgsl",
+          "match": "\\b(alias|const|const_assert|diagnostic|enable|let|override|requires|struct|var)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.wgsl",
+          "match": "\\b(bool|i32|u32|f32|f16|vec[234][fhiu]|vec[234]|mat[234]x[234][fh]|mat[234]x[234]|array|atomic|ptr|sampler|sampler_comparison|texture_1d|texture_2d|texture_2d_array|texture_3d|texture_cube|texture_cube_array|texture_multisampled_2d|texture_storage_1d|texture_storage_2d|texture_storage_2d_array|texture_storage_3d|texture_depth_2d|texture_depth_2d_array|texture_depth_cube|texture_depth_cube_array|texture_depth_multisampled_2d|texture_external)\\b"
+        }
+      ]
+    },
+    "builtin-functions": {
+      "patterns": [
+        {
+          "name": "support.function.trigonometric.wgsl",
+          "match": "\\b(?:sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|radians|degrees)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.exponential.wgsl",
+          "match": "\\b(?:pow|exp|log|exp2|log2|sqrt|inverseSqrt)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.common.wgsl",
+          "match": "\\b(?:abs|sign|floor|trunc|round|ceil|fract|modf|min|max|clamp|saturate|mix|step|smoothstep|fma|frexp|ldexp|quantizeToF16|select|all|any|bitcast)(?=\\s*(?:<[^()\\n]*>)?\\s*\\()"
+        },
+        {
+          "name": "support.function.geometric.wgsl",
+          "match": "\\b(?:length|distance|dot|cross|normalize|faceForward|reflect|refract|determinant|transpose)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.derivative.wgsl",
+          "match": "\\b(?:dpdx|dpdxCoarse|dpdxFine|dpdy|dpdyCoarse|dpdyFine|fwidth|fwidthCoarse|fwidthFine)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.texture.wgsl",
+          "match": "\\b(?:textureSample|textureSampleBias|textureSampleLevel|textureSampleGrad|textureSampleCompare|textureSampleCompareLevel|textureSampleBaseClampToEdge|textureGather|textureGatherCompare|textureLoad|textureStore|textureDimensions|textureNumLayers|textureNumLevels|textureNumSamples|textureBarrier)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.atomic.wgsl",
+          "match": "\\b(?:atomicLoad|atomicStore|atomicAdd|atomicSub|atomicMax|atomicMin|atomicAnd|atomicOr|atomicXor|atomicExchange|atomicCompareExchangeWeak)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.packing.wgsl",
+          "match": "\\b(?:pack4x8snorm|pack4x8unorm|pack4xI8|pack4xU8|pack2x16snorm|pack2x16unorm|pack2x16float|unpack4x8snorm|unpack4x8unorm|unpack4xI8|unpack4xU8|unpack2x16snorm|unpack2x16unorm|unpack2x16float|dot4I8Packed|dot4U8Packed)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.synchronization.wgsl",
+          "match": "\\b(?:storageBarrier|workgroupBarrier|workgroupUniformLoad|arrayLength)(?=\\s*\\()"
+        },
+        {
+          "name": "support.function.bit.wgsl",
+          "match": "\\b(?:countLeadingZeros|countOneBits|countTrailingZeros|extractBits|insertBits|firstLeadingBit|firstTrailingBit|reverseBits)(?=\\s*\\()"
+        }
+      ]
+    },
+    "function-definition": {
+      "patterns": [
+        {
+          "name": "meta.function.wgsl",
+          "begin": "\\b(fn)\\s+([A-Za-z_]\\w*)",
+          "end": "(?=\\{|;)",
+          "beginCaptures": {
+            "1": { "name": "keyword.declaration.wgsl" },
+            "2": { "name": "entity.name.function.wgsl" }
+          }
+        }
+      ]
+    },
+    "function-call": {
+      "patterns": [
+        {
+          "name": "entity.name.function.wgsl",
+          "match": "\\b([A-Za-z_]\\w*)(?=\\s*\\()"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.wgsl",
+          "match": "\\b0[xX][0-9a-fA-F]+[iu]?\\b"
+        },
+        {
+          "name": "constant.numeric.float.wgsl",
+          "match": "(?<!\\w)(?:\\d+\\.\\d*(?:[eE][+-]?\\d+)?[fh]?|\\d+[eE][+-]?\\d+[fh]?|\\.\\d+(?:[eE][+-]?\\d+)?[fh]?|\\d+[fh])(?!\\w)"
+        },
+        {
+          "name": "constant.numeric.integer.wgsl",
+          "match": "(?<!\\w)\\d+[iu]?(?!\\w)"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "comment": "Shader Studio built-in uniforms",
+          "name": "variable.language.uniform.wgsl",
+          "match": "\\b(?:iCameraPosition|iWorldPosition|iResolution|iSampleRate|iCameraDir|iCameraPos|iFrameRate|iTimeDelta|iDispatch|iNormal|iFrame|iMouse|iDate|iTime)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.wgsl",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.wgsl",
+          "match": "(<<=|>>=|->|==|!=|<=|>=|&&|\\|\\||<<|>>|\\+\\+|--|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|[+\\-*/%<>=!&|^~])"
+        }
+      ]
+    },
+    "swizzle": {
+      "patterns": [
+        {
+          "name": "variable.other.property.wgsl",
+          "match": "(\\.)([xyzw]{1,4}|[rgba]{1,4})\\b"
+        }
+      ]
+    }
+  }
+}

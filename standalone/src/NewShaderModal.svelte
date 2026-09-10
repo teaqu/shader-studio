@@ -1,13 +1,15 @@
 <svelte:options runes={true} />
 <script lang="ts">
+  import type { ShaderLanguageId } from '@shader-studio/types';
+
   interface Props {
-    onCreate: (name: string, language: 'glsl' | 'slang') => void;
+    onCreate: (name: string, language: ShaderLanguageId) => void;
     onClose: () => void;
   }
 
   let { onCreate, onClose }: Props = $props();
   let name = $state('untitled');
-  let language = $state<'glsl' | 'slang'>('glsl');
+  let language = $state<ShaderLanguageId>('glsl');
 
   function submit() {
     const trimmedName = name.trim();
@@ -47,6 +49,7 @@
         <select bind:value={language} aria-label="Shader language">
           <option value="glsl">GLSL</option>
           <option value="slang">Slang</option>
+          <option value="wgsl">WGSL</option>
         </select>
       </label>
       <div class="actions">

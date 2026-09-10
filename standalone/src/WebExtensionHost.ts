@@ -1,4 +1,5 @@
-import type { ProfileData, ProfileIndex, ShaderConfig } from '@shader-studio/types';
+import { shaderLanguageForPath } from '@shader-studio/types';
+import type { ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 
 type HostMessage = { type: string; [key: string]: unknown };
@@ -35,8 +36,21 @@ const SLANG_STARTER_SHADER = `float4 mainImage(float2 fragCoord)
 }
 `;
 
+const WGSL_STARTER_SHADER = `fn mainImage(coord: vec2f) -> vec4f {
+    let st = coord / vec2f(iResolution.x, iResolution.y);
+    let uv = vec2f(st.x * iResolution.x / iResolution.y, st.y);
+
+    // Time varying pixel color
+    let col = vec3f(0.5) + vec3f(0.5) * cos(iTime + vec3f(uv.x, uv.y, uv.x) + vec3f(0.0, 2.0, 4.0));
+
+    // Output to screen
+    return vec4f(col, 1.0);
+}
+`;
+
 const LEGACY_GLSL_STARTER_SHADER = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(0, 0, 0, 1); }\n';
 const LEGACY_SLANG_STARTER_SHADER = 'float4 mainImage(float2 fragCoord) { return float4(0, 0, 0, 1); }\n';
+const LEGACY_WGSL_STARTER_SHADER = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }\n';
 
 interface WebExtensionHostOptions {
   resolveDefaultAsset?: (path: string) => string | null;
@@ -45,7 +59,7 @@ interface WebExtensionHostOptions {
 }
 
 function configPathForShader(shaderPath: string): string {
-  return shaderPath.replace(/\.(glsl|frag|slang)$/i, '.sha.json');
+  return shaderPath.replace(/\.(glsl|frag|slang|wgsl)$/i, '.sha.json');
 }
 
 function profilePath(id: string): string {
@@ -56,8 +70,12 @@ function isProfileId(id: unknown): id is string {
   return typeof id === 'string' && /^[a-z0-9-]+$/i.test(id);
 }
 
-function shaderLanguage(path: string): 'glsl' | 'slang' {
-  return path.toLowerCase().endsWith('.slang') ? 'slang' : 'glsl';
+function shaderLanguage(path: string): ShaderLanguageId {
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.slang')) {
+    return 'slang';
+  }
+  return lower.endsWith('.wgsl') ? 'wgsl' : 'glsl';
 }
 
 function fileName(path: string): string {
@@ -106,6 +124,8 @@ export class WebExtensionHost {
         this.workspace.writeText(shader.path, GLSL_STARTER_SHADER);
       } else if (source === LEGACY_SLANG_STARTER_SHADER) {
         this.workspace.writeText(shader.path, SLANG_STARTER_SHADER);
+      } else if (source === LEGACY_WGSL_STARTER_SHADER) {
+        this.workspace.writeText(shader.path, WGSL_STARTER_SHADER);
       }
     }
   }
@@ -159,7 +179,7 @@ export class WebExtensionHost {
       }
       case 'forkShader': {
         const sourcePath = payload.shaderPath;
-        if (typeof sourcePath !== 'string' || !/\.(glsl|frag|slang)$/i.test(sourcePath) || !this.workspace.exists(sourcePath)) {
+        if (typeof sourcePath !== 'string' || !shaderLanguageForPath(sourcePath) || !this.workspace.exists(sourcePath)) {
           return;
         }
         const extension = sourcePath.slice(sourcePath.lastIndexOf('.'));
@@ -182,7 +202,7 @@ export class WebExtensionHost {
       case 'languageServiceReady':
         this.emitViewer({
           type: 'languageServiceSettings',
-          payload: { glslEnabled: true, slangEnabled: true, colorDecorators: true, trace: 'off' },
+          payload: { glslEnabled: true, slangEnabled: true, wgslEnabled: true, colorDecorators: true, trace: 'off' },
         });
         return;
       case 'extensionCommand':
@@ -208,17 +228,17 @@ export class WebExtensionHost {
       }
       case 'createShader': {
         const name = typeof payload.name === 'string' ? payload.name.trim() : '';
-        const language = payload.language === 'slang' ? 'slang' : 'glsl';
+        const language: ShaderLanguageId = payload.language === 'slang' ? 'slang' : payload.language === 'glsl' ? 'glsl' : 'wgsl';
         if (!name || /[/\\]/.test(name)) {
           return;
         }
-        const extension = language === 'slang' ? '.slang' : '.glsl';
+        const extension = language === 'slang' ? '.slang' : language === 'wgsl' ? '.wgsl' : '.glsl';
         const requestedName = name.toLowerCase().endsWith(extension) ? name : `${name}${extension}`;
         const path = `/shaders/${requestedName}`;
         if (this.workspace.exists(path)) {
           return;
         }
-        const source = language === 'slang' ? SLANG_STARTER_SHADER : GLSL_STARTER_SHADER;
+        const source = language === 'slang' ? SLANG_STARTER_SHADER : language === 'wgsl' ? WGSL_STARTER_SHADER : GLSL_STARTER_SHADER;
         this.workspace.writeText(path, source);
         this.workspace.writeText(configPathForShader(path), DEFAULT_CONFIG_TEXT);
         this.setActiveShader(path);
@@ -235,11 +255,17 @@ export class WebExtensionHost {
           'glsl-buffer': GLSL_STARTER_SHADER,
           glsl: GLSL_STARTER_SHADER,
           'slang-buffer': SLANG_STARTER_SHADER,
+          'wgsl-buffer': WGSL_STARTER_SHADER,
+          wgsl: WGSL_STARTER_SHADER,
           'glsl-common': '// Common functions shared across all passes\n',
           'slang-common': '// Common functions shared across all passes\n',
+          'wgsl-common': '// Common functions shared across all passes\n',
           'glsl-vertex': 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n',
-          'slang-vertex': 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n}\n',
+          'glsl-compute': GLSL_STARTER_SHADER,
+          'slang-vertex': 'void mainVertex(inout float3 position, inout float3 normal, inout vec2 uv) {\n}\n',
+          'wgsl-vertex': 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n}\n',
           'slang-compute': '[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n}\n',
+          'wgsl-compute': '@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n}\n',
         };
         const template = templates[payload.fileType];
         if (template === undefined) {
@@ -293,7 +319,8 @@ export class WebExtensionHost {
         const shaderPath = typeof payload.shaderPath === 'string' ? payload.shaderPath
           : typeof payload.path === 'string' ? payload.path : this.activeShaderPath;
         if (shaderPath && typeof payload.text === 'string') {
-          this.workspace.writeText(configPathForShader(shaderPath), payload.text);
+          const configPath = configPathForShader(shaderPath);
+          this.workspace.writeText(configPath, payload.text);
           this.emitViewer(this.shaderSourceMessage(shaderPath));
           this.sendShaderList();
         }
@@ -343,8 +370,15 @@ export class WebExtensionHost {
         }
         return;
       case 'refresh':
-        if (this.activeShaderPath) {
-          this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+        {
+          const requestedPath = typeof payload.path === 'string'
+            && shaderLanguageForPath(payload.path)
+            && this.workspace.exists(payload.path)
+            ? payload.path
+            : this.activeShaderPath;
+          if (requestedPath) {
+            this.emitViewer(this.shaderSourceMessage(requestedPath));
+          }
         }
         return;
       case 'requestLayout':
@@ -356,6 +390,42 @@ export class WebExtensionHost {
       default:
         return;
     }
+  }
+
+  getWorkspaceDocuments(language: ShaderLanguageId): NonNullable<import('@shader-studio/types').ShaderAuthoringEnvironment['workspaceDocuments']> {
+    const documents = new Map(this.workspace.list().filter(file => shaderLanguageForPath(file.path) === language)
+      .map(file => [file.path, { uri: new URL(`file://${file.path}`).href, text: file.contents,
+        version: file.modifiedAt, stage: 'fragment' as import('@shader-studio/types').ShaderStage, commonUri: undefined as string | undefined }]));
+    for (const path of documents.keys()) {
+      const config = this.readConfig(path).config;
+      if (!config) continue;
+      const sources = { Image: path, ...this.sourcePaths(path) };
+      const commonPath = Object.entries(sources).find(([name]) => name.toLowerCase() === 'common')?.[1];
+      for (const [name, source] of Object.entries(sources)) {
+        const target = documents.get(source);
+        if (!target || name.toLowerCase() === 'common') continue;
+        target.commonUri = commonPath ? new URL(`file://${commonPath}`).href : undefined;
+        const pass = config.passes?.[name];
+        target.stage = name.startsWith('__shader_studio_vertex__:') ? 'vertex'
+          : pass && 'type' in pass && pass.type === 'compute' ? 'compute' : 'fragment';
+      }
+    }
+    return [...documents.values()];
+  }
+
+  async applyWorkspaceEdit(
+    changes: readonly { uri: string; before: string; after: string }[],
+    isCurrent: () => boolean,
+    commit: () => void,
+  ): Promise<void> {
+    const files = changes.map(change => {
+      const uri = new URL(change.uri);
+      if (uri.protocol !== 'file:' || uri.host || uri.search || uri.hash) throw new Error('Invalid workspace rename target.');
+      return { path: decodeURIComponent(uri.pathname), before: change.before, after: change.after };
+    });
+    await this.workspace.applyTextTransaction(files, isCurrent, commit);
+    if (this.activeShaderPath) this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+    this.sendShaderList();
   }
 
   readEditorFile(path: string): string | null {
@@ -434,7 +504,7 @@ export class WebExtensionHost {
         }
         const currentName = fileName(message.path);
         const requestedName = this.prompt('Rename shader', currentName)?.trim();
-        if (!requestedName || requestedName === currentName || !/^[^/\\]+\.(glsl|frag|slang)$/i.test(requestedName)) {
+        if (!requestedName || requestedName === currentName || /[\/\\]/.test(requestedName) || !shaderLanguageForPath(requestedName)) {
           return;
         }
         const destination = `${message.path.slice(0, message.path.lastIndexOf('/') + 1)}${requestedName}`;
@@ -463,7 +533,7 @@ export class WebExtensionHost {
   }
 
   private shaderFiles() {
-    return this.workspace.list().filter((file) => /\.(glsl|frag|slang)$/i.test(file.path));
+    return this.workspace.list().filter((file) => /\.(glsl|frag|slang|wgsl)$/i.test(file.path));
   }
 
   private sendShaderList(): void {

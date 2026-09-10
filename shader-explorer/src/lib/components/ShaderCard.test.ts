@@ -16,6 +16,42 @@ const shader: ShaderFile = {
   modifiedTime: Date.UTC(2026, 7, 2, 11, 45),
 };
 
+describe('ShaderCard display name', () => {
+  it.each([
+    ['ocean.glsl', 'ocean'],
+    ['ocean.slang', 'ocean'],
+    ['aurora.wgsl', 'aurora'],
+  ])('strips the extension from %s', async (name, expected) => {
+    const vscodeApi = { postMessage: vi.fn() };
+    const { container } = render(ShaderCard, {
+      props: {
+        shader: { ...shader, name, path: `/workspace/${name}` },
+        vscodeApi,
+      },
+    });
+    expect(container.querySelector('.shader-name')?.textContent).toBe(expected);
+  });
+});
+
+describe('ShaderCard test id', () => {
+  it.each([
+    ['ocean.glsl', 'shader-option-ocean-glsl'],
+    ['ocean.slang', 'shader-option-ocean-slang'],
+    ['aurora.wgsl', 'shader-option-aurora-wgsl'],
+  ])('builds the test id for %s', async (name, expected) => {
+    const vscodeApi = { postMessage: vi.fn() };
+    const { container } = render(ShaderCard, {
+      props: {
+        shader: { ...shader, name, path: `/workspace/${name}` },
+        vscodeApi,
+      },
+    });
+    expect(container.querySelector('.shader-card')?.getAttribute('data-testid')).toBe(
+      expected,
+    );
+  });
+});
+
 describe('ShaderCard context menu', () => {
   it('renders outside the dock container and removes the menu on unmount', async () => {
     const { container, unmount } = render(ShaderCard, {

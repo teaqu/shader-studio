@@ -20,6 +20,13 @@ const PAIRS = [
   ['coordinates.code-snippets', 'coordinates.slang.code-snippets'],
 ] as const;
 
+const WGSL_FILES = [
+  'sdf-2d.wgsl.code-snippets',
+  'sdf-3d.wgsl.code-snippets',
+  'math.wgsl.code-snippets',
+  'coordinates.wgsl.code-snippets',
+] as const;
+
 const snippetsDirectory = path.resolve(__dirname, '../../snippets');
 
 function readSnippets(filename: string): SnippetRecord {
@@ -40,8 +47,8 @@ function fieldText(value: string | string[] | undefined): string {
 }
 
 suite('Bundled snippet assets', () => {
-  test('all eight contributed snippet files exist', () => {
-    assert.strictEqual(SNIPPET_CONTRIBUTIONS.length, 8);
+  test('all twelve contributed snippet files exist', () => {
+    assert.strictEqual(SNIPPET_CONTRIBUTIONS.length, 12);
 
     for (const contribution of SNIPPET_CONTRIBUTIONS) {
       assert.ok(
@@ -100,6 +107,61 @@ suite('Bundled snippet assets', () => {
       assert.doesNotMatch(text, /\bfmod\s*\(/);
       assert.doesNotMatch(text, /\batan\s*\(/);
       assert.doesNotMatch(text, /\bvoid\s+mainImage\s*\(/);
+    });
+  }
+
+  for (const [index, wgslFilename] of WGSL_FILES.entries()) {
+    const glslFilename = PAIRS[index][0];
+
+    test(`${wgslFilename} matches ${glslFilename} entries and metadata`, () => {
+      const glsl = readSnippets(glslFilename);
+      const wgsl = readSnippets(wgslFilename);
+
+      assert.deepStrictEqual(Object.keys(wgsl), Object.keys(glsl));
+
+      for (const key of Object.keys(glsl)) {
+        assert.deepStrictEqual(wgsl[key].prefix, glsl[key].prefix, `${key} prefix`);
+        assert.strictEqual(wgsl[key].description, glsl[key].description, `${key} description`);
+        assert.ok(
+          typeof wgsl[key].body === 'string' || Array.isArray(wgsl[key].body),
+          `${key} body must be a string or string array`,
+        );
+        assert.strictEqual(
+          Array.isArray(wgsl[key].body),
+          Array.isArray(glsl[key].body),
+          `${key} body must preserve the GLSL string or string-array shape`,
+        );
+
+        if (
+          fieldText(glsl[key].example).includes(
+            'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
+          )
+        ) {
+          assert.ok(
+            fieldText(wgsl[key].example).includes('fn mainImage('),
+            `${key} WGSL example must use the fn mainImage signature`,
+          );
+        }
+      }
+    });
+
+    test(`${wgslFilename} uses WGSL-native syntax`, () => {
+      const wgsl = readSnippets(wgslFilename);
+      const text = Object.values(wgsl).map(allText).join('\n');
+
+      assert.doesNotMatch(text, /\b(?:[biu]?vec[234])\b/);
+      assert.doesNotMatch(text, /\bfloat[234]\b/);
+      assert.doesNotMatch(text, /[^_a-zA-Z]float[^_a-zA-Z0-9]/);
+      assert.doesNotMatch(text, /\bint[234]\b/);
+      assert.doesNotMatch(text, /[^_a-zA-Z]int[^_a-zA-Z0-9]/);
+      assert.doesNotMatch(text, /\blerp\s*\(/);
+      assert.doesNotMatch(text, /\bmod\s*\(/);
+      assert.doesNotMatch(text, /\bfmod\s*\(/);
+      assert.doesNotMatch(text, /\batan2\s*\(/);
+      assert.doesNotMatch(text, /\bvoid\s+mainImage\s*\(/);
+      assert.doesNotMatch(text, /#define\b/);
+      assert.doesNotMatch(text, /#include\b/);
+      assert.doesNotMatch(text, /\binout\b/);
     });
   }
 

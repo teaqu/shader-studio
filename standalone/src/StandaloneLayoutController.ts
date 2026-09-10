@@ -171,7 +171,7 @@ export class StandaloneLayoutController {
         this.activeEditorId = panel.id;
       }
       const path = panel?.id.startsWith('editor:') ? panel.id.slice('editor:'.length) : '';
-      if (/\.(glsl|frag|slang)$/i.test(path)) {
+      if (/\.(glsl|frag|slang|wgsl)$/i.test(path)) {
         this.previewEditor?.(path);
       }
     });

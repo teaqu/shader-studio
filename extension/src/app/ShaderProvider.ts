@@ -251,8 +251,11 @@ export class ShaderProvider {
         // Same freshness marker as the main send. See CompileReportMarker.
         compileSequence: preparationGeneration,
       };
-      if (getShaderLanguage(shaderPath) === "slang") {
-        message.language = "slang";
+      const shaderLanguage = getShaderLanguage(shaderPath);
+      if (shaderLanguage !== "glsl") {
+        message.language = shaderLanguage;
+      }
+      if (shaderLanguage === "slang") {
         message.originalCode = code;
         this.attachSlangDependencies(message);
       }

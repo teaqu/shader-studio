@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+import {
+  comparePositions,
+  containsPosition,
+  containsRange,
+  isWgslHostGlobalSymbol,
+  offsetAt,
+  rangeSize,
+} from "../model";
+
+describe("WGSL debug source model", () => {
+  it("orders positions by line then character", () => {
+    expect(comparePositions({ line: 0, character: 5 }, { line: 0, character: 3 })).toBeGreaterThan(0);
+    expect(comparePositions({ line: 1, character: 0 }, { line: 0, character: 99 })).toBeGreaterThan(0);
+    expect(comparePositions({ line: 2, character: 1 }, { line: 2, character: 1 })).toBe(0);
+  });
+
+  it("tests range containment with inclusive edges", () => {
+    const range = { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } };
+    expect(containsPosition(range, { line: 1, character: 2 })).toBe(true);
+    expect(containsPosition(range, { line: 3, character: 4 })).toBe(true);
+    expect(containsPosition(range, { line: 0, character: 0 })).toBe(false);
+    expect(containsRange(range, { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } })).toBe(true);
+    expect(containsRange(range, { start: { line: 0, character: 0 }, end: { line: 2, character: 0 } })).toBe(false);
+  });
+
+  it("measures range size with lines dominating characters", () => {
+    expect(rangeSize({ start: { line: 0, character: 0 }, end: { line: 0, character: 10 } })).toBe(10);
+    expect(rangeSize({ start: { line: 0, character: 0 }, end: { line: 1, character: 0 } }))
+      .toBeGreaterThan(rangeSize({ start: { line: 0, character: 0 }, end: { line: 0, character: 999 } }));
+  });
+
+  it("maps line/character positions to source offsets", () => {
+    const source = "ab\ncde\nf";
+    expect(offsetAt(source, { line: 0, character: 1 })).toBe(1);
+    expect(offsetAt(source, { line: 1, character: 2 })).toBe(5);
+    expect(offsetAt(source, { line: 2, character: 1 })).toBe(8);
+    expect(offsetAt(source, { line: 9, character: 0 })).toBe(source.length);
+  });
+
+  it("recognizes synthetic host globals but not user declarations", () => {
+    const origin = { line: 0, character: 0 };
+    const synthetic = {
+      id: "wgsl:0", name: "iTime", kind: "variable", scopeId: "wgsl:1", typeName: "f32",
+      declaration: { start: { ...origin }, end: { ...origin } },
+      definition: { start: { ...origin }, end: { ...origin } },
+      references: [],
+    } as const;
+    const userShadow = {
+      ...synthetic,
+      id: "wgsl:9",
+      declaration: { start: { line: 3, character: 4 }, end: { line: 3, character: 9 } },
+      definition: { start: { line: 3, character: 4 }, end: { line: 3, character: 9 } },
+    };
+    const userOther = { ...userShadow, id: "wgsl:10", name: "myTime" };
+
+    expect(isWgslHostGlobalSymbol(synthetic)).toBe(true);
+    expect(isWgslHostGlobalSymbol(userShadow)).toBe(false);
+    expect(isWgslHostGlobalSymbol(userOther)).toBe(false);
+  });
+});

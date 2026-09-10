@@ -17,7 +17,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
   // Keyed by URI, but holding the document itself: VS Code hands the same
   // untitled name to the next buffer that claims it, and the service must be
   // told that is a different document rather than an edit to the last one.
-  private readonly opened: Record<ShaderLanguage, Map<string, OpenedDocument>> = { glsl: new Map(), slang: new Map() };
+  private readonly opened: Record<ShaderLanguage, Map<string, OpenedDocument>> = { glsl: new Map(), slang: new Map(), wgsl: new Map() };
   private readonly diagnostics: Record<ShaderLanguage, DiagnosticSink>;
   private readonly ownedCollections: vscode.DiagnosticCollection[] = [];
   private readonly disposables: vscode.Disposable[] = [];
@@ -34,6 +34,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     this.diagnostics = sinks ?? {
       glsl: this.ownCollection("shader-studio-glsl-ls"),
       slang: this.ownCollection("shader-studio-slang-ls"),
+      wgsl: this.ownCollection("shader-studio-wgsl-ls"),
     };
   }
 
@@ -45,7 +46,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
 
   start(context: vscode.ExtensionContext): void {
     this.disposables.push(...this.ownedCollections, this.semanticTokensChanged);
-    for (const language of ["glsl", "slang"] as const) {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
       this.registerProviders(language);
     }
     this.disposables.push(vscode.workspace.onDidOpenTextDocument((document) => {
@@ -89,7 +90,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
-    for (const language of ["glsl", "slang"] as const) {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
       void this.services[language]?.then((service) => service.dispose());
       delete this.services[language];
       this.opened[language].clear();
@@ -154,13 +155,16 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       ),
     }));
     this.disposables.push(vscode.languages.registerReferenceProvider(selector, {
-      provideReferences: async (document, position, context) => (
-        (await this.request(document, (service, revision) => service.references({
+      provideReferences: async (document, position, context, token) => {
+        if (token.isCancellationRequested) {
+          return [];
+        }
+        return (await this.workspaceRequest(document, (service, revision) => service.references({
           document: revision,
           position,
           includeDeclaration: context.includeDeclaration,
-        }), [])).map((location) => new vscode.Location(vscode.Uri.parse(location.uri), toVsRange(location.range)))
-      ),
+        }), [])).map((location) => new vscode.Location(vscode.Uri.parse(location.uri), toVsRange(location.range)));
+      },
     }));
     this.disposables.push(vscode.languages.registerDocumentHighlightProvider(selector, {
       provideDocumentHighlights: async (document, position) => (
@@ -169,19 +173,24 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       ),
     }));
     this.disposables.push(vscode.languages.registerRenameProvider(selector, {
-      provideRenameEdits: async (document, position, newName) => {
-        const result = await this.request(
+      provideRenameEdits: async (document, position, newName, token) => {
+        if (token.isCancellationRequested) {
+          return null;
+        }
+        const result = await this.workspaceRequest(
           document,
           (service, revision) => service.rename({ document: revision, position, newName }),
           null,
         );
-        const edits = result?.changes?.[document.uri.toString()] ?? [];
-        if (edits.length === 0) {
+        const changes = token.isCancellationRequested ? undefined : result?.changes;
+        if (!changes || Object.values(changes).every((edits) => edits.length === 0)) {
           return null;
         }
         const workspaceEdit = new vscode.WorkspaceEdit();
-        for (const edit of edits) {
-          workspaceEdit.replace(document.uri, toVsRange(edit.range), edit.newText);
+        for (const [uri, edits] of Object.entries(changes)) {
+          for (const edit of edits) {
+            workspaceEdit.replace(vscode.Uri.parse(uri), toVsRange(edit.range), edit.newText);
+          }
         }
         return workspaceEdit;
       },
@@ -317,6 +326,34 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     return isCurrentRevision(document, currentGeneration, revision) ? result : fallback;
   }
 
+  /** Workspace operations need closed shader files, unlike ordinary editor requests. */
+  private async workspaceRequest<T>(document: vscode.TextDocument, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<T> {
+    const language = shaderLanguage(document);
+    if (!language || !enabled(language)) {
+      return fallback;
+    }
+    let environment: ShaderAuthoringEnvironment | undefined;
+    try {
+      environment = await this.environments.workspaceEnvironmentFor(document);
+    } catch {
+      return fallback;
+    }
+    if (!environment) {
+      return fallback;
+    }
+    try {
+      const service = await this.service(language);
+      await service.syncEnvironment(environment);
+      await this.send(service, document, language);
+      const revision = { uri: document.uri.toString(), languageId: language, version: document.version, environmentGeneration: environment.generation };
+      const result = await run(service, revision);
+      const snapshotCurrent = await this.environments.workspaceSnapshotIsCurrent(document, environment);
+      return snapshotCurrent && isCurrentRevision(document, this.environments.environmentFor(document)?.generation, revision) ? result : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   private async publishDiagnostics(document: vscode.TextDocument, service: LanguageService, generation: number): Promise<void> {
     const language = shaderLanguage(document);
     if (!language) {
@@ -351,7 +388,7 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
   }
 
   private async configurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
-    for (const language of ["glsl", "slang"] as const) {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
       if (!event.affectsConfiguration(`shader-studio.languageServers.${language}.enabled`)) {
         continue;
       }
@@ -507,7 +544,9 @@ function colorDecoratorsEnabled(): boolean {
   return vscode.workspace.getConfiguration("shader-studio").get("editor.colorDecorators", true);
 }
 function shaderLanguage(document: vscode.TextDocument): ShaderLanguage | undefined {
-  return document.languageId === "glsl" || document.languageId === "slang" ? document.languageId : undefined;
+  return document.languageId === "glsl" || document.languageId === "slang" || document.languageId === "wgsl"
+    ? document.languageId
+    : undefined;
 }
 function snapshot(document: vscode.TextDocument, languageId: ShaderLanguage) {
   return { uri: document.uri.toString(), languageId, version: document.version, text: document.getText() };

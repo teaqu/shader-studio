@@ -50,7 +50,7 @@ suite('Snippet manifest', () => {
       manifest.contributes.configuration.properties[
         'shader-studio.enableSnippets'
       ].description,
-      'Enable bundled GLSL and Slang code snippets (requires restart)',
+      'Enable bundled GLSL, Slang, and WGSL code snippets (requires restart)',
     );
     assert.deepStrictEqual(
       manifest.contributes.snippets,

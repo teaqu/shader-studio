@@ -27,5 +27,9 @@ export function createExtensionLanguageServiceFactories(
       const module = await runtime.default({ wasmBinary });
       return new SlangLanguageService(module as ConstructorParameters<typeof SlangLanguageService>[0]);
     },
+    wgsl: async () => {
+      const { WgslLanguageService } = await import("@shader-studio/wgsl-language-server");
+      return new WgslLanguageService();
+    },
   };
 }

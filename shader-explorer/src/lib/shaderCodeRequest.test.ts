@@ -208,6 +208,7 @@ describe('requestShaderCode', () => {
   it.each([
     ['slang', 'slang'],
     ['glsl', 'glsl'],
+    ['wgsl', 'wgsl'],
     [undefined, 'glsl'],
     ['hlsl', 'glsl'],
   ])('normalizes response language %s to %s', async (language, expectedLanguage) => {

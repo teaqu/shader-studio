@@ -15,6 +15,7 @@
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
+  import type { ShaderLanguageId } from '@shader-studio/types';
 
   interface Props { transport: WebTransport; }
   let { transport }: Props = $props();
@@ -51,7 +52,7 @@
     }
   });
 
-  function createShader(name: string, language: 'glsl' | 'slang') {
+  function createShader(name: string, language: ShaderLanguageId) {
     transport.postMessage({ type: 'createShader', payload: { name, language } });
     setNewShaderVisible(false);
   }

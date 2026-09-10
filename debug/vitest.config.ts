@@ -4,6 +4,7 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
+      '@shader-studio/wgsl-analysis': path.resolve(__dirname, '../language-servers/wgsl-analysis/src'),
       '@shader-studio/glsl-analysis': path.resolve(__dirname, '../language-servers/glsl-analysis/src'),
     },
   },

@@ -1,0 +1,186 @@
+{
+  "SDF 3D Sphere": {
+    "prefix": "sdf3d-sphere",
+    "body": [
+      "fn sdSphere(p: vec3f, r: f32) -> f32 {",
+      "\treturn length(p) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D sphere",
+    "call": "sdSphere(p, 1.0)"
+  },
+  "SDF 3D Box": {
+    "prefix": "sdf3d-box",
+    "body": [
+      "fn sdBox(p: vec3f, b: vec3f) -> f32 {",
+      "\tlet q = abs(p) - b;",
+      "\treturn length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D box",
+    "call": "sdBox(p, vec3f(0.8, 0.6, 0.5))"
+  },
+  "SDF 3D Rounded Box": {
+    "prefix": "sdf3d-rounded-box",
+    "body": [
+      "fn sdRoundBox(p: vec3f, b: vec3f, r: f32) -> f32 {",
+      "\tlet q = abs(p) - b + r;",
+      "\treturn length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D rounded box",
+    "call": "sdRoundBox(p, vec3f(0.7, 0.5, 0.4), 0.1)"
+  },
+  "SDF 3D Torus": {
+    "prefix": "sdf3d-torus",
+    "body": [
+      "fn sdTorus(p: vec3f, t: vec2f) -> f32 {",
+      "\t// t.x = major radius, t.y = minor radius",
+      "\tlet q = vec2f(length(p.xz) - t.x, p.y);",
+      "\treturn length(q) - t.y;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D torus",
+    "call": "sdTorus(p, vec2f(0.8, 0.3))"
+  },
+  "SDF 3D Cylinder": {
+    "prefix": "sdf3d-cylinder",
+    "body": [
+      "fn sdCylinder(p: vec3f, h: f32, r: f32) -> f32 {",
+      "\tlet d = abs(vec2f(length(p.xz), p.y)) - vec2f(r, h);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, vec2f(0.0)));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cylinder",
+    "call": "sdCylinder(p, 1.0, 0.5)"
+  },
+  "SDF 3D Cone": {
+    "prefix": "sdf3d-cone",
+    "body": [
+      "fn sdCone(p: vec3f, c: vec2f, h: f32) -> f32 {",
+      "\t// c = vec2f(sin, cos) of the cone angle",
+      "\tlet q = h * vec2f(c.x / c.y, -1.0);",
+      "\tlet w = vec2f(length(p.xz), p.y);",
+      "\tlet a = w - q * clamp(dot(w, q) / dot(q, q), 0.0, 1.0);",
+      "\tlet b = w - q * vec2f(clamp(w.x / q.x, 0.0, 1.0), 1.0);",
+      "\tlet k = sign(q.y);",
+      "\tlet d = min(dot(a, a), dot(b, b));",
+      "\tlet s = max(k * (w.x * q.y - w.y * q.x), k * (w.y - q.y));",
+      "\treturn sqrt(d) * sign(s);",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D cone (IQ)",
+    "call": "sdCone(p - vec3f(0.0, 1.0, 0.0), vec2f(sin(0.5), cos(0.5)), 1.0)"
+  },
+  "SDF 3D Capsule": {
+    "prefix": "sdf3d-capsule",
+    "body": [
+      "fn sdCapsule(p: vec3f, a: vec3f, b: vec3f, r: f32) -> f32 {",
+      "\tlet pa = p - a;",
+      "\tlet ba = b - a;",
+      "\tlet h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);",
+      "\treturn length(pa - ba * h) - r;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D capsule (line segment with radius)",
+    "call": "sdCapsule(p, vec3f(0.0, -0.5, 0.0), vec3f(0.0, 0.5, 0.0), 0.3)"
+  },
+  "SDF 3D Plane": {
+    "prefix": "sdf3d-plane",
+    "body": [
+      "fn sdPlane(p: vec3f, n: vec3f, h: f32) -> f32 {",
+      "\t// n must be normalized",
+      "\treturn dot(p, n) + h;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D plane",
+    "call": "sdPlane(p, vec3f(0.0, 1.0, 0.0), 0.5)",
+    "example": [
+      "fn sdPlane(p: vec3f, n: vec3f, h: f32) -> f32 {",
+      "    return dot(p, n) + h;",
+      "}",
+      "",
+      "fn map(p: vec3f) -> f32 {",
+      "    return sdPlane(p, vec3f(0.0, 1.0, 0.0), 0.0);",
+      "}",
+      "",
+      "fn rayMarch(ro: vec3f, rd: vec3f) -> f32 {",
+      "    var t = 0.0;",
+      "    for (var i = 0; i < 128; i += 1) {",
+      "        let d = map(ro + rd * t);",
+      "        if (d < 0.001 || t > 100.0) { break; }",
+      "        t += d;",
+      "    }",
+      "    return t;",
+      "}",
+      "",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "    let uv = (2.0 * coord - iResolution.xy) / iResolution.y;",
+      "    let ro = vec3f(0.0, 1.5, -3.0);",
+      "    let rd = normalize(vec3f(uv.x, uv.y - 0.2, 1.5));",
+      "    let t = rayMarch(ro, rd);",
+      "    let sky = mix(vec3f(0.15, 0.18, 0.30), vec3f(0.08, 0.08, 0.14), pow(max(uv.y + 0.2, 0.0), 0.8));",
+      "    var col = sky;",
+      "    if (t < 100.0) {",
+      "        let p = ro + rd * t;",
+      "        let lightDir = normalize(vec3f(0.6, 0.8, -0.5));",
+      "        let diff = max(dot(vec3f(0.0, 1.0, 0.0), lightDir), 0.0);",
+      "        let checkerCoord = floor(p.x) + floor(p.z);",
+      "        let checker = checkerCoord - 2.0 * floor(checkerCoord / 2.0);",
+      "        let base = mix(vec3f(0.15, 0.30, 0.55), vec3f(0.25, 0.45, 0.75), checker);",
+      "        col = base * (diff * 0.7 + 0.3);",
+      "        let fog = exp(-0.03 * t * t);",
+      "        col = mix(sky, col, fog);",
+      "    }",
+      "    col = pow(col, vec3f(1.0 / 2.2));",
+      "    return vec4f(col, 1.0);",
+      "}"
+    ]
+  },
+  "SDF 3D Ellipsoid": {
+    "prefix": "sdf3d-ellipsoid",
+    "body": [
+      "fn sdEllipsoid(p: vec3f, r: vec3f) -> f32 {",
+      "\tlet k0 = length(p / r);",
+      "\tlet k1 = length(p / (r * r));",
+      "\treturn k0 * (k0 - 1.0) / k1;",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D ellipsoid (approximate)",
+    "call": "sdEllipsoid(p, vec3f(1.0, 0.6, 0.4))"
+  },
+  "SDF 3D Octahedron": {
+    "prefix": "sdf3d-octahedron",
+    "body": [
+      "fn sdOctahedron(p: vec3f, s: f32) -> f32 {",
+      "\tvar q = abs(p);",
+      "\tlet m = q.x + q.y + q.z - s;",
+      "\tvar qq = q;",
+      "\tif (3.0 * q.x < m) { qq = q.xyz; }",
+      "\telse if (3.0 * q.y < m) { qq = q.yzx; }",
+      "\telse if (3.0 * q.z < m) { qq = q.zxy; }",
+      "\telse { return m * 0.57735027; }",
+      "\tlet k = clamp(0.5 * (qq.z - qq.y + s), 0.0, s);",
+      "\treturn length(vec3f(qq.x, qq.y - s + k, qq.z - k));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D octahedron (IQ)",
+    "call": "sdOctahedron(p, 1.0)"
+  },
+  "SDF 3D Hex Prism": {
+    "prefix": "sdf3d-hexprism",
+    "body": [
+      "fn sdHexPrism(p: vec3f, h: vec2f) -> f32 {",
+      "\tlet k = vec3f(-0.8660254, 0.5, 0.57735);",
+      "\tvar q = abs(p);",
+      "\tq = vec3f(q.xy - 2.0 * min(dot(k.xy, q.xy), 0.0) * k.xy, q.z);",
+      "\tlet d = vec2f(",
+      "\t\tlength(q.xy - vec2f(clamp(q.x, -k.z * h.x, k.z * h.x), h.x)) * sign(q.y - h.x),",
+      "\t\tq.z - h.y);",
+      "\treturn min(max(d.x, d.y), 0.0) + length(max(d, vec2f(0.0)));",
+      "}"
+    ],
+    "description": "Signed distance function for a 3D hexagonal prism (IQ)",
+    "call": "sdHexPrism(p.xzy, vec2f(0.6, 0.4))"
+  }
+}

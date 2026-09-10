@@ -18,7 +18,8 @@
   "dependencies": {
     "@shader-studio/glsl-analysis": "*",
     "@shader-studio/types": "*",
-    "@shader-studio/utils": "*"
+    "@shader-studio/utils": "*",
+    "@shader-studio/wgsl-analysis": "*"
   },
   "devDependencies": {
     "typescript": "*",

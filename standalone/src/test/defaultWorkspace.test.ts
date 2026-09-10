@@ -6,9 +6,9 @@ import { WebExtensionHost } from '../WebExtensionHost';
 describe('default workspace', () => {
   it('does not seed video shaders or video inputs', () => {
     const files = createDefaultWorkspaceFiles();
-    expect(files.filter(({ path }) => /\.(glsl|slang)$/.test(path)).map(({ path }) => path))
+    expect(files.filter(({ path }) => /\.(glsl|slang|wgsl)$/.test(path)).map(({ path }) => path))
       .toEqual([
-        '/shaders/aurora.glsl', '/shaders/aurora-slang.slang',
+        '/shaders/aurora.glsl', '/shaders/aurora-slang.slang', '/shaders/aurora-wgsl.wgsl',
         '/shaders/nebula-texture.glsl', '/shaders/desert-cubemap.glsl',
         '/shaders/glow-trails.glsl', '/shaders/glow-trails/trails.buffer.glsl',
         '/shaders/glow-trails/glow.buffer.glsl',
@@ -62,6 +62,15 @@ describe('default workspace', () => {
 
     expect(files.some(({ path }) => path === '/shaders/aurora-slang.slang')).toBe(true);
     expect(files.some(({ path }) => path === '/shaders/aurora.slang')).toBe(false);
+  });
+
+  it('seeds a WGSL Aurora sample shader', () => {
+    const files = createDefaultWorkspaceFiles();
+    const wgsl = files.find(({ path }) => path === '/shaders/aurora-wgsl.wgsl');
+
+    expect(wgsl).toBeDefined();
+    expect(wgsl?.contents).toContain('fn mainImage(coord: vec2f) -> vec4f');
+    expect(files.some(({ path }) => path === '/shaders/aurora-wgsl.sha.json')).toBe(true);
   });
 
   it('credits the Poly Haven source of the bundled cubemap in the shader', () => {

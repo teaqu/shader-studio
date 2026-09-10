@@ -68,8 +68,16 @@ describe('createEngineForLanguage', () => {
     expect(createEngineForLanguage('slang')).toBe(mockWebGPUEngine);
     expect(mockGetSlangAssetUrls).toHaveBeenCalledTimes(1);
     expect(MockWebGPURenderingEngine).toHaveBeenCalledTimes(1);
-    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(mockSlangAssets);
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(mockSlangAssets, 'slang');
     expect(MockWebGPURenderingEngine.mock.calls[0]?.[0]).toBe(mockSlangAssets);
+    expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
+  });
+
+  it('creates a WebGPU engine without Slang assets for WGSL', () => {
+    expect(createEngineForLanguage('wgsl')).toBe(mockWebGPUEngine);
+    expect(mockGetSlangAssetUrls).not.toHaveBeenCalled();
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledTimes(1);
+    expect(MockWebGPURenderingEngine).toHaveBeenCalledWith(undefined, 'wgsl');
     expect(MockWebGLRenderingEngine).not.toHaveBeenCalled();
   });
 

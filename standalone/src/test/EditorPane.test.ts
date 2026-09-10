@@ -57,7 +57,7 @@ describe('EditorPane', () => {
   });
 
   it('passes the current editing state to the shared editor and delegates its commands', async () => {
-    const session = createSession();
+    const session = createSession({ commonPath: '/shaders/common.wgsl', commonSource: 'fn shared() {}' });
     setViewerSession(session);
     const { getByTestId, getByRole } = render(EditorPane);
 
@@ -66,6 +66,8 @@ describe('EditorPane', () => {
     expect(editor.getAttribute('data-path')).toBe('/shaders/image.glsl');
     expect(editor.getAttribute('data-errors')).toBe('first error');
     expect(editor.getAttribute('data-buffer')).toBe('Image');
+    expect(editor.getAttribute('data-common-path')).toBe('/shaders/common.wgsl');
+    expect(editor.getAttribute('data-common-source')).toBe('fn shared() {}');
 
     await getByRole('button', { name: 'Edit' }).click();
     await getByRole('button', { name: 'Switch buffer' }).click();
@@ -128,6 +130,18 @@ describe('file-specific editors', () => {
     await tick();
     expect(getByTestId('shader-editor').getAttribute('data-path')).toBe('/buffer.glsl');
     expect(getByTestId('shader-editor').getAttribute('data-code')).toBe('buffer source');
+  });
+
+  it('marks a separately opened Common file as Common for rename safety', async () => {
+    const path = '/shader/common.wgsl';
+    setViewerSession(createSession({ commonPath: path, commonSource: 'fn shared() {}' }));
+    const transport = { readEditorFile: vi.fn().mockResolvedValue('fn shared() {}') } as unknown as WebTransport;
+    const { getByTestId } = render(EditorPane, { path, transport });
+    await vi.waitFor(() => expect(getByTestId('shader-editor').getAttribute('data-code')).toBe('fn shared() {}'));
+    expect(getByTestId('shader-editor').getAttribute('data-buffer')).toBe('Common');
+    setViewerSession(createSession({ shaderPath: '/other.slang', commonPath: undefined }));
+    await tick();
+    expect(getByTestId('shader-editor').getAttribute('data-buffer')).toBe('Common');
   });
 
   it.each([null, new Error('unavailable')])('reports missing or unreadable files', async (result) => {

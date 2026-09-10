@@ -151,6 +151,7 @@ suite('ShaderCreator Test Suite', () => {
     assert.deepStrictEqual(callArgs.filters, {
       'GLSL Shader': ['glsl'],
       'Slang Shader': ['slang'],
+      'WGSL Shader': ['wgsl'],
     });
     assert.strictEqual(callArgs.title, 'New Shader');
   });
@@ -211,6 +212,39 @@ suite('ShaderCreator Test Suite', () => {
     // Clean up
     try {
       fs.unlinkSync(filePath); 
+    } catch { }
+  });
+
+  test('should pass a WGSL filter to the save dialog', async () => {
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([{
+      uri: vscode.Uri.file(testDir), name: 'test', index: 0,
+    }]);
+    const showSaveDialogStub = sandbox.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+    await shaderCreator.create();
+
+    const callArgs = showSaveDialogStub.firstCall.args[0]!;
+    assert.deepStrictEqual(callArgs.filters?.['WGSL Shader'], ['wgsl']);
+  });
+
+  test('should write a WGSL shader template when the chosen filename ends in .wgsl', async () => {
+    const filePath = path.join(testDir, 'template-test.wgsl');
+    const fileUri = vscode.Uri.file(filePath);
+
+    sandbox.stub(vscode.window, 'showSaveDialog').resolves(fileUri);
+    sandbox.stub(vscode.workspace, 'openTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showTextDocument').resolves({} as any);
+    sandbox.stub(vscode.window, 'showInformationMessage');
+
+    await shaderCreator.create();
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    assert.ok(content.includes('fn mainImage'));
+    assert.ok(content.includes('-> vec4f'));
+    assert.ok(!content.includes('out vec4 fragColor'));
+
+    try {
+      fs.unlinkSync(filePath);
     } catch { }
   });
 

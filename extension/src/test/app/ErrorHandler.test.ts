@@ -685,6 +685,25 @@ suite('ErrorHandler Test Suite', () => {
     assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
   });
 
+  test('should target the last changed WGSL document when focus is elsewhere', () => {
+    const shaderUri = vscode.Uri.file('/test/overlay-shader.wgsl');
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: { document: { languageId: 'plaintext', uri: vscode.Uri.file('/test/readme.txt') } },
+      writable: true,
+    });
+    let diagnosticUri: vscode.Uri | undefined;
+    mockDiagnosticCollection.set = ((uriOrEntries: vscode.Uri | readonly [vscode.Uri, readonly vscode.Diagnostic[] | undefined][]) => {
+      diagnosticUri = uriOrEntries instanceof vscode.Uri ? uriOrEntries : uriOrEntries[0]?.[0];
+    }) as typeof mockDiagnosticCollection.set;
+
+    textDocumentChangeListener?.({
+      document: { languageId: 'wgsl', fileName: shaderUri.fsPath, uri: shaderUri },
+    } as vscode.TextDocumentChangeEvent);
+    errorHandler.handlePersistentError({ type: 'error', payload: ['WGSL compilation failed'] });
+
+    assert.strictEqual(diagnosticUri?.fsPath, shaderUri.fsPath);
+  });
+
   test('drops a compile error from a send a newer send superseded', () => {
     // Two clients answer the same keystrokes at different speeds: the slow
     // client's failure for the transient `floatcircle2` text must not stick

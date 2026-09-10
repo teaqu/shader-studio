@@ -6,8 +6,8 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
-const SHADER_GLOBS = ["*.glsl", "*.frag", "*.vert", "*.slang"];
-const SHADER_EXTENSION_PATTERN = /\.(?:glsl|frag|vert|slang)$/;
+const SHADER_GLOBS = ["*.glsl", "*.frag", "*.vert", "*.slang", "*.wgsl"];
+const SHADER_EXTENSION_PATTERN = /\.(?:glsl|frag|vert|slang|wgsl)$/;
 
 export interface ShaderGitMetadata {
   createdTime?: number;

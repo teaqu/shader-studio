@@ -80,7 +80,7 @@ export class ConfigGenerator {
       canSelectFolders: false,
       canSelectMany: false,
       filters: {
-        "Shader files": ["glsl", "frag", "slang"],
+        "Shader files": ["glsl", "frag", "slang", "wgsl"],
       },
       title: "Select shader file to generate config for",
     });

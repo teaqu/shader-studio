@@ -5,6 +5,7 @@ import {
   GlslFileTracker,
   isGlslDocument,
   isSlangDocument,
+  isWgslDocument,
   isShaderDocument,
   getShaderLanguage,
 } from '../../app/GlslFileTracker';
@@ -137,6 +138,21 @@ suite('GlslFileTracker Test Suite', () => {
       assert.strictEqual(isShaderDocument(createMockEditor('/test/a.ts', 'typescript').document), false);
     });
 
+    test('isWgslDocument matches .wgsl files and the wgsl languageId', () => {
+      assert.strictEqual(isWgslDocument(createMockEditor('/test/a.wgsl', 'plaintext').document), true);
+      assert.strictEqual(isWgslDocument(createMockEditor('/test/a.frag', 'wgsl').document), true);
+      assert.strictEqual(isWgslDocument(createMockEditor('/test/a.glsl', 'glsl').document), false);
+    });
+
+    test('isShaderDocument accepts WGSL', () => {
+      assert.strictEqual(isShaderDocument(createMockEditor('/test/a.wgsl', 'plaintext').document), true);
+      assert.strictEqual(isShaderDocument(createMockEditor('/test/a.wgsl', 'wgsl').document), true);
+    });
+
+    test('isGlslDocument does not match .wgsl', () => {
+      assert.strictEqual(isGlslDocument(createMockEditor('/test/a.wgsl', 'plaintext').document), false);
+    });
+
     test('isGlslDocument does not match .slang', () => {
       assert.strictEqual(isGlslDocument(createMockEditor('/test/a.slang', 'plaintext').document), false);
     });
@@ -145,6 +161,11 @@ suite('GlslFileTracker Test Suite', () => {
       assert.strictEqual(getShaderLanguage('/test/a.slang'), 'slang');
       assert.strictEqual(getShaderLanguage('/test/a.glsl'), 'glsl');
       assert.strictEqual(getShaderLanguage('/test/a.frag'), 'glsl');
+    });
+
+    test('getShaderLanguage returns wgsl for .wgsl', () => {
+      assert.strictEqual(getShaderLanguage('/test/a.wgsl'), 'wgsl');
+      assert.strictEqual(getShaderLanguage('/test/a.WGSL'), 'glsl');
     });
   });
 

@@ -1,4 +1,7 @@
 # Change Log
+### Unreleased
+- Added first-class WGSL shader support: `.wgsl` authoring with syntax highlighting, snippets, and diagnostics, a `mainImage` image pipeline on WebGPU, free-function channel accessors, a `ptr<function, …>` vertex hook, storage/compute passes, script-pass uniforms, `enable`/`requires` directive hoisting, plan-based step debugging with the variable inspector (including type inference for unannotated locals), and WGSL sections in the Channels, Vertex Shaders, and configuration docs plus a new WGSL Shaders guide.
+
 ### 1.0.2
 - Added a toggleable canvas marker for the locked pixel inspector position, with the preference persisted across sessions.
 

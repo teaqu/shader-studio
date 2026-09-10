@@ -4,7 +4,7 @@ import { ShaderDebugger } from "../ShaderDebugger";
 import { VariableCaptureBuilder } from "../VariableCaptureBuilder";
 
 const shaderPath = new URL(
-  "../../../../rendering/src/test/fixtures/shader-corpus/foundation/debugging/passes/history_glsl.glsl",
+  "../../../../tests/fixtures/shader-corpus/glsl/foundation/debugging/passes/history_glsl.glsl",
   import.meta.url,
 );
 const shader = readFileSync(shaderPath, "utf8");

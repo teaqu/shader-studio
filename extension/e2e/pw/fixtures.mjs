@@ -28,6 +28,9 @@ const USER_SETTINGS = {
   'window.commandCenter': false,
   'extensions.ignoreRecommendations': true,
   'git.openRepositoryInParentFolders': 'never',
+  // Keep file creation inside the workbench so E2E can exercise the real
+  // extension dialog flow without an unautomatable native OS sheet.
+  'files.simpleDialog.enable': true,
 };
 
 /**
@@ -154,7 +157,8 @@ export const test = base.extend({
     const shaderFrame = async (timeout = 90_000) => waitFor(async () => {
       for (const frame of window.frames()) {
         try {
-          if (await frame.locator('.canvas-container').count()) return frame;
+          const canvas = frame.locator('.canvas-container').first();
+          if (await canvas.isVisible()) return frame;
         } catch { /* frame detached mid-scan */ }
       }
       return null;

@@ -1,5 +1,7 @@
+import type { ShaderLanguageId } from "@shader-studio/types";
+
 export interface SnippetContribution {
-  language: 'glsl' | 'slang';
+  language: ShaderLanguageId;
   path: string;
 }
 
@@ -12,4 +14,8 @@ export const SNIPPET_CONTRIBUTIONS: readonly SnippetContribution[] = [
   { language: 'slang', path: './snippets/sdf-3d.slang.code-snippets' },
   { language: 'slang', path: './snippets/math.slang.code-snippets' },
   { language: 'slang', path: './snippets/coordinates.slang.code-snippets' },
+  { language: 'wgsl', path: './snippets/sdf-2d.wgsl.code-snippets' },
+  { language: 'wgsl', path: './snippets/sdf-3d.wgsl.code-snippets' },
+  { language: 'wgsl', path: './snippets/math.wgsl.code-snippets' },
+  { language: 'wgsl', path: './snippets/coordinates.wgsl.code-snippets' },
 ];

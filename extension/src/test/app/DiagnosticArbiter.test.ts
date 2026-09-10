@@ -45,13 +45,15 @@ suite('DiagnosticArbiter Test Suite', () => {
   let compiler: ReturnType<typeof recordingSink>;
   let glsl: ReturnType<typeof recordingSink>;
   let slang: ReturnType<typeof recordingSink>;
+  let wgsl: ReturnType<typeof recordingSink>;
   let arbiter: DiagnosticArbiter;
 
   setup(() => {
     compiler = recordingSink();
     glsl = recordingSink();
     slang = recordingSink();
-    arbiter = new DiagnosticArbiter({ compiler, glsl, slang });
+    wgsl = recordingSink();
+    arbiter = new DiagnosticArbiter({ compiler, glsl, slang, wgsl });
   });
 
   test('drops the renderer error a Slang language service already reported', () => {
@@ -255,6 +257,27 @@ suite('DiagnosticArbiter Test Suite', () => {
     assert.strictEqual(glsl.latest.get(slangUri.fsPath), undefined);
   });
 
+  test('lets the renderer compiler win for WGSL on its own collection', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.compilerSink().set(uri, [error(4, 'use of undeclared identifier')]);
+
+    assert.strictEqual(compiler.latest.get(uri.fsPath)?.length, 1);
+    assert.deepStrictEqual(wgsl.latest.get(uri.fsPath), []);
+    assert.strictEqual(glsl.latest.get(uri.fsPath), undefined);
+    assert.strictEqual(slang.latest.get(uri.fsPath), undefined);
+  });
+
+  test('a WGSL service report withdraws the stale report from another language', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.languageServiceSink('glsl').set(uri, [error(0, 'stale glsl problem')]);
+    arbiter.languageServiceSink('wgsl').set(uri, [error(0, 'wgsl problem')]);
+
+    assert.strictEqual(wgsl.latest.get(uri.fsPath)?.length, 1);
+    assert.strictEqual(glsl.latest.get(uri.fsPath), undefined, 'the stale GLSL report is withdrawn');
+  });
+
   suite('suppressDuplicateDiagnostics', () => {
     test('returns the loser untouched when the winner reported no errors', () => {
       const loser = [error(1, 'kept')];
@@ -277,6 +300,11 @@ suite('DiagnosticArbiter Test Suite', () => {
       assert.strictEqual(languageForPath('/a/image.glsl'), 'glsl');
       assert.strictEqual(languageForPath('/a/image.frag'), 'glsl');
       assert.strictEqual(languageForPath('Untitled-1'), 'glsl');
+    });
+
+    test('resolves .wgsl files to WGSL, case-insensitively', () => {
+      assert.strictEqual(languageForPath('/a/image.wgsl'), 'wgsl');
+      assert.strictEqual(languageForPath('/a/IMAGE.WGSL'), 'wgsl');
     });
   });
 });
