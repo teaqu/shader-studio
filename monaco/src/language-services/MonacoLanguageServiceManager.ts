@@ -61,7 +61,6 @@ export class MonacoLanguageServiceManager {
   }
 
   async syncEnvironment(environment: ShaderAuthoringEnvironment): Promise<void> {
-    console.log('[rename-trace] TEMP sync', environment.documentUri, 'common:', Boolean(environment.commonFile), 'ws:', environment.workspaceDocuments?.length ?? 0);
     const previous = this.environments.get(environment.documentUri);
     if (previous) {
       // Several editors can share one file. Their local counters cannot replace
@@ -239,7 +238,6 @@ export class MonacoLanguageServiceManager {
     this.disposables.push(languages.registerRenameProvider(language, {
       provideRenameEdits: async (model, position, newName, token) => {
         const uri = model.uri.toString();
-        console.log('[rename-trace] start', uri);
         const reject = (rejectReason: string) => {
           this.options.onRenameFeedback?.(uri, rejectReason);
           return { edits: [], rejectReason };
@@ -263,8 +261,6 @@ export class MonacoLanguageServiceManager {
               generation = revision.environmentGeneration;
               return service.rename({ document: revision, position: toLspPosition(position), newName });
             }, null, { waitForEnvironment: true });
-            console.log('[rename-trace]', uri, JSON.stringify(result), current(), generation, this.environments.get(uri)?.generation,
-              [...snapshots.entries()].filter(([, snapshot]) => snapshot.model.getVersionId() !== snapshot.version).map(([key]) => key));
             if (!result || !current()) return reject(RENAME_REJECTED);
             if (result.documentChanges?.length) return reject("Unsupported rename edit format. No files were changed.");
             const changes: WorkspaceTextChange[] = [];
@@ -288,7 +284,6 @@ export class MonacoLanguageServiceManager {
             // must not replay the edits through its single-file bulk edit service.
             return { edits: [] };
           } catch (error) {
-            console.log('[rename-trace] error', uri, String(error));
             return reject(error instanceof Error ? error.message : "Rename failed. No files were changed.");
           }
         }
@@ -454,12 +449,10 @@ export class MonacoLanguageServiceManager {
       environment = this.environments.get(model.uri.toString());
     }
     if (!language || !environment || !this.enabled[language]) {
-      console.log('[rename-trace] TEMP early', model.uri.toString(), { language, hasEnv: Boolean(environment), enabled: language ? this.enabled[language] : undefined });
       return { value: fallback, stale: false };
     }
     const ensured = await this.ensureModel(model);
     if (!ensured) {
-      console.log('[rename-trace] TEMP no-ensure', model.uri.toString());
       return { value: fallback, stale: false };
     }
     const revision: DocumentRevision = { uri: model.uri.toString(), languageId: language, version: ensured.version, environmentGeneration: ensured.environmentGeneration };

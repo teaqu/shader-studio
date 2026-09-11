@@ -381,7 +381,6 @@ export class GlslLanguageService implements LanguageService {
     const symbol = state ? symbolAtRenamePosition(state.analysis, params.position) : null;
     const included = state && !symbol ? this.includedSymbolAt(state, params.position) : undefined;
     const target = symbol ?? included?.symbol;
-    console.log('[rename-trace] glsl', params.document.uri, params.position, Boolean(state), state?.document.text, target?.name);
     const ownerUri = symbol ? params.document.uri : included?.analysis.uri;
     if (!state || !target || !ownerUri || !isRenameableName(params.newName) || this.nameIsTaken(state, params)) {
       return null;

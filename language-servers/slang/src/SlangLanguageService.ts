@@ -498,13 +498,11 @@ export class SlangLanguageService implements LanguageService {
       return null;
     }
     const documents = this.renameDocuments();
-    console.log('[rename-trace] slang docs', params.document.uri, JSON.stringify(documents.map(document => ({ uri: document.uri, common: document.environment.commonFile?.uri, pass: document.environment.passName, text: document.text.slice(0, 110) }))));
     const source = this.store.getDocument(params.document.uri)?.text ?? "";
     const native = /\bgeneric\s*<|\bimport\s+|\bstruct\s+\w+\s*\{[\s\S]*?\w+\s*\(/.test(source)
       ? this.nativeRename(documents, params) : null;
     const edit = native ?? renameSlangSymbol(documents, params.document.uri, params.position, params.newName);
     const valid = edit && this.renameCompiles(documents, edit);
-    console.log('[rename-trace] slang edit', JSON.stringify(edit), valid);
     return valid ? edit : null;
   }
 
@@ -624,7 +622,6 @@ export class SlangLanguageService implements LanguageService {
           const source = [prefix, stripEditorImport(commonSource), stripEditorImport(authoredSource)].filter(Boolean).join("\n");
           const compiled = session.loadModuleFromSource(source, moduleName(document.text, document.uri), sourcePath(document.uri));
           if (!compiled) {
-            console.log('[rename-trace] TEMP compile-fail', document.uri, JSON.stringify(this.module.getLastError?.().message ?? '').slice(0, 1500));
             return false;
           }
           compiled.delete?.();
@@ -1427,7 +1424,6 @@ function authoredPointRange(source: string | undefined, offset: number): Range |
 
 function nativeDefinitionKey(server: SlangLanguageServer, uri: string, position: { line: number; character: number }): string | undefined {
   const raw = server.gotoDefinition(uri, position);
-  console.log('[rename-trace] TEMP gotodef', uri, JSON.stringify(position), JSON.stringify(raw)?.slice(0, 300));
   const location = consumeList(raw, (item) => item)[0];
   return location ? `${location.uri}\0${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}` : undefined;
 }

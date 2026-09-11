@@ -10,7 +10,7 @@ for (const { name, extension, pass, helper } of [
   const common = mode !== 'local';
   const declaration = mode === 'common-declaration';
   test(`${name} Monaco F2 ${mode} rename persists every file after reload`, async ({ page }) => {
-    page.on('console', message => { const text = message.text(); if (text.includes('[rename-trace]') || message.type() === 'error' || text.includes('environment')) console.log(`[${message.type()}]`, text.slice(0, 300)); });
+    page.on('console', message => { const text = message.text(); if (message.type() === 'error' || text.includes('environment')) console.log(`[${message.type()}]`, text.slice(0, 300)); });
     const basename = `symbol-rename-${extension}`;
     const shaderName = `${basename}.${extension}`;
     const commonName = `${basename}.common.${extension}`;
