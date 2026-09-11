@@ -13,7 +13,14 @@ export type MonacoLanguageServiceFactories = Record<ShaderLanguage, LanguageServ
 export interface MonacoLanguageServiceManagerOptions {
   onRenameFeedback?: (uri: string, message: string | undefined) => void;
   getWorkspaceDocuments?: (language: ShaderLanguage) => Promise<NonNullable<ShaderAuthoringEnvironment['workspaceDocuments']>>;
-  applyWorkspaceEdit?: (changes: readonly WorkspaceTextChange[], isCurrent: () => boolean, commit: () => void) => Promise<void>;
+  applyWorkspaceEdit?: (
+    changes: readonly WorkspaceTextChange[],
+    isCurrent: () => boolean,
+    commit: () => void,
+    /** Live open-buffer texts by document URI at apply time. Hosts compare
+     * staleness against these before falling back to stored copies. */
+    openTexts?: ReadonlyMap<string, string>,
+  ) => Promise<void>;
 }
 
 interface ServiceState {
@@ -268,9 +275,14 @@ export class MonacoLanguageServiceManager {
               changes.push({ uri: targetUri, before: snapshot.text, after: applyTextEdits(snapshot.text, edits) });
             }
             if (!changes.length) return reject(RENAME_REJECTED);
+            // Live buffer texts at apply time, so the host compares staleness
+            // against open editors rather than lagging stored copies.
+            const openTexts = new Map(this.monaco.editor.getModels()
+              .filter((target) => !target.isDisposed?.())
+              .map((target) => [target.uri.toString(), target.getValue()]));
             await this.options.applyWorkspaceEdit(changes, current, () => {
               for (const change of changes) snapshots.get(change.uri)!.model.setValue(change.after);
-            });
+            }, openTexts);
             this.options.onRenameFeedback?.(uri, undefined);
             // The host committed both persisted files and models atomically; Monaco
             // must not replay the edits through its single-file bulk edit service.
@@ -384,7 +396,11 @@ export class MonacoLanguageServiceManager {
     if (!syncedEnvironment || syncedEnvironment.languageId !== language || model.getLanguageId() !== language || !this.enabled[language]) {
       return undefined;
     }
-    await service.syncEnvironment(syncedEnvironment);
+    // The host snapshot carries stored text, but an open editor may hold newer
+    // unsaved text for the same file. Send the live buffers so analysis never
+    // resolves against stale copies. The merged copy is send-only: storing it
+    // back would churn environment generations on every keystroke.
+    await service.syncEnvironment(this.withLiveBuffers(syncedEnvironment));
     const uri = model.uri.toString();
     const version = model.getVersionId();
     const document = { uri, languageId: language, version, text: model.getValue() };
@@ -476,6 +492,31 @@ export class MonacoLanguageServiceManager {
 
   private modelsFor(language: ShaderLanguage): Monaco.editor.ITextModel[] {
     return this.monaco.editor.getModels().filter((model) => model.getLanguageId() === language);
+  }
+
+  /** Prefer open editor buffers over stored snapshot text, per file. An open
+   * model always carries that file's current text under its URI, so a lookup
+   * by URI is exact; files with no open model keep the host entry untouched.
+   * The model's version becomes the entry version: one version source per
+   * file, never a mix of editor versions and stored timestamps. */
+  private withLiveBuffers(environment: ShaderAuthoringEnvironment): ShaderAuthoringEnvironment {
+    const live = new Map(this.monaco.editor.getModels().map((model) => [model.uri.toString(), model]));
+    if (![...live.keys()].some((uri) =>
+      environment.workspaceDocuments?.some((file) => file.uri === uri)
+      || environment.commonFile?.uri === uri
+      || environment.virtualFiles.some((file) => file.uri === uri))) {
+      return environment;
+    }
+    const overlay = <T extends { uri: string; text: string; version: number }>(file: T): T => {
+      const model = live.get(file.uri);
+      return model ? { ...file, text: model.getValue(), version: model.getVersionId() } : file;
+    };
+    return {
+      ...environment,
+      commonFile: environment.commonFile ? overlay(environment.commonFile) : undefined,
+      virtualFiles: environment.virtualFiles.map(overlay),
+      workspaceDocuments: environment.workspaceDocuments?.map(overlay),
+    };
   }
 
   private syncVirtualModels(environment: ShaderAuthoringEnvironment): void {

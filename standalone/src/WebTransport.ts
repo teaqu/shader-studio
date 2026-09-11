@@ -103,12 +103,17 @@ export class WebTransport implements Transport {
     changes: readonly { uri: string; before: string; after: string }[],
     isCurrent: () => boolean,
     commit: () => void,
+    openTexts?: ReadonlyMap<string, string>,
   ): Promise<void> {
-    if (!this.connected) throw new Error('Editor disconnected. No files were changed.');
+    if (!this.connected) {
+      throw new Error('Editor disconnected. No files were changed.');
+    }
     await (await this.host).applyWorkspaceEdit(changes, () => this.connected && isCurrent(), () => {
       commit();
-      for (const change of changes) setEditorDocument(decodeURIComponent(new URL(change.uri).pathname), change.after);
-    });
+      for (const change of changes) {
+        setEditorDocument(decodeURIComponent(new URL(change.uri).pathname), change.after);
+      }
+    }, openTexts);
   }
 
   async readEditorFile(path: string): Promise<string | null> {

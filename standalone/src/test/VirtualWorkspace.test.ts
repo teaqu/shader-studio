@@ -19,6 +19,37 @@ describe('VirtualWorkspace', () => {
     expect((await VirtualWorkspace.open(store, [])).list().map(file => file.contents)).toEqual(['curve', 'curve']);
   });
 
+  it('accepts a transaction whose stored copy lags an open buffer', async () => {
+    // The editor holds unsaved text the stored copy does not have yet. The
+    // edit was computed against the live buffer, so comparing against it
+    // must accept; comparing against the stored copy would falsely refuse.
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    workspace.writeText('/shaders/main.glsl', 'tone');
+    await workspace.applyTextTransaction(
+      [{ path: '/shaders/main.glsl', before: 'tone-live', after: 'curve' }],
+      () => true,
+      () => {},
+      new Map([['/shaders/main.glsl', 'tone-live']]),
+    );
+    expect(workspace.readText('/shaders/main.glsl')).toBe('curve');
+  });
+
+  it('still refuses when the open buffer moved after the edit was computed', async () => {
+    // Stored and request-time text agree, so only the open-buffer comparison
+    // can catch this genuine mid-flight change.
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    workspace.writeText('/shaders/main.glsl', 'tone');
+    await expect(workspace.applyTextTransaction(
+      [{ path: '/shaders/main.glsl', before: 'tone', after: 'curve' }],
+      () => true,
+      () => {},
+      new Map([['/shaders/main.glsl', 'tone-moved']]),
+    )).rejects.toThrow('stale');
+    expect(workspace.readText('/shaders/main.glsl')).toBe('tone');
+  });
+
   it('rejects a stale or missing target without changing or saving any target', async () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, seedFiles);

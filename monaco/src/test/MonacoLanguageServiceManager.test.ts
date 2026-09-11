@@ -363,7 +363,10 @@ describe("MonacoLanguageServiceManager", () => {
     expect(applyWorkspaceEdit).toHaveBeenCalledWith([
       { uri, before: 'vec3(1.0, 0.0, 0.0)', after: 'curve(1.0, 0.0, 0.0)' },
       { uri: commonUri, before: 'tone', after: 'curve' },
-    ], expect.any(Function), expect.any(Function));
+    ], expect.any(Function), expect.any(Function), new Map([
+      [uri, 'vec3(1.0, 0.0, 0.0)'],
+      [commonUri, 'tone'],
+    ]));
     expect(fixture.model.setValue).toHaveBeenCalledWith('curve(1.0, 0.0, 0.0)');
     manager.dispose();
   });
@@ -519,6 +522,35 @@ describe("MonacoLanguageServiceManager", () => {
     service.rename = vi.fn(async () => ({ changes: { [fixture.model.uri.toString()]: [{ range, newText: "curve" }] } }));
     await provider.provideRenameEdits(fixture.model, { lineNumber: 1, column: 2 }, "curve");
     expect(onRenameFeedback).toHaveBeenLastCalledWith(fixture.model.uri.toString(), undefined);
+    manager.dispose();
+  });
+
+  it("prefers open editor buffers over stale workspace snapshot entries", async () => {
+    // Another editor holds unsaved text for file B (its env has not synced
+    // yet) while the host snapshot still carries the stored copy. Analysis
+    // must see the live buffer, with the model's version, not stored text.
+    const fixture = monacoFixture();
+    const liveText = "float tone(float x) { return x * 2.0; }";
+    const other = {
+      uri: { toString: () => "file:///other.glsl" },
+      getLanguageId: () => "glsl",
+      getValue: () => liveText,
+      getVersionId: () => 7,
+      onDidChangeContent: vi.fn(() => ({ dispose: vi.fn() })),
+    };
+    (fixture.monaco.editor.getModels as () => unknown[]).call(fixture.monaco.editor).push(other);
+    (fixture.monaco as { MarkerSeverity?: unknown }).MarkerSeverity ??= { Error: 8, Hint: 1, Info: 2, Warning: 4 };
+    (fixture.monaco.editor as { setModelMarkers?: unknown }).setModelMarkers ??= vi.fn();
+    const staleEntry = { uri: "file:///other.glsl", text: "float tone(float x) { return x; }", version: 1000, stage: "fragment" };
+    const service = serviceFixture();
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { getWorkspaceDocuments: async () => [staleEntry as never] });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString() });
+    const sent = vi.mocked(service.syncEnvironment).mock.calls.map(call => call[0]);
+    const latest = [...sent].reverse().find(environment => environment.documentUri === fixture.model.uri.toString())!;
+    expect(latest.workspaceDocuments).toHaveLength(1);
+    expect(latest.workspaceDocuments![0]).toMatchObject({ uri: "file:///other.glsl", text: liveText, version: 7 });
     manager.dispose();
   });
 

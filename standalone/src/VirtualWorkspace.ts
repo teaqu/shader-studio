@@ -162,6 +162,11 @@ export class VirtualWorkspace {
     changes: readonly { path: string; before: string; after: string }[],
     isCurrent: () => boolean = () => true,
     onCommit: () => void = () => {},
+    /** Live open-buffer texts by path. A target with an open buffer compares
+     * against it instead of the stored copy, so unsaved editor text neither
+     * causes false staleness nor hides a genuine mid-flight change. Targets
+     * without an open buffer keep the stored comparison. */
+    openTexts?: ReadonlyMap<string, string>,
   ): Promise<void> {
     const operation = this.pendingSave.then(async () => {
       const revision = this.revision;
@@ -169,13 +174,18 @@ export class VirtualWorkspace {
       const targets = new Map<string, string>();
       for (const change of changes) {
         const path = this.normalizePath(change.path);
-        if (targets.has(path) || this.getFile(path).contents !== change.before) {
+        // getFile first: a missing target throws here exactly as before.
+        const stored = this.getFile(path).contents;
+        const base = openTexts?.get(path) ?? stored;
+        if (targets.has(path) || base !== change.before) {
           throw new Error('Rename target is stale or duplicated. No files were changed.');
         }
         targets.set(path, change.after);
       }
       const current = () => revision === this.revision && isCurrent();
-      if (!current()) throw new Error('Rename request is stale. No files were changed.');
+      if (!current()) {
+        throw new Error('Rename request is stale. No files were changed.');
+      }
       const snapshot = original.map(file => targets.has(file.path)
         ? { ...file, contents: targets.get(file.path)!, modifiedAt: this.now() } : file);
       await this.store.save(snapshot);
@@ -183,7 +193,9 @@ export class VirtualWorkspace {
         await this.store.save(original);
         throw new Error('Rename request is stale. No files were changed.');
       }
-      for (const file of snapshot) this.files.set(file.path, file);
+      for (const file of snapshot) {
+        this.files.set(file.path, file);
+      }
       this.revision++;
       onCommit();
     });

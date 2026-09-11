@@ -398,12 +398,16 @@ export class WebExtensionHost {
         version: file.modifiedAt, stage: 'fragment' as import('@shader-studio/types').ShaderStage, commonUri: undefined as string | undefined }]));
     for (const path of documents.keys()) {
       const config = this.readConfig(path).config;
-      if (!config) continue;
+      if (!config) {
+        continue;
+      }
       const sources = { Image: path, ...this.sourcePaths(path) };
       const commonPath = Object.entries(sources).find(([name]) => name.toLowerCase() === 'common')?.[1];
       for (const [name, source] of Object.entries(sources)) {
         const target = documents.get(source);
-        if (!target || name.toLowerCase() === 'common') continue;
+        if (!target || name.toLowerCase() === 'common') {
+          continue;
+        }
         target.commonUri = commonPath ? new URL(`file://${commonPath}`).href : undefined;
         const pass = config.passes?.[name];
         target.stage = name.startsWith('__shader_studio_vertex__:') ? 'vertex'
@@ -417,14 +421,28 @@ export class WebExtensionHost {
     changes: readonly { uri: string; before: string; after: string }[],
     isCurrent: () => boolean,
     commit: () => void,
+    openTexts?: ReadonlyMap<string, string>,
   ): Promise<void> {
     const files = changes.map(change => {
       const uri = new URL(change.uri);
-      if (uri.protocol !== 'file:' || uri.host || uri.search || uri.hash) throw new Error('Invalid workspace rename target.');
+      if (uri.protocol !== 'file:' || uri.host || uri.search || uri.hash) {
+        throw new Error('Invalid workspace rename target.');
+      }
       return { path: decodeURIComponent(uri.pathname), before: change.before, after: change.after };
     });
-    await this.workspace.applyTextTransaction(files, isCurrent, commit);
-    if (this.activeShaderPath) this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+    // Open buffers are keyed by URI at the editor; the workspace compares by path.
+    const openByPath = openTexts ? new Map([...openTexts].flatMap(([uri, text]) => {
+      try {
+        const parsed = new URL(uri);
+        return parsed.protocol === 'file:' ? [[decodeURIComponent(parsed.pathname), text] as const] : [];
+      } catch {
+        return [];
+      }
+    })) : undefined;
+    await this.workspace.applyTextTransaction(files, isCurrent, commit, openByPath);
+    if (this.activeShaderPath) {
+      this.emitViewer(this.shaderSourceMessage(this.activeShaderPath));
+    }
     this.sendShaderList();
   }
 
