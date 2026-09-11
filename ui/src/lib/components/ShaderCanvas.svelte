@@ -112,9 +112,10 @@
 
   function handleMouseDown(event: MouseEvent) {
     mouseDownPosition = { x: event.clientX, y: event.clientY };
-    if (isInspectorActive) {
-      glCanvas?.focus();
-    }
+    // A press on the canvas claims keyboard focus so subsequent keys reach
+    // the viewer instead of silently editing the Monaco document that still
+    // holds focus. Mousedown only: hover must never steal focus.
+    glCanvas?.focus();
   }
 
   function handleClick(event: MouseEvent) {
