@@ -562,7 +562,31 @@ export class SlangLanguageService implements LanguageService {
         });
       }
     }
-    return documents;
+    // Opened documents carry the store environment, which never sets
+    // top-level commonFile at the host (only workspace entries link by
+    // commonUri). Without this backfill the active pass cannot see its
+    // Common, so renameSlangSymbol falls back to the pass URI and drops
+    // every cross-file document.
+    for (let index = 0; index < documents.length; index++) {
+      const document = documents[index]!;
+      if (document.environment.commonFile) {
+        continue;
+      }
+      const workspaceDocuments = document.environment.workspaceDocuments ?? [];
+      const commonUri = workspaceDocuments.find(file => file.uri === document.uri)?.commonUri;
+      const common = commonUri ? workspaceDocuments.find(file => file.uri === commonUri) : undefined;
+      if (common) {
+        documents[index] = { ...document, environment: { ...document.environment, commonFile: common } };
+      }
+    }
+    // Every editor in the host shares one service, so a second editor can
+    // sync the Common file as its own document while still carrying the pass
+    // context: its commonFile then points at itself. A document is never its
+    // own Common — without this renameCompiles concatenates the Common source
+    // twice and vetoes a correct cross-file edit.
+    return documents.map(document => document.environment.commonFile?.uri === document.uri
+      ? { ...document, environment: { ...document.environment, commonFile: undefined } }
+      : document);
   }
 
   private documentText(uri: string): string | undefined {

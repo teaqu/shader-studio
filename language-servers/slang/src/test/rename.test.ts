@@ -88,6 +88,40 @@ float curve(float value) { return value; }`);
 
 
 
+  it("renames a Common declaration across Common and every consuming pass", () => {
+    const commonUri = "file:///common.slang";
+    const common = "float tone(float value) { return value; }";
+    const first = "float4 mainImage(float2 p) { return float4(tone(p.x)); }";
+    const secondUri = "file:///buffer.slang";
+    const second = "float4 helper(float v) { return float4(tone(v)); }";
+    const commonFile = { uri: commonUri, text: common };
+    const edit = renameSlangSymbol([
+      document(first, uri, commonFile),
+      document(second, secondUri, commonFile),
+      document(common, commonUri),
+    ], commonUri, position(common, "tone"), "curve");
+    expect(apply(common, edit, commonUri)).toBe("float curve(float value) { return value; }");
+    expect(apply(first, edit, uri)).toBe("float4 mainImage(float2 p) { return float4(curve(p.x)); }");
+    expect(apply(second, edit, secondUri)).toBe("float4 helper(float v) { return float4(curve(v)); }");
+  });
+
+  it("renames a Common reference from a pass across Common and every consuming pass", () => {
+    const commonUri = "file:///common.slang";
+    const common = "float tone(float value) { return value; }";
+    const first = "float4 mainImage(float2 p) { return float4(tone(p.x)); }";
+    const secondUri = "file:///buffer.slang";
+    const second = "float4 helper(float v) { return float4(tone(v)); }";
+    const commonFile = { uri: commonUri, text: common };
+    const edit = renameSlangSymbol([
+      document(first, uri, commonFile),
+      document(second, secondUri, commonFile),
+      document(common, commonUri),
+    ], uri, position(first, "tone"), "curve");
+    expect(apply(common, edit, commonUri)).toBe("float curve(float value) { return value; }");
+    expect(apply(first, edit, uri)).toBe("float4 mainImage(float2 p) { return float4(curve(p.x)); }");
+    expect(apply(second, edit, secondUri)).toBe("float4 helper(float v) { return float4(curve(v)); }");
+  });
+
   it("rejects a Common rename captured by a local in any affected pass", () => {
     const commonUri = "file:///common.slang";
     const common = "float tone(float value) { return value; }";

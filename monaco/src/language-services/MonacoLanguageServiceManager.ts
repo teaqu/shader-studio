@@ -54,6 +54,7 @@ export class MonacoLanguageServiceManager {
   }
 
   async syncEnvironment(environment: ShaderAuthoringEnvironment): Promise<void> {
+    console.log('[rename-trace] TEMP sync', environment.documentUri, 'common:', Boolean(environment.commonFile), 'ws:', environment.workspaceDocuments?.length ?? 0);
     const previous = this.environments.get(environment.documentUri);
     if (previous) {
       // Several editors can share one file. Their local counters cannot replace
@@ -254,7 +255,7 @@ export class MonacoLanguageServiceManager {
               }]));
               generation = revision.environmentGeneration;
               return service.rename({ document: revision, position: toLspPosition(position), newName });
-            }, null);
+            }, null, { waitForEnvironment: true });
             console.log('[rename-trace]', uri, JSON.stringify(result), current(), generation, this.environments.get(uri)?.generation,
               [...snapshots.entries()].filter(([, snapshot]) => snapshot.model.getVersionId() !== snapshot.version).map(([key]) => key));
             if (!result || !current()) return reject(RENAME_REJECTED);
@@ -295,7 +296,7 @@ export class MonacoLanguageServiceManager {
               textEdit: { range: toMonacoRange(this.monaco, edit.range), text: edit.newText },
             })),
           };
-        }, { edits: [], rejectReason: RENAME_REJECTED });
+        }, { edits: [], rejectReason: RENAME_REJECTED }, { waitForEnvironment: true });
         this.options.onRenameFeedback?.(uri, response.rejectReason);
         return response;
       },
@@ -417,20 +418,32 @@ export class MonacoLanguageServiceManager {
     return state.service;
   }
 
-  private async request<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<T> {
-    const { value, stale } = await this.requestAllowingStale(model, run, fallback);
+  private async request<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T, options?: { waitForEnvironment?: boolean }): Promise<T> {
+    const { value, stale } = await this.requestAllowingStale(model, run, fallback, options);
     return stale ? fallback : value;
   }
 
   /** Runs a request and reports whether the document moved on while it ran. */
-  private async requestAllowingStale<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<{ value: T; stale: boolean }> {
+  private async requestAllowingStale<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T, options?: { waitForEnvironment?: boolean }): Promise<{ value: T; stale: boolean }> {
     const language = shaderLanguage(model.getLanguageId());
-    const environment = this.environments.get(model.uri.toString());
+    let environment = this.environments.get(model.uri.toString());
+    if (language && this.enabled[language] && !environment && options?.waitForEnvironment) {
+      // An explicit rename can outrun the host's first environment sync for a
+      // freshly opened document. Wait briefly for it instead of failing the
+      // gesture instantly; steady-state requests always have an environment.
+      const deadline = Date.now() + 5000;
+      while (!this.environments.get(model.uri.toString()) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      environment = this.environments.get(model.uri.toString());
+    }
     if (!language || !environment || !this.enabled[language]) {
+      console.log('[rename-trace] TEMP early', model.uri.toString(), { language, hasEnv: Boolean(environment), enabled: language ? this.enabled[language] : undefined });
       return { value: fallback, stale: false };
     }
     const ensured = await this.ensureModel(model);
     if (!ensured) {
+      console.log('[rename-trace] TEMP no-ensure', model.uri.toString());
       return { value: fallback, stale: false };
     }
     const revision: DocumentRevision = { uri: model.uri.toString(), languageId: language, version: ensured.version, environmentGeneration: ensured.environmentGeneration };

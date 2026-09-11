@@ -156,4 +156,5 @@ float helper(float value) {
     expect(apply(pass, edit, otherUri)).toBe(pass.replace("tone", "curve"));
     expect(Object.keys(edit!.changes!)).toHaveLength(3);
   });
+
 });
