@@ -3,12 +3,10 @@
   "storage": {
     "laneA": {
       "count": 128,
-      "stride": 16,
       "elementType": "float4"
     },
     "laneB": {
       "count": 128,
-      "stride": 16,
       "elementType": "float4"
     }
   },

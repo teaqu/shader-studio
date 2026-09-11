@@ -741,7 +741,7 @@ describe("shader corpus through the UI transport layer", () => {
           failed = true;
           break;
         }
-        let region = new Uint8ClampedArray();
+        let region: Awaited<ReturnType<ShaderCanvasHarness["renderAndReadRegion"]>> = new Uint8ClampedArray();
         for (const time of sampleTimes(member)) {
           region = await rig.harness.renderAndReadRegion(time);
         }

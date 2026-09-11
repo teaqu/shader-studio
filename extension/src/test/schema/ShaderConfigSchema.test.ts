@@ -182,8 +182,8 @@ suite('Shader config JSON schema', () => {
     assertValid({
       version: '1.0',
       storage: {
-        particles: { count: 4096, stride: 64, elementType: 'ParticleData' },
-        counters: { count: 4, stride: 4, elementType: 'Atomic<uint>' }
+        particles: { count: 4096, elementType: 'ParticleData' },
+        counters: { count: 4, elementType: 'Atomic<uint>' }
       },
       passes: {
         Image: {
@@ -219,6 +219,17 @@ suite('Shader config JSON schema', () => {
         }
       }
     });
+  });
+
+  test('accepts storage without stride', () => {
+    assertValid({
+      version: '1.0',
+      storage: { particles: { count: 4096, elementType: 'float4' } },
+      passes: { Image: {} }
+    });
+
+    const particlesPath = path.resolve(__dirname, '../../../../tests/fixtures/shader-corpus/slang/particles.sha.json');
+    assertValid(JSON.parse(fs.readFileSync(particlesPath, 'utf8')));
   });
 
   test('accepts a compute pass with an arbitrary name when type is compute', () => {
@@ -348,8 +359,7 @@ suite('Shader config JSON schema', () => {
   test('wraps described references so draft-07 retains field descriptions', () => {
     const describedReferences = [
       [schema.definitions.ComputePass.properties.dispatchCount, '#/definitions/DispatchCount'],
-      [schema.definitions.StorageBuffer.properties.count, '#/definitions/PositiveInteger'],
-      [schema.definitions.StorageBuffer.properties.stride, '#/definitions/PositiveInteger']
+      [schema.definitions.StorageBuffer.properties.count, '#/definitions/PositiveInteger']
     ];
 
     for (const [field, expectedReference] of describedReferences) {
@@ -368,16 +378,16 @@ suite('Shader config JSON schema', () => {
 
   test('rejects missing or invalid storage fields', () => {
     const storageEntries = [
-      { stride: 16, elementType: 'float4' },
-      { count: 4, elementType: 'float4' },
-      { count: 4, stride: 16 },
-      { count: 0, stride: 16, elementType: 'float4' },
-      { count: 1.5, stride: 16, elementType: 'float4' },
-      { count: 4, stride: 0, elementType: 'float4' },
-      { count: 4, stride: 1.5, elementType: 'float4' },
-      { count: 4, stride: 16, elementType: '' },
-      { count: 4, stride: 16, elementType: '   ' },
-      { count: 4, stride: 16, elementType: 'float4', extra: true }
+      { elementType: 'float4' },
+      { count: 4 },
+      { count: 0, elementType: 'float4' },
+      { count: 1.5, elementType: 'float4' },
+      { count: 4, elementType: '' },
+      { count: 4, elementType: '   ' },
+      { count: 4, elementType: 'float4', extra: true },
+      // stride was removed from the schema: runtime always auto-infers it,
+      // so a config that still sets it is rejected as an unknown property.
+      { count: 4, elementType: 'float4', stride: 16 }
     ];
 
     for (const entry of storageEntries) {

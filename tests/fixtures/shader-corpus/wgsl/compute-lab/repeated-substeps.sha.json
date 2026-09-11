@@ -3,12 +3,10 @@
   "storage": {
     "laneA": {
       "count": 128,
-      "stride": 16,
       "elementType": "vec4<f32>"
     },
     "laneB": {
       "count": 128,
-      "stride": 16,
       "elementType": "vec4<f32>"
     }
   },

@@ -3,7 +3,6 @@
   "storage": {
     "seed": {
       "count": 1,
-      "stride": 16,
       "elementType": "float4"
     }
   },

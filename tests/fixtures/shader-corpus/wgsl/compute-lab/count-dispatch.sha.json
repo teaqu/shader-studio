@@ -3,7 +3,6 @@
   "storage": {
     "samples": {
       "count": 256,
-      "stride": 4,
       "elementType": "f32"
     }
   },

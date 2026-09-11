@@ -3,7 +3,6 @@
   "storage": {
     "coverageItems": {
       "count": 128,
-      "stride": 4,
       "elementType": "float"
     }
   },

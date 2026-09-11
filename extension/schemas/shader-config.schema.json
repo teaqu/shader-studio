@@ -228,18 +228,10 @@
     },
     "StorageBuffer": {
       "type": "object",
-      "required": ["count", "stride", "elementType"],
+      "required": ["count", "elementType"],
       "properties": {
         "count": {
           "description": "Number of elements",
-          "allOf": [
-            {
-              "$ref": "#/definitions/PositiveInteger"
-            }
-          ]
-        },
-        "stride": {
-          "description": "Bytes per element",
           "allOf": [
             {
               "$ref": "#/definitions/PositiveInteger"
