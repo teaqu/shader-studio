@@ -3,8 +3,14 @@ import * as path from "path";
 import * as vscode from "vscode";
 import {
   SHADER_LANGUAGES,
+  configPathForShader,
   isAuthoringValueType,
+  isCommonPassName,
+  resolveConfiguredPath,
+  type ConfiguredPathHost,
   isShaderLanguageId,
+  resourcesForPass,
+  stageForPass,
   type AuthoringResource,
   type CustomUniformDeclaration,
   type ShaderAuthoringEnvironment,
@@ -12,7 +18,7 @@ import {
   type ShaderLanguageId,
   type ShaderStage,
 } from "@shader-studio/types";
-import { collectSlangDependencies, resolveSlangIncludes } from "../app/SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes } from "@shader-studio/utils";
 
 const customUniforms = new Map<string, readonly CustomUniformDeclaration[]>();
 const snapshotListeners = new Set<(shaderPath: string) => void>();
@@ -27,7 +33,7 @@ export function publishLoadedShaderProjectSnapshot(shaderPath: string, config: S
   loadedShaderProjects.delete(normalizedShaderPath);
   loadedShaderProjects.set(normalizedShaderPath, {
     config: JSON.parse(JSON.stringify(config)) as ShaderConfig,
-    configPath: shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang|wgsl)$/i, ".sha.json"),
+    configPath: configPathForShader(shaderPath),
     shaderPath: normalizedShaderPath,
   });
   // Every shaderSource message republishes the snapshot, so only a genuinely
@@ -88,8 +94,8 @@ export class ShaderAuthoringEnvironmentProvider {
     const loadedConfig = readConfig(document.uri.fsPath);
     const config = loadedConfig?.config ?? null;
     const pass = findPass(config, document.uri.fsPath, loadedConfig?.path);
-    const stage = pass && "vertex" in pass && pass.vertex ? "vertex" : stageFor(document.uri.fsPath, pass?.value);
-    const resources = resourcesFor(config, pass?.value);
+    const stage = pass && "vertex" in pass && pass.vertex ? "vertex" : stageForPass(config, pass?.name ?? "Image", document.uri.fsPath);
+    const resources = resourcesForPass(config, pass?.name ?? "Image");
     const uniforms = customUniforms.get(path.resolve(mainShaderPath(document.uri.fsPath, languageId, loadedConfig?.path))) ?? [];
     const outputLayers = pass?.value && "type" in pass.value && pass.value.type === "compute"
       ? pass.value.outputLayers ?? 1
@@ -171,15 +177,15 @@ function configuredCommonFile(
   configPath: string | undefined,
   passName: string,
 ): { uri: string; text: string; version: number } | undefined {
-  if (!config || !configPath || passName.toLowerCase() === "common") {
+  if (!config || !configPath || isCommonPassName(passName)) {
     return undefined;
   }
   const passes = config.passes as ShaderConfig["passes"] & Record<string, ShaderConfig["passes"][string]>;
-  const common = passes.common ?? passes.Common;
+  const common = passes.common;
   if (!common || !("path" in common) || !common.path) {
     return undefined;
   }
-  const commonPath = resolveConfiguredPath(configPath, common.path);
+  const commonPath = resolveConfiguredPath(configuredPathHost, configPath, common.path);
   const openDocument = vscode.workspace.textDocuments.find((document) => (
     path.normalize(document.uri.fsPath) === path.normalize(commonPath)
   ));
@@ -194,15 +200,14 @@ function configuredCommonFile(
   }
 }
 
-function resolveConfiguredPath(configPath: string, configuredPath: string): string {
-  if (configuredPath.startsWith("@/")) {
-    const workspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(configPath));
-    return path.resolve(workspace?.uri.fsPath ?? path.dirname(configPath), configuredPath.slice(2));
-  }
-  return path.isAbsolute(configuredPath)
-    ? path.normalize(configuredPath)
-    : path.resolve(path.dirname(configPath), configuredPath);
-}
+const configuredPathHost: ConfiguredPathHost = {
+  workspaceRootFor: (anchorPath) =>
+    vscode.workspace.getWorkspaceFolder(vscode.Uri.file(anchorPath))?.uri.fsPath,
+  joinPath: (...segments) => path.join(...segments),
+  dirnameOf: (value) => path.dirname(value),
+  normalizePath: (value) => path.normalize(value),
+  isAbsolutePath: (value) => path.isAbsolute(value),
+};
 
 function mergeVirtualFiles(
   ...groups: readonly { uri: string; text: string; version: number }[][]
@@ -211,7 +216,7 @@ function mergeVirtualFiles(
 }
 
 function readConfig(shaderPath: string): { config: ShaderConfig; path: string } | null {
-  const companion = shaderPath.replace(/\.(?:glsl|frag|vert|comp|slang|wgsl)$/i, ".sha.json");
+  const companion = configPathForShader(shaderPath);
   const direct = parseConfig(companion);
   if (direct) {
     return direct;
@@ -291,34 +296,14 @@ function findExplicitPass(config: ShaderConfig, shaderPath: string, configPath?:
     if (!value) {
       continue;
     }
-    if ("path" in value && value.path && resolveConfiguredPath(owningConfigPath, value.path) === resolved) {
+    if ("path" in value && value.path && resolveConfiguredPath(configuredPathHost, owningConfigPath, value.path) === resolved) {
       return { name, value };
     }
-    if ("vertex" in value && value.vertex && resolveConfiguredPath(owningConfigPath, value.vertex) === resolved) {
+    if ("vertex" in value && value.vertex && resolveConfiguredPath(configuredPathHost, owningConfigPath, value.vertex) === resolved) {
       return { name, value, vertex: true };
     }
   }
   return undefined;
-}
-
-function stageFor(shaderPath: string, pass: ShaderConfig["passes"][string]): ShaderStage {
-  if (/\.(?:vert|vs)$/i.test(shaderPath)) {
-    return "vertex";
-  }
-  return pass && "type" in pass && pass.type === "compute" ? "compute" : "fragment";
-}
-
-function resourcesFor(config: ShaderConfig | null, pass: ShaderConfig["passes"][string]): AuthoringResource[] {
-  const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
-  const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
-    name,
-    kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
-    slot,
-  }));
-  for (const [name, storage] of Object.entries(config?.storage ?? {})) {
-    resources.push({ name, kind: "storage", elementType: storage.elementType });
-  }
-  return resources;
 }
 
 function mainShaderPath(documentPath: string, language: ShaderLanguageId, configPath?: string): string {

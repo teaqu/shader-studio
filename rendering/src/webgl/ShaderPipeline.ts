@@ -2,6 +2,7 @@ import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
 import type { Pass, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
+import { VERTEX_PASS_PREFIX } from "@shader-studio/types";
 import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
 import type { TimeManager } from "../util/TimeManager";
@@ -11,7 +12,7 @@ import { resolveBufferPassSize } from "./BufferPassResolution";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import { resolvePassGeometry } from "../types/Geometry";
 
-const VERTEX_SOURCE_PREFIX = "__shader_studio_vertex__:";
+const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
 export class ShaderPipeline {
   private canvas: HTMLCanvasElement;

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as path from "path";
-import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "../../app/SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "@shader-studio/utils";
 
 suite("SlangDependencyGraph", () => {
   test("collects transitive imports in dependency-first order", () => {

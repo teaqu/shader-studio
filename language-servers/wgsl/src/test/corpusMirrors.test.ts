@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stageForPass } from "@shader-studio/types";
 import { parseWgslDocument } from "@shader-studio/wgsl-analysis";
 import { WgslLanguageService } from "../WgslLanguageService";
 
@@ -186,7 +187,7 @@ const collectDocs = (): MirrorDoc[] => {
       const fileRel = pass.path ? normalize(join(dir, pass.path)) : join(dir, `${stem}.wgsl`);
       if (!existsSync(join(CORPUS, fileRel))) continue;
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
-      const stage = pass.type === "compute" ? "compute" : "fragment";
+      const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = stage === "compute"
         ? pass.entryPoint ?? firstComputeEntry(text) ?? firstFn(text) ?? "main"
         : firstFn(text) ?? "mainImage";

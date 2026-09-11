@@ -10,6 +10,7 @@ import type {
   ShaderSourceMessage,
   WarningMessage,
 } from "@shader-studio/types";
+import { parseVertexPassKey } from "@shader-studio/types";
 import { BufferUpdater } from './util/BufferUpdater';
 import { BufferPathResolver } from './util/BufferPathResolver';
 import { ShaderDebugManager } from './ShaderDebugManager';
@@ -27,8 +28,6 @@ export type ShaderMessageTarget =
    * activation recognised by filename and content, which has no known owner.
    */
   | { kind: 'vertex'; passName?: string };
-
-const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
 
 /**
  * Vertex filename convention: a `.vert`/`.vs` suffix, or a `vert`/`vertex`
@@ -221,11 +220,13 @@ export class ShaderPipeline {
         && this.pathsEqual(passPath, messagePath),
     );
 
-    return matchingBuffer
-      ? matchingBuffer[0].startsWith(VERTEX_SOURCE_PREFIX)
-        ? { kind: 'vertex', passName: matchingBuffer[0].slice(VERTEX_SOURCE_PREFIX.length) }
-        : { kind: 'buffer', passName: matchingBuffer[0] }
-      : null;
+    if (!matchingBuffer) {
+      return null;
+    }
+    const vertexName = parseVertexPassKey(matchingBuffer[0]);
+    return vertexName !== undefined
+      ? { kind: 'vertex', passName: vertexName }
+      : { kind: 'buffer', passName: matchingBuffer[0] };
   }
 
   public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>): boolean {
@@ -245,11 +246,12 @@ export class ShaderPipeline {
     if (messagePath) {
       const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
       const linked = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
-        ([passName, passPath]) => passName.startsWith(VERTEX_SOURCE_PREFIX)
+        ([passName, passPath]) => parseVertexPassKey(passName) !== undefined
           && this.pathsEqual(passPath, messagePath),
       );
-      if (linked) {
-        return { kind: 'vertex', passName: linked[0].slice(VERTEX_SOURCE_PREFIX.length) };
+      const vertexName = linked ? parseVertexPassKey(linked[0]) : undefined;
+      if (vertexName !== undefined) {
+        return { kind: 'vertex', passName: vertexName };
       }
       if (isVertexFileName(messagePath) && looksLikeVertexHook(message.code)) {
         return { kind: 'vertex' };

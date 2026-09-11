@@ -2,12 +2,13 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { stageForPass } from "@shader-studio/types";
 import createSlangModule from "../../../../ui/src/slang/slang-wasm.js";
 import { SlangLanguageService } from "../SlangLanguageService";
 import {
   collectSlangDependencies,
   resolveSlangIncludes,
-} from "../../../../extension/src/app/SlangDependencyGraph";
+} from "../../../../utils/src/slang-dependency-graph";
 
 /**
  * Language-service coverage over every Slang corpus mirror
@@ -187,7 +188,7 @@ const collectDocs = (): MirrorDoc[] => {
       const fileRel = pass.path ? resolveRef(configAbs, pass.path) : join(dir, `${stem}.slang`);
       if (!existsSync(join(CORPUS, fileRel))) continue;
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
-      const stage = pass.type === "compute" ? "compute" : "fragment";
+      const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = pass.entryPoint ?? firstSlangFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,

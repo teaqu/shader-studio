@@ -15,7 +15,7 @@
     ComputePass,
     ShaderLanguageId,
   } from "@shader-studio/types";
-  import { SHADER_LANGUAGES } from "@shader-studio/types";
+  import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
@@ -390,7 +390,7 @@
       return;
     }
     if (getEditorOverlayVisible()) {
-      setOverlayActiveFile(`__shader_studio_vertex__:${bufferName}`);
+      setOverlayActiveFile(vertexPassKey(bufferName));
     } else {
       onOpenInNewTab(config.vertex, "active");
     }

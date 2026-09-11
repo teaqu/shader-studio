@@ -24,6 +24,9 @@ export default defineConfig({
         find: '@shader-studio/ui',
         replacement: path.resolve(__dirname, '../ui/src'),
       },
+      // Extension modules imported by tests resolve `vscode` to a stub; only
+      // the parity test imports such a module, and nothing else imports `vscode`.
+      { find: /^vscode$/, replacement: path.resolve(__dirname, 'src/test/vscodeStub.ts') },
     ],
   },
 });

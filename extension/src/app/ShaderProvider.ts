@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
-import { isShaderDocument, getShaderLanguage } from "./GlslFileTracker";
+import { isShaderDocument } from "./GlslFileTracker";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
@@ -11,7 +11,7 @@ import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
-import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "@shader-studio/utils";
 import type {
   ShaderConfig,
   ShaderSourceMessage,
@@ -20,6 +20,7 @@ import type {
   SlangDependencyDiagnostic,
   SlangSourceModule,
 } from "@shader-studio/types";
+import { shaderLanguageForPath, vertexPassKey } from "@shader-studio/types";
 import {
   clearCustomUniformSnapshot,
   publishCustomUniformSnapshot,
@@ -53,7 +54,7 @@ export class ShaderProvider {
   }
 
   public claimActiveAnalysisContext(filePath: string): void {
-    if (getShaderLanguage(filePath) !== 'glsl') {
+    if ((shaderLanguageForPath(filePath) ?? 'glsl') !== 'glsl') {
       return;
     }
 
@@ -229,7 +230,7 @@ export class ShaderProvider {
       }
 
       const code = fs.readFileSync(shaderPath, "utf-8");
-      if (!code.includes("mainImage") && getShaderLanguage(shaderPath) !== "slang") {
+      if (!code.includes("mainImage") && (shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
         return;
       }
 
@@ -251,7 +252,7 @@ export class ShaderProvider {
         // Same freshness marker as the main send. See CompileReportMarker.
         compileSequence: preparationGeneration,
       };
-      const shaderLanguage = getShaderLanguage(shaderPath);
+      const shaderLanguage = shaderLanguageForPath(shaderPath) ?? "glsl";
       if (shaderLanguage !== "glsl") {
         message.language = shaderLanguage;
       }
@@ -453,7 +454,7 @@ export class ShaderProvider {
         bufferPathMap[passName] = PathResolver.resolvePath(shaderPath, pass.path);
       }
       if (pass && typeof pass === 'object' && 'vertex' in pass && typeof pass.vertex === 'string' && pass.vertex) {
-        bufferPathMap[`__shader_studio_vertex__:${passName}`] = PathResolver.resolvePath(shaderPath, pass.vertex);
+        bufferPathMap[vertexPassKey(passName)] = PathResolver.resolvePath(shaderPath, pass.vertex);
       }
     }
 
@@ -501,7 +502,7 @@ export class ShaderProvider {
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
-    const language = getShaderLanguage(shaderPath);
+    const language = shaderLanguageForPath(shaderPath) ?? "glsl";
     if (code.includes("mainImage")) {
       return false;
     }
@@ -529,7 +530,7 @@ export class ShaderProvider {
   private resolveOwningSlangDependency(filePath: string): string | null {
     const normalizedFilePath = path.normalize(filePath);
     for (const shaderPath of this.activeShaders) {
-      if (getShaderLanguage(shaderPath) !== "slang") {
+      if ((shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
         continue;
       }
       const source = this.readShaderSource(shaderPath);
@@ -635,7 +636,7 @@ export class ShaderProvider {
       config,
       path: shaderPath,
       buffers,
-      language: getShaderLanguage(shaderPath),
+      language: shaderLanguageForPath(shaderPath) ?? "glsl",
       reload: options?.reload,
       pathMap: this.buildPathMap(config, shaderPath),
       bufferPathMap: this.buildBufferPathMap(config, shaderPath),
@@ -782,7 +783,7 @@ export class ShaderProvider {
       config: null,
       path: filePath,
       buffers: {},
-      language: getShaderLanguage(filePath),
+      language: shaderLanguageForPath(filePath) ?? "glsl",
       reload: true,
       cursorPosition,
       // Same per-path counter the main send uses, so a newer send of any kind

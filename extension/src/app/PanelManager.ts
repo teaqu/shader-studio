@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { shaderLanguageForPath } from "@shader-studio/types";
 import type { ShaderLanguageId } from "@shader-studio/types";
 import { ShaderProvider } from "./ShaderProvider";
 import { Messenger } from "./transport/Messenger";
 import { WebviewTransport } from "./transport/WebviewTransport";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { Logger } from "./services/Logger";
-import { GlslFileTracker, getShaderLanguage } from "./GlslFileTracker";
+import { GlslFileTracker } from "./GlslFileTracker";
 import { ClientMessageHandler } from "./ClientMessageHandler";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { clearLoadedShaderProjectSnapshots } from "../language-services/ShaderAuthoringEnvironmentProvider";
@@ -138,7 +139,7 @@ export class PanelManager {
     this.webviewTransport.addPanel(panel);
 
     const initialLanguage = editor
-      ? getShaderLanguage(editor.document.uri.fsPath)
+      ? shaderLanguageForPath(editor.document.uri.fsPath) ?? "glsl"
       : "glsl";
     this.setupWebviewHtml(panel, layoutSlot, initialLanguage);
 

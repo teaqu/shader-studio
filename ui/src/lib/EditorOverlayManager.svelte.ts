@@ -1,14 +1,13 @@
 import type { Transport } from './transport/MessageTransport';
 import type { RenderingEngine } from '../../../rendering/src/types/RenderingEngine';
 import type { ShaderConfig } from '@shader-studio/types';
+import { parseVertexPassKey } from '@shader-studio/types';
 import {
   getEditorOverlayVisible,
   getVimMode,
   toggleEditorOverlay,
   toggleVimMode as toggleVimModeState,
 } from './state/editorOverlayState.svelte';
-
-const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
 
 function isScriptFile(path: string): boolean {
   const lower = path.toLowerCase();
@@ -120,7 +119,7 @@ export class EditorOverlayManager {
         });
         this.callbacks.handleShaderMessage(syntheticEvent);
       }
-    } else if (this.bufferName.startsWith(VERTEX_SOURCE_PREFIX)) {
+    } else if (parseVertexPassKey(this.bufferName) !== undefined) {
       // The overlay persists vertex source changes to its own file. The
       // extension then refreshes the owning shader with that source included.
       return;

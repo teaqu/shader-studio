@@ -9,11 +9,11 @@ import { ThumbnailCache } from "./ThumbnailCache";
 import { TabGroupResolver } from "./TabGroupResolver";
 import { ShaderGitMetadataProvider } from "./ShaderGitMetadataProvider";
 import { loadSlangAssetPaths } from "./SlangAssetManifest";
-import { getShaderLanguage } from "./GlslFileTracker";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
 import { ScriptEvaluator } from "./ScriptEvaluator";
-import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "./SlangDependencyGraph";
+import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "@shader-studio/utils";
+import { shaderLanguageForPath } from "@shader-studio/types";
 import type { ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
 
 interface ShaderExplorerFile {
@@ -333,7 +333,7 @@ export class ShaderExplorerBackend {
         requestId,
         path: shaderPath,
         previewPath,
-        language: getShaderLanguage(shaderPath),
+        language: shaderLanguageForPath(shaderPath) ?? "glsl",
         code: code,
         config: config,
         buffers: buffers,

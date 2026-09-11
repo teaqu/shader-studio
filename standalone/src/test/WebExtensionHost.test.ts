@@ -261,6 +261,24 @@ describe('WebExtensionHost', () => {
     expect(receive).not.toHaveBeenCalled();
   });
 
+  it('resolves @/ pass paths against the workspace root', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    workspace.writeText('/shaders/main.glsl', 'void mainImage(out vec4 c, vec2 x) { c = vec4(1.0); }');
+    workspace.writeText('/shared/lib.glsl', 'float lib() { return 1.0; }');
+    workspace.writeText('/shaders/main.sha.json', JSON.stringify({
+      version: '1.0', passes: { Image: {}, BufferA: { path: '@/shared/lib.glsl' } },
+    }));
+    const host = new WebExtensionHost(workspace);
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'requestFileContents', payload: {
+      shaderPath: '/shaders/main.glsl', bufferName: 'BufferA',
+    } });
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ type: 'fileContents', payload: {
+      bufferName: 'BufferA', path: '/shared/lib.glsl', code: expect.stringContaining('lib'),
+    } }));
+  });
+
   it('leaves cancelled and invalid file creation requests unchanged', async () => {
     const host = await createHost({ prompt: () => null });
     const receive = vi.fn();

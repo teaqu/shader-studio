@@ -21,7 +21,7 @@
   import { initVimMode, VimMode } from "monaco-vim";
   import { setupMonacoGlsl, setupMonacoJson, setupMonacoSlang, setupMonacoWgsl, setCompilerMarkers } from "@shader-studio/monaco";
   import type { AuthoringResource, ShaderConfig, ShaderLanguageId, ShaderStage, SlangSourceModule } from "@shader-studio/types";
-  import { isAuthoringValueType, isShaderLanguageId, shaderLanguageForPath, SHADER_LANGUAGES } from "@shader-studio/types";
+  import { isAuthoringValueType, isShaderLanguageId, parseVertexPassKey, resourcesForPass, shaderLanguageForPath, SHADER_LANGUAGES, stageForPass } from "@shader-studio/types";
   import { bindRenamePopupKeys } from "../editor/renamePopupKeys";
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
@@ -100,15 +100,13 @@
   }: Props = $props();
 
   const activePassName = $derived(
-    activeBufferName.startsWith("__shader_studio_vertex__:")
-      ? activeBufferName.slice("__shader_studio_vertex__:".length)
-      : activeBufferName,
+    parseVertexPassKey(activeBufferName) ?? activeBufferName,
   );
   // Names the Monarch grammar cannot know: script-declared custom uniforms plus
   // the configured input and storage resources the renderer declares for them.
   const dynamicUniformNames = $derived([
     ...customUniformInfo.map(({ name }) => name),
-    ...authoringResources(config, activePassName).map(({ name }) => name),
+    ...resourcesForPass(config, activePassName).map(({ name }) => name),
   ]);
 
   let containerEl = $state<HTMLDivElement | null>(null);
@@ -794,9 +792,9 @@
       languageId: language,
       generation: environmentGeneration,
       passName,
-      stage: bufferName.startsWith("__shader_studio_vertex__:") ? "vertex" : authoringStage(currentConfig, passName),
+      stage: parseVertexPassKey(bufferName) !== undefined ? "vertex" : stageForPass(currentConfig, passName, shaderPath),
       customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
-      resources: authoringResources(currentConfig, passName),
+      resources: resourcesForPass(currentConfig, passName),
       ...(commonFile ? { commonFile } : {}),
       virtualFiles: SHADER_LANGUAGES[language].hasImports
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
@@ -1021,25 +1019,6 @@
     unsubscribeTheme?.();
     destroyEditor();
   });
-
-  function authoringStage(shaderConfig: ShaderConfig | null, passName: string): ShaderStage {
-    const pass = shaderConfig?.passes?.[passName];
-    return pass && "type" in pass && pass.type === "compute" ? "compute" : "fragment";
-  }
-
-  function authoringResources(shaderConfig: ShaderConfig | null, passName: string): AuthoringResource[] {
-    const pass = shaderConfig?.passes?.[passName];
-    const inputs = pass && "inputs" in pass ? pass.inputs : undefined;
-    const resources: AuthoringResource[] = Object.entries(inputs ?? {}).map(([name, input], slot) => ({
-      name,
-      kind: input.type === "cubemap" ? "texture-cube" : "texture-2d",
-      slot,
-    }));
-    for (const [name, storage] of Object.entries(shaderConfig?.storage ?? {})) {
-      resources.push({ name, kind: "storage", elementType: storage.elementType });
-    }
-    return resources;
-  }
 </script>
 
 {#if isVisible}

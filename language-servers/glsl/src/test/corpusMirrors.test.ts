@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { stageForPass } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
 /**
@@ -222,7 +223,7 @@ const collectDocs = (): MirrorDoc[] => {
       const fileRel = pass.path ? resolveRef(configAbs, pass.path) : join(dir, `${stem}.glsl`);
       if (!existsSync(join(CORPUS, fileRel))) continue;
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
-      const stage = pass.type === "compute" ? "compute" : "fragment";
+      const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = pass.entryPoint ?? firstFn(text) ?? "mainImage";
       docs.push({
         configRel, pass: passName, fileRel, text, stage, entry,

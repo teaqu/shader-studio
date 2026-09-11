@@ -1,5 +1,6 @@
 import {
   SHADER_STUDIO_DEFAULT_ASSETS,
+  configPathForShader,
   shaderStudioDefaultAssetRelativePath,
   type ShaderConfig,
 } from '@shader-studio/types';
@@ -175,7 +176,7 @@ export function createDefaultWorkspaceFiles(): VirtualWorkspaceFile[] {
     return [
       { path, contents: code, createdAt: timestamp, modifiedAt: timestamp },
       {
-        path: path.replace(/\.(glsl|slang|wgsl)$/i, '.sha.json'),
+        path: configPathForShader(path),
         contents: JSON.stringify(config, null, 2),
         createdAt: timestamp,
         modifiedAt: timestamp,

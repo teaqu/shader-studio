@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import glslTranspiler from "glsl-transpiler";
+import { configPathForShader } from "@shader-studio/types";
 import { PathResolver } from "./PathResolver";
 
 export class GlslToJsTranspiler {
@@ -12,7 +13,7 @@ export class GlslToJsTranspiler {
     let glslSource = fs.readFileSync(shaderPath, "utf8");
 
     // Include Common pass code if a config exists
-    const configPath = shaderPath.replace(/\.(glsl|frag|vert)$/i, ".sha.json");
+    const configPath = configPathForShader(shaderPath);
     if (fs.existsSync(configPath)) {
       try {
         const config = JSON.parse(fs.readFileSync(configPath, "utf8"));

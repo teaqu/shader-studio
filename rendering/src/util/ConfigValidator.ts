@@ -55,6 +55,10 @@ export class ConfigValidator {
       if (passName === 'Image') {
         continue;
       }
+      if (passName !== "common" && passName.toLowerCase() === "common") {
+        errors.push(`Invalid pass name: ${passName} (did you mean "common"?)`);
+        continue;
+      }
       if (!this.GLSL_IDENTIFIER.test(passName)) {
         errors.push(`Invalid pass name: ${passName}`);
         continue;

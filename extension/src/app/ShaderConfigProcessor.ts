@@ -4,6 +4,7 @@ import { PathResolver } from "./PathResolver";
 import { Logger } from "./services/Logger";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import type { ShaderConfig } from "@shader-studio/types";
+import { vertexPassKey } from "@shader-studio/types";
 import type { ErrorHandler } from "./ErrorHandler";
 
 const noopErrorHandler = {
@@ -188,7 +189,7 @@ export class ShaderConfigProcessor {
       this.errorHandler.handlePersistentError({ type: 'error', payload: [`Vertex shader file not found: ${resolvedPath}`] });
       return;
     }
-    buffers[`__shader_studio_vertex__:${passName}`] = source;
+    buffers[vertexPassKey(passName)] = source;
   }
 
   /**

@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { SHADER_LANGUAGES } from "@shader-studio/types";
+import { SHADER_LANGUAGES, shaderPathsForConfig } from "@shader-studio/types";
 import { Constants } from "./Constants";
 
 export function isConfigPath(filePath: string): boolean {
@@ -18,30 +18,5 @@ export function getConfigPathForShaderPath(shaderPath: string): string {
 }
 
 export function getShaderPathFromConfigPath(configPath: string): string | undefined {
-  if (!isConfigPath(configPath)) {
-    return undefined;
-  }
-
-  const base = configPath.replace(/\.sha\.json$/i, "");
-  const glslPath = `${base}.glsl`;
-  if (fs.existsSync(glslPath)) {
-    return glslPath;
-  }
-
-  const fragPath = `${base}.frag`;
-  if (fs.existsSync(fragPath)) {
-    return fragPath;
-  }
-
-  const slangPath = `${base}.slang`;
-  if (fs.existsSync(slangPath)) {
-    return slangPath;
-  }
-
-  const wgslPath = `${base}.wgsl`;
-  if (fs.existsSync(wgslPath)) {
-    return wgslPath;
-  }
-
-  return undefined;
+  return shaderPathsForConfig(configPath).find((candidate) => fs.existsSync(candidate));
 }

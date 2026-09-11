@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import type { ShaderLanguageId } from "@shader-studio/types";
 
 export class GlslFileTracker {
   private lastViewedGlslFile: string | null = null;
@@ -60,9 +59,3 @@ export function isShaderDocument(document: vscode.TextDocument): boolean {
   return isGlslDocument(document) || isSlangDocument(document) || isWgslDocument(document);
 }
 
-export function getShaderLanguage(filePath: string): ShaderLanguageId {
-  if (filePath.endsWith('.slang')) {
-    return 'slang';
-  }
-  return filePath.endsWith('.wgsl') ? 'wgsl' : 'glsl';
-}

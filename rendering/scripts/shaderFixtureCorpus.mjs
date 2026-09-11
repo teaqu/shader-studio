@@ -1,5 +1,12 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+
+// Plain node with no transform: the ESM distributions have extensionless
+// relative imports, so load the CommonJS distributions. Run the workspace
+// builds before the corpus suites so these never go stale.
+const { resolveConfiguredPath, VERTEX_PASS_PREFIX } = createRequire(import.meta.url)("@shader-studio/types");
+const { resolveSlangIncludes, resolveSlangImports } = createRequire(import.meta.url)("@shader-studio/utils");
 
 const CONFIG_SUFFIX = ".sha.json";
 const TEXT_EXTENSIONS = new Set([".glsl", ".slang", ".wgsl"]);
@@ -14,49 +21,36 @@ function walk(directory) {
   });
 }
 
-function resolveFixturePath(root, ownerPath, fixturePath) {
-  if (fixturePath.startsWith("@/")) {
-    return path.join(root, fixturePath.slice(2));
-  }
-  return path.resolve(path.dirname(ownerPath), fixturePath);
+function fixturePathHost(root) {
+  return {
+    workspaceRootFor: () => root,
+    joinPath: (...segments) => path.join(...segments),
+    dirnameOf: (value) => path.dirname(value),
+    normalizePath: (value) => path.normalize(value),
+    isAbsolutePath: (value) => path.isAbsolute(value),
+  };
+}
+
+// Configured paths resolve against the owning config's directory (the
+// canonical rule in `resolveConfiguredPath`), not the shader's. Corpus
+// configs are always siblings of their shaders, so the anchor change is a
+// no-op on current fixtures; the step 7 parity test pins the agreement.
+function resolveFixturePath(root, configPath, fixturePath) {
+  return resolveConfiguredPath(fixturePathHost(root), configPath, fixturePath);
 }
 
 function readSource(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
 }
 
-function inlineSlangDependencies(source, sourcePath, visited = new Set()) {
-  const resolveDependency = (requestedPath, original) => {
-    const dependencyPath = path.resolve(path.dirname(sourcePath), requestedPath);
-    if (visited.has(dependencyPath)) {
-      return original;
-    }
-    const dependency = readSource(dependencyPath);
-    if (dependency === null) {
-      return original;
-    }
-    visited.add(dependencyPath);
-    return inlineSlangDependencies(dependency, dependencyPath, visited)
-      .replace(/^\s*module\s+[A-Za-z_]\w*\s*;\s*/m, "")
-      .replace(/^\s*implementing\s+[A-Za-z_]\w*\s*;\s*/m, "");
-  };
-
-  const withIncludes = source.replace(
-    /^\s*(?:#include|__include)\s+"([^"]+)"\s*;?\s*$/gm,
-    (original, requestedPath) => resolveDependency(requestedPath, original),
-  );
-
-  return withIncludes.replace(
-    /^\s*(?:__exported\s+)?import\s+("([^"]+)"|([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*))\s*;?\s*$/gm,
-    (original, _import, quotedPath, moduleName) => {
-      if (moduleName === "shader_studio" || moduleName === "shader-studio") {
-        return original;
-      }
-      const requestedPath = quotedPath
-        ?? `${moduleName.replace(/\./g, path.sep).replace(/_/g, "-")}.slang`;
-      return resolveDependency(requestedPath, original);
-    },
-  );
+// The production Slang resolver: includes first, then imports, exactly as
+// the extension host prepares sources for the Slang WASM compiler. Any
+// fixture the old regex inliner accepted but production rejects (or vice
+// versa) shows up as a corpus diff — investigate that, do not restore the
+// inliner.
+function inlineSlangDependencies(source, sourcePath) {
+  const withIncludes = resolveSlangIncludes(source, sourcePath, readSource).source;
+  return resolveSlangImports(withIncludes, sourcePath, readSource);
 }
 
 function mimeType(filePath) {
@@ -124,7 +118,7 @@ function buildProject(root, configPath, shaderPath) {
 
   for (const [passName, pass] of Object.entries(config.passes ?? {})) {
     if (pass?.path) {
-      const passPath = resolveFixturePath(root, shaderPath, pass.path);
+      const passPath = resolveFixturePath(root, configPath, pass.path);
       const passSource = readSource(passPath);
       if (passSource !== null) {
         buffers[passName] = language === "slang"
@@ -134,16 +128,16 @@ function buildProject(root, configPath, shaderPath) {
       }
     }
     if (pass?.vertex) {
-      const vertexPath = resolveFixturePath(root, shaderPath, pass.vertex);
+      const vertexPath = resolveFixturePath(root, configPath, pass.vertex);
       const vertexSource = readSource(vertexPath);
       if (vertexSource !== null) {
-        buffers[`__shader_studio_vertex__:${passName}`] = language === "slang"
+        buffers[`${VERTEX_PASS_PREFIX}${passName}`] = language === "slang"
           ? inlineSlangDependencies(vertexSource, vertexPath)
           : vertexSource;
       }
     }
     if (pass?.geometry?.type === "model" && pass.geometry.path) {
-      const modelPath = resolveFixturePath(root, shaderPath, pass.geometry.path);
+      const modelPath = resolveFixturePath(root, configPath, pass.geometry.path);
       if (fs.existsSync(modelPath)) {
         pass.geometry.resolved_path = dataUrl(modelPath);
       }
@@ -152,7 +146,7 @@ function buildProject(root, configPath, shaderPath) {
       if (!input?.path || input.type === "buffer" || input.type === "keyboard") {
         continue;
       }
-      const assetPath = resolveFixturePath(root, shaderPath, input.path);
+      const assetPath = resolveFixturePath(root, configPath, input.path);
       if (fs.existsSync(assetPath)) {
         input.resolved_path = dataUrl(assetPath);
       }

@@ -106,6 +106,20 @@ describe("ConfigValidator", () => {
           .toContain("Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model");
       });
 
+      it("should reject a capitalized Common pass name", () => {
+        const config = {
+          version: "1.0",
+          passes: {
+            Image: {},
+            Common: { path: "common.glsl" }
+          }
+        };
+
+        const result = ConfigValidator.validateConfig(config as never);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('Invalid pass name: Common (did you mean "common"?)');
+      });
+
       it("should reject geometry on the Common pass", () => {
         const config = {
           version: "1.0",

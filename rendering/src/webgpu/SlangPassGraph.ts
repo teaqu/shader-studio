@@ -1,4 +1,5 @@
 import type { ComputePass, ConfigInput, ShaderConfig, ShaderLanguageId } from "@shader-studio/types";
+import { vertexPassKey } from "@shader-studio/types";
 import type {
   DispatchSpec,
   RenderPassChannel,
@@ -121,7 +122,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
 
   if (!config?.passes) {
     return {
-      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [], resolvePassGeometry(undefined), options.buffers["__shader_studio_vertex__:Image"], {}, language)],
+      passes: [createImagePass(options.imageCode, canvasWidth, canvasHeight, [], resolvePassGeometry(undefined), options.buffers[vertexPassKey("Image")], {}, language)],
       storage: [],
       commonCode: "",
       warnings,
@@ -247,7 +248,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       language,
       geometry: resolvePassGeometry(passConfig),
       ...resolveModelGeometry(passConfig),
-      vertexSrc: options.buffers[`__shader_studio_vertex__:${name}`],
+      vertexSrc: options.buffers[vertexPassKey(name)],
       path,
       kind: "render",
       output: "texture",
@@ -270,7 +271,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers["__shader_studio_vertex__:Image"], resolveModelGeometry(imageConfig), language);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language);
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")

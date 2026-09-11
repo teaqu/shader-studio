@@ -1,14 +1,20 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import { shaderLanguageForPath } from '@shader-studio/types';
 import {
   GlslFileTracker,
   isGlslDocument,
   isSlangDocument,
   isWgslDocument,
   isShaderDocument,
-  getShaderLanguage,
 } from '../../app/GlslFileTracker';
+
+/** What every former `getShaderLanguage` call site now inlines: the shared
+ * case-insensitive resolver with an explicit GLSL fallback for unknown. */
+function getShaderLanguage(filePath: string): string {
+  return shaderLanguageForPath(filePath) ?? 'glsl';
+}
 
 suite('GlslFileTracker Test Suite', () => {
   let tracker: GlslFileTracker;
@@ -165,7 +171,13 @@ suite('GlslFileTracker Test Suite', () => {
 
     test('getShaderLanguage returns wgsl for .wgsl', () => {
       assert.strictEqual(getShaderLanguage('/test/a.wgsl'), 'wgsl');
-      assert.strictEqual(getShaderLanguage('/test/a.WGSL'), 'glsl');
+      assert.strictEqual(getShaderLanguage('/test/a.WGSL'), 'wgsl');
+    });
+
+    test('getShaderLanguage resolves uppercase extensions', () => {
+      assert.strictEqual(getShaderLanguage('/test/a.SLANG'), 'slang');
+      assert.strictEqual(getShaderLanguage('/test/a.WGSL'), 'wgsl');
+      assert.strictEqual(getShaderLanguage('/test/a.VERT'), 'glsl');
     });
   });
 

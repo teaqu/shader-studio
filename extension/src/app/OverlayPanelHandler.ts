@@ -3,8 +3,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { VERTEX_PASS_PREFIX } from "@shader-studio/types";
 
-const VERTEX_SOURCE_PREFIX = "__shader_studio_vertex__:";
+const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
 export class OverlayPanelHandler {
   private logger: Logger;

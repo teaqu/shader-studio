@@ -1,5 +1,5 @@
-import { shaderLanguageForPath } from '@shader-studio/types';
-import type { ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
+import { configPathForShader, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
+import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
 
 type HostMessage = { type: string; [key: string]: unknown };
@@ -9,6 +9,56 @@ const ACTIVE_SHADER_PATH = '/.shader-studio/active-shader';
 const EXPLORER_STATE_PATH = '/.shader-studio/explorer-state.json';
 const PROFILE_INDEX_PATH = '/.shader-studio/profiles/index.json';
 const DEFAULT_CONFIG_TEXT = JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }, null, 2);
+
+/** The virtual workspace is rooted at `/`, so `@/` resolves from there;
+ * `..` above the root clamps instead of escaping (the old resolver dropped
+ * such passes; clamping keeps them addressable and `exists` still filters
+ * anything that is not really there). */
+const virtualConfiguredPathHost: ConfiguredPathHost = {
+  workspaceRootFor: () => '/',
+  joinPath: (base, ...segments) => `${base}/${segments.join('/')}`,
+  dirnameOf: (value) => value.slice(0, value.lastIndexOf('/')) || '/',
+  normalizePath: (value) => {
+    const parts: string[] = [];
+    for (const part of value.replace(/\\/g, '/').split('/')) {
+      if (!part || part === '.') {
+        continue;
+      }
+      if (part === '..') {
+        parts.pop();
+      } else {
+        parts.push(part);
+      }
+    }
+    return `/${parts.join('/')}`;
+  },
+  isAbsolutePath: (value) => value.startsWith('/'),
+};
+
+/** Resolves a user-requested new filename against the shader's directory.
+ * Absolute names resolve from the workspace root; anything escaping the
+ * root returns null. This is the old `resolveSourcePath` rule, kept for
+ * destinations: only configured references use the shared resolver. */
+function resolveNewFilePath(shaderPath: string, requested: string): string | null {
+  const joined = requested.startsWith('/')
+    ? requested
+    : `${shaderPath.slice(0, shaderPath.lastIndexOf('/') + 1)}${requested}`;
+  const parts: string[] = [];
+  for (const part of joined.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') {
+      continue;
+    }
+    if (part === '..') {
+      if (!parts.length) {
+        return null;
+      }
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return `/${parts.join('/')}`;
+}
 
 const GLSL_STARTER_SHADER = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
@@ -56,10 +106,6 @@ interface WebExtensionHostOptions {
   resolveDefaultAsset?: (path: string) => string | null;
   prompt?: (message: string, initialValue: string) => string | null;
   confirm?: (message: string) => boolean;
-}
-
-function configPathForShader(shaderPath: string): string {
-  return shaderPath.replace(/\.(glsl|frag|slang|wgsl)$/i, '.sha.json');
 }
 
 function profilePath(id: string): string {
@@ -275,7 +321,10 @@ export class WebExtensionHost {
         if (!requested) {
           return;
         }
-        const path = this.resolveSourcePath(shaderPath, requested);
+        // A requested filename is a new-file destination, not a configured
+        // reference: resolve it against the shader's directory and refuse
+        // anything that escapes the workspace root.
+        const path = resolveNewFilePath(shaderPath, requested);
         if (!path) {
           return;
         }
@@ -402,16 +451,15 @@ export class WebExtensionHost {
         continue;
       }
       const sources = { Image: path, ...this.sourcePaths(path) };
-      const commonPath = Object.entries(sources).find(([name]) => name.toLowerCase() === 'common')?.[1];
+      const commonPath = Object.entries(sources).find(([name]) => name === 'common')?.[1];
       for (const [name, source] of Object.entries(sources)) {
         const target = documents.get(source);
-        if (!target || name.toLowerCase() === 'common') {
+        if (!target || name === 'common') {
           continue;
         }
         target.commonUri = commonPath ? new URL(`file://${commonPath}`).href : undefined;
         const pass = config.passes?.[name];
-        target.stage = name.startsWith('__shader_studio_vertex__:') ? 'vertex'
-          : pass && 'type' in pass && pass.type === 'compute' ? 'compute' : 'fragment';
+        target.stage = parseVertexPassKey(name) !== undefined ? 'vertex' : stageForPass(config, name, source);
       }
     }
     return [...documents.values()];
@@ -574,24 +622,8 @@ export class WebExtensionHost {
     });
   }
 
-  private resolveSourcePath(shaderPath: string, sourcePath: string): string | null {
-    const path = sourcePath.startsWith('/') ? sourcePath
-      : `${shaderPath.slice(0, shaderPath.lastIndexOf('/') + 1)}${sourcePath}`;
-    const parts: string[] = [];
-    for (const part of path.replace(/\\/g, '/').split('/')) {
-      if (!part || part === '.') {
-        continue;
-      }
-      if (part === '..') {
-        if (!parts.length) {
-          return null;
-        }
-        parts.pop();
-      } else {
-        parts.push(part);
-      }
-    }
-    return `/${parts.join('/')}`;
+  private resolveSourcePath(shaderPath: string, sourcePath: string): string {
+    return resolveConfiguredPath(virtualConfiguredPathHost, configPathForShader(shaderPath), sourcePath);
   }
 
   private sourcePaths(shaderPath: string): Record<string, string> {
@@ -603,7 +635,7 @@ export class WebExtensionHost {
       }
       for (const [key, source] of [
         [name, 'path' in pass ? pass.path : undefined],
-        [`__shader_studio_vertex__:${name}`, 'vertex' in pass ? pass.vertex : undefined],
+        [vertexPassKey(name), 'vertex' in pass ? pass.vertex : undefined],
       ]) {
         if (typeof source !== 'string' || !source || !key) {
           continue;

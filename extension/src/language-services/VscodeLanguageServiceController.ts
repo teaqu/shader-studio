@@ -4,7 +4,7 @@ import type {
   LanguageService,
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
-import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import { isCommonPassName, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import type { DiagnosticSink } from "../app/DiagnosticArbiter";
 import {
   ShaderAuthoringEnvironmentProvider,
@@ -274,7 +274,8 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       return;
     }
     await this.publishDiagnostics(document, opened.service, opened.generation);
-    if (this.environments.environmentFor(document)?.passName.toLowerCase() === "common") {
+    const passName = this.environments.environmentFor(document)?.passName;
+    if (passName !== undefined && isCommonPassName(passName)) {
       await this.refreshCommonDependents(document, language);
     }
   }
