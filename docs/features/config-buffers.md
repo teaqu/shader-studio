@@ -62,7 +62,7 @@ Each fragment buffer pass renders a `.glsl`, `.slang`, or `.wgsl` file to an off
 |------|---------|----------------------|
 | Relative | `passes/flow.slang` | The main shader file |
 | Absolute | `/Users/me/project/flow.glsl` | Filesystem root |
-| Workspace-root | `@/src/flow.glsl` | VS Code workspace root |
+| Workspace-root | `@/src/flow.glsl` | VS Code workspace root (`/` of the virtual workspace in the standalone browser host) |
 
 If the file doesn't exist yet, the editor shows a **Create File** button that generates it with a `mainImage` stub.
 

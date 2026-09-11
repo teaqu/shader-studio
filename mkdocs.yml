@@ -82,6 +82,10 @@ nav:
       - 3D Camera: features/camera.md
       - Vertex Shaders: features/vertex-shaders.md
       - WGSL Shaders: features/wgsl-authoring.md
+      - Language Support: features/language-support.md
+      - GLSL Support: features/glsl.md
+      - Slang Support: features/slang.md
+      - WGSL Support: features/wgsl.md
       - Language Servers: features/language-servers.md
       - Code Snippets: features/code-snippets.md
       - Performance: features/performance.md
