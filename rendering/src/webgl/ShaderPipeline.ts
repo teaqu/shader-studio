@@ -220,9 +220,10 @@ export class ShaderPipeline {
       const customDecl = this.customUniformManager?.getDeclarations() || undefined;
       let svelteHeaderLines: number;
       let commonCodeLineCount: number;
+      let vertexRange: { startLine: number; lineCount: number } | undefined;
       let shader: PiShader | null;
       try {
-        ({ headerLineCount: svelteHeaderLines, commonCodeLineCount } = this.shaderCompiler
+        ({ headerLineCount: svelteHeaderLines, commonCodeLineCount, vertexRange } = this.shaderCompiler
           .wrapShaderToyCode(pass.shaderSrc, {
             geometry: pass.geometry,
             commonCode,
@@ -263,10 +264,13 @@ export class ShaderPipeline {
           this.renderer,
           svelteHeaderLines,
           commonCodeLineCount,
+          shader.mErrorType === 0 && vertexRange !== undefined ? { range: vertexRange } : undefined,
         );
 
         const errors: string[] = formattedErrors.map(err => {
-          const errorPassName = err.isCommonBufferError ? "common" : pass.name;
+          const errorPassName = err.isVertexShaderError
+            ? `${pass.name} (vertex)`
+            : err.isCommonBufferError ? "common" : pass.name;
           return `${errorPassName}: ${err.message}`;
         });
 

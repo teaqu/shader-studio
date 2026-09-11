@@ -46,6 +46,7 @@ export class WgslCompiler implements AsyncSlangCompiler {
       wgsl: wrapped.source,
       sourceLineOffset: wrapped.preludeLineCount,
       sourceLineCount: wrapped.userLineCount,
+      ...(wrapped.vertexRange === undefined ? {} : { vertexRange: wrapped.vertexRange }),
       requiredFeatures: wrapped.requiredFeatures,
     };
   }

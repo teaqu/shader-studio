@@ -3,7 +3,7 @@ import type { SlangBindingChannel } from "./SlangBindingPlan";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
-import { allowNonUniformDerivatives } from "./wgslDiagnostics";
+import { allowNonUniformDerivatives, type WgslVertexRange } from "./wgslDiagnostics";
 import type { GeometryType } from "@shader-studio/types";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
@@ -21,6 +21,10 @@ export interface SlangPassPipelineDescriptor {
   sourceLineOffset?: number;
   /** User-source lines after the prelude; clamps generated-code errors. */
   sourceLineCount?: number;
+  /** Assembled-module range of the user vertex hook, when the pass has one. */
+  vertexRange?: WgslVertexAttribution["range"];
+  /** Vertex file name for diagnostics, when the caller knows it. */
+  vertexLabel?: string;
 }
 
 export interface SlangChannelResource {
@@ -47,6 +51,16 @@ export interface RemappedWgslDiagnosticLine {
   line: number;
   /** True when the error sits in generated code (prelude or entry points). */
   internal: boolean;
+  /** True when the error sits in the user's vertex hook. Never set with internal. */
+  vertex?: boolean;
+}
+
+/** Vertex-hook placement in assembled-module lines, reported by the prelude builders. */
+export interface WgslVertexAttribution {
+  /** Assembled-module range of the user hook (1-based start, length in lines). */
+  range: WgslVertexRange;
+  /** Vertex file name for the message, when the caller knows it. */
+  label?: string;
 }
 
 /** Maps assembled-module diagnostics onto user lines for this pass's language. */
@@ -54,9 +68,18 @@ export function remapWgslDiagnosticLine(
   lineNum: number,
   sourceLineOffset: number | undefined,
   userLineCount?: number,
+  vertexRange?: WgslVertexAttribution["range"],
 ): RemappedWgslDiagnosticLine {
   if (sourceLineOffset === undefined) {
     return { line: lineNum, internal: false };
+  }
+  if (
+    vertexRange !== undefined
+    && lineNum >= vertexRange.startLine
+    && lineNum < vertexRange.startLine + vertexRange.lineCount
+  ) {
+    // Inside the user's vertex hook: hook-relative line, never internal.
+    return { line: lineNum - vertexRange.startLine + 1, internal: false, vertex: true };
   }
   if (lineNum <= sourceLineOffset) {
     // Inside the generated prelude — a shader-studio bug, never remapped.
@@ -78,8 +101,12 @@ export function formatWgslDiagnostic(
   message: string,
   sourceLineOffset: number | undefined,
   userLineCount?: number,
+  vertex?: WgslVertexAttribution,
 ): string {
-  const remapped = remapWgslDiagnosticLine(lineNum, sourceLineOffset, userLineCount);
+  const remapped = remapWgslDiagnosticLine(lineNum, sourceLineOffset, userLineCount, vertex?.range);
+  if (remapped.vertex === true) {
+    return `${passName} (vertex${vertex?.label !== undefined ? ` ${vertex.label}` : ""}): L${remapped.line}:${linePos} ${message}`;
+  }
   return `${passName}: WGSL ${remapped.internal ? "internal: " : ""}L${remapped.line}:${linePos} ${message}`;
 }
 
@@ -216,6 +243,9 @@ export class SlangPassPipeline {
   /** Browser-compiler errors, remapped from assembled-module lines onto user lines. */
   private async moduleErrors(shaderModule: GPUShaderModule, sourceLineOffset?: number): Promise<string[]> {
     const info = await shaderModule.getCompilationInfo?.();
+    const vertex = this.descriptor.vertexRange === undefined
+      ? undefined
+      : { range: this.descriptor.vertexRange, label: this.descriptor.vertexLabel };
     return (info?.messages ?? [])
       .filter((message) => message.type === "error")
       .map((message) => formatWgslDiagnostic(
@@ -225,6 +255,7 @@ export class SlangPassPipeline {
         message.message,
         sourceLineOffset,
         this.descriptor.sourceLineCount,
+        vertex,
       ));
   }
 

@@ -241,6 +241,38 @@ describe("wrapWgslImageSource entry points", () => {
     expect(source).toContain("mainVertex(&position, &normal, &uv)");
   });
 
+  it("reports the hook range where the hook text actually sits in the module", () => {
+    const hook = [
+      "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {",
+      "  *uv = *uv * 2.0;",
+      "}",
+    ].join("\n");
+    const { source, vertexRange } = wrapWgslImageSource(IMAGE, { vertexCode: hook });
+    expect(vertexRange).toBeDefined();
+    const lines = source.split("\n");
+    const hookStart = lines.indexOf(hook.split("\n")[0]) + 1;
+    expect(hookStart).toBeGreaterThan(0);
+    expect(vertexRange?.startLine).toBe(hookStart);
+    expect(vertexRange?.lineCount).toBe(3);
+    expect(lines.slice(hookStart - 1, hookStart + 2).join("\n")).toBe(hook);
+  });
+
+  it("omits the hook range when the generated stub stands in", () => {
+    const { source, vertexRange } = wrapWgslImageSource(IMAGE);
+    expect(source).toContain("fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
+    expect(vertexRange).toBeUndefined();
+  });
+
+  it("reports the hook range for mesh geometry", () => {
+    const hook = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+    const { source, vertexRange } = wrapWgslImageSource(IMAGE, { geometry: "sphere", vertexCode: hook });
+    expect(vertexRange?.lineCount).toBe(1);
+    const lines = source.split("\n");
+    const hookStart = lines.indexOf(hook) + 1;
+    expect(hookStart).toBeGreaterThan(0);
+    expect(vertexRange?.startLine).toBe(hookStart);
+  });
+
   it("ports the mesh prelude with column-major matrices and location attributes", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
       geometry: "sphere",

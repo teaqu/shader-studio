@@ -963,3 +963,94 @@ describe('ShaderPipeline — concurrent shader messages', () => {
     expect(mocks.transport.postMessage).not.toHaveBeenCalled();
   });
 });
+
+describe('ShaderPipeline — unlocked vertex-source routing', () => {
+  let pipeline: ShaderPipeline;
+  let mocks: ReturnType<typeof makeMocks>;
+
+  const vertexCode = [
+    'fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {',
+    '  *uv = *uv * 2.0;',
+    '}',
+  ].join('\n');
+  const fragmentCode = 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks = makeMocks();
+    pipeline = new ShaderPipeline(
+      mocks.transport,
+      mocks.renderEngine,
+      mocks.shaderLocker,
+      mocks.shaderDebugManager,
+    );
+  });
+
+  function lastEventWith(data: unknown): void {
+    (pipeline as unknown as { lastEvent: unknown }).lastEvent = { data } as unknown as MessageEvent;
+  }
+
+  function shaderEvent(path: string, code: string): MessageEvent {
+    return {
+      data: { type: 'shaderSource', code, path, config: null, buffers: {} },
+    } as unknown as MessageEvent;
+  }
+
+  it('routes a linked vertex source as vertex when unlocked', () => {
+    const ownerPath = '/project/main.wgsl';
+    const vertexPath = '/project/main.vert.wgsl';
+    lastEventWith({
+      type: 'shaderSource', code: 'main', path: ownerPath,
+      bufferPathMap: { Image: ownerPath, '__shader_studio_vertex__:Image': vertexPath },
+    });
+
+    expect(pipeline.getShaderMessageTarget({ path: vertexPath, code: vertexCode }))
+      .toEqual({ kind: 'vertex', passName: 'Image' });
+  });
+
+  it('routes a cold vertex activation as vertex without an owner pass', () => {
+    expect(pipeline.getShaderMessageTarget({ path: '/wgsl/intellisense.vert.wgsl', code: vertexCode }))
+      .toEqual({ kind: 'vertex' });
+  });
+
+  it('keeps an oddly named fragment shader with mainImage as main', () => {
+    expect(pipeline.getShaderMessageTarget({ path: '/project/vertex.glsl', code: fragmentCode }))
+      .toEqual({ kind: 'main' });
+  });
+
+  it('keeps a vertex-named file with fragment content as main', () => {
+    expect(pipeline.getShaderMessageTarget({ path: '/project/effect.vert', code: fragmentCode }))
+      .toEqual({ kind: 'main' });
+  });
+
+  it('keeps an ordinary shader as main when unlocked', () => {
+    expect(pipeline.getShaderMessageTarget({ path: '/project/shader.wgsl', code: fragmentCode }))
+      .toEqual({ kind: 'main' });
+  });
+
+  it('refreshes the viewed owner for a linked vertex source', async () => {
+    const ownerPath = '/project/main.wgsl';
+    const vertexPath = '/project/main.vert.wgsl';
+    lastEventWith({
+      type: 'shaderSource', code: 'main', path: ownerPath,
+      bufferPathMap: { Image: ownerPath, '__shader_studio_vertex__:Image': vertexPath },
+    });
+
+    const result = await pipeline.handleShaderMessage(shaderEvent(vertexPath, vertexCode));
+
+    expect(result).toBeUndefined();
+    expect(mocks.transport.postMessage).toHaveBeenCalledWith({
+      type: 'refresh',
+      payload: { path: ownerPath },
+    });
+  });
+
+  it('posts no refresh for a cold vertex activation', async () => {
+    const result = await pipeline.handleShaderMessage(
+      shaderEvent('/wgsl/intellisense.vert.wgsl', vertexCode),
+    );
+
+    expect(result).toBeUndefined();
+    expect(mocks.transport.postMessage).not.toHaveBeenCalled();
+  });
+});

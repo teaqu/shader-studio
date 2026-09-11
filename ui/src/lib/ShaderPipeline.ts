@@ -21,9 +21,38 @@ import type { ShaderConfig } from "@shader-studio/types";
 export type ShaderMessageTarget =
   | { kind: 'main' }
   | { kind: 'buffer'; passName: string }
-  | { kind: 'vertex'; passName: string };
+  /**
+   * A vertex hook source. `passName` is present when the hook is linked to the
+   * viewed project through its buffer path map; absent for a cold vertex
+   * activation recognised by filename and content, which has no known owner.
+   */
+  | { kind: 'vertex'; passName?: string };
 
 const VERTEX_SOURCE_PREFIX = '__shader_studio_vertex__:';
+
+/**
+ * Vertex filename convention: a `.vert`/`.vs` suffix, or a `vert`/`vertex`
+ * affix (`.vert.` infix included, as the corpus uses `intellisense.vert.wgsl`).
+ * Matched against the basename so a `vertex` directory cannot misfire.
+ */
+const VERTEX_FILENAME_PATTERN = /(^|[._-])vert(ex)?([._]|$)|\.(vert|vs)$/i;
+
+function isVertexFileName(path: string | undefined): boolean {
+  if (!path) {
+    return false;
+  }
+  const basename = path.split(/[\\/]/).pop() ?? path;
+  return VERTEX_FILENAME_PATTERN.test(basename);
+}
+
+/** True when the source reads as a vertex hook: defines mainVertex, no mainImage. */
+function looksLikeVertexHook(code: string | undefined): boolean {
+  if (!code) {
+    return false;
+  }
+  const stripped = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  return /\bmainVertex\b/.test(stripped) && !/\bmainImage\b/.test(stripped);
+}
 
 /**
  * Revision marker echoed on a compile's reports so the host can drop reports
@@ -138,10 +167,19 @@ export class ShaderPipeline {
       }
 
       if (messageTarget.kind === 'vertex') {
-        // Vertex sources are not fragment buffers. Ask the extension to resend
-        // the owning shader so its current vertex source is compiled together
-        // with the pass, rather than attempting a buffer-only recompile.
-        this.refresh(this.shaderLocker.getLockedShaderPath());
+        // Vertex sources are not fragment buffers and never compile alone:
+        // the hook would redeclare mainVertex against the generated stub.
+        // Recompile the owning shader when it is known (locked, or linked to
+        // the viewed message). A cold vertex activation has no owner, so leave
+        // the current view alone instead of compiling or refresh-looping.
+        const ownerPath = this.shaderLocker.isLocked()
+          ? this.shaderLocker.getLockedShaderPath() ?? undefined
+          : messageTarget.passName !== undefined
+            ? (this.lastEvent?.data as ShaderSourceMessage | undefined)?.path ?? undefined
+            : undefined;
+        if (ownerPath !== undefined && !this.pathsEqual(ownerPath, path)) {
+          this.refresh(ownerPath);
+        }
         return undefined;
       }
 
@@ -161,10 +199,10 @@ export class ShaderPipeline {
   }
 
   public getShaderMessageTarget(
-    message: Pick<ShaderSourceMessage, "path">,
+    message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>,
   ): ShaderMessageTarget | null {
     if (!this.shaderLocker.isLocked()) {
-      return { kind: 'main' };
+      return this.matchUnlockedVertexTarget(message) ?? { kind: 'main' };
     }
 
     const lockedPath = this.shaderLocker.getLockedShaderPath();
@@ -190,8 +228,34 @@ export class ShaderPipeline {
       : null;
   }
 
-  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path">): boolean {
+  public canHandleShaderMessage(message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>): boolean {
     return this.getShaderMessageTarget(message) !== null;
+  }
+
+  /**
+   * Recognises a vertex source without a lock. Prefer the viewed project's
+   * buffer path map (authoritative, same predicate as the locked branch);
+   * fall back to filename plus hook content for a cold vertex activation the
+   * map cannot link. Anything else stays a main shader.
+   */
+  private matchUnlockedVertexTarget(
+    message: Pick<ShaderSourceMessage, "path"> & Partial<Pick<ShaderSourceMessage, "code">>,
+  ): ShaderMessageTarget | null {
+    const messagePath = message.path;
+    if (messagePath) {
+      const currentMessage = this.lastEvent?.data as ShaderSourceMessage | undefined;
+      const linked = Object.entries(currentMessage?.bufferPathMap ?? {}).find(
+        ([passName, passPath]) => passName.startsWith(VERTEX_SOURCE_PREFIX)
+          && this.pathsEqual(passPath, messagePath),
+      );
+      if (linked) {
+        return { kind: 'vertex', passName: linked[0].slice(VERTEX_SOURCE_PREFIX.length) };
+      }
+      if (isVertexFileName(messagePath) && looksLikeVertexHook(message.code)) {
+        return { kind: 'vertex' };
+      }
+    }
+    return null;
   }
 
   private pathsEqual(firstPath: string, secondPath: string): boolean {

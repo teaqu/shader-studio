@@ -14,9 +14,10 @@ import {
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
+import type { WgslVertexRange } from "./wgslDiagnostics";
 
 export type SlangCompileResult =
-  | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; requiredFeatures?: string[] }
+  | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; vertexRange?: WgslVertexRange; requiredFeatures?: string[] }
   | { success: false; errors: string[] };
 
 export type { SlangCompileOptions } from "./slangTypes";

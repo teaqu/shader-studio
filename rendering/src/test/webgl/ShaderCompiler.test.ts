@@ -127,6 +127,35 @@ describe("ShaderCompiler", () => {
       expect(vertexSource.indexOf("mainVertex(_vertexPosition")).toBeGreaterThan(vertexSource.indexOf("void mainVertex"));
     });
 
+    it("reports the hook range where the hook text actually sits in the vertex source", () => {
+      const hook = [
+        "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {",
+        "  position.xy += uv;",
+        "}",
+      ].join("\n");
+      const { vertexSource, vertexRange } = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        { vertexCode: hook },
+      );
+
+      expect(vertexRange).toBeDefined();
+      const lines = vertexSource.split("\n");
+      const hookStart = lines.indexOf(hook.split("\n")[0]) + 1;
+      expect(hookStart).toBeGreaterThan(0);
+      expect(vertexRange?.startLine).toBe(hookStart);
+      expect(vertexRange?.lineCount).toBe(3);
+      expect(lines.slice(hookStart - 1, hookStart + 2).join("\n")).toBe(hook);
+    });
+
+    it("omits the hook range when the generated stub stands in", () => {
+      const { vertexSource, vertexRange } = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+      );
+
+      expect(vertexSource).toContain("gl_Position = vec4(position, 0.0, 1.0);");
+      expect(vertexRange).toBeUndefined();
+    });
+
     it("provides configured channels and explicit-LOD helpers to vertex hooks", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         slotAssignments: [{ slot: 3, key: "iChannel3", isCustomName: false }],

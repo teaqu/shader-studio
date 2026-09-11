@@ -4,6 +4,15 @@ export interface FormattedErrorLine {
   message: string;
   line: number;
   isCommonBufferError: boolean;
+  isVertexShaderError: boolean;
+}
+
+/** Vertex-hook attribution for a vertex-stage compile log. */
+export interface VertexErrorAttribution {
+  /** Hook placement in vertexSource lines (before the GL prefix). */
+  range: { startLine: number; lineCount: number };
+  /** Vertex file name for the message, when the caller knows it. */
+  label?: string;
 }
 
 export class ShaderErrorFormatter {
@@ -13,6 +22,7 @@ export class ShaderErrorFormatter {
     renderer: PiRenderer,
     headerLineCount: number,
     commonCodeLineCount: number = 0,
+    vertex?: VertexErrorAttribution,
   ): FormattedErrorLine[] {
     const sanitized = error
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
@@ -49,6 +59,28 @@ export class ShaderErrorFormatter {
       const errorMatch = line.match(/ERROR: 0:(\d+):/);
       if (errorMatch) {
         const rawLine = parseInt(errorMatch[1], 10);
+
+        if (vertex !== undefined) {
+          // Vertex-stage log: common-code ranges are fragment coordinates and
+          // never apply. The GL prefix is shared by both stages, so the same
+          // renderer header count strips it here.
+          const vertexSourceLine = rawLine - rendererHeaderLines;
+          const inHook = vertexSourceLine >= vertex.range.startLine
+            && vertexSourceLine < vertex.range.startLine + vertex.range.lineCount;
+          const vertexLine = inHook
+            ? vertexSourceLine - vertex.range.startLine + 1
+            : Math.max(1, vertexSourceLine);
+          const adjustedMessage = line.replace(/ERROR: 0:\d+:/, `ERROR: 0:${vertexLine}:`);
+
+          results.push({
+            message: adjustedMessage,
+            line: vertexLine,
+            isCommonBufferError: false,
+            isVertexShaderError: inHook,
+          });
+          continue;
+        }
+
         let isCommonBufferError = false;
         let adjustedLine: number;
 
@@ -65,6 +97,7 @@ export class ShaderErrorFormatter {
           message: adjustedMessage,
           line: adjustedLine,
           isCommonBufferError,
+          isVertexShaderError: false,
         });
       } else if (results.length > 0) {
         // Non-ERROR continuation line — attach to previous error

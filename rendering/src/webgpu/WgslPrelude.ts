@@ -9,6 +9,7 @@ import {
   type SlangCustomUniformInfo,
 } from "./SlangPrelude";
 import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
+import type { WgslVertexRange } from "./wgslDiagnostics";
 import { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
 
 export { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
@@ -73,6 +74,11 @@ export interface WgslWrapResult {
    * past preludeLineCount + userLineCount sit in generated entry points.
    */
   userLineCount: number;
+  /**
+   * Assembled-module range of the user vertex hook, when the pass has one.
+   * Absent for capture mode and for passes without a hook.
+   */
+  vertexRange?: WgslVertexRange;
   /** `enable`/`requires` directives hoisted out of user source (Phase 6). */
   requiredFeatures: string[];
 }
@@ -357,8 +363,20 @@ struct _ss_MeshUniforms {
 
 const WGSL_VERTEX_HOOK = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>)";
 
-function buildMeshEntryPoints(vertexCode: string): string {
-  return `${vertexCode}
+/** An entry-point block plus where the user vertex hook landed inside it. */
+export interface WgslEntryPoints {
+  source: string;
+  /** 1-based line of the hook's first line within source. The hook always leads. */
+  vertexStartLine: number;
+  /** Lines of user hook code. 0 when the generated stub stands in. */
+  vertexLineCount: number;
+}
+
+function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
+  const hook = vertexCode.trim();
+  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  return {
+    source: `${hookSource}
 struct _ss_MeshVertexOut {
   @builtin(position) position: vec4<f32>,
   @location(0) uv: vec2<f32>,
@@ -388,12 +406,17 @@ struct _ss_MeshVertexOut {
   ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _ss_mesh.cameraPosition.xyz;
   return mainImage(uv * _ss_u.resolution.xy);
 }
-`;
+`,
+    vertexStartLine: 1,
+    vertexLineCount: hook === "" ? 0 : hookSource.split("\n").length,
+  };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): string {
-  if (vertexCode.trim()) {
-    return `${vertexCode}
+function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
+  const hook = vertexCode.trim();
+  if (hook !== "") {
+    return {
+      source: `${hook}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   _ss_initGlobals();
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
@@ -408,9 +431,13 @@ function buildFullscreenEntryPoints(vertexCode: string): string {
   _ss_initGlobals();
   return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
 }
-`;
+`,
+      vertexStartLine: 1,
+      vertexLineCount: hook.split("\n").length,
+    };
   }
-  return `${WGSL_VERTEX_HOOK} {}
+  return {
+    source: `${WGSL_VERTEX_HOOK} {}
 
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
@@ -422,7 +449,10 @@ function buildFullscreenEntryPoints(vertexCode: string): string {
   // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
   return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
 }
-`;
+`,
+    vertexStartLine: 1,
+    vertexLineCount: 0,
+  };
 }
 
 // Capture uniform block layout (bytes): coordGrid vec4<f32> @0
@@ -722,19 +752,45 @@ export function wrapWgslImageSource(userSource: string, options: WgslWrapOptions
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = plan.nextBinding + (options.storage?.length ?? 0);
     const body = `${prefix}${buildMeshPrelude(meshBinding)}${commonCode}`;
+    const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
+    const entries = buildMeshEntryPoints(vertexCode);
     return {
-      source: `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}${buildMeshEntryPoints(vertexCode || `${WGSL_VERTEX_HOOK} {}`)}`,
+      source: `${head}${entries.source}`,
       preludeLineCount: countLines(body) + 1,
       userLineCount: strippedUserSource.split("\n").length,
+      ...vertexRangeOf(head, entries),
       requiredFeatures: hoisted.enableNames,
     };
   }
   const body = `${prefix}${commonCode}`;
+  const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
+  const entries = buildFullscreenEntryPoints(vertexCode);
   return {
-    source: `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}${buildFullscreenEntryPoints(vertexCode)}`,
+    source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,
     userLineCount: strippedUserSource.split("\n").length,
+    ...vertexRangeOf(head, entries),
     requiredFeatures: hoisted.enableNames,
+  };
+}
+
+/**
+ * Locates the user hook in assembled-module lines. The entry block is appended
+ * to `head`, which always ends in a newline, so the block starts on the fresh
+ * line after head's last newline. No range when the stub stands in.
+ */
+function vertexRangeOf(
+  head: string,
+  entries: WgslEntryPoints,
+): Pick<WgslWrapResult, "vertexRange"> {
+  if (entries.vertexLineCount === 0) {
+    return {};
+  }
+  return {
+    vertexRange: {
+      startLine: countLines(head) + entries.vertexStartLine,
+      lineCount: entries.vertexLineCount,
+    },
   };
 }
 

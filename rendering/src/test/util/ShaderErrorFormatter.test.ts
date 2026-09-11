@@ -293,5 +293,66 @@ describe("ShaderErrorFormatter", () => {
       expect(result[1].message).toBe("ERROR: 0:2: error in pass code");
       expect(result[1].line).toBe(2);
     });
+
+    it("should never flag a vertex hook error as a common buffer error", () => {
+      // Hook occupies vertexSource lines 18-20 (assembled 24-26). Fragment
+      // maths would call raw line 25 common (common spans assembled 24-28),
+      // but the line belongs to the vertex stage.
+      const renderer = createMockRenderer(6);
+      const error = "ERROR: 0:25: 'qqq' : undeclared identifier";
+
+      const result = ShaderErrorFormatter.formatShaderError(error, renderer, 22, 5, {
+        range: { startLine: 18, lineCount: 3 },
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].isCommonBufferError).toBe(false);
+      expect(result[0].isVertexShaderError).toBe(true);
+      expect(result[0].message).toBe("ERROR: 0:2: 'qqq' : undeclared identifier");
+      expect(result[0].line).toBe(2);
+    });
+  });
+
+  describe("vertex-hook errors", () => {
+    // Vertex assembly under test: 6-line GL prefix, then vertexSource with a
+    // 3-line hook at vertexSource lines 10-12 (assembled lines 16-18).
+    const vertex = { range: { startLine: 10, lineCount: 3 } };
+
+    it("should attribute a hook error with a hook-relative line", () => {
+      const renderer = createMockRenderer(6);
+      const error = "ERROR: 0:18: 'qqq' : undeclared identifier";
+
+      const result = ShaderErrorFormatter.formatShaderError(error, renderer, 10, 0, vertex);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].message).toBe("ERROR: 0:3: 'qqq' : undeclared identifier");
+      expect(result[0].line).toBe(3);
+      expect(result[0].isCommonBufferError).toBe(false);
+      expect(result[0].isVertexShaderError).toBe(true);
+    });
+
+    it("should map generated wrapper lines vertex-relative without claiming the hook", () => {
+      const renderer = createMockRenderer(6);
+      const error = "ERROR: 0:22: 'gl_Position' : undeclared identifier";
+
+      const result = ShaderErrorFormatter.formatShaderError(error, renderer, 10, 0, vertex);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].message).toBe("ERROR: 0:16: 'gl_Position' : undeclared identifier");
+      expect(result[0].line).toBe(16);
+      expect(result[0].isVertexShaderError).toBe(false);
+    });
+
+    it("should keep fragment mapping untouched when no vertex info is given", () => {
+      const renderer = createMockRenderer(6);
+      const error = "ERROR: 0:18: 'qqq' : undeclared identifier";
+
+      const result = ShaderErrorFormatter.formatShaderError(error, renderer, 10, 0);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].message).toBe("ERROR: 0:2: 'qqq' : undeclared identifier");
+      expect(result[0].line).toBe(2);
+      expect(result[0].isVertexShaderError).toBe(false);
+    });
   });
 });

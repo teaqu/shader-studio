@@ -85,6 +85,68 @@ function nonBlackPixelCount(bytes: Uint8ClampedArray): number {
   return count;
 }
 
+/**
+ * A distinctive fill painted before each project. The engine keeps the last
+ * frame when a pass draws nothing, and all projects share one engine per
+ * language, so without a sentinel a fixture that rasterises no geometry
+ * silently inherits the previous fixture's pixels and every output assertion
+ * passes vacuously. Ported from the UI transport rig, which asserts full
+ * output correctness through the real pipeline; this sweep asserts engine
+ * liveness (the project drew something) at the engine layer.
+ */
+const SENTINEL_RGB: readonly [number, number, number] = [253, 7, 151];
+
+const SENTINEL_SOURCE: Record<ShaderLanguage, string> = {
+  glsl: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  fragColor = vec4(${SENTINEL_RGB.map((c) => (c / 255).toFixed(6)).join(", ")}, 1.0);
+}`,
+  slang: `float4 mainImage(float2 fragCoord)
+{
+  return float4(${SENTINEL_RGB.map((c) => (c / 255).toFixed(6)).join(", ")}, 1.0);
+}`,
+  wgsl: `fn mainImage(coord: vec2f) -> vec4f {
+  return vec4f(${SENTINEL_RGB.map((c) => (c / 255).toFixed(6)).join(", ")}, 1.0);
+}`,
+};
+
+/** True when every pixel is still the sentinel, i.e. the project drew nothing. */
+function isUntouched(bytes: Uint8ClampedArray): boolean {
+  if (bytes.length === 0) {
+    return true;
+  }
+  for (let offset = 0; offset < bytes.length; offset += 4) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      if (Math.abs(bytes[offset + channel]! - SENTINEL_RGB[channel]!) > 2) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+async function paintSentinel(harness: ShaderCanvasHarness, language: ShaderLanguage): Promise<void> {
+  await harness.compile({
+    path: `/sentinel.${language === "glsl" ? "glsl" : language}`,
+    image: SENTINEL_SOURCE[language],
+  });
+  await harness.renderAndReadRegion(0);
+}
+
+/**
+ * Fixtures whose rendered center region is entirely black, each resolved in
+ * Task 6 (see the UI rig's `knownBlackOutput` and the plan Handover):
+ * idle-keyboard 33channels, single-texel raw-workgroups, zeroed-storage
+ * storage-edit-colours. Anything not listed must draw a lit pixel.
+ */
+const knownBlackOutput = new Set<string>([
+  "slang/33channels.slang",
+  "wgsl/33channels.wgsl",
+  "slang/compute-lab/raw-workgroups.slang",
+  "wgsl/compute-lab/raw-workgroups.wgsl",
+  "slang/compute-lab/storage-edit-colours.slang",
+  "wgsl/compute-lab/storage-edit-colours.wgsl",
+]);
+
 interface DebugSweepFailure {
   project: string;
   pass: string;
@@ -747,6 +809,35 @@ describe("slang-multipass-test shader corpus", () => {
     expect(formatDebugSweepFailures(failures)).toBe("");
   });
 
+  it("output assertions are not vacuous", { timeout: 60_000 }, async () => {
+    // Each direction of the per-project output check must be able to fail:
+    // a broken readback or helper that always reports sentinel, or always
+    // reports lit, would let a dead pipeline pass. Constant shaders exercise
+    // both outcomes through the same compile/render/readback path.
+    const harness = harnesses.get("slang")!;
+    harness.resize(64, 64);
+    await paintSentinel(harness, "slang");
+    const sentinelRegion = await harness.renderAndReadRegion(0);
+    expect(isUntouched(sentinelRegion)).toBe(true);
+    expect(nonBlackPixelCount(sentinelRegion)).toBeGreaterThan(0);
+
+    await harness.compile({
+      path: "/vacuity-red.slang",
+      image: "float4 mainImage(float2 fragCoord)\n{\n  return float4(1.0, 0.0, 0.0, 1.0);\n}",
+    });
+    const redRegion = await harness.renderAndReadRegion(0);
+    expect(isUntouched(redRegion)).toBe(false);
+    expect(nonBlackPixelCount(redRegion)).toBeGreaterThan(0);
+
+    await harness.compile({
+      path: "/vacuity-black.slang",
+      image: "float4 mainImage(float2 fragCoord)\n{\n  return float4(0.0, 0.0, 0.0, 1.0);\n}",
+    });
+    const blackRegion = await harness.renderAndReadRegion(0);
+    expect(isUntouched(blackRegion)).toBe(false);
+    expect(nonBlackPixelCount(blackRegion)).toBe(0);
+  });
+
   for (const project of projects) {
     it(project.name, { timeout: 30_000 }, async () => {
       const harness = harnesses.get(project.language);
@@ -758,6 +849,7 @@ describe("slang-multipass-test shader corpus", () => {
         await expect(harness!.compile(project)).rejects.toThrow(expectedError);
         return;
       }
+      await paintSentinel(harness!, project.language as ShaderLanguage);
       try {
         await harness!.compile(project);
       } catch (error) {
@@ -771,12 +863,16 @@ describe("slang-multipass-test shader corpus", () => {
       for (const time of sampleTimes(project)) {
         region = await harness!.renderAndReadRegion(time);
       }
+      // The project drew something: a pass that rasterises nothing leaves the
+      // sentinel behind instead of failing.
+      expect(isUntouched(region)).toBe(false);
       const usesModel = Object.values(project.config?.passes ?? {}).some((pass) =>
         pass && "geometry" in pass && pass.geometry?.type === "model");
       if (usesModel) {
         expect(nonBlackPixelCount(region)).toBeGreaterThan(100);
+      } else if (!knownBlackOutput.has(project.name)) {
+        expect(nonBlackPixelCount(region)).toBeGreaterThan(0);
       }
-      expect(region).toHaveLength(60 * 60 * 4);
     });
   }
 });

@@ -10,6 +10,19 @@
  * restores GL behaviour: derivatives come from the 2x2 quad and the mip level
  * is chosen automatically, exactly as `texture()` does in the GLSL engine.
  */
+/**
+ * User vertex-hook placement in assembled-module lines. The range lives in the
+ * same coordinate space as `sourceLineOffset`/`sourceLineCount`: the WGSL
+ * module the browser compiler sees. Slang-module ranges are a different space
+ * and must never be fed to the WGSL remapper.
+ */
+export interface WgslVertexRange {
+  /** 1-based assembled-module line of the hook's first line. */
+  startLine: number;
+  /** Lines of user hook code. */
+  lineCount: number;
+}
+
 const DERIVATIVE_UNIFORMITY_FILTER = "diagnostic(off, derivative_uniformity);";
 
 const EXISTING_FILTER = /diagnostic\s*\(\s*[A-Za-z_]\w*\s*,\s*derivative_uniformity\s*\)/;

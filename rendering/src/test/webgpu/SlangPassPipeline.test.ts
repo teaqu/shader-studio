@@ -1678,6 +1678,7 @@ describe("SlangPassPipeline", () => {
       device: ReturnType<typeof fakeDevice>,
       sourceLineOffset?: number,
       sourceLineCount?: number,
+      vertex?: { range: { startLine: number; lineCount: number }; label?: string },
     ): SlangPassPipeline {
       return new SlangPassPipeline(device, "bgra8unorm", {
         name: "Image",
@@ -1689,8 +1690,15 @@ describe("SlangPassPipeline", () => {
         channels: [],
         ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
         ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
+        ...(vertex?.range === undefined ? {} : { vertexRange: vertex.range }),
+        ...(vertex?.label === undefined ? {} : { vertexLabel: vertex.label }),
       });
     }
+
+    // Assembled layout for the vertex cases below: 100 prelude lines, 10
+    // user lines (101-110), then a 3-line user vertex hook (111-113).
+    const hookRange = { startLine: 111, lineCount: 3 };
+    const hookVertex = { range: hookRange, label: "mesh.vert.wgsl" };
 
     it("remaps a user-source error to the 1-based user line", async () => {
       const device = fakeDevice([
@@ -1743,6 +1751,46 @@ describe("SlangPassPipeline", () => {
       const errors = await mappedPass(device).rebuild("// wgsl");
 
       expect(errors).toEqual(["Image: WGSL L103:5 unknown identifier 'nope'"]);
+    });
+
+    // The diagnostic pragma keeps the filter from injecting a line, so the
+    // effective offset stays 100: user lines 101-110, hook lines 111-113.
+    const noFilterSource = "diagnostic(off, derivative_uniformity);\n// wgsl";
+
+    it("attributes a vertex-hook error to the vertex file with a hook-relative line", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 112, linePos: 5, message: "cannot assign to value of type 'swizzle'" },
+      ]);
+      const errors = await mappedPass(device, 100, 10, hookVertex).rebuild(noFilterSource);
+
+      expect(errors).toEqual(["Image (vertex mesh.vert.wgsl): L2:5 cannot assign to value of type 'swizzle'"]);
+    });
+
+    it("keeps mapping fragment errors to user lines when a vertex hook is present", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 104, linePos: 5, message: "unknown identifier 'nope'" },
+      ]);
+      const errors = await mappedPass(device, 100, 10, hookVertex).rebuild(noFilterSource);
+
+      expect(errors).toEqual(["Image: WGSL L4:5 unknown identifier 'nope'"]);
+    });
+
+    it("keeps marking prelude errors internal when a vertex hook is present", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 50, linePos: 2, message: "prelude problem" },
+      ]);
+      const errors = await mappedPass(device, 100, 10, hookVertex).rebuild(noFilterSource);
+
+      expect(errors).toEqual(["Image: WGSL internal: L50:2 prelude problem"]);
+    });
+
+    it("keeps clamping generated entry-point errors past the hook as internal", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 1000, linePos: 1, message: "entry failure" },
+      ]);
+      const errors = await mappedPass(device, 100, 10, hookVertex).rebuild(noFilterSource);
+
+      expect(errors).toEqual(["Image: WGSL internal: L110:1 entry failure"]);
     });
   });
 });

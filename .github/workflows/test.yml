@@ -86,6 +86,13 @@ jobs:
       - name: Run shader fixture corpus E2E tests
         run: npm run test:e2e:corpus -w rendering
 
+      # The UI transport rig drives the real pipeline (ShaderPipeline ->
+      # ShaderProcessor) on an actual device. Same runner and prerequisites as
+      # the rendering suites above; macOS provides WebGPU, and the rig fails
+      # loudly rather than skipping when the device is absent.
+      - name: Run UI transport corpus E2E tests
+        run: npm run test:e2e -w ui
+
   vscode-e2e:
     runs-on: macos-15
     timeout-minutes: 45

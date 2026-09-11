@@ -1153,6 +1153,34 @@ describe("ShaderPipeline", () => {
       });
     });
 
+    it("labels a vertex-stage hook error with the pass and a hook-relative line", async () => {
+      mockShaderCompiler.wrapShaderToyCode.mockReturnValue({
+        headerLineCount: 0,
+        commonCodeLineCount: 0,
+        vertexRange: { startLine: 10, lineCount: 3 },
+      });
+      mockRenderer.GetShaderHeaderLines.mockReturnValue(6);
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce({
+        mProgram: null,
+        mResult: false,
+        mInfo: "ERROR: 0:18: 'qqq' : undeclared identifier",
+        mHeaderLines: 0,
+        mErrorType: 0,
+      } as PiShader);
+
+      const result = await shaderPipeline.compileShaderPipeline(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
+        null,
+        "/image.glsl",
+        { "__shader_studio_vertex__:Image": "void mainVertex(inout vec3 x) { qqq; }" },
+      );
+
+      expect(result).toEqual({
+        success: false,
+        errors: ["Image (vertex): ERROR: 0:3: 'qqq' : undeclared identifier"],
+      });
+    });
+
     it("preserves failed compilation errors and warnings without duplicating the combined feature warning", async () => {
       const compileShaders = vi.spyOn(
         shaderPipeline as unknown as {

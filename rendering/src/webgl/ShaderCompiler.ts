@@ -23,6 +23,11 @@ export interface WrappedShaderSource {
   wrappedCode: string;
   headerLineCount: number;
   commonCodeLineCount: number;
+  /**
+   * User-hook placement in vertexSource lines (before the GL prefix), when
+   * the pass has a hook. Absent for the generated stub.
+   */
+  vertexRange?: { startLine: number; lineCount: number };
 }
 
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
@@ -115,11 +120,15 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       : "gl_FragCoord.xy";
     const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
     const headerLineCount = (header.match(/\n/g) || []).length;
+    const vertexBuilt = this.buildVertexSource(mesh, options);
     return {
-      vertexSource: this.buildVertexSource(mesh, options),
+      vertexSource: vertexBuilt.source,
       wrappedCode: shaderCode,
       headerLineCount,
       commonCodeLineCount,
+      ...(vertexBuilt.vertexLineCount === 0 ? {} : {
+        vertexRange: { startLine: vertexBuilt.vertexStartLine, lineCount: vertexBuilt.vertexLineCount },
+      }),
     };
   }
 
@@ -454,29 +463,53 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     };
   }
 
-  private buildVertexSource(mesh: boolean, options: ShaderWrapOptions): string {
+  private buildVertexSource(mesh: boolean, options: ShaderWrapOptions): {
+    source: string;
+    vertexStartLine: number;
+    vertexLineCount: number;
+  } {
     const hasHook = Boolean(options.vertexCode?.trim());
     if (!hasHook && !mesh) {
-      return "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }";
+      return {
+        source: "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        vertexStartLine: 1,
+        vertexLineCount: 0,
+      };
     }
     const hook = hasHook ? `${options.vertexCode}\n` : "";
     const vertexUniforms = hasHook ? this.buildVertexUniformDeclarations(options) : "";
     const channelHelpers = hasHook
       ? this.buildVertexChannelHelpers(options.slotAssignments, options.channelTypes)
       : "";
+    // Lines of real hook code inside vertexSource. Leading blank lines in the
+    // user code belong to no hook line, so the range starts at real code.
+    const codeLines = (options.vertexCode ?? "").split("\n");
+    const firstCodeLine = codeLines.findIndex((line) => line.trim() !== "");
+    let lastCodeLine = codeLines.length - 1;
+    while (lastCodeLine >= 0 && codeLines[lastCodeLine].trim() === "") {
+      lastCodeLine -= 1;
+    }
+    const place = (head: string, tail: string): {
+      source: string;
+      vertexStartLine: number;
+      vertexLineCount: number;
+    } => ({
+      source: `${head}${hook}\n${tail}`,
+      vertexStartLine: (head.match(/\n/g) ?? []).length + 1 + (hasHook ? firstCodeLine : 0),
+      vertexLineCount: hasHook ? lastCodeLine - firstCodeLine + 1 : 0,
+    });
     if (!mesh) {
-      return `in vec2 position;
+      return place(`in vec2 position;
 ${vertexUniforms}${channelHelpers}
-${hook}
-void main() {
+`, `void main() {
  vec3 _vertexPosition = vec3(position, 0.0);
  vec3 _vertexNormal = vec3(0.0);
  vec2 _vertexUv = position * 0.5 + 0.5;
  mainVertex(_vertexPosition, _vertexNormal, _vertexUv);
  gl_Position = vec4(_vertexPosition, 1.0);
-}`;
+}`);
     }
-    return `layout(location = 0) in vec3 position;
+    return place(`layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 uniform mat4 _meshModel;
@@ -487,8 +520,7 @@ ${vertexUniforms}${channelHelpers}
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
-${hook}
-void main() {
+`, `void main() {
  vec3 _vertexPosition = position;
  vec3 _vertexNormal = normal;
  vec2 _vertexUv = uv;
@@ -498,7 +530,7 @@ void main() {
  ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
  ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;
-}`;
+}`);
   }
 
   private buildVertexUniformDeclarations(options: ShaderWrapOptions): string {
