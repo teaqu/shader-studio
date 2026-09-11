@@ -624,6 +624,7 @@ export class SlangLanguageService implements LanguageService {
           const source = [prefix, stripEditorImport(commonSource), stripEditorImport(authoredSource)].filter(Boolean).join("\n");
           const compiled = session.loadModuleFromSource(source, moduleName(document.text, document.uri), sourcePath(document.uri));
           if (!compiled) {
+            console.log('[rename-trace] TEMP compile-fail', document.uri, JSON.stringify(this.module.getLastError?.().message ?? '').slice(0, 1500));
             return false;
           }
           compiled.delete?.();
@@ -1425,7 +1426,9 @@ function authoredPointRange(source: string | undefined, offset: number): Range |
 }
 
 function nativeDefinitionKey(server: SlangLanguageServer, uri: string, position: { line: number; character: number }): string | undefined {
-  const location = consumeList(server.gotoDefinition(uri, position), (item) => item)[0];
+  const raw = server.gotoDefinition(uri, position);
+  console.log('[rename-trace] TEMP gotodef', uri, JSON.stringify(position), JSON.stringify(raw)?.slice(0, 300));
+  const location = consumeList(raw, (item) => item)[0];
   return location ? `${location.uri}\0${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}` : undefined;
 }
 

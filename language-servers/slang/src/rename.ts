@@ -304,7 +304,7 @@ function analyze(documents: readonly SlangRenameDocument[], sources: ReadonlyMap
 function genericFunctions(files: readonly { uri: string; text: string }[]): { name: string; declaration: Point }[] {
   const found: { name: string; declaration: Point }[] = [];
   for (const file of files) {
-    for (const match of file.text.matchAll(/\bgeneric\s*<[^>{}()\n]*>\s*[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\(/g)) {
+    for (const match of file.text.matchAll(/\b(?:__)?generic\s*<[^>{}()\n]*>\s*[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\(/g)) {
       const name = match[1]!;
       const offset = match.index! + match[0].lastIndexOf(name);
       found.push({ name, declaration: { uri: file.uri, offset } });
@@ -332,10 +332,16 @@ function normalize(source: string, uri: string) {
     .replace(/:\s*SV_[A-Za-z0-9_]+\b/g, blank)
     // Lower generic syntax to an ordinary declaration/call shape. The generic
     // parameter list and explicit specialization are not authored references;
-    // blanks retain every subsequent authored offset.
-    .replace(/\bgeneric\s*<[^>{}()\n]*>/g, blank)
+    // blanks retain every subsequent authored offset. Both spellings lower:
+    // `generic` is what authors write, `__generic` is what the bundled
+    // compiler accepts.
+    .replace(/\b(?:__)?generic\s*<[^>{}()\n]*>/g, blank)
     .replace(/\b([A-Za-z_]\w*)\s*<\s*(?:float|int|uint|bool|float[234]|int[234]|uint[234]|bool[234])\s*>/g,
       (_match, name: string) => name + ' '.repeat(_match.length - name.length));
+  // Inside `import ... ;`: the statement introduces module names, not authored
+  // bindings, so the whole tail is blanked. Imported names keep no occurrence
+  // and any rename touching them is declined; locals stay renamable.
+  let importTail = false;
   for (const match of input.matchAll(tokens)) {
     const token = match[0];
     const start = match.index!;
@@ -343,16 +349,26 @@ function normalize(source: string, uri: string) {
     if (token.startsWith('/*') && !token.endsWith('*/')) {
       return undefined;
     }
+    if (!comment && token === 'import') {
+      importTail = true;
+    }
     if (!comment && (token === '#' || token.startsWith('"') || token.startsWith("'")
-      || /^(?:import|module|implementing|namespace|interface|extension|typealias|typedef|__include|__exported|class|enum)$/.test(token))) {
+      || /^(?:module|implementing|namespace|interface|extension|typealias|typedef|__include|__exported|class|enum)$/.test(token))) {
       return undefined;
     }
     let replacement = comment || token === 'static' ? token.replace(/[^\r\n]/g, ' ') : numericType(token);
-    if (!comment && /^[A-Za-z_]/.test(token)) {
-      identifiers.push({ uri, offset: start, name: token, member: previousCodeToken === '.' });
-    }
-    if (!comment && token.trim()) {
-      previousCodeToken = token;
+    if (importTail) {
+      replacement = token.replace(/[^\r\n]/g, ' ');
+      if (token === ';' || token.includes('\n')) {
+        importTail = false;
+      }
+    } else {
+      if (!comment && /^[A-Za-z_]/.test(token)) {
+        identifiers.push({ uri, offset: start, name: token, member: previousCodeToken === '.' });
+      }
+      if (!comment && token.trim()) {
+        previousCodeToken = token;
+      }
     }
     // A lone '<' or '>' may be a comparison. Generic types/attributes are
     // rejected by the strict parser, never stripped into a different program.

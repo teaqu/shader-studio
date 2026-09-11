@@ -70,7 +70,6 @@ float curve(float value) { return value; }`);
   it("rejects unsupported Slang syntax instead of making a partial rename", () => {
     const unsupported = [
       "#define TONE tone\nfloat tone(float x) { return x; }",
-      "import palette;\nfloat tone(float x) { return x; }",
       "vector<float, 3> tone(vector<float, 3> x) { return x; }",
       "[BackwardDerivative(toneDerivative)] float tone(float x) { return x; }",
     ];
@@ -79,8 +78,27 @@ float curve(float value) { return value; }`);
     }
   });
 
+  it("renames a local in a file with an import line without touching the import", () => {
+    const source = "import palette;\nfloat tone(float x) { return x; }\nfloat h(float v) { return tone(v); }";
+    const edit = renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve");
+    expect(apply(source, edit)).toBe("import palette;\nfloat curve(float x) { return x; }\nfloat h(float v) { return curve(v); }");
+  });
+
+  it("refuses an imported name while renaming locals around it", () => {
+    const source = "import palette;\nfloat h(float v) { return tone(v); }";
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve")).toBeNull();
+    expect(renameSlangSymbol([document(source)], uri, position(source, "palette"), "curve")).toBeNull();
+  });
+
   it("binds a unique generic helper call without guessing overloaded names", () => {
     const source = "generic<T> T tone(T value) { return value; }\nfloat helper() { return tone<float>(1.0); }";
+    expect(apply(source, renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve"))).toBe(source.replaceAll("tone", "curve"));
+    const ambiguous = `${source}\nfloat tone(float value) { return value; }`;
+    expect(renameSlangSymbol([document(ambiguous)], uri, position(ambiguous, "tone"), "curve")).toBeNull();
+  });
+
+  it("binds the compiler-accepted __generic spelling the same way", () => {
+    const source = "__generic<T> T tone(T value) { return value; }\nfloat helper(float v) { return tone<float>(v); }";
     expect(apply(source, renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve"))).toBe(source.replaceAll("tone", "curve"));
     const ambiguous = `${source}\nfloat tone(float value) { return value; }`;
     expect(renameSlangSymbol([document(ambiguous)], uri, position(ambiguous, "tone"), "curve")).toBeNull();
@@ -134,6 +152,35 @@ float curve(float value) { return value; }`);
       document(second, secondUri, commonFile),
       document(common, commonUri),
     ], commonUri, position(common, "tone"), "curve")).toBeNull();
+  });
+
+  it("refuses struct methods from declaration and member call sites", () => {
+    // Member dispatch cannot be modeled safely: the native declaration index
+    // is unavailable, so any method rename is declined rather than partial.
+    const source = "struct S { float tone(float x) { return x; } };\nfloat h(S s) { return s.tone(1.0); }";
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone", 0), "curve")).toBeNull();
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone", 1), "curve")).toBeNull();
+  });
+
+  it("refuses a method when a same-named free function exists", () => {
+    const source = "struct S { float tone(float x) { return x; } };\nfloat tone(float x) { return x * 2.0; }\nfloat h(S s, float v) { return s.tone(v) + tone(v); }";
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone", 0), "curve")).toBeNull();
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone", 2), "curve")).toBeNull();
+  });
+
+  it("refuses a generic type parameter", () => {
+    const source = "__generic<T> T tone(T x) { return x; }";
+    expect(renameSlangSymbol([document(source)], uri, position(source, "T", 0), "curve")).toBeNull();
+  });
+
+  it("refuses symbols reached through __include", () => {
+    const source = '__include "common.slang";\nfloat h(float v) { return tone(v); }';
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve")).toBeNull();
+  });
+
+  it("refuses a call to an undeclared function", () => {
+    const source = "float h(float v) { return tone(v); }";
+    expect(renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve")).toBeNull();
   });
 
   it("ignores an unrelated invalid open document", () => {

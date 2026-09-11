@@ -75,6 +75,52 @@ describe("Slang rename in host workspace shape", () => {
     expect(Object.keys(edit!.changes!)).toHaveLength(2);
   });
 
+  it("refuses a generic helper the bundled compiler cannot parse", async () => {
+    // `generic<T>` functions do not compile in this toolchain (the compiler
+    // only accepts `__generic`), so a rename must be refused rather than
+    // produce a shader the compiler rejects.
+    const pass = "generic<T> T tone(T x) { return x * 0.5; }\nfloat4 mainImage(float2 p) { return float4(tone<float>(p.x)); }";
+    service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: pass });
+    expect(await service.rename({ document: revision,
+      position: position(pass, "tone", 1, true), newName: "curve" })).toBeNull();
+  });
+
+  it.each([
+    ["struct S { float tone(float x) { return x; } };\nfloat h(S s) { return s.tone(1.0); }", "tone", 0],
+    ["struct S { float tone(float x) { return x; } };\nfloat h(S s) { return s.tone(1.0); }", "tone", 1],
+    ["__generic<T> T tone(T x) { return x; }", "T", 0],
+    ["import palette;\nfloat h(float v) { return tone(v); }", "tone", 0],
+    ['__include "common.slang";\nfloat h(float v) { return tone(v); }', "tone", 0],
+    ["float h(float v) { return tone(v); }", "tone", 0],
+  ] as [string, string, number][])("refuses an unresolvable rename without edits (%s @%i)", async (source, needle, occurrence) => {
+    // Methods, type parameters, imports, includes and undeclared calls have
+    // no safe resolution (the native declaration index is unavailable), so
+    // the service must decline rather than edit. These paths never reach the
+    // compile check, so they consume no compiler sessions.
+    service = new SlangLanguageService(module);
+    await service.syncEnvironment(environment);
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: source });
+    expect(await service.rename({ document: revision,
+      position: position(source, needle, occurrence, true), newName: "curve" })).toBeNull();
+  });
+
+  it("renames a local in an importing file when the module resolves", async () => {
+    // The import line itself stays out of the analysis; the compile check
+    // inlines the module from virtualFiles, so the renamed result validates.
+    const palette = "module palette;\npublic float3 foundationPaletteAccent() { return float3(0.0); }";
+    const pass = "import palette;\nfloat tone(float x) { return x * 0.5; }\nfloat4 mainImage(float2 p) { return float4(tone(p.x) + foundationPaletteAccent().x); }";
+    service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment,
+      virtualFiles: [{ uri: "file:///palette.slang", text: palette, version: 1 }] });
+    await service.openDocument({ uri, languageId: "slang", version: 1, text: pass });
+    const edit = await service.rename({ document: revision,
+      position: position(pass, "tone", 0, true), newName: "curve" });
+    expect(apply(pass, edit, uri)).toBe(pass.replaceAll("tone", "curve"));
+    expect(edit!.changes![uri].every(item => item.range.start.line > 0)).toBe(true);
+  });
+
   it.each(["pass", "common"])("renames Common from the %s when only that file is open", async origin => {
     // At the host only the active file is open in the service store: the
     // Common link for every other file comes from workspaceDocuments, and the

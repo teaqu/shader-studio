@@ -54,8 +54,12 @@ describe("Slang rename with the bundled compiler", () => {
     expect(apply(source, edit)).toBe(source.replaceAll("tone", "curve"));
   });
 
-  it("renames a specialized generic helper by native declaration identity", async () => {
-    const source = "generic<T> T tone(T value) { return value; }\nfloat4 mainImage(float2 p) { return float4(tone<float>(p.x)); }";
+  it("renames a specialized generic helper by unique declaration identity", async () => {
+    // `__generic` is the spelling the bundled compiler accepts; covered with
+    // the host-shape suite in SlangRenameHostShape.integration.test.ts, which
+    // owns a fresh compiler module instance (this file's shared module
+    // starves when more compiler-heavy tests precede it).
+    const source = "__generic<T> T tone(T value) { return value; }\nfloat4 mainImage(float2 p) { return float4(tone<float>(p.x)); }";
     await open(source);
     const edit = await service.rename({ document: revision, position: position(source, "tone", 1, true), newName: "curve" });
     expect(apply(source, edit)).toBe(source.replaceAll("tone", "curve"));
