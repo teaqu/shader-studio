@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { Logger } from "./services/Logger";
 import { GlslFileTracker } from "./GlslFileTracker";
 import { Messenger } from "./transport/Messenger";
-import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
+import { getConfigPathForShaderPath, isConfigPath } from "./ShaderConfigPaths";
 import { isShaderDocument } from "./GlslFileTracker";
 
 export class ConfigGenerator {
@@ -94,6 +94,18 @@ export class ConfigGenerator {
 
   private async createConfigFile(shaderFilePath: string): Promise<void> {
     const configFilePath = getConfigPathForShaderPath(shaderFilePath);
+
+    // The mapping must never resolve to the shader itself: writing the config
+    // over the source destroys it with no undo. Refuse anything that is not a
+    // config path, including extensions the registry does not know.
+    if (!isConfigPath(configFilePath) || configFilePath === shaderFilePath) {
+      const message =
+        `Cannot generate config for ${path.basename(shaderFilePath)}: unsupported shader file extension.`;
+      this.logger.error(message);
+      vscode.window.showErrorMessage(message);
+      return;
+    }
+
     const baseName = path.basename(configFilePath, ".sha.json");
 
     // Check if config file already exists

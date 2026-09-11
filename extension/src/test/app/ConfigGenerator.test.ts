@@ -523,6 +523,74 @@ suite('ConfigGenerator Test Suite', () => {
     
   });
 
+  test('should write <name>.sha.json and leave the .vert source untouched', async () => {
+    const fs = require('fs');
+    const path = require('path');
+
+    // A .vert file opens with the glsl language id, so the generator accepts it.
+    const shaderPath = '/mock/path/vertex_shader.vert';
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: {
+        document: {
+          fileName: shaderPath,
+          languageId: 'glsl',
+          uri: vscode.Uri.file(shaderPath),
+        },
+      } as vscode.TextEditor,
+      configurable: true,
+      writable: true,
+    });
+
+    // The shader itself exists; nothing else does.
+    sandbox.stub(fs, 'existsSync').callsFake((filePath: unknown) => filePath === shaderPath);
+    const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
+    sandbox.stub(vscode.window, 'showWarningMessage').resolves('Yes' as any);
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+
+    await configGenerator.generateConfig();
+
+    const expectedConfigPath = path.join('/mock/path', 'vertex_shader.sha.json');
+    sinon.assert.calledWith(writeFileSyncStub, expectedConfigPath, sinon.match(/"version": "1.0"/));
+    assert.strictEqual(
+      writeFileSyncStub.calledWith(shaderPath, sinon.match.any),
+      false,
+      'generator must never write over the shader source itself',
+    );
+    sinon.assert.calledWith(executeCommandStub, 'vscode.open', vscode.Uri.file(expectedConfigPath));
+  });
+
+  test('should refuse an unregistered stage extension instead of writing over it', async () => {
+    const fs = require('fs');
+
+    // .geom is registered as GLSL in package.json but is not a previewable
+    // shader extension in the registry, so no config path can be derived.
+    const shaderPath = '/mock/path/geometry.geom';
+    Object.defineProperty(vscode.window, 'activeTextEditor', {
+      value: {
+        document: {
+          fileName: shaderPath,
+          languageId: 'glsl',
+          uri: vscode.Uri.file(shaderPath),
+        },
+      } as vscode.TextEditor,
+      configurable: true,
+      writable: true,
+    });
+
+    sandbox.stub(fs, 'existsSync').returns(true);
+    const writeFileSyncStub = sandbox.stub(fs, 'writeFileSync');
+    const showErrorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
+    sandbox.stub(vscode.window, 'showInformationMessage').resolves();
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+
+    await configGenerator.generateConfig();
+
+    sinon.assert.notCalled(writeFileSyncStub);
+    sinon.assert.calledWith(showErrorStub, sinon.match('geometry.geom'));
+    sinon.assert.notCalled(executeCommandStub);
+  });
+
   test('should handle errors gracefully', async () => {
     // Mock file system error
     const fs = require('fs');

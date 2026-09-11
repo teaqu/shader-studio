@@ -34,6 +34,28 @@ suite('ShaderConfigPaths', () => {
     });
   });
 
+  suite('getConfigPathForShaderPath', () => {
+    test('maps a .glsl shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.glsl'), '/abs/foo.sha.json');
+    });
+
+    test('maps a .frag shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.frag'), '/abs/foo.sha.json');
+    });
+
+    test('maps a .vert shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.vert'), '/abs/foo.sha.json');
+    });
+
+    test('maps a .slang shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.slang'), '/abs/foo.sha.json');
+    });
+
+    test('maps a .wgsl shader to its config path', () => {
+      assert.strictEqual(getConfigPathForShaderPath('/abs/foo.wgsl'), '/abs/foo.sha.json');
+    });
+  });
+
   suite('getShaderPathFromConfigPath', () => {
     test('returns .glsl path when .glsl file exists', () => {
       existsStub.withArgs('/abs/foo.glsl').returns(true);
