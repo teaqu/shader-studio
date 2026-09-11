@@ -67,7 +67,9 @@ describe('VirtualWorkspace', () => {
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, seedFiles);
     const save = store.save.bind(store);
-    store.save = async () => { throw new Error('disk full'); };
+    store.save = async () => {
+      throw new Error('disk full'); 
+    };
     await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }])).rejects.toThrow('disk full');
     expect(workspace.list()).toEqual(seedFiles);
     expect(await store.load()).toEqual(seedFiles);
@@ -77,15 +79,68 @@ describe('VirtualWorkspace', () => {
     expect((await store.load())?.[0].contents).toBe('recovered');
   });
 
-  it('rolls back the whole persisted snapshot if cancellation arrives during save', async () => {
+  it('writes exactly once and never rolls back when currency lapses mid-save', async () => {
+    // Validation runs entirely before the single write, so there is no
+    // rollback write to fail: a transaction that was valid when the write
+    // began commits once. Currency that lapses mid-save is accepted as a
+    // last-writer-wins commit rather than a half-rolled-back workspace.
     const store = new MemoryWorkspaceStore();
     const workspace = await VirtualWorkspace.open(store, seedFiles);
     const save = store.save.bind(store);
+    let saves = 0;
     let current = true;
-    store.save = async files => { await save(files); current = false; };
-    await expect(workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }], () => current)).rejects.toThrow('stale');
-    expect(workspace.list()).toEqual(seedFiles);
-    expect(await store.load()).toEqual(seedFiles);
+    store.save = async files => {
+      saves++; await save(files); current = false; 
+    };
+    await workspace.applyTextTransaction([{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }], () => current);
+    expect(saves).toBe(1);
+    expect(workspace.readText('/shaders/first.glsl')).toBe('changed');
+    expect((await store.load())?.find(file => file.path === '/shaders/first.glsl')?.contents).toBe('changed');
+  });
+
+  it('leaves memory untouched and reports when the store only partially persists', async () => {
+    // A store that resolves without persisting the whole snapshot cannot be
+    // unwound without a rollback, so the read-back rejects instead: memory
+    // never swaps to a state the store does not hold, and the error surfaces.
+    const backing = new Map<string, { contents: string; createdAt: number; modifiedAt: number }>();
+    let lieSaves = false;
+    const store = {
+      load: async () => backing.size === 0 ? null : [...backing].map(([path, file]) => ({ path, ...file })),
+      save: async (files: { path: string; contents: string; createdAt: number; modifiedAt: number }[]) => {
+        const partial = lieSaves ? files.slice(0, 1) : files;
+        for (const file of partial) {
+          backing.set(file.path, { contents: file.contents, createdAt: file.createdAt, modifiedAt: file.modifiedAt });
+        }
+      },
+      clear: async () => {
+        backing.clear(); 
+      },
+    };
+    const workspace = await VirtualWorkspace.open(store as unknown as MemoryWorkspaceStore, [
+      { path: '/shaders/first.glsl', contents: 'first', createdAt: 1, modifiedAt: 1 },
+      { path: '/shaders/second.glsl', contents: 'second', createdAt: 1, modifiedAt: 1 },
+    ]);
+    lieSaves = true;
+    await expect(workspace.applyTextTransaction([
+      { path: '/shaders/first.glsl', before: 'first', after: 'changed' },
+      { path: '/shaders/second.glsl', before: 'second', after: 'changed' },
+    ])).rejects.toThrow('did not persist');
+    expect(workspace.readText('/shaders/first.glsl')).toBe('first');
+    expect(workspace.readText('/shaders/second.glsl')).toBe('second');
+  });
+
+  it('advances the revision counter only on commit', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    const committed = workspace.revisionCount;
+    await expect(workspace.applyTextTransaction(
+      [{ path: '/shaders/first.glsl', before: 'stale', after: 'changed' }],
+    )).rejects.toThrow('stale');
+    expect(workspace.revisionCount).toBe(committed);
+    await workspace.applyTextTransaction(
+      [{ path: '/shaders/first.glsl', before: 'first', after: 'changed' }],
+    );
+    expect(workspace.revisionCount).toBe(committed + 1);
   });
 
   it('seeds an empty store and persists edits across workspace instances', async () => {

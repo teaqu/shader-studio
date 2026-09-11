@@ -157,7 +157,16 @@ export class VirtualWorkspace {
     this.queueSave();
   }
 
-  /** Persist one complete snapshot, then publish all targets together. */
+  /** Monotonic commit counter. Advances exactly once per committed
+   * transaction and never for a rejected one. */
+  get revisionCount(): number {
+    return this.revision;
+  }
+
+  /** Persist one complete snapshot, then publish all targets together.
+   * Validation runs entirely before the single write, so a rejected
+   * transaction never mutates and never needs a rollback. The in-memory map
+   * swaps only after the store round-trips the exact snapshot. */
   async applyTextTransaction(
     changes: readonly { path: string; before: string; after: string }[],
     isCurrent: () => boolean = () => true,
@@ -182,16 +191,15 @@ export class VirtualWorkspace {
         }
         targets.set(path, change.after);
       }
-      const current = () => revision === this.revision && isCurrent();
-      if (!current()) {
+      if (revision !== this.revision || !isCurrent()) {
         throw new Error('Rename request is stale. No files were changed.');
       }
       const snapshot = original.map(file => targets.has(file.path)
         ? { ...file, contents: targets.get(file.path)!, modifiedAt: this.now() } : file);
       await this.store.save(snapshot);
-      if (!current()) {
-        await this.store.save(original);
-        throw new Error('Rename request is stale. No files were changed.');
+      const persisted = await this.store.load();
+      if (JSON.stringify(persisted) !== JSON.stringify(snapshot)) {
+        throw new Error('Workspace store did not persist the snapshot. No files were changed.');
       }
       for (const file of snapshot) {
         this.files.set(file.path, file);
