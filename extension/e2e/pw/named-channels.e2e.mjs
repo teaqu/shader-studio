@@ -1,7 +1,7 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { replaceSource as edit, expectCanvasPixels as pixels, setPreviewLocked } from './editor-actions.mjs';
+import { replaceSource as edit, expectCanvasPixels as pixels, setPreviewLocked, revertFixtureEditors } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 
 test.use({ vscodeKey: 'named-channels' });
@@ -209,7 +209,7 @@ for (const owner of ['Image', 'Common', 'vertex']) {
         await expect.poll(() => errors(vscode, target)).toEqual([]);
       }
     } finally {
-      await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor'));
+      await revertFixtureEditors(vscode, fixtureDir);
       for (const file of [path, common, vertex, config]) rmSync(file, { force: true });
     }
   });

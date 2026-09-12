@@ -348,6 +348,15 @@ export class WebExtensionHost {
         }
         return;
       }
+      case 'cursorPosition': {
+        const { line, lineContent, filePath } = payload;
+        if (typeof line === 'number' && Number.isInteger(line) && line >= 0
+          && typeof lineContent === 'string' && typeof filePath === 'string'
+          && this.workspace.exists(filePath)) {
+          this.emitViewer({ type: 'cursorPosition', payload: { line, lineContent, filePath } });
+        }
+        return;
+      }
       case 'updateShaderSource': {
         const path = typeof payload.path === 'string' ? payload.path : this.activeShaderPath;
         if (path && typeof payload.code === 'string' && this.workspace.exists(path)) {

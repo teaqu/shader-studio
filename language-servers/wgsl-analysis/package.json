@@ -14,5 +14,8 @@
     "@shader-studio/language-server-core": "*",
     "@shader-studio/types": "*",
     "vscode-languageserver-protocol": "3.18.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.8"
   }
 }

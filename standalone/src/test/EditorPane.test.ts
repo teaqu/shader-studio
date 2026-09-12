@@ -122,6 +122,15 @@ describe('EditorPane', () => {
 
 describe('file-specific editors', () => {
   beforeEach(clearEditorDocuments);
+  it.each(['glsl', 'slang', 'wgsl'])('forwards a separate %s editor cursor with its actual path', async language => {
+    const path = `/buffer.${language}`;
+    const transport = { readEditorFile: vi.fn().mockResolvedValue('buffer source'), postMessage: vi.fn() } as unknown as WebTransport;
+    const { getByRole } = render(EditorPane, { path, transport });
+    await vi.waitFor(() => expect(getByRole('button', { name: 'Select line' })).toBeTruthy());
+    await getByRole('button', { name: 'Select line' }).click();
+    expect(transport.postMessage).toHaveBeenCalledWith({ type: 'cursorPosition', payload: { line: 2, lineContent: 'shade = 0.375;', filePath: path } });
+  });
+
   it('loads its own file and stays on it when the preview changes', async () => {
     const transport = { readEditorFile: vi.fn().mockResolvedValue('buffer source') } as unknown as WebTransport;
     const { getByTestId } = render(EditorPane, { path: '/buffer.glsl', transport });

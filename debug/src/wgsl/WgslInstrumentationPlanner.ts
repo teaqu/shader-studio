@@ -82,8 +82,7 @@ export function planWgslInstrumentation(
   const statementStart = offsetAt(source, analysis.statementRange.start);
   const statementEnd = offsetAt(source, analysis.statementRange.end);
   const trimmedStatement = source.slice(statementStart, statementEnd).trimStart();
-  const captureBefore = trimmedStatement.startsWith("return")
-    || ["if", "for", "while", "switch", "loop"].some((keyword) => trimmedStatement.startsWith(keyword));
+  const captureBefore = /^(?:return|if|for|while|switch|loop)\b/.test(trimmedStatement);
   const captureOffset = captureBefore ? statementStart : statementEnd;
   const captureText = captureBefore ? `${captureAssignment}\n  ` : captureAssignment;
   const declarations = [
@@ -125,7 +124,9 @@ export function planWgslInstrumentation(
     const localEdits = edits.filter(edit => edit.start >= segment.start && edit.end <= segment.end)
       .map(edit => ({ ...edit, start: edit.start - segment.start, end: edit.end - segment.start }));
     const local = applySourceEdits(segment.file.source, localEdits);
-    if (!local.ok) return failure(sourceUri, analysis.selectedRange.start, "debug-overlapping-edits", "WGSL debug source edits overlap.");
+    if (!local.ok) {
+      return failure(sourceUri, analysis.selectedRange.start, "debug-overlapping-edits", "WGSL debug source edits overlap.");
+    }
     files.push({ ...segment.file, source: local.source, version: segment.file.version + (localEdits.length > 0 ? 1 : 0) });
   }
   return {

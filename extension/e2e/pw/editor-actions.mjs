@@ -2,16 +2,16 @@ import { expect } from './fixtures.mjs';
 import { PNG } from 'pngjs';
 
 export async function replaceSource(vscode, source) {
-  const previousClipboard = await vscode.evaluateInHost(vscode => vscode.env.clipboard.readText());
-  try {
-    await vscode.evaluateInHost((vscode, text) => vscode.env.clipboard.writeText(text), source);
-    await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
-    await vscode.window.keyboard.press('ControlOrMeta+A');
-    await vscode.window.keyboard.press('ControlOrMeta+V');
-    await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.getText())).toBe(source);
-  } finally {
-    await vscode.evaluateInHost((vscode, text) => vscode.env.clipboard.writeText(text), previousClipboard);
-  }
+  await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
+  await vscode.window.keyboard.press('ControlOrMeta+A');
+  // Exercise Monaco's paste handler without sharing the OS clipboard between
+  // concurrent VS Code windows (including their clipboard-restoration steps).
+  await vscode.window.evaluate(text => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', text);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  }, source);
+  await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.activeTextEditor?.document.getText())).toBe(source);
 }
 
 export async function expectCanvasPixels(frame, rgb) {
@@ -37,4 +37,32 @@ export async function setPreviewLocked(vscode, frame, locked) {
     await frame.getByLabel('Open options menu', { exact: true }).click();
     await frame.locator('.options-menu-item[aria-label="Toggle lock"]').click();
   }
+}
+
+
+export async function revertFixtureEditors(vscode, directory) {
+  await vscode.evaluateInHost(async (vscode, directory) => {
+    // The webview may own focus. Revert each dirty fixture's text editor
+    // explicitly before deleting it, so the next test cannot open a save prompt.
+    for (const document of vscode.workspace.textDocuments) {
+      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) continue;
+      await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  }, directory);
+}
+
+export async function setParameterExpression(frame, name, value) {
+  const editor = frame.getByLabel(`Expression for ${name}`, { exact: true });
+  await expect(editor).toBeVisible();
+  // CodeJar commits on keyup. Keep the editing gesture in this renderer so a
+  // different VS Code window starting up cannot take focus between keystrokes.
+  await editor.evaluate((element, value) => {
+    element.focus();
+    element.textContent = value;
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+    element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: '0' }));
+    element.blur();
+  }, value);
+  await expect(editor).toHaveText(value);
 }

@@ -68,6 +68,7 @@ export class ShaderDebugManager {
   private imagePassPath: string | null = null;
   private bufferPathMap: Record<string, string> = {}; // bufferName → filePath
   private bufferCodes: Record<string, string> = {};
+  private shaderContextKey: string | null = null;
   private slangModules: SlangSourceModule[] = [];
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
@@ -104,18 +105,36 @@ export class ShaderDebugManager {
     slangModules: SlangSourceModule[] = [],
     resolvedBufferPathMap: Record<string, string> = {},
   ): void {
-    this.bufferCodes = buffers;
-    this.slangModules = slangModules;
-    this.bufferPathMap = {};
+    const bufferPathMap: Record<string, string> = {};
     const passes = config?.passes ?? {};
     for (const [name, pass] of Object.entries(passes)) {
       if (pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string') {
-        this.bufferPathMap[name] = pass.path;
+        bufferPathMap[name] = pass.path;
       }
     }
-    this.bufferPathMap = { ...this.bufferPathMap, ...resolvedBufferPathMap };
+    const paths = { ...bufferPathMap, ...resolvedBufferPathMap };
+    const contextKey = JSON.stringify([imagePath, buffers, slangModules, paths]);
+    if (this.shaderContextKey === contextKey) {
+      return;
+    }
+    const hadContext = this.shaderContextKey !== null;
+    this.shaderContextKey = contextKey;
+    this.bufferCodes = buffers;
+    this.slangModules = slangModules;
+    this.bufferPathMap = paths;
     this.imagePassPath = resolvedBufferPathMap.Image
       ?? (imagePath && this.isBufferPath(imagePath) ? null : imagePath);
+    // A dependent-source update can leave Image and the cursor unchanged.
+    // Refresh here so capture errors and function ownership cannot stay stale.
+    if (this.state.filePath) {
+      this.state.activeBufferName = this.resolveActiveBuffer(this.state.filePath);
+    }
+    this.updateFunctionContext();
+    this.notifyStateChange();
+    // Initial source delivery already drives the viewer capture effect.
+    if (hadContext) {
+      this.onCaptureStateChanged?.();
+    }
   }
 
   public getDebugTarget(imageCode: string, config: ShaderConfig | null): DebugTarget {
@@ -384,6 +403,7 @@ export class ShaderDebugManager {
     this.lastFunctionName = null;
     this.imageShaderCode = null;
     this.imagePassPath = null;
+    this.shaderContextKey = null;
     this.customParameters.clear();
     this.loopMaxIterations.clear();
     this.updateActiveState();

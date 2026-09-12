@@ -3,10 +3,11 @@ import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
 
 async function openProject(page, entries, name) {
-  await page.goto('/');
-  await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
+  // Seed before boot: background workspace saves must not overwrite fixtures.
+  await page.route('**/__channel_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html></html>' }));
+  await page.goto('/__channel_fixture__');
   await workspace(page, entries);
-  await page.reload();
+  await page.goto('/');
   await page.getByTestId(`shader-option-${name}`).click();
 }
 async function expectGreen(page) {

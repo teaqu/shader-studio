@@ -107,8 +107,12 @@ class SlangDebugStrategy implements DebugPlanStrategy {
         ? commonSource ?? ""
         : inputs.slangModules.find((module) => pathsEqual(module.path, selectedPath ?? ""))?.source ?? "";
     const selectedLineContent = selectedSource.split("\n")[selectedLine] ?? inputs.lineContent ?? "";
+    const computePass = inputs.config?.passes[ownerPassName];
+    const compute = computePass && "type" in computePass && computePass.type === "compute"
+      ? { entryPoint: computePass.entryPoint, storageNames: Object.keys(inputs.config?.storage ?? {}) }
+      : undefined;
     return {
-      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, contentHash: debugWorkspaceHash(files) },
+      workspace: { rootUri: rootPath, rootPath, passName: ownerPassName, files, compute, contentHash: debugWorkspaceHash(files, compute) },
       sourceUri: selectedPath,
       position: { line: selectedLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
     };

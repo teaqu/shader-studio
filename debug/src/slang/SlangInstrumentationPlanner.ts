@@ -11,6 +11,7 @@ import type {
   DebugVisibleValue,
 } from "@shader-studio/types";
 import { applySourceEdits } from "@shader-studio/utils";
+import { slangComputeReplayLimitation } from "./SlangComputeReplay";
 import { emitSlangFloat4, emitSlangStatic } from "./SlangEmitter";
 import type { SlangCallableNode } from "./model";
 import type { SlangWorkspace, SlangWorkspaceFile } from "./SlangWorkspace";
@@ -36,6 +37,10 @@ export function planSlangInstrumentation(
   const rootEntry = rootFile && findRootEntry(rootFile);
   if (!rootEntry) {
     return failure(workspace.rootUri, { line: 0, character: 0 }, "slang-debug-unsupported-syntax", "The Slang workspace root has no mainImage or supported compute entry function.");
+  }
+  const computeLimitation = rootEntry.kind === "compute" ? slangComputeReplayLimitation(workspace) : undefined;
+  if (computeLimitation) {
+    return failure(analysis.sourceUri, analysis.selectedRange.start, "slang-debug-unsupported-syntax", computeLimitation);
   }
   const prefix = instrumentationPrefix(workspace.contentHash);
   if ([...workspace.filesByUri.values()].some((file) => [...file.document.tokens].some((token) => token.kind === "identifier" && token.text.startsWith(prefix)))) {
@@ -111,10 +116,7 @@ export function planSlangInstrumentation(
   const statementStart = offsetAt(selectedFile.source.source, analysis.statementRange.start);
   const statementEnd = offsetAt(selectedFile.source.source, analysis.statementRange.end);
   const trimmedStatement = selectedFile.source.source.slice(statementStart, statementEnd).trimStart();
-  const isReturnStatement = trimmedStatement.startsWith("return");
-  const controlFlowKeywords = ["if", "for", "while", "switch", "do"];
-  const isControlFlowHeader = controlFlowKeywords.some((keyword) => trimmedStatement.startsWith(keyword));
-  const captureBefore = isReturnStatement || isControlFlowHeader;
+  const captureBefore = /^(?:return|if|for|while|switch|do)\b/.test(trimmedStatement);
   const captureOffset = captureBefore ? statementStart : statementEnd;
   const captureText = captureBefore ? `${captureAssignment}\n  ` : captureAssignment;
   const selectedEdits = [
@@ -134,12 +136,14 @@ export function planSlangInstrumentation(
   ];
   const selectedApplied = applySourceEdits(selectedFile.source.source, imported ? selectedEdits : [...selectedEdits, ...rootEdits]);
   const rootApplied = imported ? applySourceEdits(rootFile!.source.source, rootEdits) : selectedApplied;
-  if (!selectedApplied.ok || !rootApplied.ok) return failure(analysis.sourceUri, analysis.selectedRange.start, "debug-overlapping-edits", "Slang debug source edits overlap.");
+  if (!selectedApplied.ok || !rootApplied.ok) {
+    return failure(analysis.sourceUri, analysis.selectedRange.start, "debug-overlapping-edits", "Slang debug source edits overlap.");
+  }
   const files = [...workspace.filesByUri.values()].map((file) => file.source.uri === selectedFile.source.uri
     ? { ...file.source, source: selectedApplied.source, version: file.source.version + 1 }
     : file.source.uri === rootFile!.source.uri
       ? { ...file.source, source: rootApplied.source, version: file.source.version + 1 }
-    : { ...file.source });
+      : { ...file.source });
   const plan: DebugInstrumentationPlan = {
     workspaceHash: workspace.contentHash,
     rootUri: workspace.rootUri,
@@ -165,7 +169,9 @@ function computeEntryArguments(file: SlangWorkspaceFile, callable: SlangCallable
       Math.max(0, offsetAt(file.source.source, parameter.range.end) - signatureStart),
     );
     const semantic = /^\s*:\s*(SV_[A-Za-z0-9_]+)/i.exec(suffix)?.[1]?.toLowerCase();
-    if (semantic === "sv_dispatchthreadid") return dispatchId;
+    if (semantic === "sv_dispatchthreadid") {
+      return dispatchId;
+    }
     if (semantic === "sv_groupid") {
       return `uint3(uint2(fragCoord) / uint2(${size[0]}, ${size[1]}), 0)`;
     }
@@ -200,7 +206,9 @@ function computeAttributeRemoval(
 function findRootEntry(rootFile: SlangWorkspaceFile): { kind: "render" | "compute"; callable: SlangCallableNode } | undefined {
   const callables = [...rootFile.structure.callables.values()].filter((callable) => callable.kind === "free");
   const mainImage = callables.find((callable) => callable.name === "mainImage");
-  if (mainImage) return { kind: "render", callable: mainImage };
+  if (mainImage) {
+    return { kind: "render", callable: mainImage };
+  }
 
   const computeCandidates = callables.filter((callable) =>
     callable.returnTypeName === "void" && (
@@ -273,7 +281,9 @@ function buildBehaviorInstrumentation(
   const parameterInitializers: string[] = [];
   for (const [index, expression] of options.customParameters ?? []) {
     const parameter = callable.parameters[index];
-    if (!parameter || parameter.access === "write") continue;
+    if (!parameter || parameter.access === "write") {
+      continue;
+    }
     const originalName = `${prefix}_originalParam${index}`;
     edits.push({
       start: offsetAt(file.source.source, parameter.range.start),
@@ -296,12 +306,16 @@ function buildBehaviorInstrumentation(
     .sort((left, right) => comparePosition(left.range.start, right.range.start));
   loops.forEach((loop, loopIndex) => {
     const maxIterations = options.loopMaxIterations?.get(loopIndex);
-    if (maxIterations === undefined) return;
+    if (maxIterations === undefined) {
+      return;
+    }
     const counter = `${prefix}_loop${loopIndex}`;
     declarations.push(`static int ${counter};`);
     setupStatements.push(`${counter} = 0;`);
     const body = findControlBody(file, loop.range, loop.kind);
-    if (!body) return;
+    if (!body) {
+      return;
+    }
     const guard = `if (${counter}++ >= ${Math.max(0, Math.floor(maxIterations))}) break;`;
     if (body.braced) {
       edits.push({ start: body.start + 1, end: body.start + 1, text: `\n    ${guard}` });
@@ -324,19 +338,27 @@ function findControlBody(
   let bodyIndex = 1;
   if (kind !== "do") {
     const open = tokens.findIndex((token) => token.text === "(");
-    if (open < 0) return null;
+    if (open < 0) {
+      return null;
+    }
     let depth = 0;
     bodyIndex = -1;
     for (let index = open; index < tokens.length; index += 1) {
-      if (tokens[index].text === "(") depth += 1;
+      if (tokens[index].text === "(") {
+        depth += 1;
+      }
       if (tokens[index].text === ")") {
         depth -= 1;
-        if (depth === 0) { bodyIndex = index + 1; break; }
+        if (depth === 0) {
+          bodyIndex = index + 1; break;
+        }
       }
     }
   }
   const bodyToken = tokens[bodyIndex];
-  if (!bodyToken) return null;
+  if (!bodyToken) {
+    return null;
+  }
   const unbracedDoEnd = kind === "do" && bodyToken.text !== "{"
     ? tokens.slice(bodyIndex).find((token) => token.text === ";")?.endOffset
     : undefined;
@@ -372,8 +394,14 @@ function offsetAt(source: string, position: DebugSourcePosition): number {
   let line = 0;
   let character = 0;
   for (let offset = 0; offset < source.length; offset += 1) {
-    if (line === position.line && character === position.character) return offset;
-    if (source[offset] === "\n") { line += 1; character = 0; } else character += 1;
+    if (line === position.line && character === position.character) {
+      return offset;
+    }
+    if (source[offset] === "\n") {
+      line += 1; character = 0;
+    } else {
+      character += 1;
+    }
   }
   return source.length;
 }

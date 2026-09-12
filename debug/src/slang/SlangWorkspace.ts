@@ -17,6 +17,7 @@ export interface SlangWorkspace {
   rootPath: string;
   passName: string;
   contentHash: string;
+  compute?: DebugWorkspace["compute"];
   filesByUri: ReadonlyMap<string, SlangWorkspaceFile>;
   moduleUris: ReadonlyMap<string, string>;
 }
@@ -70,6 +71,7 @@ export function createSlangWorkspace(workspace: DebugWorkspace): CreateSlangWork
       rootPath: canonicalizeSlangPath(workspace.rootPath || workspace.rootUri),
       passName: workspace.passName,
       contentHash: workspace.contentHash,
+      compute: workspace.compute,
       filesByUri,
       moduleUris,
     },
@@ -107,10 +109,15 @@ function normalizePath(value: string): string {
   const absolute = value.startsWith("/");
   const segments: string[] = [];
   for (const segment of value.split("/")) {
-    if (!segment || segment === ".") continue;
+    if (!segment || segment === ".") {
+      continue;
+    }
     if (segment === "..") {
-      if (segments.length > 0 && segments[segments.length - 1] !== "..") segments.pop();
-      else if (!absolute) segments.push(segment);
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop();
+      } else if (!absolute) {
+        segments.push(segment);
+      }
       continue;
     }
     segments.push(segment);

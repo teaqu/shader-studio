@@ -49,6 +49,7 @@
           activeBufferName={commonEditorPath === path ? "Common" : "Image"}
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
+          onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}
           {vimMode} displayMode="pane" overflowWidgetsDomNode={document.body} />
       </div>
     {/if}

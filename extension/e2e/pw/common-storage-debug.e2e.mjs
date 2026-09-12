@@ -1,6 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
-import { replaceSource, expectCanvasPixels, setPreviewLocked } from './editor-actions.mjs';
+import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 test.use({ vscodeKey: 'common-storage-debug' });
 const directory = join(workspacePath, 'common-storage-debug');
@@ -87,7 +87,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect(frame.locator('.fn-name', { hasText: 'commonValue' })).toBeVisible();
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
     } finally {
-      await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor'));
+      await revertFixtureEditors(vscode, directory);
       for (const path of [root, common, config]) rmSync(path, { force: true });
     }
   });
@@ -152,3 +152,132 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
     }
   });
 }
+
+for (const language of ['wgsl', 'slang']) {
+  test(`${language} keyword-prefix assignment captures the updated value`, async ({ vscode }) => {
+    mkdirSync(directory, { recursive: true });
+    const root = join(directory, `assignment.${language}`);
+    const source = language === 'wgsl'
+      ? 'fn mainImage(p: vec2f) -> vec4f {\n  var formula: f32 = 0.125;\n  formula = 0.375;\n  return vec4f(formula);\n}'
+      : 'float4 mainImage(float2 p) {\n  float formula = 0.125;\n  formula = 0.375;\n  return float4(formula);\n}';
+    writeFileSync(root, source);
+    try {
+      await showFileAtLine(vscode, root, 2);
+      await ensureShaderView(vscode);
+      let frame = await vscode.shaderFrame();
+      await setPreviewLocked(vscode, frame, false);
+      await enableVariableInspector(vscode, frame);
+      await showFileAtLine(vscode, root, 2);
+      await expect(frame.locator('.fn-name')).toHaveText('mainImage');
+      await expect(frame.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L3');
+      await expect(row(frame, 'formula').locator('.var-value')).toHaveText('0.375');
+      await expectCanvasPixels(frame, [96, 96, 96]);
+      await replaceSource(vscode, source.replace('0.375', '0.625'));
+      await showFileAtLine(vscode, root, 2);
+      frame = await vscode.shaderFrame();
+      await expect(row(frame, 'formula').locator('.var-value')).toHaveText('0.625');
+      await expectCanvasPixels(frame, [159, 159, 159]);
+      await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());
+      await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.closeActiveEditor'));
+      await showFileAtLine(vscode, root, 2);
+      frame = await vscode.shaderFrame();
+      await expect(row(frame, 'formula').locator('.var-value')).toHaveText('0.625');
+      await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
+    } finally {
+      await revertFixtureEditors(vscode, directory);
+      rmSync(root, { force: true });
+    }
+  });
+}
+
+test('Slang compute replay refuses subgroup results and recovers after an edit', async ({ vscode }) => {
+  mkdirSync(directory, { recursive: true });
+  const root = join(directory, 'replay.slang');
+  const compute = join(directory, 'replay.compute.slang');
+  const config = join(directory, 'replay.sha.json');
+  const source = '[shader("compute")] [numthreads(1,1,1)] void update(uint3 id : SV_DispatchThreadID) {\n  float shade = WaveActiveSum(0.125);\n  writeOutput(id.xy, float4(0, shade > 0 ? 1 : 0, 0, 1));\n}';
+  writeFileSync(root, 'float4 mainImage(float2 p) { return sample2DLevel(result.texture,result.sampler,p / iResolution.xy,0); }');
+  writeFileSync(compute, source);
+  writeFileSync(config, JSON.stringify({ version: '1', passes: {
+    Image: { inputs: { result: { type: 'buffer', source: 'Compute' } } },
+    Compute: { type: 'compute', path: 'replay.compute.slang', entryPoint: 'update' },
+  } }));
+  try {
+    await showFileAtLine(vscode, root, 0);
+    await ensureShaderView(vscode);
+    let frame = await vscode.shaderFrame();
+    await setPreviewLocked(vscode, frame, false);
+    await expectCanvasPixels(frame, [0,255,0]);
+    await enableVariableInspector(vscode, frame);
+    await setPreviewLocked(vscode, frame, true);
+    await showFileAtLine(vscode, compute, 1);
+    frame = await vscode.shaderFrame();
+    await expect(frame.locator('.line-tooltip')).toContainText('Slang compute replay does not support subgroup operations');
+    await frame.getByLabel('Show capture errors').hover();
+    await expect(frame.locator('.error-tooltip')).toContainText('Slang compute replay does not support subgroup operations');
+    await expect(row(frame, 'shade')).toHaveCount(0);
+    await replaceSource(vscode, source.replace('WaveActiveSum(0.125)', '0.625'));
+    await showFileAtLine(vscode, compute, 1);
+    frame = await vscode.shaderFrame();
+    await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.625');
+    await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
+  } finally {
+    await revertFixtureEditors(vscode, directory);
+    for (const path of [root, compute, config]) rmSync(path, { force: true });
+  }
+});
+
+test('WGSL helper capture resolves array struct fields and shadowing', async ({ vscode }) => {
+  mkdirSync(directory, { recursive: true });
+  const root = join(directory, 'aggregate.wgsl');
+  const source = 'struct Sample { value: f32, }\nfn helper(gain: f32) -> f32 {\n  let samples = array<Sample, 2>(Sample(0.125), Sample(gain));\n  var shade = 0.125;\n  if (gain > 0.0) {\n    let shade = samples[1].value;\n    return shade;\n  }\n  return shade;\n}\nfn mainImage(p: vec2f) -> vec4f { return vec4f(helper(0.375)); }';
+  writeFileSync(root, source);
+  try {
+    await showFileAtLine(vscode, root, 5);
+    await ensureShaderView(vscode);
+    let frame = await vscode.shaderFrame();
+    await setPreviewLocked(vscode, frame, false);
+    await enableVariableInspector(vscode, frame);
+    await showFileAtLine(vscode, root, 5);
+    await expect(frame.locator('.fn-name')).toHaveText('helper');
+    await expect(frame.locator('.line-tooltip-anchor > .header-info')).toHaveText('L6');
+    await setParameterExpression(frame, 'gain', '0.375');
+    await expect(row(frame, 'shade')).toHaveCount(1);
+    await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.375');
+    await setParameterExpression(frame, 'gain', '0.625');
+    await showFileAtLine(vscode, root, 5);
+    frame = await vscode.shaderFrame();
+    await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.625');
+    await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
+  } finally {
+    await revertFixtureEditors(vscode, directory);
+    rmSync(root, { force: true });
+  }
+});
+
+test('WGSL unmatched brace reports an error and recovers without freezing', async ({ vscode }) => {
+  mkdirSync(directory, { recursive: true });
+  const root = join(directory, 'recovery.wgsl');
+  const source = 'fn mainImage(p: vec2f) -> vec4f {\n  let shade = 0.375;\n  return vec4f(shade,0,0,1);\n}';
+  writeFileSync(root, source);
+  try {
+    await showFileAtLine(vscode, root, 1);
+    await ensureShaderView(vscode);
+    let frame = await vscode.shaderFrame();
+    await setPreviewLocked(vscode, frame, false);
+    await enableVariableInspector(vscode, frame);
+    await showFileAtLine(vscode, root, 1);
+    await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.375');
+    await replaceSource(vscode, source + '\n}');
+    await expect(frame.getByLabel('Toggle pause', { exact: true })).toHaveClass(/error/);
+    await replaceSource(vscode, source.replace('0.375', '0.625'));
+    await showFileAtLine(vscode, root, 1);
+    frame = await vscode.shaderFrame();
+    await expect(row(frame, 'shade').locator('.var-value')).toHaveText('0.625');
+    await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+    await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());
+  } finally {
+    await revertFixtureEditors(vscode, directory);
+    rmSync(root, { force: true });
+  }
+});

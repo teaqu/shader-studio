@@ -763,6 +763,13 @@ class WgslParser {
       return;
     }
     const token = this.peek();
+    // Statement recovery leaves an unmatched brace for its enclosing block.
+    // At module scope there is no block to consume it.
+    if (token.text === "}") {
+      this.error("Unexpected '}' at global scope.", token);
+      this.advance();
+      return;
+    }
     if (token.kind !== "keyword" && token.kind !== "identifier") {
       this.error(`Unexpected '${token.text}' at global scope.`, token);
       this.recoverToStatementEnd();
@@ -980,7 +987,9 @@ class WgslParser {
   }
 
   private parseParameterList(): void {
-    while (!this.atEnd() && !this.checkText(")")) {
+    // An unmatched brace ends a broken signature. Its caller reports the
+    // missing ')' and module recovery consumes the brace on the next pass.
+    while (!this.atEnd() && !this.checkText(")") && !this.checkText("}")) {
       this.skipAttributes();
       const nameToken = this.peek();
       if (nameToken.kind !== "identifier") {

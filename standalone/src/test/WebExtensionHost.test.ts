@@ -34,6 +34,28 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 }
 
 describe('WebExtensionHost', () => {
+  it.each([
+    { line: -1, lineContent: 'x', filePath: '/shaders/clouds.slang' },
+    { line: 1.5, lineContent: 'x', filePath: '/shaders/clouds.slang' },
+    { line: 0, lineContent: null, filePath: '/shaders/clouds.slang' },
+    { line: 0, lineContent: 'x', filePath: '/missing.slang' },
+  ])('ignores malformed or missing-file editor cursors: %j', async payload => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    await host.handleViewerMessage({ type: 'cursorPosition', payload });
+    expect(viewer).not.toHaveBeenCalled();
+  });
+
+  it('forwards a separate editor cursor to the viewer', async () => {
+    const host = await createHost();
+    const viewer = vi.fn();
+    host.onViewerMessage(viewer);
+    const message = { type: 'cursorPosition', payload: { line: 2, lineContent: 'shade = 0.375;', filePath: '/shaders/clouds.slang' } };
+    await host.handleViewerMessage(message);
+    expect(viewer).toHaveBeenCalledWith(message);
+  });
+
   it.each(['glsl', 'slang', 'wgsl'] as const)('indexes unopened %s passes with their own Common dependency', async language => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
     for (const name of ['main', 'common', 'buffer', 'unrelated']) {

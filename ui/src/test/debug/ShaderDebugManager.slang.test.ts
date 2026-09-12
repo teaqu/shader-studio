@@ -254,6 +254,17 @@ float4 mainImage(float2 fragCoord)
     expect(capture.plan.captureSlots[1]).toMatchObject({ index: 1, name: 'fragCoord' });
   });
 
+  it('passes configured storage names to Slang compute replay safety checks', () => {
+    const compute = '[shader("compute")] [numthreads(1,1,1)] void update(uint3 id : SV_DispatchThreadID) {\n  float value = 0.375;\n  values[0] = value;\n}';
+    const config = { version: '1', storage: { values: { elementType: 'float', count: 1 } }, passes: {
+      Image: { inputs: {} }, Compute: { type: 'compute' as const, path: 'compute.slang', entryPoint: 'update' },
+    } };
+    manager.setShaderContext(config, '/image.slang', { Compute: compute }, [], { Compute: '/compute.slang' });
+    manager.toggleEnabled();
+    manager.updateDebugLine(1, '  float value = 0.375;', '/compute.slang');
+    expect(manager.getCapturePlan(slangShader, config)).toMatchObject({ error: expect.stringContaining('writes to configured storage') });
+  });
+
   it('builds a native capture plan for a Slang compute pass', () => {
     const compute = `[shader("compute")]
 [numthreads(8, 8, 1)]

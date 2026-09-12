@@ -10,6 +10,7 @@
     commonSource?: string;
     onCodeChange: (code: string) => void;
     onBufferSwitch: (bufferName: string) => void;
+    onCursorChange?: (line: number, content: string, buffer: string) => void;
     onManualCompile?: () => void;
   }
 
@@ -24,6 +25,7 @@
     commonSource = undefined,
     onCodeChange,
     onBufferSwitch,
+    onCursorChange = () => {},
     onManualCompile = () => {},
   }: Props = $props();
 </script>
@@ -42,3 +44,5 @@
 <button type="button" onclick={() => onCodeChange('edited source')}>Edit</button>
 <button type="button" onclick={() => onBufferSwitch('Buffer B')}>Switch buffer</button>
 <button type="button" onclick={() => onManualCompile()}>Manual compile</button>
+
+<button type="button" onclick={() => onCursorChange(2, "shade = 0.375;", activeBufferName)}>Select line</button>

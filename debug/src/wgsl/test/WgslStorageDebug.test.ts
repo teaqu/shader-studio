@@ -46,3 +46,33 @@ describe('WGSL storage-backed captures', () => {
     });
   });
 });
+
+it('captures an inferred array/struct scalar in the innermost helper scope', () => {
+  const input = request();
+  input.workspace.files[0].source = `struct Sample { value: f32, }
+fn helper(gain: f32) -> f32 {
+  let samples = array<Sample, 2>(Sample(0.125), Sample(gain));
+  var shade = 0.125;
+  if (gain > 0.0) {
+    let shade = samples[1].value;
+    return shade;
+  }
+  return shade;
+}
+fn mainImage(p: vec2f) -> vec4f { return vec4f(helper(0.375)); }`;
+  input.position = { line: 5, character: 4 };
+  const engine = new WgslDebugEngine();
+  const analysis = engine.analyze(input);
+  if (!analysis.ok) {
+    throw new Error(JSON.stringify(analysis));
+  }
+  expect(analysis.analysis.containingCallable.name).toBe('helper');
+  expect(analysis.analysis.visibleValues.filter(value => value.name === 'shade')).toMatchObject([
+    { typeName: 'f32', declarationRange: { start: { line: 5 } } },
+  ]);
+  const result = engine.planCapture(input, [analysis.analysis.previewValueId!]);
+  if (!result.ok) {
+    throw new Error(JSON.stringify(result));
+  }
+  expect(result.plan.files[0].source).toMatch(/let shade = samples\[1\]\.value;\s+\w+_executed = true;\s+\w+_slot1 = shade;/);
+});
