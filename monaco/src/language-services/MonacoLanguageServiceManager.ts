@@ -29,6 +29,8 @@ interface ServiceState {
 }
 
 export class MonacoLanguageServiceManager {
+  private disposed = false;
+  private readonly environmentWaiters = new Map<string, Set<() => void>>();
   private readonly environments = new Map<string, ShaderAuthoringEnvironment>();
   private readonly enabled: Record<ShaderLanguage, boolean> = { glsl: true, slang: true, wgsl: true };
   private colorDecoratorsEnabled = true;
@@ -61,6 +63,9 @@ export class MonacoLanguageServiceManager {
   }
 
   async syncEnvironment(environment: ShaderAuthoringEnvironment): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const previous = this.environments.get(environment.documentUri);
     if (previous) {
       // Several editors can share one file. Their local counters cannot replace
@@ -70,6 +75,7 @@ export class MonacoLanguageServiceManager {
     }
     this.syncVirtualModels(environment);
     this.environments.set(environment.documentUri, environment);
+    this.finishEnvironmentWaiters(environment.documentUri);
     if (!this.enabled[environment.languageId]) {
       return;
     }
@@ -85,6 +91,9 @@ export class MonacoLanguageServiceManager {
     }
     this.enabled[language] = enabled;
     if (!enabled) {
+      for (const model of this.modelsFor(language)) {
+        this.finishEnvironmentWaiters(model.uri.toString());
+      }
       const state = this.states[language];
       const service = await state.service;
       await service?.dispose();
@@ -105,6 +114,10 @@ export class MonacoLanguageServiceManager {
   }
 
   dispose(): void {
+    this.disposed = true;
+    for (const uri of [...this.environmentWaiters.keys()]) {
+      this.finishEnvironmentWaiters(uri);
+    }
     for (const uri of this.environments.keys()) {
       this.options.onRenameFeedback?.(uri, undefined);
     }
@@ -225,7 +238,7 @@ export class MonacoLanguageServiceManager {
           uri: this.monaco.Uri.parse(location.uri),
           range: toMonacoRange(this.monaco, location.range),
         }))
-      ), []),
+      ), [], { waitForEnvironment: true }),
     }));
     this.disposables.push(languages.registerDocumentHighlightProvider(language, {
       provideDocumentHighlights: async (model, position) => this.request(model, async (service, revision) => (
@@ -261,23 +274,35 @@ export class MonacoLanguageServiceManager {
               generation = revision.environmentGeneration;
               return service.rename({ document: revision, position: toLspPosition(position), newName });
             }, null, { waitForEnvironment: true });
-            if (!result || !current()) return reject(RENAME_REJECTED);
-            if (result.documentChanges?.length) return reject("Unsupported rename edit format. No files were changed.");
+            if (!result || !current()) {
+              return reject(RENAME_REJECTED);
+            }
+            if (result.documentChanges?.length) {
+              return reject("Unsupported rename edit format. No files were changed.");
+            }
             const changes: WorkspaceTextChange[] = [];
             for (const [targetUri, edits] of Object.entries(result.changes ?? {})) {
-              if (!edits.length) continue;
+              if (!edits.length) {
+                continue;
+              }
               const snapshot = snapshots.get(targetUri);
-              if (!snapshot) return reject("A rename target is unavailable. No files were changed.");
+              if (!snapshot) {
+                return reject("A rename target is unavailable. No files were changed.");
+              }
               changes.push({ uri: targetUri, before: snapshot.text, after: applyTextEdits(snapshot.text, edits) });
             }
-            if (!changes.length) return reject(RENAME_REJECTED);
+            if (!changes.length) {
+              return reject(RENAME_REJECTED);
+            }
             // Live buffer texts at apply time, so the host compares staleness
             // against open editors rather than lagging stored copies.
             const openTexts = new Map(this.monaco.editor.getModels()
               .filter((target) => !target.isDisposed?.())
               .map((target) => [target.uri.toString(), target.getValue()]));
             await this.options.applyWorkspaceEdit(changes, current, () => {
-              for (const change of changes) snapshots.get(change.uri)!.model.setValue(change.after);
+              for (const change of changes) {
+snapshots.get(change.uri)!.model.setValue(change.after);
+              }
             }, openTexts);
             this.options.onRenameFeedback?.(uri, undefined);
             // The host committed both persisted files and models atomically; Monaco
@@ -411,6 +436,7 @@ export class MonacoLanguageServiceManager {
 
   private async closeModel(model: Monaco.editor.ITextModel): Promise<void> {
     const uri = model.uri.toString();
+    this.finishEnvironmentWaiters(uri);
     this.options.onRenameFeedback?.(uri, undefined);
     this.modelDisposables.get(uri)?.dispose();
     this.modelDisposables.delete(uri);
@@ -438,21 +464,21 @@ export class MonacoLanguageServiceManager {
   private async requestAllowingStale<T>(model: Monaco.editor.ITextModel, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T, options?: { waitForEnvironment?: boolean }): Promise<{ value: T; stale: boolean }> {
     const language = shaderLanguage(model.getLanguageId());
     let environment = this.environments.get(model.uri.toString());
-    if (language && this.enabled[language] && !environment && options?.waitForEnvironment) {
-      // An explicit rename can outrun the host's first environment sync for a
-      // freshly opened document. Wait briefly for it instead of failing the
-      // gesture instantly; steady-state requests always have an environment.
-      const deadline = Date.now() + 5000;
-      while (!this.environments.get(model.uri.toString()) && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
+    if (language && this.enabled[language] && !this.disposed && !environment && options?.waitForEnvironment) {
+      // Explicit commands may arrive before the host's first environment.
+      // Resume on delivery; never turn that startup race into "no references".
+      const version = model.getVersionId();
+      await this.waitForEnvironment(model.uri.toString());
+      if (model.getVersionId() !== version) {
+        return { value: fallback, stale: true };
       }
       environment = this.environments.get(model.uri.toString());
     }
-    if (!language || !environment || !this.enabled[language]) {
+    if (!language || !environment || !this.enabled[language] || this.disposed) {
       return { value: fallback, stale: false };
     }
     const ensured = await this.ensureModel(model);
-    if (!ensured) {
+    if (!ensured || this.disposed || !this.enabled[language]) {
       return { value: fallback, stale: false };
     }
     const revision: DocumentRevision = { uri: model.uri.toString(), languageId: language, version: ensured.version, environmentGeneration: ensured.environmentGeneration };
@@ -460,6 +486,31 @@ export class MonacoLanguageServiceManager {
     const current = this.environments.get(model.uri.toString());
     const stale = model.getVersionId() !== revision.version || current?.generation !== revision.environmentGeneration;
     return { value: result, stale };
+  }
+
+  private waitForEnvironment(uri: string): Promise<void> {
+    return new Promise(resolve => {
+      const waiters = this.environmentWaiters.get(uri) ?? new Set<() => void>();
+      const finish = () => {
+        clearTimeout(deadline);
+        waiters.delete(finish);
+        if (waiters.size === 0) {
+          this.environmentWaiters.delete(uri);
+        }
+        resolve();
+      };
+      // Preserve the existing explicit-command deadline for a host that never
+      // supplies an environment. Normal completion is driven by syncEnvironment.
+      const deadline = setTimeout(finish, 5000);
+      waiters.add(finish);
+      this.environmentWaiters.set(uri, waiters);
+    });
+  }
+
+  private finishEnvironmentWaiters(uri: string): void {
+    for (const finish of [...(this.environmentWaiters.get(uri) ?? [])]) {
+      finish();
+    }
   }
 
   private async publishDiagnostics(model: Monaco.editor.ITextModel, service: LanguageService, environment: ShaderAuthoringEnvironment): Promise<void> {
