@@ -19,9 +19,18 @@ Statuses: **Tested** (a named test asserts real behaviour) · **Tested-weak**
 | References / highlights | Tested | Tested | Tested |
 | Rename (same file, cross-file, Common) | Tested | Tested | Tested |
 | Workspace symbol search | Missing | Missing | Missing |
-| Diagnostics | Tested | Tested | Tested-weak (hints only; the renderer compiler wins) |
+| Diagnostics | Tested | Tested | Tested (service hints; renderer compiler errors) |
 | Unsaved files | Tested | Tested | Tested |
 | Stale-request handling | Tested | Tested | Tested |
+
+`WgslLanguageService.test.ts` covers user/builtin/resource completion, hover,
+Common definition/reference identity, rename collisions and stale revisions.
+`extension/e2e/pw/wgsl-authoring.e2e.mjs` exercises the VS Code provider commands;
+`standalone/e2e/wgsl-language-service.e2e.mjs`, `symbol-rename.e2e.mjs` and
+`workspace-references.e2e.mjs` exercise Monaco gestures and persisted cross-file
+edits. Explicit reference searches wait for the first authoring environment:
+`MonacoLanguageServiceManager.test.ts` covers all languages, stale edits,
+disposal, disabled services and a host that never supplies an environment.
 
 ## Parser and semantics
 
@@ -29,7 +38,7 @@ Statuses: **Tested** (a named test asserts real behaviour) · **Tested-weak**
 |---|---|---|---|
 | Declaration/reference identity | Tested | Tested | Tested |
 | Shadowing | Tested | Tested | Tested |
-| Overloads | Tested | Tested | Tested |
+| Overloads | Tested | Tested | Tested (built-ins; no user-function overloading) |
 | Struct fields | Tested | Tested | Tested |
 | Generics | N/A (no generics) | Tested | N/A (no generics) |
 | Imports / includes | Tested (environment `#include`s) | Tested (imports; `__include` prelude symbols refused) | N/A (no import mechanism) |
@@ -75,7 +84,7 @@ See [Channels](channels.md) for the public API and compatibility details.
 | Inline rendering | Tested | Tested | Tested |
 | Variable capture (fragment) | Tested | Tested | Tested |
 | Vertex-stage debugging | Missing | Missing | Missing |
-| Compute-stage debugging | N/A (WebGL2) | Tested | Tested |
+| Compute-pass debugging | N/A (WebGL2) | Tested (fragment replay; restrictions below) | Tested (fragment replay; restrictions below) |
 | Common capture mapping | Tested | Tested | Tested |
 | Storage-backed values | N/A (WebGL2) | Tested (fragment and compute) | Tested (fragment and compute replay) |
 
@@ -90,6 +99,20 @@ event precedes source delivery (`ShaderDebugManager.sourceContext.test.ts`).
 WGSL storage inference and authored capture ranges also have unit coverage in
 `WgslStorageDebug.test.ts`; generated analysis bindings are excluded from emitted
 shader files. These checks preserve the WGSL replay restrictions below.
+
+Practical parity here means the named editing, rendering and debugging workflows
+above. It does not mean that all three languages accept identical syntax, that
+all capture types exist, or that every language is bug-free. WGSL user-function
+overloading and imports are language differences; workspace symbols and vertex
+debugging are missing across languages.
+
+Additional regressions in `common-storage-debug.e2e.mjs` and standalone's
+`wgsl-storage.e2e.mjs` cover assignment capture order, separate-editor cursor
+routing and WGSL malformed-source recovery. WGSL helper array/struct extraction
+and shadowing are checked through scalar debug rows. The Slang source-arrival
+regression remains in the Common/storage flows and unit suite. Dependency-source
+arrival also refreshes captures when Image and cursor position are unchanged;
+the standalone Slang compute correction reproduces the previously stale error.
 
 ## Hosts
 
@@ -113,4 +136,12 @@ shader files. These checks preserve the WGSL replay restrictions below.
   permitted; `var<workgroup>` memory and configured storage *writes* are refused
   with a `wgsl-debug-unsupported-syntax` diagnostic rather than reported wrong.
   See [WGSL](wgsl.md).
+- **Slang compute debug preview and capture also use fragment replay.**
+  Cooperative operations and configured storage writes are explicitly refused;
+  read-only storage captures remain supported. Real native compute dispatch is
+  exercised separately in `DebugReplay.e2e.test.ts`. See [Slang](slang.md) for
+  exact execution semantics and the separate compute-capture follow-up.
+- **Whole aggregate capture** is not established by scalar array/struct reads.
+  These tests do not claim arbitrary arrays, structs or pointer values can be
+  displayed as capture rows.
 - Per-language detail: [GLSL](glsl.md) · [Slang](slang.md) · [WGSL](wgsl.md).
