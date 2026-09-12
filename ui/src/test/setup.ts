@@ -28,7 +28,7 @@
     }
   }
 )();
-import { vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 import '@testing-library/jest-dom';
 
 if (typeof globalThis.ImageData === 'undefined') {
@@ -146,18 +146,22 @@ const monacoContributionLoadState = vi.hoisted(() => ({
 
 (globalThis as any).__monacoContributionLoadState = monacoContributionLoadState;
 
-/**
- * One model identity shared by `monaco.editor.createModel`, `monaco.editor.getModel`
- * and the editor instance's own `getModel()`, so a test that stubs
- * `editor.getModel().getLineContent` sees the same object the component holds.
- * ShaderEditor only reaches for uri/getLineContent/getLineCount/getLineMaxColumn.
- */
-const sharedEditorModel = {
-  uri: { toString: () => "inmemory://test-editor" },
-  getLineMaxColumn: vi.fn(() => 80),
-  getLineCount: vi.fn(() => 0),
-  getLineContent: vi.fn(() => ''),
-};
+/** Minimal per-URI model identity; editors and namespace APIs share these objects. */
+function createEditorModel(value = '', language = 'glsl', uri = { toString: () => 'inmemory://test-editor' }) {
+  return {
+    uri,
+    getValue: vi.fn(() => value),
+    setValue: vi.fn((next: string) => {
+      value = next;
+    }),
+    getLanguageId: vi.fn(() => language),
+    getLineMaxColumn: vi.fn(() => 80),
+    getLineCount: vi.fn(() => value.split('\n').length),
+    getLineContent: vi.fn((line: number) => value.split('\n')[line - 1] ?? ''),
+  };
+}
+const editorModels = new Map<string, ReturnType<typeof createEditorModel>>();
+beforeEach(() => editorModels.clear());
 
 const monacoMock = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
@@ -179,35 +183,47 @@ const monacoMock = {
     }
   },
   editor: {
-    create: vi.fn(() => ({
-      dispose: vi.fn(),
-      getValue: vi.fn(() => ''),
-      setValue: vi.fn(),
-      focus: vi.fn(),
-      updateOptions: vi.fn(),
-      saveViewState: vi.fn(() => null),
-      restoreViewState: vi.fn(),
-      getPosition: vi.fn(),
-      setPosition: vi.fn(),
-      getScrollTop: vi.fn(() => 0),
-      setScrollTop: vi.fn(),
-      addCommand: vi.fn(() => "cmd"),
-      executeEdits: vi.fn(),
-      hasTextFocus: vi.fn(() => false),
-      onDidChangeModelContent: vi.fn(),
-      onDidScrollChange: vi.fn(),
-      onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
-      onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
-      onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
-      onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
-      getOption: vi.fn(() => 0),
-      getModel: vi.fn(() => sharedEditorModel),
-      deltaDecorations: vi.fn(() => []),
-      getVisibleRanges: vi.fn(() => []),
-    })),
+    create: vi.fn((_container: unknown, options?: { model?: ReturnType<typeof createEditorModel> }) => {
+      let model = options?.model ?? createEditorModel();
+      return ({
+        dispose: vi.fn(),
+        getValue: vi.fn(() => model.getValue()),
+        setValue: vi.fn((value: string) => model.setValue(value)),
+        setModel: vi.fn((next: ReturnType<typeof createEditorModel>) => {
+          model = next;
+        }),
+        focus: vi.fn(),
+        updateOptions: vi.fn(),
+        saveViewState: vi.fn(() => null),
+        restoreViewState: vi.fn(),
+        getPosition: vi.fn(),
+        setPosition: vi.fn(),
+        getScrollTop: vi.fn(() => 0),
+        setScrollTop: vi.fn(),
+        addCommand: vi.fn(() => "cmd"),
+        executeEdits: vi.fn(),
+        hasTextFocus: vi.fn(() => false),
+        onDidChangeModelContent: vi.fn(),
+        onDidScrollChange: vi.fn(),
+        onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+        onKeyDown: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
+        getOption: vi.fn(() => 0),
+        getModel: vi.fn(() => model),
+        deltaDecorations: vi.fn(() => []),
+        getVisibleRanges: vi.fn(() => []),
+      });
+    }),
     // ShaderEditor resolves its model by uri before falling back to creating one.
-    getModel: vi.fn(() => null),
-    createModel: vi.fn(() => sharedEditorModel),
+    getModel: vi.fn((uri: { toString(): string }) => editorModels.get(uri.toString()) ?? null),
+    createModel: vi.fn((value: string, language: string, uri?: { toString(): string }) => {
+      const model = createEditorModel(value, language, uri);
+      if (uri) {
+        editorModels.set(uri.toString(), model);
+      }
+      return model;
+    }),
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
     setTheme: vi.fn(),

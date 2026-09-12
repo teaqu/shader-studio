@@ -1,3 +1,4 @@
+import type { FunctionMock } from './FunctionMock';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VariableCaptureManager } from '../lib/VariableCaptureManager';
 import type { RenderingEngine } from '../../../rendering/src/types';
@@ -33,7 +34,7 @@ describe('VariableCaptureManager — buffer capture', () => {
   let manager: VariableCaptureManager;
   let mockCapturer: any;
   let mockRenderingEngine: RenderingEngine;
-  let onUpdate: ReturnType<typeof vi.fn>;
+  let onUpdate: FunctionMock;
 
   // RAF mocking
   let rafCallbacks: FrameRequestCallback[];
@@ -128,7 +129,7 @@ describe('VariableCaptureManager — buffer capture', () => {
       const callOrder: string[] = [];
       mockCapturer.setInputBindings.mockImplementation(() => callOrder.push('setInputBindings'));
       mockCapturer.issueCaptureGrid.mockImplementation(() => {
-        callOrder.push('issueCaptureGrid'); return 1; 
+        callOrder.push('issueCaptureGrid'); return 1;
       });
 
       manager.notifyStateChange({ ...BASE_PARAMS, inputConfig: BUFFER_A_INPUTS });

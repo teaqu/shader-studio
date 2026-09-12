@@ -2,23 +2,27 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock the transport modules before importing the factory
 vi.mock('../../lib/transport/VSCodeTransport', () => ({
-  VSCodeTransport: vi.fn().mockImplementation(() => ({
-    postMessage: vi.fn(),
-    onMessage: vi.fn(),
-    dispose: vi.fn(),
-    getType: vi.fn().mockReturnValue('vscode'),
-    isConnected: vi.fn().mockReturnValue(true),
-  })),
+  VSCodeTransport: vi.fn().mockImplementation(function () {
+    return ({
+      postMessage: vi.fn(),
+      onMessage: vi.fn(),
+      dispose: vi.fn(),
+      getType: vi.fn().mockReturnValue('vscode'),
+      isConnected: vi.fn().mockReturnValue(true),
+    });
+  }),
 }));
 
 vi.mock('../../lib/transport/WebSocketTransport', () => ({
-  WebSocketTransport: vi.fn().mockImplementation(() => ({
-    postMessage: vi.fn(),
-    onMessage: vi.fn(),
-    dispose: vi.fn(),
-    getType: vi.fn().mockReturnValue('websocket'),
-    isConnected: vi.fn().mockReturnValue(true),
-  })),
+  WebSocketTransport: vi.fn().mockImplementation(function () {
+    return ({
+      postMessage: vi.fn(),
+      onMessage: vi.fn(),
+      dispose: vi.fn(),
+      getType: vi.fn().mockReturnValue('websocket'),
+      isConnected: vi.fn().mockReturnValue(true),
+    });
+  }),
 }));
 
 import { createTransport, isVSCodeEnvironment } from '../../lib/transport/TransportFactory';

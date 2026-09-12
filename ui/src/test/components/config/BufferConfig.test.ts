@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../../FunctionMock';
 import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tick } from 'svelte';
@@ -100,9 +101,9 @@ describe('BufferConfig', () => {
     }));
   });
 
-  let mockOnUpdate: ReturnType<typeof vi.fn>;
-  let mockGetWebviewUri: ReturnType<typeof vi.fn>;
-  let mockPostMessage: ReturnType<typeof vi.fn>;
+  let mockOnUpdate: FunctionMock;
+  let mockGetWebviewUri: FunctionMock;
+  let mockPostMessage: FunctionMock;
 
   beforeEach(() => {
     mockOnUpdate = vi.fn();

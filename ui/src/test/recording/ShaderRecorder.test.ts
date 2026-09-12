@@ -37,11 +37,13 @@ const mockGifFinish = vi.fn(() => Promise.resolve(new Uint8Array([71, 73, 70])))
 const mockGifCancel = vi.fn();
 
 vi.mock('../../lib/recording/GifEncoder', () => ({
-  GifEncoderWrapper: vi.fn(() => ({
-    addFrame: mockGifAddFrame,
-    finish: mockGifFinish,
-    cancel: mockGifCancel,
-  })),
+  GifEncoderWrapper: vi.fn(function () {
+    return ({
+      addFrame: mockGifAddFrame,
+      finish: mockGifFinish,
+      cancel: mockGifCancel,
+    });
+  }),
 }));
 
 // Mock VideoEncoder
@@ -50,11 +52,13 @@ const mockVideoFlush = vi.fn(() => Promise.resolve());
 const mockVideoFinish = vi.fn(() => Promise.resolve(new Blob(['video'], { type: 'video/webm' })));
 
 vi.mock('../../lib/recording/VideoEncoder', () => ({
-  VideoEncoderWrapper: vi.fn(() => ({
-    addFrame: mockVideoAddFrame,
-    flush: mockVideoFlush,
-    finish: mockVideoFinish,
-  })),
+  VideoEncoderWrapper: vi.fn(function () {
+    return ({
+      addFrame: mockVideoAddFrame,
+      flush: mockVideoFlush,
+      finish: mockVideoFinish,
+    });
+  }),
 }));
 
 // Mock RenderingEngine
@@ -79,25 +83,29 @@ const mockWebGPUDispose = vi.fn();
 const mockGetSlangAssetUrls = vi.fn(() => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }));
 
 vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => ({
-  RenderingEngine: vi.fn(() => ({
-    initialize: mockInitialize,
-    handleCanvasResize: mockHandleCanvasResize,
-    compileShaderPipeline: mockCompileShaderPipeline,
-    renderForCapture: mockRenderForCapture,
-    dispose: mockDispose,
-    getTimeManager: mockGetTimeManager,
-  })),
+  RenderingEngine: vi.fn(function () {
+    return ({
+      initialize: mockInitialize,
+      handleCanvasResize: mockHandleCanvasResize,
+      compileShaderPipeline: mockCompileShaderPipeline,
+      renderForCapture: mockRenderForCapture,
+      dispose: mockDispose,
+      getTimeManager: mockGetTimeManager,
+    });
+  }),
 }));
 
 vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => ({
-  WebGPURenderingEngine: vi.fn(() => ({
-    initialize: mockWebGPUInitialize,
-    handleCanvasResize: mockWebGPUHandleCanvasResize,
-    compileShaderPipeline: mockWebGPUCompileShaderPipeline,
-    renderForCapture: mockWebGPURenderForCapture,
-    dispose: mockWebGPUDispose,
-    getTimeManager: mockGetTimeManager,
-  })),
+  WebGPURenderingEngine: vi.fn(function () {
+    return ({
+      initialize: mockWebGPUInitialize,
+      handleCanvasResize: mockWebGPUHandleCanvasResize,
+      compileShaderPipeline: mockWebGPUCompileShaderPipeline,
+      renderForCapture: mockWebGPURenderForCapture,
+      dispose: mockWebGPUDispose,
+      getTimeManager: mockGetTimeManager,
+    });
+  }),
 }));
 
 vi.mock('../../lib/slangAssets', () => ({

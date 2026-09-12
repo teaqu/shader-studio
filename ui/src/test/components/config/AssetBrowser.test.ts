@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../../FunctionMock';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { configureHost, resetHost } from '../../../lib/state/hostState.svelte';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -5,8 +6,8 @@ import { tick } from 'svelte';
 import AssetBrowser from '../../../lib/components/config/AssetBrowser.svelte';
 
 describe('AssetBrowser', () => {
-  let mockPostMessage: ReturnType<typeof vi.fn>;
-  let mockOnSelect: ReturnType<typeof vi.fn>;
+  let mockPostMessage: FunctionMock;
+  let mockOnSelect: FunctionMock;
   let messageHandler: ((event: MessageEvent) => void) | null = null;
 
   beforeEach(() => {

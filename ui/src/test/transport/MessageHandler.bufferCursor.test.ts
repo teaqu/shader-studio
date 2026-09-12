@@ -110,7 +110,9 @@ describe('MessageHandler — buffer cursor handling', () => {
     };
 
     (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => shaderProcessor,
+      function () {
+        return shaderProcessor;
+      },
     );
 
     handler = new MessageHandler(

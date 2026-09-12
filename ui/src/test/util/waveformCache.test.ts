@@ -7,9 +7,11 @@ vi.stubGlobal('fetch', mockFetch);
 
 // Mock OfflineAudioContext
 const mockDecodeAudioData = vi.fn();
-const MockOfflineAudioContext = vi.fn().mockImplementation(() => ({
-  decodeAudioData: mockDecodeAudioData,
-}));
+const MockOfflineAudioContext = vi.fn().mockImplementation(function () {
+  return ({
+    decodeAudioData: mockDecodeAudioData,
+  });
+});
 vi.stubGlobal('OfflineAudioContext', MockOfflineAudioContext);
 
 function createMockAudioBuffer(channelData: Float32Array, duration: number) {

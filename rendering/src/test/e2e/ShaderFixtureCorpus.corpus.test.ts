@@ -133,8 +133,9 @@ async function paintSentinel(harness: ShaderCanvasHarness, language: ShaderLangu
 }
 
 /**
- * Fixtures whose rendered center region is entirely black, each resolved in
- * Task 6 (see the UI rig's `knownBlackOutput` and the plan Handover):
+ * Fixtures whose rendered center region is intentionally black. The UI transport
+ * corpus test proves keyboard and storage fixtures can light up in both languages.
+ * Raw-workgroups has a separate workgroup-coverage twin:
  * idle-keyboard 33channels, single-texel raw-workgroups, zeroed-storage
  * storage-edit-colours. Anything not listed must draw a lit pixel.
  */
@@ -219,9 +220,14 @@ function slangRequest(
 function resolveCorpusPath(configDir: string, rel: string): string {
   const parts: string[] = configDir.split("/");
   for (const segment of rel.split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") parts.pop();
-    else parts.push(segment);
+    if (segment === "" || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      parts.pop();
+    } else {
+      parts.push(segment);
+    }
   }
   return parts.join("/");
 }
@@ -229,7 +235,9 @@ function resolveCorpusPath(configDir: string, rel: string): string {
 /** Absolute config-side path of a WGSL pass file (Image resolves to the opened shader). */
 function wgslPassPath(project: (typeof projects)[number], pass: string): string {
   const configDir = (project.path ?? "/").split("/").slice(0, -1).join("/");
-  if (pass === "Image") return project.path ?? `/${project.name}`;
+  if (pass === "Image") {
+    return project.path ?? `/${project.name}`;
+  }
   if (pass === "common") {
     const commonRel = project.config?.passes?.common?.path;
     return commonRel ? resolveCorpusPath(configDir, commonRel) : `/${project.name}/common.wgsl`;

@@ -70,7 +70,9 @@ describe("MessageHandler", () => {
     };
 
     (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => shaderProcessor,
+      function () {
+        return shaderProcessor;
+      },
     );
 
     messageHandler = new MessageHandler(
@@ -365,7 +367,9 @@ describe("MessageHandler", () => {
       };
 
       (ShaderProcessor as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-        () => shaderProcessor,
+        function () {
+          return shaderProcessor;
+        },
       );
 
       messageHandler = new MessageHandler(
@@ -506,7 +510,7 @@ describe("MessageHandler", () => {
       if (!filename) {
         return null;
       }
-      
+
       // Remove extension
       const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
       return nameWithoutExt || null; // Return null if empty string after removing extension

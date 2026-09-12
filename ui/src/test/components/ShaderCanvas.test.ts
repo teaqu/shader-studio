@@ -5,11 +5,13 @@ import ShaderCanvas from '../../lib/components/ShaderCanvas.svelte';
 import { resolutionStore } from '../../lib/stores/resolutionStore';
 
 // Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+global.ResizeObserver = vi.fn().mockImplementation(function () {
+  return ({
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  });
+});
 
 describe('ShaderCanvas Component', () => {
   const defaultProps = {

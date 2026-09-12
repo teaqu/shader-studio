@@ -1,3 +1,4 @@
+import type { FunctionMock } from './FunctionMock';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigManager } from '../lib/ConfigManager';
 import type { ShaderConfig, BufferPass, ImagePass } from '@shader-studio/types';
@@ -28,7 +29,7 @@ function createTestConfig(): ShaderConfig {
 
 describe('ConfigManager', () => {
   let transport: Transport;
-  let onConfigChange: ReturnType<typeof vi.fn>;
+  let onConfigChange: FunctionMock;
   let configManager: ConfigManager;
 
   beforeEach(() => {
@@ -549,7 +550,7 @@ describe('ConfigManager', () => {
 
       expect(onConfigChange).toHaveBeenCalledTimes(1);
       expect(transport.postMessage).toHaveBeenCalledTimes(1);
-      const message = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const message = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(message.type).toBe('updateConfig');
       expect(message.payload.shaderPath).toBe('/workspace/main.glsl');
       expect(message.payload.config.passes.Feedback).toMatchObject({
@@ -580,7 +581,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
       configManager.updateImagePass(imagePass);
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       const text = call.payload.text;
 
       expect(text).not.toContain('resolved_path');
@@ -855,7 +856,7 @@ describe('ConfigManager', () => {
     // Svelte $state values are reactive proxies that cannot be sent over MessagePort —
     // postMessage will throw DataCloneError at runtime. The payload must contain plain objects.
     function lastPayload() {
-      return (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].payload;
+      return (transport.postMessage as FunctionMock).mock.calls[0][0].payload;
     }
 
     function expectPostMessageWillNotThrow() {
@@ -948,7 +949,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
       configManager.updateResolution({ scale: 4, aspectRatio: '16:9' });
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(call.type).toBe('updateConfig');
       expect(call.payload.config.passes.Image.resolution).toEqual({
         scale: 4,
@@ -960,7 +961,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
       configManager.addBuffer();
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(call.payload.skipRefresh).toBeUndefined();
     });
 
@@ -968,7 +969,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(createTestConfig());
       configManager.updateImagePass({ inputs: { iChannel0: { type: 'keyboard' } } });
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(call.payload.skipRefresh).toBeUndefined();
     });
 
@@ -978,7 +979,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(config);
       configManager.updateBuffer('BufferA', { path: 'new.glsl', inputs: {} });
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(call.payload.skipRefresh).toBeUndefined();
     });
 
@@ -988,7 +989,7 @@ describe('ConfigManager', () => {
       configManager.setConfig(config);
       configManager.removeBuffer('BufferA');
 
-      const call = (transport.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const call = (transport.postMessage as FunctionMock).mock.calls[0][0];
       expect(call.payload.skipRefresh).toBeUndefined();
     });
   });

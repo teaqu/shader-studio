@@ -12,8 +12,12 @@ const {
   return {
     mockWebGLEngine,
     mockWebGPUEngine,
-    MockWebGLRenderingEngine: vi.fn(() => mockWebGLEngine),
-    MockWebGPURenderingEngine: vi.fn(() => mockWebGPUEngine),
+    MockWebGLRenderingEngine: vi.fn(function () {
+      return mockWebGLEngine;
+    }),
+    MockWebGPURenderingEngine: vi.fn(function () {
+      return mockWebGPUEngine;
+    }),
     mockGetSlangAssetUrls: vi.fn(() => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' })),
   };
 });

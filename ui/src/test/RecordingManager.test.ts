@@ -1,3 +1,4 @@
+import type { FunctionMock } from './FunctionMock';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
@@ -28,11 +29,13 @@ vi.mock('../lib/stores/recordingStore', () => ({
 }));
 
 vi.mock('../lib/recording/ShaderRecorder', () => ({
-  ShaderRecorder: vi.fn(() => ({
-    captureScreenshot: mockCaptureScreenshot,
-    record: mockRecord,
-    cancel: mockCancel,
-  })),
+  ShaderRecorder: vi.fn(function () {
+    return ({
+      captureScreenshot: mockCaptureScreenshot,
+      record: mockRecord,
+      cancel: mockCancel,
+    });
+  }),
 }));
 
 import { RecordingManager } from '../lib/RecordingManager';
@@ -47,9 +50,9 @@ const defaultContext: ShaderInfo = {
 
 describe('RecordingManager', () => {
   let manager: RecordingManager;
-  let getContext: ReturnType<typeof vi.fn>;
-  let sendFile: ReturnType<typeof vi.fn>;
-  let onStateChanged: ReturnType<typeof vi.fn>;
+  let getContext: FunctionMock;
+  let sendFile: FunctionMock;
+  let onStateChanged: FunctionMock;
 
   beforeEach(() => {
     vi.clearAllMocks();

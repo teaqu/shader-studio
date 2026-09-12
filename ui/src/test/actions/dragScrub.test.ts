@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../FunctionMock';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { dragScrub } from '../../lib/actions/dragScrub';
 
@@ -14,7 +15,7 @@ function createInput(attrs: Record<string, string> = {}): HTMLInputElement {
 
 describe('dragScrub', () => {
   let input: HTMLInputElement;
-  let onInput: ReturnType<typeof vi.fn>;
+  let onInput: FunctionMock;
   let action: ReturnType<typeof dragScrub>;
 
   beforeEach(() => {

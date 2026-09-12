@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../../FunctionMock';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ChannelConfigModal from '../../../lib/components/config/ChannelConfigModal.svelte';
@@ -5,10 +6,10 @@ import type { ConfigInput } from '@shader-studio/types';
 
 describe('ChannelConfigModal', () => {
   let mockGetWebviewUri: (path: string) => string | undefined;
-  let mockOnClose: ReturnType<typeof vi.fn>;
-  let mockOnSave: ReturnType<typeof vi.fn>;
-  let mockOnRemove: ReturnType<typeof vi.fn>;
-  let mockPostMessage: ReturnType<typeof vi.fn>;
+  let mockOnClose: FunctionMock;
+  let mockOnSave: FunctionMock;
+  let mockOnRemove: FunctionMock;
+  let mockPostMessage: FunctionMock;
 
   beforeEach(() => {
     mockGetWebviewUri = vi.fn((path: string) => `webview://path/${path}`);
@@ -1778,7 +1779,7 @@ describe('ChannelConfigModal', () => {
   });
 
   describe('Channel Rename', () => {
-    let mockOnRename: ReturnType<typeof vi.fn>;
+    let mockOnRename: FunctionMock;
 
     beforeEach(() => {
       mockOnRename = vi.fn();

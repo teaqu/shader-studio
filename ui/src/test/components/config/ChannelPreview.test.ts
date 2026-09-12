@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../../FunctionMock';
 import { render, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChannelPreview from '../../../lib/components/config/ChannelPreview.svelte';
@@ -9,10 +10,10 @@ vi.mock('../../../lib/util/waveformCache', () => ({
 }));
 
 import { getWaveformPeaks } from '../../../lib/util/waveformCache';
-const mockGetWaveformPeaks = getWaveformPeaks as ReturnType<typeof vi.fn>;
+const mockGetWaveformPeaks = getWaveformPeaks as FunctionMock;
 
 describe('ChannelPreview', () => {
-  let mockGetWebviewUri: ReturnType<typeof vi.fn>;
+  let mockGetWebviewUri: FunctionMock;
 
   beforeEach(() => {
     mockGetWebviewUri = vi.fn((path: string) => `webview://resolved/${path}`);
@@ -376,8 +377,8 @@ describe('ChannelPreview', () => {
   });
 
   describe('Audio Controls on Preview', () => {
-    let mockOnAudioControl: ReturnType<typeof vi.fn>;
-    let mockGetAudioState: ReturnType<typeof vi.fn>;
+    let mockOnAudioControl: FunctionMock;
+    let mockGetAudioState: FunctionMock;
 
     beforeEach(() => {
       mockOnAudioControl = vi.fn();
@@ -679,8 +680,8 @@ describe('ChannelPreview', () => {
   });
 
   describe('Audio mute/unmute controls', () => {
-    let mockOnAudioControl: ReturnType<typeof vi.fn>;
-    let mockGetAudioState: ReturnType<typeof vi.fn>;
+    let mockOnAudioControl: FunctionMock;
+    let mockGetAudioState: FunctionMock;
 
     beforeEach(() => {
       mockOnAudioControl = vi.fn();
@@ -769,8 +770,8 @@ describe('ChannelPreview', () => {
   });
 
   describe('Audio timer formatting', () => {
-    let mockOnAudioControl: ReturnType<typeof vi.fn>;
-    let mockGetAudioState: ReturnType<typeof vi.fn>;
+    let mockOnAudioControl: FunctionMock;
+    let mockGetAudioState: FunctionMock;
 
     beforeEach(() => {
       mockOnAudioControl = vi.fn();
@@ -911,8 +912,8 @@ describe('ChannelPreview', () => {
   });
 
   describe('Video control buttons', () => {
-    let mockOnVideoControl: ReturnType<typeof vi.fn>;
-    let mockGetVideoState: ReturnType<typeof vi.fn>;
+    let mockOnVideoControl: FunctionMock;
+    let mockGetVideoState: FunctionMock;
 
     beforeEach(() => {
       mockOnVideoControl = vi.fn();

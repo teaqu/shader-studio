@@ -23,11 +23,13 @@ import type { PixelInspectorState } from '../../lib/types/PixelInspectorState';
 import { get } from 'svelte/store';
 
 // Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+global.ResizeObserver = vi.fn().mockImplementation(function () {
+  return {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  };
+});
 
 // Mock RenderingEngine and transport - use vi.hoisted to define mock values before vi.mock hoisting
 const { mockTimeManager, mockTransport, mockSetGlobalVolume, mockResumeAllAudio, mockResumeAllVideos, mockReleaseMediaResetHold, mockCreateTransport, mockSetInputEnabled, mockTriggerDebugRecompile, mockUpdateCurrentConfig, mockPipelineHandleShaderMessage, mockStopRenderLoop } = vi.hoisted(() => {
@@ -1015,9 +1017,7 @@ describe('ShaderViewer', () => {
       await tick();
       await waitForEditorOverlay(container);
 
-      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
-        value: 'updated main source',
-      });
+      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.model?.getValue()).toBe('updated main source');
     },
   );
 
@@ -1071,9 +1071,7 @@ describe('ShaderViewer', () => {
       await tick();
       await waitForEditorOverlay(container);
 
-      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
-        value: 'mainImage',
-      });
+      expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.model?.getValue()).toBe('mainImage');
     },
   );
 
@@ -1123,9 +1121,7 @@ describe('ShaderViewer', () => {
     toggleEditorOverlay();
     await tick();
     await waitForEditorOverlay(container);
-    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]).toMatchObject({
-      value: 'mainImage',
-    });
+    expect(vi.mocked(monaco.editor.create).mock.calls.at(-1)?.[1]?.model?.getValue()).toBe('mainImage');
   });
 
   it.each([
@@ -2879,9 +2875,7 @@ describe('ShaderViewer', () => {
 
     const createCalls = vi.mocked(monaco.editor.create).mock.calls;
     expect(createCalls.length).toBe(createCountBeforeSwitch + 1);
-    expect(createCalls.at(-1)?.[1]).toMatchObject({
-      value: 'second shader code',
-    });
+    expect(createCalls.at(-1)?.[1]?.model?.getValue()).toBe('second shader code');
   });
 
   it('should send requestFileContents when shaderSource sets up the path context', async () => {
@@ -6454,11 +6448,13 @@ describe('ShaderViewer', () => {
     beforeEach(() => {
       // Re-apply ResizeObserver mock - vi.clearAllMocks() in the outer beforeEach
       // clears the implementation, so we need to restore it for each test.
-      global.ResizeObserver = vi.fn().mockImplementation(() => ({
-        observe: vi.fn(),
-        unobserve: vi.fn(),
-        disconnect: vi.fn(),
-      }));
+      global.ResizeObserver = vi.fn().mockImplementation(function () {
+        return {
+          observe: vi.fn(),
+          unobserve: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      });
     });
 
     const TEST_FILE = '/test/shader.glsl';

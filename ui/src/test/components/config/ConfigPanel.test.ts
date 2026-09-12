@@ -1,3 +1,4 @@
+import type { FunctionMock } from '../../FunctionMock';
 import { render, fireEvent } from '@testing-library/svelte';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -15,35 +16,37 @@ import {
 } from '../../../lib/state/editorOverlayState.svelte';
 // Mock ConfigManager to avoid real transport interactions
 vi.mock('../../../lib/ConfigManager', () => ({
-  ConfigManager: vi.fn().mockImplementation(() => ({
-    setConfig: vi.fn(),
-    setPathMap: vi.fn(),
-    setShaderPath: vi.fn(),
-    getBufferList: vi.fn().mockReturnValue([]),
-    addBuffer: vi.fn().mockReturnValue(null),
-    addComputePass: vi.fn().mockReturnValue(null),
-    addCommonBuffer: vi.fn().mockReturnValue(true),
-    addSpecificBuffer: vi.fn().mockReturnValue(true),
-    getConfig: vi.fn().mockReturnValue(null),
-    removeBuffer: vi.fn(),
-    updateImagePass: vi.fn(),
-    updateBuffer: vi.fn(),
-    updateComputePass: vi.fn().mockReturnValue({ ok: true }),
-    addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
-    applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
-    removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
-    getStorageCoverReferences: vi.fn().mockReturnValue([]),
-    updateBufferPath: vi.fn(),
-    setScript: vi.fn(),
-    removeScript: vi.fn(),
-    generateBufferPath: vi.fn().mockReturnValue('/test/buffer.glsl'),
-    generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
-    createBufferFile: vi.fn(),
-    getWebviewUri: vi.fn(),
-    validateBufferRename: vi.fn().mockReturnValue(null),
-    renameBuffer: vi.fn().mockReturnValue(true),
-    dispose: vi.fn(),
-  })),
+  ConfigManager: vi.fn().mockImplementation(function () {
+    return ({
+      setConfig: vi.fn(),
+      setPathMap: vi.fn(),
+      setShaderPath: vi.fn(),
+      getBufferList: vi.fn().mockReturnValue([]),
+      addBuffer: vi.fn().mockReturnValue(null),
+      addComputePass: vi.fn().mockReturnValue(null),
+      addCommonBuffer: vi.fn().mockReturnValue(true),
+      addSpecificBuffer: vi.fn().mockReturnValue(true),
+      getConfig: vi.fn().mockReturnValue(null),
+      removeBuffer: vi.fn(),
+      updateImagePass: vi.fn(),
+      updateBuffer: vi.fn(),
+      updateComputePass: vi.fn().mockReturnValue({ ok: true }),
+      addStorageBuffer: vi.fn().mockReturnValue({ name: 'storageA' }),
+      applyStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+      removeStorageBuffer: vi.fn().mockReturnValue({ ok: true }),
+      getStorageCoverReferences: vi.fn().mockReturnValue([]),
+      updateBufferPath: vi.fn(),
+      setScript: vi.fn(),
+      removeScript: vi.fn(),
+      generateBufferPath: vi.fn().mockReturnValue('/test/buffer.glsl'),
+      generateScriptPath: vi.fn().mockReturnValue('./shader.uniforms.ts'),
+      createBufferFile: vi.fn(),
+      getWebviewUri: vi.fn(),
+      validateBufferRename: vi.fn().mockReturnValue(null),
+      renameBuffer: vi.fn().mockReturnValue(true),
+      dispose: vi.fn(),
+    });
+  }),
 }));
 
 function createMockConfigManager(getBufferListReturn: string[] = []) {
@@ -80,7 +83,7 @@ function createMockConfigManager(getBufferListReturn: string[] = []) {
 
 describe('ConfigPanel', () => {
   let mockTransport: Transport;
-  let mockOnFileSelect: ReturnType<typeof vi.fn>;
+  let mockOnFileSelect: FunctionMock;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,7 +91,9 @@ describe('ConfigPanel', () => {
     setOverlayActiveFile('Image');
 
     // Reset ConfigManager mock to default (empty buffer list)
-    (ConfigManager as unknown as Mock).mockImplementation(() => createMockConfigManager([]));
+    (ConfigManager as unknown as Mock).mockImplementation(function () {
+      return createMockConfigManager([]);
+    });
 
     mockTransport = {
       postMessage: vi.fn(),
@@ -301,8 +306,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['common', 'BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['common', 'BufferA']);
+      },
       );
 
       const { getByText } = render(ConfigPanel, {
@@ -331,8 +337,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { getByText } = render(ConfigPanel, {
@@ -362,8 +369,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['common']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['common']);
+      },
       );
 
       const { getByText } = render(ConfigPanel, {
@@ -394,8 +402,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { container, rerender } = render(ConfigPanel, {
@@ -439,8 +448,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['common']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['common']);
+      },
       );
 
       const { container, rerender } = render(ConfigPanel, {
@@ -638,7 +648,9 @@ describe('ConfigPanel', () => {
       mockManager.addBuffer.mockReturnValue('BufferA');
       mockManager.getConfig.mockReturnValue(updatedConfig);
 
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getByText, container } = render(ConfigPanel, {
         config,
@@ -683,7 +695,9 @@ describe('ConfigPanel', () => {
       mockManager.addCommonBuffer.mockReturnValue(true);
       mockManager.getConfig.mockReturnValue(updatedConfig);
 
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getByText } = render(ConfigPanel, {
         config,
@@ -787,7 +801,7 @@ describe('ConfigPanel', () => {
       const mockManager = createMockConfigManager([]);
       mockManager.getConfig.mockReturnValue(updatedConfig);
       (ConfigManager as unknown as Mock).mockImplementation(
-        (_transport: Transport, handleConfigChange: (config: ShaderConfig) => void) => {
+        function (_transport: Transport, handleConfigChange: (config: ShaderConfig) => void) {
           mockManager.addComputePass.mockImplementation(() => {
             handleConfigChange(updatedConfig);
             return 'ComputeA';
@@ -830,7 +844,9 @@ describe('ConfigPanel', () => {
       };
       const mockManager = createMockConfigManager([]);
       mockManager.generateBufferPath.mockReturnValue('image.computea.slang');
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getAllByText } = render(ConfigPanel, {
         config: computeConfig,
@@ -870,7 +886,9 @@ describe('ConfigPanel', () => {
       mockManager.generateBufferPath.mockImplementation(
         (_bufferName, language = 'glsl') => `image.buffera.${language}`,
       );
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getAllByText } = render(ConfigPanel, {
         config: bufferConfig,
@@ -901,7 +919,9 @@ describe('ConfigPanel', () => {
     it('does nothing when the manager cannot add a compute pass', async () => {
       const mockManager = createMockConfigManager([]);
       mockManager.addComputePass.mockReturnValue(null);
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
       const onConfigChange = vi.fn();
 
       const { getByRole } = render(ConfigPanel, {
@@ -932,7 +952,9 @@ describe('ConfigPanel', () => {
       const mockManager = createMockConfigManager([]);
       mockManager.addComputePass.mockReturnValue('ComputeA');
       mockManager.getConfig.mockReturnValue(null);
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
       const onConfigChange = vi.fn();
 
       const { getByRole } = render(ConfigPanel, {
@@ -1308,7 +1330,9 @@ describe('ConfigPanel', () => {
         onConfigChange?.(renamedConfig);
         return true;
       });
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { container, getByRole } = render(ConfigPanel, {
         config: {
@@ -1907,8 +1931,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
       setEditorOverlayVisible(true);
 
@@ -1943,8 +1968,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
       setEditorOverlayVisible(true);
 
@@ -1982,8 +2008,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const onOpenInNewTab = vi.fn();
@@ -2021,8 +2048,9 @@ describe('ConfigPanel', () => {
       };
       const bufferPathMap = { Image: '/path/shader.glsl', BufferA: '/path/bufferA.glsl' };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { getAllByRole } = render(ConfigPanel, {
@@ -2056,8 +2084,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const onOpenInNewTab = vi.fn();
@@ -2093,8 +2122,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const onOpenInNewTab = vi.fn();
@@ -2211,8 +2241,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { container } = render(ConfigPanel, {
@@ -2240,8 +2271,9 @@ describe('ConfigPanel', () => {
       };
 
       // Ensure default mock returns empty buffer list (only Image tab shown)
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager([]),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager([]);
+      },
       );
 
       const { container } = render(ConfigPanel, {
@@ -2269,8 +2301,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { container } = render(ConfigPanel, {
@@ -2303,8 +2336,9 @@ describe('ConfigPanel', () => {
         },
       };
 
-      (ConfigManager as unknown as Mock).mockImplementation(() =>
-        createMockConfigManager(['BufferA']),
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return createMockConfigManager(['BufferA']);
+      },
       );
 
       const { container } = render(ConfigPanel, {
@@ -2541,7 +2575,9 @@ describe('ConfigPanel', () => {
       const mockManager = createMockConfigManager([]);
       mockManager.getConfig.mockReturnValue(config);
       mockManager.generateScriptPath.mockReturnValue('./myshader.uniforms.ts');
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getByText } = render(ConfigPanel, {
         config,
@@ -2576,7 +2612,9 @@ describe('ConfigPanel', () => {
 
       const mockManager = createMockConfigManager([]);
       mockManager.generateScriptPath.mockReturnValue('./myshader.uniforms.ts');
-      (ConfigManager as unknown as Mock).mockImplementation(() => mockManager);
+      (ConfigManager as unknown as Mock).mockImplementation(function () {
+        return mockManager;
+      });
 
       const { getByText } = render(ConfigPanel, {
         config,

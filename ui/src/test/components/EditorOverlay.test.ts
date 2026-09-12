@@ -71,6 +71,7 @@ function createMockEditorWithCallbacks() {
     dispose: vi.fn(),
     getValue: vi.fn(() => ''),
     setValue: vi.fn(),
+    setModel: vi.fn(),
     focus: vi.fn(),
     updateOptions: vi.fn(),
     saveViewState: vi.fn(() => ({ cursorState: [], viewState: 'saved' })),
@@ -118,6 +119,35 @@ describe('EditorOverlay', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  describe('model identity', () => {
+    it.each(['glsl', 'slang', 'wgsl'])('reuses URI models and restores them after switching (%s)', async (language) => {
+      const monaco = await import('monaco-editor');
+      const path = `/first.${language}`;
+      const first = monaco.editor.createModel('first source', language, monaco.Uri.file(path));
+      const before = vi.mocked(monaco.editor.createModel).mock.calls.length;
+      const { rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: path, shaderCode: 'first source' } });
+      const editor = await getLatestMockEditor();
+      expect(editor.getModel()).toBe(first);
+      expect(monaco.editor.createModel).toHaveBeenCalledTimes(before);
+      await rerender({ ...defaultProps, shaderPath: `/second.${language}`, shaderCode: 'second source' });
+      const second = editor.getModel();
+      expect(second).not.toBe(first);
+      expect(second.getValue()).toBe('second source');
+      expect(first.getValue()).toBe('first source');
+      await rerender({ ...defaultProps, shaderPath: path, shaderCode: 'first updated' });
+      expect(editor.getModel()).toBe(first);
+      expect(first.getValue()).toBe('first updated');
+      expect(second.getValue()).toBe('second source');
+      expect(monaco.editor.createModel).toHaveBeenCalledTimes(before + 1);
+    });
+    it('creates a model for an editor without a file path', async () => {
+      const monaco = await import('monaco-editor');
+      render(EditorOverlay, { props: { ...defaultProps, shaderPath: '', shaderCode: 'untitled' } });
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('untitled', 'glsl');
+      expect((await getLatestMockEditor()).getModel().getValue()).toBe('untitled');
+    });
   });
 
   // Test group: Visibility
@@ -718,7 +748,8 @@ describe('EditorOverlay', () => {
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ language: 'slang' });
+      expect(createCall?.[1]?.model?.getLanguageId()).toBe('slang');
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'slang', expect.any(Object));
     });
 
     it('should use GLSL as the model language for other shader extensions', async () => {
@@ -728,7 +759,8 @@ describe('EditorOverlay', () => {
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ language: 'glsl' });
+      expect(createCall?.[1]?.model?.getLanguageId()).toBe('glsl');
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'glsl', expect.any(Object));
     });
 
     it('should use JSON as the model language for shader config files', async () => {
@@ -738,7 +770,8 @@ describe('EditorOverlay', () => {
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ language: 'json' });
+      expect(createCall?.[1]?.model?.getLanguageId()).toBe('json');
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'json', expect.any(Object));
     });
 
     it('should use TypeScript as the model language for .ts files', async () => {
@@ -748,7 +781,8 @@ describe('EditorOverlay', () => {
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ language: 'typescript' });
+      expect(createCall?.[1]?.model?.getLanguageId()).toBe('typescript');
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'typescript', expect.any(Object));
     });
 
     it('should use JavaScript as the model language for .js files', async () => {
@@ -758,12 +792,13 @@ describe('EditorOverlay', () => {
       });
 
       const createCall = vi.mocked(monaco.editor.create).mock.calls.at(-1);
-      expect(createCall?.[1]).toMatchObject({ language: 'javascript' });
+      expect(createCall?.[1]?.model?.getLanguageId()).toBe('javascript');
+      expect(monaco.editor.createModel).toHaveBeenCalledWith('', 'javascript', expect.any(Object));
     });
 
     it('should update the model language when switching shader languages', async () => {
       const monaco = await import('monaco-editor');
-      const { mockEditor, model } = createMockEditorWithCallbacks();
+      const { mockEditor } = createMockEditorWithCallbacks();
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
       const { rerender } = render(EditorOverlay, {
@@ -774,12 +809,13 @@ describe('EditorOverlay', () => {
         shaderPath: '/shader.slang',
       });
 
-      expect(monaco.editor.setModelLanguage).toHaveBeenCalledWith(model, 'slang');
+      expect(monaco.editor.createModel).toHaveBeenLastCalledWith('', 'slang', expect.any(Object));
+      expect(mockEditor.setModel).toHaveBeenCalledWith(monaco.editor.getModel(monaco.Uri.file('/shader.slang')));
     });
 
     it('should switch the model language back to GLSL', async () => {
       const monaco = await import('monaco-editor');
-      const { mockEditor, model } = createMockEditorWithCallbacks();
+      const { mockEditor } = createMockEditorWithCallbacks();
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
       const { rerender } = render(EditorOverlay, {
@@ -790,7 +826,8 @@ describe('EditorOverlay', () => {
         shaderPath: '/shader.glsl',
       });
 
-      expect(monaco.editor.setModelLanguage).toHaveBeenCalledWith(model, 'glsl');
+      expect(monaco.editor.createModel).toHaveBeenLastCalledWith('', 'glsl', expect.any(Object));
+      expect(mockEditor.setModel).toHaveBeenCalledWith(monaco.editor.getModel(monaco.Uri.file('/shader.glsl')));
     });
 
     it('should load Monaco hover and marker navigation contributions for diagnostics', () => {

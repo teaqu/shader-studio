@@ -1,3 +1,4 @@
+import type { FunctionMock } from './FunctionMock';
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VariableCaptureManager, computeGridDimensions } from '../lib/VariableCaptureManager';
@@ -142,17 +143,17 @@ describe('computeGridDimensions', () => {
 
 describe('VariableCaptureManager', () => {
   let manager: VariableCaptureManager;
-  let onUpdate: ReturnType<typeof vi.fn>;
-  let onError: ReturnType<typeof vi.fn>;
+  let onUpdate: FunctionMock;
+  let onError: FunctionMock;
 
-  let mockCollectResults: ReturnType<typeof vi.fn>;
-  let mockIssueCaptureAtPixel: ReturnType<typeof vi.fn>;
-  let mockIssueCaptureGrid: ReturnType<typeof vi.fn>;
-  let mockIssueDeferred: ReturnType<typeof vi.fn>;
-  let mockCancelPendingCaptures: ReturnType<typeof vi.fn>;
-  let mockCapturerDispose: ReturnType<typeof vi.fn>;
-  let mockCreateVariableCapturer: ReturnType<typeof vi.fn>;
-  let mockGetCaptureUniforms: ReturnType<typeof vi.fn>;
+  let mockCollectResults: FunctionMock;
+  let mockIssueCaptureAtPixel: FunctionMock;
+  let mockIssueCaptureGrid: FunctionMock;
+  let mockIssueDeferred: FunctionMock;
+  let mockCancelPendingCaptures: FunctionMock;
+  let mockCapturerDispose: FunctionMock;
+  let mockCreateVariableCapturer: FunctionMock;
+  let mockGetCaptureUniforms: FunctionMock;
   let mockRenderingEngine: any;
 
   // RAF control

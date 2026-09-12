@@ -1,9 +1,10 @@
+import type { FunctionMock } from '../FunctionMock';
 import { describe, it, expect, vi } from 'vitest';
 import { persistConfig, stripResolvedPath } from '../../lib/config/ConfigPersistence';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import type { ShaderConfig } from '@shader-studio/types';
 
-function makeTransport(): Transport & { postMessage: ReturnType<typeof vi.fn> } {
+function makeTransport(): Transport & { postMessage: FunctionMock } {
   return {
     postMessage: vi.fn(),
     onMessage: vi.fn(),

@@ -7,20 +7,24 @@ const mockMP4AddVideoChunk = vi.fn();
 const mockMP4Finalize = vi.fn();
 
 vi.mock('webm-muxer', () => ({
-  Muxer: vi.fn(() => ({
-    addVideoChunk: mockWebMAddVideoChunk,
-    finalize: mockWebMFinalize,
-    target: { buffer: new ArrayBuffer(100) },
-  })),
+  Muxer: vi.fn(function () {
+    return ({
+      addVideoChunk: mockWebMAddVideoChunk,
+      finalize: mockWebMFinalize,
+      target: { buffer: new ArrayBuffer(100) },
+    });
+  }),
   ArrayBufferTarget: vi.fn(),
 }));
 
 vi.mock('mp4-muxer', () => ({
-  Muxer: vi.fn(() => ({
-    addVideoChunk: mockMP4AddVideoChunk,
-    finalize: mockMP4Finalize,
-    target: { buffer: new ArrayBuffer(200) },
-  })),
+  Muxer: vi.fn(function () {
+    return ({
+      addVideoChunk: mockMP4AddVideoChunk,
+      finalize: mockMP4Finalize,
+      target: { buffer: new ArrayBuffer(200) },
+    });
+  }),
   ArrayBufferTarget: vi.fn(),
 }));
 
@@ -218,10 +222,12 @@ describe('VideoEncoderWrapper', () => {
 
     it('should close the VideoFrame after encoding', () => {
       const mockFrameClose = vi.fn();
-      (globalThis as any).VideoFrame = vi.fn(() => ({
-        timestamp: 0,
-        close: mockFrameClose,
-      }));
+      (globalThis as any).VideoFrame = vi.fn(function () {
+        return ({
+          timestamp: 0,
+          close: mockFrameClose,
+        });
+      });
 
       const wrapper = new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
       const canvas = document.createElement('canvas');

@@ -414,35 +414,40 @@ describe("shader corpus through the UI transport layer", () => {
     expect(skipped.length).toBeLessThanOrEqual(27);
   });
 
-  it("pinned black-output fixtures reach their intended visible result", { timeout: 120_000 }, async () => {
+  it.each(["slang", "wgsl"] as const)("pinned black-output fixtures reach their intended visible result (%s)", { timeout: 120_000 }, async (language) => {
     // slang/33channels: black is idle keyboard input, not a broken pipeline.
     // Key 66 ('B') lands on a pixel center at the 64px canvas, so holding it
     // must light the frame through the shared keyboard texture.
     {
-      const rig = rigs.get("slang")!;
+      const rig = rigs.get(language)!;
       rig.harness.resize(64, 64);
-      await paintSentinel(rig, "slang");
-      await rig.open("/slang/33channels.slang");
+      await paintSentinel(rig, language);
+      await rig.open(`/${language}/33channels.${language}`);
       const press = (type: "keydown" | "keyup"): void => {
         const event = new KeyboardEvent(type, { bubbles: true });
         Object.defineProperty(event, "keyCode", { value: 66 });
         window.dispatchEvent(event);
       };
-      press("keydown");
-      const region = await rig.harness.renderAndReadRegion(0);
-      press("keyup");
-      // Untoggle so later tests see pristine keyboard state.
-      press("keydown");
-      press("keyup");
-      expect(nonBlackPixelCount(region)).toBeGreaterThan(0);
+      try {
+        expect(nonBlackPixelCount(await rig.harness.renderAndReadRegion(0))).toBe(0);
+        press("keydown");
+        const region = await rig.harness.renderAndReadRegion(0);
+        expect(nonBlackPixelCount(region)).toBeGreaterThan(0);
+      } finally {
+        press("keyup");
+        // Untoggle even when an assertion fails, so later tests see idle keys.
+        press("keydown");
+        press("keyup");
+      }
     }
     // storage-edit-colours: black is the zeroed `colours` buffer. Writing
     // values — the Storage panel path — must light every quadrant.
     {
-      const rig = rigs.get("slang")!;
+      const rig = rigs.get(language)!;
       rig.harness.resize(64, 64);
-      await paintSentinel(rig, "slang");
-      await rig.open("/slang/compute-lab/storage-edit-colours.slang");
+      await paintSentinel(rig, language);
+      await rig.open(`/${language}/compute-lab/storage-edit-colours.${language}`);
+      expect(nonBlackPixelCount(await rig.harness.renderAndReadRegion(0))).toBe(0);
       const colours = new Float32Array([1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1]);
       await rig.harness.engine.writeStorageBuffer("colours", 0, colours.buffer as ArrayBuffer);
       const region = await rig.harness.renderAndReadRegion(0);

@@ -43,7 +43,9 @@ describe('WebSocketTransport', () => {
 
   beforeEach(() => {
     originalWebSocket = global.WebSocket;
-    webSocketSpy = vi.fn().mockImplementation((url: string) => new MockWebSocket(url));
+    webSocketSpy = vi.fn().mockImplementation(function (url: string) {
+      return new MockWebSocket(url);
+    });
     global.WebSocket = webSocketSpy as any;
 
     Object.assign(global.WebSocket, {
@@ -144,8 +146,8 @@ describe('WebSocketTransport', () => {
 
     it('should handle WebSocket constructor throwing', () => {
       (global as any).shaderViewConfig = { port: 8080 };
-      webSocketSpy.mockImplementationOnce(() => {
-        throw new Error('Connection refused'); 
+      webSocketSpy.mockImplementationOnce(function () {
+        throw new Error('Connection refused');
       });
 
       const transport = new WebSocketTransport();
@@ -272,7 +274,7 @@ describe('WebSocketTransport', () => {
     it('should catch and log handler errors without affecting other handlers', () => {
       const { transport, mockWs } = createTransport();
       const errorHandler = vi.fn().mockImplementation(() => {
-        throw new Error('handler boom'); 
+        throw new Error('handler boom');
       });
       const goodHandler = vi.fn();
 
@@ -299,7 +301,7 @@ describe('WebSocketTransport', () => {
     it('should handle Error thrown in handler', () => {
       const { transport, mockWs } = createTransport();
       const errorHandler = vi.fn().mockImplementation(() => {
-        throw new Error('string error'); 
+        throw new Error('string error');
       });
 
       transport.onMessage(errorHandler);
@@ -378,7 +380,7 @@ describe('WebSocketTransport', () => {
       mockWs.onopen?.(new Event('open'));
       mockWs.send.mockReset(); // Clear clientInfo send
       mockWs.send.mockImplementation(() => {
-        throw new Error('send failed'); 
+        throw new Error('send failed');
       });
 
       transport.postMessage({ type: 'fail' });
@@ -421,8 +423,8 @@ describe('WebSocketTransport', () => {
 
     it('should handle dispose when no WebSocket exists', () => {
       (global as any).shaderViewConfig = { port: 8080 };
-      webSocketSpy.mockImplementationOnce(() => {
-        throw new Error('fail'); 
+      webSocketSpy.mockImplementationOnce(function () {
+        throw new Error('fail');
       });
       const transport = new WebSocketTransport();
 
