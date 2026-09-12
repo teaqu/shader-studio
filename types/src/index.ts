@@ -17,3 +17,5 @@ export * from './shader-environment/ShaderLanguages';
 export * from './shaderProject';
 
 export * from './shader-environment/SlangChannels';
+
+export { wgslStorageElementType } from "./wgslStorage";
