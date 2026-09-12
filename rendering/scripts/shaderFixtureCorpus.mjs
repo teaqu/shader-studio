@@ -11,6 +11,7 @@ const { resolveSlangIncludes, resolveSlangImports } = createRequire(import.meta.
 const CONFIG_SUFFIX = ".sha.json";
 const TEXT_EXTENSIONS = new Set([".glsl", ".slang", ".wgsl"]);
 
+/** @param {string} directory @returns {string[]} */
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (entry.name === ".git") {
@@ -21,6 +22,7 @@ function walk(directory) {
   });
 }
 
+/** @param {string} root @returns {import("@shader-studio/types").ConfiguredPathHost} */
 function fixturePathHost(root) {
   return {
     workspaceRootFor: () => root,
@@ -35,10 +37,12 @@ function fixturePathHost(root) {
 // canonical rule in `resolveConfiguredPath`), not the shader's. Corpus
 // configs are always siblings of their shaders, so the anchor change is a
 // no-op on current fixtures; the step 7 parity test pins the agreement.
+/** @param {string} root @param {string} configPath @param {string} fixturePath */
 function resolveFixturePath(root, configPath, fixturePath) {
   return resolveConfiguredPath(fixturePathHost(root), configPath, fixturePath);
 }
 
+/** @param {string} filePath */
 function readSource(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
 }
@@ -48,11 +52,13 @@ function readSource(filePath) {
 // fixture the old regex inliner accepted but production rejects (or vice
 // versa) shows up as a corpus diff — investigate that, do not restore the
 // inliner.
+/** @param {string} source @param {string} sourcePath */
 function inlineSlangDependencies(source, sourcePath) {
   const withIncludes = resolveSlangIncludes(source, sourcePath, readSource).source;
   return resolveSlangImports(withIncludes, sourcePath, readSource);
 }
 
+/** @param {string} filePath */
 function mimeType(filePath) {
   switch (path.extname(filePath).toLowerCase()) {
     case ".svg": return "image/svg+xml";
@@ -64,11 +70,13 @@ function mimeType(filePath) {
   }
 }
 
+/** @param {string} filePath */
 function dataUrl(filePath) {
   const contents = fs.readFileSync(filePath);
   return `data:${mimeType(filePath)};base64,${contents.toString("base64")}`;
 }
 
+/** @param {string | undefined} scriptPath */
 function customUniforms(scriptPath) {
   if (!scriptPath) {
     return {};
@@ -109,11 +117,14 @@ function customUniforms(scriptPath) {
   };
 }
 
+/** @param {string} root @param {string} configPath @param {string} shaderPath */
 function buildProject(root, configPath, shaderPath) {
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   const extension = path.extname(shaderPath);
   const language = extension === ".slang" ? "slang" : extension === ".wgsl" ? "wgsl" : "glsl";
+  /** @type {Record<string, string>} */
   const buffers = {};
+  /** @type {Record<string, string>} */
   const sourcePaths = {};
 
   for (const [passName, pass] of Object.entries(config.passes ?? {})) {
@@ -167,6 +178,7 @@ function buildProject(root, configPath, shaderPath) {
   };
 }
 
+/** @param {string} root */
 export function loadShaderFixtureCorpus(root) {
   if (!fs.existsSync(root)) {
     throw new Error(`Shader fixture corpus not found at ${root}`);
