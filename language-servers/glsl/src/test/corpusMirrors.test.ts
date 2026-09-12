@@ -39,8 +39,11 @@ interface ShaConfig {
 const walkConfigs = (dir: string, out: string[] = []): string[] => {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) walkConfigs(p, out);
-    else if (e.name.endsWith(".sha.json")) out.push(p);
+    if (e.isDirectory()) {
+      walkConfigs(p, out);
+    } else if (e.name.endsWith(".sha.json")) {
+      out.push(p);
+    }
   }
   return out.sort();
 };
@@ -50,7 +53,9 @@ const walkConfigs = (dir: string, out: string[] = []): string[] => {
 // resolves relative to the owning config, like the extension loader.
 const CORPUS_ROOT = dirname(CORPUS);
 const resolveRef = (configAbs: string, value: string): string => {
-  if (value.startsWith("@/")) return normalize(relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))));
+  if (value.startsWith("@/")) {
+    return normalize(relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))));
+  }
   return normalize(relative(CORPUS, join(dirname(configAbs), value)));
 };
 
@@ -75,7 +80,9 @@ const EXPECTED_PROBLEMS = new Map<string, RegExp[]>([
 ]);
 
 const uniformsFor = (script?: string) => {
-  if (!script) return [];
+  if (!script) {
+    return [];
+  }
   if (script.endsWith("custom-uniforms.ts")) {
     return ["uRed", "uGreen", "uOffset"].map((name) => ({ name, type: "float" as const }));
   }
@@ -96,11 +103,15 @@ const findWord = (text: string, needle: string, occurrence = 0) => {
   const lines = text.split("\n");
   for (let line = 0; line < lines.length; line++) {
     const raw = lines[line]!;
-    if (/^\s*#/.test(raw)) continue;
+    if (/^\s*#/.test(raw)) {
+      continue;
+    }
     const code = raw.split("//")[0]!;
     const match = pattern.exec(code);
     if (match && match.index !== undefined) {
-      if (seen === occurrence) return { line, character: match.index };
+      if (seen === occurrence) {
+        return { line, character: match.index };
+      }
       seen++;
     }
   }
@@ -111,10 +122,14 @@ const findWord = (text: string, needle: string, occurrence = 0) => {
 // ignoring preprocessor directives and comments.
 const firstFn = (text: string): string | null => {
   for (const raw of text.split("\n")) {
-    if (/^\s*#/.test(raw)) continue;
+    if (/^\s*#/.test(raw)) {
+      continue;
+    }
     const code = raw.split("//")[0]!;
     const match = /^\s*(?:void|float|int|uint|bool|vec[234]|ivec[234]|uvec[234]|mat[234]|mat[234]x[234]|sampler\w+)\s+([A-Za-z_]\w*)\s*\(/.exec(code);
-    if (match?.[1]) return match[1];
+    if (match?.[1]) {
+      return match[1];
+    }
   }
   return null;
 };
@@ -158,7 +173,9 @@ async function openMirror(rel: string, text: string, opts: {
   const revision = { uri, languageId: "glsl" as const, version: 1, environmentGeneration: gen };
   const hoverText = async (needle: string, occurrence = 0): Promise<string | null> => {
     const pos = findWord(text, needle, occurrence);
-    if (!pos) return null;
+    if (!pos) {
+      return null;
+    }
     const hover = await instance.hover({ document: revision, position: pos });
     return hover ? JSON.stringify(hover.contents) : null;
   };
@@ -219,9 +236,13 @@ const collectDocs = (): MirrorDoc[] => {
       }
     }
     for (const [passName, pass] of Object.entries(passes)) {
-      if (passName === "common") continue;
+      if (passName === "common") {
+        continue;
+      }
       const fileRel = pass.path ? resolveRef(configAbs, pass.path) : join(dir, `${stem}.glsl`);
-      if (!existsSync(join(CORPUS, fileRel))) continue;
+      if (!existsSync(join(CORPUS, fileRel))) {
+        continue;
+      }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = pass.entryPoint ?? firstFn(text) ?? "mainImage";
@@ -245,7 +266,9 @@ const collectDocs = (): MirrorDoc[] => {
   }
   // Config-less sanity shaders open with an empty environment.
   for (const standalone of ["shadertoy.glsl", "parity/pixel-inspector/gradient_glsl.glsl"]) {
-    if (!existsSync(join(CORPUS, standalone))) continue;
+    if (!existsSync(join(CORPUS, standalone))) {
+      continue;
+    }
     const text = readFileSync(join(CORPUS, standalone), "utf8");
     docs.push({
       configRel: "(none)", pass: "Image", fileRel: standalone, text,

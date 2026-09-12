@@ -34,10 +34,14 @@ export function resolveSlangSymbol(documents: readonly SlangRenameDocument[], ur
   const sources = collectSources(scoped);
   const source = sources.get(uri);
   const offset = source === undefined ? undefined : offsetAt(source, position);
-  if (source === undefined || offset === undefined) return null;
+  if (source === undefined || offset === undefined) {
+    return null;
+  }
   const cursor = !/[A-Za-z0-9_]/.test(source[offset] ?? '') && /[A-Za-z0-9_]/.test(source[offset - 1] ?? '') ? offset - 1 : offset;
   const analysis = analyze(scoped, sources);
-  if (!analysis) return null;
+  if (!analysis) {
+    return null;
+  }
   const binding = [...analysis.bindings.values()].find(candidate => [candidate.declaration, ...candidate.references.values()]
     .some(point => point.uri === uri && cursor >= point.offset && cursor < point.offset + candidate.name.length));
   return binding ? { declaration: binding.declaration, references: [...binding.references.values()] } : null;
@@ -138,12 +142,18 @@ export function renameSlangSymbol(documents: readonly SlangRenameDocument[], uri
  * retain support without widening ordinary unresolved-name edits. */
 function renameGenericFallback(documents: readonly SlangRenameDocument[], sources: ReadonlyMap<string, string>, uri: string, cursor: number, newName: string): WorkspaceEdit | null {
   const source = sources.get(uri);
-  if (!source) return null;
+  if (!source) {
+    return null;
+  }
   const word = wordAt(source, cursor);
-  if (!word) return null;
+  if (!word) {
+    return null;
+  }
   const declaration = new RegExp(`\\bgeneric\\s*<[^>{}()\\n]*>[^{};]*?\\b${word}\\s*\\(`);
   const owner = [...sources.entries()].find(([, text]) => declaration.test(text));
-  if (!owner || (owner[0] !== uri && !documents.some(document => document.uri === owner[0]))) return null;
+  if (!owner || (owner[0] !== uri && !documents.some(document => document.uri === owner[0]))) {
+    return null;
+  }
   const changes: Record<string, TextEdit[]> = {};
   for (const [file, text] of sources) {
     const edits: TextEdit[] = [];
@@ -153,16 +163,22 @@ function renameGenericFallback(documents: readonly SlangRenameDocument[], source
       // Require call/declaration form, so fields and same-spelled locals stay out.
       edits.push({ range: { start: positionAt(text, start), end: positionAt(text, start + word.length) }, newText: newName });
     }
-    if (edits.length) changes[file] = edits;
+    if (edits.length) {
+      changes[file] = edits;
+    }
   }
   return Object.keys(changes).length ? { changes } : null;
 }
 
 function renameMethodFallback(sources: ReadonlyMap<string, string>, uri: string, cursor: number, newName: string): WorkspaceEdit | null {
   const word = wordAt(sources.get(uri) ?? '', cursor);
-  if (!word) return null;
+  if (!word) {
+    return null;
+  }
   const declarations = [...sources.values()].flatMap(text => [...text.matchAll(new RegExp(`\\bstruct\\s+\\w+\\s*\\{[\\s\\S]*?\\b${word}\\s*\\(`, 'g'))]);
-  if (declarations.length !== 1) return null;
+  if (declarations.length !== 1) {
+    return null;
+  }
   const changes: Record<string, TextEdit[]> = {};
   for (const [file, text] of sources) {
     const edits: TextEdit[] = [];
@@ -177,7 +193,9 @@ function renameMethodFallback(sources: ReadonlyMap<string, string>, uri: string,
         edits.push({ range: { start: positionAt(text, start), end: positionAt(text, start + word.length) }, newText: newName });
       }
     }
-    if (edits.length) changes[file] = edits;
+    if (edits.length) {
+      changes[file] = edits;
+    }
   }
   return Object.keys(changes).length ? { changes } : null;
 }
@@ -185,16 +203,24 @@ function renameMethodFallback(sources: ReadonlyMap<string, string>, uri: string,
 function renameImportedFunctionFallback(sources: ReadonlyMap<string, string>, uri: string, cursor: number, newName: string): WorkspaceEdit | null {
   const source = sources.get(uri);
   const word = source ? wordAt(source, cursor) : undefined;
-  if (!source || !word || !/\bimport\s+(?:"[^"]+"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/.test(source)) return null;
+  if (!source || !word || !/\bimport\s+(?:"[^"]+"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/.test(source)) {
+    return null;
+  }
   const owner = [...sources.entries()].find(([, text]) => new RegExp(`\\b(?:float|int|uint|bool|void|float[234])\\s+${word}\\s*\\(`).test(text));
-  if (!owner || owner[0] === uri) return null;
-  if ([...sources.values()].flatMap(text => [...text.matchAll(new RegExp(`\\b(?:float|int|uint|bool|void|float[234])\\s+${word}\\s*\\(`, 'g'))]).length !== 1) return null;
+  if (!owner || owner[0] === uri) {
+    return null;
+  }
+  if ([...sources.values()].flatMap(text => [...text.matchAll(new RegExp(`\\b(?:float|int|uint|bool|void|float[234])\\s+${word}\\s*\\(`, 'g'))]).length !== 1) {
+    return null;
+  }
   const changes: Record<string, TextEdit[]> = {};
   for (const [file, text] of sources) {
     const edits = [...text.matchAll(new RegExp(`\\b${word}\\b(?=\\s*\\()`, 'g'))].map(match => ({
       range: { start: positionAt(text, match.index!), end: positionAt(text, match.index! + word.length) }, newText: newName,
     }));
-    if (edits.length) changes[file] = edits;
+    if (edits.length) {
+      changes[file] = edits;
+    }
   }
   return Object.keys(changes).length ? { changes } : null;
 }
@@ -288,12 +314,16 @@ function analyze(documents: readonly SlangRenameDocument[], sources: ReadonlyMap
     for (const generic of genericFunctions(files.map(uri => ({ uri, text: sources.get(uri)! })))) {
       const declaration = generic.declaration;
       const binding = bindings.get(key(declaration));
-      if (!binding || binding.kind !== "function") continue;
+      if (!binding || binding.kind !== "function") {
+        continue;
+      }
       for (const file of files) {
         const text = sources.get(file)!;
         for (const match of text.matchAll(new RegExp(`\\b${generic.name}\\b(?=\\s*(?:<[^>{}()\\n]*>)?\\s*\\()`, "g"))) {
           const point = { uri: file, offset: match.index! };
-          if (key(point) !== key(declaration)) binding.references.set(key(point), point);
+          if (key(point) !== key(declaration)) {
+            binding.references.set(key(point), point);
+          }
         }
       }
     }
@@ -414,7 +444,9 @@ function positionAt(source: string, offset: number): Position {
 }
 function wordAt(source: string, offset: number): string | undefined {
   let start = offset;
-  while (start > 0 && /[A-Za-z0-9_]/.test(source[start - 1])) start--;
+  while (start > 0 && /[A-Za-z0-9_]/.test(source[start - 1])) {
+    start--;
+  }
   const match = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(start));
   return match?.[0];
 }

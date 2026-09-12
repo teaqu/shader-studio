@@ -39,19 +39,26 @@ interface ShaConfig {
 const walkConfigs = (dir: string, out: string[] = []): string[] => {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) walkConfigs(p, out);
-    else if (e.name.endsWith(".sha.json")) out.push(p);
+    if (e.isDirectory()) {
+      walkConfigs(p, out);
+    } else if (e.name.endsWith(".sha.json")) {
+      out.push(p);
+    }
   }
   return out.sort();
 };
 
 const resolveRef = (configAbs: string, value: string): string => {
-  if (value.startsWith("@/")) throw new Error(`unexpected @/ ref in wgsl config: ${value}`);
+  if (value.startsWith("@/")) {
+    throw new Error(`unexpected @/ ref in wgsl config: ${value}`);
+  }
   return normalize(join(dirname(configAbs), value));
 };
 
 const uniformsFor = (script?: string) => {
-  if (!script) return [];
+  if (!script) {
+    return [];
+  }
   if (script.endsWith("custom-uniforms.ts")) {
     return ["uRed", "uGreen", "uOffset"].map((name) => ({ name, type: "float" as const }));
   }
@@ -77,7 +84,9 @@ const findWord = (text: string, needle: string, occurrence = 0) => {
     if (match && match.index !== undefined) {
       // Occurrence counting across lines is overkill here; first hit wins
       // unless the caller asks for a later one via repeated single hits.
-      if (seen === occurrence) return { line, character: match.index };
+      if (seen === occurrence) {
+        return { line, character: match.index };
+      }
       seen++;
     }
   }
@@ -124,7 +133,9 @@ async function openMirror(rel: string, text: string, opts: {
   const revision = { uri, languageId: "wgsl" as const, version: 1, environmentGeneration: gen };
   const hoverText = async (needle: string, occurrence = 0): Promise<string | null> => {
     const pos = findWord(text, needle, occurrence);
-    if (!pos) return null;
+    if (!pos) {
+      return null;
+    }
     const hover = await instance.hover({ document: revision, position: pos });
     return hover ? JSON.stringify(hover.contents) : null;
   };
@@ -183,9 +194,13 @@ const collectDocs = (): MirrorDoc[] => {
       }
     }
     for (const [passName, pass] of Object.entries(passes)) {
-      if (passName === "common") continue;
+      if (passName === "common") {
+        continue;
+      }
       const fileRel = pass.path ? normalize(join(dir, pass.path)) : join(dir, `${stem}.wgsl`);
-      if (!existsSync(join(CORPUS, fileRel))) continue;
+      if (!existsSync(join(CORPUS, fileRel))) {
+        continue;
+      }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = stage === "compute"
@@ -211,7 +226,9 @@ const collectDocs = (): MirrorDoc[] => {
   }
   // Config-less sanity shaders open with an empty environment.
   for (const standalone of ["shadertoy.wgsl", "parity/pixel-inspector/gradient.wgsl"]) {
-    if (!existsSync(join(CORPUS, standalone))) continue;
+    if (!existsSync(join(CORPUS, standalone))) {
+      continue;
+    }
     const text = readFileSync(join(CORPUS, standalone), "utf8");
     docs.push({
       configRel: "(none)", pass: "Image", fileRel: standalone, text,

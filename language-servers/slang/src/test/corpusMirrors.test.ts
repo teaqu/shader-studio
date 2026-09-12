@@ -51,8 +51,11 @@ interface ShaConfig {
 const walkConfigs = (dir: string, out: string[] = []): string[] => {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) walkConfigs(p, out);
-    else if (e.name.endsWith(".sha.json")) out.push(p);
+    if (e.isDirectory()) {
+      walkConfigs(p, out);
+    } else if (e.name.endsWith(".sha.json")) {
+      out.push(p);
+    }
   }
   return out.sort();
 };
@@ -60,12 +63,16 @@ const walkConfigs = (dir: string, out: string[] = []): string[] => {
 // Workspace-anchored `@/` refs resolve from the corpus root; everything
 // else resolves relative to the owning config, like the extension loader.
 const resolveRef = (configAbs: string, value: string): string => {
-  if (value.startsWith("@/")) return normalize(relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))));
+  if (value.startsWith("@/")) {
+    return normalize(relative(CORPUS, join(CORPUS_ROOT, value.slice("@/".length))));
+  }
   return normalize(relative(CORPUS, join(dirname(configAbs), value)));
 };
 
 const uniformsFor = (script?: string) => {
-  if (!script) return [];
+  if (!script) {
+    return [];
+  }
   if (script.endsWith("custom-uniforms.ts")) {
     return ["uRed", "uGreen", "uOffset"].map((name) => ({ name, type: "float" as const }));
   }
@@ -88,7 +95,9 @@ const findWord = (text: string, needle: string, occurrence = 0) => {
     const code = lines[line]!.split("//")[0]!;
     const match = pattern.exec(code);
     if (match && match.index !== undefined) {
-      if (seen === occurrence) return { line, character: match.index };
+      if (seen === occurrence) {
+        return { line, character: match.index };
+      }
       seen++;
     }
   }
@@ -102,9 +111,13 @@ const FN_KEYWORDS = new Set(["if", "for", "while", "switch", "return", "sizeof"]
 const firstSlangFn = (text: string): string | null => {
   for (const raw of text.split("\n")) {
     const line = raw.split("//")[0]!;
-    if (/^\s*(import|module|struct|interface|__exported|#|\[)/.test(line)) continue;
+    if (/^\s*(import|module|struct|interface|__exported|#|\[)/.test(line)) {
+      continue;
+    }
     const match = /^\s*(?:[\w:<>\[\],*&?!\s]+?)\s+([A-Za-z_]\w*)\s*\(/.exec(line);
-    if (match?.[1] && !FN_KEYWORDS.has(match[1])) return match[1];
+    if (match?.[1] && !FN_KEYWORDS.has(match[1])) {
+      return match[1];
+    }
   }
   return null;
 };
@@ -115,9 +128,13 @@ const referencedHelper = (docText: string, commonText: string): string | undefin
   const names: string[] = [];
   for (const raw of commonText.split("\n")) {
     const line = raw.split("//")[0]!;
-    if (/^\s*(import|module|struct|interface|__exported|#|\[)/.test(line)) continue;
+    if (/^\s*(import|module|struct|interface|__exported|#|\[)/.test(line)) {
+      continue;
+    }
     const match = /^\s*(?:[\w:<>\[\],*&?!\s]+?)\s+([A-Za-z_]\w*)\s*\(/.exec(line);
-    if (match?.[1] && !FN_KEYWORDS.has(match[1]) && !names.includes(match[1])) names.push(match[1]);
+    if (match?.[1] && !FN_KEYWORDS.has(match[1]) && !names.includes(match[1])) {
+      names.push(match[1]);
+    }
   }
   const doc = docText.split("\n").map((line) => line.split("//")[0]).join("\n");
   return names.find((name) => new RegExp(`\\b${name}\\b`).test(doc));
@@ -184,9 +201,13 @@ const collectDocs = (): MirrorDoc[] => {
       }
     }
     for (const [passName, pass] of Object.entries(passes)) {
-      if (passName === "common") continue;
+      if (passName === "common") {
+        continue;
+      }
       const fileRel = pass.path ? resolveRef(configAbs, pass.path) : join(dir, `${stem}.slang`);
-      if (!existsSync(join(CORPUS, fileRel))) continue;
+      if (!existsSync(join(CORPUS, fileRel))) {
+        continue;
+      }
       const text = readFileSync(join(CORPUS, fileRel), "utf8");
       const stage = stageForPass(cfg as never, passName, fileRel);
       const entry = pass.entryPoint ?? firstSlangFn(text) ?? "mainImage";
@@ -278,7 +299,9 @@ async function openMirror(doc: MirrorDoc) {
   const revision = { uri, languageId: "slang" as const, version: 1, environmentGeneration: gen };
   const hoverText = async (needle: string, occurrence = 0): Promise<string | null> => {
     const pos = findWord(doc.text, needle, occurrence);
-    if (!pos) return null;
+    if (!pos) {
+      return null;
+    }
     const hover = await service.hover({ document: revision, position: pos });
     return hover ? JSON.stringify(hover.contents) : null;
   };
@@ -345,10 +368,13 @@ describe("Slang corpus mirrors in the language service", () => {
     const walk = (dir: string): void => {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
         const p = join(dir, e.name);
-        if (e.isDirectory()) walk(p);
-        else if (e.name.endsWith(".slang")) {
+        if (e.isDirectory()) {
+          walk(p);
+        } else if (e.name.endsWith(".slang")) {
           const rel = normalize(relative(CORPUS, p));
-          if (!referenced.has(rel)) unreferenced.push(rel);
+          if (!referenced.has(rel)) {
+            unreferenced.push(rel);
+          }
         }
       }
     };

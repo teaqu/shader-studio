@@ -36,7 +36,9 @@ async function createHost(options: ConstructorParameters<typeof WebExtensionHost
 describe('WebExtensionHost', () => {
   it.each(['glsl', 'slang', 'wgsl'] as const)('indexes unopened %s passes with their own Common dependency', async language => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
-    for (const name of ['main', 'common', 'buffer', 'unrelated']) workspace.writeText(`/shaders/${name}.${language}`, name);
+    for (const name of ['main', 'common', 'buffer', 'unrelated']) {
+      workspace.writeText(`/shaders/${name}.${language}`, name);
+    }
     workspace.writeText('/shaders/main.sha.json', JSON.stringify({ passes: { common: { path: `common.${language}` }, Image: {}, BufferA: { path: `buffer.${language}` } } }));
     const host = new WebExtensionHost(workspace);
     const documents = host.getWorkspaceDocuments(language);

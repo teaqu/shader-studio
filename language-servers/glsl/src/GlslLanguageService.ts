@@ -568,7 +568,9 @@ export class GlslLanguageService implements LanguageService {
  * every textured vertex hook.
  */
 function vertexSamplerHelpers(environment: ShaderAuthoringEnvironment): { name: string; signature: string; resource: string }[] {
-  if (environment.stage !== "vertex") return [];
+  if (environment.stage !== "vertex") {
+    return [];
+  }
   const textures = environment.resources.filter((item) =>
     (item.kind === "texture-2d" || item.kind === "texture-cube" || item.kind === "texture-3d")
     && item.slot !== undefined && item.slot >= 0);
@@ -580,7 +582,9 @@ function vertexSamplerHelpers(environment: ShaderAuthoringEnvironment): { name: 
   const helpers: { name: string; signature: string; resource: string }[] = [];
   const seen = new Set<string>();
   const push = (name: string, resource: string, coordinate: string): void => {
-    if (seen.has(name)) return;
+    if (seen.has(name)) {
+      return;
+    }
     seen.add(name);
     helpers.push({ name, signature: `vec4 ${name}(${coordinate} uv)`, resource });
   };

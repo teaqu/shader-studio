@@ -55,7 +55,9 @@ interface ExpectedSource {
 function expectedSources(configPath: string, config: ShaderConfig): ExpectedSource[] {
   const out: ExpectedSource[] = [];
   for (const [passName, pass] of Object.entries(config.passes ?? {})) {
-    if (!pass) continue;
+    if (!pass) {
+      continue;
+    }
     if ('path' in pass && typeof pass.path === 'string' && pass.path) {
       const abs = resolveConfiguredPath(nodeHost, configPath, pass.path);
       out.push({ key: passName, abs, rel: relative(CORPUS_ROOT, abs).split(sep).join('/'), vertexOf: null });
@@ -69,7 +71,9 @@ function expectedSources(configPath: string, config: ShaderConfig): ExpectedSour
 }
 
 function stageOf(config: ShaderConfig, source: ExpectedSource): string {
-  if (source.vertexOf) return 'vertex';
+  if (source.vertexOf) {
+    return 'vertex';
+  }
   const passName = source.key === 'common' ? 'common' : source.key;
   return stageForPass(config, passName, source.abs);
 }
@@ -85,7 +89,9 @@ describe('project derivation parity', () => {
   it('derives identical file identity, stage, buffer membership and dependencies', async () => {
     const failures: string[] = [];
     const check = (ok: boolean, message: string) => {
-      if (!ok) failures.push(message);
+      if (!ok) {
+        failures.push(message);
+      }
     };
 
     for (const project of corpus) {
@@ -107,12 +113,16 @@ describe('project derivation parity', () => {
         // A file shared by several passes of one config keeps the first
         // owner in config order, matching findExplicitPass first-match.
         .filter((source) => {
-          if (seen.has(source.abs)) return false;
+          if (seen.has(source.abs)) {
+            return false;
+          }
           seen.add(source.abs);
           return true;
         });
       const language = shaderLanguageForPath(project.path);
-      if (!language) continue;
+      if (!language) {
+        continue;
+      }
 
       // Standalone derivation over a virtual workspace mirroring the
       // project's on-disk layout, so `/`-rooted virtual paths line up with
@@ -211,7 +221,9 @@ describe('project derivation parity', () => {
       // module the extension resolves for a source is inlined in the corpus
       // output for that source's pass.
       for (const source of expected) {
-        if (shaderLanguageForPath(source.abs) !== 'slang') continue;
+        if (shaderLanguageForPath(source.abs) !== 'slang') {
+          continue;
+        }
         const text = readDisk(source.abs) as string;
         const modules = collectSlangDependencies({
           rootPath: source.abs, rootSource: text, ownerPass: source.key, readSource: readDisk,
@@ -228,7 +240,9 @@ describe('project derivation parity', () => {
             .replace(/^[ \t]*implementing\s+[A-Za-z_]\w*\s*;[ \t]*[\r\n]*/m, '')
             .trim()
             .slice(0, 200);
-          if (!snippet) continue;
+          if (!snippet) {
+            continue;
+          }
           check(typeof output === 'string' && output.includes(snippet),
             `${project.name}: corpus output for ${source.key} is missing inlined dependency ${source.rel}`);
         }
