@@ -146,6 +146,19 @@ const monacoContributionLoadState = vi.hoisted(() => ({
 
 (globalThis as any).__monacoContributionLoadState = monacoContributionLoadState;
 
+/**
+ * One model identity shared by `monaco.editor.createModel`, `monaco.editor.getModel`
+ * and the editor instance's own `getModel()`, so a test that stubs
+ * `editor.getModel().getLineContent` sees the same object the component holds.
+ * ShaderEditor only reaches for uri/getLineContent/getLineCount/getLineMaxColumn.
+ */
+const sharedEditorModel = {
+  uri: { toString: () => "inmemory://test-editor" },
+  getLineMaxColumn: vi.fn(() => 80),
+  getLineCount: vi.fn(() => 0),
+  getLineContent: vi.fn(() => ''),
+};
+
 const monacoMock = {
   MarkerSeverity: { Error: 8, Warning: 4, Info: 2, Hint: 1 },
   KeyMod: { Shift: 1024 },
@@ -188,18 +201,13 @@ const monacoMock = {
       onDidFocusEditorText: vi.fn(() => ({ dispose: vi.fn() })),
       onDidBlurEditorText: vi.fn(() => ({ dispose: vi.fn() })),
       getOption: vi.fn(() => 0),
-      getModel: (() => {
-        const model = {
-          uri: { toString: () => "inmemory://test-editor" },
-          getLineMaxColumn: vi.fn(() => 80),
-          getLineCount: vi.fn(() => 0),
-          getLineContent: vi.fn(() => ''),
-        };
-        return vi.fn(() => model);
-      })(),
+      getModel: vi.fn(() => sharedEditorModel),
       deltaDecorations: vi.fn(() => []),
       getVisibleRanges: vi.fn(() => []),
     })),
+    // ShaderEditor resolves its model by uri before falling back to creating one.
+    getModel: vi.fn(() => null),
+    createModel: vi.fn(() => sharedEditorModel),
     EditorOption: { lineHeight: 66, padding: 83 },
     defineTheme: vi.fn(),
     setTheme: vi.fn(),

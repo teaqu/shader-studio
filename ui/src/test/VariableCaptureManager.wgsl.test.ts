@@ -8,6 +8,12 @@ const wgslShader = `fn mainImage(coord: vec2f) -> vec4f {
   return vec4f(col, 1.0);
 }`;
 
+const wgslCompute = `@compute @workgroup_size(8, 8, 1)
+fn update(@builtin(global_invocation_id) gid: vec3u) {
+  let wave: f32 = f32(gid.x);
+  writeOutput(gid.xy, vec4f(wave));
+}`;
+
 function mockEngine(language: 'glsl' | 'slang' | 'wgsl') {
   const capturer = {
     setCompileContext: vi.fn(),
@@ -82,6 +88,47 @@ describe('VariableCaptureManager - WGSL engine', () => {
     // The plan language resolves its compile context against the selected file.
     expect(engine.getVariableCaptureCompileContext).toHaveBeenCalledWith(
       expect.any(String), undefined, '/shaders/image.wgsl',
+    );
+    manager.dispose();
+  });
+
+  it('submits a compute-pass plan against the compute buffer and file', async () => {
+    const { engine, capturer } = mockEngine('wgsl');
+    const manager = new VariableCaptureManager(engine, () => {});
+    const computeUri = '/shaders/life.wgsl';
+    // The planner replays a compute entry as a render entry, so the plan the
+    // manager receives for a compute pass is shaped like any other WGSL plan;
+    // what must differ is the pass name and file it resolves against.
+    const plan = {
+      workspaceHash: 'hash', rootUri: computeUri, selectedSourceUri: computeUri, executionMarkerSlot: 0,
+      captureSlots: [
+        { index: 0, valueId: 'marker', name: '_marker', typeName: 'bool', hidden: true },
+        { index: 1, valueId: 'wave', name: 'wave', typeName: 'f32', hidden: false },
+      ],
+      files: [{ uri: computeUri, path: computeUri, source: wgslCompute, version: 1, moduleName: '', ownerPass: 'ComputeLife' }],
+    };
+
+    manager.notifyStateChange({
+      ...captureParams(wgslCompute),
+      filePath: computeUri,
+      activeBufferName: 'ComputeLife',
+      planCapture: {
+        plan,
+        values: [{
+          id: 'wave', name: 'wave', typeName: 'f32', sourceUri: computeUri,
+          declarationRange: { start: { line: 1, character: 6 }, end: { line: 1, character: 10 } }, access: 'readwrite',
+        }],
+      },
+    });
+    await vi.waitFor(() => expect(capturer.issueCaptureGrid).toHaveBeenCalled());
+
+    const captures = (capturer.issueCaptureGrid.mock.calls[0] as unknown[])[0] as Array<{ varName: string; selectorIndex?: number; debugPlan?: unknown }>;
+    expect(captures).toEqual([
+      expect.objectContaining({ varName: '_marker', selectorIndex: 0, hidden: true, debugPlan: plan }),
+      expect.objectContaining({ varName: 'wave', selectorIndex: 1, debugPlan: plan }),
+    ]);
+    expect(engine.getVariableCaptureCompileContext).toHaveBeenCalledWith(
+      expect.any(String), 'ComputeLife', computeUri,
     );
     manager.dispose();
   });

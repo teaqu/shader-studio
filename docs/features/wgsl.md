@@ -28,10 +28,12 @@ This page records what is proven to work and where WGSL deliberately differs.
 - **Diagnostics are hints only.** WGSL compiles in the renderer
   (WebGPU/Dawn) and the renderer compiler always wins; the language service
   does not duplicate its diagnostics.
-- **Shadowing** has no dedicated test, and neither does **stale-request
-  handling** — both are cheap to add and not yet written.
-- **Compute-stage debug capture** is implemented but untested (Slang has the
-  equivalent test).
+- **Compute-stage debug capture replays a single invocation.** The planner
+  rewrites the compute entry as a render entry and stubs the output write, so
+  values are real for that one invocation but no workgroup is dispatched.
+  `var<workgroup>` memory and writes to configured storage are refused with a
+  `wgsl-debug-unsupported-syntax` diagnostic; read-only storage access is
+  allowed.
 - No workspace symbol search, no vertex-stage debugging (all languages).
 
 Back to the full matrix: [Language Support](language-support.md).

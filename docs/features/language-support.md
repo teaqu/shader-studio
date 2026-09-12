@@ -22,14 +22,14 @@ Statuses: **Tested** (a named test asserts real behaviour) · **Tested-weak**
 | Workspace symbol search | Missing | Missing | Missing |
 | Diagnostics | Tested | Tested | Tested-weak (hints only; the renderer compiler wins) |
 | Unsaved files | Tested | Tested | Tested |
-| Stale-request handling | Tested | Tested | Tested-weak |
+| Stale-request handling | Tested | Tested | Tested |
 
 ## Parser and semantics
 
 | Feature | GLSL | Slang | WGSL |
 |---|---|---|---|
 | Declaration/reference identity | Tested | Tested | Tested |
-| Shadowing | Tested | Tested | Missing |
+| Shadowing | Tested | Tested | Tested |
 | Overloads | Tested | Tested | Tested |
 | Struct fields | Tested | Tested | Tested |
 | Generics | N/A (no generics) | Tested | N/A (no generics) |
@@ -60,7 +60,7 @@ the check non-vacuous).
 | Inline rendering | Tested | Tested | Tested |
 | Variable capture (fragment) | Tested | Tested | Tested |
 | Vertex-stage debugging | Missing | Missing | Missing |
-| Compute-stage debugging | N/A (WebGL2) | Tested | Implemented-untested |
+| Compute-stage debugging | N/A (WebGL2) | Tested | Tested |
 | Common capture mapping | Implemented-untested | Tested-weak | Implemented-untested |
 | Storage-backed values | N/A (WebGL2) | Tested-weak | Tested-weak |
 
@@ -81,6 +81,9 @@ the check non-vacuous).
 - **Slang `__include` prelude symbols** (generated built-ins) are refused by
   hover and rename — they are not authored code. See [Slang](slang.md).
 - **Vertex-stage debugging** is not implemented for any language.
-- **WGSL shadowing** and **WGSL stale-request handling** have no dedicated
-  tests (cheap to add; not yet written).
+- **WGSL compute-pass debugging replays one invocation**, it does not dispatch a
+  real workgroup. Output writes are stubbed and read-only storage reads are
+  permitted; `var<workgroup>` memory and configured storage *writes* are refused
+  with a `wgsl-debug-unsupported-syntax` diagnostic rather than reported wrong.
+  See [WGSL](wgsl.md).
 - Per-language detail: [GLSL](glsl.md) · [Slang](slang.md) · [WGSL](wgsl.md).

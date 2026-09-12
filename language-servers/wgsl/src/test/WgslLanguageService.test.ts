@@ -452,4 +452,83 @@ fn mainImage(coord: vec2f) -> vec4f {
     expect((await instance.completion({ document: revision, position: { line: 6, character: 7 } })).map((item) => item.label)).toContain("xyzw");
     expect((await instance.completion({ document: revision, position: { line: 7, character: 6 } })).map((item) => item.label)).toContain("color");
   });
+
+  describe("scoped symbols", () => {
+    const scoped = `fn shade(level: f32) -> f32 {
+  var amount: f32 = level;
+  {
+    let level: f32 = 0.5;
+    amount = amount * level;
+  }
+  return amount * level;
+}
+fn mainImage(coord: vec2f) -> vec4f { return vec4f(shade(coord.x), 0.0, 0.0, 1.0); }`;
+
+    async function openScoped(): Promise<WgslLanguageService> {
+      const instance = new WgslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "wgsl", version: 1, text: scoped });
+      return instance;
+    }
+
+    /** Character just inside the nth `level` occurrence, so the cursor sits on the identifier. */
+    function levelPosition(occurrence: number): { line: number; character: number } {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) {
+        offset = scoped.indexOf("level", offset + 1);
+      }
+      const lines = scoped.slice(0, offset).split("\n");
+      return { line: lines.length - 1, character: (lines.at(-1)?.length ?? 0) + 1 };
+    }
+
+    it("resolves the shadowed local without reaching the shadowing parameter", async () => {
+      const instance = await openScoped();
+
+      const inner = await instance.references({
+        document: revision,
+        position: levelPosition(3),
+        includeDeclaration: true,
+      });
+
+      expect(inner.map((item) => item.range.start.line)).toEqual([3, 4]);
+    });
+
+    it("resolves the parameter from outside the shadowing block", async () => {
+      const instance = await openScoped();
+
+      const outer = await instance.references({
+        document: revision,
+        position: levelPosition(0),
+        includeDeclaration: true,
+      });
+
+      expect(outer.map((item) => item.range.start.line)).toEqual([0, 1, 6]);
+    });
+
+    it("renames only the shadowed local, leaving the parameter untouched", async () => {
+      const instance = await openScoped();
+
+      const edit = await instance.rename({ document: revision, position: levelPosition(3), newName: "weight" });
+
+      expect(edit?.changes?.[uri]?.map((change) => change.range.start.line)).toEqual([3, 4]);
+    });
+
+    it("ignores requests for a stale document revision", async () => {
+      const instance = await openScoped();
+      const stale = { ...revision, version: 99 };
+
+      expect(await instance.references({ document: stale, position: levelPosition(0), includeDeclaration: true })).toEqual([]);
+      expect(await instance.documentHighlights({ document: stale, position: levelPosition(0) })).toEqual([]);
+      expect(await instance.rename({ document: stale, position: levelPosition(0), newName: "weight" })).toBeNull();
+    });
+
+    it("ignores requests for a stale environment generation", async () => {
+      const instance = await openScoped();
+      const stale = { ...revision, environmentGeneration: 99 };
+
+      expect(await instance.references({ document: stale, position: levelPosition(0), includeDeclaration: true })).toEqual([]);
+      expect(await instance.documentHighlights({ document: stale, position: levelPosition(0) })).toEqual([]);
+      expect(await instance.rename({ document: stale, position: levelPosition(0), newName: "weight" })).toBeNull();
+    });
+  });
 });
