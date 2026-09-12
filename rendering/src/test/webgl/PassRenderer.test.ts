@@ -537,7 +537,7 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel1", 1);
       // Custom alias for noiseMap at slot 0
-      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("noiseMap", 0);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("noiseMap.sampler", 0);
     });
 
     it("should handle more than 4 channels", () => {
@@ -663,9 +663,9 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel2", 2);
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel3", 3);
       // Custom aliases
-      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("colorMap", 0);
-      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("normalMap", 1);
-      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("heightMap", 3);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("colorMap.sampler", 0);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("normalMap.sampler", 1);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("heightMap.sampler", 3);
       // iChannel2 is at slot 2 so no alias needed — verify no duplicate
     });
 
@@ -777,7 +777,7 @@ describe("PassRenderer", () => {
         expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith(`iCh${i}.sampler`, i);
         expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith(`iChannel${i}`, i);
       }
-      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("noiseMap", 0);
+      expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("noiseMap.sampler", 0);
     });
 
     it("should set iCh0-iCh3 time, size, and loaded uniforms", () => {

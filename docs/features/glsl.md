@@ -6,6 +6,8 @@ optional vertex shaders use the vertex hook (see [Vertex
 Shaders](vertex-shaders.md)), and buffer passes compose multipass projects
 (see [Configure Buffers And Inputs](config-buffers.md)).
 
+Named channel metadata and sampling examples are in [Channels](channels.md).
+
 ## What works
 
 - **Editing:** completion, hover, go to definition, references, highlights and

@@ -1,6 +1,6 @@
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import type { StorageBindingNode } from "../types/PassGraph";
-import type { GeometryType } from "@shader-studio/types";
+import { buildChannelSamplingFunctions, describeSlangChannel, type GeometryType } from "@shader-studio/types";
 import {
   getShaderToyChannelCount,
   isSlangCustomUniformType,
@@ -10,7 +10,7 @@ import {
 } from "./SlangPrelude";
 import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 import type { WgslVertexRange } from "./wgslDiagnostics";
-import { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
+import { getWgslComputeEntryPoints, parseWgslDocument, symbolAtPosition, tokenizeWgsl } from "@shader-studio/wgsl-analysis";
 
 export { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
 
@@ -166,13 +166,13 @@ ${customFields}
 interface WgslGlobalOptions {
   dispatch?: boolean;
   capture?: boolean;
+  channels?: SlangChannelBinding[];
 }
 
 /**
  * Module-scope `var<private>` globals initialised at the top of every entry
  * point, so users write bare `iTime` / `iResolution` exactly as in Slang.
- * Identifiers in user source are never rewritten (rewriting breaks inside
- * strings and comments).
+ * Deduplicated public resource handles are linked separately with token/source positions.
  */
 function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], options: WgslGlobalOptions = {}): string {
   const declarations = [
@@ -211,6 +211,9 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
       ? `  ${name} = _ss_u.custom_${name} != 0;`
       : `  ${name} = _ss_u.custom_${name};`);
   }
+  if (options.channels?.length) {
+    initialisers.push("  _ss_initChannels();");
+  }
   if (options.dispatch) {
     declarations.push("var<private> iDispatch: i32;");
     initialisers.push("  iDispatch = _ss_dsp.dispatch.x;");
@@ -243,13 +246,12 @@ function channelAccessors(channel: WgslChannelAccessors, fragmentStage: boolean)
   // bottom-left origin (and negates gradients); cubemaps sample unflipped.
   const sampleCoord = cube ? coordName : `vec2<f32>(${coordName}.x, 1.0 - ${coordName}.y)`;
   const grad = (name: string) => cube ? name : `vec2<f32>(${name}.x, -${name}.y)`;
-  const sample = fragmentStage
+  const methods = describeSlangChannel(cube ? 'texture-cube' : 'texture-2d').methods;
+  const implicit = methods.find(method => method.name === 'Sample');
+  const sample = implicit && (fragmentStage || !implicit.requiresFragment)
     ? `fn ${key}Sample(${coordName}: ${coordType}) -> vec4<f32> {
   return textureSample(${textureVar}, ${samplerVar}, ${sampleCoord});
-}`
-    : `fn ${key}Sample(${coordName}: ${coordType}) -> vec4<f32> {
-  return ${key}SampleLevel(${coordName}, 0.0);
-}`;
+}` : '';
   return `${sample}
 fn ${key}SampleLevel(${coordName}: ${coordType}, lod: f32) -> vec4<f32> {
   return textureSampleLevel(${textureVar}, ${samplerVar}, ${sampleCoord}, lod);
@@ -257,15 +259,60 @@ fn ${key}SampleLevel(${coordName}: ${coordType}, lod: f32) -> vec4<f32> {
 fn ${key}SampleGrad(${coordName}: ${coordType}, dx: ${coordType}, dy: ${coordType}) -> vec4<f32> {
   return textureSampleGrad(${textureVar}, ${samplerVar}, ${sampleCoord}, ${grad("dx")}, ${grad("dy")});
 }
-fn ${key}Size() -> vec2<u32> {
-  return vec2<u32>(_ss_u.channelResolution[${slot}].xy);
+fn ${key}Size() -> vec2<u32> { return ${key}.size; }
+fn ${key}Time() -> f32 { return ${key}.time; }
+fn ${key}Loaded() -> bool { return ${key}.loaded; }`;
 }
-fn ${key}Time() -> f32 {
-  return _ss_u.channelTime[${slot}].x;
+
+/** Shortest public name is the canonical handle, so linking can preserve columns. */
+function publicChannelHandles(channels: SlangChannelBinding[]) {
+  const plan = buildSlangBindingPlan(channels);
+  const textures = new Map<number, string>();
+  const samplers = new Map<number, string>();
+  for (const channel of [...plan.channels].sort((a, b) => a.key.length - b.key.length || a.slot - b.slot)) {
+    if (!textures.has(channel.textureBinding)) {
+      textures.set(channel.textureBinding, `${channel.key}Texture`);
+    }
+    if (!samplers.has(channel.samplerBinding)) {
+      samplers.set(channel.samplerBinding, `${channel.key}Sampler`);
+    }
+  }
+  return { plan, textures, samplers };
 }
-fn ${key}Loaded() -> bool {
-  return _ss_u.channelLoaded[${slot}].x != 0.0;
-}`;
+
+/**
+ * Link generated handle aliases to one resource binding without changing WGSL grammar.
+ * Padding preserves every original line/column. Resolve authored symbols first so
+ * local shadowing and structure members keep their own meaning; comments are tokens' gaps.
+ */
+function linkChannelHandles(result: WgslWrapResult, channels: SlangChannelBinding[]): WgslWrapResult {
+  const { plan, textures, samplers } = publicChannelHandles(channels);
+  const aliases = new Map<string, string>();
+  for (const channel of plan.channels) {
+    for (const [alias, canonical] of [[`${channel.key}Texture`, textures.get(channel.textureBinding)!], [`${channel.key}Sampler`, samplers.get(channel.samplerBinding)!]]) {
+      if (alias !== canonical) {
+        aliases.set(alias!, canonical!);
+      }
+    }
+  }
+  if (!aliases.size) {
+    return result;
+  }
+  const analysis = parseWgslDocument('file:///shader.wgsl', result.source, 'fragment');
+  const tokens = tokenizeWgsl(result.source);
+  let source = result.source;
+  for (let index = tokens.length - 1; index >= 0; index--) {
+    const token = tokens[index]!;
+    const canonical = aliases.get(token.text);
+    if (!canonical || token.kind !== 'identifier' || tokens[index - 1]?.text === '.') {
+      continue;
+    }
+    if (symbolAtPosition(analysis, { line: token.line, character: token.character })) {
+      continue;
+    }
+    source = source.slice(0, token.offset) + canonical.padEnd(token.text.length) + source.slice(token.offset + token.text.length);
+  }
+  return { ...result, source };
 }
 
 /**
@@ -278,36 +325,34 @@ function buildChannelPrelude(channels: SlangChannelBinding[] = [], fragmentStage
   if (channels.length === 0) {
     return "";
   }
-  const plan = buildSlangBindingPlan(channels);
+  const { plan, textures: textureVarByBinding, samplers: samplerVarByBinding } = publicChannelHandles(channels);
   const sorted = [...plan.channels].sort((a, b) => a.slot - b.slot);
-  const textureVarByBinding = new Map<number, string>();
-  const samplerVarByBinding = new Map<number, string>();
-  const lines: string[] = [];
-  for (const channel of sorted) {
-    if (!textureVarByBinding.has(channel.textureBinding)) {
-      const textureVar = `_ss_${channel.key}_tex`;
-      textureVarByBinding.set(channel.textureBinding, textureVar);
-      const cube = channel.kind === "cubemap";
-      lines.push(`@group(0) @binding(${channel.textureBinding}) var ${textureVar}: ${cube ? "texture_cube<f32>" : "texture_2d<f32>"};`);
-    }
-    if (!samplerVarByBinding.has(channel.samplerBinding)) {
-      const samplerVar = `_ss_${channel.key}_smp`;
-      samplerVarByBinding.set(channel.samplerBinding, samplerVar);
-      lines.push(`@group(0) @binding(${channel.samplerBinding}) var ${samplerVar}: sampler;`);
-    }
+  const lines: string[] = [
+    'struct _ss_ChannelMetadata { size: vec2<u32>, time: f32, loaded: bool }',
+    buildChannelSamplingFunctions(sorted.map(channel => channel.kind === 'cubemap' ? 'texture-cube' : 'texture-2d'), 'wgsl', fragmentStage),
+  ];
+  for (const texture of plan.textures) {
+    const textureVar = textureVarByBinding.get(texture.binding)!;
+    lines.push(`@group(0) @binding(${texture.binding}) var ${textureVar}: ${texture.kind === 'cubemap' ? 'texture_cube<f32>' : 'texture_2d<f32>'};`);
   }
+  for (const sampler of plan.samplers) {
+    lines.push(`@group(0) @binding(${sampler.binding}) var ${samplerVarByBinding.get(sampler.binding)!}: sampler;`);
+  }
+  const init: string[] = [];
   for (const channel of sorted) {
-    const textureVar = textureVarByBinding.get(channel.textureBinding)!;
-    const samplerVar = samplerVarByBinding.get(channel.samplerBinding)!;
+    lines.push(`var<private> ${channel.key}: _ss_ChannelMetadata;`);
+    init.push(`  ${channel.key}.size = vec2<u32>(_ss_u.channelResolution[${channel.slot}].xy);`,
+      `  ${channel.key}.time = _ss_u.channelTime[${channel.slot}].x;`,
+      `  ${channel.key}.loaded = _ss_u.channelLoaded[${channel.slot}].x != 0.0;`);
     lines.push(channelAccessors({
-      key: channel.key,
-      slot: channel.slot,
-      textureVar,
-      samplerVar,
-      cube: channel.kind === "cubemap",
+      key: channel.key, slot: channel.slot,
+      textureVar: textureVarByBinding.get(channel.textureBinding)!,
+      samplerVar: samplerVarByBinding.get(channel.samplerBinding)!,
+      cube: channel.kind === 'cubemap',
     }, fragmentStage));
   }
-  return `${lines.join("\n")}\n`;
+  lines.push(`fn _ss_initChannels() {\n${init.join('\n')}\n}`);
+  return `${lines.join('\n')}\n`;
 }
 
 const WGSL_STORAGE_ELEMENT_TYPES: Record<string, { render: string; compute: string }> = {
@@ -715,11 +760,11 @@ function hoistWgslDirectives(userSource: string, commonCode: string): {
 }
 
 /** Wrap a user image-shader source into a full, compilable WGSL module. */
-export function wrapWgslImageSource(userSource: string, options: WgslWrapOptions = {}): WgslWrapResult {
+function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = {}): WgslWrapResult {
   const channels = options.channels ?? [];
   const channelCount = getShaderToyChannelCount(channels);
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
-    + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode });
+    + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels });
   const hoisted = hoistWgslDirectives(
     stripShaderStudioEditorImport(userSource),
     stripShaderStudioEditorImport(options.commonCode ?? "").trim(),
@@ -795,12 +840,12 @@ function vertexRangeOf(
 }
 
 /** Wrap a user compute-shader source into a full, compilable WGSL module. */
-export function wrapWgslComputeSource(userSource: string, options: WgslComputeWrapOptions): WgslWrapResult {
+function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapOptions): WgslWrapResult {
   const channels = options.channels ?? [];
   const storage = options.storage ?? [];
   const channelCount = getShaderToyChannelCount(channels);
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
-    + buildGlobalsPrelude(options.customUniforms, { dispatch: true });
+    + buildGlobalsPrelude(options.customUniforms, { dispatch: true, channels });
   const hoisted = hoistWgslDirectives(
     stripShaderStudioEditorImport(userSource),
     stripShaderStudioEditorImport(options.commonCode ?? "").trim(),
@@ -829,4 +874,12 @@ export function wrapWgslComputeSource(userSource: string, options: WgslComputeWr
     userLineCount: injectedUserSource.split("\n").length,
     requiredFeatures: hoisted.enableNames,
   };
+}
+
+export function wrapWgslImageSource(userSource: string, options: WgslWrapOptions = {}): WgslWrapResult {
+  return linkChannelHandles(assembleWgslImageSource(userSource, options), options.channels ?? []);
+}
+
+export function wrapWgslComputeSource(userSource: string, options: WgslComputeWrapOptions): WgslWrapResult {
+  return linkChannelHandles(assembleWgslComputeSource(userSource, options), options.channels ?? []);
 }

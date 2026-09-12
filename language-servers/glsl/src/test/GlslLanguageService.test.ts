@@ -175,7 +175,7 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await labels(3)).toContain("xyzw");
   });
 
-  it("offers no suggestions when the selected expression has no members", async () => {
+  it("offers named channel metadata while raw samplers and scalars have no members", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment(environment());
     const text = `void mainImage(out vec4 color, in vec2 coord) {
@@ -195,7 +195,7 @@ void mainImage(out vec4 color, in vec2 coord) {
 
     expect(await completions(3)).toEqual([]);
     expect(await completions(4)).toEqual([]);
-    expect(await completions(5)).toEqual([]);
+    expect((await completions(5)).map(item => item.label)).toEqual(["sampler", "size", "time", "loaded"]);
     expect(await completions(6)).toEqual([]);
   });
 

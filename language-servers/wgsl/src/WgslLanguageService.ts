@@ -34,6 +34,7 @@ import {
 } from "@shader-studio/language-server-core";
 import {
   SHADER_STUDIO_SYMBOL_DOCS,
+  buildWgslChannelAuthoringSource,
   isShaderLanguageReservedTerm,
   isValidShaderIdentifier,
   validateShaderAuthoringEnvironment,
@@ -56,6 +57,8 @@ import {
   WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
   WGSL_MAIN_IMAGE_DESCRIPTION,
 } from "./fragmentHook.js";
+
+const CHANNEL_DECLARATIONS_URI = "shader-studio://generated/channels.wgsl";
 
 const CAPABILITIES: ServerCapabilities = {
   completion: true,
@@ -94,9 +97,13 @@ export class WgslLanguageService implements LanguageService {
       : environment.virtualFiles;
     this.files.replaceEnvironment(contextFiles);
     this.syncWorkspace(environment);
-    this.includeAnalyses.set(environment.documentUri, contextFiles.map((file) => (
-      parseWgslDocument(file.uri, file.text, environment.stage)
-    )));
+    this.includeAnalyses.set(environment.documentUri, [
+      ...contextFiles.map(file => parseWgslDocument(file.uri, file.text, environment.stage)),
+      parseWgslDocument(CHANNEL_DECLARATIONS_URI, buildWgslChannelAuthoringSource(
+        environment.resources.filter(resource => resource.kind !== 'storage').map((resource, slot) => ({
+          name: resource.name, kind: resource.kind as 'texture-2d' | 'texture-cube' | 'texture-3d', slot: resource.slot ?? slot,
+        })), environment.stage === 'fragment'), environment.stage),
+    ]);
     this.rebuild(environment.documentUri);
   }
 
@@ -166,6 +173,12 @@ export class WgslLanguageService implements LanguageService {
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
       for (const symbol of analysis.symbols) {
+        if (analysis.uri === CHANNEL_DECLARATIONS_URI && (symbol.name.startsWith('_ss') || !analysis.scopes.some(scope => scope.id === symbol.scopeId && scope.kind === 'global'))) {
+          continue;
+        }
+        if (items.has(symbol.name)) {
+          continue;
+        }
         items.set(symbol.name, { label: symbol.name, kind: completionKind(symbol), detail: symbol.signature ?? symbol.typeName });
       }
     }
@@ -199,7 +212,9 @@ export class WgslLanguageService implements LanguageService {
       items.set(uniform.name, completionFromDoc(uniform.name, authoringValueWgslType(uniform.type), "Shader Studio custom uniform."));
     }
     for (const resource of state.environment.resources) {
-      items.set(resource.name, completionFromDoc(resource.name, resource.kind, "Shader Studio shader resource."));
+      if (!items.has(resource.name)) {
+        items.set(resource.name, completionFromDoc(resource.name, resource.kind, "Shader Studio shader resource."));
+      }
     }
     return [...items.values()];
   }
@@ -270,7 +285,7 @@ export class WgslLanguageService implements LanguageService {
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
       const included = analysis.symbols.find((candidate) => candidate.name === name);
       if (included) {
-        return [{ uri: analysis.uri, range: included.declaration }];
+        return analysis.uri === CHANNEL_DECLARATIONS_URI ? [] : [{ uri: analysis.uri, range: included.declaration }];
       }
     }
     return [];
@@ -364,7 +379,7 @@ export class WgslLanguageService implements LanguageService {
     const included = state && !symbol ? this.includedSymbolAt(state, params.position) : undefined;
     const target = symbol ?? included?.symbol;
     const ownerUri = symbol ? params.document.uri : included?.analysis.uri;
-    if (!state || !target || !ownerUri || (symbol && state.analysis.hostGlobalIds.has(symbol.id))
+    if (!state || !target || !ownerUri || ownerUri === CHANNEL_DECLARATIONS_URI || (symbol && state.analysis.hostGlobalIds.has(symbol.id))
       || !isRenameableName(params.newName) || this.nameIsTaken(state, params)) {
       return null;
     }
@@ -401,6 +416,31 @@ export class WgslLanguageService implements LanguageService {
       return [];
     }
     const diagnostics: Diagnostic[] = unusedSymbolDiagnostics(state.analysis);
+    if (state.environment.stage !== 'fragment') {
+      const unavailable = new Map<string, string>([['sample2D', 'sample2DLevel'], ['sampleCube', 'sampleCubeLevel']]);
+      for (const resource of state.environment.resources) {
+        if (resource.kind !== 'storage') {
+          unavailable.set(`${resource.name}Sample`, `${resource.name}SampleLevel`);
+        }
+      }
+      for (const reference of state.analysis.unresolvedReferences) {
+        const replacement = unavailable.get(reference.name);
+        if (!replacement || reference.kind !== 'function') {
+          continue;
+        }
+        // A Common-authored function may shadow a generated helper too.
+        if ((this.includeAnalyses.get(params.document.uri) ?? []).some(analysis => analysis.uri !== CHANNEL_DECLARATIONS_URI && analysis.symbols.some(symbol => symbol.name === reference.name && symbol.kind === 'function'))) {
+          continue;
+        }
+        for (const range of reference.ranges) {
+          diagnostics.push({
+            range, severity: DiagnosticSeverity.Warning, source: 'shader-studio-wgsl-ls',
+            code: 'sampling-requires-fragment',
+            message: `${reference.name} requires a fragment stage; use ${replacement} with an explicit mip level.`,
+          });
+        }
+      }
+    }
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
       severity: DiagnosticSeverity.Warning,

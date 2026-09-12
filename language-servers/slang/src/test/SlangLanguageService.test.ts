@@ -260,6 +260,21 @@ float value = inputs;`;
       .resolves.toEqual(expect.arrayContaining([expect.objectContaining({ label: "inputs" })]));
   });
 
+  it("completes direct channel globals, members and portable function signatures", async () => {
+    const { module, server } = fixture();
+    server.completion.mockReturnValue(list([]));
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, resources: [{ name: "albedo", kind: "texture-2d" }] });
+    const text = "float4 mainImage(float2 uv) {\n albedo.\n return sample2DLevel(albedo.texture, albedo.sampler, uv, 0);\n}";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const globals = await service.completion({ document: revision, position: { line: 0, character: 0 } });
+    expect(globals.map(item => item.label)).toEqual(expect.arrayContaining(["albedo", "sample2DLevel"]));
+    const members = await service.completion({ document: revision, position: { line: 1, character: 8 } });
+    expect(members.map(item => item.label)).toEqual(expect.arrayContaining(["size", "time", "loaded", "texture", "sampler", "Sample", "SampleLevel", "SampleGrad"]));
+    const signature = await service.signatureHelp({ document: revision, position: { line: 2, character: 58 } });
+    expect(signature?.signatures.map(item => item.label).join()).toContain("sample2DLevel(Texture2D<float4> texture, SamplerState sampling, float2 uv, float lod)");
+  });
+
   it("keeps official member completions without adding global symbols", async () => {
     const { module, server } = fixture();
     server.completion.mockReturnValue(list([{
@@ -319,7 +334,7 @@ float value = inputs;`;
       position: { line: 3, character: "    inputs.iCh".length },
     }))?.contents)).toContain("Configured input channel");
     expect(globals).not.toEqual(expect.arrayContaining([
-      "iChannel0", "iChannel0Sampler", "sampleIChannel0", "sampleSky", "iCh0", "sky",
+      "iChannel0Sampler", "sampleIChannel0", "sampleSky", "iCh0",
     ]));
     expect(await labels(2)).toEqual(expect.arrayContaining(["iChannel0", "sky", "albedo", "volume"]));
     expect(await labels(3)).toEqual(expect.arrayContaining(["texture", "sampler", "size", "time", "loaded", "Sample", "SampleLevel", "SampleGrad"]));

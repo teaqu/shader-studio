@@ -48,6 +48,6 @@ describe("WGSL corpus fixtures", () => {
       channels: [{ slot: 0, key: "iChannel0", kind: "texture" as const, textureIdentity: "t", samplerIdentity: "s" }],
     });
     expect(source).toContain("fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32>");
-    expect(source).toContain("var _ss_iChannel0_tex: texture_2d<f32>;");
+    expect(source).toContain("var iChannel0Texture: texture_2d<f32>;");
   });
 });

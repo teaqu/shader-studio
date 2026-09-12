@@ -1167,14 +1167,14 @@ describe("ConfigValidator", () => {
       });
 
       describe("invalid input type", () => {
-        it("should reject input with invalid type", () => {
+        it.each(["invalid", "texture-3d"])("should reject unsupported input type %s", (type) => {
           const config = {
             version: "1.0",
             passes: {
               Image: {
                 inputs: {
                   iChannel0: {
-                    type: 'invalid'
+                    type
                   }
                 }
               }

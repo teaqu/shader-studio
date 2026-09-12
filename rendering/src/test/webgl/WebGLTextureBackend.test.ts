@@ -48,6 +48,14 @@ describe("WebGLTextureBackend", () => {
     expect(renderer.CreateTextureFromImage).toHaveBeenCalledWith(0, image, 11, 22, 30, false);
   });
 
+  it("reports cubemap face dimensions instead of dimensions on the face array", () => {
+    const faces = Array.from({ length: 6 }, () => ({ width: 8, height: 8 }) as HTMLCanvasElement);
+    const texture = backend.createTextureFromImage(faces, { type: "cubemap", format: "rgba8", filter: "nearest", wrap: "clamp", vflip: false });
+    expect(texture).toMatchObject({ mXres: 8, mYres: 8 });
+    vi.mocked(renderer.CreateTextureFromImage).mockReturnValue(null);
+    expect(backend.createTextureFromImage(faces, { type: "cubemap", format: "rgba8", filter: "nearest", wrap: "clamp", vflip: false })).toBeNull();
+  });
+
   it("delegates createMipmaps, updateTexture, updateTextureFromImage, destroyTexture", () => {
     const tex = { mObjectID: {} } as PiTexture;
     const data = new Uint8Array(4);

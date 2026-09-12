@@ -172,10 +172,10 @@ describe("wrapWgslImageSource channels", () => {
 
   it("emits one texture/sampler pair with fragment-only sampling accessors", () => {
     const { source } = wrapWgslImageSource(IMAGE, { channels: [channel("iChannel0", 0)] });
-    expect(source).toContain("@group(0) @binding(1) var _ss_iChannel0_tex: texture_2d<f32>;");
-    expect(source).toContain("@group(0) @binding(2) var _ss_iChannel0_smp: sampler;");
+    expect(source).toContain("@group(0) @binding(1) var iChannel0Texture: texture_2d<f32>;");
+    expect(source).toContain("@group(0) @binding(2) var iChannel0Sampler: sampler;");
     expect(source).toContain("fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32>");
-    expect(source).toContain("textureSample(_ss_iChannel0_tex, _ss_iChannel0_smp, vec2<f32>(uv.x, 1.0 - uv.y));");
+    expect(source).toContain("textureSample(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y));");
     expect(source).toContain("fn iChannel0SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32>");
     expect(source).toContain("fn iChannel0SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32>");
     expect(source).toContain("vec2<f32>(dx.x, -dx.y)");
@@ -192,8 +192,8 @@ describe("wrapWgslImageSource channels", () => {
       { key, slot, kind: "texture", textureIdentity: "shared-tex", samplerIdentity: `smp:${slot}` }
     );
     const { source } = wrapWgslImageSource(IMAGE, { channels: [shared("iChannel0", 0), shared("iChannel2", 2)] });
-    expect(source.match(/var _ss_iChannel0_tex: texture_2d<f32>;/g)).toHaveLength(1);
-    expect(source).not.toContain("_ss_iChannel2_tex");
+    expect(source.match(/var iChannel0Texture: texture_2d<f32>;/g)).toHaveLength(1);
+    expect(source).not.toContain("iChannel2Texture");
     expect(source).toContain("fn iChannel0Sample(");
     expect(source).toContain("fn iChannel2Sample(");
     expect(source).toContain("fn iChannel2Size() -> vec2<u32>");
@@ -202,9 +202,9 @@ describe("wrapWgslImageSource channels", () => {
 
   it("emits texture_cube with no y-flip for cubemap channels", () => {
     const { source } = wrapWgslImageSource(IMAGE, { channels: [channel("iChannel0", 0, "cubemap")] });
-    expect(source).toContain("var _ss_iChannel0_tex: texture_cube<f32>;");
+    expect(source).toContain("var iChannel0Texture: texture_cube<f32>;");
     expect(source).toContain("fn iChannel0Sample(dir: vec3<f32>) -> vec4<f32>");
-    expect(source).toContain("textureSample(_ss_iChannel0_tex, _ss_iChannel0_smp, dir)");
+    expect(source).toContain("textureSample(iChannel0Texture, iChannel0Sampler, dir)");
     expect(source).not.toContain("1.0 - uv.y");
   });
 });
@@ -429,11 +429,11 @@ describe("wrapWgslComputeSource", () => {
     expect(source).toContain("fn mainCompute(@builtin(global_invocation_id) id: vec3<u32>) { _ss_initGlobals();");
   });
 
-  it("omits fragment-only textureSample and aliases Sample to SampleLevel", () => {
+  it("omits implicit sampling in compute instead of substituting level zero", () => {
     const { source } = wrapWgslComputeSource(COMPUTE, { ...OPTIONS, channels: [channel("iChannel0", 0)] });
     expect(source).not.toContain("textureSample(");
     expect(source).toContain("textureSampleLevel(");
-    expect(source).toContain("fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32> {\n  return iChannel0SampleLevel(uv, 0.0);");
+    expect(source).not.toContain("fn iChannel0Sample(");
   });
 
   it("emits the storage output texture with WGSL format tokens", () => {
@@ -524,159 +524,175 @@ describe("wrapWgslImageSource golden module", () => {
       },
     );
 
-    expect(preludeLineCount).toBe(135);
-    expect(source).toBe(`// ---- shader-studio WGSL prelude (generated) ----
-struct _ss_ShaderToyUniforms {
-  resolution: vec4<f32>,
-  mouse: vec4<f32>,
-  time: f32,
-  timeDelta: f32,
-  frameRate: f32,
-  frame: i32,
-  channelTime: array<vec4<f32>, 4>,
-  channelLoaded: array<vec4<f32>, 4>,
-  sampleRate: vec4<f32>,
-  date: vec4<f32>,
-  channelResolution: array<vec4<f32>, 4>,
-  cameraPos: vec4<f32>,
-  cameraDir: vec4<f32>,
-  custom_myGain: vec4<f32>,
-  custom_myFlag: i32,
-}
+    expect(preludeLineCount).toBe(source.split("\n").findIndex(line => line.startsWith("fn mainImage(")));
+    expect(source).toMatchInlineSnapshot(`
+      "// ---- shader-studio WGSL prelude (generated) ----
+      struct _ss_ShaderToyUniforms {
+        resolution: vec4<f32>,
+        mouse: vec4<f32>,
+        time: f32,
+        timeDelta: f32,
+        frameRate: f32,
+        frame: i32,
+        channelTime: array<vec4<f32>, 4>,
+        channelLoaded: array<vec4<f32>, 4>,
+        sampleRate: vec4<f32>,
+        date: vec4<f32>,
+        channelResolution: array<vec4<f32>, 4>,
+        cameraPos: vec4<f32>,
+        cameraDir: vec4<f32>,
+        custom_myGain: vec4<f32>,
+        custom_myFlag: i32,
+      }
 
-@group(0) @binding(0) var<uniform> _ss_u: _ss_ShaderToyUniforms;
-var<private> iResolution: vec3<f32>;
-var<private> iMouse: vec4<f32>;
-var<private> iTime: f32;
-var<private> iTimeDelta: f32;
-var<private> iFrameRate: f32;
-var<private> iFrame: i32;
-var<private> iSampleRate: f32;
-var<private> iDate: vec4<f32>;
-var<private> iCameraPos: vec3<f32>;
-var<private> iCameraDir: vec3<f32>;
-var<private> iWorldPosition: vec3<f32>;
-var<private> iNormal: vec3<f32>;
-var<private> iCameraPosition: vec3<f32>;
-var<private> myGain: vec4<f32>;
-var<private> myFlag: bool;
+      @group(0) @binding(0) var<uniform> _ss_u: _ss_ShaderToyUniforms;
+      var<private> iResolution: vec3<f32>;
+      var<private> iMouse: vec4<f32>;
+      var<private> iTime: f32;
+      var<private> iTimeDelta: f32;
+      var<private> iFrameRate: f32;
+      var<private> iFrame: i32;
+      var<private> iSampleRate: f32;
+      var<private> iDate: vec4<f32>;
+      var<private> iCameraPos: vec3<f32>;
+      var<private> iCameraDir: vec3<f32>;
+      var<private> iWorldPosition: vec3<f32>;
+      var<private> iNormal: vec3<f32>;
+      var<private> iCameraPosition: vec3<f32>;
+      var<private> myGain: vec4<f32>;
+      var<private> myFlag: bool;
 
-fn _ss_initGlobals() {
-  iResolution = _ss_u.resolution.xyz;
-  iMouse = _ss_u.mouse;
-  iTime = _ss_u.time;
-  iTimeDelta = _ss_u.timeDelta;
-  iFrameRate = _ss_u.frameRate;
-  iFrame = _ss_u.frame;
-  iSampleRate = _ss_u.sampleRate.x;
-  iDate = _ss_u.date;
-  iCameraPos = _ss_u.cameraPos.xyz;
-  iCameraDir = _ss_u.cameraDir.xyz;
-  myGain = _ss_u.custom_myGain;
-  myFlag = _ss_u.custom_myFlag != 0;
-}
+      fn _ss_initGlobals() {
+        iResolution = _ss_u.resolution.xyz;
+        iMouse = _ss_u.mouse;
+        iTime = _ss_u.time;
+        iTimeDelta = _ss_u.timeDelta;
+        iFrameRate = _ss_u.frameRate;
+        iFrame = _ss_u.frame;
+        iSampleRate = _ss_u.sampleRate.x;
+        iDate = _ss_u.date;
+        iCameraPos = _ss_u.cameraPos.xyz;
+        iCameraDir = _ss_u.cameraDir.xyz;
+        myGain = _ss_u.custom_myGain;
+        myFlag = _ss_u.custom_myFlag != 0;
+        _ss_initChannels();
+      }
 
-@group(0) @binding(1) var _ss_iChannel0_tex: texture_2d<f32>;
-@group(0) @binding(2) var _ss_iChannel0_smp: sampler;
-@group(0) @binding(3) var _ss_iChannel1_tex: texture_2d<f32>;
-@group(0) @binding(4) var _ss_iChannel1_smp: sampler;
-@group(0) @binding(5) var _ss_iChannel2_tex: texture_cube<f32>;
-@group(0) @binding(6) var _ss_iChannel2_smp: sampler;
-@group(0) @binding(7) var _ss_iChannel3_tex: texture_2d<f32>;
-@group(0) @binding(8) var _ss_iChannel3_smp: sampler;
-fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32> {
-  return textureSample(_ss_iChannel0_tex, _ss_iChannel0_smp, vec2<f32>(uv.x, 1.0 - uv.y));
-}
-fn iChannel0SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
-  return textureSampleLevel(_ss_iChannel0_tex, _ss_iChannel0_smp, vec2<f32>(uv.x, 1.0 - uv.y), lod);
-}
-fn iChannel0SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
-  return textureSampleGrad(_ss_iChannel0_tex, _ss_iChannel0_smp, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
-}
-fn iChannel0Size() -> vec2<u32> {
-  return vec2<u32>(_ss_u.channelResolution[0].xy);
-}
-fn iChannel0Time() -> f32 {
-  return _ss_u.channelTime[0].x;
-}
-fn iChannel0Loaded() -> bool {
-  return _ss_u.channelLoaded[0].x != 0.0;
-}
-fn iChannel1Sample(uv: vec2<f32>) -> vec4<f32> {
-  return textureSample(_ss_iChannel1_tex, _ss_iChannel1_smp, vec2<f32>(uv.x, 1.0 - uv.y));
-}
-fn iChannel1SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
-  return textureSampleLevel(_ss_iChannel1_tex, _ss_iChannel1_smp, vec2<f32>(uv.x, 1.0 - uv.y), lod);
-}
-fn iChannel1SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
-  return textureSampleGrad(_ss_iChannel1_tex, _ss_iChannel1_smp, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
-}
-fn iChannel1Size() -> vec2<u32> {
-  return vec2<u32>(_ss_u.channelResolution[1].xy);
-}
-fn iChannel1Time() -> f32 {
-  return _ss_u.channelTime[1].x;
-}
-fn iChannel1Loaded() -> bool {
-  return _ss_u.channelLoaded[1].x != 0.0;
-}
-fn iChannel2Sample(dir: vec3<f32>) -> vec4<f32> {
-  return textureSample(_ss_iChannel2_tex, _ss_iChannel2_smp, dir);
-}
-fn iChannel2SampleLevel(dir: vec3<f32>, lod: f32) -> vec4<f32> {
-  return textureSampleLevel(_ss_iChannel2_tex, _ss_iChannel2_smp, dir, lod);
-}
-fn iChannel2SampleGrad(dir: vec3<f32>, dx: vec3<f32>, dy: vec3<f32>) -> vec4<f32> {
-  return textureSampleGrad(_ss_iChannel2_tex, _ss_iChannel2_smp, dir, dx, dy);
-}
-fn iChannel2Size() -> vec2<u32> {
-  return vec2<u32>(_ss_u.channelResolution[2].xy);
-}
-fn iChannel2Time() -> f32 {
-  return _ss_u.channelTime[2].x;
-}
-fn iChannel2Loaded() -> bool {
-  return _ss_u.channelLoaded[2].x != 0.0;
-}
-fn iChannel3Sample(uv: vec2<f32>) -> vec4<f32> {
-  return textureSample(_ss_iChannel3_tex, _ss_iChannel3_smp, vec2<f32>(uv.x, 1.0 - uv.y));
-}
-fn iChannel3SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
-  return textureSampleLevel(_ss_iChannel3_tex, _ss_iChannel3_smp, vec2<f32>(uv.x, 1.0 - uv.y), lod);
-}
-fn iChannel3SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
-  return textureSampleGrad(_ss_iChannel3_tex, _ss_iChannel3_smp, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
-}
-fn iChannel3Size() -> vec2<u32> {
-  return vec2<u32>(_ss_u.channelResolution[3].xy);
-}
-fn iChannel3Time() -> f32 {
-  return _ss_u.channelTime[3].x;
-}
-fn iChannel3Loaded() -> bool {
-  return _ss_u.channelLoaded[3].x != 0.0;
-}
+      struct _ss_ChannelMetadata { size: vec2<u32>, time: f32, loaded: bool }
+      fn sample2D(texture: texture_2d<f32>, sampling: sampler, uv: vec2f) -> vec4<f32> {
+        return textureSample(texture, sampling, vec2f(uv.x, 1.0 - uv.y));
+      }
+      fn sample2DLevel(texture: texture_2d<f32>, sampling: sampler, uv: vec2f, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(texture, sampling, vec2f(uv.x, 1.0 - uv.y), lod);
+      }
+      fn sample2DGrad(texture: texture_2d<f32>, sampling: sampler, uv: vec2f, dx: vec2f, dy: vec2f) -> vec4<f32> {
+        return textureSampleGrad(texture, sampling, vec2f(uv.x, 1.0 - uv.y), vec2f(dx.x, -dx.y), vec2f(dy.x, -dy.y));
+      }
+      fn sampleCube(texture: texture_cube<f32>, sampling: sampler, dir: vec3f) -> vec4<f32> {
+        return textureSample(texture, sampling, dir);
+      }
+      fn sampleCubeLevel(texture: texture_cube<f32>, sampling: sampler, dir: vec3f, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(texture, sampling, dir, lod);
+      }
+      fn sampleCubeGrad(texture: texture_cube<f32>, sampling: sampler, dir: vec3f, dx: vec3f, dy: vec3f) -> vec4<f32> {
+        return textureSampleGrad(texture, sampling, dir, dx, dy);
+      }
+      @group(0) @binding(1) var iChannel0Texture: texture_2d<f32>;
+      @group(0) @binding(3) var iChannel1Texture: texture_2d<f32>;
+      @group(0) @binding(5) var iChannel2Texture: texture_cube<f32>;
+      @group(0) @binding(7) var iChannel3Texture: texture_2d<f32>;
+      @group(0) @binding(2) var iChannel0Sampler: sampler;
+      @group(0) @binding(4) var iChannel1Sampler: sampler;
+      @group(0) @binding(6) var iChannel2Sampler: sampler;
+      @group(0) @binding(8) var iChannel3Sampler: sampler;
+      var<private> iChannel0: _ss_ChannelMetadata;
+      fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32> {
+        return textureSample(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
+      }
+      fn iChannel0SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
+      }
+      fn iChannel0SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+        return textureSampleGrad(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
+      }
+      fn iChannel0Size() -> vec2<u32> { return iChannel0.size; }
+      fn iChannel0Time() -> f32 { return iChannel0.time; }
+      fn iChannel0Loaded() -> bool { return iChannel0.loaded; }
+      var<private> iChannel1: _ss_ChannelMetadata;
+      fn iChannel1Sample(uv: vec2<f32>) -> vec4<f32> {
+        return textureSample(iChannel1Texture, iChannel1Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
+      }
+      fn iChannel1SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(iChannel1Texture, iChannel1Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
+      }
+      fn iChannel1SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+        return textureSampleGrad(iChannel1Texture, iChannel1Sampler, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
+      }
+      fn iChannel1Size() -> vec2<u32> { return iChannel1.size; }
+      fn iChannel1Time() -> f32 { return iChannel1.time; }
+      fn iChannel1Loaded() -> bool { return iChannel1.loaded; }
+      var<private> iChannel2: _ss_ChannelMetadata;
+      fn iChannel2Sample(dir: vec3<f32>) -> vec4<f32> {
+        return textureSample(iChannel2Texture, iChannel2Sampler, dir);
+      }
+      fn iChannel2SampleLevel(dir: vec3<f32>, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(iChannel2Texture, iChannel2Sampler, dir, lod);
+      }
+      fn iChannel2SampleGrad(dir: vec3<f32>, dx: vec3<f32>, dy: vec3<f32>) -> vec4<f32> {
+        return textureSampleGrad(iChannel2Texture, iChannel2Sampler, dir, dx, dy);
+      }
+      fn iChannel2Size() -> vec2<u32> { return iChannel2.size; }
+      fn iChannel2Time() -> f32 { return iChannel2.time; }
+      fn iChannel2Loaded() -> bool { return iChannel2.loaded; }
+      var<private> iChannel3: _ss_ChannelMetadata;
+      fn iChannel3Sample(uv: vec2<f32>) -> vec4<f32> {
+        return textureSample(iChannel3Texture, iChannel3Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
+      }
+      fn iChannel3SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
+        return textureSampleLevel(iChannel3Texture, iChannel3Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
+      }
+      fn iChannel3SampleGrad(uv: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<f32> {
+        return textureSampleGrad(iChannel3Texture, iChannel3Sampler, vec2<f32>(uv.x, 1.0 - uv.y), vec2<f32>(dx.x, -dx.y), vec2<f32>(dy.x, -dy.y));
+      }
+      fn iChannel3Size() -> vec2<u32> { return iChannel3.size; }
+      fn iChannel3Time() -> f32 { return iChannel3.time; }
+      fn iChannel3Loaded() -> bool { return iChannel3.loaded; }
+      fn _ss_initChannels() {
+        iChannel0.size = vec2<u32>(_ss_u.channelResolution[0].xy);
+        iChannel0.time = _ss_u.channelTime[0].x;
+        iChannel0.loaded = _ss_u.channelLoaded[0].x != 0.0;
+        iChannel1.size = vec2<u32>(_ss_u.channelResolution[1].xy);
+        iChannel1.time = _ss_u.channelTime[1].x;
+        iChannel1.loaded = _ss_u.channelLoaded[1].x != 0.0;
+        iChannel2.size = vec2<u32>(_ss_u.channelResolution[2].xy);
+        iChannel2.time = _ss_u.channelTime[2].x;
+        iChannel2.loaded = _ss_u.channelLoaded[2].x != 0.0;
+        iChannel3.size = vec2<u32>(_ss_u.channelResolution[3].xy);
+        iChannel3.time = _ss_u.channelTime[3].x;
+        iChannel3.loaded = _ss_u.channelLoaded[3].x != 0.0;
+      }
 
-@group(0) @binding(9) var<storage, read> particles: array<vec4<f32>>;
-fn helper(x: f32) -> f32 { return x * 2.0; }
+      @group(0) @binding(9) var<storage, read> particles: array<vec4<f32>>;
+      fn helper(x: f32) -> f32 { return x * 2.0; }
 
-fn mainImage(coord: vec2<f32>) -> vec4<f32> {
-  let c = iChannel0Sample(coord);
-  return c * myGain;
-}
-@group(0) @binding(10) var<storage, read> custom: array<MyData>;
-fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
+      fn mainImage(coord: vec2<f32>) -> vec4<f32> {
+        let c = iChannel0Sample(coord);
+        return c * myGain;
+      }
+      @group(0) @binding(10) var<storage, read> custom: array<MyData>;
+      fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
 
-@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
-  var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-  return vec4<f32>(verts[vid], 0.0, 1.0);
-}
+      @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+        var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+        return vec4<f32>(verts[vid], 0.0, 1.0);
+      }
 
-@fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
-  _ss_initGlobals();
-  // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
-  return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
-}
-`);
+      @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+        _ss_initGlobals();
+        // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
+        return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
+      }
+      "
+    `);
   });
 });

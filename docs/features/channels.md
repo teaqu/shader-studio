@@ -2,13 +2,18 @@
 
 ![Channels](../assets/images/channels.png)
 
-Channels are how a shader pass reads anything outside its own code: images, video, audio, other buffers, cubemaps, or keyboard state. In GLSL, those inputs appear as uniforms such as `iChannel0`, `iChannel1`, and so on. In Slang, they appear under `inputs`, such as `inputs.iChannel0` and `inputs.iChannel1`. In WGSL, each channel becomes module-scope free functions such as `iChannel0Sample(uv)`; see [Sampling Channels in WGSL](#sampling-channels-in-wgsl).
+Channels let a pass read images, video, audio, buffers, cubemaps, or keyboard state.
+Each pass has its own configured names. A channel named `albedo` exposes
+`albedo.size`, `albedo.time`, and `albedo.loaded` in GLSL, Slang, and WGSL.
 
-Each pass has its own channels. `iChannel0` can refer to a different input in another pass.
+GLSL and Slang also expose `albedo.sampler`. Slang has `albedo.texture` and
+sampling methods. WGSL keeps native handles separate: `albedoTexture` and
+`albedoSampler`. Slang and WGSL share the `sample2D` and `sampleCube` function
+families described below. These are Shader Studio conveniences, not language built-ins.
 
-In Slang, each channel object provides sampling, metadata, and access to its native texture and sampler. GLSL provides the existing `iCh0`, `iCh1`, and related metadata accessors. WGSL exposes the same operations as free functions (`<key>Sample`, `<key>SampleLevel`, `<key>Size`, `<key>Time`, `<key>Loaded`).
-
-Vertex hooks share the pass's channel configuration with `mainImage`; they do not have a separate channel grid. In Slang vertex and compute shaders, use `SampleLevel(uv, 0.0)` for a configured channel; see [Sampling Channels in Slang](#sampling-channels-in-slang). In WGSL vertex and compute shaders, use the explicit-level free function instead: `iChannel0SampleLevel(uv, 0.0)`. Slang and GLSL vertex files both define `mainVertex`, with `float3`/`float2` and `vec3`/`vec2` parameters respectively; the WGSL hook takes pointer parameters — see [Vertex Shaders](vertex-shaders.md).
+Vertex hooks share the pass's channel configuration. In Slang and WGSL vertex
+or compute code, use explicit levels or gradients; implicit derivative sampling
+is fragment-only. See [Vertex Shaders](vertex-shaders.md) for each hook signature.
 
 ## What Channels Can Do
 
@@ -50,64 +55,100 @@ vec2 inputUV = fragCoord / iChannelResolution[0].xy;
 vec4 inputColor = texture(iChannel0, inputUV);
 ```
 
+Named GLSL channels group their combined sampler and metadata:
+
+```glsl
+vec4 color = texture(albedo.sampler, uv);
+vec2 dimensions = albedo.size.xy;
+bool ready = albedo.loaded != 0;
+float playbackSeconds = albedo.time;
+```
+
+The numbered `iChannelN`, `iChN`, `iChannelResolution`, `iChannelTime` and
+`sampleIChannelN` APIs remain available. Existing named calls to `texture`,
+`textureLod`, `textureGrad`, `textureSize` and `texelFetch` also accept the channel
+object through compatibility overloads (where the texture shape and shader stage
+support the operation). For other native operations or your own functions taking
+a sampler parameter, pass `albedo.sampler` explicitly.
+
 ## Sampling Channels in Slang
 
-Slang passes expose each configured channel as an object under `inputs`. The member name is the exact configuration key: `iChannel0` becomes `inputs.iChannel0`; a channel named `noise` becomes `inputs.noise`.
-
 ```slang
-float4 inputColor = inputs.iChannel0.Sample(uv);
-float4 noise = inputs.noise.Sample(uv);
+float4 color = sample2D(albedo.texture, albedo.sampler, uv);
+float4 sharp = sample2DLevel(albedo.texture, albedo.sampler, uv, 0.0);
+float4 gradient = sample2DGrad(albedo.texture, albedo.sampler, uv, ddx(uv), ddy(uv));
+
+// Optional methods use the channel's configured sampler.
+float4 same = albedo.Sample(uv);
+float4 level = albedo.SampleLevel(uv, 2.0);
+float4 grad = albedo.SampleGrad(uv, ddx(uv), ddy(uv));
+
+uint2 dimensions = albedo.size;
+float playbackSeconds = albedo.time;
+bool ready = albedo.loaded;
 ```
 
-`Sample` chooses a mip level from pixel derivatives, like GLSL's `texture()`. Use the explicit operations when you need to choose the level yourself:
-
-| Method | Use it when |
-|--------|-------------|
-| `inputs.iChannel0.SampleLevel(uv, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
-| `inputs.iChannel0.SampleGrad(uv, ddxUv, ddyUv)` | You want the level chosen from gradients you supply, rather than from the pixel's neighbours. |
-
-Cubemap channels take a direction instead of a UV. Vertex and compute shaders have no pixel derivatives, so use `SampleLevel(directionOrUv, 0.0)` or `SampleGrad` explicitly.
-
-Each Slang channel also exposes its metadata and native resources:
-
-```slang
-uint2 size = inputs.iChannel0.size;
-float time = inputs.iChannel0.time;
-bool ready = inputs.iChannel0.loaded;
-
-Texture2D<float4> texture = inputs.iChannel0.texture;
-SamplerState sampler = inputs.iChannel0.sampler;
-```
-
-All convenience sampling methods use bottom-left UV coordinates and correct the Y component of supplied gradients. Native `.texture` methods use WebGPU texture coordinates directly; convert `uv.y` to `1.0 - uv.y` when moving from the convenience API to native 2D sampling.
-
-The configured filter and wrap modes supply the default sampler. Each method also accepts an explicit `SamplerState` as its first argument, so one input can use another input's sampler:
-
-```slang
-float4 color = inputs.noise.Sample(inputs.reference.sampler, uv);
-```
-
-Only configured input names exist. Referring to an undeclared input is a compile error; a configured resource that has not loaded exposes `loaded == false`.
+`inputs.albedo` remains an alias. Older channel names that collide with Slang
+module globals or types remain accessible only through `inputs`.
+The methods also accept an explicit sampler as their first argument:
+`albedo.Sample(reference.sampler, uv)`. The spelling is `SampleLevel`, not `SampleLod`.
 
 ## Sampling Channels in WGSL
 
-WGSL has no objects with methods, so each channel exposes the same operations as module-scope free functions named after the configuration key: `iChannel0` becomes `iChannel0Sample(uv)`; a channel named `noise` becomes `noiseSample(uv)`.
-
 ```wgsl
-vec4f inputColor = iChannel0Sample(uv);
-vec4f noise = noiseSample(uv);
+let color = sample2D(albedoTexture, albedoSampler, uv);
+let sharp = sample2DLevel(albedoTexture, albedoSampler, uv, 0.0);
+let gradient = sample2DGrad(albedoTexture, albedoSampler, uv, dpdx(uv), dpdy(uv));
+
+let dimensions = albedo.size; // vec2u
+let playbackSeconds = albedo.time; // f32
+let ready = albedo.loaded; // bool
 ```
 
-| Function | Use it when |
-|----------|-------------|
-| `<key>Sample(uvOrDir)` | You want the mip level chosen from pixel derivatives. |
-| `<key>SampleLevel(uvOrDir, lod)` | You know the level: `0` is full size, `1` half, `2` quarter. |
-| `<key>SampleGrad(uvOrDir, dx, dy)` | You want the level chosen from gradients you supply. |
-| `<key>Size()` | You need the channel resolution as `vec2<u32>`. |
-| `<key>Time()` | You need the channel clock as `f32`. |
-| `<key>Loaded()` | You need to know whether the resource has loaded as `bool`. |
+WGSL supports metadata structs, but texture/sampler handles cannot be struct
+members and user-defined methods are unavailable. That is why the handles are
+separate globals. Legacy `albedoSample`, `albedoSampleLevel`, `albedoSampleGrad`,
+`albedoSize()`, `albedoTime()` and `albedoLoaded()` remain supported.
 
-Cubemap channels take a direction instead of a UV. Vertex and compute shaders have no pixel derivatives, so use `SampleLevel(directionOrUv, 0.0)` or `SampleGrad` explicitly. Like Slang, 2D sampling uses bottom-left UV coordinates and corrects the Y component of supplied gradients.
+## Shared Sampling Rules
+
+| Slang and WGSL function | Arguments after texture and sampler |
+|---|---|
+| `sample2D` | `uv` |
+| `sample2DLevel` | `uv, lod` |
+| `sample2DGrad` | `uv, dx, dy` |
+| `sampleCube` | `direction` |
+| `sampleCubeLevel` | `direction, lod` |
+| `sampleCubeGrad` | `direction, dx, dy` |
+
+2D convenience functions and Slang methods use bottom-left UV coordinates,
+matching `mainImage` pixel coordinates. They flip texture Y and the Y component
+of gradients once. Cubemap directions are unchanged. Native texture operations
+use their language's native coordinates.
+
+Filter, wrap and mipmap settings remain in the channel configuration and determine
+its sampler. Each shared function takes an explicit sampler, so another channel's
+sampler can be used without changing the texture. There are no new sampler presets.
+
+Implicit `sample2D`/`sampleCube` and Slang `Sample` require a fragment stage.
+Use `Level` or explicit `Grad` operations in vertex and compute code. WGSL legacy
+`<name>Sample` no longer silently becomes LOD-zero sampling in compute code;
+change those calls to `<name>SampleLevel(uv, 0.0)` or the shared level function.
+Derivative expressions themselves (`ddx`, `dpdx`, etc.) still require fragment code.
+
+## Channel Metadata
+
+| Field | GLSL | Slang | WGSL | Meaning |
+|---|---|---|---|---|
+| `.size` | `vec3` | `uint2` | `vec2u` | Texture dimensions; cubemaps report face dimensions. |
+| `.time` | `float` | `float` | `f32` | Audio/video playback position in seconds; zero for other inputs. |
+| `.loaded` | `int` (0/1) | `bool` | `bool` | A usable resource is available. |
+
+Metadata updates with the current frame. Pausing or reaching the end of a video
+does not unload its last usable frame. Pending video elements are published only
+after a decoded frame has produced a texture. A configured but unavailable input
+reports unloaded; a name absent from the configuration is a compile error.
+The runtime supports 2D and cubemap inputs; volume/3D assets are not configurable.
 
 ## Choosing a Channel Type
 
@@ -122,7 +163,7 @@ Use a channel type based on what the shader needs to sample:
 | **Buffer** | Output from another pass, including feedback | `sampler2D` |
 | **Keyboard** | Pressed, held, and toggled key state | `sampler2D` |
 
-Every channel has metadata. In GLSL, use `iChannelResolution[N]` for its dimensions and `iChannelTime[N]` for playback time; `iChN` provides the channel's sampler, dimensions, playback time, and loaded state together. In Slang, use fields such as `inputs.iChannel0.size`, `.time`, and `.loaded`.
+See [Channel Metadata](#channel-metadata) for the shared field meanings and types.
 
 ## Texture Channels
 

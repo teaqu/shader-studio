@@ -1,4 +1,4 @@
-import type { GeometryType } from "@shader-studio/types";
+import { buildGlslNamedChannelDeclarations, type GeometryType } from "@shader-studio/types";
 import {
   isMeshGeometry,
   MESH_FRAGMENT_CONTEXT,
@@ -536,7 +536,7 @@ out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
   private buildVertexUniformDeclarations(options: ShaderWrapOptions): string {
     const types = options.channelTypes || ['2D', '2D', '2D', '2D'];
     const channelCount = this.getChannelCount(options.slotAssignments);
-    const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
+    const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types, false);
     return `uniform vec3 iResolution;
 uniform float iTime;
 uniform float iTimeDelta;
@@ -551,7 +551,7 @@ uniform vec3 iCameraDir;
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 
-  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
+  private buildVertexChannelHelpers(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[], fragmentStage = true): string {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     const channelCount = !slotAssignments || slotAssignments.length === 0
       ? 4
@@ -608,7 +608,7 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUni
       : Math.max(4, slotAssignments.length);
   }
 
-  private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[]): string {
+  private buildChannelDeclarations(slotAssignments?: SlotAssignment[], channelTypes?: ChannelSamplerType[], fragmentStage = true): string {
     const types = channelTypes || ['2D', '2D', '2D', '2D'];
     // At least 4 slots for backwards compatibility
     const channelCount = this.getChannelCount(slotAssignments);
@@ -630,12 +630,15 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUni
     // Declare custom name aliases for slots where the key differs from iChannel{N}
     if (slotAssignments) {
       for (const { slot, key, isCustomName } of slotAssignments) {
-        if (isCustomName) {
+        if (isCustomName && /^iChannel\d+$/.test(key)) {
           const samplerType = this.getSamplerType(types[slot] || '2D');
           decl += `uniform ${samplerType} ${key};\n`;
         }
       }
     }
+    decl += buildGlslNamedChannelDeclarations((slotAssignments ?? []).map(binding => ({
+      ...binding, samplerType: this.getSamplerType(types[binding.slot] || '2D') as 'sampler2D' | 'samplerCube' | 'sampler3D',
+    })), fragmentStage) + '\n';
     decl += `uniform vec3 iChannelResolution[${channelCount}];\n`;
     return decl;
   }

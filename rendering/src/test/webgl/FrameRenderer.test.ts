@@ -70,6 +70,7 @@ describe("FrameRenderer", () => {
       getAudioState: vi.fn(() => null),
       getVideoElement: vi.fn(() => undefined),
       getImageTextureCache: vi.fn(() => ({})),
+      getCubemapTexture: vi.fn(() => null),
       getKeyboardTexture: vi.fn(() => null),
     };
 
@@ -1118,7 +1119,7 @@ describe("FrameRenderer", () => {
   });
 
   describe("getPassUniforms", () => {
-    it("should set channelTime and channelLoaded for video inputs", () => {
+    it.each(["iChannel0", "albedo"])("should set channelTime and channelLoaded for video inputs (%s)", (key) => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
@@ -1128,7 +1129,7 @@ describe("FrameRenderer", () => {
 
       const mockPasses = [
         { name: 'Image', shaderSrc: 'image shader', inputs: {
-          iChannel0: { type: 'video', path: 'video.mp4' },
+          [key]: { type: 'video', path: 'video.mp4' },
         }}
       ];
       const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
@@ -1189,8 +1190,8 @@ describe("FrameRenderer", () => {
 
       expect(mockResourceManager.getAudioState).toHaveBeenCalledWith('music.mp3');
       const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
-      expect(passUniforms.channelTime[1]).toBe(12.5);
-      expect(passUniforms.channelLoaded[1]).toBe(1);
+      expect(passUniforms.channelTime[0]).toBe(12.5);
+      expect(passUniforms.channelLoaded[0]).toBe(1);
     });
 
     it("should set channelTime and channelLoaded beyond the legacy four channels", () => {
@@ -1271,7 +1272,34 @@ describe("FrameRenderer", () => {
       expect(passUniforms.channelTime[1]).toBe(0);
     });
 
-    it("should set channelLoaded for buffer inputs", () => {
+    it("should set channelLoaded for cubemap inputs", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      mockResourceManager.getCubemapTexture.mockImplementation((path: string) => path === '/resolved/cube.png' ? { mXres: 256, mYres: 256 } : null);
+
+      const mockPasses = [
+        { name: 'Image', shaderSrc: 'shader', inputs: {
+          albedo: { type: 'cubemap', path: 'cube.png', resolved_path: '/resolved/cube.png' },
+          missing: { type: 'cubemap', path: 'missing.png' },
+        }}
+      ];
+      const mockPassShaders = { 'Image': { mProgram: {}, mResult: true } };
+
+      mockShaderPipeline.getPasses.mockReturnValue(mockPasses);
+      mockShaderPipeline.getPassShaders.mockReturnValue(mockPassShaders);
+
+      frameRenderer.render(1000);
+
+      const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
+      expect(passUniforms.channelLoaded[0]).toBe(1);
+      expect(passUniforms.channelLoaded[1]).toBe(0);
+      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelTime[1]).toBe(0);
+    });
+
+    it.each(["iChannel0", "albedo"])("should set channelLoaded for buffer inputs (%s)", (key) => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
@@ -1282,7 +1310,7 @@ describe("FrameRenderer", () => {
 
       const mockPasses = [
         { name: 'Image', shaderSrc: 'shader', inputs: {
-          iChannel0: { type: 'buffer', source: 'Buffer A' },
+          [key]: { type: 'buffer', source: 'Buffer A' },
           iChannel1: { type: 'buffer', source: 'Buffer B' },
         }}
       ];
@@ -1347,7 +1375,7 @@ describe("FrameRenderer", () => {
       frameRenderer.render(1000);
 
       const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
-      expect(passUniforms.channelLoaded[2]).toBe(1);
+      expect(passUniforms.channelLoaded[0]).toBe(1);
     });
 
     it("should not set channelLoaded for keyboard input when texture is null", () => {
@@ -1421,7 +1449,7 @@ describe("FrameRenderer", () => {
       expect(passUniforms.channelLoaded[0]).toBe(0);
     });
 
-    it("should skip channels with no input configured", () => {
+    it("uses insertion-order slots for sparse default-looking input names", () => {
       frameRenderer.setRunning(true);
       vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
       vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
@@ -1441,11 +1469,11 @@ describe("FrameRenderer", () => {
       frameRenderer.render(1000);
 
       const passUniforms = mockPassRenderer.renderPass.mock.calls[0][3];
-      expect(passUniforms.channelTime[0]).toBe(0);
+      expect(passUniforms.channelTime[0]).toBe(7.0);
       expect(passUniforms.channelTime[1]).toBe(0);
-      expect(passUniforms.channelTime[2]).toBe(7.0);
+      expect(passUniforms.channelTime[2]).toBe(0);
       expect(passUniforms.channelTime[3]).toBe(0);
-      expect(passUniforms.channelLoaded[2]).toBe(1);
+      expect(passUniforms.channelLoaded[0]).toBe(1);
     });
   });
 

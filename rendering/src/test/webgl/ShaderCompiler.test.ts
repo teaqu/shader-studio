@@ -190,7 +190,7 @@ describe("ShaderCompiler", () => {
         vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += sampleEnvironment(normal).xyz; }",
       });
 
-      expect(vertexSource).toContain("uniform samplerCube environment;");
+      expect(vertexSource).toContain("uniform ShaderStudioChannelCube environment;");
       expect(vertexSource).toContain("vec4 sampleIChannel1(vec3 dir)");
       expect(vertexSource).toContain("return textureLod(iChannel1, dir, 0.0);");
       expect(vertexSource).toContain("vec4 sampleEnvironment(vec3 dir)");
@@ -225,7 +225,7 @@ describe("ShaderCompiler", () => {
       });
 
       expect(optionsSource.wrappedCode).toContain("uniform samplerCube iChannel0;");
-      expect(optionsSource.wrappedCode).toContain("uniform samplerCube environment;");
+      expect(optionsSource.wrappedCode).toContain("uniform ShaderStudioChannelCube environment;");
       expect(optionsSource.wrappedCode).toContain("uniform float exposure;");
       expect(optionsSource.wrappedCode).toContain(commonCode);
       expect(optionsSource.commonCodeLineCount).toBe(1);
@@ -760,7 +760,7 @@ describe("ShaderCompiler", () => {
       expect(result).toBe(mockShader);
       const [, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
       expect(fs).toContain("vec3 commonFn() { return vec3(1.0); }");
-      expect(fs).toContain("uniform samplerCube envMap;");
+      expect(fs).toContain("uniform ShaderStudioChannelCube envMap;");
       expect(fs).toContain("uniform float exposure;");
     });
 
@@ -964,7 +964,7 @@ describe("ShaderCompiler", () => {
       expect(gl.__shaderSources[0]).toContain("#version 300 es");
       expect(gl.__shaderSources[0]).toContain("in vec2 position;");
       expect(gl.__shaderSources[1]).toContain("#version 300 es");
-      expect(gl.__shaderSources[1]).toContain("uniform samplerCube envMap;");
+      expect(gl.__shaderSources[1]).toContain("uniform ShaderStudioChannelCube envMap;");
       expect(gl.__shaderSources[1]).toContain("uniform float exposure;");
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__vertexShader);
       expect(gl.deleteShader).toHaveBeenCalledWith(gl.__fragmentShader);
@@ -1249,8 +1249,8 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform sampler2D iChannel0;");
       expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
       // Custom aliases should also be declared
-      expect(wrappedCode).toContain("uniform sampler2D noiseMap;");
-      expect(wrappedCode).toContain("uniform sampler2D prevFrame;");
+      expect(wrappedCode).toContain("uniform ShaderStudioChannel2D noiseMap;");
+      expect(wrappedCode).toContain("uniform ShaderStudioChannel2D prevFrame;");
     });
 
     it("should declare more than 4 channels when slotAssignments is larger", () => {
@@ -1282,8 +1282,8 @@ describe("ShaderCompiler", () => {
       expect(wrappedCode).toContain("uniform sampler2D iChannel2;");
       expect(wrappedCode).toContain("uniform sampler2D iChannel3;");
       // Custom aliases
-      expect(wrappedCode).toContain("uniform sampler2D noiseMap;");
-      expect(wrappedCode).toContain("uniform sampler2D heightMap;");
+      expect(wrappedCode).toContain("uniform ShaderStudioChannel2D noiseMap;");
+      expect(wrappedCode).toContain("uniform ShaderStudioChannel2D heightMap;");
       // iChannel1 should not get a duplicate alias
       expect(wrappedCode.match(/uniform sampler2D iChannel1;/g)).toHaveLength(1);
     });
@@ -1299,7 +1299,7 @@ describe("ShaderCompiler", () => {
       shaderCompiler.compileShader(code, undefined, slots);
 
       const [, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
-      expect(fs).toContain("uniform sampler2D myTex;");
+      expect(fs).toContain("uniform ShaderStudioChannel2D myTex;");
       expect(fs).toContain("uniform sampler2D iChannel0;");
     });
 
@@ -1348,7 +1348,7 @@ describe("ShaderCompiler", () => {
       const { wrappedCode } = shaderCompiler.wrapShaderToyCode(code, undefined, slots, channelTypes);
 
       expect(wrappedCode).toContain("uniform samplerCube iChannel0;");
-      expect(wrappedCode).toContain("uniform samplerCube envMap;");
+      expect(wrappedCode).toContain("uniform ShaderStudioChannelCube envMap;");
       expect(wrappedCode).toContain("uniform sampler2D iChannel1;");
     });
 

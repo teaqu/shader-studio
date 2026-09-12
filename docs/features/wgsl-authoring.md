@@ -23,7 +23,7 @@ The usual ShaderToy-style built-ins are available as globals with the same names
 
 WGSL and Slang share the WebGPU pipeline, but the languages differ in how you reach the same engine features:
 
-- **Channel accessors are free functions, not methods.** Each configured channel exposes `Sample`, `SampleLevel`, `SampleGrad`, `Size`, `Time`, and `Loaded` as module-scope functions named after the channel key: `iChannel0Sample(uv)`, `noiseSampleLevel(uv, 0.0)`. See [Channels](channels.md) for the full list.
+- **Channel metadata uses dot access; native handles stay separate.** Use `albedo.size`, `.time`, and `.loaded`, then sample with `sample2D(albedoTexture, albedoSampler, uv)`. Slang uses the same function name with `albedo.texture` and `albedo.sampler`. WGSL cannot put handles in structs or expose Slang's optional methods. Legacy per-channel functions remain available; see [Channels](channels.md).
 - **The vertex hook takes pointers.** WGSL has no `inout` parameters, so `mainVertex` receives `ptr<function, …>` pointers and you modify the pointed-to values:
   ```wgsl
   fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {

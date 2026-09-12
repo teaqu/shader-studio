@@ -125,8 +125,8 @@ export class FrameRenderer {
     const channelLoaded = new Array<number>(channelCount).fill(0);
     const passResolution = this.getPassResolution(pass, baseUniforms);
 
-    for (let i = 0; i < channelCount; i++) {
-      const input = pass.inputs[`iChannel${i}`];
+    for (const { slot: i, key } of slotAssignments) {
+      const input = pass.inputs[key];
       if (!input) {
         continue;
       }
@@ -149,6 +149,8 @@ export class FrameRenderer {
         const path = input.resolved_path || input.path;
         const tex = this.resourceManager.getImageTextureCache()[path];
         channelLoaded[i] = tex ? 1 : 0;
+      } else if (input.type === 'cubemap' && input.path) {
+        channelLoaded[i] = this.resourceManager.getCubemapTexture(input.resolved_path || input.path) ? 1 : 0;
       } else if (input.type === 'buffer') {
         const passBuffers = this.bufferManager.getPassBuffers();
         channelLoaded[i] = passBuffers[input.source]?.front?.mTex0 ? 1 : 0;

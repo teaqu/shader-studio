@@ -112,7 +112,14 @@ export class PassRenderer {
     // Bind custom name aliases
     for (const { slot, key, isCustomName } of slotAssignments) {
       if (isCustomName) {
-        this.renderer.SetShaderTextureUnit(key, slot);
+        if (/^iChannel\d+$/.test(key)) {
+          this.renderer.SetShaderTextureUnit(key, slot);
+        } else {
+          this.renderer.SetShaderTextureUnit(`${key}.sampler`, slot);
+          this.renderer.SetShaderConstant1F(`${key}.time`, uniforms.channelTime[slot] ?? 0);
+          this.renderer.SetShaderConstant1I(`${key}.loaded`, uniforms.channelLoaded[slot] ?? 0);
+          this.renderer.SetShaderConstant3F(`${key}.size`, channelResolutions[3 * slot], channelResolutions[3 * slot + 1], channelResolutions[3 * slot + 2]);
+        }
       }
     }
 
@@ -150,7 +157,9 @@ export class PassRenderer {
     const mesh = passConfig.modelPath
       ? this.meshResources.getModel(passConfig.name)
       : passConfig.geometry === "model" ? undefined : this.meshResources.get(passConfig.geometry);
-    if (!mesh) return;
+    if (!mesh) {
+      return;
+    }
     const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
     const view = this.meshCamera.getViewMatrix();
@@ -185,10 +194,11 @@ export class PassRenderer {
     textureBindings: (PiTexture | null)[],
   ): number[] {
     const resolutions: number[] = [];
+    const slots = assignInputSlots(passConfig.inputs);
 
     for (let i = 0; i < textureBindings.length; i++) {
       const texture = textureBindings[i];
-      const input = passConfig.inputs[`iChannel${i}`];
+      const input = passConfig.inputs[slots[i]?.key ?? `iChannel${i}`];
 
       if (texture && input) {
         if (input.type === 'keyboard') {

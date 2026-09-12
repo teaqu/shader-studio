@@ -4,7 +4,7 @@ import { wrapWgslComputeSource, wrapWgslImageSource } from "./WgslPrelude";
 
 /**
  * WGSL front end for the WebGPU pipeline. The pipeline already speaks WGSL,
- * so this only prepends the prelude and returns the string unchanged — no
+ * so this assembles the prelude and links deduplicated channel handles — no
  * worker, no WASM, no session. Wrapping never throws: real errors surface
  * from the browser compiler via getCompilationInfo().
  */

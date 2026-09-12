@@ -532,3 +532,39 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(shade(coord.x), 0.0, 0.0, 1.0
     });
   });
 });
+
+describe('WGSL named channel authoring', () => {
+  it('completes channel metadata without exposing texture handles as fields', async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment(environment());
+    const text = 'fn mainImage(c: vec2f) -> vec4f { sky. }';
+    await instance.openDocument({ uri, languageId: 'wgsl', version: 1, text });
+    const items = await instance.completion({ document: revision, position: { line: 0, character: text.indexOf('sky.') + 4 } });
+    expect(items.map(item => item.label).sort()).toEqual(['loaded', 'size', 'time']);
+  });
+  it('offers native handles and shared helper signatures, but cannot rename generated globals', async () => {
+    const instance = await service();
+    const items = await instance.completion({ document: revision, position: { line: 1, character: 0 } });
+    expect(items.map(item => item.label)).toEqual(expect.arrayContaining(['skyTexture', 'skySampler', 'sampleCubeLevel']));
+    const text = 'fn mainImage(c: vec2f) -> vec4f { return sampleCubeLevel(skyTexture, skySampler, vec3f(0,0,1), 0); }';
+    await instance.changeDocument({ uri, languageId: 'wgsl', version: 2, text });
+    const current = { ...revision, version: 2 };
+    const signature = await instance.signatureHelp({ document: current, position: { line: 0, character: text.indexOf('skyTexture') } });
+    expect(signature?.signatures[0]?.label).toContain('texture_cube<f32>');
+    const atTexture = { document: current, position: { line: 0, character: text.indexOf('skyTexture') + 1 } };
+    expect(await instance.rename({ ...atTexture, newName: 'other' })).toBeNull();
+    expect(await instance.definition(atTexture)).toEqual([]);
+  });
+  it('warns at an implicit compute sample call and does not warn about a shadowing authored function', async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: 'compute' });
+    const text = '@compute @workgroup_size(1) fn update() { let color = sampleCube(skyTexture, skySampler, vec3f(0,0,1)); }';
+    await instance.openDocument({ uri, languageId: 'wgsl', version: 1, text });
+    const diagnostics = await instance.diagnostics({ document: revision });
+    const warning = diagnostics.find(item => item.code === 'sampling-requires-fragment');
+    expect(warning?.range.start.character).toBe(text.indexOf('sampleCube'));
+    expect(warning?.message).toContain('sampleCubeLevel');
+    await instance.changeDocument({ uri, languageId: 'wgsl', version: 2, text: 'fn sampleCube() {} @compute @workgroup_size(1) fn update() { sampleCube(); }' });
+    expect((await instance.diagnostics({ document: { ...revision, version: 2 } })).some(item => item.code === 'sampling-requires-fragment')).toBe(false);
+  });
+});

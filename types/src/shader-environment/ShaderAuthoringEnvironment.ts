@@ -109,6 +109,17 @@ function collectFixedRendererNames(
     names.add("writeOutput");
     names.add("inputs");
   }
+  if (languageId !== 'glsl') {
+    for (const shape of ['2D', 'Cube', '3D']) {
+      for (const operation of ['', 'Level', 'Grad']) {
+        names.add(`sample${shape}${operation}`);
+      }
+    }
+  } else {
+    for (const shape of ['2D', 'Cube', '3D']) {
+      names.add(`ShaderStudioChannel${shape}`);
+    }
+  }
   for (const name of shaderStudioBuiltinUniformNames(languageId)) {
     names.add(name);
   }
@@ -216,6 +227,15 @@ function collectSlangGeneratedTypeDependencies(
   }
 
   return dependencies;
+}
+
+/** Preserve old inputs-only members whose names cannot also be legal module globals. */
+export function canExposeSlangChannelGlobal(name: string): boolean {
+  return !/^(?:bool|int|uint|float|half|double)(?:[1-4](?:x[1-4])?)?$/.test(name)
+    && !isReservedShaderStudioIdentifier(name, 'slang')
+    && !SLANG_BASE_GENERATED_TYPE_DEPENDENCIES.has(name)
+    && !Object.values(SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES).includes(name as 'Texture2D')
+    && name !== 'SamplerState';
 }
 
 export interface SlangChannelGeneratedIdentifiers {
@@ -343,6 +363,19 @@ export function validateShaderAuthoringEnvironment(
         code: "invalid-element-type",
         message: `Storage resource "${resource.name}" has an invalid element type.`,
       });
+    }
+  }
+
+  if (environment.languageId === 'wgsl') {
+    const generated = new Set<string>();
+    for (const resource of environment.resources.filter(resource => resource.kind !== 'storage')) {
+      for (const suffix of ['Texture', 'Sampler', 'Sample', 'SampleLevel', 'SampleGrad', 'Size', 'Time', 'Loaded']) {
+        const name = `${resource.name}${suffix}`;
+        if (names.has(name) || generated.has(name)) {
+          issues.push({ code: 'generated-identifier-collision', message: `Generated channel identifier "${name}" conflicts with another declaration.` });
+        }
+        generated.add(name);
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import { deriveSlangChannelGeneratedIdentifiers } from './ShaderAuthoringEnvironment';
+import { deriveSlangChannelGeneratedIdentifiers, canExposeSlangChannelGlobal } from './ShaderAuthoringEnvironment';
 
 export interface SlangChannelDeclaration {
   name: string;
@@ -41,6 +41,36 @@ export function describeSlangChannel(kind: SlangChannelKind): SlangChannelDescri
       { name: 'SampleGrad', parameters: `${vector} ${coordinate}, ${vector} dx, ${vector} dy`, arguments: `${coordinate}, dx, dy`, nativeArguments: `${position}, ${gradient('dx')}, ${gradient('dy')}`, requiresFragment: false },
     ],
   };
+}
+
+/** Portable names are shape-specific because WGSL user functions cannot overload. */
+export function channelSampleFunction(kind: SlangChannelKind, method: SlangChannelMethodDescription['name']): string {
+  return `sample${describeSlangChannel(kind).shape}${method === 'Sample' ? '' : method.slice('Sample'.length)}`;
+}
+
+export function buildChannelSamplingFunctions(kinds: readonly SlangChannelKind[], language: 'slang' | 'wgsl', fragmentStage = true): string {
+  return [...new Set(kinds)].map(kind => {
+    const description = describeSlangChannel(kind);
+    return description.methods.filter(method => language === 'slang' || fragmentStage || !method.requiresFragment).map(method => {
+      const name = channelSampleFunction(kind, method.name);
+      if (language === 'slang') {
+        return `${method.requiresFragment ? '[require(wgsl, fragment)]\n' : ''}float4 ${name}(${description.textureType} texture, SamplerState sampling, ${method.parameters})
+{
+    return texture.${method.name}(sampling, ${method.nativeArguments});
+}`;
+      }
+      const texture = kind === 'texture-cube' ? 'texture_cube<f32>' : kind === 'texture-3d' ? 'texture_3d<f32>' : 'texture_2d<f32>';
+      const wgslType = (type: string) => type === 'float' ? 'f32' : type.replace('float', 'vec') + 'f';
+      const parameters = method.parameters.split(', ').map(parameter => {
+        const [type, identifier] = parameter.split(' ');
+        return `${identifier}: ${wgslType(type!)}`;
+      }).join(', ');
+      const args = method.nativeArguments.replace(/float([23])/g, 'vec$1f');
+      return `fn ${name}(texture: ${texture}, sampling: sampler, ${parameters}) -> vec4<f32> {
+  return texture${method.name}(texture, sampling, ${args});
+}`;
+    }).join('\n');
+  }).join('\n');
 }
 
 /** Shared by editor declarations and renderer bindings; native access uses native coordinates. */
@@ -118,7 +148,8 @@ float _ssChannelLoaded[${count}];`;
         }
     }`;
   }).join('\n');
-  return `${types}
+  return `${buildChannelSamplingFunctions(kinds, 'slang')}
+${types}
 ${bindings}
 ${metadata}
 struct ShaderStudioInputs
@@ -126,5 +157,33 @@ struct ShaderStudioInputs
 ${fields}
 };
 static ShaderStudioInputs inputs;
+${sorted.filter(({ name }) => canExposeSlangChannelGlobal(name)).map(({ name, kind }) => `property ShaderStudioChannel${suffix(kind)} ${name} { get { return inputs.${name}; } }`).join('\n')}
 `;
+}
+
+/** Analysis-only WGSL declarations. Runtime uses real bindings and uniform values. */
+export function buildWgslChannelAuthoringSource(declarations: readonly SlangChannelDeclaration[], fragmentStage: boolean): string {
+  const lines = ['struct _ss_ChannelMetadata { size: vec2u, time: f32, loaded: bool }'];
+  if (declarations.some(channel => channel.kind === 'texture-3d')) {
+    lines.push('struct _ss_ChannelMetadata3D { size: vec3u, time: f32, loaded: bool }');
+  }
+  const kinds = [...new Set(declarations.map(channel => channel.kind))];
+  lines.push(buildChannelSamplingFunctions(kinds, 'wgsl', fragmentStage));
+  for (const { name, kind } of declarations) {
+    const texture = kind === 'texture-cube' ? 'texture_cube<f32>' : kind === 'texture-3d' ? 'texture_3d<f32>' : 'texture_2d<f32>';
+    const dimensions = kind === 'texture-3d' ? 'vec3u' : 'vec2u';
+    lines.push(`var<private> ${name}: _ss_ChannelMetadata${kind === 'texture-3d' ? '3D' : ''};`, `var ${name}Texture: ${texture};`, `var ${name}Sampler: sampler;`);
+    for (const method of describeSlangChannel(kind).methods) {
+      if (method.requiresFragment && !fragmentStage) {
+        continue;
+      }
+      const parameters = method.parameters.split(', ').map(parameter => {
+        const [type, identifier] = parameter.split(' ');
+        return `${identifier}: ${type === 'float' ? 'f32' : type!.replace('float', 'vec') + 'f'}`;
+      }).join(', ');
+      lines.push(`fn ${name}${method.name}(${parameters}) -> vec4f { return ${channelSampleFunction(kind, method.name)}(${name}Texture, ${name}Sampler, ${method.arguments}); }`);
+    }
+    lines.push(`fn ${name}Size() -> ${dimensions} { return ${name}.size; }`, `fn ${name}Time() -> f32 { return ${name}.time; }`, `fn ${name}Loaded() -> bool { return ${name}.loaded; }`);
+  }
+  return lines.join('\n');
 }

@@ -143,6 +143,8 @@ describe("VideoTextureManager", () => {
   describe("loadVideoTexture", () => {
     it("should create video element with correct attributes", async () => {
       const loadPromise = videoManager.loadVideoTexture("test-video.mp4");
+      expect(videoManager.getVideoElement("test-video.mp4")).toBeUndefined();
+      expect(videoManager.getVideoTexture("test-video.mp4")).toBeUndefined();
 
       // Simulate video canplay event
       const canplayHandler = (mockVideo.addEventListener as any).mock.calls.find(
@@ -153,7 +155,9 @@ describe("VideoTextureManager", () => {
         canplayHandler();
       }
 
-      await loadPromise;
+      const texture = await loadPromise;
+      expect(videoManager.getVideoElement("test-video.mp4")).toBe(mockVideo);
+      expect(videoManager.getVideoTexture("test-video.mp4")).toBe(texture);
 
       expect(mockVideo.crossOrigin).toBe("");
       expect(mockVideo.loop).toBe(true);

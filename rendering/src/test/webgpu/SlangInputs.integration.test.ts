@@ -15,6 +15,16 @@ afterAll(() => compiler?.dispose());
 
 describe('native Slang input objects compile to WGSL', () => {
   it.each([
+    'iChannel0.Sample(c)',
+    'iChannel0.SampleLevel(c, 2.0)',
+    'iChannel0.SampleGrad(c, float2(0.1, 0), float2(0, 0.1))',
+    'sample2D(iChannel0.texture, iChannel0.sampler, c)',
+    'sample2DLevel(iChannel0.texture, iChannel0.sampler, c, 2.0)',
+    'sample2DGrad(iChannel0.texture, iChannel0.sampler, c, float2(0.1, 0), float2(0, 0.1))',
+    'sampleCube(sky.texture, sky.sampler, float3(c, 1))',
+    'sampleCubeLevel(sky.texture, sky.sampler, float3(c, 1), 0)',
+    'sampleCubeGrad(sky.texture, sky.sampler, float3(c, 1), float3(0.1,0,0), float3(0,0.1,0))',
+    'float4(float2(iChannel0.size), iChannel0.time, iChannel0.loaded ? 1.0 : 0.0)',
     'inputs.iChannel0.Sample(c)',
     'inputs.iChannel0.SampleLevel(c, 2.0)',
     'inputs.iChannel0.SampleGrad(c, float2(0.1, 0), float2(0, 0.1))',

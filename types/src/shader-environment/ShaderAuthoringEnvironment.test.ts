@@ -109,7 +109,7 @@ describe("ShaderAuthoringEnvironment", () => {
     const environment = environmentWithCustomUniformAndCubeChannel();
 
     expect(buildGlslAuthoringPreamble(environment).text).toContain("uniform vec3 tint;");
-    expect(buildGlslAuthoringPreamble(environment).text).toContain("uniform samplerCube sky;");
+    expect(buildGlslAuthoringPreamble(environment).text).toContain("uniform ShaderStudioChannelCube sky;");
     expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain("float3 tint");
     expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain("ShaderStudioChannelCube sky");
   });
@@ -130,9 +130,9 @@ describe("ShaderAuthoringEnvironment", () => {
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
     expect(glsl.text).toContain("uniform samplerCube iChannel0;");
-    expect(glsl.text).toContain("uniform samplerCube sky;");
+    expect(glsl.text).toContain("uniform ShaderStudioChannelCube sky;");
     expect(glsl.text).toContain("uniform sampler2D iChannel4;");
-    expect(glsl.text).toContain("uniform sampler2D detail;");
+    expect(glsl.text).toContain("uniform ShaderStudioChannel2D detail;");
     expect(glsl.text).toContain("uniform sampler2D iChannel4;");
     expect(glsl.text).toContain("uniform vec3 iChannelResolution[5];");
     expect(glsl.text).toContain("} iCh0;");
@@ -245,9 +245,9 @@ describe("ShaderAuthoringEnvironment", () => {
   );
 
   it.each([
-    ["texture-2d", "uniform sampler2D resource;", "ShaderStudioChannel2D resource"],
-    ["texture-cube", "uniform samplerCube resource;", "ShaderStudioChannelCube resource"],
-    ["texture-3d", "uniform sampler3D resource;", "ShaderStudioChannel3D resource"],
+    ["texture-2d", "uniform ShaderStudioChannel2D resource;", "ShaderStudioChannel2D resource"],
+    ["texture-cube", "uniform ShaderStudioChannelCube resource;", "ShaderStudioChannelCube resource"],
+    ["texture-3d", "uniform ShaderStudioChannel3D resource;", "ShaderStudioChannel3D resource"],
     ["storage", "uniform sampler2D resource;", "StructuredBuffer<float4> resource;"],
   ] as const)("generates the %s resource kind with its fallback element type", (kind, glslDeclaration, slangDeclaration) => {
     const resources: readonly AuthoringResource[] = [{ name: "resource", kind }];

@@ -5,6 +5,8 @@ involved. Authoring syntax — `mainImage`, channel free functions, the pointer
 based `mainVertex` hook — is documented in [WGSL Shaders](wgsl-authoring.md).
 This page records what is proven to work and where WGSL deliberately differs.
 
+Named channel metadata and sampling examples are in [Channels](channels.md).
+
 ## What works
 
 - **Editing:** completion (user symbols, intrinsics, built-ins, uniforms,

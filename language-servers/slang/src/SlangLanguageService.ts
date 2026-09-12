@@ -38,6 +38,7 @@ import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
   describeSlangChannel,
+  canExposeSlangChannelGlobal,
   validateShaderAuthoringEnvironment,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
@@ -230,6 +231,9 @@ export class SlangLanguageService implements LanguageService {
           : undefined,
       });
     }
+    for (const declaration of generatedSamplingFunctions(state.environment)) {
+      items.set(`${declaration.name}:${declaration.detail}`, { label: declaration.name, kind: CompletionItemKind.Function, detail: declaration.detail });
+    }
     for (const file of contextualFiles(state.environment)) {
       for (const declaration of findSlangDeclarations(file.text)) {
         items.set(`${declaration.name}:${declaration.detail}`, {
@@ -317,13 +321,17 @@ export class SlangLanguageService implements LanguageService {
       return {
         contents: {
           kind: MarkupKind.Markdown,
-          value: `\`\`\`slang\nShaderStudioChannel${description.shape} inputs.${input.name}\n\`\`\`\n\nConfigured input channel. Use \`inputs.${input.name}\` to sample it and read its metadata.`,
+          value: `\`\`\`slang\nShaderStudioChannel${description.shape} inputs.${input.name}\n\`\`\`\n\nConfigured input channel. Use \`${canExposeSlangChannelGlobal(input.name) ? input.name : `inputs.${input.name}`}\` to sample it and read its metadata. The \`inputs.${input.name}\` alias is also available.`,
         },
       };
     }
     const uniform = state.environment.customUniforms.find((item) => item.name === word);
     if (uniform) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${slangType(uniform.type)} ${uniform.name}\n\`\`\`\n\nShader Studio custom uniform.` } };
+    }
+    const sampling = generatedSamplingFunctions(state.environment).find(item => item.name === word);
+    if (sampling) {
+      return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${sampling.detail}\n\`\`\`\n\nShader Studio sampling with bottom-left 2D coordinates and the supplied sampler.` } };
     }
     const intrinsic = word ? documentedSlangFunctions(state.environment).find((item) => item.name === word) : undefined;
     if (intrinsic) {
@@ -439,6 +447,7 @@ export class SlangLanguageService implements LanguageService {
       ...contextual.map((item) => item.detail),
       ...intrinsics.flatMap((item) => item.signatures),
       ...inputMethods,
+      ...generatedSamplingFunctions(state.environment).filter(item => item.name === call.name).map(item => item.detail),
     ];
     return labels.length > 0 ? { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter } : null;
   }
@@ -1300,6 +1309,7 @@ function shaderStudioInputMethodSignaturesAtCall(
   }
   const resolved = resolveSlangExpressionType({ source: state.document.text, position, expression: receiver }, {
     includes: [buildSlangAuthoringModule(state.environment).text],
+    variableType: name => environmentTypeName(name, state.environment),
   });
   return (shaderStudioInputMemberCompletions(resolved?.name ?? "") ?? [])
     .filter((item) => item.label === name)
@@ -1335,15 +1345,18 @@ function nativeTextureMember(texture: string, name: string, detail: string): Com
 }
 
 /**
- * The authoring prelude owns Shader Studio globals. Parse its public aggregate
- * declaration so completion stays in lockstep with the renderer-generated API
- * instead of recreating input names and helper functions here.
+ * Share channel type descriptions and global-name eligibility with the prelude.
+ * Names which only work as inputs members must not appear as module globals.
  */
 function generatedEnvironmentGlobals(environment: ShaderAuthoringEnvironment): readonly { name: string; type: string }[] {
-  const source = buildSlangAuthoringModule(environment).text;
-  return [...source.matchAll(/^\s*(?:(?:static|const)\s+)*([A-Za-z_]\w*(?:\s*<[^;>]+>)?)\s+([A-Za-z_]\w*)\s*(?:=[^;]+)?;\s*$/gm)]
-    .map((match) => ({ type: match[1]!.replace(/\s+/g, ""), name: match[2]! }))
-    .filter(({ name }) => name === "inputs");
+  return [{ name: "inputs", type: "ShaderStudioInputs" }, ...environment.resources
+    .filter(resource => resource.kind !== "storage" && canExposeSlangChannelGlobal(resource.name))
+    .map(resource => ({ name: resource.name, type: `ShaderStudioChannel${describeSlangChannel(resource.kind as "texture-2d" | "texture-cube" | "texture-3d").shape}` }))];
+}
+
+function generatedSamplingFunctions(environment: ShaderAuthoringEnvironment): SlangDeclaration[] {
+  return findSlangDeclarations(buildSlangAuthoringModule(environment).text)
+    .filter(item => /^sample(?:2D|Cube|3D)(?:Level|Grad)?$/.test(item.name));
 }
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
@@ -1355,7 +1368,7 @@ function environmentTypeName(name: string, environment: ShaderAuthoringEnvironme
   const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
     && item.languages.includes("slang")
     && (!item.stages || item.stages.includes(environment.stage)));
-  return documented?.slangType;
+  return documented?.slangType ?? generatedEnvironmentGlobals(environment).find(item => item.name === name)?.type;
 }
 
 /** Leading type token of an intrinsic signature, such as `bool` in `bool all(T value)`. */

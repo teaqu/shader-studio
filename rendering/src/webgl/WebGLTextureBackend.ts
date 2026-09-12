@@ -28,7 +28,7 @@ export class WebGLTextureBackend implements TextureBackend<PiTexture> {
     image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement[],
     opts: ImageTextureOptions,
   ): PiTexture | null {
-    return this.renderer.CreateTextureFromImage(
+    const texture = this.renderer.CreateTextureFromImage(
       this.mapType(opts.type),
       image,
       this.mapFormat(opts.format),
@@ -36,6 +36,13 @@ export class WebGLTextureBackend implements TextureBackend<PiTexture> {
       this.mapWrap(opts.wrap),
       opts.vflip,
     );
+    // piRenderer uploads face arrays correctly but reads array.width/height.
+    // Normalize its metadata at the backend boundary to the uploaded face size.
+    if (texture && opts.type === "cubemap" && Array.isArray(image) && image[0]) {
+      texture.mXres = image[0].width;
+      texture.mYres = image[0].height;
+    }
+    return texture;
   }
 
   createMipmaps(tex: PiTexture): void {

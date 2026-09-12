@@ -91,7 +91,7 @@ describe("WgslCompiler", () => {
     if (!result.success) {
       return;
     }
-    expect(result.wgsl).toContain("_ss_iChannel0_tex");
+    expect(result.wgsl).toContain("iChannel0Texture");
     expect(result.wgsl).toContain("var<storage, read> buf");
     expect(result.wgsl).toContain("custom_gain");
     compiler.dispose();

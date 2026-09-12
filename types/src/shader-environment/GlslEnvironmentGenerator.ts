@@ -4,6 +4,7 @@ import {
 } from "./BuiltinUniforms";
 import {
   buildGlslCompatibilityUniformDeclarationLines,
+  buildGlslNamedChannelDeclarations,
   type GlslSamplerType,
 } from "../GlslShaderEnvironment";
 import {
@@ -64,9 +65,11 @@ export function buildGlslAuthoringPreamble(
       const typeName = GLSL_VALUE_TYPES[uniform.type];
       return [`uniform ${typeName} ${uniform.name};`];
     }),
-    ...channelBindings
-      .filter(({ resource, slot }) => resource.name !== `iChannel${slot}`)
-      .map(({ resource }) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
+    buildGlslNamedChannelDeclarations(channelBindings.map(({ resource, slot }) => ({
+      key: resource.name, slot, isCustomName: resource.name !== `iChannel${slot}`, samplerType: glslSamplerTypeFor(resource),
+    })), environment.stage === "fragment"),
+    ...channelBindings.filter(({ resource, slot }) => /^iChannel\d+$/.test(resource.name) && resource.name !== `iChannel${slot}`)
+      .map(({ resource }) => `uniform ${glslSamplerTypeFor(resource)} ${resource.name};`),
     ...environment.resources
       .filter((resource) => resource.kind === "storage" && !/^iChannel\d+$/.test(resource.name))
       .map((resource) => `uniform ${GLSL_RESOURCE_TYPES[resource.kind]} ${resource.name};`),
@@ -75,6 +78,6 @@ export function buildGlslAuthoringPreamble(
   return {
     uri: environment.documentUri,
     text: lines.join("\n"),
-    generatedLineCount: lines.length,
+    generatedLineCount: lines.join("\n").split("\n").length,
   };
 }

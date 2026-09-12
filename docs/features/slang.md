@@ -5,6 +5,8 @@ storage buffers and a module system. Fragment shaders define `mainImage`,
 vertex shaders define the vertex hook, and compute passes declare `[shader("compute")]`
 entry points (see [Compute Passes](compute.md)).
 
+Named channel metadata and sampling examples are in [Channels](channels.md).
+
 ## What works
 
 - **Editing:** completion, hover, go to definition, references, highlights and

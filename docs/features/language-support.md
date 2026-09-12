@@ -3,8 +3,7 @@
 Shader Studio supports three shading languages: GLSL (WebGL2), Slang (WebGPU)
 and WGSL (WebGPU). This page is the evidence-backed record of what actually
 works per language. Every cell is backed by a named test or an explicit stated
-limitation — never by a registered capability flag. The full cell-by-cell
-record with test names lives in `plans/10-audit-matrix.md`.
+limitation — never by a registered capability flag. Named tests below provide the evidence; local workflow plans are not published.
 
 Statuses: **Tested** (a named test asserts real behaviour) · **Tested-weak**
 (evidence exists but has no non-vacuous guard) · **Implemented-untested** ·
@@ -40,8 +39,9 @@ Statuses: **Tested** (a named test asserts real behaviour) · **Tested-weak**
 
 Every rendering cell below is proven by
 `rendering/src/test/e2e/ShaderFixtureCorpus.corpus.test.ts`, which asserts each
-fixture draws lit pixels (an explicit `knownBlackOutput` exception list keeps
-the check non-vacuous).
+fixture draws lit pixels, apart from explicit `knownBlackOutput` exceptions.
+`ui/src/test/e2e/CorpusViaTransport.e2e.test.ts` separately drives the Slang and
+WGSL keyboard/storage black fixtures into lit states.
 
 | Feature | GLSL | Slang | WGSL |
 |---|---|---|---|
@@ -50,8 +50,15 @@ the check non-vacuous).
 | Compute | N/A (WebGL2) | Tested | Tested |
 | Storage buffers | N/A (WebGL2) | Tested | Tested |
 | Texture / cubemap / audio / video / keyboard inputs | Tested | Tested | Tested |
+| Named channel metadata and native sampler access | Tested | Tested | Tested (separate handles) |
 | Model geometry | Tested | Tested | Tested |
 | Custom uniforms from script | Tested | Tested | Tested |
+
+Named API coverage: `NamedChannels.e2e.test.ts` checks 2D orientation, methods,
+shared functions, binding aliases, mip levels and sampler overrides.
+`standalone/e2e/named-channels.e2e.mjs` exercises actual editor changes, cubemap
+metadata/directions, compute error recovery and reload persistence in all three
+languages. See [Channels](channels.md) for the public API and compatibility details.
 
 ## Debugging
 

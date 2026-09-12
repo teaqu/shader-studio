@@ -13,13 +13,13 @@ const CHANNEL: SlangChannelBinding = {
 } as SlangChannelBinding;
 
 describe("wgsl prelude name collision guarding", () => {
-  it("prefixes channel texture/sampler variables with _ss_", () => {
+  it("exposes native handles separately from private metadata", () => {
     const { source } = wrapWgslImageSource(IMAGE, { channels: [CHANNEL] });
 
     expect(source).not.toMatch(/(?<!_ss_)iChannel0_tex/);
     expect(source).not.toMatch(/(?<!_ss_)iChannel0_smp/);
-    expect(source).toContain("_ss_iChannel0_tex");
-    expect(source).toContain("_ss_iChannel0_smp");
+    expect(source).toContain("iChannel0Texture");
+    expect(source).toContain("iChannel0Sampler");
   });
 
   it("prefixes the compute output texture with _ss_", () => {
