@@ -169,7 +169,9 @@ class WgslDebugStrategy implements DebugPlanStrategy {
         : []),
     ];
     const selectedSource = files.find(file => pathsEqual(file.path, selectedPath))?.source;
-    if (selectedSource === undefined) return null;
+    if (selectedSource === undefined) {
+      return null;
+    }
     const rawLine = inputs.lineOverride ?? inputs.variablePreview?.debugLine ?? inputs.currentLine;
     const selectedLineContent = selectedSource.split("\n")[rawLine] ?? inputs.lineContent ?? "";
     const computePass = inputs.config?.passes[ownerPassName];
@@ -179,14 +181,17 @@ class WgslDebugStrategy implements DebugPlanStrategy {
         storageNames: Object.keys(inputs.config?.storage ?? {}),
       }
       : undefined;
+    const storage = Object.fromEntries(Object.entries(inputs.config?.storage ?? {})
+      .map(([name, declaration]) => [name, { elementType: declaration.elementType }]));
     return {
       workspace: {
         rootUri: rootPath,
         rootPath,
         passName: ownerPassName,
         ...(compute ? { compute } : {}),
+        storage,
         files,
-        contentHash: debugWorkspaceHash(files, compute),
+        contentHash: debugWorkspaceHash(files, compute, storage),
       },
       sourceUri: selectedPath,
       position: { line: rawLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
@@ -243,6 +248,7 @@ function pathsEqual(firstPath: string, secondPath: string): boolean {
 function debugWorkspaceHash(
   files: Array<{ path: string; source: string; version: number }>,
   compute?: { entryPoint?: string; storageNames?: string[] },
+  storage?: Record<string, { elementType: string }>,
 ): string {
   let hash = 2166136261;
   for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
@@ -250,7 +256,7 @@ function debugWorkspaceHash(
       hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
     }
   }
-  for (const character of JSON.stringify(compute ?? {})) {
+  for (const character of JSON.stringify({ compute, storage })) {
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");

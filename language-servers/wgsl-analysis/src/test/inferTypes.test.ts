@@ -122,3 +122,24 @@ describe("declaration type inference", () => {
     expect(types.gain).toBe("f32");
   });
 });
+
+describe('storage expression inference', () => {
+  it.each(['array<f32>', 'array<f32, 4>'])('infers an element of %s', type => {
+    expect(variableTypes(`var<storage, read> values: ${type};\nfn read() { let shade = values[0]; }`).shade).toBe('f32');
+  });
+  it('resolves aliases and fields after indexing storage structs', () => {
+    const types = variableTypes('struct Particle { tint: vec3f, }\nalias Particles = array<Particle>;\nvar<storage, read> particles: Particles;\nfn read() { let shade = particles[0].tint.x; let absent = particles[0].missing; }');
+    expect(types.shade).toBe('f32');
+    expect(types.absent).toBeUndefined();
+  });
+  it('handles nested arrays and local shadowing without guessing unknown types', () => {
+    const types = variableTypes('var<storage, read> values: array<array<f32,2>,4>;\nfn read() { let nested = values[0][1]; { let values = vec3u(1); let local = values[0]; } let unknown = absent[0]; }');
+    expect(types.nested).toBe('f32');
+    expect(types.local).toBe('u32');
+    expect(types.unknown).toBeUndefined();
+  });
+  it('terminates on cyclic aliases', () => {
+    const types = variableTypes('alias A = B; alias B = A; var<private> a: A; fn read() { let value = a[0]; }');
+    expect(types.value).toBeUndefined();
+  });
+});

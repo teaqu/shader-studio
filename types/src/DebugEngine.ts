@@ -17,6 +17,8 @@ export interface DebugWorkspace {
     entryPoint?: string;
     storageNames?: string[];
   };
+  /** Configured storage types used only for analysis; bindings remain renderer-owned. */
+  storage?: Record<string, { elementType: string }>;
   files: DebugSourceUnit[];
   contentHash: string;
 }

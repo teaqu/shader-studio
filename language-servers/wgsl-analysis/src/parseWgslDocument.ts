@@ -11,7 +11,7 @@ import type {
   WgslUnresolvedReference,
 } from "./model.js";
 import { tokenizeWgsl, type WgslToken } from "./tokenizer.js";
-import { isBuiltinValueType, resolveSwizzleType, vectorType } from "./wgslTypes.js";
+import { isBuiltinValueType, parseWgslArrayType, resolveSwizzleType, vectorType } from "./wgslTypes.js";
 
 export type WgslExpression =
   | { readonly kind: "identifier"; readonly name: string }
@@ -408,6 +408,20 @@ class WgslParser {
     }
   }
 
+  private resolveAliasType(typeName: string): string {
+    const visited = new Set<string>();
+    let resolved = typeName;
+    while (!visited.has(resolved)) {
+      visited.add(resolved);
+      const alias = this.symbols.find(symbol => symbol.kind === "type" && symbol.name === resolved && symbol.typeName !== undefined);
+      if (!alias?.typeName) {
+        break;
+      }
+      resolved = alias.typeName;
+    }
+    return resolved;
+  }
+
   private inferExpressionType(
     expression: WgslExpression,
     self: MutableSymbol,
@@ -443,12 +457,21 @@ class WgslParser {
       }
       case "member": {
         const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
-        return owner === undefined ? undefined : resolveSwizzleType(owner, expression.member);
+        if (owner === undefined) {
+          return undefined;
+        }
+        const resolved = this.resolveAliasType(owner);
+        const typeScope = this.scopes.find(scope => scope.kind === "type" && scope.name === resolved);
+        return resolveSwizzleType(resolved, expression.member)
+          ?? this.symbols.find(symbol => symbol.kind === "field" && symbol.scopeId === typeScope?.id && symbol.name === expression.member)?.typeName;
       }
       case "index": {
         const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
-        const vector = owner === undefined ? undefined : vectorType(owner);
-        return vector?.componentType;
+        if (owner === undefined) {
+          return undefined;
+        }
+        const resolved = this.resolveAliasType(owner);
+        return parseWgslArrayType(resolved)?.elementType ?? vectorType(resolved)?.componentType;
       }
       case "unary": {
         if (expression.operator === "!") {

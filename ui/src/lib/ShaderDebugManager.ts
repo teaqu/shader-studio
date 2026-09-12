@@ -482,7 +482,14 @@ export class ShaderDebugManager {
   }
 
   public setImageShaderCode(code: string): void {
+    if (this.imageShaderCode === code) {
+      return;
+    }
     this.imageShaderCode = code;
+    // Host cursor events can precede source delivery. Refresh ownership even
+    // when the editor remains on the same statement after compilation.
+    this.updateFunctionContext();
+    this.notifyStateChange();
   }
 
   public setCustomParameter(index: number, value: string | null): void {

@@ -1,3 +1,4 @@
+import { wgslStorageElementType } from "@shader-studio/types";
 import type { DebugSiteAnalysis, DebugSourcePosition, DebugSourceRange, DebugSourceUnit, DebugWorkspace } from "@shader-studio/types";
 import { canonicalizeWgslUri } from "./WgslWorkspace";
 
@@ -18,8 +19,12 @@ export class WgslDebugSourceMap {
       ...workspace.files.filter(file => canonicalizeWgslUri(file.uri) !== root),
       ...workspace.files.filter(file => canonicalizeWgslUri(file.uri) === root),
     ];
-    let source = "";
-    let lineOffset = 0;
+    // Analysis sees storage declarations, but they are outside the authored
+    // segments: emitted plans contain only user files, never duplicate bindings.
+    let source = Object.entries(workspace.storage ?? {}).map(([name, storage]) =>
+      `var<storage, read> ${name}: array<${wgslStorageElementType(storage.elementType, "render")}>;\n`,
+    ).join("");
+    let lineOffset = source.split("\n").length - 1;
     this.segments = ordered.map(file => {
       const segment = { file, start: source.length, end: source.length + file.source.length, lineOffset };
       source += `${file.source}\n`;

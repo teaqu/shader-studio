@@ -58,7 +58,15 @@ Named API coverage: `NamedChannels.e2e.test.ts` checks 2D orientation, methods,
 shared functions, binding aliases, mip levels and sampler overrides.
 `standalone/e2e/named-channels.e2e.mjs` exercises actual editor changes, cubemap
 metadata/directions, compute error recovery and reload persistence in all three
-languages. See [Channels](channels.md) for the public API and compatibility details.
+languages. `extension/e2e/pw/named-channels.e2e.mjs` separately runs in the
+VS Code Extension Development Host: editor changes sample an actual green texture
+using named metadata, compiler errors appear and clear, saved output survives a
+window reload, and a WGSL compute pass recovers after an explicit-LOD correction.
+It also checks Common, vertex-hook and hoisted Image/Common/vertex compiler
+diagnostic ownership.
+`WgslSourceAttribution.test.ts` and `WebGPURenderingEngine.test.ts` cover authored
+ranges, linked-handle columns, generated-code errors and compiled-source cache hits.
+See [Channels](channels.md) for the public API and compatibility details.
 
 ## Debugging
 
@@ -68,8 +76,20 @@ languages. See [Channels](channels.md) for the public API and compatibility deta
 | Variable capture (fragment) | Tested | Tested | Tested |
 | Vertex-stage debugging | Missing | Missing | Missing |
 | Compute-stage debugging | N/A (WebGL2) | Tested | Tested |
-| Common capture mapping | Implemented-untested | Tested-weak | Implemented-untested |
-| Storage-backed values | N/A (WebGL2) | Tested-weak | Tested-weak |
+| Common capture mapping | Tested | Tested | Tested |
+| Storage-backed values | N/A (WebGL2) | Tested (fragment and compute) | Tested (fragment and compute replay) |
+
+`extension/e2e/pw/common-storage-debug.e2e.mjs` drives the actual VS Code debug
+panel. In all three languages it selects a Common local, checks the function and
+line ownership, excludes the root-only local, captures `0.375`, then edits it to
+`0.625` and checks the updated capture. Storage tests use the Config inspector to
+change the live GPU buffer from `0.375` to `0.625` and assert both captured values
+and the selected function in Slang and WGSL fragment/compute panels.
+These tests exposed and reproduce function context remaining empty when a cursor
+event precedes source delivery (`ShaderDebugManager.sourceContext.test.ts`).
+WGSL storage inference and authored capture ranges also have unit coverage in
+`WgslStorageDebug.test.ts`; generated analysis bindings are excluded from emitted
+shader files. These checks preserve the WGSL replay restrictions below.
 
 ## Hosts
 
@@ -82,8 +102,8 @@ languages. See [Channels](channels.md) for the public API and compatibility deta
 ## Known limitations
 
 - **Workspace symbol search** does not exist for any language.
-- **WGSL diagnostics are hints only.** WGSL compiles in the renderer and its
-  compiler messages win; the language service only supplements. See
+- **WGSL language-service diagnostics are hints only.** WGSL compiles in the
+  renderer and its compiler messages win; the language service only supplements. See
   [WGSL](wgsl.md).
 - **Slang `__include` prelude symbols** (generated built-ins) are refused by
   hover and rename — they are not authored code. See [Slang](slang.md).

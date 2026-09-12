@@ -58,6 +58,17 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     expect(changedMetadata?.workspace.contentHash).not.toBe(withMetadata?.workspace.contentHash);
   });
 
+  it('includes storage types in WGSL requests and invalidates plans when the type changes', () => {
+    const config: ShaderConfig = { version: '1', storage: { values: { count: 1, elementType: 'f32' } }, passes: { Image: {}, Simulate: { type: 'compute', path: '/simulate.wgsl' } } };
+    const source = '@compute @workgroup_size(1) fn update() {\n  let shade = values[0];\n}';
+    const first = buildWgslRequest(config, source)!;
+    config.storage!.values.elementType = 'vec4f';
+    const second = buildWgslRequest(config, source)!;
+    expect(first.workspace.storage).toEqual({ values: { elementType: 'f32' } });
+    expect(second.workspace.storage).toEqual({ values: { elementType: 'vec4f' } });
+    expect(second.workspace.contentHash).not.toBe(first.workspace.contentHash);
+  });
+
   it('omits compute metadata for a render WGSL workspace', () => {
     const strategy = debugPlanStrategy('wgsl')!;
     const request = strategy.buildRequest({
@@ -230,7 +241,9 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(shade(coord, 0.1)); }`;
     expect(preview).toMatch(/p: vec2f = _ssdbg_\w+_coord \/ iResolution.xy;/);
     expect(preview).toMatch(/_loop0 >= 3u/);
     const capture = manager.getCapturePlan(code, null);
-    if (!capture || 'error' in capture) throw new Error('capture failed');
+    if (!capture || 'error' in capture) {
+      throw new Error('capture failed');
+    }
     expect(capture.plan.files[0].source).toContain('gain: f32 = 0.75;');
     expect(capture.plan.files[0].source).toMatch(/_loop0 >= 3u/);
     manager.resetCustomParameters();

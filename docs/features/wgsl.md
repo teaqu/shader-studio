@@ -20,14 +20,23 @@ Named channel metadata and sampling examples are in [Channels](channels.md).
   buffers — plus textures, cubemaps, audio/video, keyboard, models and custom
   uniforms. The fixture corpus holds some three dozen WGSL fixtures, not two.
 - **Debugging:** in-place preview plans and native capture plans with user
-  slots after the hidden marker.
+  slots after the hidden marker. Configured storage types inform inferred local
+  values, including array indexing and struct fields. VS Code debug-panel tests
+  capture changing Common locals and live fragment/compute storage values
+  (`extension/e2e/pw/common-storage-debug.e2e.mjs`).
+- **Compiler diagnostics:** Common, vertex and pass errors retain authored
+  lines and columns, including leading blanks and hoisted multiline directives.
+  Compiled-source cache entries retain these mappings; generated-code errors
+  remain marked internal. `WgslSourceAttribution.test.ts` and
+  `WebGPURenderingEngine.test.ts` cover wrapping/cache paths;
+  `extension/e2e/pw/named-channels.e2e.mjs` checks actual VS Code diagnostics.
 - **Hosts:** VS Code extension and standalone browser. WGSL needs a
   WebGPU-capable host; without one it fails with an error naming the missing
   feature.
 
 ## Limitations
 
-- **Diagnostics are hints only.** WGSL compiles in the renderer
+- **Language-service diagnostics are hints only.** WGSL compiles in the renderer
   (WebGPU/Dawn) and the renderer compiler always wins; the language service
   does not duplicate its diagnostics.
 - **Compute-stage debug capture replays a single invocation.** The planner
