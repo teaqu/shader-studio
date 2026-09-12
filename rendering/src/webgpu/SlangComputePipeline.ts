@@ -3,7 +3,7 @@ import type { SlangBindingChannel } from "./SlangBindingPlan";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
-import { allowNonUniformDerivatives } from "./wgslDiagnostics";
+import { allowNonUniformDerivatives, type WgslVertexRange, type WgslDirectiveRange } from "./wgslDiagnostics";
 import {
   formatWgslDiagnostic,
   type SlangChannelResource,
@@ -29,6 +29,8 @@ export interface SlangComputePipelineDescriptor {
   sourceLineOffset?: number;
   /** User-source lines after the prelude; clamps generated-code errors. */
   sourceLineCount?: number;
+  commonRange?: WgslVertexRange;
+  directiveRanges?: WgslDirectiveRange[];
 }
 
 export class SlangComputePipeline {
@@ -143,6 +145,14 @@ export class SlangComputePipeline {
         message.message,
         sourceLineOffset,
         this.descriptor.sourceLineCount,
+        undefined,
+        this.descriptor.commonRange && {
+          ...this.descriptor.commonRange,
+          startLine: this.descriptor.commonRange.startLine + (sourceLineOffset ?? 0) - (this.descriptor.sourceLineOffset ?? 0),
+        },
+        this.descriptor.directiveRanges?.map(range => ({
+          ...range, startLine: range.startLine + (sourceLineOffset ?? 0) - (this.descriptor.sourceLineOffset ?? 0),
+        })),
       ));
   }
 

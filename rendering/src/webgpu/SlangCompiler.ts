@@ -14,10 +14,10 @@ import {
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
-import type { WgslVertexRange } from "./wgslDiagnostics";
+import type { WgslVertexRange, WgslDirectiveRange } from "./wgslDiagnostics";
 
 export type SlangCompileResult =
-  | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; vertexRange?: WgslVertexRange; requiredFeatures?: string[] }
+  | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; vertexRange?: WgslVertexRange; commonRange?: WgslVertexRange; directiveRanges?: WgslDirectiveRange[]; requiredFeatures?: string[] }
   | { success: false; errors: string[] };
 
 export type { SlangCompileOptions } from "./slangTypes";

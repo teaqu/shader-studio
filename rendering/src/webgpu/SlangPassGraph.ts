@@ -130,7 +130,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     };
   }
 
-  const commonCode = options.buffers.common?.trim() ?? "";
+  const commonCode = options.buffers.common ?? "";
   const passEntries = Object.entries(config.passes).filter(([name, passConfig]) => {
     if (SPECIAL_PASS_NAMES.has(name) || passConfig === undefined) {
       return true;

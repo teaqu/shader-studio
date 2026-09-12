@@ -1,17 +1,19 @@
+import type { SlangCompileResult } from "./SlangCompiler";
+
 const DEFAULT_MAX_ENTRIES = 64;
 
 /**
  * Small in-memory LRU for Slang-to-WGSL output. This keeps switching back to
  * an unchanged Slang shader fast after a WebGPU engine was recreated, while
- * intentionally storing only source text output, never GPU/device resources,
+ * storing source output and its diagnostic/feature metadata, never GPU resources,
  * so fresh engines can rebuild their own pipelines safely.
  */
-export class SlangWgslCache {
-  private entries = new Map<string, string>();
+export class SlangWgslCache<T = string> {
+  private entries = new Map<string, T>();
 
   constructor(private readonly maxEntries = DEFAULT_MAX_ENTRIES) {}
 
-  get(key: string): string | null {
+  get(key: string): T | null {
     const value = this.entries.get(key);
     if (value === undefined) {
       return null;
@@ -22,7 +24,7 @@ export class SlangWgslCache {
     return value;
   }
 
-  set(key: string, wgsl: string): void {
+  set(key: string, wgsl: T): void {
     if (this.maxEntries <= 0) {
       return;
     }
@@ -44,4 +46,4 @@ export class SlangWgslCache {
   }
 }
 
-export const sharedSlangWgslCache = new SlangWgslCache();
+export const sharedSlangWgslCache = new SlangWgslCache<Extract<SlangCompileResult, { success: true }>>();

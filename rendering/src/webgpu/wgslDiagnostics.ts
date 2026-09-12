@@ -23,6 +23,12 @@ export interface WgslVertexRange {
   lineCount: number;
 }
 
+/** An authored directive moved above generated declarations. Columns are preserved. */
+export interface WgslDirectiveRange extends WgslVertexRange {
+  sourceStartLine: number;
+  owner: "Image" | "Common" | "vertex";
+}
+
 const DERIVATIVE_UNIFORMITY_FILTER = "diagnostic(off, derivative_uniformity);";
 
 const EXISTING_FILTER = /diagnostic\s*\(\s*[A-Za-z_]\w*\s*,\s*derivative_uniformity\s*\)/;

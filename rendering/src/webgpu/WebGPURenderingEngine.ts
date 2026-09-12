@@ -1023,11 +1023,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         }
         let pipeline: SlangPassPipeline | SlangComputePipeline | undefined;
         try {
-          let wgsl = sharedSlangWgslCache.get(wgslKey);
-          const wgslCacheHit = wgsl !== null;
+          let compilation = sharedSlangWgslCache.get(wgslKey);
+          let wgsl = compilation?.wgsl;
+          const wgslCacheHit = compilation !== null;
           let slangMs = 0;
-          let sourceLineOffset: number | undefined;
-          let sourceLineCount: number | undefined;
           const channels = getSlangChannels(pass.channels);
           if (!wgsl) {
             const slangStartedAt = this.now();
@@ -1072,27 +1071,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
               continue;
             }
             wgsl = compiled.wgsl;
-            sourceLineOffset = compiled.sourceLineOffset;
-            sourceLineCount = compiled.sourceLineCount;
-            // A shader whose hoisted `enable` needs a feature the device lacks
-            // gets a clear error here instead of a raw Tint parse failure.
-            const unsupportedFeature = wgslUnsupportedFeatureMessage(
-              compiled.requiredFeatures ?? [],
-              (feature) => this.device?.features?.has?.(feature as GPUFeatureName) === true,
-            );
-            if (unsupportedFeature !== undefined) {
-              errors.push(WebGPURenderingEngine.prefixPassError(pass.name, unsupportedFeature));
-              passTimings.push({
-                name: pass.name,
-                cacheHit: false,
-                wgslCacheHit: false,
-                slangMs: this.ms(slangMs),
-                totalMs: this.ms(this.now() - passStartedAt),
-                errorCount: 1,
-              });
-              continue;
-            }
-            sharedSlangWgslCache.set(wgslKey, wgsl);
+            compilation = compiled;
+            sharedSlangWgslCache.set(wgslKey, compiled);
+          }
+          // A shader whose hoisted `enable` needs a feature the device lacks
+          // gets a clear error here instead of a raw Tint parse failure.
+          const unsupportedFeature = wgslUnsupportedFeatureMessage(
+            compilation?.requiredFeatures ?? [],
+            (feature) => this.device?.features?.has?.(feature as GPUFeatureName) === true,
+          );
+          if (unsupportedFeature !== undefined) {
+            errors.push(WebGPURenderingEngine.prefixPassError(pass.name, unsupportedFeature));
+            passTimings.push({
+              name: pass.name,
+              cacheHit: false,
+              wgslCacheHit,
+              slangMs: this.ms(slangMs),
+              totalMs: this.ms(this.now() - passStartedAt),
+              errorCount: 1,
+            });
+            continue;
           }
           // After the first successful compile, validate custom struct strides
           // against the actual WGSL layout that Slang generated.
@@ -1116,8 +1114,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
             pass,
             graph.storage,
             createSlangCustomUniformLayout(uniformInfo, getShaderToyChannelCount(pass.channels)).size,
-            sourceLineOffset,
-            sourceLineCount,
+            compilation ?? undefined,
           );
           if (!this.registerPipelineCandidate(pipelineCandidates, pipeline)) {
             break;
@@ -2231,8 +2228,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     pass: RenderPassNode,
     storage: StorageBindingNode[],
     uniformBufferSize = createSlangCustomUniformLayout([], getShaderToyChannelCount(pass.channels)).size,
-    sourceLineOffset?: number,
-    sourceLineCount?: number,
+    compilation?: Extract<import("./SlangCompiler").SlangCompileResult, { success: true }>,
   ): SlangPassPipeline | SlangComputePipeline {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while creating pass pipeline");
@@ -2257,8 +2253,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
         storage,
         uniformBufferSize,
         bufferTextureFormat: this.bufferTextureFormat,
-        ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
-        ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
+        sourceLineOffset: compilation?.sourceLineOffset,
+        sourceLineCount: compilation?.sourceLineCount,
+        commonRange: compilation?.commonRange,
+        directiveRanges: compilation?.directiveRanges,
       })
       : new SlangPassPipeline(this.device, this.format, {
         name: pass.name,
@@ -2268,10 +2266,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         geometry: pass.geometry,
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
+        vertexRange: compilation?.vertexRange,
         storage,
         uniformBufferSize,
-        ...(sourceLineOffset === undefined ? {} : { sourceLineOffset }),
-        ...(sourceLineCount === undefined ? {} : { sourceLineCount }),
+        sourceLineOffset: compilation?.sourceLineOffset,
+        sourceLineCount: compilation?.sourceLineCount,
+        commonRange: compilation?.commonRange,
+        directiveRanges: compilation?.directiveRanges,
       });
   }
 
@@ -2338,7 +2339,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
           customUniforms,
           passModules,
         );
-        const wgsl = sharedSlangWgslCache.get(wgslKey);
+        const compilation = sharedSlangWgslCache.get(wgslKey);
+        const wgsl = compilation?.wgsl;
         if (!wgsl) {
           errors.push(`${pass.name}: compiled WGSL unavailable during resolution reconciliation`);
           continue;
@@ -2350,6 +2352,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
             pass,
             graph.storage,
             createSlangCustomUniformLayout(customUniforms, getShaderToyChannelCount(pass.channels)).size,
+            compilation ?? undefined,
           );
           if (!this.registerPipelineCandidate(candidates, replacement)) {
             return errors;

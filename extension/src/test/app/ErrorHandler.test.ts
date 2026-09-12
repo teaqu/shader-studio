@@ -208,6 +208,26 @@ suite('ErrorHandler Test Suite', () => {
     assert.ok(!warnCalled, 'Error should not call outputChannel.warn');
   });
 
+  for (const [label, key, file] of [
+    ['Common', 'common', '/test/common.wgsl'],
+    ['Image', 'Image', '/test/image.wgsl'],
+    ['Image (vertex)', '__shader_studio_vertex__:Image', '/test/vertex.wgsl'],
+  ]) {
+    test(`routes WGSL ${label} diagnostics to authored line and column`, () => {
+      const uri = vscode.Uri.file(file);
+      const document = stubDocument(uri, ['', '', '', '', '  return missing;'], 'wgsl');
+      sandbox.stub(vscode.workspace, 'textDocuments').value([document]);
+      errorHandler.setShaderConfig({ shaderPath: '/test/image.wgsl', config: { passes: {} }, bufferPathMap: { [key]: file } });
+      const set = sandbox.spy(mockDiagnosticCollection, 'set');
+      errorHandler.handleError({ type: 'error', payload: [`${label}: ${label.includes('vertex') ? '' : 'WGSL '}L5:10 unknown identifier`] });
+      const [target, diagnostics] = set.firstCall.args as unknown as [vscode.Uri, vscode.Diagnostic[]];
+      assert.strictEqual(target.fsPath, uri.fsPath);
+      const diagnostic = diagnostics[0];
+      assert.strictEqual(diagnostic.range.start.line, 4);
+      assert.strictEqual(diagnostic.range.start.character, 9);
+    });
+  }
+
   test('clearErrors should not clear persistent errors', () => {
     const persistentMessage: ErrorMessage = {
       type: 'error',

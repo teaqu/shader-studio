@@ -122,7 +122,7 @@ export class ErrorHandler {
       // Parse pass name from error message (format: "PassName: ERROR: ...").
       // Slang prefixes the pass onto the whole batch, so this is read once for
       // every block parsed out of this payload entry.
-      const passNameMatch = errorText.match(/^([^:\n]+):\s*(?:ERROR:\s*|error(?:\[[^\]]+\])?:)/i);
+      const passNameMatch = errorText.match(/^([^:\n]+):\s*(?:ERROR:\s*|error(?:\[[^\]]+\])?:|WGSL |L\d+:)/i);
       const passUri = passNameMatch && this.currentShaderConfig
         ? this.getUriForPass(passNameMatch[1].trim(), this.currentShaderConfig)
         : null;
@@ -358,6 +358,13 @@ export class ErrorHandler {
 
   private getUriForPass(passName: string, shaderConfig: { config: any; shaderPath: string; bufferPathMap?: Record<string, string> }): vscode.Uri | null {
     try {
+      if (passName === "Common") {
+        passName = "common";
+      }
+      const vertex = passName.match(/^(.*?) \(vertex(?: [^)]*)?\)$/);
+      if (vertex) {
+        passName = `__shader_studio_vertex__:${vertex[1]}`;
+      }
       // Use bufferPathMap if available (already has resolved absolute paths)
       if (shaderConfig.bufferPathMap && shaderConfig.bufferPathMap[passName]) {
         return vscode.Uri.file(shaderConfig.bufferPathMap[passName]);
@@ -430,6 +437,13 @@ function addDiagnostic(
 }
 
 function parseReportedDiagnostics(errorText: string): ReportedDiagnostic[] {
+  // Native WGSL is already mapped by the renderer. Generated errors have no
+  // authored location and deliberately continue through the fallback path.
+  const wgsl = errorText.match(/^[^:\n]+: (?:WGSL )?L(\d+):(\d+) /);
+  if (wgsl) {
+    return [{ message: errorText, line: Number(wgsl[1]), column: Number(wgsl[2]) }];
+  }
+
   // glslang only reports `<string>:<line>` (no column, so these stay
   // whole-line), and the renderer already splits its log one error per payload
   // entry. Checked first because `ERROR:` also matches the Slang heading below.

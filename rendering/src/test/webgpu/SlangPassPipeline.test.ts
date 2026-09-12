@@ -1757,6 +1757,14 @@ describe("SlangPassPipeline", () => {
     // effective offset stays 100: user lines 101-110, hook lines 111-113.
     const noFilterSource = "diagnostic(off, derivative_uniformity);\n// wgsl";
 
+    it("shifts the vertex range when the derivative filter adds a module line", async () => {
+      const device = fakeDevice([
+        { type: "error", lineNum: 114, linePos: 5, message: "unknown identifier" },
+      ]);
+      expect(await mappedPass(device, 100, 10, hookVertex).rebuild("// wgsl"))
+        .toEqual(["Image (vertex mesh.vert.wgsl): L3:5 unknown identifier"]);
+    });
+
     it("attributes a vertex-hook error to the vertex file with a hook-relative line", async () => {
       const device = fakeDevice([
         { type: "error", lineNum: 112, linePos: 5, message: "cannot assign to value of type 'swizzle'" },

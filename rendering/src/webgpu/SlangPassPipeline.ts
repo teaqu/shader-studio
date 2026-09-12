@@ -3,7 +3,7 @@ import type { SlangBindingChannel } from "./SlangBindingPlan";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
-import { allowNonUniformDerivatives, type WgslVertexRange } from "./wgslDiagnostics";
+import { allowNonUniformDerivatives, type WgslVertexRange, type WgslDirectiveRange } from "./wgslDiagnostics";
 import type { GeometryType } from "@shader-studio/types";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
@@ -23,6 +23,8 @@ export interface SlangPassPipelineDescriptor {
   sourceLineCount?: number;
   /** Assembled-module range of the user vertex hook, when the pass has one. */
   vertexRange?: WgslVertexAttribution["range"];
+  commonRange?: WgslVertexRange;
+  directiveRanges?: WgslDirectiveRange[];
   /** Vertex file name for diagnostics, when the caller knows it. */
   vertexLabel?: string;
 }
@@ -102,7 +104,19 @@ export function formatWgslDiagnostic(
   sourceLineOffset: number | undefined,
   userLineCount?: number,
   vertex?: WgslVertexAttribution,
+  commonRange?: WgslVertexRange,
+  directiveRanges?: WgslDirectiveRange[],
 ): string {
+  const directive = directiveRanges?.find(range => lineNum >= range.startLine && lineNum < range.startLine + range.lineCount);
+  if (directive) {
+    const line = lineNum - directive.startLine + directive.sourceStartLine;
+    return directive.owner === "vertex"
+      ? `${passName} (vertex): L${line}:${linePos} ${message}`
+      : `${directive.owner === "Common" ? "Common" : passName}: WGSL L${line}:${linePos} ${message}`;
+  }
+  if (commonRange && lineNum >= commonRange.startLine && lineNum < commonRange.startLine + commonRange.lineCount) {
+    return `Common: WGSL L${lineNum - commonRange.startLine + 1}:${linePos} ${message}`;
+  }
   const remapped = remapWgslDiagnosticLine(lineNum, sourceLineOffset, userLineCount, vertex?.range);
   if (remapped.vertex === true) {
     return `${passName} (vertex${vertex?.label !== undefined ? ` ${vertex.label}` : ""}): L${remapped.line}:${linePos} ${message}`;
@@ -243,9 +257,11 @@ export class SlangPassPipeline {
   /** Browser-compiler errors, remapped from assembled-module lines onto user lines. */
   private async moduleErrors(shaderModule: GPUShaderModule, sourceLineOffset?: number): Promise<string[]> {
     const info = await shaderModule.getCompilationInfo?.();
+    const addedLines = (sourceLineOffset ?? 0) - (this.descriptor.sourceLineOffset ?? 0);
+    const shift = (range: WgslVertexRange) => ({ ...range, startLine: range.startLine + addedLines });
     const vertex = this.descriptor.vertexRange === undefined
       ? undefined
-      : { range: this.descriptor.vertexRange, label: this.descriptor.vertexLabel };
+      : { range: shift(this.descriptor.vertexRange), label: this.descriptor.vertexLabel };
     return (info?.messages ?? [])
       .filter((message) => message.type === "error")
       .map((message) => formatWgslDiagnostic(
@@ -256,6 +272,8 @@ export class SlangPassPipeline {
         sourceLineOffset,
         this.descriptor.sourceLineCount,
         vertex,
+        this.descriptor.commonRange && shift(this.descriptor.commonRange),
+        this.descriptor.directiveRanges?.map(range => ({ ...range, startLine: range.startLine + addedLines })),
       ));
   }
 

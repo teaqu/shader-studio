@@ -10,7 +10,7 @@ import {
   type SlangCustomUniformInfo,
 } from "./SlangPrelude";
 import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
-import type { WgslVertexRange } from "./wgslDiagnostics";
+import type { WgslVertexRange, WgslDirectiveRange } from "./wgslDiagnostics";
 import { getWgslComputeEntryPoints, parseWgslDocument, symbolAtPosition, tokenizeWgsl } from "@shader-studio/wgsl-analysis";
 
 export { getWgslComputeEntryPoints } from "@shader-studio/wgsl-analysis";
@@ -80,6 +80,9 @@ export interface WgslWrapResult {
    * Absent for capture mode and for passes without a hook.
    */
   vertexRange?: WgslVertexRange;
+  /** Authored Common source placement, including its leading blank lines. */
+  commonRange?: WgslVertexRange;
+  directiveRanges?: WgslDirectiveRange[];
   /** `enable`/`requires` directives hoisted out of user source (Phase 6). */
   requiredFeatures: string[];
 }
@@ -399,7 +402,7 @@ export interface WgslEntryPoints {
 }
 
 function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
-  const hook = vertexCode.trim();
+  const hook = vertexCode.trim() ? vertexCode : "";
   const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
   return {
     source: `${hookSource}
@@ -439,7 +442,7 @@ struct _ss_MeshVertexOut {
 }
 
 function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
-  const hook = vertexCode.trim();
+  const hook = vertexCode.trim() ? vertexCode : "";
   if (hook !== "") {
     return {
       source: `${hook}
@@ -643,6 +646,7 @@ function countLines(text: string): number {
 export interface WgslHoistedDirectives {
   /** Deduplicated directive statements in first-appearance order. */
   directives: string[];
+  locations: { text: string; sourceStartLine: number }[];
   /** Deduplicated `enable` extension names in first-appearance order. */
   enableNames: string[];
   /** Source with each hoisted directive blanked (newlines kept, so lines hold). */
@@ -665,6 +669,7 @@ export function extractWgslDirectives(source: string): WgslHoistedDirectives {
   const masked = maskWgslNonCode(source);
   const blanked = source.split("");
   const directives: string[] = [];
+  const locations: WgslHoistedDirectives["locations"] = [];
   const seen = new Set<string>();
   const enableNames: string[] = [];
   const enableSeen = new Set<string>();
@@ -697,6 +702,11 @@ export function extractWgslDirectives(source: string): WgslHoistedDirectives {
     if (!seen.has(key)) {
       seen.add(key);
       directives.push(key);
+      const prefix = source.slice(0, index);
+      locations.push({
+        text: " ".repeat(index - (source.lastIndexOf("\n", index - 1) + 1)) + source.slice(index, index + text.length),
+        sourceStartLine: countLines(prefix) + 1,
+      });
     }
     const enableList = WGSL_ENABLE_NAMES.exec(key)?.[1];
     if (enableList !== undefined) {
@@ -708,36 +718,42 @@ export function extractWgslDirectives(source: string): WgslHoistedDirectives {
       }
     }
   }
-  return { directives, enableNames, stripped: blanked.join("") };
+  return { directives, locations, enableNames, stripped: blanked.join("") };
 }
 
-/** Hoists directives out of both user source and common code, merged deduped. */
-function hoistWgslDirectives(userSource: string, commonCode: string): {
+/** Hoists directives from authored pass, Common and vertex sources, deduplicated. */
+function hoistWgslDirectives(userSource: string, commonCode: string, vertexSource = ""): {
   userSource: string;
   commonCode: string;
+  vertexSource: string;
   header: string;
   enableNames: string[];
+  directiveRanges: WgslDirectiveRange[];
 } {
   const user = extractWgslDirectives(userSource);
   const common = extractWgslDirectives(commonCode);
-  const directives = [...user.directives];
-  for (const directive of common.directives) {
-    if (!directives.includes(directive)) {
-      directives.push(directive);
+  const vertex = extractWgslDirectives(vertexSource);
+  const seen = new Set<string>();
+  const enableNames = new Set<string>();
+  const directiveRanges: WgslDirectiveRange[] = [];
+  let header = "";
+  for (const [owner, extracted] of [["Image", user], ["Common", common], ["vertex", vertex]] as const) {
+    extracted.directives.forEach((key, index) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const location = extracted.locations[index]!;
+      directiveRanges.push({ startLine: countLines(header) + 1, lineCount: countLines(location.text) + 1,
+        sourceStartLine: location.sourceStartLine, owner });
+      header += `${location.text}\n`;
+    });
+    for (const name of extracted.enableNames) {
+      enableNames.add(name);
     }
   }
-  const enableNames = [...user.enableNames];
-  for (const name of common.enableNames) {
-    if (!enableNames.includes(name)) {
-      enableNames.push(name);
-    }
-  }
-  return {
-    userSource: user.stripped,
-    commonCode: common.stripped,
-    header: directives.length > 0 ? `${directives.join("\n")}\n` : "",
-    enableNames,
-  };
+  return { userSource: user.stripped, commonCode: common.stripped, vertexSource: vertex.stripped,
+    header, enableNames: [...enableNames], directiveRanges };
 }
 
 /** Wrap a user image-shader source into a full, compilable WGSL module. */
@@ -748,9 +764,10 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels });
   const hoisted = hoistWgslDirectives(
     stripShaderStudioEditorImport(userSource),
-    stripShaderStudioEditorImport(options.commonCode ?? "").trim(),
+    stripShaderStudioEditorImport(options.commonCode ?? ""),
+    stripShaderStudioEditorImport(options.vertexCode ?? ""),
   );
-  const strippedCommonCode = hoisted.commonCode.trim();
+  const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = hoisted.userSource;
   const channelPrelude = buildChannelPrelude(channels);
@@ -771,10 +788,12 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
       source: `${body}\n${strippedUserSource}\n${CAPTURE_ENTRY_POINTS}`,
       preludeLineCount: countLines(body) + 1,
       userLineCount: strippedUserSource.split("\n").length,
+      ...commonRangeOf(prefix, strippedCommonCode),
       requiredFeatures: hoisted.enableNames,
+      directiveRanges: hoisted.directiveRanges,
     };
   }
-  const vertexCode = options.vertexCode?.trim() ?? "";
+  const vertexCode = hoisted.vertexSource;
   if (isMeshGeometry(options.geometry)) {
     const meshBinding = plan.nextBinding + (options.storage?.length ?? 0);
     const body = `${prefix}${buildMeshPrelude(meshBinding)}${commonCode}`;
@@ -784,8 +803,10 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
       source: `${head}${entries.source}`,
       preludeLineCount: countLines(body) + 1,
       userLineCount: strippedUserSource.split("\n").length,
+      ...commonRangeOf(`${prefix}${buildMeshPrelude(meshBinding)}`, strippedCommonCode),
       ...vertexRangeOf(head, entries),
       requiredFeatures: hoisted.enableNames,
+      directiveRanges: hoisted.directiveRanges,
     };
   }
   const body = `${prefix}${commonCode}`;
@@ -795,8 +816,16 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,
     userLineCount: strippedUserSource.split("\n").length,
+    ...commonRangeOf(prefix, strippedCommonCode),
     ...vertexRangeOf(head, entries),
     requiredFeatures: hoisted.enableNames,
+    directiveRanges: hoisted.directiveRanges,
+  };
+}
+
+function commonRangeOf(prefix: string, common: string): Pick<WgslWrapResult, "commonRange"> {
+  return common.length === 0 ? {} : {
+    commonRange: { startLine: countLines(prefix) + 1, lineCount: common.split("\n").length },
   };
 }
 
@@ -829,9 +858,9 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
     + buildGlobalsPrelude(options.customUniforms, { dispatch: true, channels });
   const hoisted = hoistWgslDirectives(
     stripShaderStudioEditorImport(userSource),
-    stripShaderStudioEditorImport(options.commonCode ?? "").trim(),
+    stripShaderStudioEditorImport(options.commonCode ?? ""),
   );
-  const strippedCommonCode = hoisted.commonCode.trim();
+  const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
   const strippedUserSource = hoisted.userSource;
   const channelPrelude = buildChannelPrelude(channels, false);
@@ -853,7 +882,9 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
     source: `${body}\n${injectedUserSource}\n${storageDeclarations.afterCommon}`,
     preludeLineCount: countLines(body) + 1,
     userLineCount: injectedUserSource.split("\n").length,
+    ...commonRangeOf(body.slice(0, body.length - commonCode.length), strippedCommonCode),
     requiredFeatures: hoisted.enableNames,
+    directiveRanges: hoisted.directiveRanges,
   };
 }
 

@@ -5661,6 +5661,85 @@ describe("WebGPURenderingEngine", () => {
       return engine;
     }
 
+    for (const owner of ["Common", "vertex", "Image"] as const) {
+      it(`retains ${owner} diagnostic ownership on cold compilation and compiled-source cache hits`, async () => {
+        const device = wgslDevice();
+        device.createShaderModule.mockImplementation(({ code }: { code: string }) => ({
+          getCompilationInfo: vi.fn(async () => ({ messages: [{
+            type: "error", lineNum: code.split("\n").findIndex(line => line.includes("missingOwner")) + 1,
+            linePos: 3, message: "unknown identifier",
+          }] })),
+        }));
+        const broken = "\n\nfn helper() {\n  missingOwner();\n}";
+        const source = owner === "Image" ? broken : WGSL_IMAGE;
+        const config: ShaderConfig = { version: "1", passes: {
+          common: { path: "common.wgsl" },
+          Image: { ...(owner === "vertex" ? { vertex: "vertex.wgsl" } : {}) },
+        } };
+        const buffers = owner === "Common" ? { common: broken }
+          : owner === "vertex" ? { "__shader_studio_vertex__:Image": broken } : {};
+        const expected = owner === "vertex" ? "Image (vertex): L4:3 unknown identifier"
+          : `${owner}: WGSL L4:3 unknown identifier`;
+        const compile = vi.spyOn(WgslCompiler.prototype, "compile");
+        try {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const engine = wgslEngine(device);
+            const result = await engine.compileShaderPipeline(source, config, "/image.wgsl", buffers);
+            expect(result?.errors).toEqual([expected]);
+            engine.dispose();
+          }
+          expect(compile).toHaveBeenCalledTimes(1);
+        } finally {
+          compile.mockRestore();
+        }
+      });
+    }
+
+    it("retains compute Common and directive coordinates through cached source", async () => {
+      const device = wgslDevice();
+      Object.assign(device, { createComputePipeline: vi.fn(() => ({})), queue: { writeBuffer: vi.fn() } });
+      device.createShaderModule.mockImplementation(({ code }: { code: string }) => ({
+        getCompilationInfo: vi.fn(async () => ({ messages: [{
+          type: "error", lineNum: code.split("\n").findIndex(line => line.includes("unknown_extension")) + 1,
+          linePos: 5, message: "unsupported extension",
+        }] })),
+      }));
+      const config: ShaderConfig = { version: "1", passes: {
+        common: { path: "common.wgsl" }, Image: {},
+        Compute: { type: "compute", path: "compute.wgsl", entryPoint: "update" },
+      } };
+      const buffers = { common: "\n\n  requires\n    unknown_extension;",
+        Compute: "@compute @workgroup_size(1) fn update() {}" };
+      const compile = vi.spyOn(WgslCompiler.prototype, "compile");
+      try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const engine = wgslEngine(device);
+          const result = await engine.compileShaderPipeline(WGSL_IMAGE, config, "/image.wgsl", buffers);
+          expect(result?.errors).toEqual([
+            "Common: WGSL L4:5 unsupported extension",
+          ]);
+          engine.dispose();
+        }
+        expect(compile).toHaveBeenCalledTimes(2);
+      } finally {
+        compile.mockRestore();
+      }
+    });
+
+    it("rechecks cached required features against the current device", async () => {
+      const source = "enable f16;\n" + WGSL_IMAGE;
+      const capable = wgslDevice();
+      Object.assign(capable, { features: new Set(["shader-f16"]) });
+      const first = wgslEngine(capable);
+      expect((await first.compileShaderPipeline(source, null, "/image.wgsl"))?.success).toBe(true);
+      first.dispose();
+      const unsupported = wgslEngine(wgslDevice());
+      const result = await unsupported.compileShaderPipeline(source, null, "/image.wgsl");
+      expect(result?.success).toBe(false);
+      expect(result?.errors?.join(" ")).toContain("requires f16");
+      unsupported.dispose();
+    });
+
     it("compiles a WGSL image pass through the real WGSL wrapper", async () => {
       const device = wgslDevice();
       const engine = wgslEngine(device);
