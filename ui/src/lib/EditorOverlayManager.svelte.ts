@@ -119,7 +119,10 @@ export class EditorOverlayManager {
       this.shaderCode = code;
       this.callbacks.onShaderCodeChanged(code);
       const lastEvent = this.callbacks.getLastShaderEvent();
-      if (lastEvent) {
+      // The viewer can select a new file before the previous GPU compilation
+      // finishes. Never combine this file's edited code with another file's
+      // path/config from the pipeline's older event.
+      if (lastEvent?.data.path === this.shaderPath) {
         const syntheticEvent = new MessageEvent('message', {
           data: { ...lastEvent.data, code },
         });

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { PNG } from 'pngjs';
 async function pasteSource(page, editor, source) {
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
@@ -31,8 +32,12 @@ async function seedWgslAuditFiles(page, entries) {
         }
         store.put(files, 'workspace');
       };
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.oncomplete = () => {
+        db.close(); resolve();
+      };
+      tx.onerror = () => {
+        db.close(); reject(tx.error);
+      };
     };
   }), entries);
   await page.goto('/');
@@ -76,8 +81,12 @@ for (const language of ['wgsl', 'slang']) {
     const editor = page.getByTestId('web-editor');
     const panel = page.locator('.debug-panel');
     async function selectAssignment(value) {
-      if (!await panel.isVisible()) await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
-      if (await panel.locator('.variables-section').count() === 0) await panel.getByLabel('Toggle variable inspector').click();
+      if (!await panel.isVisible()) {
+        await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
+      }
+      if (await panel.locator('.variables-section').count() === 0) {
+        await panel.getByLabel('Toggle variable inspector').click();
+      }
       await editor.locator('.view-line').filter({ hasText: `formula = ${value};` }).click();
       await expect(panel.locator('.fn-name')).toHaveText('mainImage');
       await expect(panel.locator('.header-info:not(.fn-name):not(.fn-type)')).toContainText('L3');
@@ -105,9 +114,19 @@ test('Slang compute replay refuses subgroup results and recovers after an edit',
   ]);
   await page.getByTestId('shader-option-replay-slang').click();
   const preview = page.getByTestId('web-preview');
+  // Wait for this compute-backed Image to render. The explorer selects a file
+  // before its asynchronous compilation replaces the previous preview.
+  await expect.poll(async () => {
+    const url = await preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)').evaluate(canvas => canvas.toDataURL());
+    const { data, width, height } = PNG.sync.read(Buffer.from(url.split(',')[1], 'base64'));
+    const offset = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+    return [...data.subarray(offset, offset + 3)];
+  }).toEqual([32, 0, 0]);
   await preview.getByLabel('Toggle debug mode').click();
   const panel = page.locator('.debug-panel');
-  if (await panel.locator('.variables-section').count() === 0) await panel.getByLabel('Toggle variable inspector').click();
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
   await preview.getByLabel('Toggle lock', { exact: true }).click();
   await preview.getByLabel('Toggle config panel').click();
   await page.locator('.config-panel [data-tab-name="Compute"]').dblclick();
@@ -134,7 +153,9 @@ for (const language of ['wgsl', 'slang', 'glsl']) {
     await page.getByTestId(`shader-option-separate-${language}`).click();
     await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
     const panel = page.locator('.debug-panel');
-    if (await panel.locator('.variables-section').count() === 0) await panel.getByLabel('Toggle variable inspector').click();
+    if (await panel.locator('.variables-section').count() === 0) {
+      await panel.getByLabel('Toggle variable inspector').click();
+    }
     await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
     const editor = page.locator('.monaco-editor').filter({ visible: true });
     await editor.locator('.view-line').filter({ hasText: 'shade = 0.375' }).click();
@@ -162,7 +183,9 @@ test('WGSL unmatched brace reports an error and recovers without freezing', asyn
   await page.keyboard.press('Backspace');
   await expect(preview.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
   const panel = page.locator('.debug-panel');
-  if (await panel.locator('.variables-section').count() === 0) await panel.getByLabel('Toggle variable inspector').click();
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
   await editor.locator('.view-line').filter({ hasText: 'let shade' }).click();
   const row = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^shade$/ }) });
   await expect(row.locator('.var-value')).toHaveText('0.375');

@@ -74,6 +74,17 @@ describe('EditorOverlayManager', () => {
     expect(callbacks.handleShaderMessage).not.toHaveBeenCalled();
   });
 
+  it('does not attach edited Image code to a previous shader compilation context', async () => {
+    const { manager, callbacks } = createManager();
+    // The viewer already selected Image while the pipeline is still finishing
+    // the previous Common file. Its last event therefore belongs to another URI.
+    manager.setShaderSource('new image', '/test/new-image.slang');
+    await manager.handleEditorCodeChange('edited image', '/test/new-image.slang');
+    await manager.compileCurrentCode();
+    expect(manager.currentShaderCode).toBe('edited image');
+    expect(callbacks.handleShaderMessage).not.toHaveBeenCalled();
+  });
+
   it('compileCurrentCode recompiles the image shader from the latest overlay code', async () => {
     const { manager, callbacks } = createManager();
     manager.setShaderSource('original code', '/test/shader.glsl');
