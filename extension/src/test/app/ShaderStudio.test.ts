@@ -16,7 +16,7 @@ suite('Shader Studio Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    
+
     // Mock filesystem operations to prevent ThumbnailCache from creating real directories
     const fs = require('fs');
     sandbox.stub(fs, 'existsSync').returns(true);
@@ -26,7 +26,7 @@ suite('Shader Studio Test Suite', () => {
     });
     sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
     sandbox.stub(fs, 'readdirSync').returns([]);
-    
+
     mockOutputChannel = {
       info: sandbox.stub(),
       debug: sandbox.stub(),
@@ -457,7 +457,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    
+
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
     shaderStudio['compileController'].handleActiveEditorChange(mockEditor);
@@ -480,7 +480,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    
+
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
@@ -507,7 +507,7 @@ suite('Shader Studio Test Suite', () => {
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
 
-    
+
     shaderStudio['panelManager'].createPanel();
     assert.strictEqual(shaderStudio['messenger'].hasActiveClients(), true);
 
@@ -561,7 +561,7 @@ suite('Shader Studio Test Suite', () => {
   test('refreshSpecificShaderByPath should call sendShaderFromPath with reload', async () => {
     const shaderPath = '/mock/path/shader.glsl';
     const fs = require('fs');
-    
+
     // fs.existsSync is already stubbed in setup to return true
     fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
 
@@ -1092,7 +1092,7 @@ suite('Shader Studio Test Suite', () => {
     teardown(() => {
       for (const t of createdTransports) {
         try {
-          t.close(); 
+          t.close();
         } catch {}
       }
       createdTransports.length = 0;

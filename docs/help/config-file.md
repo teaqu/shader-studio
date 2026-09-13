@@ -228,7 +228,7 @@ Each non-Image pass needs a `path` field pointing to its `.glsl`, `.slang`, or `
 
 ## Channel Types
 
-Each pass can bind input channels with configuration keys such as `iChannel0` and `iChannel1`. In GLSL, those same names and matching metadata accessors (`iCh0`, `iCh1`, and so on) are available in the shader. In Slang, they are available as `iChannel0`, `iChannel1`, and so on:
+Each pass can bind input channels with configuration keys such as `iChannel0` and `iChannel1`. In GLSL, those same names and matching metadata accessors (`iCh0`, `iCh1`, and so on) are available in the shader. In Slang, the configured names are direct channel globals such as `iChannel0` and `iChannel1`.
 
 | Type | Fields | Description |
 |------|--------|-------------|
@@ -241,7 +241,7 @@ Each pass can bind input channels with configuration keys such as `iChannel0` an
 
 Channel bindings remain under each pass's `inputs` field in `.sha.json`.
 Shader access uses the configured channel name. See [Channels](../features/channels.md)
-for GLSL, Slang, and WGSL metadata, sampling examples, and compatibility aliases.
+for GLSL, Slang, and WGSL metadata and sampling examples.
 
 ### Texture / Video / Cubemap Options
 

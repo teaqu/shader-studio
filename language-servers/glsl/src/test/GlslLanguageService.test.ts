@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CompletionItemKind, DiagnosticSeverity, DiagnosticTag, DocumentHighlightKind } from "vscode-languageserver-protocol";
-import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
+import { isShaderEntryPointName, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { GlslLanguageService } from "../GlslLanguageService";
 
 const uri = "file:///workspace/image.glsl";
@@ -32,6 +32,17 @@ async function service(): Promise<GlslLanguageService> {
 const revision = { uri, languageId: "glsl" as const, version: 1, environmentGeneration: 1 };
 
 describe("GlslLanguageService", () => {
+  it.each(['', '\n', ' \t\n'])("clears syntax diagnostics when Common is emptied to %j", async (text) => {
+    const instance = new GlslLanguageService();
+    const commonUri = 'file:///workspace/common.glsl';
+    await instance.syncEnvironment({ ...environment(), documentUri: commonUri, passName: 'Common' });
+    await instance.openDocument({ uri: commonUri, languageId: 'glsl', version: 1, text: 'float broken = ;' });
+    expect(await instance.diagnostics({ document: { ...revision, uri: commonUri } }))
+      .toContainEqual(expect.objectContaining({ code: 'syntax' }));
+    await instance.changeDocument({ uri: commonUri, languageId: 'glsl', version: 2, text });
+    expect(await instance.diagnostics({ document: { ...revision, uri: commonUri, version: 2 } })).toEqual([]);
+  });
+
   it("documents the mainImage contract by parameter role instead of parameter name", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment(environment());
@@ -69,6 +80,116 @@ describe("GlslLanguageService", () => {
     expect(labels).not.toContain("texture2D");
     expect(labels).not.toContain("iChannelN");
     expect(labels).not.toContain("mainVertex");
+  });
+
+  describe("type keywords", () => {
+    const body = (line: string) => `void mainImage(out vec4 color, in vec2 coord) {
+  ${line}
+  color = vec4(0.0);
+}`;
+
+    async function completeAt(text: string, character: number) {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+      return instance.completion({ document: revision, position: { line: 1, character } });
+    }
+
+    it("offers types at the start of a statement", async () => {
+      const items = await completeAt(body(""), 2);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["float", "vec3", "vec4", "mat4"]));
+      expect(items.find((item) => item.label === "vec3")).toEqual(
+        expect.objectContaining({ kind: CompletionItemKind.Keyword, detail: "type" }),
+      );
+    });
+
+    it("does not offer void where a variable is being declared", async () => {
+      const items = await completeAt(body(""), 2);
+
+      expect(items.map((item) => item.label)).not.toContain("void");
+      expect(items.map((item) => item.label)).toContain("float");
+    });
+
+    it("offers void at file scope, where a function is being declared", async () => {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({
+        uri,
+        languageId: "glsl",
+        version: 1,
+        text: "void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0); }\n",
+      });
+
+      const items = await instance.completion({ document: revision, position: { line: 1, character: 0 } });
+
+      expect(items.map((item) => item.label)).toContain("void");
+    });
+
+    it("sorts types above functions at the start of a statement", async () => {
+      const items = await completeAt(body(""), 2);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(sortTextOf("vec3")! < sortTextOf("normalize")!).toBe(true);
+      expect(sortTextOf("vec3")! < sortTextOf("coord")!).toBe(true);
+      expect(sortTextOf("float")! < sortTextOf("iResolution")!).toBe(true);
+    });
+
+    it("sorts types below symbols in an expression, where they are only constructors", async () => {
+      const text = body("color = ");
+      const items = await completeAt(text, "  color = ".length);
+      const sortTextOf = (label: string) => items.find((item) => item.label === label)?.sortText;
+
+      expect(items.map((item) => item.label)).toContain("vec3");
+      expect(sortTextOf("normalize")! < sortTextOf("vec3")!).toBe(true);
+      expect(sortTextOf("coord")! < sortTextOf("vec3")!).toBe(true);
+    });
+
+    it("offers no existing symbol while a declared name is being written after a type", async () => {
+      const authored = async (line: string, character: number) => (await completeAt(body(line), character))
+        .map((item) => item.label)
+        .filter((label) => !isShaderEntryPointName(label));
+
+      expect(await authored("vec3 ", "  vec3 ".length)).toEqual([]);
+      expect(await authored("vec3 up", "  vec3 up".length)).toEqual([]);
+      expect(await authored("const vec3 up", "  const vec3 up".length)).toEqual([]);
+    });
+
+    it("still offers the entry point while its own name is being written", async () => {
+      const items = await completeAt(body("vec3 up"), "  vec3 up".length);
+
+      expect(items.map((item) => item.label)).toEqual(["mainImage"]);
+    });
+
+    it("offers nothing after a struct declared by the shader", async () => {
+      const text = `struct Material { float roughness; };
+void mainImage(out vec4 color, in vec2 coord) {
+  Material surface
+  color = vec4(0.0);
+}`;
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+      const items = await instance.completion({
+        document: revision,
+        position: { line: 2, character: "  Material surface".length },
+      });
+
+      expect(items.map((item) => item.label).filter((label) => !isShaderEntryPointName(label))).toEqual([]);
+    });
+
+    it("still offers types while the type word itself is being written", async () => {
+      const items = await completeAt(body("ve"), "  ve".length);
+
+      expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["vec2", "vec3", "vec4"]));
+    });
+
+    it("keeps types out of member completions", async () => {
+      const items = await completeAt(body("coord."), "  coord.".length);
+
+      expect(items.map((item) => item.label)).not.toContain("vec3");
+    });
   });
 
   it("offers generated metadata aliases for configured higher GLSL channel slots", async () => {
@@ -206,9 +327,9 @@ void mainImage(out vec4 color, in vec2 coord) {
       uri,
       languageId: "glsl",
       version: 1,
-      text: "#version 100\nvoid mainImage(out vec4 color, in vec2 coord) {}",
+      text: "#version 100\nvoid mainImage(out vec4 color, in vec2 coord) {\n  color = \n}",
     });
-    const labels = (await instance.completion({ document: revision, position: { line: 1, character: 10 } }))
+    const labels = (await instance.completion({ document: revision, position: { line: 2, character: "  color = ".length } }))
       .map((item) => item.label);
     expect(labels).toContain("texture2D");
     expect(labels).not.toContain("texture");
@@ -397,6 +518,66 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect((await instance.definition({ document: revision, position: { line: 1, character: 48 } }))[0]?.uri)
       .toBe("file:///workspace/common.glsl");
     expect(await instance.diagnostics({ document: revision })).not.toContainEqual(expect.objectContaining({ code: "include-not-found" }));
+  });
+
+  it("knows the macros the common file defines", async () => {
+    // Each document is preprocessed on its own, so a #define in the common
+    // file is expanded away there and never reaches the main document as a
+    // symbol. A shader built on common macros - the usual way a Shader Studio
+    // common file is written - is then a wall of undeclared identifiers.
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: "#define uKaleido 0.65\n#define uKGlow vec3(0.55, 0.30, 1.00)\n",
+      },
+    });
+    const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(uKGlow * uKaleido, 1.0); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    expect(await instance.diagnostics({ document: revision }))
+      .not.toContainEqual(expect.objectContaining({ code: "undefined-identifier" }));
+
+    const position = { line: 0, character: text.indexOf("uKaleido") + 3 };
+    expect((await instance.completion({ document: revision, position })).map((item) => item.label))
+      .toContain("uKaleido");
+    expect((await instance.definition({ document: revision, position }))[0]?.uri)
+      .toBe("file:///workspace/common.glsl");
+  });
+
+  it("does not make inactive, undefined, or commented common macros visible", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({
+      ...environment(),
+      passName: "BufferA",
+      commonFile: {
+        uri: "file:///workspace/common.glsl",
+        version: 1,
+        text: [
+          "#if 0",
+          "#define uDisabled 1.0",
+          "#endif",
+          "#define uRemoved 1.0",
+          "#undef uRemoved",
+          "/*",
+          "#define uCommented 1.0",
+          "*/",
+        ].join("\n"),
+      },
+    });
+    const text = "void mainImage(out vec4 color, vec2 coord) { color = vec4(1.0); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const labels = (await instance.completion({
+      document: revision,
+      position: { line: 0, character: text.indexOf("vec4") },
+    })).map((item) => item.label);
+    expect(labels).not.toContain("uDisabled");
+    expect(labels).not.toContain("uRemoved");
+    expect(labels).not.toContain("uCommented");
   });
 
   it("provides completion, hover, signatures, and navigation for implicit Shader Studio Common", async () => {

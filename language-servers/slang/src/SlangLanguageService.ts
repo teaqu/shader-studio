@@ -1,3 +1,4 @@
+import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import {
   CompletionItemKind,
   DiagnosticSeverity,
@@ -22,9 +23,12 @@ import {
   DocumentStore,
   VirtualFileSystem,
   createLiteralColorPresentations,
+  declarationContext,
   findLiteralConstructorColors,
   findMemberAccess,
+  isInsideBlock,
   isPositionInComment,
+  rankCompletionsForContext,
   swizzleSelections,
   type ColorPresentationParams,
   type DocumentParams,
@@ -39,10 +43,13 @@ import {
   SHADER_STUDIO_SYMBOL_DOCS,
   buildSlangAuthoringModule,
   describeSlangChannel,
-  canExposeSlangChannelGlobal,
+  isValidShaderIdentifier,
   validateShaderAuthoringEnvironment,
   type AuthoringResource,
   type ShaderAuthoringEnvironment,
+  isShaderEntryPointName,
+  isShaderTypeKeyword,
+  shaderTypeCompletionKeywords,
 } from "@shader-studio/types";
 import type {
   SlangDiagnostic,
@@ -140,6 +147,12 @@ export class SlangLanguageService implements LanguageService {
     if (isPositionInComment(state.document.text, params.position)) {
       return [];
     }
+    // A name is being invented after a type, so nothing that already exists fits.
+    const context = declarationContext(
+      state.document.text,
+      params.position,
+      (word) => isShaderTypeKeyword("slang", word) || declaresSlangType(state.document.text, word),
+    );
     const documentedFunctions = documentedSlangFunctions(state.environment);
     const computeFeatures = state.environment.stage === "compute" ? SLANG_COMPUTE_FEATURES : [];
     const vertexFeatures = state.environment.stage === "vertex"
@@ -228,9 +241,6 @@ export class SlangLanguageService implements LanguageService {
         label: generated.name,
         kind: CompletionItemKind.Variable,
         detail: generated.type,
-        documentation: generated.name === "inputs"
-          ? { kind: MarkupKind.Markdown, value: "Configured shader inputs. Access one by its config key, for example `inputs.iChannel0.Sample(uv)`." }
-          : undefined,
       });
     }
     for (const declaration of generatedSamplingFunctions(state.environment)) {
@@ -301,7 +311,23 @@ export class SlangLanguageService implements LanguageService {
         detail: local.typeName,
       });
     }
-    return [...items.values()];
+    // A name is being invented, so the author's own symbols do not belong. The
+    // renderer's entry points do: they have to be spelled exactly.
+    if (context === "declarator") {
+      return [...items.values()].filter((item) => isShaderEntryPointName(item.label));
+    }
+    const insideFunctionBody = isInsideBlock(state.document.text, params.position);
+    for (const type of shaderTypeCompletionKeywords("slang", { insideFunctionBody })) {
+      const key = `${type}:type`;
+      if (![...items.values()].some((item) => item.label === type)) {
+        items.set(key, { label: type, kind: CompletionItemKind.Keyword, detail: "type" });
+      }
+    }
+    return rankCompletionsForContext(
+      [...items.values()],
+      context,
+      (label) => isShaderTypeKeyword("slang", label),
+    );
   }
 
   async hover(params: DocumentPositionParams): Promise<Hover | null> {
@@ -321,21 +347,20 @@ export class SlangLanguageService implements LanguageService {
     if (doc) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${doc.slangType} ${doc.name}\n\`\`\`\n\n${doc.description}` } };
     }
-    if (word === "inputs") {
-      return {
-        contents: {
-          kind: MarkupKind.Markdown,
-          value: "```slang\nShaderStudioInputs inputs\n```\n\nConfigured shader inputs. Access one by its config key, for example `inputs.iChannel0.Sample(uv)`.",
-        },
-      };
-    }
     const input = state.environment.resources.find((resource) => resource.kind !== "storage" && resource.name === word);
     if (input && input.kind !== "storage") {
+      // A local may deliberately shadow a configured channel. Resolve it before
+      // the host global so authoring help follows the source-language scope rules.
+      const localSymbol = findSlangLocalAt(state.document.text, params.position, slangExpressionContext(state.environment).includes);
+      if (localSymbol) {
+        const description = localSymbol.kind === "parameter" ? "\n\nParameter of this function." : "";
+        return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${localSymbol.typeName} ${localSymbol.name}\n\`\`\`${description}` } };
+      }
       const description = describeSlangChannel(input.kind);
       return {
         contents: {
           kind: MarkupKind.Markdown,
-          value: `\`\`\`slang\nShaderStudioChannel${description.shape} inputs.${input.name}\n\`\`\`\n\nConfigured input channel. Use \`${canExposeSlangChannelGlobal(input.name) ? input.name : `inputs.${input.name}`}\` to sample it and read its metadata. The \`inputs.${input.name}\` alias is also available.`,
+          value: `\`\`\`slang\nShaderStudioChannel${description.shape} ${input.name}\n\`\`\`\n\nConfigured input channel. Use \`${input.name}\` to sample it and read its metadata.`,
         },
       };
     }
@@ -672,7 +697,7 @@ export class SlangLanguageService implements LanguageService {
             applySlangRenameEdits(document.text, edit.changes[document.uri] ?? []), document.uri, document.environment.virtualFiles,
           );
           const prefix = buildSlangAuthoringModule(document.environment).text;
-          const source = [prefix, stripEditorImport(commonSource), stripEditorImport(authoredSource)].filter(Boolean).join("\n");
+          const source = [prefix, commonSource, authoredSource].filter(Boolean).join("\n");
           const compiled = session.loadModuleFromSource(source, moduleName(document.text, document.uri), sourcePath(document.uri));
           if (!compiled) {
             return false;
@@ -703,7 +728,7 @@ export class SlangLanguageService implements LanguageService {
       message: issue.message,
     }));
     const compiler = official.length === 0 ? this.compilerDiagnostics(state) : [];
-    return [...official, ...compiler, ...environment, ...this.unusedLocalDiagnostics(state, official)];
+    return [...official, ...compiler, ...environment, ...authoredChannelCollisionDiagnostics(state), ...this.unusedLocalDiagnostics(state, official)];
   }
 
   async documentColors(params: DocumentParams) {
@@ -745,7 +770,7 @@ export class SlangLanguageService implements LanguageService {
     const prelude = buildSlangAuthoringModule(environment).text;
     const commonSource = environment.commonFile
       ? resolveCompilerDependencies(
-        stripEditorImport(environment.commonFile.text),
+        environment.commonFile.text,
         environment.commonFile.uri,
         environment.virtualFiles,
       )
@@ -804,13 +829,13 @@ export class SlangLanguageService implements LanguageService {
       const prelude = buildSlangAuthoringModule(state.environment).text;
       const commonSource = state.environment.commonFile
         ? resolveCompilerDependencies(
-          stripEditorImport(state.environment.commonFile.text),
+          state.environment.commonFile.text,
           state.environment.commonFile.uri,
           state.environment.virtualFiles,
         )
         : "";
       const authoredSource = resolveCompilerDependencies(
-        stripEditorImport(state.document.text),
+        state.document.text,
         state.document.uri,
         state.environment.virtualFiles,
       );
@@ -1105,10 +1130,6 @@ function rangesOverlap(left: Range, right: Range): boolean {
 
 function consumeCompilerTargets(targets: import("./slangLanguageServerTypes.js").SlangCompileTarget[] | SlangList<import("./slangLanguageServerTypes.js").SlangCompileTarget>) {
   return Array.isArray(targets) ? targets : consumeList(targets, (item) => item);
-}
-
-function stripEditorImport(source: string): string {
-  return source.replace(/^\s*import\s+(?:shader_studio|"shader-studio\.slang")\s*;?.*$/gm, (line) => `//${" ".repeat(Math.max(0, line.length - 2))}`);
 }
 
 const INCLUDE_STRING_PATTERN = /^[ \t]*(?:#include[ \t]+"([^"]+)"|__include[ \t]+"([^"]+)")[ \t]*$/gm;
@@ -1457,14 +1478,10 @@ function nativeTextureMember(texture: string, name: string, detail: string): Com
   };
 }
 
-/**
- * Share channel type descriptions and global-name eligibility with the prelude.
- * Names which only work as inputs members must not appear as module globals.
- */
 function generatedEnvironmentGlobals(environment: ShaderAuthoringEnvironment): readonly { name: string; type: string }[] {
-  return [{ name: "inputs", type: "ShaderStudioInputs" }, ...environment.resources
-    .filter(resource => resource.kind !== "storage" && canExposeSlangChannelGlobal(resource.name))
-    .map(resource => ({ name: resource.name, type: `ShaderStudioChannel${describeSlangChannel(resource.kind as "texture-2d" | "texture-cube" | "texture-3d").shape}` }))];
+  return environment.resources
+    .filter(resource => resource.kind !== "storage" && isValidShaderIdentifier(resource.name))
+    .map(resource => ({ name: resource.name, type: `ShaderStudioChannel${describeSlangChannel(resource.kind as "texture-2d" | "texture-cube" | "texture-3d").shape}` }));
 }
 
 function generatedSamplingFunctions(environment: ShaderAuthoringEnvironment): SlangDeclaration[] {
@@ -1512,6 +1529,13 @@ interface SlangDeclaration {
   selectionRange: Range;
 }
 
+/** Whether the shader declares a struct by this name, so it opens a declaration too. */
+function declaresSlangType(source: string, word: string): boolean {
+  return findSlangDeclarations(source).some((declaration) => (
+    declaration.kind === SymbolKind.Struct && declaration.name === word
+  ));
+}
+
 function findSlangDeclarations(source: string): SlangDeclaration[] {
   const declarations: SlangDeclaration[] = [];
   const patterns = [
@@ -1541,6 +1565,27 @@ function findSlangDeclarations(source: string): SlangDeclaration[] {
     }
   }
   return declarations;
+}
+
+/** Finds declarations at module scope without treating locals or members as globals. */
+function authoredChannelCollisionDiagnostics(
+  state: NonNullable<ReturnType<SlangLanguageService["current"]>>,
+): Diagnostic[] {
+  const channels = new Set(state.environment.resources
+    .filter((resource) => resource.kind !== "storage" && isValidShaderIdentifier(resource.name))
+    .map((resource) => resource.name));
+  if (channels.size === 0) {
+    return [];
+  }
+  return findSlangAuthoredDeclarations(state.document.text)
+    .filter((declaration) => channels.has(declaration.name))
+    .map((declaration) => ({
+      range: offsetRange(state.document.text, declaration.offset, declaration.offset + declaration.name.length),
+      severity: DiagnosticSeverity.Error,
+      source: "shader-studio-slang-ls",
+      code: "channel-declaration-collision",
+      message: `Shader declaration "${declaration.name}" conflicts with the configured input channel. Rename the declaration or the channel key.`,
+    }));
 }
 
 function offsetRange(source: string, start: number, end: number): Range {

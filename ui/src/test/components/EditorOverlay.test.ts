@@ -224,9 +224,30 @@ describe('EditorOverlay', () => {
   });
 
   describe('language service environment', () => {
+    it.each(['glsl', 'slang', 'wgsl'])('syncs the newly attached %s model after navigation', async language => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor } = createMockEditorWithCallbacks();
+      let model = monaco.editor.createModel('before', 'glsl', monaco.Uri.file('/before.glsl'));
+      mockEditor.getModel = vi.fn(() => model) as unknown as typeof mockEditor.getModel;
+      mockEditor.setModel.mockImplementation(next => {
+        model = next;
+      });
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as unknown as ReturnType<typeof monaco.editor.create>);
+      const { rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: '/before.glsl' } });
+      const controllers = await import('@shader-studio/monaco');
+      const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
+      controller.syncEnvironment.mockClear();
+      await rerender({ shaderPath: `/after.${language}`, shaderCode: 'after' });
+      await tick();
+      expect(controller.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({
+        documentUri: `file:///after.${language}`, languageId: language,
+      }));
+    });
+
     it('syncs configured Common source for WGSL cross-document operations', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getModel().uri = monaco.Uri.file('/shader/image.wgsl');
       mockEditor.getValue.mockReturnValue('fn mainImage() {}');
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
@@ -256,6 +277,7 @@ describe('EditorOverlay', () => {
     it('does not inject a physical Common file while its in-memory editor is active', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getModel().uri = monaco.Uri.file('/shader/common.wgsl');
       mockEditor.getValue.mockReturnValue('fn sharedTone() -> f32 { return 1.0; }');
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
@@ -281,6 +303,7 @@ describe('EditorOverlay', () => {
     it('syncs the WGSL authoring environment without virtual files', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();
+      mockEditor.getModel().uri = monaco.Uri.file('/test.wgsl');
       mockEditor.getValue.mockReturnValue('fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }');
       vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as any);
 
@@ -893,6 +916,23 @@ describe('EditorOverlay', () => {
   });
 
   describe('persistence timing', () => {
+    it('persists a pending edit to its original path after navigating', async () => {
+      const monaco = await import('monaco-editor');
+      const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
+      vi.mocked(monaco.editor.create).mockReturnValue(mockEditor as unknown as ReturnType<typeof monaco.editor.create>);
+      const { rerender } = render(EditorOverlay, { props: defaultProps });
+      mockEditor.getValue.mockReturnValue('edited first source');
+      getContentChangeCallback()?.();
+      await rerender({ shaderPath: '/second.glsl', shaderCode: 'second source' });
+      vi.advanceTimersByTime(500);
+      expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'updateShaderSource', payload: {
+        path: '/test.glsl', code: 'edited first source',
+      } });
+      expect(mockTransport.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+        type: 'updateShaderSource', payload: expect.objectContaining({ path: '/second.glsl' }),
+      }));
+    });
+
     it('should persist overlay edits quickly in hot mode', async () => {
       const monaco = await import('monaco-editor');
       const { mockEditor, getContentChangeCallback } = createMockEditorWithCallbacks();
@@ -1873,7 +1913,7 @@ describe('EditorOverlay', () => {
       cb!();
 
       vi.advanceTimersByTime(30);
-      expect(onCodeChange).toHaveBeenCalledWith('new code');
+      expect(onCodeChange).toHaveBeenCalledWith('new code', '/test.glsl');
     });
 
     it('should not call onCodeChange in manual mode but should still persist edits', async () => {

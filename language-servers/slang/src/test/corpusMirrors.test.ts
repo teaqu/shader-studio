@@ -477,11 +477,11 @@ describe("Slang corpus mirrors in the language service", () => {
     const doc = DOCS.find((d) => d.fileRel === "flow.slang" && d.pass === "Image")!;
     const { revision } = await openMirror(doc);
     const lines = doc.text.split("\n");
-    const line = lines.findIndex((l) => l.includes("inputs.iChannel0.Sample("));
+    const line = lines.findIndex((l) => l.includes("iChannel0.Sample("));
     expect(line).toBeGreaterThanOrEqual(0);
     const items = await service.completion({
       document: revision,
-      position: { line, character: lines[line]!.indexOf("inputs.iChannel0.") + "inputs.iChannel0.".length },
+      position: { line, character: lines[line]!.indexOf("iChannel0.") + "iChannel0.".length },
     });
     expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["Sample", "SampleLevel"]));
   }, 20_000);

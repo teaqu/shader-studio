@@ -113,7 +113,9 @@ function helpers(vscode) {
   const activate = (selector) => app().evaluate((sel) => {
     const element = Array.from(document.querySelectorAll(sel))
       .find((candidate) => candidate.getClientRects().length > 0);
-    if (!(element instanceof HTMLElement)) throw new Error(`missing control: ${sel}`);
+    if (!(element instanceof HTMLElement)) {
+      throw new Error(`missing control: ${sel}`);
+    }
     element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, button: 0, isPrimary: true }));
     element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, button: 0, isPrimary: true }));
     element.click();
@@ -126,7 +128,9 @@ function helpers(vscode) {
     await expect.poll(() => hasVisibleControl(selector), {
       message: `no visible control matched ${selector}`,
     }).toBe(true);
-    if (await isActive(selector) !== active) await activate(selector);
+    if (await isActive(selector) !== active) {
+      await activate(selector);
+    }
     await expect.poll(() => isActive(selector)).toBe(active);
   }
 
@@ -135,7 +139,9 @@ function helpers(vscode) {
     await expect.poll(() => hasVisibleControl(selector)).toBe(true);
     await app().evaluate(({ sel, next }) => {
       const element = document.querySelector(sel);
-      if (!(element instanceof HTMLElement)) throw new Error(`missing expression editor: ${sel}`);
+      if (!(element instanceof HTMLElement)) {
+        throw new Error(`missing expression editor: ${sel}`);
+      }
       element.focus();
       element.textContent = next;
       element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: next }));
@@ -157,7 +163,12 @@ function helpers(vscode) {
 
 test.use({ vscodeKey: 'slang-parity' });
 
-test.describe('Slang parity in the VS Code webview', () => {
+/**
+ * @gpu - measured, not assumed: under software rendering
+ * (SHADER_STUDIO_E2E_SOFTWARE_GL=1) the Slang capture specs time out;
+ * they pass on a real adapter.
+ */
+test.describe('Slang parity in the VS Code webview @gpu', () => {
   /** @type {ReturnType<typeof helpers>} */
   let h;
 

@@ -18,9 +18,20 @@ const VSCODE_VERSION = process.env.SHADER_STUDIO_E2E_VSCODE_VERSION ?? '1.109.5'
  * publishes the path here. Resolving it per worker instead would have every
  * worker race to populate the same cache directory on a cold checkout.
  */
-const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN
-  ?? join(extensionPath, '.vscode-test', `vscode-darwin-arm64-${VSCODE_VERSION}`,
-    'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+const platformBinary = () => {
+  const cache = join(extensionPath, '.vscode-test');
+  if (process.platform === 'darwin') {
+    const arch = process.arch === 'x64' ? 'x64' : 'arm64';
+    return join(cache, `vscode-darwin-${arch}-${VSCODE_VERSION}`,
+      'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+  }
+  if (process.platform === 'win32') {
+    return join(cache, `vscode-win32-x64-archive-${VSCODE_VERSION}`, 'Code.exe');
+  }
+  return join(cache, `vscode-linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}-${VSCODE_VERSION}`, 'code');
+};
+
+const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN ?? platformBinary();
 
 const USER_SETTINGS = {
   'security.workspace.trust.enabled': false,
@@ -69,7 +80,7 @@ export const test = base.extend({
    * panel state the specs leave behind are not safe to share.
    */
   vscodeKey: ['default', { scope: 'worker', option: true }],
-  productionVsixPath: [process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? null, { scope: 'worker', option: true }],
+  productionVsixPath: [process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? process.env.SHADER_STUDIO_E2E_VSIX ?? null, { scope: 'worker', option: true }],
 
   // Worker-scoped: one VS Code window per worker, shared by every test in a
   // file. The specs build up state across tests (debug mode on, lock engaged)
@@ -110,6 +121,11 @@ export const test = base.extend({
         `--user-data-dir=${userDataDir}`,
         `--extensions-dir=${extensionsDir}`,
         '--enable-unsafe-webgpu',
+        // Reproduces a runner with no GPU (the Linux CI machines) so a spec can
+        // be checked against software rendering before it is trusted there.
+        ...(process.env.SHADER_STUDIO_E2E_SOFTWARE_GL
+          ? ['--disable-gpu', '--use-gl=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+          : []),
         // rAF does not fire in a hidden document, and Chromium marks occluded
         // windows hidden. Without these, any window covering the test window
         // stalls the webview's capture loop.

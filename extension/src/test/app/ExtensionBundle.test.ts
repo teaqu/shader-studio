@@ -21,7 +21,10 @@ suite('Extension Bundle Test Suite', () => {
     assert.ok(!bundle.includes('createRequire2(import_meta.url)'));
   });
 
-  test('loads without runtime-only bundler dependencies installed', () => {
+  test('loads without runtime-only bundler dependencies installed', function() {
+    // Copies the bundle, stubs its externals, and requires it from a spawned
+    // Node process: seconds of real work, not mocha's default two.
+    this.timeout(60_000);
     const repoRoot = path.resolve(__dirname, '..', '..', '..');
     const bundlePath = path.join(repoRoot, 'dist', 'extension.js');
     assert.ok(fs.existsSync(bundlePath), 'extension bundle must exist before smoke test');

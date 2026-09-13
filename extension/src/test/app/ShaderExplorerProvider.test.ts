@@ -23,7 +23,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
-        
+
     // Initialize Logger for tests with mock output channel
     loggerErrorStub = sandbox.stub();
     const mockOutputChannel = {
@@ -47,7 +47,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
         ? { uri: vscode.Uri.file('/test'), name: 'test', index: 0 } as vscode.WorkspaceFolder
         : undefined
     ));
-        
+
     // Mock filesystem operations to prevent ThumbnailCache from creating real directories
     const fs = require('fs');
     existsSyncStub = sandbox.stub(fs, 'existsSync').callsFake((...args: any[]) => {

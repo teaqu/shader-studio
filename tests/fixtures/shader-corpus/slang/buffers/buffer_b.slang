@@ -14,7 +14,7 @@ float4 mainImage(float2 fragCoord)
         for (int j = -2; j <= 2; j++)
         {
             float2 off = float2(float(i), float(j)) / iResolution.xy * 2.0;
-            acc += inputs.iChannel0.Sample(uv + off).rgb;
+            acc += iChannel0.Sample(uv + off).rgb;
         }
     }
 

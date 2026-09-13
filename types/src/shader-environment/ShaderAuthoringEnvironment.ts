@@ -107,7 +107,6 @@ function collectFixedRendererNames(
       names.add(name);
     }
     names.add("writeOutput");
-    names.add("inputs");
   }
   if (languageId !== 'glsl') {
     for (const shape of ['2D', 'Cube', '3D']) {
@@ -139,7 +138,7 @@ const BUILTIN_STORAGE_ELEMENT_TYPES = new Set([
 const FORBIDDEN_STORAGE_ELEMENT_TYPE_TOKENS = new Set(["uniform"]);
 const SLANG_BASE_GENERATED_TYPE_DEPENDENCIES = new Set([
   "float", "float2", "float3", "float4", "int",
-  "ShaderStudioInputs", "ShaderStudioChannel2D", "ShaderStudioChannelCube", "ShaderStudioChannel3D",
+  "ShaderStudioChannel2D", "ShaderStudioChannelCube", "ShaderStudioChannel3D",
 ]);
 const SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES = {
   "texture-2d": "Texture2D",
@@ -153,8 +152,7 @@ function isReservedShaderStudioIdentifier(
 ): boolean {
   return FIXED_RENDERER_NAMES_BY_LANGUAGE[languageId].has(name)
     || isShaderLanguageReservedTerm(languageId, name)
-    // iChannelN remains GLSL's public compatibility surface. In Slang it is
-    // a valid member name under inputs.
+    // iChannelN remains GLSL's public compatibility surface.
     || (languageId === "glsl" && /^iChannel\d+$/.test(name));
 }
 
@@ -229,15 +227,6 @@ function collectSlangGeneratedTypeDependencies(
   return dependencies;
 }
 
-/** Preserve old inputs-only members whose names cannot also be legal module globals. */
-export function canExposeSlangChannelGlobal(name: string): boolean {
-  return !/^(?:bool|int|uint|float|half|double)(?:[1-4](?:x[1-4])?)?$/.test(name)
-    && !isReservedShaderStudioIdentifier(name, 'slang')
-    && !SLANG_BASE_GENERATED_TYPE_DEPENDENCIES.has(name)
-    && !Object.values(SLANG_CHANNEL_RESOURCE_TYPE_DEPENDENCIES).includes(name as 'Texture2D')
-    && name !== 'SamplerState';
-}
-
 export interface SlangChannelGeneratedIdentifiers {
   readonly texture: string;
   readonly sampler: string;
@@ -282,8 +271,8 @@ export function validateShaderAuthoringEnvironment(
   const validate = (
     name: string,
     noun: "custom uniform" | "resource",
-    isSlangInputMember = false,
     isGlslCanonicalChannel = false,
+    isSlangChannel = false,
   ): boolean => {
     const displayName = noun === "custom uniform" ? "Custom uniform" : "Resource";
     if (!isValidShaderIdentifier(name)) {
@@ -294,7 +283,6 @@ export function validateShaderAuthoringEnvironment(
       return false;
     }
     const isGeneratedTypeDependency = generatedTypeDependencies.has(name);
-    const isInputsMember = isSlangInputMember && name === "inputs";
     const isBuiltinOrLanguageReserved = isReservedShaderStudioIdentifier(name, environment.languageId);
     const isSlangInternalGlobal = environment.languageId === "slang"
       && name.startsWith("_ss");
@@ -303,23 +291,17 @@ export function validateShaderAuthoringEnvironment(
     // GLSL keeps its own `gl_`/`__` rule inside isShaderLanguageReservedTerm.
     const isWgslInternalGlobal = environment.languageId === "wgsl"
       && name.startsWith("_ss");
-    const collidesWithRuntimeCustomUniform = isSlangInputMember
-      && environment.customUniforms.some((uniform) => uniform.name === name);
     if (
-      (isBuiltinOrLanguageReserved && !isInputsMember && !isGlslCanonicalChannel)
+      (isBuiltinOrLanguageReserved && !isGlslCanonicalChannel)
       || isSlangInternalGlobal
       || isWgslInternalGlobal
-      || (isGeneratedTypeDependency && !isSlangInputMember)
-      || collidesWithRuntimeCustomUniform
+      || isGeneratedTypeDependency
     ) {
       issues.push({
         code: "reserved-identifier",
-        message: `${displayName} "${name}" conflicts with a Shader Studio built-in.`,
+        message: `${displayName} "${name}" conflicts with a Shader Studio built-in.${isSlangChannel ? " Rename the .sha.json input key to use direct Slang channel syntax." : ""}`,
       });
       return false;
-    }
-    if (isSlangInputMember) {
-      return true;
     }
     const existing = names.get(name);
     if (existing) {
@@ -336,28 +318,16 @@ export function validateShaderAuthoringEnvironment(
   for (const uniform of environment.customUniforms) {
     validate(uniform.name, "custom uniform");
   }
-  const slangInputNames = new Set<string>();
   for (const resource of environment.resources) {
-    const isSlangInputMember = environment.languageId === "slang" && resource.kind !== "storage";
     const isGlslCanonicalChannel = environment.languageId === "glsl"
       && resource.kind !== "storage"
       && /^iChannel\d+$/.test(resource.name);
     const valid = validate(
       resource.name,
       "resource",
-      isSlangInputMember,
       isGlslCanonicalChannel,
+      environment.languageId === "slang" && resource.kind !== "storage",
     );
-    if (valid && isSlangInputMember) {
-      if (slangInputNames.has(resource.name)) {
-        issues.push({
-          code: "duplicate-identifier",
-          message: `Resource "${resource.name}" duplicates a resource.`,
-        });
-      } else {
-        slangInputNames.add(resource.name);
-      }
-    }
     if (resource.kind === "storage" && resource.elementType && !isValidStorageElementType(resource.elementType, environment.languageId)) {
       issues.push({
         code: "invalid-element-type",

@@ -195,7 +195,7 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     expect(result.success, result.error).toBe(true);
     expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
       code: "reserved-identifier",
-      message: 'Resource "new" conflicts with a Shader Studio built-in.',
+      message: 'Resource "new" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.',
     });
   });
 
@@ -207,16 +207,17 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     "float4",
     "Texture2D",
     "SamplerState",
-  ])("compiles a resource member that matches a generated-module type dependency: %s", (name) => {
+  ])("rejects a direct channel that would shadow a generated-module type dependency: %s", (name) => {
     const environment = {
       ...baseEnvironment(),
       passName: `GeneratedDependency_${name}`,
       resources: [{ name, kind: "texture-2d" as const }],
     };
 
-    const result = compile(environment);
-    expect(result.success, result.error).toBe(true);
-    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: `Resource "${name}" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.`,
+    });
   });
 
   it.each(["Texture2D", "SamplerState"])(
@@ -249,7 +250,7 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     },
   );
 
-  it.each(["iTime", "inputs"])(
+  it.each(["iTime"])(
     "rejects the concrete Slang built-in identifier %s",
     (name) => {
       const environment = {
@@ -268,7 +269,7 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     },
   );
 
-  it("rejects an input member that would collide with a runtime custom-uniform alias", () => {
+  it("reports a direct channel that duplicates a runtime custom-uniform alias", () => {
     const environment = {
       ...baseEnvironment(),
       passName: "CustomInputCollision",
@@ -279,8 +280,8 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     const result = compile(environment);
     expect(result.success, result.error).toBe(true);
     expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
-      code: "reserved-identifier",
-      message: 'Resource "gain" conflicts with a Shader Studio built-in.',
+      code: "duplicate-identifier",
+      message: 'Resource "gain" duplicates a custom uniform.',
     });
   });
 
@@ -310,22 +311,29 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
       customUniforms: [],
       resources: [{ name: "uint", kind: "storage" as const, elementType: "uint" }],
     }],
-  ])("allows a type-name self-declaration in its compiler-usable %s context", (label, overrides) => {
+  ])("validates a type-name self-declaration in its compiler-usable %s context", (label, overrides) => {
     const environment = {
       ...baseEnvironment(),
       ...overrides,
       passName: `SelfDeclaration_${label}`,
     };
 
-    const result = compile(environment);
-    expect(result.success, result.error).toBe(true);
-    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    if (label === "Texture3D resource") {
+      expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+        code: "reserved-identifier",
+        message: 'Resource "Texture3D" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.',
+      });
+    } else {
+      const result = compile(environment);
+      expect(result.success, result.error).toBe(true);
+      expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    }
   });
 
   it.each([
-    ["Texture2D", "texture-2d"],
-    ["TextureCube", "texture-cube"],
-  ] as const)("allows a higher-slot %s input member", (name, kind) => {
+    ["albedo", "texture-2d"],
+    ["sky", "texture-cube"],
+  ] as const)("allows a higher-slot %s direct channel", (name, kind) => {
     const environment = {
       ...baseEnvironment(),
       resources: [{ name, kind, slot: 5 }],
@@ -433,7 +441,7 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     });
   });
 
-  it("allows an input member whose name matches another declaration's type", () => {
+  it("rejects a direct channel whose name shadows another declaration's type", () => {
     const environment = {
       ...baseEnvironment(),
       passName: "InputTypeName",
@@ -443,9 +451,10 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
       ],
     };
 
-    const result = compile(environment);
-    expect(result.success, result.error).toBe(true);
-    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier",
+      message: 'Resource "uint" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.',
+    });
   });
 
   it("allows same-shape inputs which differ only by case", () => {
@@ -476,7 +485,7 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
     expect(result.success, result.error).toBe(true);
   });
 
-  it("rejects an input member in the internal binding namespace", () => {
+  it("reports a direct channel in the internal binding namespace", () => {
     const environment = {
       ...baseEnvironment(),
       passName: "InternalInputName",
@@ -485,10 +494,9 @@ void computeMain(uint3 dispatchId : SV_DispatchThreadID)
 
     expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
       code: "reserved-identifier",
-      message: 'Resource "_ssTexture0" conflicts with a Shader Studio built-in.',
+      message: 'Resource "_ssTexture0" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.',
     });
     const result = compile(environment);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("expected an expression");
+    expect(result.success, result.error).toBe(true);
   });
 });

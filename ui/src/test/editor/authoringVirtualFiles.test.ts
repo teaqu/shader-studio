@@ -18,16 +18,24 @@ describe("slangAuthoringVirtualFiles", () => {
 });
 
 describe("commonAuthoringFile", () => {
-  it("uses configured Common source for a render pass but does not inject it into its own editor", () => {
-    const toUri = (path: string) => `file://${path}`;
-    expect(commonAuthoringFile("Image", "/shader/common.wgsl", "fn shared() {}", toUri)).toEqual({
-      uri: "file:///shader/common.wgsl", text: "fn shared() {}", version: 1,
+  const common = { path: "/shader/common.glsl", text: "#define PI 3.14159\n", version: 3 };
+  const toUri = (path: string) => `file://${path}`;
+
+  it("hands the common file to the pass being edited", () => {
+    expect(commonAuthoringFile(common, "Warp", toUri)).toEqual({
+      uri: "file:///shader/common.glsl",
+      text: "#define PI 3.14159\n",
+      version: 3,
     });
-    expect(commonAuthoringFile("common", "/shader/common.wgsl", "stale", toUri)).toBeUndefined();
   });
 
-  it("omits Common when its configured path or source is unavailable", () => {
-    expect(commonAuthoringFile("Image", undefined, "shared", (path) => path)).toBeUndefined();
-    expect(commonAuthoringFile("Image", "/shader/common.wgsl", undefined, (path) => path)).toBeUndefined();
+  it("withholds it from the common pass itself, which would then define its own symbols twice", () => {
+    expect(commonAuthoringFile(common, "common", toUri)).toBeUndefined();
+    expect(commonAuthoringFile(common, "Common", toUri)).toBeUndefined();
+    expect(commonAuthoringFile(common, " common ", toUri)).toBeUndefined();
+  });
+
+  it("has nothing to hand over when the shader declares no common pass", () => {
+    expect(commonAuthoringFile(null, "Image", toUri)).toBeUndefined();
   });
 });

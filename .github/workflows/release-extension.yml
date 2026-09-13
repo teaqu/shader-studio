@@ -11,6 +11,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_existing_version:
+        description: 'Release a version a registry already carries (recovering a half-finished publish)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -20,10 +25,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  package:
-    name: Verify and Package
+  meta:
+    name: Read release metadata
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.meta.outputs.version }}
       vsix_path: ${{ steps.meta.outputs.vsix_path }}
@@ -32,24 +37,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install pinned Slang WASM test binary
-        run: |
-          curl -fsSL https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-wasm.zip -o /tmp/slang-wasm.zip
-          echo "bff18e4a0a0f1d377d4f8ac8bc0e9c631351f2e223a0482a279c1742f3d5bcc6  /tmp/slang-wasm.zip" | sha256sum --check
-          unzip -j /tmp/slang-wasm.zip slang-wasm.wasm -d ui/src/slang
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-
+      # First, and on its own runner: a tag that does not match the version is
+      # worth knowing in seconds rather than after the gates have run.
       - name: Read release metadata
         id: meta
         shell: bash
@@ -65,67 +54,25 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "vsix_path=${VSIX_PATH}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build workspace dependencies
-        run: npm run build:deps -w extension
-
-      - name: Run workspace Vitest suite
-        run: npm test
-
-      - name: Run rendering browser E2E tests
-        run: npm run test:e2e -w rendering
-
-      - name: Run UI type check
-        run: npm run check -w ui
-
-      - name: Run extension tests
-        run: xvfb-run -a npm test -w extension
-
-      - name: Run VS Code E2E harness unit tests
-        run: npm run test:e2e:vscode:harness:unit -w extension
-
-      - name: Run VS Code webview E2E tests
-        id: vscode-e2e
-        run: xvfb-run -a npm run test:e2e:vscode -w extension
-
-      - name: Upload VS Code webview E2E traces
-        if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: vscode-webview-e2e-failures
-          path: extension/.playwright/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Package VSIX
-        working-directory: extension
-        run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
-
-      - name: Run packaged VSIX smoke test
-        id: production-vsix-e2e
-        run: xvfb-run -a npm run test:e2e:vscode:run -w extension -- production-vsix.e2e.mjs
+      # A registry keys on the version, so `--skip-duplicate` turns a repeat
+      # release into a green run that uploaded nothing: the tag moves and users
+      # keep the old build. Refuse the version before anything is built.
+      - name: Refuse a version the registries already carry
         env:
-          SHADER_STUDIO_E2E_PRODUCTION_VSIX: ${{ github.workspace }}/${{ steps.meta.outputs.vsix_path }}
+          ALLOW_EXISTING_VERSION: ${{ inputs.allow_existing_version || 'false' }}
+        run: node extension/scripts/check-version-published.mjs
 
-      - name: Upload packaged VSIX smoke-test traces
-        if: ${{ failure() && steps.production-vsix-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: production-vsix-e2e-failures
-          path: extension/.playwright/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: shader-studio-${{ steps.meta.outputs.version }}-vsix
-          path: ${{ steps.meta.outputs.vsix_path }}
-          if-no-files-found: error
+  # Package once and run the same installed-VSIX gates as push/PR CI. The
+  # publishing jobs download that tested artifact without rebuilding it.
+  verify:
+    name: Verify
+    needs: meta
+    uses: ./.github/workflows/verify.yml
 
   publish-vscode:
     name: Publish VS Code Marketplace and GitHub Release
     runs-on: ubuntu-latest
-    needs: package
+    needs: verify
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -140,7 +87,7 @@ jobs:
       - name: Download VSIX artifact
         uses: actions/download-artifact@v8
         with:
-          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+          name: shader-studio-${{ needs.verify.outputs.version }}-vsix
 
       - name: Check publishing secret
         shell: bash
@@ -152,16 +99,16 @@ jobs:
       - name: Publish to VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx --yes @vscode/vsce publish --packagePath "${{ needs.package.outputs.vsix_path }}" --skip-duplicate
+        run: npx --yes @vscode/vsce publish --packagePath "${{ needs.verify.outputs.vsix_path }}" --skip-duplicate
 
       - name: Create checksum
-        run: sha256sum "${{ needs.package.outputs.vsix_path }}" > "${{ needs.package.outputs.vsix_path }}.sha256"
+        run: sha256sum "${{ needs.verify.outputs.vsix_path }}" > "${{ needs.verify.outputs.vsix_path }}.sha256"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.package.outputs.version }}
-          VSIX_PATH: ${{ needs.package.outputs.vsix_path }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          VSIX_PATH: ${{ needs.verify.outputs.vsix_path }}
         run: |
           cat > release-notes.md <<EOF
           Shader Studio ${VERSION}
@@ -186,8 +133,14 @@ jobs:
   publish-open-vsx:
     name: Publish Open VSX
     runs-on: ubuntu-latest
-    needs: package
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_open_vsx
+    needs: verify
+    # A tag publishes to both registries, in parallel: the two jobs share only
+    # the packaged VSIX, so an Open VSX outage cannot hold up or undo the
+    # Marketplace release. It does turn the run red, which is the point - the
+    # dispatch below then republishes this registry alone.
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      || (github.event_name == 'workflow_dispatch' && inputs.publish_open_vsx)
     environment:
       name: extension-marketplaces
     timeout-minutes: 20
@@ -199,7 +152,7 @@ jobs:
       - name: Download VSIX artifact
         uses: actions/download-artifact@v8
         with:
-          name: shader-studio-${{ needs.package.outputs.version }}-vsix
+          name: shader-studio-${{ needs.verify.outputs.version }}-vsix
 
       - name: Check Open VSX publishing secret
         shell: bash
@@ -210,4 +163,4 @@ jobs:
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: bash .github/scripts/publish-open-vsx.sh "${{ needs.package.outputs.vsix_path }}"
+        run: bash .github/scripts/publish-open-vsx.sh "${{ needs.verify.outputs.vsix_path }}"

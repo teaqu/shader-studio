@@ -101,9 +101,15 @@ export class EditorOverlayManager {
     this.notifyStateChanged();
   }
 
-  async handleEditorCodeChange(code: string): Promise<void> {
+  async handleEditorCodeChange(code: string, path = this.filePath): Promise<boolean> {
+    // A debounced command can arrive after the user has opened another buffer.
+    // Its source belongs to the document that issued it, not the new selection.
+    if (path !== this.filePath) {
+      return false;
+    }
     this.fileCode = code;
     this.notifyStateChanged();
+    return true;
   }
 
   async compileCurrentCode(): Promise<void> {

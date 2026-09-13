@@ -32,5 +32,6 @@ export default defineConfig({
 	version: '1.101.0',
 	launchArgs: [
 		`--user-data-dir=${temporaryTestDirectory}`,
+		`--extensions-dir=${join(temporaryTestDirectory, "extensions")}`,
 	],
 });

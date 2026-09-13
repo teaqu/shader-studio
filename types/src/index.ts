@@ -9,6 +9,7 @@ export * from './SlangSourceModule';
 export * from './DebugEngine';
 export * from './shader-environment/ShaderAuthoringEnvironment';
 export * from './shader-environment/BuiltinUniforms';
+export * from './shader-environment/TypeKeywords';
 export * from './shader-environment/GlslEnvironmentGenerator';
 export * from './shader-environment/SlangEnvironmentGenerator';
 export * from './shader-environment/ShaderStudioDocumentation';
@@ -19,3 +20,5 @@ export * from './shaderProject';
 export * from './shader-environment/SlangChannels';
 
 export { wgslStorageElementType } from "./wgslStorage";
+
+export { findSlangAuthoredDeclarations, type SlangAuthoredDeclaration } from "./shader-environment/SlangAuthoredDeclarations";

@@ -4,11 +4,12 @@ import * as path from "path";
 import { Messenger } from "./transport/Messenger";
 import { Logger } from "./services/Logger";
 import { isShaderDocument } from "./GlslFileTracker";
+import { definesMainImage } from "./ShaderEntryPoint";
 import { ShaderConfigProcessor } from "./ShaderConfigProcessor";
 import { ConfigPathConverter } from "./transport/ConfigPathConverter";
 import { PathResolver } from "./PathResolver";
 import { ScriptBundler } from "./ScriptBundler";
-import { ScriptEvaluator } from "./ScriptEvaluator";
+import { ScriptEvaluator, type ScriptRuntimeState } from "./ScriptEvaluator";
 import { ConfigChangeClassifier } from "./services/ConfigChangeClassifier";
 import { getConfigPathForShaderPath } from "./ShaderConfigPaths";
 import { collectSlangDependencies, resolveSlangIncludes, resolveSlangImports } from "@shader-studio/utils";
@@ -230,7 +231,7 @@ export class ShaderProvider {
       }
 
       const code = fs.readFileSync(shaderPath, "utf-8");
-      if (!code.includes("mainImage") && (shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
+      if (!definesMainImage(code) && (shaderLanguageForPath(shaderPath) ?? "glsl") !== "slang") {
         return;
       }
 
@@ -381,10 +382,37 @@ export class ShaderProvider {
   }
 
   /**
+   * Send every current script value, not just what changed. The poll loop emits
+   * deltas after its first batch, so a client that rebuilt its uniform state -
+   * a swapped engine, a compile that reinstalled the declarations - would hold
+   * zero for every uniform the script never changes, and the effects driven by
+   * them would silently do nothing.
+   */
+  public resendScriptValues(): void {
+    const values = this.scriptEvaluator.currentValues();
+    if (values.length === 0) {
+      return;
+    }
+    const valuesMessage: CustomUniformValuesMessage = {
+      type: "customUniformValues",
+      payload: { values },
+    };
+    this.messenger.send(valuesMessage);
+  }
+
+  /**
    * Reset the script time origin (called on shader reset).
    */
   public resetScriptTime(): void {
     this.scriptEvaluator.resetTime();
+  }
+
+  /**
+   * Tell the script evaluator what the viewer is showing, so scripts read the
+   * shader's own time and inputs and stop running while it is paused.
+   */
+  public updateScriptRuntimeState(state: Partial<ScriptRuntimeState> | null | undefined): void {
+    this.scriptEvaluator.setRuntimeState(state);
   }
 
   /**
@@ -502,8 +530,11 @@ export class ShaderProvider {
     options?: { reload?: boolean },
     cursorPosition?: ShaderSourceMessage["cursorPosition"],
   ): Promise<boolean> {
-    const language = shaderLanguageForPath(shaderPath) ?? "glsl";
-    if (code.includes("mainImage")) {
+    const language = (shaderLanguageForPath(shaderPath) ?? "glsl");
+    // A file that defines the entry point is a shader in its own right. One
+    // that only mentions it - a comment, a call, a name that starts with it -
+    // is a helper, and previewing it as a whole shader replaces the picture.
+    if (definesMainImage(code)) {
       return false;
     }
 
@@ -786,6 +817,9 @@ export class ShaderProvider {
       language: shaderLanguageForPath(filePath) ?? "glsl",
       reload: true,
       cursorPosition,
+      // No config, so no script context: the client must keep the custom
+      // uniforms it holds rather than read this message as "there are none".
+      scriptContextOmitted: true,
       // Same per-path counter the main send uses, so a newer send of any kind
       // supersedes this message's reports. See CompileReportMarker.
       compileSequence: this.beginPreparation(filePath),

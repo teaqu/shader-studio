@@ -32,9 +32,14 @@ export default defineConfig({
   retries: 0,
   reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   // The release workflow narrows the suite to a subset; honoured here so that
-  // filter keeps working now the runner has changed.
+  // filter keeps working now the runner has changed. The inverse splits the
+  // suite by runner: specs tagged @gpu are the ones measured to fail without a
+  // real adapter and stay on macOS, everything else runs on Linux.
   ...(process.env.SHADER_STUDIO_E2E_GREP
     ? { grep: new RegExp(process.env.SHADER_STUDIO_E2E_GREP) }
+    : {}),
+  ...(process.env.SHADER_STUDIO_E2E_GREP_INVERT
+    ? { grepInvert: new RegExp(process.env.SHADER_STUDIO_E2E_GREP_INVERT) }
     : {}),
   use: {
     trace: 'retain-on-failure',

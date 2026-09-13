@@ -581,7 +581,7 @@ suite("VS Code language-service revisions", () => {
         "float3 n = normalize(float3(1));",
         "float3 m = nor;",
         "float x = fmod(3.0, 2.0);",
-        "ShaderStudioInputs configured = inputs;",
+        "float4 inputs = float4(1);",
       ].join("\n"),
     });
     await vscode.window.showTextDocument(document);
@@ -611,9 +611,9 @@ suite("VS Code language-service revisions", () => {
     const channelHovers = await vscode.commands.executeCommand<vscode.Hover[]>(
       "vscode.executeHoverProvider",
       document.uri,
-      new vscode.Position(3, 33),
+      new vscode.Position(3, 9),
     );
-    assert.ok(hoverText(channelHovers).includes("Configured shader inputs"));
+    assert.ok(hoverText(channelHovers).includes("float4 inputs"));
     const signature = await vscode.commands.executeCommand<vscode.SignatureHelp>(
       "vscode.executeSignatureHelpProvider",
       document.uri,
@@ -623,17 +623,17 @@ suite("VS Code language-service revisions", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
-  test("updates Slang input members after an unsaved channel rename", async function() {
+  test("updates Slang channel globals after an unsaved channel rename", async function() {
     this.timeout(20_000);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-unsaved-channel-completion-"));
     const shaderPath = path.join(directory, "image.slang");
     const configPath = path.join(directory, "image.sha.json");
-    const source = "float4 mainImage(float2 p) { return inputs.; }";
+    const source = "float4 mainImage(float2 p) { return channel.Sample(p); }";
     const labels = async (document: vscode.TextDocument) => {
       const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
         "vscode.executeCompletionItemProvider",
         document.uri,
-        new vscode.Position(0, source.indexOf("inputs.") + "inputs.".length),
+        new vscode.Position(0, source.indexOf("return ") + "return ".length),
       );
       return completions.items.map((item) => typeof item.label === "string" ? item.label : item.label.label);
     };
@@ -647,6 +647,11 @@ suite("VS Code language-service revisions", () => {
       const shaderDocument = await vscode.workspace.openTextDocument(shaderPath);
       await vscode.window.showTextDocument(shaderDocument);
       assert.ok((await labels(shaderDocument)).includes("channel"));
+      const channelHover = await vscode.commands.executeCommand<vscode.Hover[]>(
+        "vscode.executeHoverProvider", shaderDocument.uri,
+        new vscode.Position(0, source.indexOf("channel.Sample") + 2),
+      );
+      assert.ok(hoverText(channelHover).includes("Configured input channel"));
 
       const configDocument = await vscode.workspace.openTextDocument(configPath);
       const edit = new vscode.WorkspaceEdit();
@@ -917,7 +922,9 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("disables and re-enables a loaded Slang language service", async () => {
+  test("disables and re-enables a loaded Slang language service", async function() {
+    // Loads the Slang service twice over, either side of the setting.
+    this.timeout(DIAGNOSTIC_TEST_BUDGET_MS);
     await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
     const configuration = vscode.workspace.getConfiguration("shader-studio");
     const document = await vscode.workspace.openTextDocument({ language: "slang", content: "float value;" });
@@ -1037,10 +1044,16 @@ suite("VS Code language-service revisions", () => {
 });
 
 /**
- * Long enough for a cold `createLanguageServer()` to load the Slang stdlib,
- * which costs ~1s the first time any test builds the service.
+ * A healthy run never spends this: an expected diagnostic is already published
+ * by the time the helper first looks, and a cold host that has to load the
+ * Slang stdlib first answers in about 1.5s. The budget covers the machine
+ * instead. The extension host is one process competing for CPU with everything
+ * else on the runner, and with the workspace suite running alongside it the
+ * same diagnostics measured past the old 5s ceiling - a limit picked for stdlib
+ * load alone, on an otherwise idle machine. CI has fewer cores than any
+ * development machine, so the loaded case is its normal case.
  */
-const DIAGNOSTIC_WAIT_MS = 5_000;
+const DIAGNOSTIC_WAIT_MS = 30_000;
 
 /**
  * Twice the wait, so the helper below always hits its own deadline first and
@@ -1092,29 +1105,32 @@ function countingLanguageService(
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
+  const startedAt = Date.now();
+  const deadline = startedAt + DIAGNOSTIC_WAIT_MS;
   while (Date.now() < deadline) {
     if (condition()) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error("Timed out waiting for the controller to publish");
+  throw new Error(`Timed out after ${Date.now() - startedAt}ms waiting for the controller to publish`);
 }
 
 async function waitForAsync(condition: () => Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
+  const startedAt = Date.now();
+  const deadline = startedAt + DIAGNOSTIC_WAIT_MS;
   while (Date.now() < deadline) {
     if (await condition()) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error("Timed out waiting for the language-service completion update");
+  throw new Error(`Timed out after ${Date.now() - startedAt}ms waiting for the language-service completion update`);
 }
 
 async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vscode.Diagnostic> {
-  const deadline = Date.now() + DIAGNOSTIC_WAIT_MS;
+  const startedAt = Date.now();
+  const deadline = startedAt + DIAGNOSTIC_WAIT_MS;
   while (Date.now() < deadline) {
     const diagnostic = vscode.languages.getDiagnostics(uri).find((item) => item.message.includes(message));
     if (diagnostic) {
@@ -1122,7 +1138,13 @@ async function waitForDiagnostic(uri: vscode.Uri, message: string): Promise<vsco
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`Timed out waiting for diagnostic containing: ${message}`);
+  // Report what did arrive: a wrong diagnostic and no diagnostic at all fail
+  // the same way otherwise, and only one of them is a slow machine.
+  const published = vscode.languages.getDiagnostics(uri).map((item) => item.message);
+  throw new Error([
+    `Timed out after ${Date.now() - startedAt}ms waiting for diagnostic containing: ${message}`,
+    published.length > 0 ? `published: ${published.join(" | ")}` : "no diagnostics published",
+  ].join("; "));
 }
 
 function hoverText(hovers: readonly vscode.Hover[]): string {

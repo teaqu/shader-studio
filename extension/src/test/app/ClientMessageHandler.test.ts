@@ -42,6 +42,8 @@ suite('ClientMessageHandler Test Suite', () => {
       sendShaderFromPath: sandbox.stub().resolves(),
       updateScriptPollingRate: sandbox.stub(),
       resetScriptTime: sandbox.stub(),
+      updateScriptRuntimeState: sandbox.stub(),
+      resendScriptValues: sandbox.stub(),
     } as any;
 
     mockGlslFileTracker = {
@@ -487,6 +489,62 @@ suite('ClientMessageHandler Test Suite', () => {
       );
 
       assert.ok(execStub.calledWith('shader-studio.setCompileMode', 'manual'));
+    });
+  });
+
+  suite('requestCustomUniformValues', () => {
+    test('asks the shader provider for the full set of script values', async () => {
+      // The poll loop sends only what changed after its first batch, so a
+      // client that rebuilt its uniform state has no other way back to the
+      // uniforms the script holds constant.
+      await handler.handle({ type: 'requestCustomUniformValues' }, respondFn);
+
+      sinon.assert.calledOnce(mockShaderProvider.resendScriptValues);
+    });
+  });
+
+  suite('scriptRuntimeState', () => {
+    const state = {
+      paused: true,
+      time: 3.5,
+      frame: 210,
+      frameRate: 60,
+      resolution: [1920, 1080, 1920 / 1080],
+      mouse: [10, 20, 1, 0],
+      channelTimes: [1.5, 2.5, 0, 0],
+      sampleRate: 48000,
+    };
+
+    test('passes what the viewer is showing to the script evaluator', async () => {
+      await handler.handle({ type: 'scriptRuntimeState', payload: state }, respondFn);
+
+      assert.ok(mockShaderProvider.updateScriptRuntimeState.calledOnceWith(state));
+    });
+
+    test('forwards an incomplete report rather than dropping it', async () => {
+      // The evaluator normalises what it is given, so a report from a sender
+      // that is a version behind still delivers the pause flag it does carry.
+      await handler.handle({ type: 'scriptRuntimeState', payload: { paused: true } }, respondFn);
+      await handler.handle({ type: 'scriptRuntimeState' }, respondFn);
+
+      assert.strictEqual(mockShaderProvider.updateScriptRuntimeState.callCount, 2);
+      assert.deepStrictEqual(mockShaderProvider.updateScriptRuntimeState.firstCall.args[0], { paused: true });
+      assert.strictEqual(mockShaderProvider.updateScriptRuntimeState.secondCall.args[0], undefined);
+    });
+
+    test('forwards a report from a sender that is a version behind', async () => {
+      // A webview older than this host sends no channel times or sample rate.
+      // Dropping the report over that would drop its pause flag with it, and
+      // the script would keep running under a paused shader.
+      const { channelTimes: _ct, sampleRate: _sr, ...legacy } = {
+        ...state,
+        channelTimes: [1.5, 2.5, 0, 0],
+        sampleRate: 48000,
+      };
+
+      await handler.handle({ type: 'scriptRuntimeState', payload: legacy }, respondFn);
+
+      assert.ok(mockShaderProvider.updateScriptRuntimeState.calledOnceWith(legacy));
     });
   });
 

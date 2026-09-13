@@ -9,8 +9,8 @@ import {
 import {
   wrapSlangComputeSource,
   wrapSlangImageSource,
+  findSlangChannelDeclarationCollisions,
   getNativeComputeEntryPoints,
-  stripShaderStudioEditorImport,
   SLANG_ENTRY_VERTEX,
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
@@ -40,6 +40,14 @@ export class SlangCompiler {
     userSource: string,
     options: SlangCompileOptions = {},
   ): SlangCompileResult {
+    const declarationCollisions = findSlangChannelDeclarationCollisions(options.channels, [
+      { label: options.sourcePath ?? "shader source", source: userSource },
+      ...(options.commonCode ? [{ label: "Common", source: options.commonCode }] : []),
+      ...(options.vertexCode ? [{ label: "vertex source", source: options.vertexCode }] : []),
+    ]);
+    if (declarationCollisions.length > 0) {
+      return { success: false, errors: declarationCollisions };
+    }
     let globalSession: SlangGlobalSession;
     let target: number;
     try {
@@ -61,7 +69,7 @@ export class SlangCompiler {
     try {
       for (const dependency of options.modules ?? []) {
         const dependencyModule = session.loadModuleFromSource(
-          stripShaderStudioEditorImport(dependency.source),
+          dependency.source,
           dependency.moduleName,
           dependency.path,
         );
@@ -126,6 +134,16 @@ export class SlangCompiler {
       module = session.loadModuleFromSource(wrapped, moduleName, modulePath);
       if (!module) {
         const error = this.lastError("Slang: failed to compile module");
+        // Imports keep their module scopes. Diagnose a channel collision only
+        // when Slang actually reports ambiguity/redefinition, so unused or
+        // qualified declarations in other modules remain legal.
+        const importedCollisions = /ambiguous|redefinition|already defined|conflicting/i.test(error)
+          ? findSlangChannelDeclarationCollisions(options.channels?.filter(({ key }) => error.includes(key)),
+            (options.modules ?? []).map(({ path, source }) => ({ label: path, source })))
+          : [];
+        if (importedCollisions.length > 0) {
+          return { success: false, errors: importedCollisions };
+        }
         return {
           success: false,
           errors: [isMissingMainImageDiagnostic(error)
@@ -214,25 +232,16 @@ export class SlangCompiler {
   }
 }
 
-const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"[^"]+")[ \t]*;?[ \t]*$/gm;
+const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|"[^"]+")[ \t]*;?[ \t]*$/gm;
 
 /**
  * Strip import declarations from Slang source before passing it to the WASM
  * runtime. The WASM has no filesystem, so any form of `import` triggers
  * "cannot open file". Dependencies are pre-loaded as separate modules and
  * linked via the composite.
- *
- * The `shader_studio` editor import is left intact — it is handled separately
- * by `stripShaderStudioEditorImport` which replaces it with a line-preserving
- * comment inside the wrap functions.
  */
 function stripImports(source: string, preserveImports: boolean): string {
-  return source.replace(IMPORT_STRIP_PATTERN, (_match, target: string) => {
-    if (target === "shader_studio" || target === '"shader-studio.slang"') {
-      return _match; // leave for stripShaderStudioEditorImport
-    }
-    return preserveImports ? _match : "";
-  });
+  return source.replace(IMPORT_STRIP_PATTERN, (match: string) => preserveImports ? match : "");
 }
 
 function errMessage(e: unknown): string {

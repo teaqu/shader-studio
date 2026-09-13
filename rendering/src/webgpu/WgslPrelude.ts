@@ -5,7 +5,6 @@ import { buildChannelSamplingFunctions, describeSlangChannel, type GeometryType 
 import {
   getShaderToyChannelCount,
   isSlangCustomUniformType,
-  stripShaderStudioEditorImport,
   type SlangChannelBinding,
   type SlangCustomUniformInfo,
 } from "./SlangPrelude";
@@ -763,9 +762,9 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
     + buildGlobalsPrelude(options.customUniforms, { capture: options.captureMode, channels });
   const hoisted = hoistWgslDirectives(
-    stripShaderStudioEditorImport(userSource),
-    stripShaderStudioEditorImport(options.commonCode ?? ""),
-    stripShaderStudioEditorImport(options.vertexCode ?? ""),
+    userSource,
+    options.commonCode ?? "",
+    options.vertexCode ?? "",
   );
   const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";
@@ -857,8 +856,8 @@ function assembleWgslComputeSource(userSource: string, options: WgslComputeWrapO
   const prelude = buildUniformPrelude(channelCount, options.customUniforms)
     + buildGlobalsPrelude(options.customUniforms, { dispatch: true, channels });
   const hoisted = hoistWgslDirectives(
-    stripShaderStudioEditorImport(userSource),
-    stripShaderStudioEditorImport(options.commonCode ?? ""),
+    userSource,
+    options.commonCode ?? "",
   );
   const strippedCommonCode = hoisted.commonCode;
   const commonCode = strippedCommonCode ? `${strippedCommonCode}\n` : "";

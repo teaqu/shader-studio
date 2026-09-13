@@ -4,6 +4,14 @@ A GLSL, Slang, and WGSL shader viewer for VS Code with hot reloading. Edit Shade
 
 Try Shader Studio in [Standalone web mode](https://teaqu.github.io/shader-studio/app/) in your browser.
 
+## Slang channel migration
+
+Configured Slang channels are direct globals. Replace
+`inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and access metadata as
+`albedo.size`, `albedo.time`, or `albedo.loaded`. This does not change the
+`.sha.json` `inputs` field. WGSL retains its direct metadata globals and
+separate texture/sampler handles.
+
 ### VSCode Marketplace
  https://marketplace.visualstudio.com/items?itemName=teaqu.shader-studio. 
 

@@ -393,6 +393,35 @@ describe("GlslParser", () => {
       expect(GlslParser.getUsedGlobalVariables(shader, functionInfo)).toEqual([]);
     });
 
+    it("collects every identifier the source mentions", () => {
+      const identifiers = GlslParser.collectUsedIdentifiers([
+        "float exposure = 1.0;",
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  fragColor = vec4(exposure * uGain);",
+        "}",
+      ]);
+
+      expect(identifiers.has("exposure")).toBe(true);
+      expect(identifiers.has("uGain")).toBe(true);
+      expect(identifiers.has("fragColor")).toBe(true);
+      expect(identifiers.has("uAbsent")).toBe(false);
+    });
+
+    it("does not collect identifiers that only appear in comments", () => {
+      const identifiers = GlslParser.collectUsedIdentifiers([
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {",
+        "  // uLine only here",
+        "  /* uBlock",
+        "     spans lines */",
+        "  fragColor = vec4(1.0);",
+        "}",
+      ]);
+
+      expect(identifiers.has("uLine")).toBe(false);
+      expect(identifiers.has("uBlock")).toBe(false);
+      expect(identifiers.has("fragColor")).toBe(true);
+    });
+
     it("should retain raw source when preprocessing fails", () => {
       expect(GlslParser.getGlobalVariables(["#if", "float kept;", ""])).toEqual([
         { name: "kept", type: "float", declarationLine: 1 },

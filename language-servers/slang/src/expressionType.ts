@@ -72,7 +72,7 @@ export function resolveSlangExpressionType(
 
 /**
  * Drops the argument lists of method calls such as `.Sample(uv)`, so a chain like
- * `inputs.iChannel0.Sample(uv).rgb` resolves through the method's return type.
+ * `iChannel0.Sample(uv).rgb` resolves through the method's return type.
  * A leading call such as `palette(0.5)` keeps its arguments.
  */
 function stripMethodArguments(expression: string): string {
@@ -509,7 +509,8 @@ function nearestVisibleDeclaration(
 /** Type of a name declared at file scope, for declarations reached through an `#include`. */
 function globalDeclaredType(source: string, name: string): string | undefined {
   const sourceLength = source.length;
-  return variableCandidates(source, name).find((candidate) => candidate.scopeEnd === sourceLength)?.typeName;
+  return variableCandidates(source, name).find((candidate) => candidate.scopeEnd === sourceLength)?.typeName
+    ?? new RegExp(`\\bproperty\\s+(${TYPE_TOKEN.source})\\s+${name}\\s*\\{`).exec(maskNonCode(source))?.[1];
 }
 
 function isKnownType(typeName: string, knownStructs: ReadonlySet<string>): boolean {

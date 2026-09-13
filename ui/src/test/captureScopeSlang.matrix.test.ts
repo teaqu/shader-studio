@@ -195,10 +195,13 @@ describe('Slang capture scope with a break anywhere in the shader', () => {
     expect(failures.slice(0, 12).join('\n')).toBe('');
   });
 
-  it("never reports another function's locals, for any break and any inspected line", () => {
-    const failures: string[] = [];
+  // One case per function that can hold the break: the same sweep as a single
+  // loop, split so each case reports which function's breaks failed.
+  it.each(ranges.map((range) => [range.name, range] as const))(
+    "never reports another function's locals for any break inside %s",
+    (_name, broken) => {
+      const failures: string[] = [];
 
-    for (const broken of ranges) {
       for (let breakAfter = broken.start + 1; breakAfter < broken.end; breakAfter += 1) {
         const source = [...lines.slice(0, breakAfter), 'd', ...lines.slice(breakAfter)].join('\n');
         const detected = firstUnterminatedStatementLine(source);
@@ -207,20 +210,25 @@ describe('Slang capture scope with a break anywhere in the shader', () => {
           continue;
         }
 
+        // The cut and every function's locals are fixed once the break is
+        // chosen, so they are computed per break rather than per inspected line.
+        const cut = truncateFunctionBodyAt(source, detected) ?? source;
+        const sourceLines = source.split('\n');
+        const cutLines = cut.split('\n');
         const scoped = functionRanges(source);
-        for (const inspected of scoped) {
-          const own = localsOf(source, inspected);
-          const foreign = scoped
-            .filter((range) => range.name !== inspected.name)
-            .flatMap((range) => [...localsOf(source, range)])
+        const localsByRange = scoped.map((range) => localsOf(source, range));
+
+        for (const [index, inspected] of scoped.entries()) {
+          const own = localsByRange[index]!;
+          const foreign = localsByRange
+            .flatMap((locals, other) => (other === index ? [] : [...locals]))
             .filter((name) => !own.has(name));
 
           for (let line = inspected.start + 1; line < inspected.end; line += 1) {
             // Braces and blank lines are not positions a user inspects, and a
             // position before a body opens belongs to no scope in particular.
-            const cut = truncateFunctionBodyAt(source, detected) ?? source;
-            const text = source.split('\n')[line - 1]?.trim() ?? '';
-            const cutText = cut.split('\n')[line - 1]?.trim() ?? '';
+            const text = sourceLines[line - 1]?.trim() ?? '';
+            const cutText = cutLines[line - 1]?.trim() ?? '';
             // Braces and blank lines are not positions a user inspects, and the
             // cut leaves the break line itself empty.
             if ([text, cutText].some((value) => value === '' || value === '{' || value === '}')) {
@@ -240,10 +248,10 @@ describe('Slang capture scope with a break anywhere in the shader', () => {
           }
         }
       }
-    }
 
-    expect(failures.slice(0, 12).join('\n')).toBe('');
-  });
+      expect(failures.slice(0, 12).join('\n')).toBe('');
+    },
+  );
 
   it('does not treat a struct body as a function to cut', () => {
     const structLine = lines.findIndex((line) => line.includes('float gain;')) + 1;

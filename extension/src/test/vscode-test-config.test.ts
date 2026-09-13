@@ -15,7 +15,7 @@ interface ConfigProbe {
 }
 
 suite('VS Code test runner configuration', () => {
-  test('uses a managed short user profile without hiding installed extensions', async () => {
+  test('uses managed isolated user and extension directories', async () => {
     const configUrl = pathToFileURL(path.resolve(__dirname, '../../.vscode-test.mjs')).href;
     const probeScript = [
       'import { existsSync } from "node:fs";',
@@ -36,7 +36,7 @@ suite('VS Code test runner configuration', () => {
       probe.launchArgs.filter((argument) => argument.startsWith('--user-data-dir=')).length,
       1,
     );
-    assert.ok(!probe.launchArgs.some((argument) => argument.startsWith('--extensions-dir=')));
+    assert.deepStrictEqual(probe.launchArgs.filter((argument) => argument.startsWith('--extensions-dir=')), [`--extensions-dir=${path.join(probe.profilePath, 'extensions')}`]);
     assert.match(path.basename(probe.profilePath), /^ssv-/);
     if (process.platform !== 'win32') {
       assert.strictEqual(path.dirname(probe.profilePath), '/tmp');

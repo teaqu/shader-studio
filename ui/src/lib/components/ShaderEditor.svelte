@@ -26,6 +26,7 @@
   import { createLanguageServiceController } from "../editor/createLanguageServiceController";
   import type { LanguageServiceController } from "../editor/LanguageServiceController.svelte";
   import { commonAuthoringFile, slangAuthoringVirtualFiles } from "../editor/authoringVirtualFiles";
+  import { getCommonShaderSource } from "../state/commonSourceState.svelte";
   import { currentTheme, type Theme } from "../stores/themeStore";
   import { getRenameFeedback } from "../state/renameFeedback.svelte";
   import {
@@ -41,7 +42,7 @@
     shaderCode?: string;
     shaderPath?: string;
     transport: Transport;
-    onCodeChange?: (code: string) => void;
+    onCodeChange?: (code: string, path?: string) => void;
     vimMode?: boolean;
     topInset?: number;
     bottomInset?: number;
@@ -123,6 +124,7 @@
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
   let applyingHostContent = false;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingSource: { path: string; code: string } | null = null;
   let lastSentCode: string | null = null;
   let cursorChangeDisposable: monaco.IDisposable | null = null;
   let cursorChangeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -661,30 +663,23 @@
         return;
       }
 
+      const editedPath = shaderPath;
       if (compileMode === "hot") {
         if (recompileTimer) {
           clearTimeout(recompileTimer);
         }
         recompileTimer = setTimeout(() => {
-          onCodeChange(code);
+          if (shaderPath === editedPath) {
+            onCodeChange(code, editedPath);
+          }
         }, 30);
       }
 
       if (persistTimer) {
         clearTimeout(persistTimer);
       }
-      persistTimer = setTimeout(() => {
-        if (transport && shaderPath) {
-          lastSentCode = code;
-          transport.postMessage({
-            type: "updateShaderSource",
-            payload: {
-              code,
-              path: shaderPath,
-            },
-          });
-        }
-      }, PERSIST_DELAY_MS);
+      pendingSource = { path: editedPath, code };
+      persistTimer = setTimeout(flushPendingSource, PERSIST_DELAY_MS);
     });
 
     lastShaderPath = shaderPath;
@@ -716,7 +711,23 @@
     editorReady = true;
   }
 
+  function flushPendingSource() {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    const source = pendingSource;
+    pendingSource = null;
+    if (source) {
+      if (source.path === shaderPath) {
+        lastSentCode = source.code;
+      }
+      transport.postMessage({ type: "updateShaderSource", payload: source });
+    }
+  }
+
   function destroyEditor() {
+    flushPendingSource();
     if (recompileTimer) {
       clearTimeout(recompileTimer);
       recompileTimer = null;
@@ -773,18 +784,24 @@
   $effect(() => {
     const controller = languageServiceController;
     const model = editor?.getModel();
+    const modelUri = editorModelUri;
     const language = languageForShaderPath(shaderPath);
     const currentConfig = config;
     const uniforms = customUniformInfo;
     const modules = slangModules;
+    const common = getCommonShaderSource();
     const configuredCommonPath = commonPath;
     const configuredCommonSource = commonSource;
     const bufferName = activeBufferName;
     const passName = activePassName;
-    if (!controller || !model?.uri || !isShaderLanguageId(language)) {
+    if (!controller || !model?.uri || !isShaderLanguageId(language)
+      || (shaderPath && modelUri !== monaco.Uri.file(shaderPath).toString())) {
       return;
     }
-    const commonFile = commonAuthoringFile(bufferName, configuredCommonPath, configuredCommonSource,
+    const commonFile = commonAuthoringFile(
+      configuredCommonPath && configuredCommonSource !== undefined
+        ? { path: configuredCommonPath, text: configuredCommonSource, version: common?.path === configuredCommonPath ? common.version : environmentGeneration + 1 }
+        : common, bufferName,
       (filePath) => monaco.Uri.file(filePath).toString());
     environmentGeneration += 1;
     const environment: import("@shader-studio/types").ShaderAuthoringEnvironment = {
@@ -795,7 +812,7 @@
       stage: parseVertexPassKey(bufferName) !== undefined ? "vertex" : stageForPass(currentConfig, passName, shaderPath),
       customUniforms: uniforms.flatMap(({ name, type }) => isAuthoringValueType(type) ? [{ name, type }] : []),
       resources: resourcesForPass(currentConfig, passName),
-      ...(commonFile ? { commonFile } : {}),
+      ...(commonFile && language !== "slang" ? { commonFile } : {}),
       virtualFiles: SHADER_LANGUAGES[language].hasImports
         ? slangAuthoringVirtualFiles(modules, passName, (filePath) => monaco.Uri.file(filePath).toString())
         : [],
@@ -985,6 +1002,7 @@
       let contentReplaced = false;
 
       if (fileChanged) {
+        flushPendingSource();
         if (lastShaderPath) {
           savedViewStates.set(lastShaderPath, editor.saveViewState());
         }

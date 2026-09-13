@@ -52,7 +52,7 @@ function canvasSize(project: (typeof projects)[number]): number {
   if (hasSpatialGeometry || isLargeSimulation) {
     return 128;
   }
-  if (inputs.some((input) => ["audio", "video", "cubemap"].includes(input.type))) {
+  if (some((input) => ["audio", "video", "cubemap"].includes(input.type))) {
     return 96;
   }
   const isSmallContract = /(?:precision|custom-uniforms|versions\/|intellisense|keyboard|test\.)/.test(project.name);
@@ -474,7 +474,7 @@ describe("slang-multipass-test shader corpus", () => {
     }
     expect(slang.image).toContain("ddx(sample.energy)");
     expect(glsl.image).toContain("dFdx(sampleValue.energy)");
-    expect(slang.buffers?.["__shader_studio_vertex__:Image"]).toContain("inputs.patternTex.SampleLevel");
+    expect(slang.buffers?.["__shader_studio_vertex__:Image"]).toContain("patternTex.SampleLevel");
     expect(glsl.buffers?.["__shader_studio_vertex__:Image"]).toContain("samplePatternTex");
   });
 

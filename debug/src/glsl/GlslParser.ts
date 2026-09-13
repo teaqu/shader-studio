@@ -274,6 +274,30 @@ export class GlslParser {
     return globals;
   }
 
+  /**
+   * Every identifier the source mentions. Runs over the preprocessed lines, so
+   * disabled preprocessor branches are already gone; comments survive that
+   * pass and are stripped here.
+   */
+  static collectUsedIdentifiers(lines: string[]): Set<string> {
+    const document = GlslParser.getDocument(lines);
+    const identifiers = new Set<string>();
+    const withoutBlockComments = document.effectiveLines
+      .join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n');
+
+    for (const line of withoutBlockComments) {
+      for (const token of GlslParser.tokenize(GlslParser.stripLineComments(line))) {
+        if (token.type === 'identifier') {
+          identifiers.add(token.value);
+        }
+      }
+    }
+
+    return identifiers;
+  }
+
   static getUsedGlobalVariables(lines: string[], functionInfo: FunctionInfo): ScopedVarInfo[] {
     const globals = GlslParser.getGlobalVariables(lines);
     if (!functionInfo.name || functionInfo.start < 0) {

@@ -28,13 +28,15 @@ describe("Slang channel metadata WebGPU E2E", () => {
     try {
       await harness.compile({
         image: `float4 mainImage(float2 p) {
-          float sum = ${Array.from({ length: count }, (_, i) => `inputs.tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
+          float sum = ${Array.from({ length: count }, (_, i) => `tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
           return float4(sum * ${255 / (count * (count + 1) / 2)}, 0, 0, 1);
         }`,
         config: { version: "1", passes: { Image: { inputs } } },
       });
       expect(await harness.renderAndReadPixels()).toEqual(Array.from({ length: 4 }, () => [255, 0, 0, 255]));
-    } finally { harness.dispose(); }
+    } finally {
+      harness.dispose();
+    }
   });
 
   it("preserves different upload and sampler settings for one image URL", { timeout: 30_000 }, async () => {
@@ -48,9 +50,9 @@ describe("Slang channel metadata WebGPU E2E", () => {
     try {
       await harness.compile({
         image: `float4 mainImage(float2 p) {
-          float a = abs(inputs.a.SampleLevel(float2(0.25), 0).r - inputs.b.SampleLevel(float2(0.25), 0).r);
-          float b = abs(inputs.a.SampleLevel(float2(0.25, 1.25), 0).r - inputs.c.SampleLevel(float2(0.25, 1.25), 0).r);
-          return float4(a, b, float(inputs.b.size.y) / 2.0, 1);
+          float uploadDifference = abs(a.SampleLevel(float2(0.25), 0).r - b.SampleLevel(float2(0.25), 0).r);
+          float samplerDifference = abs(a.SampleLevel(float2(0.25, 1.25), 0).r - c.SampleLevel(float2(0.25, 1.25), 0).r);
+          return float4(uploadDifference, samplerDifference, float(b.size.y) / 2.0, 1);
         }`,
         config: { version: "1", passes: { Image: { inputs: {
           a: { type: "texture", path, filter: "nearest", wrap: "repeat", vflip: true },
@@ -59,18 +61,20 @@ describe("Slang channel metadata WebGPU E2E", () => {
         } } } },
       });
       expect(await harness.renderAndReadPixels()).toEqual(Array.from({ length: 4 }, () => [255, 255, 255, 255]));
-    } finally { harness.dispose(); }
+    } finally {
+      harness.dispose();
+    }
   });
 
   it("uses deduplicated channels in compute and retains output bindings after resize", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness("slang");
     try {
       await harness.compile({
-        image: "float4 mainImage(float2 p) { return inputs.result.SampleLevel(p / iResolution.xy, 0); }",
+        image: "float4 mainImage(float2 p) { return result.SampleLevel(p / iResolution.xy, 0); }",
         buffers: { Compute: `[shader("compute")] [numthreads(1, 1, 1)]
           void fill(uint3 id : SV_DispatchThreadID) {
-            float sum = ${Array.from({ length: 24 }, (_, i) => `inputs.tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
-            writeOutput(id.xy, float4(float2(inputs.tex23.size) / float2(256, 3), sum, 1));
+            float sum = ${Array.from({ length: 24 }, (_, i) => `tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
+            writeOutput(id.xy, float4(float2(tex23.size) / float2(256, 3), sum, 1));
           }` },
         config: { version: "1", passes: {
           Image: { inputs: { result: { type: "buffer", source: "Compute" } } },
@@ -82,7 +86,9 @@ describe("Slang channel metadata WebGPU E2E", () => {
       expect(await harness.renderAndReadPixels()).toEqual(Array.from({ length: 4 }, () => [255, 255, 0, 255]));
       harness.resize(4, 4);
       expect(await harness.renderAndReadPixels()).toEqual(Array.from({ length: 4 }, () => [255, 255, 0, 255]));
-    } finally { harness.dispose(); }
+    } finally {
+      harness.dispose();
+    }
   });
 
   it("renders 24 aliases of one texture without exhausting sampler bindings", { timeout: 30_000 }, async () => {
@@ -90,15 +96,17 @@ describe("Slang channel metadata WebGPU E2E", () => {
     try {
       await harness.compile({
         image: `float4 mainImage(float2 fragCoord) {
-          float value = ${Array.from({ length: 24 }, (_, i) => `inputs.tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
-          return float4(float2(inputs.tex23.size) / float2(256.0, 3.0), value, 1.0);
+          float value = ${Array.from({ length: 24 }, (_, i) => `tex${i}.SampleLevel(float2(0.5), 0).r`).join(" + ")};
+          return float4(float2(tex23.size) / float2(256.0, 3.0), value, 1.0);
         }`,
         config: { version: "1", passes: { Image: { inputs: Object.fromEntries(
           Array.from({ length: 24 }, (_, i) => [`tex${i}`, { type: "keyboard" as const }]),
         ) } } },
       });
       expect(await harness.renderAndReadPixels()).toEqual(Array.from({ length: 4 }, () => [255, 255, 0, 255]));
-    } finally { harness.dispose(); }
+    } finally {
+      harness.dispose();
+    }
   });
 
   it("compiles a Slang shader with no configured inputs", { timeout: 30_000 }, async () => {
@@ -124,7 +132,7 @@ describe("Slang channel metadata WebGPU E2E", () => {
     try {
       await expect(harness.compile({
         image: `float4 mainImage(float2 fragCoord) {
-          return inputs.iChannel3.Sample(fragCoord / iResolution.xy);
+          return iChannel3.Sample(fragCoord / iResolution.xy);
         }`,
       })).rejects.toThrow(/iChannel3|undefined identifier/i);
     } finally {
@@ -137,7 +145,7 @@ describe("Slang channel metadata WebGPU E2E", () => {
     try {
       await harness.compile({
         image: `float4 mainImage(float2 fragCoord) {
-          return float4(float2(inputs.iChannel14.size) / float2(256.0, 3.0), 1.0, 1.0);
+          return float4(float2(iChannel14.size) / float2(256.0, 3.0), 1.0, 1.0);
         }`,
         config: slot14Config,
       });

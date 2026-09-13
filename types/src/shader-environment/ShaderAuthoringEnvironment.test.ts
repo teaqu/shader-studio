@@ -53,8 +53,7 @@ describe("ShaderAuthoringEnvironment", () => {
     }
     expect(generated.uri).toBe("file:///shaders/image.glsl");
     expect(generated.generatedLineCount).toBe(generated.text.split("\n").length);
-    expect(slang.text).toContain("struct ShaderStudioInputs");
-    expect(slang.text).toContain("static ShaderStudioInputs inputs;");
+    expect(slang.text).not.toContain("ShaderStudioInputs");
     expect(slang.text).not.toContain("sampleIChannel");
     expect(slang.text).not.toContain("iChannelResolution");
   });
@@ -114,7 +113,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(buildSlangAuthoringModule({ ...environment, languageId: "slang" }).text).toContain("ShaderStudioChannelCube sky");
   });
 
-  it("models Slang inputs as named members with implementation-only bindings", () => {
+  it("models Slang channels as direct globals with implementation-only bindings", () => {
     const environment = {
       ...baseEnvironment("glsl"),
       resources: [
@@ -138,7 +137,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(glsl.text).toContain("} iCh0;");
     expect(glsl.text).toContain("} iCh4;");
     expect(glsl.text).toContain("  samplerCube sampler;");
-    expect(slang.text).toContain("struct ShaderStudioInputs");
+    expect(slang.text).not.toContain("ShaderStudioInputs");
     expect(slang.text).toContain("ShaderStudioChannelCube sky");
     expect(slang.text).toContain("ShaderStudioChannel2D noise");
     expect(slang.text).toContain("ShaderStudioChannel3D volume");
@@ -290,7 +289,7 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(render.text).toContain("StructuredBuffer<uint> counters;");
   });
 
-  it("allows iChannel names as Slang input members but reserves inputs for storage", () => {
+  it("preserves user-authored identifiers named inputs after removing the inputs container", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "inputs", kind: "storage" as const, elementType: "float4" }],
@@ -298,15 +297,12 @@ describe("ShaderAuthoringEnvironment", () => {
     const glsl = buildGlslAuthoringPreamble({ ...environment, languageId: "glsl" });
     const slang = buildSlangAuthoringModule(environment);
 
-    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
-      code: "reserved-identifier",
-      message: 'Resource "inputs" conflicts with a Shader Studio built-in.',
-    });
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
     expect(glsl.text.match(/uniform sampler2D iChannel0;/g)).toHaveLength(1);
     expect(slang.text).toContain("StructuredBuffer<float4> inputs;");
   });
 
-  it("permits an input named inputs as a member of the inputs object", () => {
+  it("permits a direct channel named inputs", () => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name: "inputs", kind: "texture-2d" as const }],
@@ -314,6 +310,16 @@ describe("ShaderAuthoringEnvironment", () => {
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
     expect(buildSlangAuthoringModule(environment).text).toContain("ShaderStudioChannel2D inputs");
+  });
+
+  it("permits a user-authored Slang uniform named inputs", () => {
+    const environment = {
+      ...baseEnvironment("slang"),
+      customUniforms: [{ name: "inputs", type: "float" as const }],
+    };
+
+    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    expect(buildSlangAuthoringModule(environment).text).toContain("float inputs;");
   });
 
   it("keeps iChannel names exact rather than translating them to aliases", () => {
@@ -665,7 +671,6 @@ describe("ShaderAuthoringEnvironment", () => {
     ["glsl", "iCh0"],
     ["slang", "iTime"],
     ["slang", "iWorldPosition"],
-    ["slang", "inputs"],
   ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
     const environment = {
       ...baseEnvironment(languageId),
@@ -707,7 +712,7 @@ describe("ShaderAuthoringEnvironment", () => {
     };
 
     expect(validateShaderAuthoringEnvironment(environment)).toEqual([
-      { code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in.` },
+      { code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.` },
     ]);
   });
 
@@ -719,13 +724,15 @@ describe("ShaderAuthoringEnvironment", () => {
     "float4",
     "Texture2D",
     "SamplerState",
-  ])("allows a Slang input member named after a generated type dependency: %s", (name) => {
+  ])("rejects a direct Slang channel that collides with a generated type dependency: %s", (name) => {
     const environment = {
       ...baseEnvironment("slang"),
       resources: [{ name, kind: "texture-2d" as const }],
     };
 
-    expect(validateShaderAuthoringEnvironment(environment)).toEqual([]);
+    expect(validateShaderAuthoringEnvironment(environment)).toContainEqual({
+      code: "reserved-identifier", message: `Resource "${name}" conflicts with a Shader Studio built-in. Rename the .sha.json input key to use direct Slang channel syntax.`,
+    });
   });
 
   it.each(["Texture2D", "SamplerState"])(

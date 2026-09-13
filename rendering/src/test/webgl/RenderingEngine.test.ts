@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
+import { CustomUniformManager } from "../../webgl/CustomUniformManager";
 import { ConfigValidator } from "../../util/ConfigValidator";
 import type { ShaderConfig } from "@shader-studio/types";
 import type { PixelRegionResult } from "../../types/PixelRegion";
@@ -32,7 +33,10 @@ describe("RenderingEngine", () => {
       configurable: true
     });
     Object.defineProperty(renderingEngine, 'customUniformManager', {
-      value: { clear: vi.fn(), loadDeclarations: vi.fn(), hasUniforms: vi.fn().mockReturnValue(false), getValues: vi.fn().mockReturnValue([]) },
+      value: {
+        clear: vi.fn(), loadDeclarations: vi.fn(), hasUniforms: vi.fn().mockReturnValue(false),
+        getValues: vi.fn().mockReturnValue([]), setValues: vi.fn(), updateValues: vi.fn(),
+      },
       writable: true,
       configurable: true
     });
@@ -181,6 +185,78 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("pending custom uniform values", () => {
+    const installRealManager = () => {
+      Object.defineProperty(renderingEngine, "customUniformManager", {
+        value: new CustomUniformManager(), writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "shaderPipeline", {
+        value: {
+          setCustomUniformManager: vi.fn(),
+          compileShaderPipeline: vi.fn().mockResolvedValue({ success: true }),
+          getPasses: vi.fn().mockReturnValue([]),
+        }, writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "timeManager", {
+        value: { getCurrentTime: vi.fn().mockReturnValue(0), isPaused: vi.fn().mockReturnValue(false) },
+        writable: true, configurable: true,
+      });
+      Object.defineProperty(renderingEngine, "resourceManager", {
+        value: { syncAllVideosToTime: vi.fn(), resumeAllVideos: vi.fn(), pauseAllVideos: vi.fn() },
+        writable: true, configurable: true,
+      });
+    };
+
+    const compileWithGain = () => renderingEngine.compileShaderPipeline(
+      "void mainImage() {}", null, "test.glsl", {}, "uniform float gain;",
+      [{ name: "gain", type: "float" }],
+    );
+
+    it("keeps a newer delta received after a full snapshot through compilation", async () => {
+      installRealManager();
+      renderingEngine.setCustomUniformValues([
+        { name: "gain", type: "float", value: 1 },
+        { name: "enabled", type: "bool", value: false },
+      ]);
+      renderingEngine.updateCustomUniformValues([
+        { name: "gain", type: "float", value: 2 },
+      ]);
+
+      await compileWithGain();
+
+      expect(renderingEngine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2 },
+      ]);
+    });
+
+    it("preserves a delta-only snapshot through compilation", async () => {
+      installRealManager();
+      renderingEngine.updateCustomUniformValues([
+        { name: "gain", type: "float", value: 2 },
+      ]);
+
+      await compileWithGain();
+
+      expect(renderingEngine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 2 },
+      ]);
+    });
+
+    it("filters renamed and type-changed pending values when installing declarations", async () => {
+      installRealManager();
+      renderingEngine.setCustomUniformValues([
+        { name: "gone", type: "float", value: 4 },
+        { name: "gain", type: "vec2", value: [1, 2] },
+      ]);
+
+      await compileWithGain();
+
+      expect(renderingEngine.getCurrentCustomUniforms()).toEqual([
+        { name: "gain", type: "float", value: 0 },
+      ]);
+    });
+  });
+
   describe('Buffer Update Tests', () => {
     let mockPipeline: any;
 
@@ -219,7 +295,7 @@ describe("RenderingEngine", () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          BufferA: { 
+          BufferA: {
             inputs: {},
             path: 'buffer-a.glsl'
           }
@@ -243,7 +319,7 @@ describe("RenderingEngine", () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          BufferA: { 
+          BufferA: {
             inputs: {},
             path: 'buffer-a.glsl'
           }
@@ -269,7 +345,7 @@ describe("RenderingEngine", () => {
       );
 
       expect(result).toEqual({ success: true });
-      
+
       // Check the second call (buffer update) specifically
       expect(mockPipeline.compileShaderPipeline).toHaveBeenCalledTimes(2);
       const bufferUpdateCall = mockPipeline.compileShaderPipeline.mock.calls[1];
@@ -286,7 +362,7 @@ describe("RenderingEngine", () => {
         version: '1.0',
         passes: {
           Image: { inputs: {} },
-          BufferA: { 
+          BufferA: {
             inputs: {},
             path: 'buffer-a.glsl'
           }
@@ -323,7 +399,7 @@ describe("RenderingEngine", () => {
     it('should handle buffer update when no config is set', async () => {
       // Don't initialize with any config - but set up mock pipeline
       mockPipeline.getPasses.mockReturnValue([]);
-      
+
       const result = await renderingEngine.updateBufferAndRecompile(
         'BufferA',
         'some content'
@@ -1461,6 +1537,43 @@ describe("RenderingEngine", () => {
 
       const result = renderingEngine.getAudioState("nonexistent.mp3");
       expect(result).toBeNull();
+    });
+  });
+
+  describe("getChannelTimes", () => {
+    it("should delegate to frameRenderer.getChannelTimes", () => {
+      mockFrameRenderer.getChannelTimes = vi.fn().mockReturnValue([1.5, 2.5, 0, 0]);
+
+      expect(renderingEngine.getChannelTimes()).toEqual([1.5, 2.5, 0, 0]);
+      expect(mockFrameRenderer.getChannelTimes).toHaveBeenCalled();
+    });
+
+    it("should return zeros when the frame renderer is unavailable", () => {
+      Object.defineProperty(renderingEngine, 'frameRenderer', {
+        value: undefined, writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.getChannelTimes()).toEqual([0, 0, 0, 0]);
+    });
+  });
+
+  describe("getAudioSampleRate", () => {
+    it("should delegate to resourceManager.getAudioSampleRate", () => {
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: { getAudioSampleRate: vi.fn().mockReturnValue(48000) },
+        writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.getAudioSampleRate()).toBe(48000);
+    });
+
+    it("should fall back to 44100 when no audio is loaded", () => {
+      Object.defineProperty(renderingEngine, 'resourceManager', {
+        value: { getAudioSampleRate: vi.fn().mockReturnValue(0) },
+        writable: true, configurable: true,
+      });
+
+      expect(renderingEngine.getAudioSampleRate()).toBe(44100);
     });
   });
 

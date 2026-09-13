@@ -7,13 +7,13 @@ const pattern = `float4 mainImage(float2 c) {
 
 describe('Slang typed inputs rendering', () => {
   it.each([
-    'inputs.pattern.Sample(uv)',
-    'inputs.pattern.SampleLevel(uv, 0.0)',
-    'inputs.pattern.SampleGrad(uv, ddx(uv), ddy(uv))',
-    'inputs.pattern.Sample(inputs.pattern.sampler, uv)',
-    'inputs.pattern.SampleLevel(inputs.pattern.sampler, uv, 0.0)',
-    'inputs.pattern.SampleGrad(inputs.pattern.sampler, uv, ddx(uv), ddy(uv))',
-    'inputs.pattern.texture.Sample(inputs.pattern.sampler, float2(uv.x, 1.0 - uv.y))',
+    'pattern.Sample(uv)',
+    'pattern.SampleLevel(uv, 0.0)',
+    'pattern.SampleGrad(uv, ddx(uv), ddy(uv))',
+    'pattern.Sample(pattern.sampler, uv)',
+    'pattern.SampleLevel(pattern.sampler, uv, 0.0)',
+    'pattern.SampleGrad(pattern.sampler, uv, ddx(uv), ddy(uv))',
+    'pattern.texture.Sample(pattern.sampler, float2(uv.x, 1.0 - uv.y))',
   ])('preserves bottom-left image coordinates through %s', { timeout: 30_000 }, async (sample) => {
     const harness = createShaderCanvasHarness('slang');
     try {
@@ -52,8 +52,8 @@ describe('Slang typed inputs rendering', () => {
       await harness.compile({
         image: `float4 mainImage(float2 c) {
           float2 uv = float2(0.5, 0.5);
-          float4 nearest = inputs.pattern.SampleLevel(uv, 0);
-          float4 linear = inputs.pattern.SampleLevel(inputs.linear.sampler, uv, 0);
+          float4 nearest = pattern.SampleLevel(uv, 0);
+          float4 linear = pattern.SampleLevel(linear.sampler, uv, 0);
           return float4(abs(nearest.r - linear.r), linear.g, 0, 1);
         }`,
         config: { version: '1', passes: {

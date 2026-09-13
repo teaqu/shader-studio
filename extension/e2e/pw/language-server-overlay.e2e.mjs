@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { openEditorOverlay } from './editor-overlay.mjs';
 
 const shaderPath = join(workspacePath, 'overlay-language-service.slang');
 
@@ -7,7 +8,9 @@ function helpers(vscode) {
   let frame;
   const app = () => frame;
 
-  const refreshFrame = async () => { frame = await vscode.shaderFrame(); return frame; };
+  const refreshFrame = async () => {
+    frame = await vscode.shaderFrame(); return frame;
+  };
 
   const overlayReady = () => expect.poll(
     () => app().locator('.editor-overlay .monaco-editor').count(),
@@ -42,7 +45,9 @@ function helpers(vscode) {
         (candidate) => candidate.nodeType === Node.TEXT_NODE && candidate.textContent?.includes(needle),
       );
       const index = node ? (node.textContent ?? '').indexOf(needle) : -1;
-      if (index < 0) return null;
+      if (index < 0) {
+        return null;
+      }
       const range = document.createRange();
       range.setStart(node, index);
       range.setEnd(node, index + needle.length);
@@ -50,7 +55,9 @@ function helpers(vscode) {
       const box = element.getBoundingClientRect();
       return { x: token.left - box.left + token.width / 2, y: token.top - box.top + token.height / 2 };
     }, text);
-    if (!position) throw new Error(`token ${text} was not found in the overlay`);
+    if (!position) {
+      throw new Error(`token ${text} was not found in the overlay`);
+    }
     return { span, position };
   }
 
@@ -89,16 +96,8 @@ test.describe('Shader language servers in the Monaco overlay', () => {
       await vscode.commands.executeCommand('shader-studio.view');
     }, shaderPath);
 
+    await openEditorOverlay(vscode);
     await h.refreshFrame();
-
-    const overlayVisible = await h.app().locator('.editor-overlay .monaco-editor').count();
-    if (!overlayVisible) {
-      await vscode.evaluateInHost(async (vscode) => {
-        await vscode.commands.executeCommand('shader-studio.toggleEditorOverlay');
-      });
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await h.refreshFrame();
-    }
     await h.overlayReady();
   });
 
@@ -120,7 +119,9 @@ test.describe('Shader language servers in the Monaco overlay', () => {
 
     await expect.poll(async () => {
       const marker = await h.app().locator('.editor-overlay .squiggly-error').count();
-      if (marker) return 'marker';
+      if (marker) {
+        return 'marker';
+      }
       return h.app().evaluate(() => JSON.stringify({
         rendererError: document.querySelector('.error-tooltip-content')?.textContent?.trim() ?? null,
         activeBuffer: document.querySelector('.editor-overlay')?.getAttribute('data-active-buffer') ?? null,

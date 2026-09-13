@@ -88,8 +88,14 @@ float playbackSeconds = albedo.time;
 bool ready = albedo.loaded;
 ```
 
-`inputs.albedo` remains an alias. Older channel names that collide with Slang
-module globals or types remain accessible only through `inputs`.
+Slang channel objects are direct globals. `inputs.albedo` is no longer
+available: migrate it to `albedo` (and likewise change `inputs.iChannel0` to
+`iChannel0`). The configured name must be a valid, non-reserved Slang global;
+Shader Studio reports a diagnostic when it is not. This does not change the
+`.sha.json` `inputs` field, which continues to hold channel configuration.
+A local variable with the same name shadows the channel; rename that local
+if you need to sample the channel from that scope.
+
 The methods also accept an explicit sampler as their first argument:
 `albedo.Sample(reference.sampler, uv)`. The spelling is `SampleLevel`, not `SampleLod`.
 
@@ -327,4 +333,4 @@ float pressed = texture(iChannel1, vec2(32.0 / 256.0, 0.50)).r;  // Space just p
 
 ## Next
 
-[Time and Playback Controls](time-controls.md) — scrub, loop, and control playback speed
+[Uniforms](uniforms.md) — built-in and custom uniforms, including channel samplers

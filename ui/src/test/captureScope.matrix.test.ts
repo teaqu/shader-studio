@@ -89,6 +89,9 @@ function functionRanges(source: string): { name: string; start: number; end: num
     if (!ranges.some((range) => range.start === enclosing.start + 1)) {
       ranges.push({ name: enclosing.name, start: enclosing.start + 1, end: enclosing.end + 1 });
     }
+    // Every remaining line of this function resolves to the range just
+    // recorded, and the parser walk is the sweep's dominant cost.
+    index = Math.max(index, enclosing.end);
   }
   return ranges;
 }
@@ -119,15 +122,34 @@ function localsOf(source: string, range: { start: number; end: number }): Set<st
   return names;
 }
 
-/** What the capture pipeline resolves for a break at one line, inspected at another. */
-function inspect(source: string, breakLine: number, inspectLine: number): string[] {
+/**
+ * What the capture pipeline resolves for one break, ready to be asked about
+ * many inspected lines. The cut source, the broken function's range, and the
+ * scope of a given line are all fixed once the break is chosen, so the sweep
+ * below pays for each of them once per break instead of once per line.
+ */
+function prepareInspect(source: string, breakLine: number): (inspectLine: number) => string[] {
   const captureCode = truncateFunctionBodyAt(source, breakLine) ?? source;
   const broken = enclosingFunctionRange(source, breakLine);
-  const insideBroken = broken !== null && inspectLine >= broken.start && inspectLine <= broken.end;
-  const zeroBased = inspectLine - 1;
-  const effective = insideBroken && zeroBased >= breakLine - 2 ? breakLine - 2 : zeroBased;
-  return VariableCaptureBuilder.getAllInScopeVariables(captureCode, effective)
-    .map((variable) => variable.varName);
+  const byEffectiveLine = new Map<number, string[]>();
+  return (inspectLine: number) => {
+    const insideBroken = broken !== null && inspectLine >= broken.start && inspectLine <= broken.end;
+    const zeroBased = inspectLine - 1;
+    const effective = insideBroken && zeroBased >= breakLine - 2 ? breakLine - 2 : zeroBased;
+    const cached = byEffectiveLine.get(effective);
+    if (cached) {
+      return cached;
+    }
+    const resolved = VariableCaptureBuilder.getAllInScopeVariables(captureCode, effective)
+      .map((variable) => variable.varName);
+    byEffectiveLine.set(effective, resolved);
+    return resolved;
+  };
+}
+
+/** What the capture pipeline resolves for a break at one line, inspected at another. */
+function inspect(source: string, breakLine: number, inspectLine: number): string[] {
+  return prepareInspect(source, breakLine)(inspectLine);
 }
 
 describe('capture scope with a break anywhere in the shader', () => {
@@ -175,61 +197,67 @@ describe('capture scope with a break anywhere in the shader', () => {
       .toEqual(['revcol', 'hash21', 'noise', 'fbm', 'mainImage']);
   });
 
-  const breakLocations = ranges.flatMap((broken) => {
-    const locations: { broken: typeof broken; breakAfter: number }[] = [];
-    for (let breakAfter = broken.start + 1; breakAfter < broken.end; breakAfter += 1) {
-      locations.push({ broken, breakAfter });
-    }
-    return locations;
-  });
+  // One case per function that can hold the break: the same sweep as a single
+  // loop, split so each case reports which function's breaks failed.
+  it.each(ranges.map((range) => [range.name, range] as const))(
+    'never reports another function\'s locals for any break inside %s',
+    (_name, broken) => {
+      const failures: string[] = [];
 
-  it.each(breakLocations)('never reports another function\'s locals after a break in $broken.name at line $breakAfter', ({ broken, breakAfter }) => {
-    const failures: string[] = [];
+      // Put the break after each statement of this function in turn, starting
+      // inside the body: between a signature and its brace is not a statement.
+      for (let breakAfter = broken.start + 1; breakAfter < broken.end; breakAfter += 1) {
+        const source = [
+          ...lines.slice(0, breakAfter),
+          'd',
+          ...lines.slice(breakAfter),
+        ].join('\n');
 
-    const source = [
-      ...lines.slice(0, breakAfter),
-      'd',
-      ...lines.slice(breakAfter),
-    ].join('\n');
+        const detected = firstUnterminatedStatementLine(source);
+        if (detected !== breakAfter + 1) {
+          failures.push(`break after ${breakAfter}: detected ${detected}`);
+          continue;
+        }
 
-    const detected = firstUnterminatedStatementLine(source);
-    if (detected !== breakAfter + 1) {
-      failures.push(`break after ${breakAfter}: detected ${detected}`);
-    } else {
-      for (const inspected of functionRanges(source)) {
-        const foreign = functionRanges(source)
-          .filter((range) => range.name !== inspected.name)
-          .flatMap((range) => [...localsOf(source, range)]);
+        const sourceRanges = functionRanges(source);
+        const localsByRange = sourceRanges.map((range) => localsOf(source, range));
+        const inspectAt = prepareInspect(source, detected);
 
-        for (let line = inspected.start + 1; line < inspected.end; line += 1) {
-          // Braces and blank lines are not positions a user inspects, and a
-          // position before a body opens belongs to no scope in particular.
-          const text = lines[line - 1]?.trim() ?? '';
-          if (text === '' || text === '{' || text === '}') {
-            continue;
-          }
-          const reported = inspect(source, detected, line);
-          const leaked = reported.filter((name) => foreign.includes(name)
-            && !localsOf(source, inspected).has(name));
-          if (leaked.length > 0) {
-            failures.push(
-              `break@${detected} inspect@${line} (${inspected.name}) leaked ${leaked.join(',')}`,
-            );
-          }
+        for (const [index, inspected] of sourceRanges.entries()) {
+          const own = localsByRange[index]!;
+          const foreign = new Set(localsByRange.flatMap((locals, other) => (
+            other === index ? [] : [...locals]
+          )));
 
-          // A capture that reports nothing at all is as useless as a wrong
-          // one, so the line must still see something it can name - unless
-          // the cut removed everything above it in this function.
-          const cutAbove = detected <= inspected.start + 1;
-          if (reported.length === 0 && !cutAbove && line > inspected.start + 1) {
-            failures.push(`break@${detected} inspect@${line} (${inspected.name}) reported nothing`);
+          for (let line = inspected.start + 1; line < inspected.end; line += 1) {
+            // Braces and blank lines are not positions a user inspects, and a
+            // position before a body opens belongs to no scope in particular.
+            const text = lines[line - 1]?.trim() ?? '';
+            if (text === '' || text === '{' || text === '}') {
+              continue;
+            }
+            const reported = inspectAt(line);
+            const leaked = reported.filter((name) => foreign.has(name) && !own.has(name));
+            if (leaked.length > 0) {
+              failures.push(
+                `break@${detected} inspect@${line} (${inspected.name}) leaked ${leaked.join(',')}`,
+              );
+            }
+
+            // A capture that reports nothing at all is as useless as a wrong
+            // one, so the line must still see something it can name - unless
+            // the cut removed everything above it in this function.
+            const cutAbove = detected <= inspected.start + 1;
+            if (reported.length === 0 && !cutAbove && line > inspected.start + 1) {
+              failures.push(`break@${detected} inspect@${line} (${inspected.name}) reported nothing`);
+            }
           }
         }
       }
-    }
 
-    expect(failures.slice(0, 12).join('\n')).toBe('');
-  });
+      expect(failures.slice(0, 12).join('\n')).toBe('');
+    },
+  );
 
   it('reports a nested block\'s variables when the break is below them', () => {
     // The break sits after a `{ ... }` scope inside mainImage; what the block

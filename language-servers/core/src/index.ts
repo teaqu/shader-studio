@@ -5,3 +5,4 @@ export * from "./colors";
 export * from "./sourcePosition";
 export * from "./workerTransport";
 export * from "./memberAccess";
+export * from "./declarationContext";

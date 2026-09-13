@@ -37,6 +37,8 @@
       commonEditorPath = path;
     }
   });
+  // File panes stay on their own document when the preview switches shaders.
+  const fileSession = $derived(session?.shaderPath === path ? session : null);
   let vimMode = $state(false);
 </script>
 
@@ -46,7 +48,7 @@
     {#if fileCode !== null}
       <div class="editor-content">
         <ShaderEditor isVisible={true} shaderCode={fileCode} shaderPath={path} {transport}
-          activeBufferName={commonEditorPath === path ? "Common" : "Image"}
+          errors={fileSession?.errors ?? []} activeBufferName={commonEditorPath === path ? "Common" : (fileSession?.activeBufferName ?? "Image")}
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
           onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}

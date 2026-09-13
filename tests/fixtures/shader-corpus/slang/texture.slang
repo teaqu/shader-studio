@@ -1,5 +1,3 @@
-import shader_studio;
-
 // Texture input smoke test for Slang/WebGPU.
 //
 // Config: texture.sha.json binds assets/orientation-texture.svg to iChannel0.
@@ -8,7 +6,7 @@ import shader_studio;
 float4 mainImage(float2 fragCoord)
 {
     float2 uv = fragCoord / iResolution.xy;
-    float3 tex = inputs.iChannel0.Sample(uv).rgb;
+    float3 tex = iChannel0.Sample(uv).rgb;
 
     // Light checker underlay makes failed/black texture loads obvious.
     float2 cells = floor(uv * 16.0);
@@ -18,11 +16,11 @@ float4 mainImage(float2 fragCoord)
 
     // Sample fixed points and display them as verification swatches:
     // top, left, bottom, right, center.
-    float3 topSample = inputs.iChannel0.Sample(float2(0.5, 0.94)).rgb;
-    float3 leftSample = inputs.iChannel0.Sample(float2(0.06, 0.5)).rgb;
-    float3 bottomSample = inputs.iChannel0.Sample(float2(0.5, 0.06)).rgb;
-    float3 rightSample = inputs.iChannel0.Sample(float2(0.94, 0.5)).rgb;
-    float3 centerSample = inputs.iChannel0.Sample(float2(0.5, 0.5)).rgb;
+    float3 topSample = iChannel0.Sample(float2(0.5, 0.94)).rgb;
+    float3 leftSample = iChannel0.Sample(float2(0.06, 0.5)).rgb;
+    float3 bottomSample = iChannel0.Sample(float2(0.5, 0.06)).rgb;
+    float3 rightSample = iChannel0.Sample(float2(0.94, 0.5)).rgb;
+    float3 centerSample = iChannel0.Sample(float2(0.5, 0.5)).rgb;
 
     if (uv.x > 0.08 && uv.x < 0.20 && uv.y > 0.84 && uv.y < 0.96) col = topSample;
     if (uv.x > 0.08 && uv.x < 0.20 && uv.y > 0.68 && uv.y < 0.80) col = leftSample;

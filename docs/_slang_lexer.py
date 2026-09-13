@@ -121,7 +121,7 @@ class SlangLexer(RegexLexer):
                 # Ray tracing
                 "RaytracingAccelerationStructure",
                 # Built-in shader objects (Slang/ShaderToy)
-                "ShaderStudioInputs", "ShaderStudioChannel2D", "ShaderStudioChannelCube", "ShaderStudioChannel3D",
+                "ShaderStudioChannel2D", "ShaderStudioChannelCube", "ShaderStudioChannel3D",
             ), prefix=r"\b", suffix=r"\b"), Keyword.Type),
             # --- Slang / HLSL attributes ---
             (r"\[(?:shader|numthreads|domain|earlydepthstencil|instance"

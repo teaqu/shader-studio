@@ -539,7 +539,7 @@
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleLineLock())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleLineLock())}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       aria-label="Toggle line lock"
       data-tooltip={isLineLocked ? "Unlock line" : "Lock to line"}
@@ -556,7 +556,7 @@
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.cycleNormalizeMode())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.cycleNormalizeMode())}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       aria-label="Cycle normalize mode"
       data-tooltip={normalizeTooltip}
@@ -572,7 +572,7 @@
       onpointerdown={(event) => handleHeaderControlPointerDown(event, () => shaderDebugManager?.toggleStep())}
       onkeydown={(event) => handleHeaderControlKeydown(event, () => shaderDebugManager?.toggleStep())}
       onclick={(event) => {
-        event.preventDefault(); event.stopPropagation(); 
+        event.preventDefault(); event.stopPropagation();
       }}
       aria-label="Toggle step threshold"
       data-tooltip={isStepEnabled ? `Step: ON (edge=${stepEdge})` : "Step: OFF\nBinary threshold"}
@@ -606,6 +606,7 @@
         <div
           class="line-tooltip"
           class:visible={isLineTooltipVisible}
+          style:pointer-events={isLineTooltipVisible ? 'auto' : 'none'}
           class:error={debugError}
           class:has-line-content={!debugError && !debugNotice && debugState?.lineContent}
           role="presentation"
@@ -683,7 +684,7 @@
                 value={loop.maxIter ?? ''}
                 oninput={(e) => handleLoopIterInput(loop, e)}
                 use:dragScrub={{ step: 1, onInput: (v) => {
-                  const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null); 
+                  const num = Math.max(1, Math.round(v)); shaderDebugManager?.setLoopMaxIterations(loop.loopIndex, num > 0 ? num : null);
                 } }}
                 class="loop-input"
                 aria-label="Max iterations for loop at line {loop.lineNumber + 1}"

@@ -1,7 +1,7 @@
 // Slang input-object smoke test for texture, audio, keyboard, and cubemap channels.
 //
 // Quadrants: texture (top-left), audio (top-right), keyboard (bottom-left),
-// cubemap (bottom-right). Each panel samples through inputs.iChannelN and has a
+// cubemap (bottom-right). Each panel samples through iChannelN and has a
 // status strip that is green only when size, loaded, and time metadata match.
 
 float box(float2 uv, float2 lo, float2 hi)
@@ -26,25 +26,25 @@ float3 statusColor(float ok)
 float keyValue(float keyCode, float row)
 {
     float2 keyUv = float2((keyCode + 0.5) / 256.0, (row + 0.5) / 3.0);
-    return inputs.iChannel2.Sample(keyUv).r;
+    return iChannel2.Sample(keyUv).r;
 }
 
 float3 texturePanel(float2 p)
 {
     // The source has red/green/blue/yellow edges at top/left/bottom/right.
     // Sampling the full panel makes a vertical inversion immediately visible.
-    return inputs.iChannel0.Sample(p).rgb;
+    return iChannel0.Sample(p).rgb;
 }
 
 float3 audioPanel(float2 p)
 {
-    float spectrum = inputs.iChannel1.Sample(float2(p.x, 0.25)).r;
-    float waveform = inputs.iChannel1.Sample(float2(p.x, 0.75)).r;
+    float spectrum = iChannel1.Sample(float2(p.x, 0.25)).r;
+    float waveform = iChannel1.Sample(float2(p.x, 0.75)).r;
     float3 col = float3(0.015, 0.025, 0.045);
     col += (p.y < spectrum * 0.82 ? 1.0 : 0.0) * float3(0.02, 0.75, 0.95);
     float waveY = 0.52 + (waveform - 0.5) * 0.55;
     col += (abs(p.y - waveY) < 0.018 ? 1.0 : 0.0) * float3(1.0, 0.85, 0.05);
-    float marker = frac(inputs.iChannel1.time / 5.0);
+    float marker = frac(iChannel1.time / 5.0);
     col = lerp(col, float3(1.0, 1.0, 1.0), abs(p.x - marker) < 0.006 ? 0.8 : 0.0);
     return col;
 }
@@ -68,17 +68,17 @@ float3 cubemapPanel(float2 p)
     float yaw = (p.x * 2.0 - 1.0) * 1.75;
     float pitch = (p.y * 2.0 - 1.0) * 1.05;
     float3 dir = normalize(float3(sin(yaw), sin(pitch), cos(yaw) * cos(pitch)));
-    float3 col = inputs.iChannel3.Sample(dir).rgb;
+    float3 col = iChannel3.Sample(dir).rgb;
 
     // Six small direction probes, left to right: +X, -X, +Y, -Y, +Z, -Z.
     // Sample every direction before the fragment-varying branch: WGSL's
     // implicit-derivative texture sampling requires uniform control flow.
-    float3 posX = inputs.iChannel3.Sample(float3(1.0, 0.0, 0.0)).rgb;
-    float3 negX = inputs.iChannel3.Sample(float3(-1.0, 0.0, 0.0)).rgb;
-    float3 posY = inputs.iChannel3.Sample(float3(0.0, 1.0, 0.0)).rgb;
-    float3 negY = inputs.iChannel3.Sample(float3(0.0, -1.0, 0.0)).rgb;
-    float3 posZ = inputs.iChannel3.Sample(float3(0.0, 0.0, 1.0)).rgb;
-    float3 negZ = inputs.iChannel3.Sample(float3(0.0, 0.0, -1.0)).rgb;
+    float3 posX = iChannel3.Sample(float3(1.0, 0.0, 0.0)).rgb;
+    float3 negX = iChannel3.Sample(float3(-1.0, 0.0, 0.0)).rgb;
+    float3 posY = iChannel3.Sample(float3(0.0, 1.0, 0.0)).rgb;
+    float3 negY = iChannel3.Sample(float3(0.0, -1.0, 0.0)).rgb;
+    float3 posZ = iChannel3.Sample(float3(0.0, 0.0, 1.0)).rgb;
+    float3 negZ = iChannel3.Sample(float3(0.0, 0.0, -1.0)).rgb;
     float probe = floor(p.x * 6.0);
     if (p.y < 0.15)
     {
@@ -108,22 +108,22 @@ float4 mainImage(float2 fragCoord)
     if (uv.y >= 0.5 && uv.x < 0.5)
     {
         col = textureCol;
-        metadataOk = metadataMatches(inputs.iChannel0.size, uint2(256, 256), inputs.iChannel0.loaded, inputs.iChannel0.time, false);
+        metadataOk = metadataMatches(iChannel0.size, uint2(256, 256), iChannel0.loaded, iChannel0.time, false);
     }
     else if (uv.y >= 0.5)
     {
         col = audioCol;
-        metadataOk = metadataMatches(inputs.iChannel1.size, uint2(512, 2), inputs.iChannel1.loaded, inputs.iChannel1.time, true);
+        metadataOk = metadataMatches(iChannel1.size, uint2(512, 2), iChannel1.loaded, iChannel1.time, true);
     }
     else if (uv.x < 0.5)
     {
         col = keyboardCol;
-        metadataOk = metadataMatches(inputs.iChannel2.size, uint2(256, 3), inputs.iChannel2.loaded, inputs.iChannel2.time, false);
+        metadataOk = metadataMatches(iChannel2.size, uint2(256, 3), iChannel2.loaded, iChannel2.time, false);
     }
     else
     {
         col = cubemapCol;
-        metadataOk = metadataMatches(inputs.iChannel3.size, uint2(128, 128), inputs.iChannel3.loaded, inputs.iChannel3.time, false);
+        metadataOk = metadataMatches(iChannel3.size, uint2(128, 128), iChannel3.loaded, iChannel3.time, false);
     }
 
     // Green is success, red exposes the panel whose metadata is wrong.

@@ -148,7 +148,7 @@ describe('MenuBar Component', () => {
   describe('Basic Rendering', () => {
     it('should render the menu bar with basic controls', () => {
       renderMenuBar();
-      
+
       expect(screen.getByLabelText('Reset shader')).toBeInTheDocument();
       expect(screen.getByLabelText('Toggle pause')).toBeInTheDocument();
       expect(screen.getByLabelText('Toggle lock')).toBeInTheDocument();
@@ -177,30 +177,30 @@ describe('MenuBar Component', () => {
   describe('Lock State', () => {
     it('should show unlock icon when not locked', () => {
       renderMenuBar({ props: { ...defaultProps, isLocked: false } });
-      
+
       const lockButton = screen.getByLabelText('Toggle lock');
       expect(lockButton).toBeInTheDocument();
     });
 
     it('should show lock icon when locked', () => {
       renderMenuBar({ props: { ...defaultProps, isLocked: true } });
-      
+
       const lockButton = screen.getByLabelText('Toggle lock');
       expect(lockButton).toBeInTheDocument();
     });
 
     it('should call onToggleLock when lock button is clicked', async () => {
       const onToggleLock = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onToggleLock 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onToggleLock
+        }
       });
-      
+
       const lockButton = screen.getByLabelText('Toggle lock');
       await fireEvent.click(lockButton);
-      
+
       expect(onToggleLock).toHaveBeenCalledOnce();
     });
   });
@@ -208,42 +208,42 @@ describe('MenuBar Component', () => {
   describe('Pause/Play Toggle', () => {
     it('should show play icon when paused', () => {
       mockTimeManager.isPaused.mockReturnValue(true);
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          timeManager: mockTimeManager 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          timeManager: mockTimeManager
+        }
       });
-      
+
       const pauseButton = screen.getByLabelText('Toggle pause');
       expect(pauseButton).toBeInTheDocument();
     });
 
     it('should show pause icon when playing', () => {
       mockTimeManager.isPaused.mockReturnValue(false);
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          timeManager: mockTimeManager 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          timeManager: mockTimeManager
+        }
       });
-      
+
       const pauseButton = screen.getByLabelText('Toggle pause');
       expect(pauseButton).toBeInTheDocument();
     });
 
     it('should call onTogglePause when pause button is clicked', async () => {
       const onTogglePause = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onTogglePause 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onTogglePause
+        }
       });
-      
+
       const pauseButton = screen.getByLabelText('Toggle pause');
       await fireEvent.click(pauseButton);
-      
+
       expect(onTogglePause).toHaveBeenCalledOnce();
     });
   });
@@ -251,16 +251,16 @@ describe('MenuBar Component', () => {
   describe('Reset Button', () => {
     it('should call onReset when reset button is clicked', async () => {
       const onReset = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onReset 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onReset
+        }
       });
-      
+
       const resetButton = screen.getByLabelText('Reset shader');
       await fireEvent.click(resetButton);
-      
+
       expect(onReset).toHaveBeenCalledOnce();
     });
   });
@@ -268,65 +268,65 @@ describe('MenuBar Component', () => {
   describe('Options Menu', () => {
     it('should show options menu when three-dots button is clicked', async () => {
       renderMenuBar();
-      
+
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.getByLabelText('Refresh shader')).toBeInTheDocument();
     });
 
     it('should hide options menu when clicking outside', async () => {
       renderMenuBar();
-      
+
       // Open menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.getByLabelText('Refresh shader')).toBeInTheDocument();
-      
+
       // Click outside
       await fireEvent.click(document.body);
-      
+
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
     });
 
     it('should call onRefresh when refresh button is clicked', async () => {
       const onRefresh = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onRefresh 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onRefresh
+        }
       });
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click refresh
       const refreshButton = screen.getByLabelText('Refresh shader');
       await fireEvent.click(refreshButton);
-      
+
       expect(onRefresh).toHaveBeenCalledOnce();
     });
 
     it('should keep menu open when refresh is clicked', async () => {
       const onRefresh = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onRefresh 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onRefresh
+        }
       });
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click refresh
       const refreshButton = screen.getByLabelText('Refresh shader');
       await fireEvent.click(refreshButton);
-      
+
       // Menu should be closed (refresh button should no longer be visible)
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
     });
@@ -335,47 +335,47 @@ describe('MenuBar Component', () => {
   describe('Theme Toggle', () => {
     it('should show theme toggle button in non-VSCode environment', () => {
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       fireEvent.click(optionsButton);
-      
+
       expect(screen.getByLabelText('Toggle theme')).toBeInTheDocument();
     });
 
     it('should show "Dark Mode" text when in light theme', async () => {
       currentTheme.set('light');
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.getByText('Dark Mode')).toBeInTheDocument();
     });
 
     it('should show "Light Mode" text when in dark theme', async () => {
       currentTheme.set('dark');
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.getByText('Light Mode')).toBeInTheDocument();
     });
 
     it('should keep menu open when theme is toggled', async () => {
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Click theme toggle
       const themeButton = screen.getByLabelText('Toggle theme');
       await fireEvent.click(themeButton);
-      
+
       // Menu should still be visible
       expect(screen.getByLabelText('Toggle theme')).toBeInTheDocument();
     });
@@ -384,11 +384,11 @@ describe('MenuBar Component', () => {
   describe('Fullscreen Toggle', () => {
     it('should show fullscreen button in non-VSCode environment', async () => {
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.getByLabelText('Toggle fullscreen')).toBeInTheDocument();
     });
 
@@ -421,10 +421,10 @@ describe('MenuBar Component', () => {
   describe('Resolution Menu', () => {
     it('should show resolution menu when resolution button is clicked', async () => {
       const { container } = renderMenuBar();
-      
+
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       expect(document.body.querySelector('.resolution-menu')).toBeInTheDocument();
       expect(screen.getByText('Resolution Scale')).toBeInTheDocument();
       expect(screen.getByText('Aspect Ratio')).toBeInTheDocument();
@@ -433,16 +433,16 @@ describe('MenuBar Component', () => {
 
     it('should close options menu when resolution menu is opened', async () => {
       renderMenuBar();
-      
+
       // Open options menu first
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
       expect(screen.getByLabelText('Refresh shader')).toBeInTheDocument();
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       // Options menu should be closed
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
       // Resolution menu should be open
@@ -485,21 +485,21 @@ describe('MenuBar Component', () => {
 
     it('should call onZoomChange when zoom slider is moved', async () => {
       const onZoomChange = vi.fn();
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          onZoomChange 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          onZoomChange
+        }
       });
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       // Change zoom
       const zoomSlider = screen.getByDisplayValue('1');
       await fireEvent.input(zoomSlider, { target: { value: '2.0' } });
-      
+
       expect(onZoomChange).toHaveBeenCalledWith(2.0);
     });
 
@@ -854,7 +854,7 @@ describe('MenuBar Component', () => {
   describe('Menu Interactions', () => {
     it('should close resolution menu when clicking outside', async () => {
       renderMenuBar();
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
@@ -868,30 +868,30 @@ describe('MenuBar Component', () => {
 
     it('should close options menu when resolution menu is opened', async () => {
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       // Options menu should be closed
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
     });
 
     it('should close resolution menu when options menu is opened', async () => {
       renderMenuBar();
-      
+
       // Open resolution menu
       const resolutionButton = screen.getByLabelText('Change resolution settings');
       await fireEvent.click(resolutionButton);
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       // Resolution menu should be closed
       expect(screen.queryByText('Quality')).not.toBeInTheDocument();
     });
@@ -902,16 +902,16 @@ describe('MenuBar Component', () => {
       // Mock VSCode environment
       const { isVSCodeEnvironment } = await import('../lib/transport/TransportFactory');
       vi.mocked(isVSCodeEnvironment).mockReturnValue(true);
-      
+
       renderMenuBar();
-      
+
       // Open options menu
       const optionsButton = screen.getByLabelText('Open options menu');
       await fireEvent.click(optionsButton);
-      
+
       expect(screen.queryByLabelText('Toggle theme')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Toggle fullscreen')).not.toBeInTheDocument();
-      
+
       // Reset mock
       vi.mocked(isVSCodeEnvironment).mockReturnValue(false);
     });
@@ -920,13 +920,13 @@ describe('MenuBar Component', () => {
   describe('Lock/Refresh Functionality', () => {
     it('should call onRefresh when unlocking (transitioning from locked to unlocked)', async () => {
       // Start with locked state
-      const { rerender } = renderMenuBar({ 
-        props: { ...defaultProps, isLocked: true } 
+      const { rerender } = renderMenuBar({
+        props: { ...defaultProps, isLocked: true }
       });
 
       // Find the lock button
       const lockButton = screen.getByLabelText('Toggle lock');
-      
+
       // Click to unlock (should trigger refresh)
       await fireEvent.click(lockButton);
 
@@ -937,13 +937,13 @@ describe('MenuBar Component', () => {
 
     it('should NOT call onRefresh when locking (transitioning from unlocked to locked)', async () => {
       // Start with unlocked state
-      renderMenuBar({ 
-        props: { ...defaultProps, isLocked: false } 
+      renderMenuBar({
+        props: { ...defaultProps, isLocked: false }
       });
 
       // Find the lock button
       const lockButton = screen.getByLabelText('Toggle lock');
-      
+
       // Click to lock (should NOT trigger refresh)
       await fireEvent.click(lockButton);
 
@@ -965,19 +965,19 @@ describe('MenuBar Component', () => {
 
       // Verify onRefresh was called
       expect(defaultProps.onRefresh).toHaveBeenCalledTimes(1);
-      
+
       // Verify options menu is closed (should not find refresh button anymore)
       expect(screen.queryByLabelText('Refresh shader')).not.toBeInTheDocument();
     });
 
     it('should handle multiple lock/unlock cycles correctly', async () => {
       // Start unlocked
-      const { rerender } = renderMenuBar({ 
-        props: { ...defaultProps, isLocked: false } 
+      const { rerender } = renderMenuBar({
+        props: { ...defaultProps, isLocked: false }
       });
 
       const lockButton = screen.getByLabelText('Toggle lock');
-      
+
       // First click: unlock → lock (no refresh)
       await fireEvent.click(lockButton);
       expect(defaultProps.onToggleLock).toHaveBeenCalledTimes(1);
@@ -1002,12 +1002,12 @@ describe('MenuBar Component', () => {
 
     it('should maintain correct behavior regardless of initial lock state', async () => {
       // Test starting from locked state
-      const { unmount } = renderMenuBar({ 
-        props: { ...defaultProps, isLocked: true } 
+      const { unmount } = renderMenuBar({
+        props: { ...defaultProps, isLocked: true }
       });
 
       const lockButton = screen.getByLabelText('Toggle lock');
-      
+
       // First unlock should trigger refresh
       await fireEvent.click(lockButton);
       expect(defaultProps.onRefresh).toHaveBeenCalledTimes(1);
@@ -1017,22 +1017,64 @@ describe('MenuBar Component', () => {
 
       // Reset mocks and test starting from unlocked state
       vi.clearAllMocks();
-      
-      const { unmount: unmount2 } = renderMenuBar({ 
-        props: { ...defaultProps, isLocked: false } 
+
+      const { unmount: unmount2 } = renderMenuBar({
+        props: { ...defaultProps, isLocked: false }
       });
 
       const lockButton2 = screen.getByLabelText('Toggle lock');
-      
+
       // First lock should not trigger refresh
       await fireEvent.click(lockButton2);
       expect(defaultProps.onRefresh).toHaveBeenCalledTimes(0);
-      
+
       unmount2();
     });
   });
 
   describe('Config Panel Button', () => {
+    function stubMenuBarWidth(width: number) {
+      vi.stubGlobal('ResizeObserver', class {
+        private callback: ResizeObserverCallback;
+
+        constructor(callback: ResizeObserverCallback) {
+          this.callback = callback;
+        }
+
+        observe() {
+          this.callback([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+
+        unobserve() {}
+        disconnect() {}
+      });
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('keeps the config control ready in the toolbar when the menu bar is wide', async () => {
+      renderMenuBar({ props: { ...defaultProps, hasShader: true } });
+
+      expect(screen.getByLabelText('Toggle config panel')).toBeInTheDocument();
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      expect(screen.queryAllByLabelText('Toggle config panel')).toHaveLength(1);
+    });
+
+    it('moves the config control into Options when the menu bar is narrow', async () => {
+      const onToggleConfigPanel = vi.fn();
+      stubMenuBarWidth(390);
+      renderMenuBar({ props: { ...defaultProps, hasShader: true, onToggleConfigPanel } });
+
+      await fireEvent.click(screen.getByLabelText('Open options menu'));
+      const configButtons = screen.getAllByLabelText('Toggle config panel');
+      expect(configButtons).toHaveLength(2);
+      await fireEvent.click(configButtons[1]);
+
+      expect(onToggleConfigPanel).toHaveBeenCalledOnce();
+    });
+
     it('should call onToggleConfigPanel when config panel button is clicked and hasShader', async () => {
       const onToggleConfigPanel = vi.fn();
       renderMenuBar({
@@ -1371,11 +1413,11 @@ describe('MenuBar Component', () => {
 
   describe('Time Manager Edge Cases', () => {
     it('should handle null timeManager gracefully', async () => {
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          timeManager: null 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          timeManager: null
+        }
       });
 
       // Should show 0.00s for time when no timeManager
@@ -1398,11 +1440,11 @@ describe('MenuBar Component', () => {
         setTime: vi.fn()
       };
 
-      renderMenuBar({ 
-        props: { 
-          ...defaultProps, 
-          timeManager: mockTimeManagerWithValues 
-        } 
+      renderMenuBar({
+        props: {
+          ...defaultProps,
+          timeManager: mockTimeManagerWithValues
+        }
       });
 
       // Should show the time from timeManager

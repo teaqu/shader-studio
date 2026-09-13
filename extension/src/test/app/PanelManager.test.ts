@@ -97,12 +97,12 @@ suite('PanelManager Test Suite', () => {
 
   test('PanelManager uses WebviewTransport and not WebSocket', () => {
     // Given - When: PanelManager is created in setup
-        
+
     // Then: Verify that WebviewTransport was added to messenger
     assert.ok(mockMessenger.addTransport.calledOnce);
     const addedTransport = (mockMessenger.addTransport as sinon.SinonStub).getCall(0).args[0];
     assert.ok(addedTransport instanceof WebviewTransport, 'PanelManager should add WebviewTransport to messenger');
-        
+
     // Verify no WebSocket-related imports or usage in PanelManager
     // This is verified by the fact that we only use WebviewTransport in the constructor
   });
@@ -446,12 +446,12 @@ suite('PanelManager Test Suite', () => {
 
       const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
       const html = createdPanel.webview.html;
-            
+
       // Should convert href="/assets/style.css" to webview URI (file:// in test mock)
       assert.ok(html.includes('href="file:///mock/uri"'), `Should convert CSS href to webview URI. HTML: ${html}`);
-      // Should convert src="/assets/main.js" to webview URI (file:// in test mock)  
+      // Should convert src="/assets/main.js" to webview URI (file:// in test mock)
       assert.ok(html.includes('src="file:///mock/uri"'), `Should convert JS src to webview URI. HTML: ${html}`);
-            
+
       // Verify the original relative paths are not present
       assert.ok(!html.includes('href="/assets/'), 'Should not contain original relative CSS href');
       assert.ok(!html.includes('src="/assets/'), 'Should not contain original relative JS src');
@@ -462,7 +462,7 @@ suite('PanelManager Test Suite', () => {
 
       const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
       const html = createdPanel.webview.html;
-            
+
       // Should NOT contain WebSocket port configuration
       assert.ok(!html.includes('window.shaderViewConfig'), 'Should not inject WebSocket config');
       assert.ok(!html.includes('port:'), 'Should not contain port configuration');
@@ -486,12 +486,12 @@ suite('PanelManager Test Suite', () => {
     test('should add media-src to existing CSP for video support', () => {
       const htmlWithCsp = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src vscode-resource:;"></head><body></body></html>';
       readFileSyncStub.returns(htmlWithCsp);
-            
+
       panelManager.createPanel();
 
       const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
       const html = createdPanel.webview.html;
-            
+
       // Should contain media-src and connect-src with webview.cspSource and blob:
       assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should add media-src to existing CSP');
       assert.ok(html.includes('connect-src vscode-resource: blob:'), 'Should add connect-src to existing CSP');
@@ -517,12 +517,12 @@ suite('PanelManager Test Suite', () => {
     test('should add new CSP when none exists', () => {
       const htmlWithoutCsp = '<!doctype html><html><head></head><body></body></html>';
       readFileSyncStub.returns(htmlWithoutCsp);
-            
+
       panelManager.createPanel();
 
       const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
       const html = createdPanel.webview.html;
-            
+
       // Should add new nonce-based CSP with media-src and connect-src
       assert.ok(html.includes('Content-Security-Policy'), 'Should add new CSP meta tag');
       assert.ok(html.includes('media-src vscode-resource: blob:'), 'Should include media-src in new CSP');
@@ -534,12 +534,12 @@ suite('PanelManager Test Suite', () => {
     test('should handle CSP addition when no head tag exists', () => {
       const htmlWithoutHead = '<!doctype html><html><body></body></html>';
       readFileSyncStub.returns(htmlWithoutHead);
-            
+
       panelManager.createPanel();
 
       const createdPanel = createWebviewPanelStub.getCall(0).returnValue;
       const html = createdPanel.webview.html;
-            
+
       // Should create head tag with CSP
       assert.ok(html.includes('<head>'), 'Should create head tag');
       assert.ok(html.includes('Content-Security-Policy'), 'Should add CSP to new head tag');

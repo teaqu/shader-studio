@@ -17,5 +17,7 @@
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
 		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
 	},
-	"exclude": ["src/test"]
+	// e2e fixtures are workspace files a test drives, not extension sources -
+	// a .uniforms.ts there belongs to the fixture shader, not to this build.
+	"exclude": ["src/test", "e2e"]
 }

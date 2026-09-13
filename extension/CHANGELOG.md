@@ -1,6 +1,39 @@
 # Change Log
 ### Unreleased
+
+- Breaking: Slang channel objects are now direct globals. Replace
+  `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and use direct metadata
+  such as `albedo.size`; the `.sha.json` `inputs` field is unchanged.
 - Added first-class WGSL shader support: `.wgsl` authoring with syntax highlighting, snippets, and diagnostics, a `mainImage` image pipeline on WebGPU, free-function channel accessors, a `ptr<function, …>` vertex hook, storage/compute passes, script-pass uniforms, `enable`/`requires` directive hoisting, plan-based step debugging with the variable inspector (including type inference for unannotated locals), and WGSL sections in the Channels, Vertex Shaders, and configuration docs plus a new WGSL Shaders guide.
+
+- Fixed editor navigation losing pending source edits, applying delayed edits to the wrong file, or leaving completions attached to the previous file.
+- Fixed standalone selection changes being lost on an immediate reload.
+- Fixed WGSL entry-point detection for shaders that use Common helpers.
+- Fixed unhandled word-highlighting cancellations when switching editor files.
+
+### 1.1.1
+
+- Fixed scripts not loading, missing uniform values, and scripts running while paused.
+- Fixed variable inspector clicks and hover previews sometimes not working.
+- Fixed the GLSL language server not recognising Common-file `#define` macros.
+- Fixed false syntax errors in empty or comment-only GLSL Common files.
+- Fixed helper files replacing the shader preview and GLSL-to-JavaScript conversion failing.
+
+### 1.1.0
+- Write shaders in Slang as well as GLSL, with the same preview, config panel, inputs, and debugging.
+- Run compute passes over storage buffers and read the results from your image pass.
+- Render onto 3D geometry: load a GLB model, orbit the camera around it, and light it with the surface position and normal. Each pass chooses 2D or 3D.
+- Move vertices before they are shaded with a vertex shader, in either language.
+- GLSL and Slang language servers: completions, hover documentation, errors as you type, go to definition, find references, rename, symbol highlighting, colour swatches, and greyed-out unused variables — across your Common file and imports.
+- Debug Slang shaders: inspect values line by line, follow them into imported files, and see which lines never ran.
+- Browse your shaders from the sidebar, with previews, renaming, and deletion.
+- Watch GPU time per frame in the performance panel to see whether the GPU or the frame loop is the bottleneck.
+- Name buffer passes anything you like, and rename them from the config tabs.
+- Use a video file as an audio input, and mute channels individually — muting is saved with the shader.
+- Open a shader in the browser with the same docked layout as the panel.
+- Toggle the shader lock with `Ctrl+L` / `Cmd+L`.
+- Spell checking knows shader vocabulary, and the Shader Validator extension no longer conflicts.
+- Fixes: a broken config reports the error instead of showing a black frame, error markers no longer linger after the code is fixed, the mouse position holds still while paused and follows hover, and cubemaps work in the variable inspector.
 
 ### 1.0.2
 - Added a toggleable canvas marker for the locked pixel inspector position, with the preference persisted across sessions.

@@ -44,7 +44,9 @@ async function expectPreview(frame, rgb, vscode) {
       bitmap.close();
       return pixel.slice(0, 3);
     }, screenshot.toString('base64'));
-    if (!logged) { console.log('preview pixel', { expected: rgb, actual: pixel }); logged = true; }
+    if (!logged) {
+      console.log('preview pixel', { expected: rgb, actual: pixel }); logged = true;
+    }
     // macOS screenshot compositing quantizes the expected yellow to [254,255,1].
     // Allow one 8-bit step here; shader capture values below remain exact.
     return Math.max(...pixel.map((value, index) => Math.abs(value - rgb[index])));
@@ -101,7 +103,12 @@ async function saveConfig(vscode, text) {
   await showShader(vscode);
 }
 
-test.describe('Slang dedup full app flows', () => {
+/**
+ * @gpu - measured, not assumed: under software rendering
+ * (SHADER_STUDIO_E2E_SOFTWARE_GL=1) the 24-texture capture times out; the
+ * headless adapter reports 16 textures and presents black.
+ */
+test.describe('Slang dedup full app flows @gpu', () => {
   test.afterEach(async ({ vscode }, info) => {
     if (info.status !== info.expectedStatus) {
       await info.attach('vscode-window', { body: await vscode.window.screenshot(), contentType: 'image/png' });
@@ -113,7 +120,7 @@ test.describe('Slang dedup full app flows', () => {
   });
 
   test.afterAll(async () => {
-    writeFileSync(configPath, originalConfig); 
+    writeFileSync(configPath, originalConfig);
   });
 
   test('renders and captures 24 texture inputs, updates aliases, and survives VS Code reload', async ({ vscode }) => {
@@ -172,7 +179,11 @@ test.describe('Slang dedup full app flows', () => {
     try {
       const page = await browser.newPage();
       page.on('pageerror', error => console.log('browser page error', error.message));
-      page.on('console', message => { if (message.type() === 'error') console.log('browser console error', message.text()); });
+      page.on('console', message => {
+        if (message.type() === 'error') {
+          console.log('browser console error', message.text());
+        }
+      });
       await page.goto('http://127.0.0.1:38473');
       await expectPreview(page, [255, 255, 0]);
       await expectCapture(vscode, page);

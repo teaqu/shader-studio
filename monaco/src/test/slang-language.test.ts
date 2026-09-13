@@ -255,8 +255,8 @@ describe('Slang Monarch language', () => {
       .flatMap((entry) => vocabulary(entry.match!))
       .sort());
     const uniformPattern = grammar.repository.builtins.patterns![0].match!;
-    expect(uniformPattern).toContain('inputs');
-    expect(sorted([...slangShadertoyUniforms, 'inputs'])).toEqual(vocabulary(uniformPattern));
+    expect(uniformPattern).not.toContain('inputs');
+    expect(sorted(slangShadertoyUniforms)).toEqual(vocabulary(uniformPattern));
     const textMatePreprocessor = new RegExp(generalTextMatePreprocessorPattern().begin!);
     for (const directive of slangPreprocessorDirectives) {
       expect(textMatePreprocessor.test(`#${directive}`), directive).toBe(true);
@@ -431,13 +431,15 @@ describe('Slang Monarch language', () => {
     for (const language of ['glsl', 'slang'] as const) {
       const names = shaderStudioBuiltinUniformNames(language);
       // Stage-limited uniforms stay coloured because a grammar has no stage.
-      const highlighted = language === 'slang' ? [...names, 'inputs'] : [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
+      const highlighted = language === 'slang' ? names : [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
       const otherLanguage = language === 'glsl' ? 'slang' : 'glsl';
       const plain = [
         ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
-        'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
+        'inputs', 'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
       ];
-      if (language === 'slang') plain.push('iCh7');
+      if (language === 'slang') {
+        plain.push('iCh7');
+      }
       const lines = monaco.editor.tokenize([...highlighted, ...plain].join(';\n'), language);
 
       expect(names.length, `${language} catalog names`).toBeGreaterThan(0);

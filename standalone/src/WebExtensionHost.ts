@@ -427,18 +427,16 @@ export class WebExtensionHost {
           this.workspace.delete(profilePath(message.id));
         }
         return;
-      case 'refresh':
-        {
-          const requestedPath = typeof payload.path === 'string'
-            && shaderLanguageForPath(payload.path)
-            && this.workspace.exists(payload.path)
-            ? payload.path
-            : this.activeShaderPath;
-          if (requestedPath) {
-            this.emitViewer(this.shaderSourceMessage(requestedPath));
-          }
+      case 'refresh': {
+        // Common/vertex updates request their locked owning shader. Re-sending
+        // the focused source file would make the viewer request refresh forever.
+        const path = payload.path === undefined ? this.activeShaderPath : payload.path;
+        if (typeof path === 'string' && shaderLanguageForPath(path) && this.workspace.exists(path)) {
+          this.setActiveShader(path);
+          this.emitViewer(this.shaderSourceMessage(path));
         }
         return;
+      }
       case 'requestLayout':
         this.emitViewer({ type: 'restoreLayout', payload: { layoutSlot: payload.layoutSlot ?? null, state: null } });
         return;
@@ -534,8 +532,19 @@ export class WebExtensionHost {
       case 'openShader':
       case 'activateShader':
         if (typeof message.path === 'string' && this.workspace.exists(message.path)) {
+          // Focusing a configured source tab keeps the owning preview selected.
+          // Explorer openShader remains an explicit request to view that file.
+          if (message.type === 'activateShader' && this.activeShaderPath
+            && Object.values(this.sourcePaths(this.activeShaderPath)).includes(message.path)) {
+            return;
+          }
           this.setActiveShader(message.path);
-          this.emitViewer(this.shaderSourceMessage(message.path));
+          // The selected preview is also the signal that navigation completed.
+          // Persist it before broadcasting so an immediate reload restores it.
+          await this.workspace.flush();
+          if (this.activeShaderPath === message.path) {
+            this.emitViewer(this.shaderSourceMessage(message.path));
+          }
         }
         return;
       case 'searchShaders': {

@@ -197,12 +197,12 @@ Expected:
 1. The five large top panels animate: grayscale float fill, vec2 red/green, vec3 RGB, vec4 RGB with a moving white alpha band, and a bool panel alternating green/blue once per second.
 2. The two thin middle strips show camera position (left, initially mid-grey) and direction (right, initially yellow). Hold W/A/S/D/Q/E to move; drag the canvas or use arrow keys to look. The small badge at the right stays green while the direction is normalized.
 3. Pause after moving the camera, then keep moving/looking: the displayed strips stay frozen until unpaused. Reset returns position to mid-grey and direction to yellow.
-4. All five lower status tiles are green. The middle three validate `inputs.iChannelN.size` and `.loaded` for texture (256×256), audio (512×2), and keyboard (256×3); the last is a fixed success tile because Slang does not expose unconfigured inputs. (WGSL checks `iChannelNSize()`/`iChannelNLoaded()` free functions and probes Sample vs SampleLevel agreement instead of the unused-slot tile.)
-5. The texture tile contains an off-center swatch sampled through `inputs.iChannel0.Sample`; it must match between GLSL and Slang, which also checks the wrapper's V-flip. A thin white bar at the bottom of the audio tile moves with `inputs.iChannel1.time`; the date tile has its own seconds bar.
+4. All five lower status tiles are green. The middle three validate `iChannelN.size` and `.loaded` for texture (256×256), audio (512×2), and keyboard (256×3); the last is a fixed success tile because Slang does not expose unconfigured inputs. (WGSL checks `iChannelNSize()`/`iChannelNLoaded()` free functions and probes Sample vs SampleLevel agreement instead of the unused-slot tile.)
+5. The texture tile contains an off-center swatch sampled through `iChannel0.Sample`; it must match between GLSL and Slang, which also checks the wrapper's V-flip. A thin white bar at the bottom of the audio tile moves with `iChannel1.time`; the date tile has its own seconds bar.
 6. Slang and GLSL output should match visually and produce no validation errors.
-7. Selecting expressions that use `uVec3`, `uBool`, `iDate`, `inputs.iChannel0.size`, `inputs.iChannel1.time`, or either camera uniform in the debugger should produce the same values as the rendered panels.
+7. Selecting expressions that use `uVec3`, `uBool`, `iDate`, `iChannel0.size`, `iChannel1.time`, or either camera uniform in the debugger should produce the same values as the rendered panels.
 
-## Slang input-object smoke test
+## Slang channel-object smoke test
 
 Open `slang/ich.slang`, then compare with `glsl/ich_glsl.glsl` and `wgsl/ich.wgsl`.
 
@@ -210,7 +210,7 @@ Expected:
 
 1. All four thin status strips are green; red identifies a bad `.size`, `.loaded`, or `.time` value.
 2. Top-left texture panel has RED at TOP, GREEN at LEFT, BLUE at BOTTOM, and YELLOW at RIGHT. A vertical inversion means the 2D wrapper's V-flip is wrong.
-3. Top-right audio panel shows cyan spectrum bars, a yellow waveform, and a white marker moving with `inputs.iChannel1.time`.
+3. Top-right audio panel shows cyan spectrum bars, a yellow waveform, and a white marker moving with `iChannel1.time`.
 4. Bottom-left keyboard panel lights red/green/blue while holding A/S/D, and flashes its white band for one rendered frame when Space is pressed.
 5. Bottom-right cubemap panel shows the cubemap, with six bottom probes ordered red, green, blue, yellow, magenta, cyan (+X, -X, +Y, -Y, +Z, -Z).
 6. Slang and GLSL output match visually and neither produces validation errors.

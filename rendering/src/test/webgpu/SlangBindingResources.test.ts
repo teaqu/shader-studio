@@ -48,7 +48,7 @@ describe("Slang shared resource bindings", () => {
     expect(after.find(e => e.binding === 1)?.resource).toBe(fallback);
   });
   it("emits only unique declarations and keeps per-slot metadata for aliases", () => {
-    const source = wrapSlangImageSource("float4 mainImage(float2 p) { return inputs.c.Sample(p); }", { channels });
+    const source = wrapSlangImageSource("float4 mainImage(float2 p) { return c.Sample(p); }", { channels });
     expect(source.match(/\[\[vk::binding\(\d+, 0\)\]\]\nTexture2D/g)).toHaveLength(2);
     expect(source.match(/\[\[vk::binding\(\d+, 0\)\]\]\nSamplerState/g)).toHaveLength(2);
     expect(source).toContain("_st.channelResolution[9]");

@@ -91,14 +91,14 @@ describe("resolveSlangExpressionType", () => {
     };
     const includes = [buildSlangAuthoringModule(environment).text];
 
-    expect(resolve("inputs", { includes })?.name).toBe("ShaderStudioInputs");
-    expect(resolve("inputs.iChannel0", { includes })?.name).toBe("ShaderStudioChannel2D");
-    expect(resolve("inputs.iChannel0.texture", { includes })?.name).toBe("Texture2D<float4>");
-    expect(resolve("inputs.iChannel0.size", { includes })?.name).toBe("uint2");
+    expect(resolve("inputs", { includes })).toBeUndefined();
+    expect(resolve("iChannel0", { includes })?.name).toBe("ShaderStudioChannel2D");
+    expect(resolve("iChannel0.texture", { includes })?.name).toBe("Texture2D<float4>");
+    expect(resolve("iChannel0.size", { includes })?.name).toBe("uint2");
     // Sampling methods return a colour whose components can be selected in turn.
-    expect(resolve("inputs.iChannel0.Sample(uv)", { includes })?.name).toBe("float4");
-    expect(resolve("inputs.iChannel0.Sample(uv).rgb", { includes })?.name).toBe("float3");
-    expect(resolve("inputs.iChannel0.texture.SampleLevel(inputs.iChannel0.sampler, uv, 0.0).a", { includes })?.name).toBe("float");
+    expect(resolve("iChannel0.Sample(uv)", { includes })?.name).toBe("float4");
+    expect(resolve("iChannel0.Sample(uv).rgb", { includes })?.name).toBe("float3");
+    expect(resolve("iChannel0.texture.SampleLevel(iChannel0.sampler, uv, 0.0).a", { includes })?.name).toBe("float");
   });
 
   it("keeps struct fields that follow a trailing comment", () => {

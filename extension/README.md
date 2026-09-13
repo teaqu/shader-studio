@@ -17,6 +17,14 @@ Want to try Shader Studio before installing? [Try it in standalone web mode](htt
 
 Slang and WGSL require a WebGPU-capable host. See [WGSL Shaders](https://teaqu.github.io/shader-studio/docs/features/wgsl-authoring/) for a WGSL starter and syntax.
 
+### Slang channel migration
+
+Slang configured channels are direct globals: write `albedo.Sample(uv)` and
+`albedo.size`. The previous `inputs.albedo` namespace has been removed. This
+breaking shader-syntax change does not alter the `.sha.json` `inputs` field.
+WGSL keeps its existing direct metadata names and separate texture/sampler
+handles.
+
 You can launch as many panels, windows, or browser tabs as you want simultaneously.
 
 The preview updates in real time as you edit — by default it recompiles on every keystroke.
@@ -53,7 +61,7 @@ For the best performance, run the preview in your web browser. Browsers tend to 
 
 ## Visual Config Editor
 
-The **Config** panel is a visual editor for setting up multi-pass pipelines and binding assets to your shader inputs — no manual uniform declarations or hand-written config required. Open it with the gear icon in the toolbar.
+The **Config** panel is a visual editor for setting up multi-pass shaders and binding assets to your shader inputs — no manual uniform declarations or hand-written config required. Open it with the gear icon in the toolbar.
 
 ![Visual config editor](https://raw.githubusercontent.com/teaqu/shader-studio/refs/heads/main/docs/assets/images/config.png)
 

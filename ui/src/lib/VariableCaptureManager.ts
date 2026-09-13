@@ -319,19 +319,19 @@ export class VariableCaptureManager {
   }
 
   get sampleSize(): number {
-    return this._sampleSize; 
+    return this._sampleSize;
   }
   get gridRefreshMode(): RefreshMode {
-    return this._gridRefreshMode; 
+    return this._gridRefreshMode;
   }
   get gridPollingMs(): number {
-    return this._gridPollingMs; 
+    return this._gridPollingMs;
   }
   get pixelRefreshMode(): RefreshMode {
-    return this._pixelRefreshMode; 
+    return this._pixelRefreshMode;
   }
   get pixelPollingMs(): number {
-    return this._pixelPollingMs; 
+    return this._pixelPollingMs;
   }
 
   setSampleSettingsCallback(callback: () => void): void {
@@ -412,7 +412,7 @@ export class VariableCaptureManager {
     }
     // Paused: store params but don't issue captures
     if (params.refreshMode === 'pause') {
-      return; 
+      return;
     }
     this.dirty = true;
     this.ensureLoopRunning();
@@ -682,9 +682,14 @@ export class VariableCaptureManager {
       return;
     }
 
-    // Append custom uniforms (declared in compiler header, not in user code)
+    // Append custom uniforms (declared in compiler header, not in user code).
+    // The header declares them for every pass, so only the ones this pass
+    // mentions are values of this capture.
     if (!params.planCapture) {
-      const customUniforms = this.renderingEngine.getCustomUniformInfo();
+      const customUniforms = VariableCaptureBuilder.filterUsedCustomUniforms(
+        params.code,
+        this.renderingEngine.getCustomUniformInfo(),
+      );
       for (const { name, type } of customUniforms) {
         if (isSupportedCapturedType(type) && !vars.some(v => v.varName === name)) {
           vars.push({ varName: name, varType: type, declarationLine: -1 });

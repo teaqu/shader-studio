@@ -10,7 +10,7 @@ function generate(resources: Array<{ name: string; kind: 'texture-2d' | 'texture
 }
 
 describe('Slang named channel API', () => {
-  it('emits shared runtime declarations while keeping both input properties and metadata', () => {
+  it('emits direct channel globals with metadata and no inputs container', () => {
     const source = buildSlangChannels([
       { name: 'a', slot: 0, kind: 'texture-2d' },
       { name: 'b', slot: 7, kind: 'texture-2d' },
@@ -21,6 +21,8 @@ describe('Slang named channel API', () => {
     expect(source.match(/\[\[vk::binding/g)).toHaveLength(2);
     expect(source).toContain('property ShaderStudioChannel2D a');
     expect(source).toContain('property ShaderStudioChannel2D b');
+    expect(source).not.toContain('ShaderStudioInputs');
+    expect(source).not.toContain('static ShaderStudioChannel');
     expect(source).toContain('_st.channelResolution[7]');
     const textures = [...source.matchAll(/result.texture = (\w+);/g)].map(match => match[1]);
     const samplers = [...source.matchAll(/result.sampler = (\w+);/g)].map(match => match[1]);
@@ -29,11 +31,12 @@ describe('Slang named channel API', () => {
     expect(samplers[0]).toBe(samplers[1]);
   });
 
-  it('groups configured resources and metadata without exposing legacy aliases', () => {
+  it('groups configured resources and metadata without exposing an inputs namespace', () => {
     const source = generate([{ name: 'iChannel0', kind: 'texture-2d' }, { name: 'sky', kind: 'texture-cube' }]);
     expect(source).toContain('ShaderStudioChannel2D iChannel0');
     expect(source).toContain('ShaderStudioChannelCube sky');
-    expect(source).toContain('ShaderStudioInputs inputs');
+    expect(source).not.toContain('ShaderStudioInputs');
+    expect(source).not.toContain('static ShaderStudioInputs inputs');
     expect(source).toContain('bool loaded;');
     expect(source).toContain('uint2 size;');
     expect(source).toContain('float4 SampleLevel(float2 uv, float lod)');

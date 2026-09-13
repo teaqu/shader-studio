@@ -106,6 +106,20 @@ function makeFakeSlang(opts: {
 }
 
 describe("SlangCompiler", () => {
+  it("returns root and Common authored-declaration channel collisions before invoking Slang", () => {
+    const compiler = new SlangCompiler(makeFakeSlang());
+
+    expect(compiler.compileImagePass("float4 mainImage(float2 c) { return 1; }", {
+      channels: [{ slot: 0, key: "albedo" }],
+      commonCode: "float4 albedo(float2 uv) { return 1; }",
+    })).toEqual({
+      success: false,
+      errors: [
+        'Slang channel "albedo" conflicts with an authored declaration in Common. Rename the channel or declaration.',
+      ],
+    });
+  });
+
   it("releases every per-compile WASM handle after compiling", () => {
     const onDelete = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onDelete }));
@@ -203,7 +217,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iChannel0.Sample(c); }", {
       geometry: "cube",
       channels: [{ slot: 0, key: "iChannel0" }],
     });
@@ -281,7 +295,7 @@ describe("SlangCompiler", () => {
         "float4 mainImage(float2 fragCoord) { return float4(1); }",
         {
           channels: [{ slot: 3, key: "iChannel3" }],
-          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += inputs.iChannel3.SampleLevel(uv, 0.0).x; }",
+          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += iChannel3.SampleLevel(uv, 0.0).x; }",
         },
       );
 
@@ -309,7 +323,7 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("mainImage");
   });
 
-  it("neutralizes the Shader Studio editor import without changing line numbers", () => {
+  it("strips every unresolved import, including the retired shader_studio module", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
     compiler.compileImagePass([
@@ -319,15 +333,14 @@ describe("SlangCompiler", () => {
     ].join("\n"));
 
     const wrapped = onLoad.mock.calls[0][0] as string;
+    // No dependency was supplied, so both are stripped rather than asking the
+    // filesystem-less WASM runtime to resolve them.
     expect(wrapped).not.toContain("import shader_studio;");
-    expect(wrapped).toContain("// Shader Studio editor support import");
-    // No dependency was supplied, so palette is stripped rather than asking
-    // the filesystem-less WASM runtime to resolve it.
     expect(wrapped).not.toContain("import palette;");
     expect(wrapped).toContain("float4 mainImage");
   });
 
-  it("neutralizes the editor import in common code", () => {
+  it("passes common code through verbatim, with no reserved editor module", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
     compiler.compileImagePass("float4 mainImage(float2 c) { return helper(); }", {
@@ -335,7 +348,9 @@ describe("SlangCompiler", () => {
     });
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).not.toContain("import \"shader-studio.slang\";");
+    // Common-code imports are resolved on the host; the renderer no longer
+    // rewrites any of them, including the retired shader-studio module.
+    expect(wrapped).toContain("import \"shader-studio.slang\";");
     expect(wrapped).toContain("float4 helper() { return 1; }");
   });
 
@@ -494,6 +509,42 @@ describe("SlangCompiler", () => {
     expect(loads[1].path).toBe("/shaders/image.slang");
   });
 
+  it.runIf(realSlangAssets)("allows unused modules to declare the same name as a direct channel", async () => {
+    const compiler = new SlangCompiler(await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm));
+    const result = compiler.compileImagePass("float4 mainImage(float2 c) { return albedo.Sample(c); }", {
+      channels: [{ slot: 0, key: "albedo" }],
+      modules: [{ moduleName: "palette", path: "/palette.slang", source: "module palette; public float4 albedo(float2 uv) { return 1; }" }],
+    });
+    expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+    compiler.dispose();
+  });
+
+  it.runIf(realSlangAssets)(
+    "reports imported declarations that make a direct channel reference ambiguous",
+    async () => {
+      const compiler = new SlangCompiler(await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm));
+      try {
+        const result = compiler.compileImagePass(
+          "import palette;\nfloat4 mainImage(float2 c) { return albedo.Sample(c); }",
+          {
+            channels: [{ slot: 0, key: "albedo" }],
+            modules: [{
+              moduleName: "palette",
+              path: "/palette.slang",
+              source: "module palette;\npublic float4 albedo(float2 uv) { return 1; }",
+            }],
+          },
+        );
+        expect(result).toEqual({
+          success: false,
+          errors: ['Slang channel "albedo" conflicts with an authored declaration in /palette.slang. Rename the channel or declaration.'],
+        });
+      } finally {
+        compiler.dispose();
+      }
+    },
+  );
+
   it("stops before the root compile when an imported module fails", () => {
     let loadCount = 0;
     const compiler = new SlangCompiler(makeFakeSlang({
@@ -649,23 +700,23 @@ describe("SlangCompiler", () => {
     });
   });
 
-  it("does not fabricate standard inputs without slot configuration", () => {
+  it("does not fabricate standard channels without slot configuration", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(`
       float4 mainImage(float2 c) {
-        return inputs.iChannel0.Sample(c) + inputs.iChannel1.Sample(c)
-          + inputs.iChannel2.Sample(c) + inputs.iChannel3.Sample(c);
+        return iChannel0.Sample(c) + iChannel1.Sample(c)
+          + iChannel2.Sample(c) + iChannel3.Sample(c);
       }
     `);
 
     const wrapped = onLoad.mock.calls[0][0] as string;
-    expect(wrapped).toContain("struct ShaderStudioInputs");
+    expect(wrapped).not.toContain("ShaderStudioInputs");
     expect(wrapped).not.toContain("property ShaderStudioChannel2D iChannel0");
     expect(wrapped).not.toContain("sampleIChannel0");
     expect(wrapped).not.toContain("Texture2D<float4> _ssTexture0;");
-    expect(wrapped).not.toContain("inputs.iChannel4.Sample");
+    expect(wrapped).not.toContain("iChannel4.Sample");
   });
 
   it("caches the global session across compiles", () => {
@@ -758,7 +809,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.albedo.Sample(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return albedo.Sample(c); }", {
       passName: "Image",
       channels: [{ slot: 0, key: "albedo", kind: "texture" }],
     });
@@ -776,7 +827,7 @@ describe("SlangCompiler", () => {
 
     compiler.compileImagePass(
       `float4 mainImage(float2 c) {
-        return inputs.iChannel0.Sample(c) + inputs.iChannel2.Sample(float3(c, 1));
+        return iChannel0.Sample(c) + iChannel2.Sample(float3(c, 1));
       }`,
       {
         channels: [
@@ -830,7 +881,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel16.Sample(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iChannel16.Sample(c); }", {
       channels: [{ slot: 16, key: "iChannel16", kind: "texture" }],
     });
 
@@ -900,7 +951,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(float3(1, 0, 0)); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iChannel0.Sample(float3(1, 0, 0)); }", {
       passName: "Image",
       channels: [{ slot: 0, key: "iChannel0", kind: "cubemap" }],
     });
@@ -919,7 +970,7 @@ describe("SlangCompiler", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
     compiler.compileImagePass(
-      "float4 mainImage(float2 c) { return inputs.iChannel1.Sample(float2(c.x, 0.25)); }",
+      "float4 mainImage(float2 c) { return iChannel1.Sample(float2(c.x, 0.25)); }",
       { channels: [{ slot: 1, key: "iChannel1", kind: "audio" }] },
     );
 
@@ -1017,7 +1068,7 @@ describe("SlangCompiler", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
 
-    compiler.compileImagePass("float4 mainImage(float2 c) { return inputs.iChannel0.Sample(c); }", {
+    compiler.compileImagePass("float4 mainImage(float2 c) { return iChannel0.Sample(c); }", {
       channels: [{ slot: 0, key: "iChannel0" }],
     });
 

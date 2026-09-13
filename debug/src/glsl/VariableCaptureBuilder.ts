@@ -26,9 +26,13 @@ export class VariableCaptureBuilder {
     if (debugLine === -1) {
       // Whole-shader mode: find mainImage and use last line of its body
       const mainImageLine = VariableCaptureBuilder.findMainImageStart(lines);
-      if (mainImageLine === -1) return [];
+      if (mainImageLine === -1) {
+        return [];
+      }
       const mainImageEnd = VariableCaptureBuilder.findFunctionEnd(lines, mainImageLine);
-      if (mainImageEnd === -1) return [];
+      if (mainImageEnd === -1) {
+        return [];
+      }
       // Use the line just before the closing brace
       resolvedLine = mainImageEnd - 1;
     }
@@ -70,7 +74,9 @@ export class VariableCaptureBuilder {
           continue;
         }
         result.push({ varName, varType, declarationLine: varLineMap.get(varName) ?? functionInfo.start });
-        if (result.length >= 15) break;
+        if (result.length >= 15) {
+          break;
+        }
       }
     }
 
@@ -83,7 +89,9 @@ export class VariableCaptureBuilder {
         varType: globalVar.type,
         declarationLine: globalVar.declarationLine,
       });
-      if (result.length >= 15) break;
+      if (result.length >= 15) {
+        break;
+      }
     }
 
     // If the debug line is a return statement, add a synthetic _dbgReturn variable
@@ -114,6 +122,25 @@ export class VariableCaptureBuilder {
   }
 
   /**
+   * Custom uniforms are declared in the compiler's header for the whole shader,
+   * so every pass compiles with every one of them in scope. The variable list
+   * belongs to one pass, so keep only the uniforms that pass mentions - the
+   * rest are used by common code or another buffer and are not values of this
+   * capture.
+   */
+  static filterUsedCustomUniforms<T extends { name: string }>(
+    code: string,
+    uniforms: readonly T[],
+  ): T[] {
+    if (uniforms.length === 0 || code.trim() === '') {
+      return [];
+    }
+
+    const usedIdentifiers = GlslParser.collectUsedIdentifiers(code.split('\n'));
+    return uniforms.filter((uniform) => usedIdentifiers.has(uniform.name));
+  }
+
+  /**
    * Generate one capture shader that can output any mainImage variable by setting
    * uniform int _dbgVarIndex before drawing.
    *
@@ -139,7 +166,9 @@ export class VariableCaptureBuilder {
      */
     keepTrailingSource: boolean = true,
   ): string | null {
-    if (vars.length === 0) return null;
+    if (vars.length === 0) {
+      return null;
+    }
 
     const lines = code.split('\n');
     const { fragColorName, fragCoordName } = GlslParser.getMainImageParameterNames(lines);
@@ -147,9 +176,13 @@ export class VariableCaptureBuilder {
     let resolvedLine = debugLine;
     if (debugLine === -1) {
       const mainImageLine = VariableCaptureBuilder.findMainImageStart(lines);
-      if (mainImageLine === -1) return null;
+      if (mainImageLine === -1) {
+        return null;
+      }
       const mainImageEnd = VariableCaptureBuilder.findFunctionEnd(lines, mainImageLine);
-      if (mainImageEnd === -1) return null;
+      if (mainImageEnd === -1) {
+        return null;
+      }
       resolvedLine = mainImageEnd - 1;
     }
 
@@ -168,7 +201,9 @@ export class VariableCaptureBuilder {
         const isGlobal = globalVars.some(
           globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
         );
-        if (!isGlobal) return null;
+        if (!isGlobal) {
+          return null;
+        }
       }
 
       let shader = VariableCaptureBuilder.wrapGlobalScopeForMultiCapture(lines, vars, fragColorName, fragCoordName);
@@ -191,7 +226,9 @@ export class VariableCaptureBuilder {
         fragColorName,
         fragCoordName,
       );
-      if (shader === null) return null;
+      if (shader === null) {
+        return null;
+      }
       if (captureCoordUniform) {
         shader = VariableCaptureBuilder.injectCaptureCoord(shader, fragCoordName);
       } else {
@@ -210,7 +247,9 @@ export class VariableCaptureBuilder {
       const isGlobal = globalVars.some(
         globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
       );
-      if (!isLocal && !isGlobal) return null;
+      if (!isLocal && !isGlobal) {
+        return null;
+      }
     }
 
     let truncationEnd = CodeGenerator.extendForMultiLine(lines, resolvedLine);
@@ -297,7 +336,9 @@ export class VariableCaptureBuilder {
     fragCoordName = 'fragCoord',
   ): string | null {
     const returnType = VariableCaptureBuilder.getFunctionReturnType(lines, functionInfo.start);
-    if (returnType === null) return null;
+    if (returnType === null) {
+      return null;
+    }
 
     const varTypes = GlslParser.buildVariableTypeMap(lines, debugLine, functionInfo);
     const globalVars = GlslParser.getUsedGlobalVariables(lines, functionInfo);
@@ -310,7 +351,9 @@ export class VariableCaptureBuilder {
       const isGlobal = globalVars.some(
         globalVar => globalVar.name === captureVar.varName && globalVar.type === captureVar.varType,
       );
-      if (!isReturnCapture && !isLocal && !isGlobal) return null;
+      if (!isReturnCapture && !isLocal && !isGlobal) {
+        return null;
+      }
     }
 
     const debugFunctionName = `_dbg_${functionInfo.name}`;
@@ -401,7 +444,9 @@ export class VariableCaptureBuilder {
     const result = closedLines.slice(0, originalLength);
     let outputVarIndex = 0;
     for (let index = 0; index < vars.length; index++) {
-      if (vars[index].varName === '_dbgReturn') continue;
+      if (vars[index].varName === '_dbgReturn') {
+        continue;
+      }
       const outputVar = outputVars[outputVarIndex++];
       result.push(`  _dbgCaptured${index} = ${outputVar.varName};`);
     }
@@ -470,7 +515,9 @@ export class VariableCaptureBuilder {
           captureVar.declarationLine,
           truncationEnd,
         );
-        if (!closedScope) return null;
+        if (!closedScope) {
+          return null;
+        }
         return {
           originalIndex: index,
           originalName: captureVar.varName,
@@ -541,7 +588,9 @@ export class VariableCaptureBuilder {
     declarationLine: number,
     truncationEnd: number,
   ): { lineNumber: number; endLine: number } | null {
-    if (declarationLine < 0) return null;
+    if (declarationLine < 0) {
+      return null;
+    }
     const containingLoops = ShaderDebugger.extractLoops(lines, functionStart, declarationLine)
       .filter(loop => loop.endLine <= truncationEnd);
     if (containingLoops.length === 0) {
@@ -558,7 +607,9 @@ export class VariableCaptureBuilder {
     declarationLine: number,
     truncationEnd: number,
   ): { lineNumber: number; endLine: number } | null {
-    if (declarationLine < 0) return null;
+    if (declarationLine < 0) {
+      return null;
+    }
 
     const openBlocks: Array<{ lineNumber: number }> = [];
     const closedBlocks: Array<{ lineNumber: number; endLine: number }> = [];
@@ -583,7 +634,9 @@ export class VariableCaptureBuilder {
         && block.endLine <= truncationEnd
       )
       .sort((first, second) => second.lineNumber - first.lineNumber)[0];
-    if (!containingBlock) return null;
+    if (!containingBlock) {
+      return null;
+    }
 
     return {
       ...containingBlock,
@@ -642,20 +695,32 @@ export class VariableCaptureBuilder {
     for (let i = functionStart; i <= truncationEnd; i++) {
       const stripped = lines[i].replace(/\/\/.*$/, '');
       for (const char of stripped) {
-        if (char === '{') depth++;
-        if (char === '}') depth--;
+        if (char === '{') {
+          depth++;
+        }
+        if (char === '}') {
+          depth--;
+        }
       }
     }
 
-    if (depth <= 1) return truncationEnd;
+    if (depth <= 1) {
+      return truncationEnd;
+    }
 
     for (let i = truncationEnd + 1; i < lines.length; i++) {
       const stripped = lines[i].replace(/\/\/.*$/, '');
       for (const char of stripped) {
-        if (char === '{') depth++;
-        if (char === '}') depth--;
+        if (char === '{') {
+          depth++;
+        }
+        if (char === '}') {
+          depth--;
+        }
       }
-      if (depth <= 1) return i;
+      if (depth <= 1) {
+        return i;
+      }
     }
 
     return truncationEnd;
@@ -798,8 +863,12 @@ export class VariableCaptureBuilder {
     let started = false;
     for (let i = functionStart; i < lines.length; i++) {
       for (const char of lines[i]) {
-        if (char === '{') { braceDepth++; started = true; }
-        if (char === '}') { braceDepth--; }
+        if (char === '{') {
+          braceDepth++; started = true;
+        }
+        if (char === '}') {
+          braceDepth--;
+        }
       }
       if (started && braceDepth === 0) {
         return i;

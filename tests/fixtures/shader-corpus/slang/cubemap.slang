@@ -27,15 +27,15 @@ float4 mainImage(float2 fragCoord)
     float yaw = p.x * 1.55;
     float pitch = p.y * 0.95;
     float3 dir = normalize(float3(sin(yaw), sin(pitch), cos(yaw) * cos(pitch)));
-    float3 cube = inputs.iChannel0.Sample(dir).rgb;
+    float3 cube = iChannel0.Sample(dir).rgb;
     float3 col = lerp(fallbackGrid(uv), cube, 0.96);
 
-    float3 posX = inputs.iChannel0.Sample(float3(1.0, 0.0, 0.0)).rgb;
-    float3 negX = inputs.iChannel0.Sample(float3(-1.0, 0.0, 0.0)).rgb;
-    float3 posY = inputs.iChannel0.Sample(float3(0.0, 1.0, 0.0)).rgb;
-    float3 negY = inputs.iChannel0.Sample(float3(0.0, -1.0, 0.0)).rgb;
-    float3 posZ = inputs.iChannel0.Sample(float3(0.0, 0.0, 1.0)).rgb;
-    float3 negZ = inputs.iChannel0.Sample(float3(0.0, 0.0, -1.0)).rgb;
+    float3 posX = iChannel0.Sample(float3(1.0, 0.0, 0.0)).rgb;
+    float3 negX = iChannel0.Sample(float3(-1.0, 0.0, 0.0)).rgb;
+    float3 posY = iChannel0.Sample(float3(0.0, 1.0, 0.0)).rgb;
+    float3 negY = iChannel0.Sample(float3(0.0, -1.0, 0.0)).rgb;
+    float3 posZ = iChannel0.Sample(float3(0.0, 0.0, 1.0)).rgb;
+    float3 negZ = iChannel0.Sample(float3(0.0, 0.0, -1.0)).rgb;
 
     if (box(uv, float2(0.06, 0.80), float2(0.18, 0.92)) > 0.0) col = posX;
     if (box(uv, float2(0.06, 0.66), float2(0.18, 0.78)) > 0.0) col = negX;

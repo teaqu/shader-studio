@@ -49,6 +49,19 @@ describe('EditorOverlayManager', () => {
     return { manager, transport, renderingEngine, callbacks };
   }
 
+  it('rejects delayed edits from another file after switching to Common', async () => {
+    const { manager, callbacks } = createManager();
+    manager.setShaderSource('image code', '/test/shader.slang');
+    manager.handleConfigFileSelect('common', '/test/shader.slang');
+    manager.handleFileContents('/test/common.slang', 'common code');
+    callbacks.onStateChanged.mockClear();
+    expect(await manager.handleEditorCodeChange('renamed image code', '/test/shader.slang')).toBe(false);
+    expect(manager.getState()).toMatchObject({ filePath: '/test/common.slang', fileCode: 'common code' });
+    expect(callbacks.onStateChanged).not.toHaveBeenCalled();
+    expect(await manager.handleEditorCodeChange('renamed common code', '/test/common.slang')).toBe(true);
+    expect(manager.getState().fileCode).toBe('renamed common code');
+  });
+
   it('handleEditorCodeChange updates overlay state without compiling immediately', async () => {
     const { manager, callbacks } = createManager();
     callbacks.onStateChanged.mockClear();

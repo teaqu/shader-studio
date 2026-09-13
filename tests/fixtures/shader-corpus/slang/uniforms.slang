@@ -75,9 +75,9 @@ float4 mainImage(float2 fragCoord)
     col = lerp(col, float3(1.0, 1.0, 1.0), secondsBand);
 
     float4 checks = float4(
-        resolutionMatches(inputs.iChannel0.size, uint2(256, 256)) * (inputs.iChannel0.loaded ? 1.0 : 0.0),
-        resolutionMatches(inputs.iChannel1.size, uint2(512, 2)) * (inputs.iChannel1.loaded ? 1.0 : 0.0),
-        resolutionMatches(inputs.iChannel2.size, uint2(256, 3)) * (inputs.iChannel2.loaded ? 1.0 : 0.0),
+        resolutionMatches(iChannel0.size, uint2(256, 256)) * (iChannel0.loaded ? 1.0 : 0.0),
+        resolutionMatches(iChannel1.size, uint2(512, 2)) * (iChannel1.loaded ? 1.0 : 0.0),
+        resolutionMatches(iChannel2.size, uint2(256, 3)) * (iChannel2.loaded ? 1.0 : 0.0),
         1.0
     );
     col = lerp(col, statusColor(checks.x), box(uv, float2(0.23, 0.10), float2(0.38, 0.42)));
@@ -88,12 +88,12 @@ float4 mainImage(float2 fragCoord)
     // Exercise input sampling and input time as live values rather than merely
     // compiling their fields. The texture-center swatch sits in the texture
     // tile; the audio-time bar grows across the bottom of the audio tile.
-    float3 textureProbe = inputs.iChannel0.Sample(float2(0.25, 0.75)).rgb;
+    float3 textureProbe = iChannel0.Sample(float2(0.25, 0.75)).rgb;
     col = lerp(col, textureProbe, box(uv, float2(0.25, 0.34), float2(0.36, 0.40)));
     float audioTimeBand = box(
         uv,
         float2(0.43, 0.10),
-        float2(0.43 + 0.15 * frac(inputs.iChannel1.time / 10.0), 0.14)
+        float2(0.43 + 0.15 * frac(iChannel1.time / 10.0), 0.14)
     );
     col = lerp(col, float3(1.0, 1.0, 1.0), audioTimeBand);
 

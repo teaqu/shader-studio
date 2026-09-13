@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "passes": {
+    "common": {
+      "path": "./overlay-common-shared.glsl"
+    },
+    "Image": {}
+  }
+}

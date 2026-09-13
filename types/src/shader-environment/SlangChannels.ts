@@ -1,4 +1,4 @@
-import { deriveSlangChannelGeneratedIdentifiers, canExposeSlangChannelGlobal } from './ShaderAuthoringEnvironment';
+import { deriveSlangChannelGeneratedIdentifiers } from './ShaderAuthoringEnvironment';
 
 export interface SlangChannelDeclaration {
   name: string;
@@ -131,10 +131,10 @@ float _ssChannelLoaded[${count}];`;
   const resolution = options.runtime ? '_st.channelResolution' : '_ssChannelResolution';
   const time = options.runtime ? '_st.channelTime' : '_ssChannelTime';
   const loaded = options.runtime ? '_st.channelLoaded' : '_ssChannelLoaded';
-  const fields = sorted.map(({ name, slot, kind }) => {
+  const channels = sorted.map(({ name, slot, kind }) => {
     const { texture, sampler } = resourceNames.get(slot)!;
     const size = kind === 'texture-3d' ? `uint3(${resolution}[${slot}])` : `uint2(${resolution}[${slot}].xy)`;
-    return `    property ShaderStudioChannel${suffix(kind)} ${name}
+    return `property ShaderStudioChannel${suffix(kind)} ${name}
     {
         get
         {
@@ -152,12 +152,7 @@ float _ssChannelLoaded[${count}];`;
 ${types}
 ${bindings}
 ${metadata}
-struct ShaderStudioInputs
-{
-${fields}
-};
-static ShaderStudioInputs inputs;
-${sorted.filter(({ name }) => canExposeSlangChannelGlobal(name)).map(({ name, kind }) => `property ShaderStudioChannel${suffix(kind)} ${name} { get { return inputs.${name}; } }`).join('\n')}
+${channels}
 `;
 }
 

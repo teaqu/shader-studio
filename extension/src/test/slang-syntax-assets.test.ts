@@ -389,10 +389,11 @@ void main() { shade(float2(0.)); }`,
       const names = shaderStudioBuiltinUniformNames(language);
       // Stage-limited uniforms stay scoped because a grammar has no stage.
       const scoped = language === 'slang'
-        ? [...names, 'inputs']
+        ? [...names]
         : [...names, 'iChannel7', 'iChannel12', 'iCh7', 'iCh12'];
       const otherLanguage = language === 'glsl' ? 'slang' : 'glsl';
       const unscoped = [
+        ...(language === 'slang' ? ['inputs'] : []),
         ...shaderStudioBuiltinUniformNames(otherLanguage).filter((name) => !names.includes(name)),
         'iChannel', 'iChannelFoo', 'iChannel0Extra', 'inputsExtra', 'iTimeExtra', 'myiTime',
       ];
@@ -427,13 +428,13 @@ void main() { shade(float2(0.)); }`,
     ] as const) {
       const source = language === 'GLSL'
         ? 'iTime; iResolution.xy; iMouse.x; iChannel0; uv.y; uv.x; color.rgba; texcoord.stpq;'
-        : 'iTime; iResolution.xy; iMouse.x; inputs.iChannel0; uv.y; uv.x; color.rgba; texcoord.stpq;';
+        : 'iTime; iResolution.xy; iMouse.x; iChannel0; uv.y; uv.x; color.rgba; texcoord.stpq;';
       const [tokens] = tokenizeLines(source, grammar);
 
       assert.strictEqual(tokens.map((token) => token.text).join(''), source);
       const uniforms = language === 'GLSL'
         ? ['iTime', 'iResolution', 'iMouse', 'iChannel0']
-        : ['iTime', 'iResolution', 'iMouse', 'inputs'];
+        : ['iTime', 'iResolution', 'iMouse'];
       for (const uniform of uniforms) {
         const token = tokens.find((candidate) => candidate.text === uniform);
         assert.ok(token, `${language} ${uniform} must be emitted as one token`);

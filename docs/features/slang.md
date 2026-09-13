@@ -9,6 +9,16 @@ Slang supports multipass rendering, Common helpers, module imports, storage
 buffers, textures, cubemaps, audio/video, keyboard input, model geometry, and
 script uniforms. See [Channels](channels.md) for channel metadata and sampling.
 
+## Channels
+
+Every configured channel is a direct Slang global. For example, use
+`albedo.Sample(uv)`, `albedo.SampleLevel(uv, 0.0)`, and `albedo.size` for a
+channel named `albedo`. `inputs.albedo` was removed; migrate old shaders by
+removing `inputs.` from channel access. The `.sha.json` `inputs` field still
+defines the channel bindings. Shared `sample2D` and `sampleCube` functions and
+direct channel methods remain available. See [Channels](channels.md) for
+sampling rules and reserved-name diagnostics.
+
 ## Editing
 
 Completion, hover, signature help, definitions, references, highlights, and symbol

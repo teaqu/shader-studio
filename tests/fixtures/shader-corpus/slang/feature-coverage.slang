@@ -16,13 +16,13 @@ float4 mainImage(float2 fragCoord)
     }
 
     CoverageSample sample;
-    sample.color = inputs.patternTex.Sample(rotated).rgb;
+    sample.color = patternTex.Sample(rotated).rgb;
     sample.energy = dot(sample.color, float3(0.299, 0.587, 0.114));
-    float3 history = inputs.historyBuffer.Sample(uv).rgb;
+    float3 history = historyBuffer.Sample(uv).rgb;
     float edge = saturate(length(float2(ddx(sample.energy), ddy(sample.energy))) * 8.0);
     uint flags = (uint(iFrame) & 1u) | 2u;
     float flagValue = (flags == 2u) ? 1.0 : 0.75;
-    float channelReady = inputs.patternTex.size.x > 0 ? 1.0 : 0.0;
+    float channelReady = patternTex.size.x > 0 ? 1.0 : 0.0;
 
     float3 color = lerp(coverageGain(sample.color), history, 0.35);
     color += coveragePalette(uv.y * 4.0 + iTime) * edge * 0.15;

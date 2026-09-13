@@ -21,7 +21,7 @@ export interface ViewerSession {
   bufferNames: string[];
   activeBufferName: string;
   errors: string[];
-  onCodeChange: (code: string) => void;
+  onCodeChange: (code: string, path?: string) => void;
   onBufferSwitch: (bufferName: string) => void;
   onCursorChange: (line: number, lineContent: string, bufferName: string) => void;
   onManualCompile: () => void;

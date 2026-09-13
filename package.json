@@ -35,7 +35,8 @@
     "dev:shader-explorer": "npm run dev -w shader-explorer",
     "test": "vitest run",
     "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist types/node_modules types/dist",
-    "watch:extension": "npm run watch -w extension"
+    "watch:extension": "npm run watch -w extension",
+    "postinstall": "node monaco/scripts/patch-word-highlighter.mjs"
   },
   "devDependencies": {
     "@tsconfig/svelte": "^5.0.4",
