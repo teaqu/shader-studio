@@ -66,7 +66,7 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
     const completionDocs = {};
     const documentedCompletions = expectedLanguage === 'glsl'
       ? new Set(['texture'])
-      : new Set(['normalize', 'fmod', 'inputs']);
+      : new Set(['normalize', 'fmod', 'inputs', 'iChannel0']);
     for (const item of completionItems) {
       const label = typeof item.label === 'string' ? item.label : item.label.label;
       if (documentedCompletions.has(label)) {
@@ -337,7 +337,7 @@ test.describe('Shader language servers in VS Code', () => {
   test('provides the complete Slang authoring feature set through bundled WASM', async ({ vscode }) => {
     const result = await languageSnapshot(vscode, join(fixturePath, 'image.slang'), 'slang');
 
-    for (const label of ['normalize', 'fmod', 'inputs', 'iResolution', 'shade', 'twice']) {
+    for (const label of ['normalize', 'fmod', 'iChannel0', 'iResolution', 'shade', 'twice']) {
       expect(result.labels.includes(label), `Missing Slang completion ${label}`).toBeTruthy();
     }
     expect(
@@ -345,7 +345,8 @@ test.describe('Shader language servers in VS Code', () => {
       JSON.stringify(result.completionEntries.filter((item) => item.label === 'normalize')),
     ).toMatch(/unit length/i);
     expect(result.completionDocs.fmod).toMatch(/remainder/i);
-    expect(result.completionDocs.inputs).toMatch(/configured shader inputs/i);
+    expect(result.labels).not.toContain('inputs');
+    expect(result.completionDocs.inputs).toBeUndefined();
     for (const stageOnly of ['mainVertex', 'numthreads', 'SV_DispatchThreadID', 'writeOutput']) {
       expect(!result.labels.includes(stageOnly), `Unexpected fragment completion ${stageOnly}`).toBeTruthy();
     }

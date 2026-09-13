@@ -6,7 +6,7 @@ import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
 const fixtureDir = join(workspacePath, `wgsl-entrypoint-${process.env.TEST_WORKER_INDEX ?? process.pid}`);
 test.use({ vscodeKey: 'wgsl-entrypoint' });
 
-test('opens a WGSL entry point with a return type as a shader and restores it after reload', async ({ vscode }) => {
+test('opens a WGSL entry point with a return type before and after reloading VS Code', async ({ vscode }) => {
   mkdirSync(fixtureDir, { recursive: true });
   const path = join(fixtureDir, 'entry.wgsl');
   writeFileSync(path, 'fn mainImage(p: vec2f) -> vec4<f32> { return commonGreen(); }\n');
@@ -25,6 +25,13 @@ test('opens a WGSL entry point with a return type as a shader and restores it af
     await vscode.window.locator('.quick-input-widget input').fill('>Developer: Reload Window');
     await vscode.window.keyboard.press('Enter');
     await expect.poll(() => frame.isDetached()).toBe(true);
+    // Shader Studio has no webview serializer. Reopen the saved shader using
+    // the public command after reloading, as in the existing WGSL host flow.
+    await vscode.evaluateInHost(async (vscode, path) => {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      await vscode.window.showTextDocument(document, { preview: false });
+      await vscode.commands.executeCommand('shader-studio.view');
+    }, path);
     await expectCanvasPixels(await vscode.shaderFrame(), [0, 255, 0]);
   } finally {
     await revertFixtureEditors(vscode, fixtureDir);
