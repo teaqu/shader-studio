@@ -354,6 +354,22 @@ describe("MonacoLanguageServiceManager", () => {
     manager.dispose();
   });
 
+  it.each(["glsl", "slang", "wgsl"] as const)("preserves edits in an attached %s dependency when a stale environment arrives", async (language) => {
+    const fixture = monacoFixture(language);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture(), wgsl: async () => serviceFixture() });
+    const environment = { ...ENVIRONMENT, languageId: language, documentUri: fixture.model.uri.toString(), virtualFiles: [{ uri: `file:///helper.${language}`, text: "stored source", version: 1 }] };
+    await manager.syncEnvironment(environment);
+    const dependency = fixture.monaco.editor.createModel.mock.results[0].value;
+    dependency.isAttachedToEditor = () => true;
+    dependency.getValue = () => "new unsaved edits";
+    await manager.syncEnvironment({ ...environment, generation: 2 });
+    expect(dependency.setValue).not.toHaveBeenCalled();
+    dependency.isAttachedToEditor = () => false;
+    await manager.syncEnvironment({ ...environment, generation: 3 });
+    expect(dependency.setValue).toHaveBeenCalledWith("stored source");
+    manager.dispose();
+  });
+
   it("abandons a model disposed while its language service starts", async () => {
     const fixture = monacoFixture();
     let resolveService!: (service: LanguageService) => void;

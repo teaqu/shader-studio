@@ -627,7 +627,10 @@ snapshots.get(change.uri)!.model.setValue(change.after);
       const existing = this.monaco.editor.getModel(uri);
       if (!existing) {
         this.managedVirtualModels.set(file.uri, this.monaco.editor.createModel(file.text, environment.languageId, uri));
-      } else if (this.managedVirtualModels.get(file.uri) === existing && existing.getValue() !== file.text) {
+      } else if (this.managedVirtualModels.get(file.uri) === existing
+        && !existing.isAttachedToEditor() && existing.getValue() !== file.text) {
+        // Once opened in an editor, the live buffer owns its contents. Host
+        // environment snapshots may predate unsaved typing in that buffer.
         existing.setValue(file.text);
       }
     }

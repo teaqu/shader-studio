@@ -790,6 +790,7 @@ for (const separate of [false, true]) {
         ? 'void mainImage(out vec4 color, in vec2 coord) {\n  color = '
         : 'float4 mainImage(float2 coord) {\n  return ');
       await page.keyboard.type('norm', { delay: 100 });
+      await expect(editor.locator('.view-lines')).toContainText('norm');
       const suggestions = page.locator('.suggest-widget:visible');
       await expect(suggestions).toBeVisible();
       await expect(suggestions).toContainText('normalize');
