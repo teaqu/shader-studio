@@ -62,6 +62,37 @@ describe("analyzeWgslSite", () => {
     });
   });
 
+  it.each([
+    ["annotated alias", "  var m: mat2x2f = mat2x2f(0.125, 0.25, 0.5, 0.75);", "mat2x2f"],
+    ["annotated parameterized", "  let m: mat2x2<f32> = mat2x2<f32>(0.125, 0.25, 0.5, 0.75);", "mat2x2<f32>"],
+    ["inferred alias", "  let m = mat2x2f(0.125, 0.25, 0.5, 0.75);", "mat2x2f"],
+    ["inferred parameterized", "  var m = mat2x2<f32>(vec2f(0.125, 0.25), vec2f(0.5, 0.75));", "mat2x2<f32>"],
+  ])("captures a %s 2x2 matrix local as its preview", (_label, declaration, typeName) => {
+    const source = `fn mainImage(coord: vec2f) -> vec4f {\n${declaration}\n  return vec4f(m[0], m[1]);\n}`;
+    const result = analyze(source, { line: 1, character: 4 });
+    expect(result).toMatchObject({ ok: true });
+    const m = result.ok ? result.analysis.visibleValues.find((value) => value.name === "m") : undefined;
+    expect(m).toMatchObject({ typeName });
+    expect(result.ok && result.analysis.previewValueId).toBe(m?.id);
+  });
+
+  it("returns a 2x2 matrix from a helper and infers its column type", () => {
+    const source = [
+      "fn basis(scale: f32) -> mat2x2f {",
+      "  let column = mat2x2f(scale, 0.0, 0.0, scale)[1];",
+      "  return mat2x2f(vec2f(scale, 0.0), column);",
+      "}",
+      "fn mainImage(coord: vec2f) -> vec4f { return vec4f(basis(0.5)[0], 0.0, 1.0); }",
+    ].join("\n");
+    const column = analyze(source, { line: 1, character: 4 });
+    expect(column.ok ? column.analysis.visibleValues.find((value) => value.name === "column") : undefined)
+      .toMatchObject({ typeName: "vec2f" });
+    expect(analyze(source, { line: 2, character: 4 })).toMatchObject({
+      ok: true,
+      analysis: { visibleValues: expect.arrayContaining([expect.objectContaining({ name: "_dbgReturn", typeName: "mat2x2f" })]) },
+    });
+  });
+
   it("selects an assignment target as preview", () => {
     const assigned = analyze(SOURCE, { line: 4, character: 10 });
     const tint = assigned.ok ? assigned.analysis.visibleValues.find((item) => item.name === "tint") : undefined;

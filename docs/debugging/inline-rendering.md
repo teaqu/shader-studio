@@ -1,7 +1,7 @@
 # Inline Rendering
 
 
-Inline rendering is the core debug visualization. When enabled, placing your cursor on a line containing a variable rewrites the shader to render that variable's value as color output across the entire canvas.
+Inline rendering is the core debug visualization. When enabled, placing your cursor on a line containing a variable rewrites the shader to render that variable's value as color output across the entire canvas. Turning debug mode on uses the cursor already placed in the active shader editor, so you do not need to move it first.
 
 ## Variable Detection
 
@@ -16,7 +16,8 @@ The debug system detects variables from these line patterns:
 | Expression statement | `test;` — a plain variable or expression on its own line |
 | Return statement | `return length(p) - r;` (uses function return type) |
 
-User-defined struct types are supported in all of the above patterns.
+Select a supported scalar, vector, or matrix value to visualize it. For structs
+and arrays, select a field or element rather than the whole value.
 
 Lines that don't contain a detectable variable (comments, blank lines, function signatures, preprocessor directives) show an error indicator in the header line number, displayed as red text with an error tooltip.
 
@@ -30,7 +31,8 @@ If a line has invalid syntax that would prevent compilation, the system preserve
 
 ## Type Visualization
 
-Each GLSL type is visualized differently:
+The table below shows GLSL inline visualization. Slang and WGSL also support
+scalar and vector previews; see their language guides for capture limits.
 
 | Type | Visualization | Notes |
 |------|--------------|-------|
@@ -41,6 +43,10 @@ Each GLSL type is visualized differently:
 | `int` | Grayscale with float conversion | Cast to float, then grayscale |
 | `bool` | Black or white | `false` = black, `true` = white |
 | `mat2/3/4` | First column visualized | Extracted and displayed as vector |
+
+This table describes canvas previews, not whole-matrix capture in the Variable
+Inspector. See [WGSL capture types](../features/wgsl.md#debugging-and-capture-types)
+for supported matrices and component ordering.
 
 
 

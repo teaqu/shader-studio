@@ -700,6 +700,8 @@
     let bufferPath: string | undefined;
     if (actualName === "Image") {
       bufferPath = shaderPath;
+    } else if (actualName.startsWith("/")) {
+      bufferPath = actualName;
     } else if (bufferPathMap[actualName]) {
       bufferPath = bufferPathMap[actualName];
     } else if (actualName.startsWith("./") || actualName.startsWith("../")) {

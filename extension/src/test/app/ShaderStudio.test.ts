@@ -254,6 +254,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: sandbox.stub() }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: sandbox.stub() }),
     } as unknown as vscode.WebviewPanel;
   }
 
@@ -294,6 +295,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -319,6 +321,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -354,6 +357,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -381,6 +385,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -414,6 +419,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -446,6 +452,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -468,6 +475,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -494,6 +502,7 @@ suite('Shader Studio Test Suite', () => {
         postMessage: sandbox.stub(),
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
 
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
@@ -786,6 +795,80 @@ suite('Shader Studio Test Suite', () => {
 
     teardown(() => {
       clock.restore();
+    });
+
+    test('sends the active shader cursor as soon as variable debugging is enabled', () => {
+      // Without this the panel stays empty until the cursor moves, which a
+      // user who enables debugging with the caret already placed never does.
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+
+      shaderStudio.setDebugModeEnabled(true);
+
+      sinon.assert.calledOnce(messengerSendSpy);
+      const message = messengerSendSpy.getCall(0).args[0];
+      assert.strictEqual(message.type, 'cursorPosition');
+      assert.strictEqual(message.payload.line, 5);
+      assert.strictEqual(message.payload.character, 10);
+      assert.strictEqual(message.payload.filePath, '/mock/path/shader.glsl');
+    });
+
+    test('sends the visible shader cursor when the preview has focus while enabling debugging', () => {
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      sandbox.stub(shaderStudio['glslFileTracker'], 'getActiveOrLastViewedGLSLEditor').returns(mockEditor);
+
+      shaderStudio.setDebugModeEnabled(true);
+
+      sinon.assert.calledOnce(messengerSendSpy);
+      assert.strictEqual(messengerSendSpy.firstCall.args[0].payload.filePath, '/mock/path/shader.glsl');
+      assert.strictEqual(messengerSendSpy.firstCall.args[0].payload.line, 5);
+    });
+
+    test('does not send a stale cursor when the last shader editor is no longer visible', () => {
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      sandbox.stub(shaderStudio['glslFileTracker'], 'getActiveOrLastViewedGLSLEditor').returns(null);
+
+      shaderStudio.setDebugModeEnabled(true);
+
+      sinon.assert.notCalled(messengerSendSpy);
+    });
+
+    test('does not send a point cursor for a selected range in the visible fallback editor', () => {
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+      mockEditor.selection = new vscode.Selection(5, 0, 5, 10);
+      sandbox.stub(shaderStudio['glslFileTracker'], 'getActiveOrLastViewedGLSLEditor').returns(mockEditor);
+
+      shaderStudio.setDebugModeEnabled(true);
+
+      sinon.assert.notCalled(messengerSendSpy);
+    });
+
+    test('does not send a cursor when debugging is disabled or no preview is connected', () => {
+      sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+      const hasActiveClients = sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(false);
+
+      shaderStudio.setDebugModeEnabled(true);
+      hasActiveClients.returns(true);
+      shaderStudio.setDebugModeEnabled(false);
+      clock.tick(150);
+
+      sinon.assert.notCalled(messengerSendSpy);
+    });
+
+    test('does not send a cursor for a non-shader active editor when debugging is enabled', () => {
+      sandbox.stub(shaderStudio['messenger'], 'hasActiveClients').returns(true);
+      sandbox.stub(vscode.window, 'activeTextEditor').value({
+        ...mockEditor,
+        document: { ...mockEditor.document, languageId: 'markdown', fileName: '/mock/path/notes.md', uri: vscode.Uri.file('/mock/path/notes.md') },
+      });
+
+      shaderStudio.setDebugModeEnabled(true);
+      clock.tick(150);
+
+      sinon.assert.notCalled(messengerSendSpy);
     });
 
     test('should debounce cursor position messages by default', () => {

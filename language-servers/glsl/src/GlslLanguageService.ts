@@ -235,6 +235,13 @@ export class GlslLanguageService implements LanguageService {
     if (!word) {
       return null;
     }
+    const memberStart = memberSelectionStart(state.document.text, params.position);
+    if (memberStart) {
+      return memberHover(word, memberStart, state.document.text, state.environment, [
+        ...(this.generatedAnalyses.has(params.document.uri) ? [this.generatedAnalyses.get(params.document.uri)!] : []),
+        ...(this.includeAnalyses.get(params.document.uri) ?? []),
+      ], params.document.uri);
+    }
     const userSymbol = symbolAtPosition(state.analysis, params.position)
       ?? visibleSymbolsAtPosition(state.analysis, params.position).find((symbol) => symbol.name === word)
       ?? state.analysis.symbols.find((symbol) => symbol.name === word);
@@ -319,12 +326,15 @@ export class GlslLanguageService implements LanguageService {
     const labels = [
       ...user.map((symbol) => symbol.signature!),
       ...contextual.map((symbol) => symbol.signature!),
+      ...vertexSamplerHelpers(state.environment).filter((helper) => helper.name === call.name).map((helper) => helper.signature),
       ...intrinsic.map((item) => item.signature),
     ];
     if (labels.length === 0) {
       return null;
     }
-    return { signatures: labels.map((label) => ({ label })), activeSignature: 0, activeParameter: call.parameter };
+    // Without type resolution, arity is the only reliable overload signal.
+    const fitting = labels.findIndex((label) => signatureArity(label) > call.parameter);
+    return { signatures: labels.map((label) => ({ label })), activeSignature: Math.max(0, fitting), activeParameter: call.parameter };
   }
 
   async documentSymbols(params: DocumentParams): Promise<DocumentSymbol[]> {
@@ -745,8 +755,7 @@ function memberCompletions(
   const resolved = resolveGlslExpressionType({ uri, source, stage: environment.stage, position, expression }, {
     includes,
     variableType: (name) => environmentTypeName(name, source, environment),
-    functionType: (name) => visibleIntrinsics(source, environment.stage)
-      .find((item) => item.kind === "function" && item.name === name)?.returnType,
+    functionType: (name) => environmentFunctionType(name, source, environment),
   });
   if (!resolved) {
     return [];
@@ -958,31 +967,131 @@ function wordAt(source: string, position: Position): string | undefined {
   return `${left}${right}` || undefined;
 }
 
+/**
+ * The innermost call whose argument list holds the cursor and the argument
+ * index there. Comments are skipped and commas count only at the call's own
+ * nesting level; a `;` or brace ends any call.
+ */
 function callAt(source: string, position: Position): { name: string; parameter: number } | undefined {
   const lines = source.split("\n");
-  if (!lines[position.line]) {
+  if (lines[position.line] === undefined) {
     return undefined;
   }
   const offset = lines.slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.character;
   const prefix = source.slice(0, offset);
-  let depth = 0;
-  for (let index = prefix.length - 1; index >= 0; index--) {
-    if (prefix[index] === ")") {
-      depth++;
-    } else if (prefix[index] === "(") {
-      if (depth > 0) {
-        depth--;
-      } else {
-        const name = prefix.slice(0, index).match(/([A-Za-z_][A-Za-z0-9_]*)\s*$/)?.[1];
-        if (!name) {
-          return undefined;
-        }
-        const parameter = prefix.slice(index + 1).split(",").length - 1;
-        return { name, parameter };
+  let frames: { name?: string; commas: number; close: ")" | "]" }[] = [];
+  let lastIdentifier: string | undefined;
+  for (let index = 0; index < prefix.length; index++) {
+    const char = prefix[index]!;
+    if (prefix.startsWith("//", index)) {
+      const end = prefix.indexOf("\n", index);
+      index = end === -1 ? prefix.length : end;
+      continue;
+    }
+    if (prefix.startsWith("/*", index)) {
+      const end = prefix.indexOf("*/", index + 2);
+      index = end === -1 ? prefix.length : end + 1;
+      continue;
+    }
+    const identifier = /^[A-Za-z_][A-Za-z0-9_]*/.exec(prefix.slice(index))?.[0];
+    if (identifier && !/[A-Za-z0-9_]/.test(prefix[index - 1] ?? "")) {
+      lastIdentifier = identifier;
+      index += identifier.length - 1;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      continue;
+    }
+    if (char === "(") {
+      frames.push({ ...(lastIdentifier ? { name: lastIdentifier } : {}), commas: 0, close: ")" });
+    } else if (char === "[") {
+      frames.push({ commas: 0, close: "]" });
+    } else if (char === ")" || char === "]") {
+      const open = frames.map((frame) => frame.close).lastIndexOf(char);
+      if (open >= 0) {
+        frames = frames.slice(0, open);
       }
+    } else if (char === ",") {
+      const frame = frames[frames.length - 1];
+      if (frame) {
+        frame.commas += 1;
+      }
+    } else if (char === ";" || char === "{" || char === "}") {
+      frames = [];
+    }
+    lastIdentifier = undefined;
+  }
+  for (let index = frames.length - 1; index >= 0; index--) {
+    const frame = frames[index]!;
+    if (frame.name !== undefined) {
+      return GLSL_CALL_KEYWORDS.has(frame.name) ? undefined : { name: frame.name, parameter: frame.commas };
     }
   }
   return undefined;
+}
+
+/** Keywords that open a parenthesized group rather than a call. */
+const GLSL_CALL_KEYWORDS = new Set(["if", "for", "while", "switch", "return"]);
+
+function signatureArity(label: string): number {
+  const inside = label.slice(label.indexOf("(") + 1, label.lastIndexOf(")")).trim();
+  return inside === "" || inside === "void" ? 0 : inside.split(",").length;
+}
+
+/** Return type of a function the document does not declare: generated vertex samplers and intrinsics. */
+function environmentFunctionType(name: string, source: string, environment: ShaderAuthoringEnvironment): string | undefined {
+  const helper = vertexSamplerHelpers(environment).find((item) => item.name === name);
+  if (helper) {
+    return helper.signature.slice(0, helper.signature.indexOf(" "));
+  }
+  return visibleIntrinsics(source, environment.stage).find((item) => item.kind === "function" && item.name === name)?.returnType;
+}
+
+/** Start of a member selection (`owner.member`) the cursor is on, if any. */
+function memberSelectionStart(source: string, position: Position): Position | undefined {
+  const line = source.split("\n")[position.line];
+  if (line === undefined) {
+    return undefined;
+  }
+  let start = position.character;
+  while (start > 0 && /[A-Za-z0-9_]/.test(line[start - 1] ?? "")) {
+    start -= 1;
+  }
+  let dot = start - 1;
+  while (dot >= 0 && /\s/.test(line[dot] ?? "")) {
+    dot -= 1;
+  }
+  return line[dot] === "." && !/^\s*#/.test(line) ? { line: position.line, character: start } : undefined;
+}
+
+/** A member selection hovers by its owner's type, and not at all when that type is unknown. */
+function memberHover(
+  member: string,
+  start: Position,
+  source: string,
+  environment: ShaderAuthoringEnvironment,
+  includes: readonly GlslAnalysisDocument[],
+  uri: string,
+): Hover | null {
+  const access = findMemberAccess(source, start);
+  const resolved = access && resolveGlslExpressionType({ uri, source, stage: environment.stage, position: start, expression: access.expression }, {
+    includes,
+    variableType: (name) => environmentTypeName(name, source, environment),
+    functionType: (name) => environmentFunctionType(name, source, environment),
+  });
+  if (!access || !resolved) {
+    return null;
+  }
+  const vector = resolved.vector;
+  if (vector) {
+    const set = GLSL_SWIZZLE_SETS.find((candidate) => [...member].every((component) => candidate.slice(0, vector.size).includes(component)));
+    const type = member.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, member.length);
+    return set && member.length <= 4 && type
+      ? markdownHover(`${type} ${member}`, `Component selection on \`${access.expression}\`.`)
+      : null;
+  }
+  const field = resolved.fields?.find((candidate) => candidate.name === member);
+  return field ? markdownHover(`${field.type} ${member}`, `Field of \`${resolved.name}\`.`) : null;
 }
 
 function stripIncludeDirectives(source: string): string {

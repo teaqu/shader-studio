@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertProductionVsixLaunchArgs, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-validation');
@@ -50,8 +51,12 @@ async function waitFor(predicate, { timeout = 60_000, interval = 250, message })
   const deadline = Date.now() + timeout;
   for (;;) {
     const value = await predicate();
-    if (value) return value;
-    if (Date.now() >= deadline) throw new Error(message ?? 'condition never became true');
+    if (value) {
+      return value;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(message ?? 'condition never became true');
+    }
     await new Promise((r) => setTimeout(r, interval));
   }
 }
@@ -64,13 +69,15 @@ export const test = base.extend({
    * panel state the specs leave behind are not safe to share.
    */
   vscodeKey: ['default', { scope: 'worker', option: true }],
+  productionVsixPath: [process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? null, { scope: 'worker', option: true }],
 
   // Worker-scoped: one VS Code window per worker, shared by every test in a
   // file. The specs build up state across tests (debug mode on, lock engaged)
   // exactly as they did under the previous runner, and a fresh window per test
   // would both break that and make the suite far slower.
-  vscode: [async ({ vscodeKey }, use) => {
+  vscode: [async ({ vscodeKey, productionVsixPath }, use) => {
     const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
+    const extensionsDir = join(userDataDir, 'extensions');
     const portFile = join(userDataDir, 'bridge-port');
 
     // Seed the profile before launch. Applying these through the configuration
@@ -80,20 +87,28 @@ export const test = base.extend({
     mkdirSync(join(userDataDir, 'User'), { recursive: true });
     writeFileSync(join(userDataDir, 'User', 'settings.json'), JSON.stringify(USER_SETTINGS, null, 2), 'utf8');
 
-    const app = await electron.launch({
-      executablePath: vscodeBinary(),
-      env: cleanEnv({ SHADER_STUDIO_PW_PORT_FILE: portFile, SHADER_STUDIO_E2E_WORKSPACE: workspacePath }),
-      args: [
+    const bridgeExtensionPath = join(extensionPath, 'e2e', 'pw', 'bridge-extension');
+    let args;
+    if (productionVsixPath) {
+      installProductionVsix({
+        vscodeBinary: vscodeBinary(),
+        vsixPath: productionVsixPath,
+        userDataDir,
+        extensionsDir,
+      });
+      args = productionVsixLaunchArgs({ userDataDir, extensionsDir, bridgeExtensionPath, workspacePath });
+      assertProductionVsixLaunchArgs(args, bridgeExtensionPath);
+    } else {
+      args = [
         '--no-sandbox',
         '--disable-updates',
         '--skip-welcome',
         '--skip-release-notes',
         '--disable-workspace-trust',
-        '--disable-extensions',
         `--extensionDevelopmentPath=${extensionPath}`,
-        `--extensionDevelopmentPath=${join(extensionPath, 'e2e', 'pw', 'bridge-extension')}`,
+        `--extensionDevelopmentPath=${bridgeExtensionPath}`,
         `--user-data-dir=${userDataDir}`,
-        `--extensions-dir=${join(userDataDir, 'extensions')}`,
+        `--extensions-dir=${extensionsDir}`,
         '--enable-unsafe-webgpu',
         // rAF does not fire in a hidden document, and Chromium marks occluded
         // windows hidden. Without these, any window covering the test window
@@ -102,7 +117,12 @@ export const test = base.extend({
         '--disable-renderer-backgrounding',
         '--disable-background-timer-throttling',
         workspacePath,
-      ],
+      ];
+    }
+    const app = await electron.launch({
+      executablePath: vscodeBinary(),
+      env: cleanEnv({ SHADER_STUDIO_PW_PORT_FILE: portFile, SHADER_STUDIO_E2E_WORKSPACE: workspacePath }),
+      args,
       timeout: 120_000,
     });
 
@@ -125,7 +145,9 @@ export const test = base.extend({
         body: JSON.stringify({ source: fn.toString(), args }),
       });
       const result = await response.json();
-      if (!result.ok) throw new Error(`extension host: ${result.error}`);
+      if (!result.ok) {
+        throw new Error(`extension host: ${result.error}`);
+      }
       return result.value;
     };
 
@@ -143,7 +165,9 @@ export const test = base.extend({
         } catch (error) {
           const detail = String(error?.message ?? error) + String(error?.cause?.code ?? '');
           const transient = /Canceled|ECONNREFUSED|ECONNRESET|fetch failed/i.test(detail);
-          if (!transient || Date.now() >= deadline) throw error;
+          if (!transient || Date.now() >= deadline) {
+            throw error;
+          }
           await new Promise((r) => setTimeout(r, 500));
         }
       }
@@ -151,6 +175,20 @@ export const test = base.extend({
 
     // Do not let the first real call be the one that races activation.
     await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
+    // The empty, per-worker extensions directory admits only these explicit
+    // development extensions. Keeping extensions enabled avoids VS Code's
+    // --disable-extensions toast, including after reload.
+    const nonBuiltinExtensionIds = await evaluateInHost(vscode => vscode.extensions.all
+      .filter(extension => !extension.packageJSON.isBuiltin)
+      .map(extension => extension.id)
+      .sort());
+    const expectedNonBuiltinExtensionIds = [
+      'shader-studio-tests.shader-studio-pw-bridge',
+      'teaqu.shader-studio',
+    ];
+    if (JSON.stringify(nonBuiltinExtensionIds) !== JSON.stringify(expectedNonBuiltinExtensionIds)) {
+      throw new Error(`unexpected non-builtin extensions: ${nonBuiltinExtensionIds.join(', ')}`);
+    }
 
     /** The frame hosting the Shader Studio app, found by content: VS Code's
      *  internal webview frame names differ across versions. */
@@ -158,13 +196,15 @@ export const test = base.extend({
       for (const frame of window.frames()) {
         try {
           const canvas = frame.locator('.canvas-container').first();
-          if (await canvas.isVisible()) return frame;
+          if (await canvas.isVisible()) {
+            return frame;
+          }
         } catch { /* frame detached mid-scan */ }
       }
       return null;
     }, { timeout, message: 'no frame hosting the Shader Studio app appeared' });
 
-    await use({ app, window, evaluateInHost, shaderFrame, workspacePath });
+    await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
 
     // A wedged extension host can leave close() pending, which surfaces as a
     // worker teardown timeout and hides whatever actually failed.
@@ -172,7 +212,9 @@ export const test = base.extend({
       app.close(),
       new Promise((resolve) => setTimeout(resolve, 15_000)),
     ]).catch(() => { /* the process is going away regardless */ });
-    try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
+    try {
+      rmSync(userDataDir, { recursive: true, force: true });
+    } catch { /* best effort */ }
   }, { scope: 'worker' }],
 });
 

@@ -20,7 +20,7 @@ void simulateParticles(uint3 id : SV_DispatchThreadID)
 
 If a source file has more than one `[shader("compute")]` entry point, set `entryPoint` in the pass config to select one.
 
-The usual Slang built-ins and channel objects are available in compute passes. Use an explicit mip level when sampling a channel, for example `inputs.iChannel0.SampleLevel(uv, 0.0)`. Script-driven custom uniforms are also available.
+The usual Slang built-ins and channel objects are available in compute passes. Use an explicit mip level when sampling a channel, for example `iChannel0.SampleLevel(uv, 0.0)`. Script-driven custom uniforms are also available.
 
 WGSL compute shaders use `@compute` entry points with `@workgroup_size`, and the thread id comes from the `global_invocation_id` built-in:
 

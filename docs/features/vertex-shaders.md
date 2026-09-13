@@ -80,7 +80,7 @@ All standard shader uniforms are available in the vertex shader:
 | `iMouse` | `vec4` | `float4` | Mouse position and button state |
 | `iFrame` | `int` | `int` | Current frame number |
 | `iDate` | `vec4` | `float4` | Year, month, day, seconds |
-| `iChannelTime` | `float[N]` | — | Playback time per configured channel (use `inputs.iChannelN.time` in Slang) |
+| `iChannelTime` | `float[N]` | — | Playback time per configured channel (use `iChannelN.time` in Slang) |
 | `iSampleRate` | `float` | `float` | Audio sample rate |
 | `iCameraPos` | `vec3` | `float3` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | Camera forward direction |
@@ -89,7 +89,7 @@ All standard shader uniforms are available in the vertex shader:
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.
 
 === "Slang"
-    Configured inputs are available as `inputs.<config key>`, for example `inputs.iChannel0` or `inputs.noise`. This API is Slang-only and is available in all shader stages. In a vertex shader, use explicit-level sampling such as `inputs.iChannel0.SampleLevel(textureUv, 0.0)`; `Sample(uv)` is fragment-only.
+    Configured inputs are available as `<config key>`, for example `iChannel0` or `noise`. Slang channel methods are available in all shader stages. In a vertex shader, use explicit-level sampling such as `iChannel0.SampleLevel(textureUv, 0.0)`; `Sample(uv)` is fragment-only.
 
 ## Fragment Shader Access
 

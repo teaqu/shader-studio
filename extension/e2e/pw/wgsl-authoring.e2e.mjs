@@ -126,7 +126,9 @@ test.describe('WGSL authoring in VS Code', () => {
         await vscode.window.showTextDocument(commonDocument, { preview: false, preserveFocus: false });
         await commonDocument.save();
         await vscode.window.showTextDocument(passDocument, { preview: false, preserveFocus: false });
-        if (!passDocument.getText().includes('curve(coord.x)')) throw new Error('rename did not update the visible pass document');
+        if (!passDocument.getText().includes('curve(coord.x)')) {
+          throw new Error('rename did not update the visible pass document');
+        }
         await passDocument.save();
         return true;
       }, { passPath, commonPath });
@@ -136,7 +138,9 @@ test.describe('WGSL authoring in VS Code', () => {
       expect(texts[1]).toContain('fn curve(value: f32)');
     } finally {
       for (const path of [passPath, commonPath, configPath]) {
-        try { rmSync(path); } catch { /* fixture cleanup */ }
+        try {
+          rmSync(path);
+        } catch { /* fixture cleanup */ }
       }
     }
   });
@@ -185,29 +189,14 @@ test.describe('WGSL authoring in VS Code', () => {
     }
   });
 
-  test('captures WGSL variables with the debugger following the cursor', async ({ vscode }) => {
+  test('captures WGSL variables at the existing cursor when enabling the debugger', async ({ vscode }) => {
     await showShader(vscode, imagePath);
     await vscode.evaluateInHost(async vscode => vscode.commands.executeCommand('shader-studio.view'));
     const frame = await vscode.shaderFrame();
     await expectPreview(frame, [0, 255, 0], vscode);
 
-    await expect.poll(
-      () => frame.evaluate(() => !document.querySelector(
-        'button.collapse-debug[aria-label="Toggle debug mode"]')?.disabled),
-      { message: 'WGSL debug mode never became available', timeout: 90_000 },
-    ).toBe(true);
-    await frame.evaluate(() => {
-      const debugButton = document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]');
-      if (debugButton && !debugButton.classList.contains('active')) debugButton.click();
-    });
-    await expect(frame.locator('.debug-panel')).toBeVisible({ timeout: 30_000 });
-    if (await frame.locator('.variables-section').count() === 0) {
-      await frame.getByLabel('Toggle variable inspector').click();
-    }
-    await expect(frame.locator('.variables-section')).toBeVisible();
-
-    // Park the cursor on the return: the capture must list the coord
-    // parameter and the synthesized return value.
+    // Park the cursor before enabling debug mode. Capturing must not require
+    // an extra cursor movement after the debugger opens.
     await vscode.evaluateInHost(async (vscode, targetPath) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -217,6 +206,23 @@ test.describe('WGSL authoring in VS Code', () => {
       editor.selection = new vscode.Selection(position, position);
       editor.revealRange(new vscode.Range(position, position));
     }, imagePath);
+
+    await expect.poll(
+      () => frame.evaluate(() => !document.querySelector(
+        'button.collapse-debug[aria-label="Toggle debug mode"]')?.disabled),
+      { message: 'WGSL debug mode never became available', timeout: 90_000 },
+    ).toBe(true);
+    await frame.evaluate(() => {
+      const debugButton = document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]');
+      if (debugButton && !debugButton.classList.contains('active')) {
+        debugButton.click();
+      }
+    });
+    await expect(frame.locator('.debug-panel')).toBeVisible({ timeout: 30_000 });
+    if (await frame.locator('.variables-section').count() === 0) {
+      await frame.getByLabel('Toggle variable inspector').click();
+    }
+    await expect(frame.locator('.variables-section')).toBeVisible();
 
     await expect.poll(
       () => frame.evaluate(() => document.querySelector('.header-info')?.textContent?.trim() ?? ''),
@@ -246,7 +252,9 @@ test.describe('WGSL authoring in VS Code', () => {
     // preview, and a restored cursor would otherwise keep previewing.
     await frame.evaluate(() => {
       const debugButton = document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]');
-      if (debugButton && debugButton.classList.contains('active')) debugButton.click();
+      if (debugButton && debugButton.classList.contains('active')) {
+        debugButton.click();
+      }
     });
     await expect.poll(() => frame.evaluate(() => document.querySelector(
       'button.collapse-debug[aria-label="Toggle debug mode"]')?.classList.contains('active') ?? false),

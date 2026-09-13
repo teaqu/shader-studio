@@ -364,6 +364,7 @@
     "test": "vscode-test",
     "test:e2e:vscode": "npm run compile && npm run test:e2e:vscode:run",
     "test:e2e:vscode:run": "playwright test --config ./e2e/pw/playwright.config.mjs",
+    "test:e2e:vscode:harness:unit": "node --test e2e/pw/*.test.mjs",
     "test:e2e:vscode:corpus": "npm run compile && npm run test:e2e:vscode:corpus:run",
     "test:e2e:vscode:corpus:run": "SHADER_STUDIO_E2E_WORKSPACE=../tests/fixtures/shader-corpus playwright test --config ./e2e/pw/playwright.corpus.config.mjs"
   },

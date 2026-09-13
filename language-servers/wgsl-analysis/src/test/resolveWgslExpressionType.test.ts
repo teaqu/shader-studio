@@ -157,3 +157,23 @@ describe("resolveWgslExpressionType", () => {
       .toMatchObject({ name: "A" });
   });
 });
+
+describe("resolveWgslExpressionType in complete documents", () => {
+  it("resolves a member in an if header followed by an else-if chain", () => {
+    const source = [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let uv = coord;",
+      "  if uv.y >= 0.5 && uv.x < 0.5 {",
+      "    return vec4f(1.0);",
+      "  } else if uv.y >= 0.5 {",
+      "    return vec4f(0.5);",
+      "  }",
+      "  return vec4f(0.0);",
+      "}",
+    ].join("\n");
+    const character = source.split("\n")[2]!.indexOf("uv.y") + "uv.".length;
+    expect(resolveWgslExpressionType({
+      uri: URI, source, stage: "fragment", position: { line: 2, character }, expression: "uv",
+    })).toMatchObject({ name: "vec2f", vector: { componentType: "f32", size: 2 } });
+  });
+});

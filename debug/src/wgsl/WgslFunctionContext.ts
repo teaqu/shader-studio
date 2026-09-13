@@ -15,9 +15,13 @@ export function extractWgslFunctionContext(source: string, debugLine: number): D
     .filter((scope) => scope.kind === "function"
       && scope.range.start.line <= debugLine && scope.range.end.line >= debugLine)
     .sort((left, right) => rangeLineSpan(left.range) - rangeLineSpan(right.range))[0];
-  if (!callable) return null;
+  if (!callable) {
+    return null;
+  }
   const symbol = document.symbols.find((candidate) => candidate.kind === "function" && candidate.name === callable.name);
-  if (!symbol) return null;
+  if (!symbol) {
+    return null;
+  }
 
   const parameters = document.symbols
     .filter((candidate) => candidate.kind === "parameter" && candidate.scopeId === callable.id
@@ -135,6 +139,8 @@ function defaultExpressionForType(typeName: string): string {
     case "i32": return "1";
     case "u32": return "1u";
     case "bool": return "true";
+    case "mat2x2f":
+    case "mat2x2<f32>": return `${typeName}(1.0, 0.0, 0.0, 1.0)`;
     default: return `${typeName}(0)`;
   }
 }

@@ -66,6 +66,19 @@ export interface WgslStatement {
   readonly scopeId: string;
 }
 
+/**
+ * Declarations that live outside the parsed source, such as configured storage
+ * buffers, Common helpers, and generated channel functions. Inference consults
+ * it only for names the document itself does not resolve.
+ */
+export interface WgslInferenceContext {
+  readonly valueType?: (name: string) => string | undefined;
+  /** Return type of a function; generic results such as `T` are ignored. */
+  readonly functionType?: (name: string) => string | undefined;
+  /** Field type of a struct the document does not declare, such as one from Common. */
+  readonly fieldType?: (owner: string, field: string) => string | undefined;
+}
+
 export interface WgslAnalysisDocument {
   readonly uri: string;
   readonly source: string;

@@ -18,6 +18,14 @@ describe("WGSL_INTRINSICS", () => {
     }
   });
 
+  it("spells the two-argument arc tangent atan2, as WGSL does", () => {
+    expect(findWgslIntrinsics("atan").map((item) => item.parameters.length)).toEqual([1]);
+    expect(findWgslIntrinsics("atan2")).toEqual([expect.objectContaining({
+      signature: "T atan2(T y, T x)",
+      parameters: [{ name: "y", type: "T" }, { name: "x", type: "T" }],
+    })]);
+  });
+
   it("covers texture, sampler, atomic, packing, derivative, and synchronization builtins", () => {
     for (const name of [
       "textureSample", "textureSampleBias", "textureSampleLevel", "textureSampleGrad",
@@ -103,8 +111,8 @@ describe("WGSL_INTRINSICS", () => {
     }
   });
 
-  it("keeps overloads such as atan findable", () => {
-    expect(findWgslIntrinsics("atan").length).toBeGreaterThanOrEqual(2);
+  it("keeps overloads such as textureSample findable", () => {
+    expect(findWgslIntrinsics("select").length).toBeGreaterThanOrEqual(2);
     expect(findWgslIntrinsics("textureSample").length).toBeGreaterThanOrEqual(2);
   });
 

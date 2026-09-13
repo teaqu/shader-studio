@@ -95,6 +95,30 @@ describe("resolveSlangExpressionType", () => {
     expect(resolve("inputs.iChannel0", { includes })?.name).toBe("ShaderStudioChannel2D");
     expect(resolve("inputs.iChannel0.texture", { includes })?.name).toBe("Texture2D<float4>");
     expect(resolve("inputs.iChannel0.size", { includes })?.name).toBe("uint2");
+    // Sampling methods return a colour whose components can be selected in turn.
+    expect(resolve("inputs.iChannel0.Sample(uv)", { includes })?.name).toBe("float4");
+    expect(resolve("inputs.iChannel0.Sample(uv).rgb", { includes })?.name).toBe("float3");
+    expect(resolve("inputs.iChannel0.texture.SampleLevel(inputs.iChannel0.sampler, uv, 0.0).a", { includes })?.name).toBe("float");
+  });
+
+  it("keeps struct fields that follow a trailing comment", () => {
+    const includes = ["struct Body\n{\n    float4 position;   // xyz = position, w = mass\n    float4 velocity;   // xyz = velocity\n};\nBody current;"];
+    expect(resolve("current", { includes })?.fields).toEqual([
+      { name: "position", type: "float4" },
+      { name: "velocity", type: "float4" },
+    ]);
+    expect(resolve("current.velocity.xyz", { includes })?.name).toBe("float3");
+  });
+
+  it("resolves an indexed structured buffer to its element type", () => {
+    const includes = ["struct Body { float4 position; float4 velocity; };\nRWStructuredBuffer<Body> bodies;\nStructuredBuffer<float3> points;"];
+    expect(resolve("bodies[0].velocity.xy", { includes })?.name).toBe("float2");
+    expect(resolve("points[2]", { includes })?.name).toBe("float3");
+  });
+
+  it("resolves the result of a struct method call", () => {
+    expect(resolve("m.shade(0.5).xy")?.name).toBe("float2");
+    expect(resolve("m.missing(0.5).xy")).toBeUndefined();
   });
 
   it("prefers the nearest declaration that precedes the cursor", () => {

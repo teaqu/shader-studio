@@ -41,6 +41,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install pinned Slang WASM test binary
+        run: |
+          curl -fsSL https://github.com/shader-slang/slang/releases/download/v2026.10.2/slang-2026.10.2-wasm.zip -o /tmp/slang-wasm.zip
+          echo "bff18e4a0a0f1d377d4f8ac8bc0e9c631351f2e223a0482a279c1742f3d5bcc6  /tmp/slang-wasm.zip" | sha256sum --check
+          unzip -j /tmp/slang-wasm.zip slang-wasm.wasm -d ui/src/slang
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
@@ -74,11 +80,12 @@ jobs:
       - name: Run extension tests
         run: xvfb-run -a npm test -w extension
 
+      - name: Run VS Code E2E harness unit tests
+        run: npm run test:e2e:vscode:harness:unit -w extension
+
       - name: Run VS Code webview E2E tests
         id: vscode-e2e
-        run: xvfb-run -a npm run test:e2e:vscode:run -w extension
-        env:
-          SHADER_STUDIO_E2E_GREP: 'Shader language servers|parameter overrides|inline rendering'
+        run: xvfb-run -a npm run test:e2e:vscode -w extension
 
       - name: Upload VS Code webview E2E traces
         if: ${{ failure() && steps.vscode-e2e.outcome == 'failure' }}
@@ -92,6 +99,21 @@ jobs:
       - name: Package VSIX
         working-directory: extension
         run: npx --yes @vscode/vsce package --no-dependencies --out "../${{ steps.meta.outputs.vsix_path }}"
+
+      - name: Run packaged VSIX smoke test
+        id: production-vsix-e2e
+        run: xvfb-run -a npm run test:e2e:vscode:run -w extension -- production-vsix.e2e.mjs
+        env:
+          SHADER_STUDIO_E2E_PRODUCTION_VSIX: ${{ github.workspace }}/${{ steps.meta.outputs.vsix_path }}
+
+      - name: Upload packaged VSIX smoke-test traces
+        if: ${{ failure() && steps.production-vsix-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-vsix-e2e-failures
+          path: extension/.playwright/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7

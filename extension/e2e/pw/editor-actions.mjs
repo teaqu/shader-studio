@@ -29,23 +29,43 @@ export async function expectCanvasPixels(frame, rgb) {
 
 export async function setPreviewLocked(vscode, frame, locked) {
   const toolbarButton = frame.locator('button.collapse-lock');
-  if (await toolbarButton.evaluate(element => element.classList.contains('active')) === locked) return;
-  await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('notifications.clearAll'));
-  if (await toolbarButton.isVisible()) {
-    await toolbarButton.click();
-  } else {
-    await frame.getByLabel('Open options menu', { exact: true }).click();
-    await frame.locator('.options-menu-item[aria-label="Toggle lock"]').click();
+  const changed = await toolbarButton.evaluate(element => element.classList.contains('active')) !== locked;
+  if (changed) {
+    if (await toolbarButton.isVisible()) {
+      await toolbarButton.click();
+    } else {
+      await frame.getByLabel('Open options menu', { exact: true }).click();
+      await frame.locator('.options-menu-item[aria-label="Toggle lock"]').click();
+    }
+    // VS Code notices focus inside a webview by polling every 250ms and reports
+    // it asynchronously. If the next action moves to an editor before that report
+    // lands, the late report makes the preview group active while the editor
+    // keeps the caret, and Ctrl+S then saves the preview instead of the file.
+    await expect.poll(() => vscode.evaluateInHost(vscode => vscode.window.tabGroups.activeTabGroup.activeTab?.label))
+      .toBe('Shader Studio');
   }
+  await expect(toolbarButton).toHaveClass(locked ? /active/ : /^(?!.*active)/);
 }
 
+
+// Reverting/closing editors changes the preview width. Cleanup uses the public
+// command so a toolbar button moving into the options menu cannot stall teardown.
+export async function unlockPreviewForCleanup(vscode, frame) {
+  const isLocked = () => frame.evaluate(() => document.querySelector('button.collapse-lock')?.classList.contains('active') ?? false);
+  if (await isLocked()) {
+    await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('shader-studio.toggleLock'));
+  }
+  await expect.poll(isLocked).toBe(false);
+}
 
 export async function revertFixtureEditors(vscode, directory) {
   await vscode.evaluateInHost(async (vscode, directory) => {
     // The webview may own focus. Revert each dirty fixture's text editor
     // explicitly before deleting it, so the next test cannot open a save prompt.
     for (const document of vscode.workspace.textDocuments) {
-      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) continue;
+      if (!document.isDirty || !document.uri.fsPath.startsWith(directory + '/')) {
+        continue;
+      }
       await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
       await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     }

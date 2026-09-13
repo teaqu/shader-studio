@@ -39,7 +39,7 @@ const MULTI_CHAR_PUNCTUATION = [
 ];
 
 const INT_LITERAL = /^(?:0[xX][0-9a-fA-F]+|\d+)(?:[iu])?/;
-const FLOAT_LITERAL = /^(?:0[xX][0-9a-fA-F]*\.?[0-9a-fA-F]*(?:[pP][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?[fh]?|\d+[eE][+-]?\d+[fh]?|\.\d+(?:[eE][+-]?\d+)?[fh]?|\d+[fh])/;
+const FLOAT_LITERAL = /^(?:0[xX][0-9a-fA-F]*\.?[0-9a-fA-F]*(?:[pP][+-]?\d+[fh]?)?|\d+\.\d*(?:[eE][+-]?\d+)?[fh]?|\d+[eE][+-]?\d+[fh]?|\.\d+(?:[eE][+-]?\d+)?[fh]?|\d+[fh])/;
 
 const SINGLE_CHAR_PUNCTUATION = new Set("(){}[]<>,.;:=+-*/%&|^!~?".split(""));
 

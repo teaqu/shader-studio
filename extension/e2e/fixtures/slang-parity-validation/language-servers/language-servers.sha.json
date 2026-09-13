@@ -15,6 +15,12 @@
         "iChannel0": { "type": "texture", "path": "../orientation-texture.svg" }
       }
     },
+    "GlslMembers": {
+      "path": "./members.glsl"
+    },
+    "SlangMembers": {
+      "path": "./members.slang"
+    },
     "Compute": {
       "type": "compute",
       "path": "./compute.slang",

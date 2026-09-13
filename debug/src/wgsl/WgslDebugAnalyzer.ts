@@ -24,6 +24,7 @@ import {
   offsetAt,
   rangeSize,
 } from "./model";
+import { isWgslMatrix2x2F32 } from "./WgslEmitter";
 
 const CAPTURE_SCALARS = new Set(["bool", "i32", "u32", "f32", "f16"]);
 const VECTOR_TYPE = /^vec([234])([fhiu])$/;
@@ -31,7 +32,8 @@ const VECTOR_PARAMETERIZED = /^vec([234])<\s*([iu]32|f32|f16)\s*>$/;
 
 export function isWgslCapturableType(typeName: string): boolean {
   const trimmed = typeName.trim();
-  return CAPTURE_SCALARS.has(trimmed) || VECTOR_TYPE.test(trimmed) || VECTOR_PARAMETERIZED.test(trimmed);
+  return CAPTURE_SCALARS.has(trimmed) || VECTOR_TYPE.test(trimmed) || VECTOR_PARAMETERIZED.test(trimmed)
+    || isWgslMatrix2x2F32(trimmed);
 }
 
 /**

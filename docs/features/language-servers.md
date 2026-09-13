@@ -17,16 +17,16 @@ Definition**.
 | Signature help | Yes | Yes | Yes |
 | Go to Definition | Yes | Yes | Yes |
 | Document symbols / Outline | Yes | Yes | Yes |
-| Find references / highlight | Yes | No | Yes |
+| Find references / highlight | Yes | Yes | Yes |
 | Rename | Yes | Scoped, compiler-validated | Yes |
-| Diagnostics | Parser diagnostics | Official Slang compiler and language-server diagnostics | Hints and warnings only — errors come from the WebGPU compiler |
-| Color decorators and picker | `vec3` and `vec4` literals | `float3` and `float4` literals | `vec3f` and `vec4f` literals |
+| Diagnostics | Parser diagnostics | Official Slang compiler and language-server diagnostics | Basic syntax, name, and stage checks before compiling; full validation from the WebGPU compiler |
+| Color decorators and picker | `vec3` and `vec4` literals | `float3` and `float4` literals | `vec3f`/`vec4f` and `vec3<f32>`/`vec4<f32>` literals |
 
 Completion and hover include:
 
 - Language intrinsics such as GLSL `texture`, Slang `fmod`, and WGSL `dot`
 - Shader Studio uniforms such as `iResolution`, `iTime`, and channel inputs
-- Shader Studio channel objects such as Slang `inputs.iChannel0`, plus WGSL
+- Shader Studio channel objects such as Slang `iChannel0`, plus WGSL
   free-function accessors such as `iChannel0Sample(uv)`
 - Functions, structures, and variables declared in the current shader
 - Functions and types provided by configured Common and dependency files
@@ -34,23 +34,34 @@ Completion and hover include:
   configuration
 - Stage-specific fragment, vertex, and compute contracts
 
-The services do not provide formatting or workspace-wide reference search yet.
-Slang reference search and document highlights remain unavailable.
+Hover shows local and parameter types, struct fields, and vector components.
+Slang and WGSL also describe channel access and configured storage. Signature help
+follows nested calls; Slang supports generic calls such as `bit_cast<uint>(`.
+See [WGSL diagnostics](wgsl.md#editor-support-and-diagnostics) for its checks before
+compilation and the distinction between Common and pass diagnostics.
 
-Slang **Rename Symbol** (`F2`) supports ordinary shader functions, parameters,
-variables, and struct fields. In VS Code it also updates configured Common helpers
-used by open passes. It respects local shadowing and overloads, rejects name collisions, and
-checks the resulting source with the Slang compiler before returning edits.
-Standard stage attributes, literal `numthreads` dimensions, and `SV_` system
-semantics are supported. Renames involving macros, external imports, generics,
-methods, or other syntax outside the scoped parser return no edits. The implicit
-`shader_studio` import is supported. This is an editor feature, separate from
-renaming a shader file in the explorer.
+## References and Rename
 
-The built-in browser editor supports single-file symbol renames. It rejects
-renames spanning multiple files and renames from a Common editor without applying
-any edits. This applies to all three languages. Slang and WGSL Common renames
-are available in VS Code; GLSL rename is limited to the current document.
+Use **Find All References** to find uses of an authored symbol. Results can include
+configured Common and dependency files; document highlights mark occurrences in
+the current editor. Search is limited to the shader's known sources, not every file
+in the workspace. Formatting and workspace symbol search are unavailable.
+
+Use **Rename Symbol** (`F2`) to rename a function, parameter, variable, or struct
+field. Both VS Code and the standalone editor can update affected shader and Common
+files. GLSL `#include` files can participate too. All target files must be available
+and writable for the edits to be applied. This is separate from renaming a shader
+file in the explorer.
+
+Slang rename respects local shadowing and overloads, rejects name collisions, and
+checks the edited source with the Slang compiler. Standard stage attributes,
+literal `numthreads` dimensions, and `SV_` system semantics are supported. Generic
+helpers, methods, and imports can participate when the service resolves their
+declarations. A rename is declined if the symbol cannot be resolved or the edited
+source fails validation. The implicit `shader_studio` import is supported.
+
+Embedded editors in hosts without support for saving edits across files offer
+single-file rename only; they decline a cross-file edit without applying it.
 
 ## Color Picker
 
@@ -67,7 +78,11 @@ float4 accent = float4(1.0, 0.5, 0.0, 1.0);
 
 ```wgsl
 var accent = vec4f(1.0, 0.5, 0.0, 1.0);
+var glow = vec3<f32>(0.0, 0.5, 1.0);
 ```
+
+Picking a color rewrites only the literal arguments, so a `vec3<f32>` stays a
+`vec3<f32>` with three components.
 
 ## Spell Checking
 

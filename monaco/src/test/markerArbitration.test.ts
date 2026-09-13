@@ -80,6 +80,17 @@ describe("marker arbitration", () => {
     expect(wgsl.published(markerOwner("wgsl"))).toHaveLength(1);
   });
 
+  it("shows WGSL service errors before any compile and yields them to the compiler's line", () => {
+    setLanguageServiceMarkers(wgsl.monaco, wgsl.model, [marker(5, "Undefined identifier 'x'."), marker(9, "Undefined function 'later'.")]);
+    expect(wgsl.published(markerOwner("wgsl"))).toHaveLength(2);
+    expect(wgsl.published(RENDERER_COMPILER_MARKER_OWNER)).toEqual([]);
+
+    setCompilerMarkers(wgsl.monaco, wgsl.model, [marker(5, "unresolved value 'x'")]);
+
+    expect(wgsl.published(RENDERER_COMPILER_MARKER_OWNER)).toHaveLength(1);
+    expect(wgsl.published(markerOwner("wgsl"))?.map((item) => item.startLineNumber)).toEqual([9]);
+  });
+
   it("keeps renderer markers the language service never sees", () => {
     setLanguageServiceMarkers(slang.monaco, slang.model, [marker(14, "undefined identifier")]);
     setCompilerMarkers(slang.monaco, slang.model, [

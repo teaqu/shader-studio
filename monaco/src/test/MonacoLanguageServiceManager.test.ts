@@ -8,12 +8,19 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
     const value = { dispose: vi.fn() }; disposables.push(value); return value;
   };
   // Mutable so a test can simulate the user typing while a request is in flight.
-  const state = { version: 1 };
+  const state = { version: 1, disposed: false, attached: false };
   const model = {
     uri: { toString: () => `file:///image.${languageId}` },
-    getLanguageId: () => languageId,
+    getLanguageId: () => {
+      if (state.disposed) {
+        throw new Error('Model is disposed!');
+      }
+      return languageId;
+    },
     getValue: () => "vec3(1.0, 0.0, 0.0)",
     getVersionId: () => state.version,
+    isDisposed: () => state.disposed,
+    isAttachedToEditor: () => state.attached,
     getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
     onDidChangeContent: vi.fn(() => disposable()),
   };
@@ -41,6 +48,8 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
           getValue: () => text,
           setValue: vi.fn(),
           getVersionId: () => 1,
+          isDisposed: () => false,
+          isAttachedToEditor: () => false,
           onDidChangeContent: vi.fn(() => disposable()),
           dispose: vi.fn(),
         };
@@ -328,6 +337,39 @@ describe("MonacoLanguageServiceManager", () => {
     expect(dependency?.dispose).toHaveBeenCalledOnce();
   });
 
+  it("keeps a virtual dependency model while an editor has attached it", async () => {
+    const fixture = monacoFixture();
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => serviceFixture(), slang: async () => serviceFixture(), wgsl: async () => serviceFixture() });
+    const environment = { ...ENVIRONMENT, documentUri: fixture.model.uri.toString() };
+    await manager.syncEnvironment({ ...environment, virtualFiles: [{ uri: "file:///lib/palette.glsl", text: "vec3 palette();", version: 1 }] });
+    const dependency = fixture.monaco.editor.createModel.mock.results[0]?.value;
+    dependency.isAttachedToEditor = () => true;
+
+    await manager.syncEnvironment({ ...environment, generation: 2, virtualFiles: [] });
+    expect(dependency.dispose).not.toHaveBeenCalled();
+
+    dependency.isAttachedToEditor = () => false;
+    await manager.syncEnvironment({ ...environment, generation: 3, virtualFiles: [] });
+    expect(dependency.dispose).toHaveBeenCalledOnce();
+    manager.dispose();
+  });
+
+  it("abandons a model disposed while its language service starts", async () => {
+    const fixture = monacoFixture();
+    let resolveService!: (service: LanguageService) => void;
+    const serviceReady = new Promise<LanguageService>((resolve) => {
+      resolveService = resolve;
+    });
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: () => serviceReady, slang: async () => serviceFixture(), wgsl: async () => serviceFixture() });
+
+    const pending = manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString() });
+    fixture.state.disposed = true;
+    resolveService(serviceFixture());
+
+    await expect(pending).resolves.toBeUndefined();
+    manager.dispose();
+  });
+
   it("registers providers for WGSL like the other shader languages", () => {
     const { monaco, languages } = monacoFixture();
     const manager = new MonacoLanguageServiceManager(monaco as never, {
@@ -445,6 +487,66 @@ describe("MonacoLanguageServiceManager", () => {
     expect(await pending).toHaveLength(1);
     expect(service.references).toHaveBeenCalledTimes(1);
     manager.dispose();
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('waits for the first %s environment before signature help from typing', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    service.signatureHelp = vi.fn().mockResolvedValue({ signatures: [{ label: 'shade(color, gain)', parameters: [] }], activeSignature: 0, activeParameter: 0 });
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service, wgsl: async () => service });
+    const provider = fixture.languages.registerSignatureHelpProvider.mock.calls.find(call => call[0] === language)![1];
+    const pending = provider.provideSignatureHelp(fixture.model, POSITION);
+    await Promise.resolve();
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
+    expect((await pending)?.value.signatures[0].label).toBe('shade(color, gain)');
+    manager.dispose();
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('waits for the first %s environment before providing document colours', async language => {
+    // Monaco asks for colours once when a model opens and only again after an
+    // edit, so an empty answer before the environment arrives hides every swatch.
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    service.documentColors = vi.fn().mockResolvedValue([{ color: { red: 1, green: 0, blue: 0, alpha: 1 }, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 19 } } }]);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service, wgsl: async () => service });
+    const provider = fixture.languages.registerColorProvider.mock.calls.find(call => call[0] === language)![1];
+    const pending = provider.provideDocumentColors(fixture.model);
+    await Promise.resolve();
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
+    expect(await pending).toEqual([expect.objectContaining({ color: { red: 1, green: 0, blue: 0, alpha: 1 } })]);
+    expect(service.documentColors).toHaveBeenCalledTimes(1);
+    manager.dispose();
+  });
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('invalidates %s colour queries when the environment changes without a text edit', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    const colors = [{ color: { red: 1, green: 0, blue: 0, alpha: 1 }, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 19 } } }];
+    let finish!: (value: typeof colors) => void;
+    service.documentColors = vi.fn().mockImplementationOnce(() => new Promise(resolve => {
+      finish = resolve;
+    })).mockResolvedValue(colors);
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, { glsl: async () => service, slang: async () => service, wgsl: async () => service });
+    const environment = { ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language };
+    await manager.syncEnvironment(environment);
+    const providers = () => fixture.languages.registerColorProvider.mock.calls.filter(call => call[0] === language);
+    const provider = providers().at(-1)![1];
+    const pending = provider.provideDocumentColors(fixture.model);
+    await vi.waitFor(() => expect(service.documentColors).toHaveBeenCalledTimes(1));
+    const previousCount = providers().length;
+    await manager.syncEnvironment({ ...environment, generation: 2 });
+    finish(colors);
+    expect(await pending).toEqual([]);
+    // Registry changes make Monaco request colours again, even though the
+    // document version never changed and the old result was correctly stale.
+    expect(providers()).toHaveLength(previousCount + 1);
+    expect(await providers().at(-1)![1].provideDocumentColors(fixture.model)).toHaveLength(1);
+    const settledCount = providers().length;
+    await manager.syncEnvironment({ ...environment, generation: 2 });
+    expect(providers()).toHaveLength(settledCount);
+    manager.dispose();
+    await manager.syncEnvironment({ ...environment, generation: 3 });
+    expect(providers()).toHaveLength(settledCount);
   });
 
   it.each(['dispose', 'disable', 'close', 'edit', 'deadline'] as const)('ends initial reference waiting on %s without issuing a stale search', async action => {

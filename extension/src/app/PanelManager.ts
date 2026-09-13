@@ -115,10 +115,13 @@ export class PanelManager {
       ? vscode.Uri.file(path.dirname(editor.document.uri.fsPath))
       : (workspaceFolders[0] ?? vscode.Uri.file(this.context.extensionPath));
 
+    // Keep keyboard focus in the editor. A panel created with focus queues the
+    // focus request until its webview has loaded, then takes the keyboard from
+    // an editor the user has already returned to.
     const panel = vscode.window.createWebviewPanel(
       "shader-studio",
       "Shader Studio",
-      viewColumn,
+      { viewColumn, preserveFocus: true },
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -199,12 +202,34 @@ export class PanelManager {
     };
   }
 
+  /**
+   * `lockEditorGroup` locks the active group, so the panel's group can only be
+   * locked while the panel is active. Revealing the panel to make it active
+   * used to move keyboard focus out of the editor the user had already
+   * returned to, dropping their typing. Lock once the panel settles if it is
+   * still active; otherwise wait until the user activates it again.
+   */
   private async lockPanelEditorGroup(panel: vscode.WebviewPanel): Promise<void> {
-    // Wait for the panel to settle in its editor group, then reveal to ensure focus
     await new Promise(resolve => setTimeout(resolve, 500));
+    if (!this.panels.has(panel)) {
+      return;
+    }
+    if (panel.active) {
+      await this.lockActivePanelGroup();
+      return;
+    }
+    const subscription = panel.onDidChangeViewState((event) => {
+      if (!event.webviewPanel.active) {
+        return;
+      }
+      subscription.dispose();
+      void this.lockActivePanelGroup();
+    });
+    panel.onDidDispose(() => subscription.dispose());
+  }
+
+  private async lockActivePanelGroup(): Promise<void> {
     try {
-      panel.reveal(panel.viewColumn, false);
-      await new Promise(resolve => setTimeout(resolve, 200));
       await vscode.commands.executeCommand('workbench.action.lockEditorGroup');
       this.logger.info("Editor group locked for shader panel");
     } catch (e) {

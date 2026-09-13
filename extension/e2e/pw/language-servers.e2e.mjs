@@ -91,7 +91,7 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       labels: completionItems.map((item) => typeof item.label === 'string' ? item.label : item.label.label),
       completionDocs,
       completionEntries: completionItems.filter((item) => (
-        (typeof item.label === 'string' ? item.label : item.label.label) === 'normalize'
+        ['normalize', 'iChannel0'].includes(typeof item.label === 'string' ? item.label : item.label.label)
       )).map((item) => ({
         label: typeof item.label === 'string' ? item.label : item.label.label,
         detail: item.detail ?? '',
@@ -150,24 +150,23 @@ async function navigationSnapshot(vscodeFixture, filePath) {
       path: uri.fsPath,
       edits: edits.map((item) => ({ line: item.range.start.line, newText: item.newText })),
     }));
-    let includedRenameFailed = false;
+    let includedRename;
     try {
-      const includedRename = await vscode.commands.executeCommand(
+      includedRename = describeEdit(await vscode.commands.executeCommand(
         'vscode.executeDocumentRenameProvider',
         document.uri,
         position('twice(value)'),
         'doubled',
-      );
-      includedRenameFailed = describeEdit(includedRename).length === 0;
-    } catch {
+      ));
+    } catch (error) {
       // VS Code surfaces a declined rename as a thrown error.
-      includedRenameFailed = true;
+      includedRename = { declined: String(error) };
     }
     return {
       references: (references ?? []).map((item) => ({ path: item.uri.fsPath, line: item.range.start.line })),
       highlights: (highlights ?? []).map((item) => ({ line: item.range.start.line, kind: item.kind })),
       rename: describeEdit(renameEdit),
-      includedRenameFailed,
+      includedRename,
     };
   }, filePath);
 }
@@ -311,8 +310,13 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.rename[0].edits.map((item) => item.line).sort((a, b) => a - b)).toEqual([8, 9]);
     expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
 
-    // `twice` is owned by common.glsl, so renaming it from here declines.
-    expect(result.includedRenameFailed).toBeTruthy();
+    // `twice` is declared in the included common.glsl. Cross-file rename
+    // (3c498bfb) edits the declaration there and the call here in one edit.
+    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+      .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
+      { file: 'common.glsl', edits: [{ line: 0, newText: 'doubled' }] },
+      { file: 'image.glsl', edits: [{ line: 3, newText: 'doubled' }] },
+    ]);
   });
 
   test('provides the complete Slang authoring feature set through bundled WASM', async ({ vscode }) => {
@@ -337,9 +341,13 @@ test.describe('Shader language servers in VS Code', () => {
       expect(result.inputMembers, `Missing Slang input member ${member}`).toContain(member);
     }
     expect(result.inputSignatures.some((label) => label.includes('Sample(') && label.includes('float2'))).toBeTruthy();
-    for (const legacy of ['iChannel0', 'iChannel0Sampler', 'iCh0', 'sampleIChannel0', 'iChannelResolution', 'iChannelTime']) {
+    for (const legacy of ['iChannel0Sampler', 'iCh0', 'sampleIChannel0', 'iChannelResolution', 'iChannelTime']) {
       expect(result.labels, `Unexpected legacy Slang completion ${legacy}`).not.toContain(legacy);
     }
+    // The input is configured as `iChannel0`, so since ba637a9b that config key is
+    // a named channel global, not the removed legacy texture uniform.
+    expect(result.completionEntries.filter((item) => item.label === 'iChannel0').map((item) => item.detail))
+      .toEqual(['ShaderStudioChannel2D']);
     expect(result.hookHover).toMatch(/fragment entry point/i);
     expect(result.coordinateHover).toMatch(/lower-left/i);
     expect(result.definitions.some((item) => item.path.endsWith('palette.slang')), JSON.stringify(result.definitions)).toBeTruthy();
@@ -348,6 +356,46 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.symbols.includes('mainImage')).toBeTruthy();
     expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
     expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['float4(1.0, 0.5, 0.0, 1.0)']);
+  });
+
+  test('describes locals, members, and nested arguments in GLSL and Slang', async ({ vscode }) => {
+    for (const language of ['glsl', 'slang']) {
+      const result = await vscode.evaluateInHost(async (vscode, targetPath, vector) => {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
+        await vscode.window.showTextDocument(document, { preview: false });
+        const source = document.getText();
+        const at = (needle, offset) => {
+          const index = source.indexOf(needle);
+          if (index < 0) {
+            throw new Error(`Missing ${needle} in ${targetPath}`);
+          }
+          return document.positionAt(index + offset);
+        };
+        const hover = async (position) => ((await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, position)) ?? [])
+          .flatMap((item) => item.contents.map((content) => typeof content === 'string' ? content : content.value))
+          .join('\n');
+        // The third argument of `blend`, after a nested call whose own commas must not count.
+        const thirdArgument = `, ${vector}(1.0))`;
+        const signature = await vscode.commands.executeCommand(
+          'vscode.executeSignatureHelpProvider', document.uri, at(thirdArgument, 2), ',',
+        );
+        return {
+          localHover: await hover(at('blend(uv', 'blend(u'.length)),
+          fieldHover: await hover(at('material.rough)', 'material.r'.length)),
+          componentHover: await hover(at('albedo.zyx', 'albedo.z'.length)),
+          signature: signature?.signatures[signature.activeSignature ?? 0]?.label ?? '',
+          activeParameter: signature?.activeParameter,
+        };
+      }, join(fixturePath, `members.${language}`), language === 'glsl' ? 'vec2' : 'float2');
+
+      const [float2, float3] = language === 'glsl' ? ['vec2', 'vec3'] : ['float2', 'float3'];
+      expect(result.localHover, `${language} local hover`).toContain(`${float2} uv`);
+      expect(result.fieldHover, `${language} field hover`).toMatch(/rough/);
+      expect(result.fieldHover, `${language} field hover`).toMatch(/Material/);
+      expect(result.componentHover, `${language} component hover`).toContain(float3);
+      expect(result.signature, `${language} signature`).toContain('blend(');
+      expect(result.activeParameter, `${language} nested active parameter`).toBe(2);
+    }
   });
 
   test('provides vertex and compute contracts only in their configured stages', async ({ vscode }) => {

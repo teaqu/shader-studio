@@ -11,6 +11,7 @@ import {
   type DocumentSymbol,
   type Hover,
   type Location,
+  type MarkupContent,
   type Position,
   type Range,
   type SignatureHelp,
@@ -40,6 +41,7 @@ import {
   describeSlangChannel,
   canExposeSlangChannelGlobal,
   validateShaderAuthoringEnvironment,
+  type AuthoringResource,
   type ShaderAuthoringEnvironment,
 } from "@shader-studio/types";
 import type {
@@ -54,8 +56,8 @@ import { SLANG_INTRINSICS, type SlangIntrinsic } from "./intrinsics.js";
 import { SLANG_COMPUTE_FEATURES, type SlangComputeFeature } from "./computeFeatures.js";
 import { SLANG_VERTEX_HOOK_FEATURES, type SlangVertexHookFeature } from "./vertexHook.js";
 import { SLANG_MAIN_IMAGE_COORDINATE_DESCRIPTION, SLANG_MAIN_IMAGE_DESCRIPTION } from "./fragmentHook.js";
-import { findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals } from "./expressionType.js";
-import { SLANG_SWIZZLE_SETS, slangVectorTypeName } from "./slangTypes.js";
+import { findSlangLocalAt, findUnusedSlangLocals, resolveSlangExpressionType, visibleSlangLocals, type SlangExpressionContext } from "./expressionType.js";
+import { SLANG_SWIZZLE_SETS, resolveSlangSwizzleType, slangVectorTypeName } from "./slangTypes.js";
 import { applySlangRenameEdits, renameSlangSymbol, resolveSlangSymbol, type SlangRenameDocument } from "./rename.js";
 
 const CAPABILITIES: ServerCapabilities = {
@@ -278,10 +280,18 @@ export class SlangLanguageService implements LanguageService {
         documentation: vertexHookMarkup(feature),
       });
     }
+    // The server offers some Shader Studio globals, such as a channel, without a type.
+    // Keep only the entry that describes it.
+    const describedLabels = new Set([...items.values()].filter((item) => item.detail).map((item) => item.label));
+    for (const [key, item] of items) {
+      if (!item.detail && describedLabels.has(item.label)) {
+        items.delete(key);
+      }
+    }
     // The official server offers no identifier completions for locals and parameters, so
     // add the ones in scope. Anything already listed keeps its richer entry.
     const listedLabels = new Set([...items.values()].map((item) => item.label));
-    for (const local of visibleSlangLocals(state.document.text, params.position)) {
+    for (const local of visibleSlangLocals(state.document.text, params.position, slangExpressionContext(state.environment).includes)) {
       if (listedLabels.has(local.name)) {
         continue;
       }
@@ -303,6 +313,10 @@ export class SlangLanguageService implements LanguageService {
       return null;
     }
     const word = wordAt(state.document.text, params.position);
+    const directive = word ? moduleDirectiveHover(state.document.text, params.position, word, state.environment) : undefined;
+    if (directive) {
+      return { contents: directive };
+    }
     const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("slang"));
     if (doc) {
       return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${doc.slangType} ${doc.name}\n\`\`\`\n\n${doc.description}` } };
@@ -322,6 +336,19 @@ export class SlangLanguageService implements LanguageService {
         contents: {
           kind: MarkupKind.Markdown,
           value: `\`\`\`slang\nShaderStudioChannel${description.shape} inputs.${input.name}\n\`\`\`\n\nConfigured input channel. Use \`${canExposeSlangChannelGlobal(input.name) ? input.name : `inputs.${input.name}`}\` to sample it and read its metadata. The \`inputs.${input.name}\` alias is also available.`,
+        },
+      };
+    }
+    const member = word ? memberHover(state.document.text, params.position, word, state.environment) : undefined;
+    if (member) {
+      return { contents: member };
+    }
+    const storage = state.environment.resources.find((resource) => resource.kind === "storage" && resource.name === word);
+    if (storage) {
+      return {
+        contents: {
+          kind: MarkupKind.Markdown,
+          value: `\`\`\`slang\n${slangStorageBufferType(storage, state.environment.stage)} ${storage.name}\n\`\`\`\n\nConfigured storage buffer. Index it to read or write an element.`,
         },
       };
     }
@@ -387,7 +414,24 @@ export class SlangLanguageService implements LanguageService {
       }
       return { contents, range: userRange(result.range, state.offset, state.document.text) };
     }
-    return local ? { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${local.detail}\n\`\`\`` }, range: local.selectionRange } : null;
+    // The server hovers top-level declarations only, so describe locals and parameters here.
+    const localSymbol = findSlangLocalAt(state.document.text, params.position, slangExpressionContext(state.environment).includes);
+    if (localSymbol) {
+      const description = localSymbol.kind === "parameter" ? "\n\nParameter of this function." : "";
+      return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${localSymbol.typeName} ${localSymbol.name}\n\`\`\`${description}` } };
+    }
+    if (local) {
+      return { contents: { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${local.detail}\n\`\`\`` }, range: local.selectionRange };
+    }
+    const imported = word ? state.environment.virtualFiles.flatMap((file) => (
+      findSlangDeclarations(file.text).filter((item) => item.name === word).map((item) => ({ file, item }))
+    ))[0] : undefined;
+    return imported ? {
+      contents: {
+        kind: MarkupKind.Markdown,
+        value: `\`\`\`slang\n${imported.item.detail}\n\`\`\`\n\nDeclared in \`${imported.file.uri.split("/").pop()}\`.`,
+      },
+    } : null;
   }
 
   async definition(params: DocumentPositionParams): Promise<Location[]> {
@@ -1230,11 +1274,7 @@ function memberCompletions(
   source: string,
   environment: ShaderAuthoringEnvironment,
 ): CompletionItem[] {
-  const resolved = resolveSlangExpressionType({ source, position, expression }, {
-    includes: [buildSlangAuthoringModule(environment).text, ...contextualFiles(environment).map((file) => file.text)],
-    variableType: (name) => environmentTypeName(name, environment),
-    functionType: (name) => intrinsicReturnType(documentedSlangFunctions(environment).find((item) => item.name === name)?.signatures[0]),
-  });
+  const resolved = resolveSlangExpressionType({ source, position, expression }, slangExpressionContext(environment));
   if (!resolved) {
     return [];
   }
@@ -1258,6 +1298,79 @@ function memberCompletions(
     documentation: { kind: MarkupKind.Markdown, value: `Field of \`${resolved.name}\`.` },
   }));
   return fields.length ? fields : nativeTextureMemberCompletions(resolved.name);
+}
+
+function slangExpressionContext(environment: ShaderAuthoringEnvironment): SlangExpressionContext {
+  return {
+    includes: [buildSlangAuthoringModule(environment).text, ...contextualFiles(environment).map((file) => file.text)],
+    variableType: (name) => environmentTypeName(name, environment),
+    functionType: (name) => intrinsicReturnType(documentedSlangFunctions(environment).find((item) => item.name === name)?.signatures[0]),
+  };
+}
+
+/**
+ * Hover for the member selected at `position`, such as `albedo` in `m.albedo` or `rgb` in
+ * `iChannel0.Sample(uv).rgb`, described by the type of the expression it selects from.
+ */
+function memberHover(
+  source: string,
+  position: { line: number; character: number },
+  word: string,
+  environment: ShaderAuthoringEnvironment,
+): MarkupContent | undefined {
+  const line = source.split("\n")[position.line] ?? "";
+  const typedBefore = line.slice(0, position.character).match(/[A-Za-z0-9_]*$/)?.[0] ?? "";
+  const start = { line: position.line, character: position.character - typedBefore.length };
+  const access = findMemberAccess(source, start);
+  if (!access) {
+    return undefined;
+  }
+  const members = memberCompletions(access.expression, start, source, environment).filter((item) => item.label === word);
+  const methods = members.filter((item) => item.kind === CompletionItemKind.Method && item.detail);
+  if (methods.length > 0) {
+    const documentation = completionDocumentation(methods[0]!);
+    return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${methods.map((item) => item.detail).join("\n")}\n\`\`\`${documentation ? `\n\n${documentation}` : ""}` };
+  }
+  const context = slangExpressionContext(environment);
+  const typeName = members[0]?.detail
+    ?? resolveSlangExpressionType({ source, position: start, expression: `${access.expression}.${word}` }, context)?.name;
+  if (!typeName) {
+    return undefined;
+  }
+  const owner = resolveSlangExpressionType({ source, position: start, expression: access.expression }, context)?.name;
+  const documentation = (members[0] ? completionDocumentation(members[0]) : undefined)
+    ?? (owner && resolveSlangSwizzleType(owner, word) ? `Component selection on \`${owner}\`.` : owner ? `Member of \`${owner}\`.` : undefined);
+  return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${typeName} ${word}\n\`\`\`${documentation ? `\n\n${documentation}` : ""}` };
+}
+
+/**
+ * Hover for a `module`, `import`, `implementing` or `__include` line. The server describes these
+ * with an empty signature and a generated module hash, so name the directive instead.
+ */
+function moduleDirectiveHover(
+  source: string,
+  position: { line: number; character: number },
+  word: string,
+  environment: ShaderAuthoringEnvironment,
+): MarkupContent | undefined {
+  const directive = /^\s*(module|import|implementing|__include)\s+([A-Za-z_][\w.]*)\s*;/.exec(source.split("\n")[position.line] ?? "");
+  const [, keyword, moduleName] = directive ?? [];
+  if (!keyword || !moduleName || (word !== keyword && !moduleName.split(".").includes(word))) {
+    return undefined;
+  }
+  const path = `${moduleName.replace(/\./g, "/")}.slang`;
+  const file = environment.virtualFiles.find((candidate) => candidate.uri.endsWith(`/${path}`));
+  const description = keyword === "module"
+    ? "Names this file's module."
+    : keyword === "implementing"
+      ? `Makes this file part of the \`${moduleName}\` module.`
+      : `Brings in the declarations of \`${file ? path : moduleName}\`.`;
+  return { kind: MarkupKind.Markdown, value: `\`\`\`slang\n${keyword} ${moduleName}\n\`\`\`\n\n${description}` };
+}
+
+function completionDocumentation(item: CompletionItem): string | undefined {
+  const documentation = typeof item.documentation === "string" ? item.documentation : item.documentation?.value;
+  return documentation?.trim() || undefined;
 }
 
 function shaderStudioInputMemberCompletions(typeName: string): CompletionItem[] | undefined {
@@ -1360,10 +1473,25 @@ function generatedSamplingFunctions(environment: ShaderAuthoringEnvironment): Sl
 }
 
 /** Type of a name the document never declares, such as a uniform supplied by Shader Studio. */
+/** Buffer type the generated module declares for a storage resource; only compute passes may write. */
+function slangStorageBufferType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
+  const elementType = slangStorageElementType(resource, stage);
+  return `${stage === "compute" ? "RWStructuredBuffer" : "StructuredBuffer"}<${elementType}>`;
+}
+
+function slangStorageElementType(resource: Readonly<AuthoringResource>, stage: ShaderAuthoringEnvironment["stage"]): string {
+  const elementType = resource.elementType ?? "float4";
+  return stage === "compute" ? elementType : elementType.replace(/^Atomic<(u?int)>$/, "$1");
+}
+
 function environmentTypeName(name: string, environment: ShaderAuthoringEnvironment): string | undefined {
   const uniform = environment.customUniforms.find((item) => item.name === name);
   if (uniform) {
     return slangType(uniform.type);
+  }
+  const storage = environment.resources.find((resource) => resource.kind === "storage" && resource.name === name);
+  if (storage) {
+    return `${slangStorageElementType(storage, environment.stage)}[]`;
   }
   const documented = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === name
     && item.languages.includes("slang")
@@ -1455,21 +1583,73 @@ function identifierOccurrences(source: string): { name: string; position: Positi
   return result;
 }
 
+const SLANG_CALL_KEYWORDS = new Set(["if", "for", "while", "switch", "return"]);
+
+/**
+ * The call whose argument list holds `position`, and which argument it is in. Commas inside
+ * nested calls, index brackets, strings and comments do not count, a statement or block
+ * boundary ends every open call, and a generic call such as `bit_cast<uint>(` names its callee.
+ */
 function callAt(source: string, position: { line: number; character: number }): { name: string; parameter: number } | undefined {
   const lines = source.split("\n");
+  if (lines[position.line] === undefined) {
+    return undefined;
+  }
   const offset = lines.slice(0, position.line).reduce((sum, line) => sum + line.length + 1, 0) + position.character;
   const prefix = source.slice(0, offset);
-  let depth = 0;
-  for (let index = prefix.length - 1; index >= 0; index--) {
-    if (prefix[index] === ")") {
-      depth++;
-    } else if (prefix[index] === "(") {
-      if (depth > 0) {
-        depth--;
-      } else {
-        const name = prefix.slice(0, index).match(/([A-Za-z_]\w*)\s*$/)?.[1];
-        return name ? { name, parameter: prefix.slice(index + 1).split(",").length - 1 } : undefined;
+  let frames: { name?: string; commas: number; close: ")" | "]" }[] = [];
+  let lastIdentifier: string | undefined;
+  for (let index = 0; index < prefix.length; index++) {
+    const character = prefix[index]!;
+    if (prefix.startsWith("//", index)) {
+      const end = prefix.indexOf("\n", index);
+      index = end === -1 ? prefix.length : end;
+      continue;
+    }
+    if (prefix.startsWith("/*", index)) {
+      const end = prefix.indexOf("*/", index + 2);
+      index = end === -1 ? prefix.length : end + 1;
+      continue;
+    }
+    if (character === '"') {
+      const literal = /^"(?:\\.|[^"\\\n])*"?/.exec(prefix.slice(index))?.[0] ?? '"';
+      index += literal.length - 1;
+      lastIdentifier = undefined;
+      continue;
+    }
+    const identifier = /^[A-Za-z_][A-Za-z0-9_]*/.exec(prefix.slice(index))?.[0];
+    if (identifier && !/[A-Za-z0-9_]/.test(prefix[index - 1] ?? "")) {
+      lastIdentifier = identifier;
+      index += identifier.length - 1;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      continue;
+    }
+    if (character === "(") {
+      const name = lastIdentifier ?? /([A-Za-z_]\w*)\s*<[\w\s,]*>\s*$/.exec(prefix.slice(0, index))?.[1];
+      frames.push({ ...(name ? { name } : {}), commas: 0, close: ")" });
+    } else if (character === "[") {
+      frames.push({ commas: 0, close: "]" });
+    } else if (character === ")" || character === "]") {
+      const open = frames.map((frame) => frame.close).lastIndexOf(character);
+      if (open >= 0) {
+        frames = frames.slice(0, open);
       }
+    } else if (character === ",") {
+      const frame = frames[frames.length - 1];
+      if (frame) {
+        frame.commas += 1;
+      }
+    } else if (character === ";" || character === "{" || character === "}") {
+      frames = [];
+    }
+    lastIdentifier = undefined;
+  }
+  for (let index = frames.length - 1; index >= 0; index--) {
+    const frame = frames[index]!;
+    if (frame.name !== undefined) {
+      return SLANG_CALL_KEYWORDS.has(frame.name) ? undefined : { name: frame.name, parameter: frame.commas };
     }
   }
   return undefined;

@@ -138,8 +138,71 @@ describe('storage expression inference', () => {
     expect(types.local).toBe('u32');
     expect(types.unknown).toBeUndefined();
   });
+  it.each([['mat2x2f', 'vec2f'], ['mat2x2<f32>', 'vec2f'], ['mat3x2h', 'vec2h']])('infers %s constructors, storage elements, and column indexing', (matrix, column) => {
+    const types = variableTypes(`var<storage, read> bases: array<${matrix}>;\nfn read() { let local = ${matrix}(); let stored = bases[0]; let picked = stored[1]; }`);
+    expect(types.local).toBe(matrix);
+    expect(types.stored).toBe(matrix);
+    expect(types.picked).toBe(column);
+  });
+  it('keeps both closing brackets of a fused >> in nested template annotations', () => {
+    const document = parseWgslDocument(URI, 'var<storage, read> tints: array<vec3<f32>>;\nfn read() { let tint = tints[0]; let shade = tint.x; }', 'fragment');
+    expect(document.symbols.find(symbol => symbol.name === 'tints')?.typeName).toBe('array<vec3<f32>>');
+    expect(document.diagnostics).toEqual([]);
+    const types = variableTypes('var<storage, read> tints: array<vec3<f32>>;\nfn read() { let tint = tints[0]; let shade = tint.x; }');
+    expect(types.tint).toBe('vec3<f32>');
+    expect(types.shade).toBe('f32');
+  });
   it('terminates on cyclic aliases', () => {
     const types = variableTypes('alias A = B; alias B = A; var<private> a: A; fn read() { let value = a[0]; }');
     expect(types.value).toBeUndefined();
+  });
+});
+
+describe('inference gaps found by the language-service corpus sweep', () => {
+  it('ends a statement at its last token rather than at a following comment', () => {
+    const source = 'fn mainImage(coord: vec2f) -> vec4f {\n  let uv = coord / iResolution.xy; // trailing\n\n  // Background\n  let grid = abs(fract(uv * 10.0) - vec2f(0.5)) * 2.0;\n  return vec4f(grid, 0.0, 1.0);\n}';
+    const document = parseWgslDocument(URI, source, 'fragment');
+    const declaration = document.statements.find(statement => statement.kind === 'declaration');
+    expect(declaration?.range).toEqual({ start: { line: 1, character: 2 }, end: { line: 1, character: 34 } });
+    const types = variableTypes(source);
+    expect(types.uv).toBe('vec2f');
+    expect(types.grid).toBe('vec2f');
+  });
+
+  it('treats alias and parameterized spellings of one type as equal operands', () => {
+    const types = variableTypes('fn mainImage(coord: vec2<f32>) -> vec4<f32> {\n  let uv = coord / iResolution.xy;\n  let lifted = max(vec3<f32>(uv, 0.0), vec3f(0.5));\n  return vec4f(uv, lifted.x, 1.0);\n}');
+    expect(types.uv).toBe('vec2<f32>');
+    expect(types.lifted).toBe('vec3<f32>');
+  });
+
+  it('infers dereferenced pointers and select', () => {
+    const types = variableTypes('fn hook(position: ptr<function, vec3<f32>>, flag: bool) {\n  var pos = *position;\n  let chosen = select(vec2f(0.0), vec2f(1.0), flag);\n  let address = &pos;\n}');
+    expect(types.pos).toBe('vec3<f32>');
+    expect(types.chosen).toBe('vec2f');
+    expect(types.address).toBeUndefined();
+  });
+
+  it('consults an external context for environment values and functions without guessing generic results', () => {
+    const source = 'fn update(i: u32) {\n  let body = bodies[i];\n  let previous = iChannel0Sample(vec2f(0.5));\n  let generic = mystery(1.0);\n  let unknown = absent;\n}';
+    const document = parseWgslDocument(URI, source, 'compute', {
+      valueType: name => name === 'bodies' ? 'array<Body>' : undefined,
+      functionType: name => name === 'iChannel0Sample' ? 'vec4f' : name === 'mystery' ? 'T' : undefined,
+    });
+    const types = Object.fromEntries(document.symbols.map(symbol => [symbol.name, symbol.typeName]));
+    expect(types.body).toBe('Body');
+    expect(types.previous).toBe('vec4f');
+    expect(types.generic).toBeUndefined();
+    expect(types.unknown).toBeUndefined();
+  });
+
+  it('asks the context for fields of structs declared outside the document', () => {
+    const source = 'fn update(i: u32) {\n  let pos2d = bodies[i].position.xy * 0.5 + 0.5;\n  let missing = bodies[i].absent;\n}';
+    const document = parseWgslDocument(URI, source, 'compute', {
+      valueType: name => name === 'bodies' ? 'array<Body>' : undefined,
+      fieldType: (owner, field) => owner === 'Body' && field === 'position' ? 'vec4f' : undefined,
+    });
+    const types = Object.fromEntries(document.symbols.map(symbol => [symbol.name, symbol.typeName]));
+    expect(types.pos2d).toBe('vec2f');
+    expect(types.missing).toBeUndefined();
   });
 });

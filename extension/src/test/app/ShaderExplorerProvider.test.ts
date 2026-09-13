@@ -93,6 +93,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
       webview: mockWebview,
       reveal: sandbox.stub(),
       onDidDispose: sandbox.stub(),
+      onDidChangeViewState: sandbox.stub(),
       dispose: sandbox.stub(),
     };
 
@@ -312,6 +313,7 @@ suite('ShaderExplorerProvider Test Suite', () => {
               webview: mockWebview,
               reveal: sandbox.stub(),
               onDidDispose: sandbox.stub(),
+              onDidChangeViewState: sandbox.stub(),
               dispose: sandbox.stub(),
             };
             createWebviewPanelStub.returns(newMockPanel);

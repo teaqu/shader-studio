@@ -21,6 +21,12 @@ const VECTOR_ALIASES: Record<string, { width: number; component: string }> = {
 };
 
 const VECTOR_PARAMETERIZED = /^vec([234])<\s*(f32|f16|i32|u32)\s*>$/;
+const MATRIX_2X2_F32 = /^mat2x2(?:f|<\s*f32\s*>)$/;
+
+/** `mat2x2f` and `mat2x2<f32>`: the only matrices whose four components fit one RGBA capture. */
+export function isWgslMatrix2x2F32(typeName: string): boolean {
+  return MATRIX_2X2_F32.test(typeName.trim());
+}
 
 /**
  * Converts a captured WGSL value to the vec4f preview/capture color. Every
@@ -34,6 +40,11 @@ export function emitWgslFloat4(typeName: string, expression: string): string {
   }
   if (SCALAR_COMPONENTS[trimmed] !== undefined) {
     return `vec4f(f32(${expression}), f32(${expression}), f32(${expression}), 1.0)`;
+  }
+  if (isWgslMatrix2x2F32(trimmed)) {
+    // Column-major, matching Slang's float2x2 packing: constructor arguments
+    // read back in authored order.
+    return `vec4f(${expression}[0][0], ${expression}[0][1], ${expression}[1][0], ${expression}[1][1])`;
   }
   const shape = VECTOR_ALIASES[trimmed] ?? parseParameterizedVector(trimmed);
   if (!shape) {
@@ -67,7 +78,7 @@ function parseParameterizedVector(typeName: string): { width: number; component:
 
 function assertSupportedCaptureType(typeName: string): void {
   const trimmed = typeName.trim();
-  if (trimmed === "bool" || SCALAR_COMPONENTS[trimmed] !== undefined
+  if (trimmed === "bool" || SCALAR_COMPONENTS[trimmed] !== undefined || isWgslMatrix2x2F32(trimmed)
     || VECTOR_ALIASES[trimmed] !== undefined || parseParameterizedVector(trimmed) !== undefined) {
     return;
   }

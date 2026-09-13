@@ -804,10 +804,14 @@
     void controller.syncEnvironment(environment);
     if (transport.getWorkspaceDocuments) {
       void transport.getWorkspaceDocuments(language).then(workspaceDocuments => {
-        if (!cancelled) void controller.syncEnvironment({ ...environment, workspaceDocuments });
+        if (!cancelled) {
+          void controller.syncEnvironment({ ...environment, workspaceDocuments });
+        }
       });
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   });
 
   $effect(() => {
@@ -896,6 +900,27 @@
           endLineNumber: line,
           endColumn: model.getLineMaxColumn(line),
           message,
+        });
+        continue;
+      }
+
+      // The WGSL renderer maps browser-compiler errors to authored lines itself.
+      // `internal:` errors point into generated code, so they have no marker.
+      const wgsl = err.match(/^([^:\n]+):\s*WGSL L(\d+):(\d+)\s+(.+)$/s);
+      if (wgsl) {
+        const [, wgslPassName, lineNumber, columnNumber, diagnostic] = wgsl;
+        if (wgslPassName.trim().toLowerCase() !== activeBufferKey) {
+          continue;
+        }
+        const line = Math.min(Math.max(1, Number(lineNumber)), model.getLineCount());
+        const maxColumn = model.getLineMaxColumn(line);
+        markers.push({
+          severity: monaco.MarkerSeverity.Error,
+          startLineNumber: line,
+          startColumn: Math.min(Math.max(1, Number(columnNumber)), maxColumn),
+          endLineNumber: line,
+          endColumn: maxColumn,
+          message: diagnostic.trim(),
         });
         continue;
       }

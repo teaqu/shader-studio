@@ -974,4 +974,176 @@ float other(float amount)
         .toEqual(expect.objectContaining({ value: expect.stringContaining("lower-left") }));
     });
   });
+
+  describe("identifier gaps found by the corpus sweep", () => {
+    // The bundled server hovers only top-level functions and offers no member
+    // or local completions, so these come from the service's own fallbacks.
+    async function open(text: string, env: ShaderAuthoringEnvironment = environment) {
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([]));
+      server.hover.mockReturnValue(undefined as never);
+      server.signatureHelp.mockReturnValue(undefined);
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment(env);
+      await service.openDocument({ uri, languageId: "slang", version: 1, text });
+      const at = (needle: string, occurrence = 0, delta = 0) => {
+        let offset = -1;
+        for (let index = 0; index <= occurrence; index++) {
+          offset = text.indexOf(needle, offset + 1);
+        }
+        const lines = text.slice(0, offset + delta).split("\n");
+        return { line: lines.length - 1, character: lines.at(-1)!.length };
+      };
+      const hover = async (position: { line: number; character: number }) => JSON.stringify((await service.hover({ document: revision, position }))?.contents ?? null);
+      return { service, at, hover };
+    }
+
+    it("hovers and completes a compute parameter declared with a system-value semantic", async () => {
+      const text = `[shader("compute")]
+[numthreads(8, 8, 1)]
+void computeMain(uint3 tid : SV_DispatchThreadID)
+{
+    writeOutput(tid.xy, float4(1.0));
+}`;
+      const { service, at, hover } = await open(text, { ...environment, stage: "compute" });
+
+      expect(await hover(at("tid"))).toContain("uint3 tid");
+      expect(await hover(at("tid", 1))).toContain("uint3 tid");
+      const completions = await service.completion({ document: revision, position: at("tid", 1, 3) });
+      expect(completions.find((item) => item.label === "tid")).toEqual(expect.objectContaining({ detail: "uint3" }));
+    });
+
+    it("hovers locals at their declarations and references", async () => {
+      const text = `float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    for (int i = 0; i < 3; i++) { uv += 0.1; }
+    return float4(uv, 0.0, 1.0);
+}`;
+      const { hover, at } = await open(text);
+
+      expect(await hover(at("uv"))).toContain("float2 uv");
+      expect(await hover(at("uv", 2))).toContain("float2 uv");
+      expect(await hover(at("i < 3"))).toContain("int i");
+    });
+
+    it("hovers member selections by their owner's type", async () => {
+      const text = `struct Material { float3 albedo; float rough; };
+float4 mainImage(float2 fragCoord)
+{
+    Material m;
+    float3 c = m.albedo.zyx;
+    float r = m.rough;
+    return float4(c.xy, r, 1.0);
+}`;
+      const { hover, at } = await open(text);
+
+      const albedo = await hover(at("albedo", 1));
+      expect(albedo).toContain("float3 albedo");
+      expect(albedo).toContain("Field of `Material`");
+      expect(await hover(at("zyx"))).toContain("float3 zyx");
+      expect(await hover(at("c.xy", 0, 2))).toContain("float2 xy");
+    });
+
+    it("completes and hovers members of a channel sample result", async () => {
+      const text = `float4 mainImage(float2 fragCoord)
+{
+    float2 uv = fragCoord / iResolution.xy;
+    float3 color = iChannel0.Sample(uv).rgb;
+    float alpha = inputs.iChannel0.SampleLevel(uv, 0.0).a;
+    return float4(color, alpha);
+}`;
+      const { service, hover, at } = await open(text, { ...environment, resources: [{ name: "iChannel0", kind: "texture-2d", slot: 0 }] });
+
+      const labels = (await service.completion({ document: revision, position: at("rgb") })).map((item) => item.label);
+      expect(labels).toContain("rgb");
+      expect(await hover(at("Sample"))).toContain("float4 ShaderStudioChannel2D.Sample(");
+      expect(await hover(at("rgb"))).toContain("float3 rgb");
+      // The `inputs.` alias resolves the same way.
+      expect(await hover(at("SampleLevel"))).toContain("float4 ShaderStudioChannel2D.SampleLevel(");
+      expect(await hover(at(".a;", 0, 1))).toContain("float a");
+    });
+
+    it("types configured storage buffers and locals declared with a Common struct", async () => {
+      const text = `[shader("compute")]
+[numthreads(16, 1, 1)]
+void computeMain(uint3 id : SV_DispatchThreadID)
+{
+    Body current = bodies[id.x];
+    bodies[id.x].position = current.velocity;
+}`;
+      const common = "struct Body\n{\n    float4 position;\n    float4 velocity;\n};";
+      const { service, hover, at } = await open(text, {
+        ...environment,
+        stage: "compute",
+        resources: [{ name: "bodies", kind: "storage", elementType: "Body" }],
+        commonFile: { uri: "file:///common.slang", text: common, version: 1 },
+      });
+
+      const buffer = await hover(at("bodies"));
+      expect(buffer).toContain("bodies");
+      expect(buffer).toContain("Body");
+      expect(await hover(at("current"))).toContain("Body current");
+      expect(await hover(at("position"))).toContain("float4 position");
+      expect(await hover(at("velocity"))).toContain("float4 velocity");
+      const labels = (await service.completion({ document: revision, position: at("position") })).map((item) => item.label);
+      expect(labels).toEqual(expect.arrayContaining(["position", "velocity"]));
+      const locals = (await service.completion({ document: revision, position: at("current", 1, 7) }));
+      expect(locals.find((item) => item.label === "current")).toEqual(expect.objectContaining({ detail: "Body" }));
+    });
+
+    it("hovers functions from imported modules and names modules on directive lines", async () => {
+      const text = `module foundation_workspace_image;
+import lib.palette;
+
+float4 mainImage(float2 fragCoord)
+{
+    return float4(foundationPalette(0.5), 1.0);
+}`;
+      const { hover, at } = await open(text, {
+        ...environment,
+        virtualFiles: [{ uri: "file:///lib/palette.slang", text: "module palette;\nfloat3 foundationPalette(float t) { return float3(t); }", version: 1 }],
+      });
+
+      const imported = await hover(at("foundationPalette"));
+      expect(imported).toContain("float3 foundationPalette(float t)");
+      expect(imported).toContain("palette.slang");
+      expect(await hover(at("foundation_workspace_image"))).toContain("module foundation_workspace_image");
+      const importHover = await hover(at("palette"));
+      expect(importHover).toContain("import lib.palette");
+      expect(importHover).not.toMatch(/Defined in [0-9a-f]{16,}/);
+    });
+
+    it("lists a channel global once, with its channel type, when the server also offers it bare", async () => {
+      const { module, server } = fixture();
+      server.completion.mockReturnValue(list([{ label: "iChannel0", kind: 6, detail: "", data: "" }]));
+      const service = new SlangLanguageService(module);
+      await service.syncEnvironment({ ...environment, resources: [{ name: "iChannel0", kind: "texture-2d", slot: 0 }] });
+      await service.openDocument({ uri, languageId: "slang", version: 1, text: "float4 mainImage(float2 p) { return iC; }" });
+
+      const entries = (await service.completion({ document: revision, position: { line: 0, character: 39 } }))
+        .filter((item) => item.label === "iChannel0");
+      expect(entries.map((item) => item.detail)).toEqual(["ShaderStudioChannel2D"]);
+    });
+
+    it("tracks the active argument through nested calls, generic arguments and comments", async () => {
+      const text = `float box(float2 uv, float2 lo, float2 hi) { return 0.0; }
+float4 mainImage(float2 fragCoord)
+{
+    float v = box(float2(1.0, 2.0), max(fragCoord, float2(0.0)) /* a, b */, float2(3.0));
+    uint bits = bit_cast<uint>(v);
+    return float4(v);
+}`;
+      const { service, at } = await open(text);
+      const help = (position: { line: number; character: number }) => service.signatureHelp({ document: revision, position });
+
+      expect(await help(at("box(", 1, 4))).toEqual(expect.objectContaining({ activeParameter: 0 }));
+      expect(await help(at(" max(", 0, 1))).toEqual(expect.objectContaining({ activeParameter: 1 }));
+      expect((await help(at(" float2(3.0)", 0, 1)))).toEqual(expect.objectContaining({
+        activeParameter: 2,
+        signatures: [expect.objectContaining({ label: expect.stringContaining("box(") })],
+      }));
+      expect((await help(at("bit_cast<uint>(", 0, 15)))?.signatures[0]?.label).toContain("bit_cast");
+    });
+  });
 });

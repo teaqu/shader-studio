@@ -1024,13 +1024,12 @@ suite("VS Code language-service revisions", () => {
   test("fails the complete workspace snapshot when a discovered closed shader cannot be read", async () => {
     const sandbox = sinon.createSandbox();
     const activeUri = vscode.Uri.file("/workspace/active.glsl");
-    const missingUri = vscode.Uri.file("/workspace/missing.glsl");
+    const missingUri = vscode.Uri.file(path.join(os.tmpdir(), `shader-studio-missing-${Date.now()}.glsl`));
     const active = { uri: activeUri, languageId: "glsl", version: 1, getText: () => "float active;" } as unknown as vscode.TextDocument;
     try {
       sandbox.stub(vscode.workspace, "findFiles").resolves([missingUri]);
       sandbox.stub(vscode.workspace, "textDocuments").value([]);
-      sandbox.stub(fs, "readFileSync").throws(new Error("file vanished"));
-      await assert.rejects(new ShaderAuthoringEnvironmentProvider().workspaceEnvironmentFor(active), /file vanished/);
+      await assert.rejects(new ShaderAuthoringEnvironmentProvider().workspaceEnvironmentFor(active), /ENOENT/);
     } finally {
       sandbox.restore();
     }

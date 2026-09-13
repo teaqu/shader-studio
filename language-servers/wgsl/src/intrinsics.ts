@@ -63,7 +63,7 @@ export const WGSL_INTRINSICS: readonly WgslIntrinsic[] = Object.freeze([
   fn("asin", "T", [["T", "x"]], "Component-wise arc sine in radians."),
   fn("asinh", "T", [["T", "x"]], "Component-wise inverse hyperbolic sine."),
   fn("atan", "T", [["T", "x"]], "Component-wise arc tangent in radians."),
-  fn("atan", "T", [["T", "y"], ["T", "x"]], "Component-wise arc tangent using the signs of both arguments."),
+  fn("atan2", "T", [["T", "y"], ["T", "x"]], "Component-wise arc tangent of y / x, using the signs of both arguments to pick the quadrant."),
   fn("atanh", "T", [["T", "x"]], "Component-wise inverse hyperbolic tangent."),
   fn("ceil", "T", [["T", "x"]], "Rounds each component toward positive infinity."),
   fn("clamp", "T", [["T", "x"], ["T", "minValue"], ["T", "maxValue"]], "Constrains values to a range."),

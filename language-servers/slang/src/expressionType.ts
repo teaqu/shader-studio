@@ -49,7 +49,7 @@ export function resolveSlangExpressionType(
   request: SlangExpressionRequest,
   context: SlangExpressionContext = {},
 ): SlangResolvedType | undefined {
-  const steps = parseMemberExpression(request.expression);
+  const steps = parseMemberExpression(stripMethodArguments(request.expression));
   if (!steps.length) {
     return undefined;
   }
@@ -65,9 +65,48 @@ export function resolveSlangExpressionType(
     }
     typeName = step.kind === "index"
       ? indexedTypeName(typeName)
-      : resolveSlangSwizzleType(typeName, step.name) ?? fieldType(typeName, step.name, allStructs);
+      : resolveSlangSwizzleType(typeName, step.name) ?? fieldType(typeName, step.name, allStructs) ?? builtinMethodType(typeName, step.name);
   }
   return typeName ? describeType(typeName, allStructs) : undefined;
+}
+
+/**
+ * Drops the argument lists of method calls such as `.Sample(uv)`, so a chain like
+ * `inputs.iChannel0.Sample(uv).rgb` resolves through the method's return type.
+ * A leading call such as `palette(0.5)` keeps its arguments.
+ */
+function stripMethodArguments(expression: string): string {
+  let result = "";
+  for (let index = 0; index < expression.length; index++) {
+    const character = expression[index]!;
+    if (character !== "(" || !/\.\s*[A-Za-z_]\w*\s*$/.test(result)) {
+      result += character;
+      continue;
+    }
+    let depth = 0;
+    for (; index < expression.length; index++) {
+      depth += expression[index] === "(" ? 1 : expression[index] === ")" ? -1 : 0;
+      if (depth === 0) {
+        break;
+      }
+    }
+    if (depth !== 0) {
+      return expression;
+    }
+  }
+  return result;
+}
+
+const SAMPLING_METHODS = new Set(["Sample", "SampleLevel", "SampleGrad"]);
+const TEXTURE_READ_METHODS = new Set([...SAMPLING_METHODS, "SampleBias", "Load"]);
+
+/** Return type of a sampling method on a Shader Studio channel or a native texture. */
+function builtinMethodType(ownerType: string, name: string): string | undefined {
+  if (/^ShaderStudioChannel(?:2D|Cube|3D)$/.test(ownerType)) {
+    return SAMPLING_METHODS.has(name) ? "float4" : undefined;
+  }
+  const element = /^(?:RW)?Texture(?:1D|2D|3D|Cube)(?:Array)?<\s*(.+?)\s*>$/.exec(ownerType)?.[1];
+  return element && TEXTURE_READ_METHODS.has(name) ? canonicalizeSlangType(element) : undefined;
 }
 
 function describeType(name: string, structs: readonly SlangStruct[]): SlangResolvedType {
@@ -97,7 +136,7 @@ function leadingStepType(
   if (step?.kind !== "identifier") {
     return undefined;
   }
-  const local = cursorOffset === undefined ? undefined : nearestVisibleDeclaration(source, step.name, cursorOffset);
+  const local = cursorOffset === undefined ? undefined : nearestVisibleDeclaration(source, step.name, cursorOffset, context.includes);
   const included = local ? undefined : (context.includes ?? [])
     .map((include) => globalDeclaredType(include, step.name))
     .find((typeName): typeName is string => typeName !== undefined);
@@ -127,8 +166,12 @@ function fieldType(ownerType: string, fieldName: string, structs: readonly Slang
   return structs.find((candidate) => candidate.name === ownerType)?.fields.find((field) => field.name === fieldName)?.type;
 }
 
-/** Element type of an indexed value: array elements, vector components, or matrix rows. */
+/** Element type of an indexed value: array or structured buffer elements, vector components, or matrix rows. */
 function indexedTypeName(typeName: string): string | undefined {
+  const buffer = /^(?:RW)?StructuredBuffer\s*<\s*(.+?)\s*>$/.exec(typeName)?.[1];
+  if (buffer) {
+    return canonicalizeSlangType(buffer);
+  }
   const array = /^(.+?)((?:\[\d*\])+)$/.exec(typeName);
   if (array?.[1] && array[2]) {
     const dimensions = array[2].match(/\[\d*\]/g) ?? [];
@@ -187,8 +230,13 @@ interface VariableDeclaration {
   readonly name: string;
   readonly typeName: string;
   readonly kind: SlangLocalKind;
+  /** Where the declaration becomes visible: the name for a variable, the end of the parameter list for a parameter. */
   readonly offset: number;
+  /** Offset of the declared name itself. */
+  readonly nameOffset: number;
   readonly scopeEnd: number;
+  /** A parameter bound to a semantic such as `SV_DispatchThreadID`, which the entry signature requires. */
+  readonly semantic?: boolean;
 }
 
 export type SlangLocalKind = "variable" | "parameter";
@@ -200,14 +248,16 @@ export interface SlangLocalSymbol {
 }
 
 const TYPE_TOKEN = /[A-Za-z_]\w*(?:\s*<[^>{}]+>)?/;
-const LOCAL_DECLARATION = new RegExp(`\\b(?:(?:static|const)\\s+)*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?\\s*(?:=[^;{}]*)?;`, "g");
-const QUALIFIER = /^(?:in|out|inout)\s+/;
+const LOCAL_DECLARATION = new RegExp(`\\b(?:(?:static|const)\\s+)*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?\\s*(?:=\\s*(?:\\{[^;{}]*\\}|[^;{}]*))?;`, "g");
 const CONTROL_KEYWORDS = new Set(["if", "for", "while", "switch", "return", "else"]);
 
-/** Every local variable and parameter declared in `source`, with the block each one lives in. */
-function declarationCandidates(source: string): readonly VariableDeclaration[] {
+/**
+ * Every local variable and parameter declared in `source`, with the block each one lives in.
+ * Structs declared in `includes`, such as Common, also count as declaration types.
+ */
+function declarationCandidates(source: string, includes: readonly string[] = []): readonly VariableDeclaration[] {
   const pairs = bracePairs(source);
-  const knownTypes = new Set(findSlangStructs(source).map((struct) => struct.name));
+  const knownTypes = new Set([source, ...includes].flatMap(findSlangStructs).map((struct) => struct.name));
   const candidates: VariableDeclaration[] = [];
 
   for (const match of source.matchAll(LOCAL_DECLARATION)) {
@@ -226,6 +276,7 @@ function declarationCandidates(source: string): readonly VariableDeclaration[] {
       typeName,
       kind: "variable",
       offset,
+      nameOffset: offset,
       scopeEnd: enclosingScopeEnd(pairs, offset, source.length),
     });
   }
@@ -243,7 +294,9 @@ function declarationCandidates(source: string): readonly VariableDeclaration[] {
         typeName: parameter.typeName,
         kind: "parameter",
         offset: fn.parameterListEnd,
+        nameOffset: parameter.nameOffset,
         scopeEnd,
+        semantic: parameter.semantic,
       });
     }
   }
@@ -252,8 +305,8 @@ function declarationCandidates(source: string): readonly VariableDeclaration[] {
 }
 
 /** Every declaration of `name` in `source`, whether a local variable, parameter, or array. */
-function variableCandidates(source: string, name: string): readonly VariableDeclaration[] {
-  return declarationCandidates(source).filter((candidate) => candidate.name === name);
+function variableCandidates(source: string, name: string, includes: readonly string[] = []): readonly VariableDeclaration[] {
+  return declarationCandidates(source, includes).filter((candidate) => candidate.name === name);
 }
 
 /**
@@ -261,13 +314,13 @@ function variableCandidates(source: string, name: string): readonly VariableDecl
  * identifier completions for these, so they are recovered by scanning source text; an inner
  * declaration shadows an outer one of the same name, matching block scoping rules.
  */
-export function visibleSlangLocals(source: string, position: Position): readonly SlangLocalSymbol[] {
+export function visibleSlangLocals(source: string, position: Position, includes: readonly string[] = []): readonly SlangLocalSymbol[] {
   const cursorOffset = positionOffset(source, position);
   if (cursorOffset === undefined) {
     return [];
   }
   const visible = new Map<string, SlangLocalSymbol>();
-  for (const candidate of declarationCandidates(source)
+  for (const candidate of declarationCandidates(source, includes)
     .filter((entry) => entry.offset < cursorOffset && cursorOffset <= entry.scopeEnd)
     .sort((left, right) => right.offset - left.offset)) {
     if (!visible.has(candidate.name)) {
@@ -275,6 +328,38 @@ export function visibleSlangLocals(source: string, position: Position): readonly
     }
   }
   return [...visible.values()];
+}
+
+/**
+ * The local variable or parameter named by the word at `position`, whether the word is its
+ * declaration or a reference to the nearest visible declaration. Member selections and
+ * calls name something else, so they report nothing.
+ */
+export function findSlangLocalAt(source: string, position: Position, includes: readonly string[] = []): SlangLocalSymbol | undefined {
+  const cursorOffset = positionOffset(source, position);
+  if (cursorOffset === undefined) {
+    return undefined;
+  }
+  let start = cursorOffset;
+  while (start > 0 && /\w/.test(source[start - 1] ?? "")) {
+    start--;
+  }
+  let end = cursorOffset;
+  while (end < source.length && /\w/.test(source[end] ?? "")) {
+    end++;
+  }
+  const name = source.slice(start, end);
+  // A selector or call on the same line; a comment ending in a full stop is not one.
+  const masked = maskNonCode(source);
+  if (!/^[A-Za-z_]\w*$/.test(name) || /\.[ \t]*$/.test(masked.slice(0, start)) || /^[ \t]*\(/.test(masked.slice(end))) {
+    return undefined;
+  }
+  const candidates = variableCandidates(source, name, includes);
+  const declaration = candidates.find((candidate) => candidate.nameOffset === start)
+    ?? candidates
+      .filter((candidate) => candidate.offset < start && start <= candidate.scopeEnd)
+      .sort((left, right) => right.offset - left.offset)[0];
+  return declaration ? { name, typeName: declaration.typeName, kind: declaration.kind } : undefined;
 }
 
 export interface SlangUnusedLocal {
@@ -358,6 +443,7 @@ export function findUnusedSlangLocals(source: string): readonly SlangUnusedLocal
     .map((open) => ({ open, close: enclosingScopeEnd(pairs, open, masked.length) }));
   const candidates = declarationCandidates(masked).filter((candidate) => (
     candidate.scopeEnd !== masked.length
+    && !candidate.semantic
     && (candidate.kind === "parameter"
       || bodies.some((body) => body.open < candidate.offset && candidate.offset < body.close))
   ));
@@ -409,8 +495,13 @@ export function findUnusedSlangLocals(source: string): readonly SlangUnusedLocal
 }
 
 /** Finds the nearest declaration of `name` whose scope contains `cursorOffset`, so inner shadows outer. */
-function nearestVisibleDeclaration(source: string, name: string, cursorOffset: number): VariableDeclaration | undefined {
-  return variableCandidates(source, name)
+function nearestVisibleDeclaration(
+  source: string,
+  name: string,
+  cursorOffset: number,
+  includes: readonly string[] = [],
+): VariableDeclaration | undefined {
+  return variableCandidates(source, name, includes)
     .filter((candidate) => candidate.offset < cursorOffset && cursorOffset <= candidate.scopeEnd)
     .sort((left, right) => right.offset - left.offset)[0];
 }
@@ -434,7 +525,9 @@ interface SlangStruct {
 const STRUCT_HEADER = /\bstruct\s+([A-Za-z_]\w*)\s*\{/g;
 const FIELD_DECLARATION = new RegExp(`^\\s*(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(?::\\s*[A-Za-z_]\\w*\\s*)?;`);
 
-function findSlangStructs(source: string): SlangStruct[] {
+function findSlangStructs(text: string): SlangStruct[] {
+  // Comments after a field, such as `float4 position; // xyz`, must not hide the next field.
+  const source = maskNonCode(text);
   const pairs = bracePairs(source);
   const structs: SlangStruct[] = [];
   for (const match of source.matchAll(STRUCT_HEADER)) {
@@ -472,9 +565,14 @@ function findSlangStructs(source: string): SlangStruct[] {
 interface SlangFunctionDeclaration {
   readonly name: string;
   readonly returnType: string;
-  readonly parameters: readonly { readonly name: string; readonly typeName: string }[];
+  readonly parameters: readonly { readonly name: string; readonly typeName: string; readonly nameOffset: number; readonly semantic: boolean }[];
   readonly parameterListEnd: number;
 }
+
+/** One parameter: qualifiers, type, name, optional array brackets, then an optional semantic and default value. */
+const PARAMETER_DECLARATION = new RegExp(
+  `^\\s*((?:(?:in|out|inout|const)\\s+)*)(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*(\\[\\s*\\d*\\s*\\])?(\\s*(?::\\s*[A-Za-z_]\\w*)?\\s*(?:=[\\s\\S]*)?)$`,
+);
 
 const FUNCTION_HEADER = new RegExp(`\\b(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)\\s*\\(([^)]*)\\)\\s*\\{`, "g");
 
@@ -485,13 +583,21 @@ function findSlangFunctions(source: string): SlangFunctionDeclaration[] {
     if (!name || rawReturnType === undefined || match.index === undefined || CONTROL_KEYWORDS.has(name)) {
       continue;
     }
-    const parameters = (parameterList ?? "").split(",").flatMap((entry) => {
-      const cleaned = entry.trim().replace(QUALIFIER, "");
-      const parameter = new RegExp(`^(${TYPE_TOKEN.source})\\s+([A-Za-z_]\\w*)$`).exec(cleaned);
-      return parameter?.[1] && parameter[2]
-        ? [{ name: parameter[2], typeName: canonicalizeSlangType(parameter[1]) }]
-        : [];
-    });
+    const parameters: { name: string; typeName: string; nameOffset: number; semantic: boolean }[] = [];
+    let entryOffset = match.index + whole.indexOf("(") + 1;
+    for (const entry of (parameterList ?? "").split(",")) {
+      const parameter = PARAMETER_DECLARATION.exec(entry);
+      if (parameter?.[2] && parameter[3]) {
+        const brackets = parameter[4] ? "[]" : "";
+        parameters.push({
+          name: parameter[3],
+          typeName: `${canonicalizeSlangType(parameter[2])}${brackets}`,
+          nameOffset: entryOffset + parameter[0].lastIndexOf(parameter[3], parameter[0].length - (parameter[5]?.length ?? 0)),
+          semantic: /^\s*:/.test(parameter[5] ?? ""),
+        });
+      }
+      entryOffset += entry.length + 1;
+    }
     functions.push({
       name,
       returnType: canonicalizeSlangType(rawReturnType),

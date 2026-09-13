@@ -14,23 +14,36 @@ export function findLiteralConstructorColors(
   const pattern = new RegExp(`\\b(?:${names})\\s*\\(([^()]*)\\)`, "g");
   const results: ColorInformation[] = [];
   for (const match of source.matchAll(pattern)) {
-    const components = match[1]?.split(",").map((part) => part.trim()) ?? [];
-    if ((components.length !== 3 && components.length !== 4)
-      || components.some((part) => !new RegExp(`^(?:${NUMBER_SOURCE})$`).test(part))) {
-      continue;
-    }
-    const values = components.map(Number);
-    if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
+    const color = literalColorFromArguments(match[1] ?? "");
+    if (!color) {
       continue;
     }
     const start = match.index;
     const end = start + match[0].length;
     results.push({
-      color: { red: values[0], green: values[1], blue: values[2], alpha: values[3] ?? 1 },
+      color,
       range: { start: positionAt(source, start), end: positionAt(source, end) },
     });
   }
   return results;
+}
+
+/**
+ * Reads a constructor argument list made only of numeric literals in [0, 1]
+ * as a color. `count`, when given, is the exact component count the
+ * constructor requires; otherwise three or four components are accepted.
+ */
+export function literalColorFromArguments(argumentsText: string, count?: 3 | 4): Color | undefined {
+  const components = argumentsText.split(",").map((part) => part.trim());
+  if ((count !== undefined ? components.length !== count : components.length !== 3 && components.length !== 4)
+    || components.some((part) => !new RegExp(`^(?:${NUMBER_SOURCE})$`).test(part))) {
+    return undefined;
+  }
+  const values = components.map(Number);
+  if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
+    return undefined;
+  }
+  return { red: values[0]!, green: values[1]!, blue: values[2]!, alpha: values[3] ?? 1 };
 }
 
 /**
@@ -50,7 +63,7 @@ export function createLiteralColorPresentations(
   const channels = components === 3
     ? [color.red, color.green, color.blue]
     : [color.red, color.green, color.blue, color.alpha];
-  const label = `${constructor}(${channels.map(formatColorComponent).join(", ")})`;
+  const label = `${constructor}(${channels.map(formatLiteralColorComponent).join(", ")})`;
   return [{ label, textEdit: { range, newText: label } }];
 }
 
@@ -85,7 +98,8 @@ function positionAt(source: string, offset: number): Position {
   return { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 };
 }
 
-function formatColorComponent(value: number): string {
+/** Formats a color channel as a float literal every shader language accepts. */
+export function formatLiteralColorComponent(value: number): string {
   const clamped = Math.max(0, Math.min(1, value));
   return Number.isInteger(clamped) ? clamped.toFixed(1) : String(Number(clamped.toFixed(6)));
 }

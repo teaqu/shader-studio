@@ -924,3 +924,83 @@ void mainImage(out vec4 color, in vec2 coord) {
     });
   });
 });
+
+describe("GLSL member and signature gaps found by the corpus sweep", () => {
+  const at = (text: string, needle: string, delta = 0, occurrence = 0) => {
+    let offset = -1;
+    for (let index = 0; index <= occurrence; index++) {
+      offset = text.indexOf(needle, offset + 1);
+    }
+    const lines = text.slice(0, offset + delta).split("\n");
+    return { line: lines.length - 1, character: lines[lines.length - 1]!.length };
+  };
+  const open = async (text: string, overrides: Partial<ShaderAuthoringEnvironment> = {}) => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), ...overrides });
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    return instance;
+  };
+  const hoverText = async (instance: GlslLanguageService, position: { line: number; character: number }) => {
+    const hover = await instance.hover({ document: revision, position });
+    return hover ? JSON.stringify(hover.contents) : null;
+  };
+
+  const members = `struct Light { vec3 color; };
+void mainImage(out vec4 color, in vec2 coord) {
+  Light light = Light(vec3(1.0));
+  float x = 0.5;
+  vec2 uv = coord.xy;
+  color = vec4(light.color * x, uv.x);
+  if (uv.y >= 0.5 && uv.x < 0.5) { color = texture(sky, vec3(uv, 1.0)).rgba; }
+}`;
+
+  it("hovers members by their owner's type rather than a same-named symbol", async () => {
+    const instance = await open(members);
+    const field = await hoverText(instance, at(members, "light.color", "light.".length + 1));
+    expect(field).toContain("vec3 color");
+    expect(field).toContain("Field of `Light`");
+    expect(await hoverText(instance, at(members, "coord.xy", "coord.".length + 1))).toContain("vec2 xy");
+    const component = await hoverText(instance, at(members, "uv.x);", "uv.".length));
+    expect(component).toContain("float x");
+    expect(component).not.toContain("Declared in this shader");
+    expect(await hoverText(instance, at(members, ".rgba", 1))).toContain("vec4 rgba");
+  });
+
+  it("completes members inside a compound condition", async () => {
+    const instance = await open(members);
+    const labels = (await instance.completion({ document: revision, position: at(members, "uv.y >=", "uv.".length) })).map((item) => item.label);
+    expect(labels).toEqual(expect.arrayContaining(["x", "y", "xy"]));
+  });
+
+  it("types generated vertex sampler helper results for member completion and hover", async () => {
+    const text = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n  vec3 tint = samplePatternTex(uv).rgb;\n}";
+    const instance = await open(text, { stage: "vertex", resources: [{ name: "patternTex", kind: "texture-2d", slot: 0 }] });
+    expect((await instance.completion({ document: revision, position: at(text, ".rgb", 1) })).map((item) => item.label)).toContain("rgb");
+    expect(await hoverText(instance, at(text, ".rgb", 1))).toContain("vec3 rgb");
+  });
+
+  it("tracks the active parameter through nested calls and comments", async () => {
+    const text = `float shade(float value, float gain) { return value * gain; }
+void mainImage(out vec4 color, in vec2 coord) {
+  float a = max(dot(coord, coord), 0.0);
+  vec3 b = mix(vec3(0.1, 0.2, 0.3), vec3(0.4), coord.x);
+  float c = shade(/* a, b, ( */ coord.x, coord.y);
+  color = vec4(a, b.x, c, 1.0);
+}`;
+    const instance = await open(text);
+    const help = async (needle: string, delta = 0) => instance.signatureHelp({ document: revision, position: at(text, needle, delta) });
+    expect(await help("0.0)")).toMatchObject({ activeParameter: 1, signatures: [expect.objectContaining({ label: expect.stringContaining("max(") })] });
+    expect(await help("coord.x);")).toMatchObject({ activeParameter: 2, signatures: expect.arrayContaining([expect.objectContaining({ label: expect.stringContaining("mix(") })]) });
+    expect((await help("coord.x, coord.y"))?.activeParameter).toBe(0);
+    expect((await help("coord.y);"))?.activeParameter).toBe(1);
+  });
+
+  it("chooses the first overload with enough parameters for the active argument", async () => {
+    const text = "void mainImage(out vec4 color, in vec2 coord) { float angle = atan(coord.y, coord.x); color = vec4(angle); }";
+    const instance = await open(text);
+    const result = await instance.signatureHelp({ document: revision, position: at(text, "coord.x)") });
+    expect(result?.activeParameter).toBe(1);
+    const active = result?.signatures[result.activeSignature ?? 0]?.label ?? "";
+    expect(active.slice(active.indexOf("(") + 1, active.lastIndexOf(")")).split(",")).toHaveLength(2);
+  });
+});

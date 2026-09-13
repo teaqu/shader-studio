@@ -162,3 +162,21 @@ describe("glslVectorTypeName", () => {
     expect(glslVectorTypeName("Material", 2)).toBeUndefined();
   });
 });
+
+describe("resolveGlslExpressionType in complete documents", () => {
+  it("resolves a member in an if header followed by an else-if chain", () => {
+    const source = `void mainImage(out vec4 color, in vec2 coord) {
+  vec2 uv = coord;
+  if (uv.y >= 0.5 && uv.x < 0.5) {
+    color = vec4(1.0);
+  } else if (uv.y >= 0.5) {
+    color = vec4(0.5);
+  }
+}`;
+    const line = 2;
+    const character = source.split("\n")[line]!.indexOf("uv.y") + "uv.".length;
+    expect(resolveGlslExpressionType(request(source, "uv", line, character))).toEqual({
+      name: "vec2", vector: { componentType: "float", size: 2 },
+    });
+  });
+});

@@ -2,7 +2,7 @@ import { parseMemberExpression, type MemberExpressionStep } from "@shader-studio
 import type { ShaderStage } from "@shader-studio/types";
 import type { Position } from "vscode-languageserver-protocol";
 import type { GlslAnalysisDocument, GlslSymbol } from "./model.js";
-import { visibleSymbolsAtPosition } from "./parseGlslDocument.js";
+import { parseGlslDocument, visibleSymbolsAtPosition } from "./parseGlslDocument.js";
 import { parseGlslDocumentAtPosition } from "./recovery.js";
 import {
   isBuiltinValueType,
@@ -57,12 +57,13 @@ export function resolveGlslExpressionType(
   if (!steps.length) {
     return undefined;
   }
-  const analysis = parseGlslDocumentAtPosition(
-    request.uri,
-    request.source,
-    request.stage,
-    request.position,
-  );
+  // A complete document resolves against its own parse. Blanking the statement
+  // under the cursor is only for unfinished edits: it breaks a valid document
+  // whose `if` header is followed by an `else` chain.
+  const complete = parseGlslDocument(request.uri, request.source, request.stage);
+  const analysis = complete.parsedSuccessfully
+    ? complete
+    : parseGlslDocumentAtPosition(request.uri, request.source, request.stage, request.position);
   const documents = [analysis, ...context.includes ?? []];
   let typeName = leadingStepType(steps[0], analysis, documents, request.position, context);
   for (const step of steps.slice(1)) {

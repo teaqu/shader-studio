@@ -264,3 +264,26 @@ describe("parseWgslDocument recovery", () => {
     expect(symbolsByName(document, "b")).toHaveLength(1);
   });
 });
+
+describe("parseWgslDocument accepts valid WGSL without speculative syntax errors", () => {
+  it.each([
+    ["directives", "enable f16;\nrequires readonly_and_readwrite_storage_textures;\ndiagnostic(off, derivative_uniformity);\nfn f() {}"],
+    ["overrides, const_assert and aliases", "@id(0) override gain: f32 = 1.0;\nconst N = 4;\nconst_assert N > 2;\nalias Row = array<f32, N>;\nfn f() { const_assert 1 < 2; let row: Row = Row(); }"],
+    ["attributes on functions and returns", "@diagnostic(off, derivative_uniformity) @must_use fn f() -> f32 { return 1.0; }\n@fragment fn fs(@builtin(position) p: vec4f) -> @location(0) vec4f { return p; }"],
+    ["switch selectors with default and optional colons", "fn f(x: i32) -> i32 {\n  switch x {\n    case 1, 2 { return 1; }\n    case 3, default: { return 3; }\n  }\n  switch (x) { default { return 0; } }\n}"],
+    ["switch with trailing selector comma", "fn f(x: u32) { switch x { case 1u, 2u, { } default: { } } }"],
+    ["loops with continuing and break if", "fn f() { var i = 0; loop { i++; continuing { break if i > 3; } } for (;;) { break; } while (i > 0) { i--; continue; } }"],
+    ["pointers and compound assignment", "fn f() { var v = vec3f(); let p = &v; (*p).x = 1.0; *p = vec3f(2.0); (*p).y += 1.0; _ = p; }"],
+    ["numeric literal forms", "fn f() { let a = 0x1p-3f; let b = 1e3; let c = .5; let d = 2u; let e = 0x10i; let g = 1.5h; let h = 7f; }"],
+    ["inferred and templated constructors", "fn f() { let a = array(1.0, 2.0); let b = vec3(1.0); let c = mat2x2(1.0, 0.0, 0.0, 1.0); let d = array<vec2<f32>, 2>(vec2f(), vec2f()); let e = bitcast<u32>(1i); }"],
+    ["texture and sampler types", "@group(0) @binding(0) var out: texture_storage_2d<rgba8unorm, write>;\n@group(0) @binding(1) var ext: texture_external;\n@group(0) @binding(2) var depth: texture_depth_2d;\n@group(0) @binding(3) var cmp: sampler_comparison;"],
+    ["relational operators beside template-like text", "fn f(a: i32, b: i32, c: i32, d: i32) -> bool { return a < b && c > d; }"],
+    ["shifts and nested templates", "fn f(x: u32) -> u32 { let t: array<array<u32, 2>, 2> = array<array<u32, 2>, 2>(); return (x << 3u) >> 1u + t[0][1]; }"],
+    ["workgroup and atomic storage", "var<workgroup> shared: array<f32, 4>;\n@group(0) @binding(0) var<storage, read_write> counter: atomic<u32>;\n@compute @workgroup_size(1) fn c() { atomicStore(&counter, 1u); workgroupBarrier(); shared[0] = 1.0; }"],
+    ["structs with attributes and trailing commas", "struct S { @align(16) @size(32) a: vec3f, b: array<f32, 2>, };\nfn f() -> S { return S(vec3f(), array<f32, 2>()); }"],
+    ["nested block comments", "/* outer /* inner */ still comment */\nfn f() { /* ( */ return; }"],
+  ])("%s", (_label, source) => {
+    const document = parseWgslDocument(URI, source, "fragment");
+    expect(document.diagnostics).toEqual([]);
+  });
+});

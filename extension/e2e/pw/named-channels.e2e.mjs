@@ -1,15 +1,26 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
-import { replaceSource as edit, expectCanvasPixels as pixels, setPreviewLocked, revertFixtureEditors } from './editor-actions.mjs';
+import { replaceSource as edit, expectCanvasPixels as pixels, setPreviewLocked, revertFixtureEditors, unlockPreviewForCleanup } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 
 test.use({ vscodeKey: 'named-channels' });
-const fixtureDir = join(workspacePath, 'named-channels');
+// Workers share one workspace, so each keeps its own fixture directory: a
+// repeated run must not delete another worker's texture or config mid-reload.
+const fixtureDir = () => join(workspacePath, 'named-channels', `worker-${test.info().parallelIndex}`);
 test.beforeEach(async ({ vscode }) => {
+  await revertFixtureEditors(vscode, fixtureDir());
   await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'));
 });
-
+test.afterEach(async ({ vscode }) => {
+  await revertFixtureEditors(vscode, fixtureDir());
+  await expect.poll(() => vscode.evaluateInHost((vscode, directory) => vscode.workspace.textDocuments
+    .filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/'))
+    .map(document => document.uri.fsPath), fixtureDir())).toEqual([]);
+  const frame = await vscode.shaderFrame();
+  await unlockPreviewForCleanup(vscode, frame);
+  await expectPreviewLock(frame, false);
+});
 async function open(vscode, path) {
   await vscode.evaluateInHost(async (vscode, path) => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -20,12 +31,22 @@ async function errors(vscode, path) {
   return vscode.evaluateInHost((vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
     .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => d.message), path);
 }
+async function expectPreviewLock(frame, locked) {
+  const lock = frame.locator('button.collapse-lock');
+  await expect(lock).toHaveClass(locked ? /active/ : /^(?!.*active)/);
+}
+async function expectNoNotificationToast(vscode) {
+  await expect.poll(() => vscode.window.locator('.notification-toast').count()).toBe(0);
+}
 async function saveReload(vscode, path, source, frame) {
   await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
   await vscode.window.keyboard.press('ControlOrMeta+S');
   await expect.poll(() => readFileSync(path, 'utf8')).toBe(source);
-  await vscode.evaluateInHost(vscode => { setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100); });
+  await vscode.evaluateInHost(vscode => {
+    setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+  });
   await expect.poll(() => frame.isDetached()).toBe(true);
+  await expectNoNotificationToast(vscode);
   await open(vscode, path);
   await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('shader-studio.view'));
   return vscode.shaderFrame();
@@ -41,12 +62,14 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     const initial = language === 'glsl' ? 'void mainImage(out vec4 c, in vec2 p) { c = vec4(1,0,0,1); }'
       : language === 'slang' ? 'float4 mainImage(float2 p) { return float4(1,0,0,1); }'
         : 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1,0,0,1); }';
-    mkdirSync(fixtureDir, { recursive: true });
-    const path = join(fixtureDir, `named.${language}`);
-    const config = join(fixtureDir, 'named.sha.json');
-    const texture = join(fixtureDir, 'albedo.png');
+    mkdirSync(fixtureDir(), { recursive: true });
+    const path = join(fixtureDir(), `named.${language}`);
+    const config = join(fixtureDir(), 'named.sha.json');
+    const texture = join(fixtureDir(), 'albedo.png');
     const png = new PNG({ width: 2, height: 2 });
-    for (let offset = 0; offset < png.data.length; offset += 4) png.data.set([0, 255, 0, 255], offset);
+    for (let offset = 0; offset < png.data.length; offset += 4) {
+      png.data.set([0, 255, 0, 255], offset);
+    }
     writeFileSync(texture, PNG.sync.write(png));
     writeFileSync(path, initial);
     writeFileSync(config, JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'texture', path: 'albedo.png' } } } } }));
@@ -67,16 +90,17 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await pixels(frame, [0, 255, 0]);
       await expect.poll(() => errors(vscode, path)).toEqual([]);
     } finally {
+      await revertFixtureEditors(vscode, fixtureDir());
       rmSync(path, { force: true }); rmSync(config, { force: true }); rmSync(texture, { force: true });
     }
   });
 }
 
 test('WGSL Common diagnostics retain authored ownership and line after editing and reopening', async ({ vscode }) => {
-  mkdirSync(fixtureDir, { recursive: true });
-  const path = join(fixtureDir, 'attribution.wgsl');
-  const common = join(fixtureDir, 'attribution.common.wgsl');
-  const config = join(fixtureDir, 'attribution.sha.json');
+  mkdirSync(fixtureDir(), { recursive: true });
+  const path = join(fixtureDir(), 'attribution.wgsl');
+  const common = join(fixtureDir(), 'attribution.common.wgsl');
+  const config = join(fixtureDir(), 'attribution.sha.json');
   const good = '\n\ndiagnostic(off, derivative_uniformity);\nfn tint() -> vec4f {\n  return vec4f(0,1,0,1);\n}';
   writeFileSync(path, 'fn mainImage(p: vec2f) -> vec4f { return tint(); }');
   writeFileSync(common, good);
@@ -113,16 +137,23 @@ test('WGSL Common diagnostics retain authored ownership and line after editing a
     await vscode.window.locator('.monaco-editor .view-lines').filter({ visible: true }).first().click();
     await vscode.window.keyboard.press('ControlOrMeta+S');
     await expect.poll(() => readFileSync(common, 'utf8')).toBe(good);
+    // Deliberately leave this panel engaged: the suite teardown owns shared
+    // lock state, and the following compute case proves it starts clean.
+    await setPreviewLocked(vscode, await vscode.shaderFrame(), true);
+    await expectPreviewLock(await vscode.shaderFrame(), true);
   } finally {
-    for (const file of [path, common, config]) rmSync(file, { force: true });
+    await revertFixtureEditors(vscode, fixtureDir());
+    for (const file of [path, common, config]) {
+      rmSync(file, { force: true });
+    }
   }
 });
 
 test('WGSL compute recovers from implicit sampling through an editor correction, save and reload', async ({ vscode }) => {
-  mkdirSync(fixtureDir, { recursive: true });
-  const path = join(fixtureDir, 'compute.wgsl');
-  const update = join(fixtureDir, 'update.wgsl');
-  const config = join(fixtureDir, 'compute.sha.json');
+  mkdirSync(fixtureDir(), { recursive: true });
+  const path = join(fixtureDir(), 'compute.wgsl');
+  const update = join(fixtureDir(), 'update.wgsl');
+  const config = join(fixtureDir(), 'compute.sha.json');
   const invalid = '@compute @workgroup_size(1) fn update(@builtin(global_invocation_id) id: vec3u) { writeOutput(id.xy, vec4f(0,1,0,1) + keysSample(vec2f(0))); }';
   const valid = invalid.replace('keysSample(vec2f(0))', 'sample2DLevel(keysTexture, keysSampler, vec2f(0), 0)');
   writeFileSync(path, 'fn mainImage(p: vec2f) -> vec4f { return resultSampleLevel(p / iResolution.xy, 0); }');
@@ -136,6 +167,10 @@ test('WGSL compute recovers from implicit sampling through an editor correction,
     await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('shader-studio.view'));
     let frame = await vscode.shaderFrame();
     await pixels(frame, [0,255,0]);
+    // This test must acquire the lock itself. This catches the prior shared
+    // panel leak: a preceding test could leave the lock active, making
+    // setPreviewLocked a no-op and preserving a late webview-focus report.
+    await expectPreviewLock(frame, false);
     await setPreviewLocked(vscode, frame, true);
     await open(vscode, update);
     await edit(vscode, invalid);
@@ -155,17 +190,20 @@ test('WGSL compute recovers from implicit sampling through an editor correction,
     frame = await saveReload(vscode, path, readFileSync(path, 'utf8'), frame);
     await pixels(frame, [0,255,0]);
   } finally {
-    for (const file of [path, update, config]) rmSync(file, { force: true });
+    await revertFixtureEditors(vscode, fixtureDir());
+    for (const file of [path, update, config]) {
+      rmSync(file, { force: true });
+    }
   }
 });
 
 for (const owner of ['Image', 'Common', 'vertex']) {
   test(`WGSL hoisted directive diagnostics keep ${owner} source coordinates`, async ({ vscode }) => {
-    mkdirSync(fixtureDir, { recursive: true });
-    const path = join(fixtureDir, 'directive.wgsl');
-    const common = join(fixtureDir, 'directive.common.wgsl');
-    const vertex = join(fixtureDir, 'directive.vertex.wgsl');
-    const config = join(fixtureDir, 'directive.sha.json');
+    mkdirSync(fixtureDir(), { recursive: true });
+    const path = join(fixtureDir(), 'directive.wgsl');
+    const common = join(fixtureDir(), 'directive.common.wgsl');
+    const vertex = join(fixtureDir(), 'directive.vertex.wgsl');
+    const config = join(fixtureDir(), 'directive.sha.json');
     const imageSource = 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0,1,0,1); }';
     const commonSource = 'fn helper() -> f32 { return 1; }';
     const vertexSource = 'fn mainVertex(p: ptr<function, vec3f>, n: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}';
@@ -209,8 +247,10 @@ for (const owner of ['Image', 'Common', 'vertex']) {
         await expect.poll(() => errors(vscode, target)).toEqual([]);
       }
     } finally {
-      await revertFixtureEditors(vscode, fixtureDir);
-      for (const file of [path, common, vertex, config]) rmSync(file, { force: true });
+      await revertFixtureEditors(vscode, fixtureDir());
+      for (const file of [path, common, vertex, config]) {
+        rmSync(file, { force: true });
+      }
     }
   });
 }

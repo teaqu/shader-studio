@@ -87,6 +87,7 @@ suite('PanelManager Test Suite', () => {
         cspSource: 'vscode-resource:',
       },
       onDidDispose: sandbox.stub().returns({ dispose: () => { } }),
+      onDidChangeViewState: sandbox.stub().returns({ dispose: () => { } }),
     };
   }
 
@@ -161,7 +162,7 @@ suite('PanelManager Test Suite', () => {
     const createPanelArgs = createWebviewPanelStub.getCall(0).args;
     assert.strictEqual(createPanelArgs[0], 'shader-studio');
     assert.strictEqual(createPanelArgs[1], 'Shader Studio');
-    assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
+    assert.deepStrictEqual(createPanelArgs[2], { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
 
     const webviewOptions = createPanelArgs[3];
     assert.ok(webviewOptions);
@@ -176,6 +177,26 @@ suite('PanelManager Test Suite', () => {
     );
     assert.ok(hasWorkspaceRoot);
     assert.ok((mockMessenger.addTransport as sinon.SinonStub).calledOnce);
+  });
+
+  test('createPanel opens the preview without taking keyboard focus from the editor', () => {
+    // A panel created with focus queues a focus request until its webview is
+    // ready, which then pulls keys away from an editor the user returned to.
+    const mockWebviewPanel = createMockWebviewPanel();
+    const createWebviewPanelStub = sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
+    sandbox.stub(vscode.window, 'tabGroups').value({
+      all: [
+        { tabs: [{ label: 'tab1' }], viewColumn: vscode.ViewColumn.One },
+        { tabs: [], viewColumn: vscode.ViewColumn.Two },
+      ],
+    });
+    sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
+    const fs = require('fs');
+    sandbox.stub(fs, 'readFileSync').returns('<html><head></head><body></body></html>');
+
+    panelManager.createPanel();
+
+    assert.deepStrictEqual(createWebviewPanelStub.getCall(0).args[2], { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
   });
 
   test('createPanel sends the active shader to the webview immediately when an editor exists', () => {
@@ -289,7 +310,7 @@ suite('PanelManager Test Suite', () => {
     // Then
     assert.ok(createWebviewPanelStub.calledOnce);
     const createPanelArgs = createWebviewPanelStub.getCall(0).args;
-    assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    assert.deepStrictEqual(createPanelArgs[2], { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
   });
 
   test('createPanel reuses empty group when locking is enabled', () => {
@@ -316,7 +337,7 @@ suite('PanelManager Test Suite', () => {
     // Then - should reuse the empty group instead of creating beside
     assert.ok(createWebviewPanelStub.calledOnce);
     const createPanelArgs = createWebviewPanelStub.getCall(0).args;
-    assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Two);
+    assert.deepStrictEqual(createPanelArgs[2], { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
   });
 
   test('createPanel opens beside when locking is enabled and no empty group exists', () => {
@@ -343,7 +364,7 @@ suite('PanelManager Test Suite', () => {
     // Then - should use Beside since no empty groups available
     assert.ok(createWebviewPanelStub.calledOnce);
     const createPanelArgs = createWebviewPanelStub.getCall(0).args;
-    assert.strictEqual(createPanelArgs[2], vscode.ViewColumn.Beside);
+    assert.deepStrictEqual(createPanelArgs[2], { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
   });
 
   test('createPanel creates new panel each time', () => {
@@ -684,10 +705,24 @@ suite('PanelManager Test Suite', () => {
   suite('Editor group locking', () => {
     let executeCommandStub: sinon.SinonStub;
     let clock: sinon.SinonFakeTimers;
+    let mockWebviewPanel: ReturnType<typeof createMockWebviewPanel> & { active: boolean; onDidChangeViewState: sinon.SinonStub };
+    let viewStateListeners: ((event: { webviewPanel: unknown }) => void)[];
 
     setup(() => {
       clock = sandbox.useFakeTimers();
-      const mockWebviewPanel = createMockWebviewPanel();
+      viewStateListeners = [];
+      // The panel starts active here, as when the user focuses the new preview
+      // before it settles; tests that move focus away clear the flag.
+      mockWebviewPanel = Object.assign(createMockWebviewPanel(), {
+        active: true,
+        onDidChangeViewState: sandbox.stub().callsFake((listener: (event: { webviewPanel: unknown }) => void) => {
+          viewStateListeners.push(listener);
+          const dispose = () => {
+            viewStateListeners = viewStateListeners.filter((item) => item !== listener);
+          };
+          return { dispose };
+        }),
+      });
       mockWebviewPanel.viewColumn = vscode.ViewColumn.Two;
       sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel as any);
       sandbox.stub(vscode.workspace, 'workspaceFolders').value([]);
@@ -732,6 +767,38 @@ suite('PanelManager Test Suite', () => {
       await advanceTimersAndFlush(clock);
 
       sinon.assert.neverCalledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+    });
+
+    test('never reveals the panel with focus to lock its group', async () => {
+      panelManager.createPanel();
+      await advanceTimersAndFlush(clock);
+
+      sinon.assert.neverCalledWith(mockWebviewPanel.reveal, sinon.match.any, false);
+      sinon.assert.calledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+    });
+
+    test('does not steal focus from an editor the user moved to before the group locked', async () => {
+      panelManager.createPanel();
+      // The user clicks back into their shader before the panel settles.
+      mockWebviewPanel.active = false;
+      await advanceTimersAndFlush(clock);
+
+      sinon.assert.neverCalledWith(mockWebviewPanel.reveal, sinon.match.any, false);
+      sinon.assert.neverCalledWith(executeCommandStub, 'workbench.action.lockEditorGroup');
+
+      // Locking waits until the panel is active again, so it locks its own group.
+      mockWebviewPanel.active = true;
+      for (const listener of [...viewStateListeners]) {
+        listener({ webviewPanel: mockWebviewPanel });
+      }
+      await flushMicrotasks();
+      sinon.assert.calledOnceWithExactly(executeCommandStub.withArgs('workbench.action.lockEditorGroup'), 'workbench.action.lockEditorGroup');
+
+      for (const listener of [...viewStateListeners]) {
+        listener({ webviewPanel: mockWebviewPanel });
+      }
+      await flushMicrotasks();
+      sinon.assert.calledOnce(executeCommandStub.withArgs('workbench.action.lockEditorGroup'));
     });
 
     test('locks when setting is explicitly true', async () => {

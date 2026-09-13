@@ -1,6 +1,6 @@
 import type { ShaderStage } from "@shader-studio/types";
 import type { Position } from "vscode-languageserver-protocol";
-import type { WgslAnalysisDocument } from "./model.js";
+import type { WgslAnalysisDocument, WgslInferenceContext } from "./model.js";
 import { parseWgslDocument } from "./parseWgslDocument.js";
 
 /**
@@ -13,8 +13,9 @@ export function parseWgslDocumentAtPosition(
   source: string,
   stage: ShaderStage,
   position: Position,
+  context: WgslInferenceContext = {},
 ): WgslAnalysisDocument {
-  return parseWgslDocument(uri, blankStatementAt(source, position), stage);
+  return parseWgslDocument(uri, blankStatementAt(source, position), stage, context);
 }
 
 /**

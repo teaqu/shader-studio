@@ -45,6 +45,17 @@ describe("extractWgslFunctionContext", () => {
     ]);
   });
 
+  it.each(["mat2x2f", "mat2x2<f32>"])("defaults a %s helper parameter to a valid identity constructor", (typeName) => {
+    const source = `fn rotate(v: vec2f, basis: ${typeName}) -> vec2f {\n  let turned = basis * v;\n  return turned;\n}`;
+    expect(extractWgslFunctionContext(source, 1)?.parameters[1]).toMatchObject({
+      name: "basis",
+      type: typeName,
+      defaultExpression: `${typeName}(1.0, 0.0, 0.0, 1.0)`,
+      expression: `${typeName}(1.0, 0.0, 0.0, 1.0)`,
+      uvValue: "",
+    });
+  });
+
   it("treats mainImage as the global entry rather than a function", () => {
     const context = extractWgslFunctionContext(HELPER_SHADER, 10);
 

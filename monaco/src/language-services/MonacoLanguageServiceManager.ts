@@ -40,6 +40,7 @@ export class MonacoLanguageServiceManager {
     wgsl: { opened: new Set() },
   };
   private readonly disposables: Monaco.IDisposable[] = [];
+  private readonly colorProviderRegistrations = new Map<ShaderLanguage, Monaco.IDisposable>();
   private readonly modelDisposables = new Map<string, Monaco.IDisposable>();
   private readonly virtualUrisByDocument = new Map<string, Set<string>>();
   private readonly virtualOwners = new Map<string, Set<string>>();
@@ -73,6 +74,7 @@ export class MonacoLanguageServiceManager {
       const changed = JSON.stringify({ ...environment, generation: 0 }) !== JSON.stringify({ ...previous, generation: 0 });
       environment = { ...environment, generation: Math.max(environment.generation, previous.generation + Number(changed)) };
     }
+    const colorsChanged = previous?.generation !== environment.generation;
     this.syncVirtualModels(environment);
     this.environments.set(environment.documentUri, environment);
     this.finishEnvironmentWaiters(environment.documentUri);
@@ -82,6 +84,9 @@ export class MonacoLanguageServiceManager {
     const model = this.monaco.editor.getModels().find((candidate) => candidate.uri.toString() === environment.documentUri);
     if (model) {
       await this.ensureModel(model);
+      if (colorsChanged && !this.disposed) {
+        this.registerColorProvider(environment.languageId);
+      }
     }
   }
 
@@ -124,6 +129,10 @@ export class MonacoLanguageServiceManager {
     for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
+    for (const disposable of this.colorProviderRegistrations.values()) {
+      disposable.dispose();
+    }
+    this.colorProviderRegistrations.clear();
     for (const disposable of this.modelDisposables.values()) {
       disposable.dispose();
     }
@@ -190,7 +199,7 @@ export class MonacoLanguageServiceManager {
     this.disposables.push(languages.registerSignatureHelpProvider(language, {
       signatureHelpTriggerCharacters: ["(", ","],
       provideSignatureHelp: async (model, position) => {
-        const result = await this.request(model, (service, revision) => service.signatureHelp({ document: revision, position: toLspPosition(position) }), null);
+        const result = await this.request(model, (service, revision) => service.signatureHelp({ document: revision, position: toLspPosition(position) }), null, { waitForEnvironment: true });
         if (!result) {
           return null;
         }
@@ -333,14 +342,24 @@ snapshots.get(change.uri)!.model.setValue(change.after);
         return response;
       },
     }));
-    this.disposables.push(languages.registerColorProvider(language, {
+    this.registerColorProvider(language);
+  }
+
+  private registerColorProvider(language: ShaderLanguage): void {
+    // Monaco has no document-colour invalidation event. Refresh the registry
+    // when host context changes so a stale initial query is recomputed without
+    // requiring a text edit or accepting results from an obsolete environment.
+    this.colorProviderRegistrations.get(language)?.dispose();
+    this.colorProviderRegistrations.set(language, this.monaco.languages.registerColorProvider(language, {
       provideDocumentColors: async (model) => {
         if (!this.colorDecoratorsEnabled) {
           return [];
         }
+        // Monaco asks for colours when a model opens and again only after an
+        // edit, so answering before the first environment would hide swatches.
         return this.request(model, async (service, revision) => (
           (await service.documentColors({ document: revision })).map((color) => ({ color: color.color, range: toMonacoRange(this.monaco, color.range) }))
-        ), []);
+        ), [], { waitForEnvironment: true });
       },
       provideColorPresentations: async (model, colorInfo) => this.request(model, async (service, revision) => (
         (await service.colorPresentations({ document: revision, color: colorInfo.color, range: toLspRange(colorInfo.range) })).map((item) => ({
@@ -395,14 +414,23 @@ snapshots.get(change.uri)!.model.setValue(change.after);
    * caller to build the revision from directly, closes that gap.
    */
   private async ensureModel(model: Monaco.editor.ITextModel): Promise<{ service: LanguageService; version: number; environmentGeneration: number } | undefined> {
+    if (model.isDisposed()) {
+      return undefined;
+    }
     const language = shaderLanguage(model.getLanguageId());
     const environment = this.environments.get(model.uri.toString());
     if (!language || !environment || !this.enabled[language]) {
       return undefined;
     }
     const service = await this.service(language);
+    if (this.disposed || model.isDisposed()) {
+      return undefined;
+    }
     if (this.options.getWorkspaceDocuments) {
       const workspaceDocuments = await this.options.getWorkspaceDocuments(language);
+      if (this.disposed || model.isDisposed()) {
+        return undefined;
+      }
       const latest = this.environments.get(model.uri.toString());
       if (latest && JSON.stringify(latest.workspaceDocuments) !== JSON.stringify(workspaceDocuments)) {
         const refreshed = { ...latest, generation: latest.generation + 1, workspaceDocuments };
@@ -413,7 +441,7 @@ snapshots.get(change.uri)!.model.setValue(change.after);
     // Worker startup can overlap host environment updates. Use the current
     // environment after startup and keep its generation with the synced version.
     const syncedEnvironment = this.environments.get(model.uri.toString());
-    if (!syncedEnvironment || syncedEnvironment.languageId !== language || model.getLanguageId() !== language || !this.enabled[language]) {
+    if (model.isDisposed() || !syncedEnvironment || syncedEnvironment.languageId !== language || model.getLanguageId() !== language || !this.enabled[language]) {
       return undefined;
     }
     // The host snapshot carries stored text, but an open editor may hold newer
@@ -421,6 +449,9 @@ snapshots.get(change.uri)!.model.setValue(change.after);
     // resolves against stale copies. The merged copy is send-only: storing it
     // back would churn environment generations on every keystroke.
     await service.syncEnvironment(this.withLiveBuffers(syncedEnvironment));
+    if (this.disposed || model.isDisposed()) {
+      return undefined;
+    }
     const uri = model.uri.toString();
     const version = model.getVersionId();
     const document = { uri, languageId: language, version, text: model.getValue() };
@@ -429,6 +460,9 @@ snapshots.get(change.uri)!.model.setValue(change.after);
       this.states[language].opened.add(uri);
     } else {
       await service.changeDocument(document);
+    }
+    if (this.disposed || model.isDisposed()) {
+      return undefined;
     }
     await this.publishDiagnostics(model, service, syncedEnvironment);
     return { service, version, environmentGeneration: syncedEnvironment.generation };
@@ -575,6 +609,10 @@ snapshots.get(change.uri)!.model.setValue(change.after);
       const owners = this.virtualOwners.get(uri);
       owners?.delete(owner);
       if (owners?.size) {
+        continue;
+      }
+      if (this.managedVirtualModels.get(uri)?.isAttachedToEditor()) {
+        nextUris.add(uri);
         continue;
       }
       this.virtualOwners.delete(uri);

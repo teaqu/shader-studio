@@ -3,6 +3,7 @@ import { SHADER_STUDIO_BUILTIN_UNIFORMS, SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS 
 import type { Position, Range } from "vscode-languageserver-protocol";
 import type {
   WgslAnalysisDocument,
+  WgslInferenceContext,
   WgslParseDiagnostic,
   WgslScope,
   WgslStatementKind,
@@ -11,7 +12,7 @@ import type {
   WgslUnresolvedReference,
 } from "./model.js";
 import { tokenizeWgsl, type WgslToken } from "./tokenizer.js";
-import { isBuiltinValueType, parseWgslArrayType, resolveSwizzleType, vectorType } from "./wgslTypes.js";
+import { isBuiltinValueType, matrixType, parseWgslArrayType, parseWgslPointerType, resolveSwizzleType, vectorType, vectorTypeName } from "./wgslTypes.js";
 
 export type WgslExpression =
   | { readonly kind: "identifier"; readonly name: string }
@@ -86,8 +87,10 @@ class WgslParser {
   private readonly diagnostics: WgslParseDiagnostic[] = [];
   private nextId = 0;
   private readonly hostGlobalIds = new Set<string>();
+  /** End offset of the last token consumed, where a statement ends. */
+  private lastConsumedEnd = 0;
 
-  constructor(source: string) {
+  constructor(source: string, private readonly context: WgslInferenceContext = {}) {
     this.source = source;
     this.tokens = tokenizeWgsl(source);
     this.lineStarts = buildLineStarts(source);
@@ -153,12 +156,17 @@ class WgslParser {
   }
 
   private advance(): WgslToken {
+    let token: WgslToken;
     if (this.pending.length > 0) {
-      return this.pending.pop()!;
+      token = this.pending.pop()!;
+    } else {
+      token = this.tokens[this.index]!;
+      if (this.index < this.tokens.length - 1) {
+        this.index += 1;
+      }
     }
-    const token = this.tokens[this.index]!;
-    if (this.index < this.tokens.length - 1) {
-      this.index += 1;
+    if (token.kind !== "eof") {
+      this.lastConsumedEnd = token.offset + token.text.length;
     }
     return token;
   }
@@ -431,10 +439,10 @@ class WgslParser {
     switch (expression.kind) {
       case "identifier": {
         const target = this.resolveValueSymbol(expression.name, self);
-        if (!target || target.id === self.id) {
-          return undefined;
+        if (!target) {
+          return this.context.valueType?.(expression.name);
         }
-        return inferSymbol(target, depth);
+        return target.id === self.id ? undefined : inferSymbol(target, depth);
       }
       case "literal":
         return scalarLiteralType(expression.text);
@@ -453,7 +461,11 @@ class WgslParser {
         }
         const structType = this.symbols.find((candidate) => candidate.kind === "type"
           && candidate.name === expression.name);
-        return structType?.name;
+        if (structType) {
+          return structType.name;
+        }
+        const external = this.context.functionType?.(expression.name);
+        return external !== undefined && isConcreteTypeName(external) ? external : undefined;
       }
       case "member": {
         const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
@@ -462,8 +474,10 @@ class WgslParser {
         }
         const resolved = this.resolveAliasType(owner);
         const typeScope = this.scopes.find(scope => scope.kind === "type" && scope.name === resolved);
-        return resolveSwizzleType(resolved, expression.member)
-          ?? this.symbols.find(symbol => symbol.kind === "field" && symbol.scopeId === typeScope?.id && symbol.name === expression.member)?.typeName;
+        if (!typeScope) {
+          return resolveSwizzleType(resolved, expression.member) ?? this.context.fieldType?.(resolved, expression.member);
+        }
+        return this.symbols.find(symbol => symbol.kind === "field" && symbol.scopeId === typeScope.id && symbol.name === expression.member)?.typeName;
       }
       case "index": {
         const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
@@ -471,7 +485,9 @@ class WgslParser {
           return undefined;
         }
         const resolved = this.resolveAliasType(owner);
-        return parseWgslArrayType(resolved)?.elementType ?? vectorType(resolved)?.componentType;
+        const matrix = matrixType(resolved);
+        return parseWgslArrayType(resolved)?.elementType ?? vectorType(resolved)?.componentType
+          ?? (matrix ? vectorTypeName(matrix.componentType, matrix.rows) : undefined);
       }
       case "unary": {
         if (expression.operator === "!") {
@@ -479,6 +495,10 @@ class WgslParser {
         }
         if (expression.operator === "-" || expression.operator === "+" || expression.operator === "~") {
           return this.inferExpressionType(expression.operand, self, inferSymbol, depth);
+        }
+        if (expression.operator === "*") {
+          const pointer = this.inferExpressionType(expression.operand, self, inferSymbol, depth);
+          return pointer === undefined ? undefined : parseWgslPointerType(this.resolveAliasType(pointer))?.elementType;
         }
         return undefined;
       }
@@ -495,7 +515,7 @@ class WgslParser {
         if (left === undefined || right === undefined) {
           return undefined;
         }
-        if (left === right) {
+        if (sameWgslType(left, right)) {
           return left;
         }
         // WGSL splats a scalar across a vector operand.
@@ -529,6 +549,10 @@ class WgslParser {
     if (expression.name === "arrayLength") {
       return "u32";
     }
+    if (expression.name === "select") {
+      const [falseValue, trueValue] = arguments_;
+      return falseValue !== undefined && trueValue !== undefined && sameWgslType(falseValue, trueValue) ? falseValue : undefined;
+    }
     if (expression.name === "dot" || expression.name === "length" || expression.name === "distance") {
       const vector = arguments_.length > 0 && arguments_[0] !== undefined
         ? vectorType(arguments_[0]!)
@@ -542,13 +566,13 @@ class WgslParser {
     if (defined.length === 0 || defined.length !== arguments_.length) {
       return undefined;
     }
-    if (defined.every((argument) => argument === defined[0])) {
+    if (defined.every((argument) => sameWgslType(argument, defined[0]!))) {
       return defined[0];
     }
     // WGSL splats scalar arguments across a vector one (mix, clamp, ...).
     const vectors = defined.filter((argument) => vectorType(argument) !== undefined);
-    if (vectors.length > 0 && vectors.every((argument) => argument === vectors[0])
-      && defined.every((argument) => argument === vectors[0] || isWgslScalarType(argument))) {
+    if (vectors.length > 0 && vectors.every((argument) => sameWgslType(argument, vectors[0]!))
+      && defined.every((argument) => sameWgslType(argument, vectors[0]!) || isWgslScalarType(argument))) {
       return vectors[0];
     }
     return undefined;
@@ -745,7 +769,8 @@ class WgslParser {
         }
         depth -= 1;
         if (depth <= 0) {
-          return token.offset + 1;
+          // Both brackets close nesting: the list ends after the second one.
+          return token.offset + 2;
         }
       } else if (token.kind === "identifier") {
         this.recordTypeReference(token.text, token);
@@ -1166,13 +1191,9 @@ class WgslParser {
     entry.end = this.statementEnd();
   }
 
-  /** End of the most recently consumed token (never the next line's start). */
+  /** End of the most recently consumed token: never a following comment or line. */
   private statementEnd(): Position {
-    let offset = this.peek().offset;
-    while (offset > 0 && /\s/.test(this.source[offset - 1]!)) {
-      offset -= 1;
-    }
-    return this.positionAt(offset);
+    return this.positionAt(this.lastConsumedEnd);
   }
 
   private expectSemicolon(context: string): void {
@@ -1235,18 +1256,24 @@ class WgslParser {
       }
       this.advance();
       if (clause.text === "case") {
-        this.parseExpression();
+        // `case_selectors`: expressions or `default`, with an optional trailing comma.
+        this.parseCaseSelector();
         while (this.checkText(",")) {
           this.advance();
-          this.parseExpression();
+          if (this.checkText(":") || this.checkText("{")) {
+            break;
+          }
+          this.parseCaseSelector();
         }
       }
-      if (!this.checkText(":")) {
-        this.error("Expected ':' after the case selectors.", this.peek());
+      // The colon before a clause body is optional in WGSL.
+      if (this.checkText(":")) {
+        this.advance();
+      } else if (!this.checkText("{")) {
+        this.error("Expected ':' or '{' after the case selectors.", this.peek());
         this.recoverToStatementEnd();
         continue;
       }
-      this.advance();
       if (this.checkText("{")) {
         this.parseBlock();
       } else {
@@ -1263,6 +1290,14 @@ class WgslParser {
     } else {
       this.error("Unterminated switch statement.", this.peek());
     }
+  }
+
+  private parseCaseSelector(): void {
+    if (this.checkText("default")) {
+      this.advance();
+      return;
+    }
+    this.parseExpression();
   }
 
   private parseLoopStatement(): void {
@@ -1540,11 +1575,13 @@ class WgslParser {
       const savedIndex = this.index;
       const savedPending = [...this.pending];
       const savedEffects = this.snapshotSideEffects();
+      const savedConsumedEnd = this.lastConsumedEnd;
       const typeEnd = this.parseTemplateArgs();
       if (typeEnd !== undefined && this.checkText("(")) {
         name = this.source.slice(token.offset, typeEnd);
         isCall = true;
       } else {
+        this.lastConsumedEnd = savedConsumedEnd;
         this.index = savedIndex;
         this.pending.length = 0;
         this.pending.push(...savedPending);
@@ -1597,8 +1634,9 @@ export function parseWgslDocument(
   uri: string,
   source: string,
   stage: ShaderStage,
+  context: WgslInferenceContext = {},
 ): WgslAnalysisDocument {
-  return new WgslParser(source).parseDocument(uri, stage);
+  return new WgslParser(source, context).parseDocument(uri, stage);
 }
 
 /** Parses a single expression for testing and tooling without a document. */
@@ -1674,6 +1712,26 @@ const VARIADIC_MATH_BUILTINS = new Set([
   "max", "min", "mix", "pow", "reflect", "refract", "remainder",
   "smoothstep", "step",
 ]);
+
+/** `vec2<f32>` and `vec2f` spell one type, as do matrix aliases and their parameterized forms. */
+function sameWgslType(left: string, right: string): boolean {
+  return canonicalTypeKey(left) === canonicalTypeKey(right);
+}
+
+function canonicalTypeKey(typeName: string): string {
+  const trimmed = typeName.trim();
+  const vector = vectorType(trimmed);
+  if (vector) {
+    return `vec${vector.size}<${vector.componentType}>`;
+  }
+  const matrix = matrixType(trimmed);
+  return matrix ? `mat${matrix.columns}x${matrix.rows}<${matrix.componentType}>` : trimmed;
+}
+
+/** A named type rather than a catalogue placeholder such as `T`, `vecN<bool>`, or `__modfResult`. */
+function isConcreteTypeName(typeName: string): boolean {
+  return isBuiltinValueType(typeName) || (/^[A-Za-z]\w+$/.test(typeName) && !/^[A-Z]$/.test(typeName));
+}
 
 function isWgslScalarType(typeName: string): boolean {
   return WGSL_SCALARS.has(typeName.trim());

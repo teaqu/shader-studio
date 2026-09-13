@@ -7,6 +7,8 @@ const commonPath = join(fixtureDir, 'common.wgsl');
 const loopParametersPath = join(fixtureDir, 'loop-parameters.wgsl');
 const computeImagePath = join(fixtureDir, 'compute-image.wgsl');
 const computeUpdatePath = join(fixtureDir, 'compute-update.wgsl');
+const matrixPath = join(fixtureDir, 'matrix.wgsl');
+const matrixCommonPath = join(fixtureDir, 'matrix-common.wgsl');
 
 test.use({ vscodeKey: 'wgsl-debug-parity' });
 
@@ -38,7 +40,9 @@ async function enableVariableInspector(frame) {
 
   await frame.evaluate(() => {
     const button = document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]');
-    if (button instanceof HTMLElement && !button.classList.contains('active')) button.click();
+    if (button instanceof HTMLElement && !button.classList.contains('active')) {
+      button.click();
+    }
   });
   await expect(frame.locator('.debug-panel')).toBeVisible();
   if (await frame.locator('.variables-section').count() === 0) {
@@ -49,7 +53,9 @@ async function enableVariableInspector(frame) {
 
 async function setPreviewLocked(frame, locked) {
   const toolbarButton = frame.locator('button.collapse-lock');
-  if (await toolbarButton.evaluate(element => element.classList.contains('active')) === locked) return;
+  if (await toolbarButton.evaluate(element => element.classList.contains('active')) === locked) {
+    return;
+  }
   if (await toolbarButton.isVisible()) {
     await toolbarButton.click();
   } else {
@@ -70,7 +76,9 @@ async function setParameterExpression(frame, name, value) {
   await expect(frame.locator(selector)).toBeVisible();
   await frame.evaluate(({ selector, value }) => {
     const editor = document.querySelector(selector);
-    if (!(editor instanceof HTMLElement)) throw new Error(`missing expression editor: ${selector}`);
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error(`missing expression editor: ${selector}`);
+    }
     editor.focus();
     editor.textContent = value;
     editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
@@ -245,5 +253,43 @@ test.describe('WGSL debug parity in the VS Code webview', () => {
     await expectComputeOutput(frame);
     await setInlineRendering(frame, true);
     await expectWaveLinePreview(frame);
+  });
+
+  test('captures WGSL 2x2 matrices in authored column order from Image and Common', async ({ vscode }) => {
+    for (const existingFrame of vscode.window.frames()) {
+      if (await existingFrame.locator('.canvas-container').count()) {
+        await setPreviewLocked(existingFrame, false);
+      }
+    }
+    await showFileAtLine(vscode, matrixPath, 2);
+    await ensureShaderView(vscode);
+    let frame = await vscode.shaderFrame();
+    await expect(frame.locator('.canvas-container canvas').first()).toBeVisible();
+    await enableVariableInspector(frame);
+    await setPreviewLocked(frame, true);
+
+    await showFileAtLine(vscode, matrixPath, 2);
+    frame = await vscode.shaderFrame();
+    await expect.poll(
+      () => frame.evaluate(() => document.querySelector('.header-info')?.textContent?.trim() ?? ''),
+      { message: 'debug panel never followed the matrix cursor', timeout: 30_000 },
+    ).toContain('L3');
+    // Four distinct components prove the column-major order Slang's float2x2 uses.
+    const annotated = variableRow(frame, 'annotated');
+    await expect(annotated).toBeVisible({ timeout: 45_000 });
+    await expect(annotated.locator('.var-type')).toHaveText('mat2x2f');
+    await expect(annotated.locator('.var-value')).toHaveText(/^\(0\.125,\s*0\.250,\s*0\.500,\s*0\.750\)$/);
+    const inferred = variableRow(frame, 'inferred');
+    await expect(inferred.locator('.var-type')).toHaveText('mat2x2<f32>');
+    await expect(inferred.locator('.var-value')).toHaveText(/^\(0\.750,\s*0\.500,\s*0\.250,\s*0\.125\)$/);
+    await expect(frame.locator('[aria-label="Show capture errors"]')).toHaveCount(0);
+
+    await showFileAtLine(vscode, matrixCommonPath, 1);
+    frame = await vscode.shaderFrame();
+    await expect(frame.locator('.fn-name', { hasText: 'commonBasis' })).toBeVisible({ timeout: 30_000 });
+    const basis = variableRow(frame, 'basis');
+    await expect(basis).toBeVisible({ timeout: 45_000 });
+    await expect(basis.locator('.var-value')).toHaveText(/^\(0\.500,\s*0\.250,\s*0\.125,\s*0\.750\)$/);
+    await expect(frame.locator('[aria-label="Show capture errors"]')).toHaveCount(0);
   });
 });

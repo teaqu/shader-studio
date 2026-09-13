@@ -2666,6 +2666,24 @@ describe('ShaderViewer', () => {
     } });
   });
 
+  it('opens a newly configured absolute vertex path before the buffer map refreshes', async () => {
+    const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    const messageHandler = mockTransport.onMessage.mock.calls[0][0];
+    await messageHandler({ data: {
+      type: 'shaderSource', path: '/shaders/aurora.glsl', code: '',
+      config: { version: '1.0', passes: { Image: { vertex: '/shaders/aurora.image.vert.glsl' } } },
+      bufferPathMap: {},
+    } });
+    await tick();
+    await fireEvent.click(screen.getByLabelText('Toggle config panel'));
+    await fireEvent.doubleClick(container.querySelector('.vertex-shader-title')!);
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({ type: 'navigateToBuffer', payload: {
+      bufferPath: '/shaders/aurora.image.vert.glsl', shaderPath: '/shaders/aurora.glsl', mode: 'active',
+    } });
+  });
+
   it('should update config when not locked', async () => {
     const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
     await tick();

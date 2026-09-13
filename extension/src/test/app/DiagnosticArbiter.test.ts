@@ -278,6 +278,59 @@ suite('DiagnosticArbiter Test Suite', () => {
     assert.strictEqual(glsl.latest.get(uri.fsPath), undefined, 'the stale GLSL report is withdrawn');
   });
 
+  test('publishes WGSL service errors before the renderer has compiled', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.languageServiceSink('wgsl').set(uri, [error(4, "Undefined identifier 'mysterious'."), warning(1, 'Unused variable')]);
+
+    assert.strictEqual(wgsl.latest.get(uri.fsPath)?.length, 2);
+    assert.deepStrictEqual(compiler.latest.get(uri.fsPath), []);
+  });
+
+  test('lets the WGSL renderer error replace the service error on its line and keep other lines', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.languageServiceSink('wgsl').set(uri, [
+      error(4, "Undefined identifier 'mysterious'."),
+      error(9, "Undefined function 'later'."),
+      warning(4, 'Unused variable'),
+    ]);
+    arbiter.compilerSink().set(uri, [error(4, "error: unresolved value 'mysterious'")]);
+
+    assert.strictEqual(compiler.latest.get(uri.fsPath)?.length, 1, 'the renderer error stays authoritative');
+    assert.deepStrictEqual(wgsl.latest.get(uri.fsPath)?.map((item) => [item.range.start.line, item.severity]), [
+      [9, vscode.DiagnosticSeverity.Error],
+      [4, vscode.DiagnosticSeverity.Warning],
+    ]);
+  });
+
+  test('clears WGSL errors from both sources after a correction and recompile', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.languageServiceSink('wgsl').set(uri, [error(4, "Undefined identifier 'mysterious'.")]);
+    arbiter.compilerSink().set(uri, [error(4, "error: unresolved value 'mysterious'")]);
+    arbiter.languageServiceSink('wgsl').set(uri, []);
+    assert.strictEqual(compiler.latest.get(uri.fsPath)?.length, 1, 'the stale renderer error waits for the recompile');
+
+    arbiter.compilerSink().set(uri, []);
+
+    assert.deepStrictEqual(compiler.latest.get(uri.fsPath), []);
+    assert.deepStrictEqual(wgsl.latest.get(uri.fsPath), []);
+  });
+
+  test('restores a WGSL service error when the renderer moves to a different line', () => {
+    const uri = vscode.Uri.file('/shaders/image.wgsl');
+
+    arbiter.compilerSink().set(uri, [error(4, 'error: unresolved value')]);
+    arbiter.languageServiceSink('wgsl').set(uri, [error(4, "Undefined identifier 'a'.")]);
+    assert.deepStrictEqual(wgsl.latest.get(uri.fsPath), []);
+
+    arbiter.compilerSink().set(uri, [error(7, 'error: unresolved value')]);
+
+    assert.strictEqual(wgsl.latest.get(uri.fsPath)?.length, 1);
+    assert.strictEqual(compiler.latest.get(uri.fsPath)?.length, 1);
+  });
+
   suite('suppressDuplicateDiagnostics', () => {
     test('returns the loser untouched when the winner reported no errors', () => {
       const loser = [error(1, 'kept')];

@@ -4,7 +4,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { stageForPass } from "@shader-studio/types";
 import createSlangModule from "../../../../ui/src/slang/slang-wasm.js";
+import { swizzleSelections } from "@shader-studio/language-server-core";
 import { SlangLanguageService } from "../SlangLanguageService";
+import { SLANG_COMPUTE_FEATURES } from "../computeFeatures";
 import {
   collectSlangDependencies,
   resolveSlangIncludes,
@@ -384,6 +386,93 @@ describe("Slang corpus mirrors in the language service", () => {
     expect(unexplained).toEqual([]);
   });
 
+  it.each(DOCS.map((d) => `${d.configRel} :: ${d.pass} (${d.fileRel})`))(
+    "hovers, completes, and signs every authored identifier through the real server: %s",
+    async (label) => {
+      const doc = DOCS.find((d) => `${d.configRel} :: ${d.pass} (${d.fileRel})` === label)!;
+      const { revision } = await openMirror(doc);
+      const tokens = tokenizeSlangSweep(doc.text);
+      const structNames = new Set([doc.text, doc.commonFile?.text ?? ""].flatMap((text) => [...text.matchAll(/\bstruct\s+([A-Za-z_]\w*)/g)].map((match) => match[1]!)));
+      const computeFeatures = new Set(doc.stage === "compute" ? SLANG_COMPUTE_FEATURES.map((feature) => feature.name) : []);
+      const gaps: string[] = [];
+      slangSweptDocs.add(label);
+      for (const [index, token] of tokens.entries()) {
+        if (token.kind !== "identifier") {
+          continue;
+        }
+        const category = classifySlangSite(tokens, index, structNames);
+        countSlangSite(category);
+        const where = `${token.line + 1}:${token.character + 1} ${category} '${token.text}'`;
+        const start = { line: token.line, character: token.character };
+        const end = { line: token.line, character: token.character + token.text.length };
+        const hover = await service.hover({ document: revision, position: start });
+        const contents = hover ? JSON.stringify(hover.contents) : "";
+        if (category === "keyword" && hover) {
+          gaps.push(`${where}: keyword hovers ${contents.slice(0, 80)}`);
+        } else if (category === "declaration" || category === "reference" || category === "member") {
+          if (!contents.includes(token.text)) {
+            gaps.push(`${where}: hover ${hover ? `lacks its name: ${contents.slice(0, 80)}` : "missing"}`);
+          }
+        } else if ((category === "attribute" || category === "semantic") && computeFeatures.has(token.text)) {
+          if (!contents.includes(token.text)) {
+            gaps.push(`${where}: documented compute ${category} does not hover its documentation`);
+          }
+        } else if (category === "directive") {
+          // A `module`/`import` line hovers the module it names, even on its keyword.
+          const named = tokens.filter((other) => other.line === token.line && other.kind === "identifier" && !SLANG_KEYWORDS.has(other.text)).map((other) => other.text);
+          if (hover && !named.some((name) => contents.includes(name)) && !contents.includes(token.text)) {
+            gaps.push(`${where}: directive hover names something else: ${contents.slice(0, 80)}`);
+          }
+        } else if (hover && !contents.includes(token.text)) {
+          gaps.push(`${where}: hover names something else: ${contents.slice(0, 80)}`);
+        }
+        if (category === "reference") {
+          const labels = (await service.completion({ document: revision, position: end })).map((item) => item.label);
+          if (!labels.includes(token.text)) {
+            gaps.push(`${where}: completion lacks it`);
+          }
+        }
+        if (category === "member") {
+          const labels = (await service.completion({ document: revision, position: start })).map((item) => item.label);
+          const permutation = /^(?:[xyzw]{1,4}|[rgba]{1,4})$/.test(token.text) && !SLANG_OFFERED_SWIZZLES.has(token.text);
+          const expected = permutation ? token.text[0]! : token.text;
+          if (!labels.includes(expected)) {
+            gaps.push(`${where}: member completion lacks ${expected} (${labels.length} items)`);
+          }
+        }
+        const open = slangCallOpen(tokens, index);
+        if (open !== undefined && (category === "reference" || category === "member" || category === "builtin-type")) {
+          const constructor = category === "builtin-type" || structNames.has(token.text);
+          for (const [argument, position] of slangArgumentPositions(tokens, open).entries()) {
+            countSlangSite(constructor ? "constructor-argument" : "call-argument");
+            const help = await service.signatureHelp({ document: revision, position });
+            const active = help?.signatures[help.activeSignature ?? 0];
+            if (constructor) {
+              if (help && !help.signatures.some((signature) => signature.label.includes(token.text))) {
+                gaps.push(`${where}: constructor help names something else: ${active?.label}`);
+              }
+            } else if (!help?.signatures.some((signature) => signature.label.includes(`${token.text}(`) || signature.label.includes(`${token.text}<`)) || help!.activeParameter !== argument) {
+              gaps.push(`${where}: argument ${argument} signature ${help ? `${active?.label} @${help.activeParameter}` : "missing"}`);
+            }
+          }
+        }
+      }
+      expect(gaps, label).toEqual([]);
+    },
+    120_000,
+  );
+
+  it("visited every mirror document and every Slang site category", () => {
+    expect([...slangSweptDocs].sort()).toEqual(DOCS.map((d) => `${d.configRel} :: ${d.pass} (${d.fileRel})`).sort());
+    for (const category of ["directive", "attribute", "semantic", "keyword", "builtin-type", "declaration", "reference", "member", "call-argument", "constructor-argument"]) {
+      expect(slangSweepTotals.get(category), category).toBeGreaterThan(0);
+    }
+    expect(slangSweepTotals.get("declaration")).toBeGreaterThan(300);
+    expect(slangSweepTotals.get("reference")).toBeGreaterThan(800);
+    expect(slangSweepTotals.get("member")).toBeGreaterThan(200);
+    expect(slangSweepTotals.get("call-argument")).toBeGreaterThan(400);
+  });
+
   it("completes channel members on a real corpus file", async () => {
     const doc = DOCS.find((d) => d.fileRel === "flow.slang" && d.pass === "Image")!;
     const { revision } = await openMirror(doc);
@@ -397,3 +486,161 @@ describe("Slang corpus mirrors in the language service", () => {
     expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["Sample", "SampleLevel"]));
   }, 20_000);
 });
+
+type SlangSiteCategory = "directive" | "attribute" | "semantic" | "keyword" | "builtin-type" | "declaration" | "reference" | "member";
+
+interface SlangSweepToken {
+  readonly text: string;
+  readonly kind: "identifier" | "number" | "string" | "punctuation";
+  readonly line: number;
+  readonly character: number;
+  readonly lineFirst: string;
+}
+
+const SLANG_KEYWORDS = new Set([
+  "break", "case", "const", "continue", "default", "discard", "do", "else", "export", "extension", "false", "for",
+  "if", "in", "inout", "interface", "let", "out", "public", "return", "static", "struct", "switch", "true",
+  "typedef", "uniform", "var", "while", "implementing", "import", "module", "__include", "__exported",
+]);
+// `void` is a core Slang struct, not a keyword: the server hovers it as one.
+const SLANG_BUILTIN_TYPE = /^(?:void|bool|int|uint|float|half|double|(?:bool|int|uint|float|half|double)[1-4](?:x[1-4])?|(?:RW)?Texture(?:1D|2D|3D|Cube)(?:Array)?|SamplerState|SamplerComparisonState|(?:RW)?StructuredBuffer|ConstantBuffer|Atomic)$/;
+const SLANG_DIRECTIVE_LINES = new Set(["#", "module", "import", "__include", "implementing", "__exported"]);
+const SLANG_OFFERED_SWIZZLES = new Set(swizzleSelections(4, ["xyzw", "rgba"]));
+const slangSweepTotals = new Map<string, number>();
+const slangSweptDocs = new Set<string>();
+const countSlangSite = (key: string) => slangSweepTotals.set(key, (slangSweepTotals.get(key) ?? 0) + 1);
+
+function tokenizeSlangSweep(source: string): SlangSweepToken[] {
+  const tokens: SlangSweepToken[] = [];
+  let line = 0;
+  let character = 0;
+  let lineFirst = "";
+  for (let offset = 0; offset < source.length;) {
+    const rest = source.slice(offset);
+    const char = source[offset]!;
+    const step = (length: number) => {
+      for (const consumed of source.slice(offset, offset + length)) {
+        if (consumed === "\n") {
+          line += 1;
+          character = 0;
+          lineFirst = "";
+        } else {
+          character += 1;
+        }
+      }
+      offset += length;
+    };
+    if (/\s/.test(char)) {
+      step(1);
+      continue;
+    }
+    if (rest.startsWith("//")) {
+      step(rest.indexOf("\n") === -1 ? rest.length : rest.indexOf("\n"));
+      continue;
+    }
+    if (rest.startsWith("/*")) {
+      step(rest.indexOf("*/") === -1 ? rest.length : rest.indexOf("*/") + 2);
+      continue;
+    }
+    const string = /^"(?:\\.|[^"\\])*"/.exec(rest)?.[0];
+    const identifier = /^[A-Za-z_]\w*/.exec(rest)?.[0];
+    const number = /^(?:\d[\w.]*|\.\d[\w.]*)/.exec(rest)?.[0];
+    const text = string ?? identifier ?? number ?? char;
+    if (lineFirst === "") {
+      lineFirst = text;
+    }
+    tokens.push({ text, kind: string ? "string" : identifier ? "identifier" : number ? "number" : "punctuation", line, character, lineFirst });
+    step(text.length);
+  }
+  return tokens;
+}
+
+/**
+ * An attribute bracket opens its own line or follows a statement boundary,
+ * like `[shader("compute")]` then `[numthreads(8, 8, 1)]`; an index follows a
+ * value on the same line.
+ */
+function insideAttribute(tokens: readonly SlangSweepToken[], index: number): boolean {
+  for (let cursor = index - 1, depth = 0; cursor >= 0; cursor--) {
+    const text = tokens[cursor]!.text;
+    if (text === "]") {
+      depth += 1;
+    } else if (text === "[" && depth > 0) {
+      depth -= 1;
+    } else if (text === "[") {
+      const before = tokens[cursor - 1];
+      return !before || before.line !== tokens[cursor]!.line
+        || !(before.kind === "identifier" || before.kind === "number" || before.text === ")" || before.text === "]");
+    } else if (text === ";" || text === "{" || text === "}") {
+      return false;
+    }
+  }
+  return false;
+}
+
+function classifySlangSite(tokens: readonly SlangSweepToken[], index: number, structNames: ReadonlySet<string>): SlangSiteCategory {
+  const token = tokens[index]!;
+  const previous = tokens[index - 1];
+  const next = tokens[index + 1];
+  if (SLANG_DIRECTIVE_LINES.has(token.lineFirst)) {
+    return "directive";
+  }
+  if (previous?.text === ".") {
+    return "member";
+  }
+  if (insideAttribute(tokens, index)) {
+    return "attribute";
+  }
+  if (previous?.text === ":" && /^SV_/i.test(token.text)) {
+    return "semantic";
+  }
+  if (SLANG_KEYWORDS.has(token.text)) {
+    return "keyword";
+  }
+  if (SLANG_BUILTIN_TYPE.test(token.text)) {
+    return "builtin-type";
+  }
+  const typedBefore = previous && (SLANG_BUILTIN_TYPE.test(previous.text) || structNames.has(previous.text) || previous.text === ">"
+    || ["in", "out", "inout", "const", "static", "let", "var", "struct"].includes(previous.text));
+  if (typedBefore && next && ["(", "=", ";", ",", ")", ":", "[", "{"].includes(next.text)) {
+    return "declaration";
+  }
+  return "reference";
+}
+
+/** Index of the `(` opening a call on this identifier, through a generic argument list such as `bit_cast<uint>(`. */
+function slangCallOpen(tokens: readonly SlangSweepToken[], index: number): number | undefined {
+  if (tokens[index + 1]?.text === "(") {
+    return index + 1;
+  }
+  if (tokens[index + 1]?.text !== "<") {
+    return undefined;
+  }
+  for (let cursor = index + 2; cursor < tokens.length && cursor < index + 12; cursor++) {
+    if (tokens[cursor]!.text === ">") {
+      return tokens[cursor + 1]?.text === "(" ? cursor + 1 : undefined;
+    }
+    if (!(tokens[cursor]!.kind === "identifier" || tokens[cursor]!.kind === "number" || tokens[cursor]!.text === ",")) {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function slangArgumentPositions(tokens: readonly SlangSweepToken[], open: number): { line: number; character: number }[] {
+  const positions = [{ line: tokens[open]!.line, character: tokens[open]!.character + 1 }];
+  for (let cursor = open, depth = 0; cursor < tokens.length; cursor++) {
+    const text = tokens[cursor]!.text;
+    if (text === "(" || text === "[") {
+      depth += 1;
+    } else if (text === ")" || text === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        break;
+      }
+    } else if (text === "," && depth === 1) {
+      positions.push({ line: tokens[cursor]!.line, character: tokens[cursor]!.character + 1 });
+    }
+  }
+  return positions;
+}

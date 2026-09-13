@@ -31,8 +31,13 @@ export function capturedVectorWidth(type: string): 2 | 3 | 4 | null {
   return wgslVectorWidth(trimmed);
 }
 
+/** `mat2x2f` / `mat2x2<f32>`: packed column-major into RGBA like GLSL mat2 and Slang float2x2. */
+function isWgslMatrix2x2(type: string): boolean {
+  return /^mat2x2(?:f|<f32>)$/.test(type.replace(/\s+/g, ''));
+}
+
 export function isCapturedVectorType(type: string): boolean {
-  return LEGACY_VECTOR_TYPES.has(type.trim()) || capturedVectorWidth(type) !== null;
+  return LEGACY_VECTOR_TYPES.has(type.trim()) || capturedVectorWidth(type) !== null || isWgslMatrix2x2(type);
 }
 
 export function isCapturedColorVectorType(type: string): boolean {
@@ -48,6 +53,9 @@ export function isSupportedCapturedType(type: string): boolean {
 export function captureDecoderType(type: string): string {
   if (isCapturedScalarType(type)) {
     return 'float';
+  }
+  if (isWgslMatrix2x2(type)) {
+    return 'mat2';
   }
   const width = capturedVectorWidth(type);
   return width ? `vec${width}` : type.trim();

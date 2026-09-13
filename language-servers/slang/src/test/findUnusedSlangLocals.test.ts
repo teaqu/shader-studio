@@ -32,6 +32,19 @@ describe("findUnusedSlangLocals", () => {
     ]);
   });
 
+  it("does not report entry-point parameters bound to a semantic", () => {
+    // A system value such as SV_DispatchThreadID belongs to the entry signature
+    // whether or not the body reads it.
+    const source = `[shader("compute")]
+[numthreads(8, 8, 1)]
+void computeMain(uint3 tid : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex, float spare)
+{
+    writeOutput(uint2(0, 0), float4(1.0));
+}`;
+
+    expect(findUnusedSlangLocals(source).map((local) => local.name)).toEqual(["spare"]);
+  });
+
   it("counts an assignment as a use", () => {
     const source = `float4 mainImage(float2 p, out float written)
 {

@@ -7,6 +7,7 @@ import { parseWgslDocumentAtPosition } from "./recovery.js";
 import {
   isBuiltinValueType,
   matrixType,
+  parseWgslPointerType,
   resolveSwizzleType,
   vectorType,
   vectorTypeName,
@@ -42,6 +43,8 @@ export interface WgslExpressionContext {
   readonly variableType?: (name: string) => string | undefined;
   /** Return types for functions the document does not declare, such as intrinsics. */
   readonly functionType?: (name: string) => string | undefined;
+  /** Field types of structs the document does not declare, such as Common's. */
+  readonly fieldType?: (owner: string, field: string) => string | undefined;
 }
 
 /**
@@ -53,8 +56,11 @@ export function resolveWgslExpressionType(
   request: WgslExpressionRequest,
   context: WgslExpressionContext = {},
 ): WgslResolvedType | undefined {
-  const steps = parseMemberExpression(request.expression);
-  if (!steps.length) {
+  // `(*pointer).member`: resolve the pointer, then select from what it points to.
+  const dereference = /^\s*\(\s*\*\s*([^()]+?)\s*\)([\s\S]*)$/.exec(request.expression);
+  const steps = parseMemberExpression(dereference ? dereference[1]! : request.expression);
+  const trailing = dereference ? parseMemberExpression(`_${dereference[2]}`).slice(1) : [];
+  if (!steps.length || (dereference && dereference[2]!.trim() !== "" && trailing.length === 0)) {
     return undefined;
   }
   const analysis = parseWgslDocumentAtPosition(
@@ -62,19 +68,33 @@ export function resolveWgslExpressionType(
     request.source,
     request.stage,
     request.position,
+    { valueType: context.variableType, functionType: context.functionType, fieldType: context.fieldType },
   );
   const documents = [analysis, ...context.includes ?? []];
-  let typeName = leadingStepType(steps[0], analysis, documents, request.position, context);
-  for (const step of steps.slice(1)) {
+  let typeName = walkSteps(leadingStepType(steps[0], analysis, documents, request.position, context), steps.slice(1), documents);
+  if (dereference) {
+    const pointer = typeName === undefined ? undefined : parseWgslPointerType(resolveAlias(typeName, documents));
+    typeName = walkSteps(pointer?.elementType, trailing, documents);
+  }
+  return typeName ? describeType(typeName, documents) : undefined;
+}
+
+function walkSteps(
+  initial: string | undefined,
+  steps: readonly MemberExpressionStep[],
+  documents: readonly WgslAnalysisDocument[],
+): string | undefined {
+  let typeName = initial;
+  for (const step of steps) {
     if (!typeName) {
       return undefined;
     }
     typeName = resolveAlias(typeName, documents);
     typeName = step.kind === "index"
       ? indexedTypeName(typeName)
-      : resolveSwizzleType(typeName, step.name) ?? structFields(typeName, documents)?.find((field) => field.name === step.name)?.type;
+      : resolveSwizzleType(typeName, step.kind === "member" ? step.name : "") ?? structFields(typeName, documents)?.find((field) => step.kind === "member" && field.name === step.name)?.type;
   }
-  return typeName ? describeType(typeName, documents) : undefined;
+  return typeName;
 }
 
 function describeType(name: string, documents: readonly WgslAnalysisDocument[]): WgslResolvedType {

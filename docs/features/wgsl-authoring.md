@@ -50,7 +50,7 @@ fn mainCompute(@builtin(global_invocation_id) id: vec3u) {
 }
 ```
 
-Storage buffers configured on the pass are declared for you; sampling and uniform built-ins work as in image shaders, except derivative-based `Sample` is unavailable without pixel derivatives — use `SampleLevel` or `SampleGrad` explicitly. See [Compute Passes](compute.md).
+Storage buffers configured on the pass are declared for you; sampling and uniform built-ins work as in image shaders, except implicit derivative sampling is unavailable — use `sample2DLevel` or `sample2DGrad` with explicit gradients. See [Compute Passes](compute.md).
 
 ## Storage Buffers
 
@@ -60,15 +60,20 @@ The Storage inspector can read and edit scalar and vector values using either WG
 
 ## Language Support in the Editor
 
-`.wgsl` files get WGSL syntax highlighting, bracket matching, and comment toggling in the extension, the standalone app, and the editor overlay. Snippets are available for the `mainImage` skeleton, channel sampling, the vertex hook, and compute entry points. Diagnostics from the WebGPU compiler are mapped back to your source lines, excluding the generated prelude.
+`.wgsl` files get syntax highlighting, bracket matching, comment toggling,
+completion, hover, and navigation. Snippets cover `mainImage`, channel sampling,
+vertex hooks, and compute entry points. The editor reports basic errors before
+compilation; the renderer supplies full WGSL validation. See
+[WGSL editor support](wgsl.md#editor-support-and-diagnostics) for diagnostic limits
+and [Language Servers](language-servers.md) for rename and color editing.
 
 ## Debugging WGSL Shaders
 
-WGSL shaders support the same step debugger and variable inspector as Slang: set a debug line to preview any visible value inline, and open the variable inspector to capture locals, parameters, and the return value. Unannotated `let`/`var` declarations get their types inferred (including through host globals like `iTime` and type-preserving builtins like `sin`), so idiomatic WGSL without type annotations still captures. Locals initialized from channel sampling or other opaque builtins stay invisible unless you annotate them.
-
-Common-file functions participate in preview and capture. Function parameter overrides and loop iteration caps apply to WGSL helpers.
-
-Compute debugging replays a selected invocation as a fragment on the canvas, with `global_invocation_id` derived from the canvas coordinate, `z = 0`, and `iDispatch = 0`. Direct `global_invocation_id`, `local_invocation_id`, `workgroup_id`, and `local_invocation_index` parameters are supported, using the entry's literal workgroup dimensions. Other entry parameter forms receive an unsupported diagnostic. Replay cannot reproduce cooperative workgroups; workgroup memory, barriers, subgroup operations, atomics, and storage writes are also reported as unsupported.
+Enable debug mode and place your cursor on a value to preview it inline. Open the
+Variable Inspector to capture supported locals, parameters, and return values.
+Common helpers, parameter overrides, and loop caps are supported. See
+[WGSL debugging and capture types](wgsl.md#debugging-and-capture-types) for type
+annotations, matrix ordering, and [compute replay limits](wgsl.md#compute-debugging-limits).
 
 ## Next
 

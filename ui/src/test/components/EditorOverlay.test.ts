@@ -2073,6 +2073,42 @@ describe('EditorOverlay', () => {
     expect(markers[0].message).toBe('undefined identifier');
   });
 
+  it.each([
+    ['Image', "Image: WGSL L3:26 unresolved value 'mysteriousGain'", 3, 26, "unresolved value 'mysteriousGain'"],
+    ['Common', "Common: WGSL L2:5 unresolved call target 'tone'", 2, 5, "unresolved call target 'tone'"],
+  ])('produces a %s marker for the WGSL renderer compiler format', async (activeBufferName, error, line, column, message) => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(5);
+    model.getLineMaxColumn.mockReturnValue(60);
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    const { container } = render(EditorOverlay, {
+      props: { ...defaultProps, activeBufferName, errors: [error] },
+    });
+
+    const markers = vi.mocked(monaco.editor.setModelMarkers).mock.calls.at(-1)![2];
+    expect(markers).toEqual([expect.objectContaining({ startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: 60, message })]);
+    expect(container.querySelector('.editor-overlay')?.getAttribute('data-marker-count')).toBe('1');
+  });
+
+  it('skips WGSL errors from other passes and generated code', async () => {
+    const monaco = await import('monaco-editor');
+    const { mockEditor, model } = createMockEditorWithCallbacks();
+    model.getLineCount.mockReturnValue(5);
+    vi.mocked(monaco.editor.create).mockReturnValueOnce(mockEditor as any);
+
+    render(EditorOverlay, {
+      props: {
+        ...defaultProps,
+        activeBufferName: 'Image',
+        errors: ["BufferA: WGSL L2:1 unresolved value 'x'", 'Image: WGSL internal: L5:1 generated entry failed', 'Common: WGSL L1:1 bad'],
+      },
+    });
+
+    expect(vi.mocked(monaco.editor.setModelMarkers).mock.calls.at(-1)![2]).toEqual([]);
+  });
+
   it('applies markers that arrive after the editor is created', async () => {
     const monaco = await import('monaco-editor');
     const { mockEditor, model } = createMockEditorWithCallbacks();

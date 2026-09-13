@@ -42,7 +42,16 @@ describe('captured variable type classification', () => {
     expect(isCapturedColorVectorType(type)).toBe(false);
   });
 
-  it.each(['MyStruct', 'array<f32>', 'mat3x3<f32>', 'vec5f', 'vec3<bool>', 'vec3<f64>'])(
+  it.each(['mat2x2f', 'mat2x2<f32>', ' mat2x2 < f32 > '])('decodes WGSL %s like a four-component float2x2', (type) => {
+    expect(isCapturedScalarType(type)).toBe(false);
+    expect(capturedVectorWidth(type)).toBeNull();
+    expect(isCapturedVectorType(type)).toBe(true);
+    expect(isSupportedCapturedType(type)).toBe(true);
+    expect(captureDecoderType(type)).toBe('mat2');
+    expect(isCapturedColorVectorType(type)).toBe(false);
+  });
+
+  it.each(['MyStruct', 'array<f32>', 'mat3x3<f32>', 'mat2x2h', 'mat2x2<f16>', 'mat2x3f', 'vec5f', 'vec3<bool>', 'vec3<f64>'])(
     'rejects unsupported capture type %s',
     (type) => {
       expect(isCapturedScalarType(type)).toBe(false);

@@ -1,6 +1,6 @@
 # Shader Studio
 
-A VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL fragment shaders for the WebGL pipeline or Slang shaders for the WebGPU pipeline — with real-time preview, visual debugging that shows what every line computes, and a full pipeline for multi-pass effects including compute shaders.
+A VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL fragment shaders for the WebGL pipeline or Slang and WGSL shaders for the WebGPU pipeline — with real-time preview, visual debugging that shows what every line computes, and a full pipeline for multi-pass effects including compute shaders.
 
 Want to try Shader Studio before installing? [Try it in standalone web mode](https://teaqu.github.io/shader-studio/app/).
 
@@ -12,8 +12,10 @@ Want to try Shader Studio before installing? [Try it in standalone web mode](htt
 
 ## Quick Start
 
-1. Open any `.glsl` or `.slang` file in VS Code (or run **Shader Studio: New Shader** from the Command Palette for a template).
+1. Open any `.glsl`, `.slang`, or `.wgsl` file in VS Code (or run **Shader Studio: New Shader** from the Command Palette for a template).
 2. Click the <img src="https://teaqu.github.io/shader-studio/docs/assets/shader-studio-icon.png" width="14" height="14" style="vertical-align:middle;"> **Shader Studio** icon on the VS Code status bar to choose how to view your shader — as a panel, a separate window, or in the browser.
+
+Slang and WGSL require a WebGPU-capable host. See [WGSL Shaders](https://teaqu.github.io/shader-studio/docs/features/wgsl-authoring/) for a WGSL starter and syntax.
 
 You can launch as many panels, windows, or browser tabs as you want simultaneously.
 
@@ -25,7 +27,7 @@ See the [Quick Start guide](https://teaqu.github.io/shader-studio/docs/quick-sta
 
 | Feature | Description |
 |---------|-------------|
-| [Live Preview](https://teaqu.github.io/shader-studio/docs/quick-start/) | Edit GLSL or Slang and see the result instantly, in a panel, window, or browser |
+| [Live Preview](https://teaqu.github.io/shader-studio/docs/quick-start/) | Edit GLSL, Slang, or WGSL and see the result instantly, in a panel, window, or browser |
 | [Buffers & Channels](https://teaqu.github.io/shader-studio/docs/features/config-buffers/) | Multi-pass pipelines with textures, video, audio, cubemaps, buffers, and keyboard input |
 | [Visual Debugging](https://teaqu.github.io/shader-studio/docs/debugging/) | Inspect what every line computes — pixel inspector, inline rendering, variable inspector |
 | [Time & Playback](https://teaqu.github.io/shader-studio/docs/features/time-controls/) | Scrub, loop, pause, and change playback speed |
@@ -33,8 +35,8 @@ See the [Quick Start guide](https://teaqu.github.io/shader-studio/docs/quick-sta
 | [Resolution](https://teaqu.github.io/shader-studio/docs/features/resolution/) | Scale the canvas, set custom dimensions, or change aspect ratio |
 | [Editor Overlay](https://teaqu.github.io/shader-studio/docs/features/editor-overlay/) | Edit shader code inline over a full-screen preview |
 | [Shader Explorer](https://teaqu.github.io/shader-studio/docs/features/shader-explorer/) | Browse and switch between your shaders |
-| [GLSL and Slang IntelliSense](https://teaqu.github.io/shader-studio/docs/features/language-servers/) | Completion, hover documentation, diagnostics, navigation, Common/import awareness, and color editing |
-| [GLSL and Slang Code Snippets](https://teaqu.github.io/shader-studio/docs/features/code-snippets/) | Insert bundled GLSL or Slang patterns through native VS Code completion |
+| [Shader IntelliSense](https://teaqu.github.io/shader-studio/docs/features/language-servers/) | Completion, hover documentation, diagnostics, navigation, Common/import awareness, and color editing |
+| [Shader Code Snippets](https://teaqu.github.io/shader-studio/docs/features/code-snippets/) | Insert bundled GLSL, Slang, or WGSL patterns through native VS Code completion |
 | [Compile Modes](https://teaqu.github.io/shader-studio/docs/features/compile-modes/) | Compile on every keystroke, on save, or manually |
 | [Locking](https://teaqu.github.io/shader-studio/docs/features/locking/) | Pin the preview to a shader while you edit buffer files |
 | [Performance](https://teaqu.github.io/shader-studio/docs/features/performance/) | Cap the frame rate or open a detailed frame-time panel |
@@ -76,7 +78,7 @@ Enable debug mode with the bug icon in the toolbar to open a panel of tools for 
 
 - **Pixel Inspector** — hover the canvas to read exact RGB, float, hex, fragCoord, and UV values
 - **Inline Rendering** — visualize the value of the variable on your current line across the whole screen
-- **Variable Inspector** — capture and inspect every variable in scope, sampled across the canvas or at a single pixel
+- **Variable Inspector** — capture and inspect supported variables in scope, sampled across the canvas or at a single pixel
 - **Normalize & Step** — remap value ranges and apply binary thresholds to make small variations visible
 - **Parameters & Loops** — control function arguments and cap loop iterations
 
@@ -84,7 +86,7 @@ Debug mode works inside `mainImage`, helper functions, and buffer passes. See [D
 
 ### JavaScript Transpilation (Experimental)
 
-Shader Studio can transpile your GLSL into JavaScript (using [glsl-transpiler](https://github.com/stackgl/glsl-transpiler)) so you can step through it with the standard VS Code debugger, set breakpoints, and inspect variables. Slang shaders use native WebGPU debugging through the Variable Inspector. Run **Shader Studio: Transpile GLSL to JavaScript (for debugging)** from the Command Palette. See [JavaScript Transpilation](https://teaqu.github.io/shader-studio/docs/help/transpilation/).
+Shader Studio can transpile your GLSL into JavaScript (using [glsl-transpiler](https://github.com/stackgl/glsl-transpiler)) so you can step through it with the standard VS Code debugger, set breakpoints, and inspect variables. Slang and WGSL shaders use the Variable Inspector; see the [language support guide](https://teaqu.github.io/shader-studio/docs/features/language-support/) for capture and compute-debugging limits. Run **Shader Studio: Transpile GLSL to JavaScript (for debugging)** from the Command Palette. See [JavaScript Transpilation](https://teaqu.github.io/shader-studio/docs/help/transpilation/).
 
 ## Time Controls
 

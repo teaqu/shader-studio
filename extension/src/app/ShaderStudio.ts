@@ -117,6 +117,15 @@ export class ShaderStudio {
   public setDebugModeEnabled(enabled: boolean): void {
     this.isDebugModeEnabled = enabled;
     this.logger.debug(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    // The panel only follows cursor movement, so without this it stays empty
+    // when debugging is enabled with the caret already placed in the shader.
+    // Clicking the preview menu clears activeTextEditor; retain the cursor of
+    // the last shader only while its editor is still visible.
+    const editor = vscode.window.activeTextEditor
+      ?? this.glslFileTracker.getActiveOrLastViewedGLSLEditor();
+    if (enabled && editor && editor.selection.isEmpty && this.messenger.hasActiveClients() && this.isGlslEditor(editor)) {
+      this.sendCursorPosition(editor, false);
+    }
   }
 
   public dispose(): void {

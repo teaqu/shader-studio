@@ -38,6 +38,27 @@ describe('WGSL storage-backed captures', () => {
     expect(plan.plan.files.find(file => file.uri === input.sourceUri)?.source).toContain('_slot1 = shade;');
   });
 
+  it.each([[false, false], [true, false], [false, true]])('captures a storage-backed mat2x2<f32> in compute=%s Common=%s', (compute, common) => {
+    const input = request(compute, common);
+    input.workspace.storage = { values: { elementType: 'mat2x2<f32>' } };
+    const engine = new WgslDebugEngine();
+    const analysis = engine.analyze(input);
+    if (!analysis.ok) {
+      throw new Error(JSON.stringify(analysis));
+    }
+    const shade = analysis.analysis.visibleValues.find(value => value.name === 'shade');
+    expect(shade).toMatchObject({ typeName: 'mat2x2<f32>', sourceUri: input.sourceUri });
+    const plan = engine.planCapture(input, [shade!.id]);
+    if (!plan.ok) {
+      throw new Error(JSON.stringify(plan));
+    }
+    const emitted = plan.plan.files.map(file => file.source).join('\n');
+    expect(plan.plan.captureSlots).toContainEqual(expect.objectContaining({ name: 'shade', typeName: 'mat2x2<f32>', hidden: false }));
+    expect(emitted).toMatch(/var<private> _ssdbg_\w+_slot1: mat2x2<f32>;/);
+    expect(emitted).toMatch(/return vec4f\((_ssdbg_\w+_slot1)\[0\]\[0\], \1\[0\]\[1\], \1\[1\]\[0\], \1\[1\]\[1\]\);/);
+    expect(emitted).not.toContain('var<storage');
+  });
+
   it('preserves the compute storage-write restriction with configured types', () => {
     const input = request(true);
     input.workspace.files[0].source = '@compute @workgroup_size(1) fn update() {\n  let shade = values[0];\n  values[0] = shade;\n}';

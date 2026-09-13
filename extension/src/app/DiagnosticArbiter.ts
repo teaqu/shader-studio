@@ -18,9 +18,10 @@ export interface DiagnosticSink {
  *   and error codes the renderer payload loses, so its diagnostics win.
  * - GLSL: the renderer errors come from the driver (`getShaderInfoLog`) while
  *   the GLSL service is a hand-written analyser, so the compiler wins.
- * - WGSL: the renderer compiler always wins, because it is the only WGSL error
- *   source. The service contributes only hints and warnings the compiler
- *   cannot see (unused variables, style), which stay on their own collection.
+ * - WGSL: the renderer compiler (the browser's WGSL compiler) always wins. The
+ *   service is a lightweight analyser whose syntax, name, and stage errors
+ *   appear before the first compile and give way on any line the compiler
+ *   reports; its hints and warnings stay on their own collection.
  *
  * Only errors suppress errors, and only on the same line: warnings, and the
  * link/binding failures no language service can see, always survive.
@@ -96,8 +97,8 @@ export class DiagnosticArbiter {
       this.collections.slang.set(uri, service);
       return;
     }
-    // WGSL diagnostics come only from the renderer compiler (Phase 9), so the
-    // compiler always wins; the service side stays on its own collection.
+    // The WGSL service analyses ahead of compilation, but the renderer
+    // compiler is authoritative: its errors suppress the service's per line.
     if (language === "wgsl") {
       this.collections.compiler.set(uri, compiler);
       this.collections.wgsl.set(uri, suppressDuplicateDiagnostics(compiler, service));

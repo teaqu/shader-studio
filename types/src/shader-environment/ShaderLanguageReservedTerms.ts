@@ -123,6 +123,17 @@ const WGSL_RESERVED_IDENTIFIERS = new Set<string>([
   ...WGSL_GENERATED_API_NAMES,
 ]);
 
+const WGSL_KEYWORDS_AND_RESERVED_WORDS = new Set<string>([...WGSL_KEYWORDS, ...WGSL_RESERVED_WORDS]);
+
+/**
+ * Spellings the WGSL specification never allows as an identifier. Narrower than
+ * {@link isShaderLanguageReservedTerm}, which also covers predeclared aliases and
+ * generated names that WGSL itself lets a declaration use or shadow.
+ */
+export function isWgslReservedWord(name: string): boolean {
+  return WGSL_KEYWORDS_AND_RESERVED_WORDS.has(name);
+}
+
 export function isShaderLanguageReservedTerm(
   languageId: ShaderLanguageId,
   name: string,
