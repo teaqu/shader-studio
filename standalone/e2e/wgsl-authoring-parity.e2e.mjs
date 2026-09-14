@@ -38,22 +38,85 @@ test('WGSL errors reconcile with the renderer marker per line and clear after a 
   await expect.poll(() => container.getAttribute('data-marker-count')).toBe('0');
 });
 
-test('WGSL signature help follows typed nested arguments', async ({ page }) => {
-  const source = '// Scales a colour by gain.\nfn shade(color: vec3f, gain: f32) -> vec3f {\n    return color * gain;\n}\n\nfn mainImage(coord: vec2f) -> vec4f {\n    let lit = vec3f(0.5);\n    return vec4f(lit, 1.0);\n}\n';
-  const editor = await openShader(page, 'wgsl-signature', [
-    ['wgsl-signature.wgsl', source],
-    ['wgsl-signature.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })],
-  ]);
-  await editor.locator('.view-line').getByText('return vec4f(lit, 1.0);').click();
-  await page.keyboard.press('Home');
-  await page.keyboard.type('let c = shade(');
-  const hints = page.locator('.parameter-hints-widget').filter({ visible: true });
-  await expect(hints).toContainText('fn shade(color: vec3f, gain: f32) -> vec3f');
-  await expect(hints).toContainText('Scales a colour by gain.');
-  await expect(hints.locator('.parameter.active')).toHaveText('color: vec3f');
-  await page.keyboard.type('vec3f(max(1.0, 2.0)), ');
-  await expect(hints.locator('.parameter.active')).toHaveText('gain: f32');
-});
+for (const pendingSave of [false, true]) {
+  test(`WGSL signature help follows typed nested arguments (pending save: ${pendingSave})`, async ({ page }) => {
+    // Hold only the existing save debounce and the real signature reply.
+    // Release the save first to exercise refresh while help is still pending.
+    await page.addInitScript(() => {
+      const schedule = window.setTimeout.bind(window);
+      window.pendingSignatureSaves = new Map();
+      let nextSave = -1;
+      window.setTimeout = (callback, delay, ...args) => {
+        if (window.holdSignatureSave && delay === 15) {
+          const id = nextSave--;
+          window.pendingSignatureSaves.set(id, () => callback(...args));
+          return id;
+        }
+        return schedule(callback, delay, ...args);
+      };
+      const cancel = window.clearTimeout.bind(window);
+      window.clearTimeout = id => {
+        if (!window.pendingSignatureSaves.delete(id)) {
+          cancel(id);
+        }
+      };
+      const NativeWorker = window.Worker;
+      window.Worker = class extends NativeWorker {
+        constructor(...args) {
+          super(...args);
+          const methods = new Map();
+          const send = this.postMessage.bind(this);
+          this.postMessage = (message, ...rest) => {
+            if (message?.kind === 'request') {
+              methods.set(message.id, message.method);
+            }
+            return send(message, ...rest);
+          };
+          this.addEventListener('message', event => {
+            const method = methods.get(event.data?.id);
+            if (method === 'signatureHelp' && window.holdSignatureSave) {
+              event.stopImmediatePropagation();
+              window.signatureReply = () => this.dispatchEvent(new MessageEvent('message', { data: event.data }));
+              window.signatureHeld = true;
+            }
+          });
+        }
+      };
+    });
+    const source = '// Scales a colour by gain.\nfn shade(color: vec3f, gain: f32) -> vec3f {\n    return color * gain;\n}\n\nfn mainImage(coord: vec2f) -> vec4f {\n    let lit = vec3f(0.5);\n    return vec4f(lit, 1.0);\n}\n';
+    const editor = await openShader(page, 'wgsl-signature', [
+      ['wgsl-signature.wgsl', source],
+      ['wgsl-signature.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })],
+    ]);
+    await editor.locator('.view-line').getByText('return vec4f(lit, 1.0);').click();
+    await page.keyboard.press('Home');
+    await page.evaluate(hold => {
+      window.holdSignatureSave = hold;
+    }, pendingSave);
+    await page.keyboard.type('let c = shade(');
+    if (pendingSave) {
+      await expect.poll(() => page.evaluate(() => window.signatureHeld)).toBe(true);
+      await page.evaluate(() => {
+        window.holdSignatureSave = false;
+        for (const save of window.pendingSignatureSaves.values()) {
+          save();
+        }
+        window.pendingSignatureSaves.clear();
+      });
+      await expect.poll(async () => (await workspace(page))['/shaders/wgsl-signature.wgsl']).toContain('let c = shade(');
+      // Hover asks the manager to refresh the saved workspace while help is pending.
+      await editor.locator('.view-line').getByText('shade', { exact: true }).first().hover();
+      await expect(page.locator('.monaco-hover').filter({ visible: true })).toContainText('shade');
+      await page.evaluate(() => window.signatureReply());
+    }
+    const hints = page.locator('.parameter-hints-widget').filter({ visible: true });
+    await expect(hints).toContainText('fn shade(color: vec3f, gain: f32) -> vec3f');
+    await expect(hints).toContainText('Scales a colour by gain.');
+    await expect(hints.locator('.parameter.active')).toHaveText('color: vec3f');
+    await page.keyboard.type('vec3f(max(1.0, 2.0)), ');
+    await expect(hints.locator('.parameter.active')).toHaveText('gain: f32');
+  });
+}
 
 test('WGSL colour picker keeps vec3f and vec3<f32> spellings and persists after reload', async ({ page }) => {
   const source = 'fn mainImage(coord: vec2f) -> vec4f {\n    let tint = vec3f(1.0, 0.0, 0.0);\n    let glow = vec3<f32>(0.0, 0.5, 1.0);\n    return vec4f(tint + glow, 1.0);\n}\n';

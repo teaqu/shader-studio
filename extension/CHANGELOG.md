@@ -1,6 +1,15 @@
 # Change Log
 ### Unreleased
 
+- Fixed delayed preview selection and stale host echoes resetting the cursor and splitting typed text in editors sharing the same shader.
+
+- Fixed standalone Hide Buffers preferences being lost when reloading during workspace saves.
+- Fixed signature help disappearing when a pending editor save refreshes the standalone workspace, including nested WGSL calls.
+- Fixed detached GLSL/WGSL editors inheriting another preview's Common authoring context.
+- Fixed the WGSL variable inspector hiding locals derived from channel samples, and listing module globals and script uniforms as captured variables; like Slang it now shows only the function's parameters and locals.
+- The debug panel's Uniforms section now lists only built-in uniforms in every language; script values stay in the config panel's Script tab.
+- Fixed WebGPU variable capture failing with unresolved script uniforms when it ran before a script-driven shader's first compile finished.
+
 - Breaking: Slang channel objects are now direct globals. Replace
   `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and use direct metadata
   such as `albedo.size`; the `.sha.json` `inputs` field is unchanged.

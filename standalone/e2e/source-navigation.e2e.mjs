@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 // Slang rendering needs a WebGPU adapter in headless Chromium.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
 
-for (const language of ['glsl', 'slang']) {
+for (const language of ['glsl', 'slang', 'wgsl']) {
   for (const source of ['common', 'vertex']) {
     test(`double-clicking ${language} ${source} keeps standalone responsive`, async ({ page }) => {
       const pageErrors = [];
@@ -16,11 +16,15 @@ for (const language of ['glsl', 'slang']) {
         const files = [
           [`/shaders/aurora.${language}`, language === 'glsl'
             ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
-            : 'float4 mainImage(float2 coord) { return float4(1.0); }'],
+            : language === 'slang'
+              ? 'float4 mainImage(float2 coord) { return float4(1.0); }'
+              : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
           [`/shaders/shared.${language}`, '// shared functions'],
           [`/shaders/vertex.${language}`, language === 'glsl'
             ? 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
-            : 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}'],
+            : language === 'slang'
+              ? 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}'
+              : 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
           ['/shaders/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
             Image: { inputs: {}, vertex: `vertex.${language}` }, common: { path: `shared.${language}` },
           } })],

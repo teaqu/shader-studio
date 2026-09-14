@@ -142,6 +142,23 @@ describe('EditorOverlay', () => {
       expect(second.getValue()).toBe('second source');
       expect(monaco.editor.createModel).toHaveBeenCalledTimes(before + 1);
     });
+    for (const language of ['glsl', 'slang', 'wgsl']) {
+      it.each(['echo', 'stale'])('does not flush an attached ' + language + ' model when another pane switches to it (%s)', async snapshot => {
+        const monaco = await import('monaco-editor');
+        const path = `/shared.${language}`;
+        const text = 'return n';
+        const shared = monaco.editor.createModel(text, language, monaco.Uri.file(path));
+        Object.assign(shared, { isAttachedToEditor: () => true });
+        const { rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderCode: 'other source' } });
+        const pane = await getLatestMockEditor();
+        await rerender({ ...defaultProps, shaderPath: path, shaderCode: snapshot === 'echo' ? text : 'older source' });
+        expect(pane.getModel()).toBe(shared);
+        // Even an identical setValue flushes the model and resets every editor's cursor.
+        expect(shared.setValue).not.toHaveBeenCalled();
+        expect(shared.getValue()).toBe(text);
+      });
+    }
+
     it('creates a model for an editor without a file path', async () => {
       const monaco = await import('monaco-editor');
       render(EditorOverlay, { props: { ...defaultProps, shaderPath: '', shaderCode: 'untitled' } });
@@ -2516,6 +2533,36 @@ describe('EditorOverlay', () => {
       expect(mockEditor.setPosition).toHaveBeenCalledWith({ lineNumber: 1, column: 1 });
       expect(mockEditor.setScrollTop).toHaveBeenCalledWith(0);
     });
+
+    for (const language of ['glsl', 'slang', 'wgsl']) {
+      it.each(['focused shared', 'unfocused shared', 'focused unrelated'])('respects a ' + language + ' peer editor during host updates (%s)', async peerState => {
+        const monaco = await import('monaco-editor');
+        const { mockEditor: editor } = createMockEditorWithCallbacks();
+        editor.getValue.mockReturnValue('return norm');
+        editor.hasTextFocus.mockReturnValue(false);
+        vi.mocked(monaco.editor.create).mockReturnValue(editor as unknown as import('monaco-editor').editor.IStandaloneCodeEditor);
+        const props = { ...defaultProps, shaderPath: `/focused.${language}`, shaderCode: 'return norm' };
+        const { rerender } = render(EditorOverlay, { props });
+        const model = editor.getModel();
+        const peer = {
+          getModel: () => peerState === 'focused unrelated' ? null : model,
+          hasTextFocus: () => peerState !== 'unfocused shared',
+        } as unknown as import('monaco-editor').editor.ICodeEditor;
+        const editors = vi.spyOn(monaco.editor, 'getEditors').mockReturnValue([peer]);
+        try {
+          editor.setValue.mockClear();
+          await rerender({ ...props, shaderCode: 'return nor' });
+          if (peerState === 'focused shared') {
+            expect(editor.setValue).not.toHaveBeenCalled();
+            expect(editor.getValue()).toBe('return norm');
+          } else {
+            expect(editor.setValue).toHaveBeenCalledWith('return nor');
+          }
+        } finally {
+          editors.mockRestore();
+        }
+      });
+    }
 
     it('should apply external changes when editor does not have focus', async () => {
       const monaco = await import('monaco-editor');

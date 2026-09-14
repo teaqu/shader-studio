@@ -1,4 +1,4 @@
-import { wgslStorageElementType } from "@shader-studio/types";
+import { buildWgslChannelAuthoringSource, isValidShaderIdentifier, wgslStorageElementType } from "@shader-studio/types";
 import type { DebugSiteAnalysis, DebugSourcePosition, DebugSourceRange, DebugSourceUnit, DebugWorkspace } from "@shader-studio/types";
 import { canonicalizeWgslUri } from "./WgslWorkspace";
 
@@ -19,11 +19,23 @@ export class WgslDebugSourceMap {
       ...workspace.files.filter(file => canonicalizeWgslUri(file.uri) !== root),
       ...workspace.files.filter(file => canonicalizeWgslUri(file.uri) === root),
     ];
-    // Analysis sees storage declarations, but they are outside the authored
+    // Analysis sees renderer-owned declarations outside the authored
     // segments: emitted plans contain only user files, never duplicate bindings.
     let source = Object.entries(workspace.storage ?? {}).map(([name, storage]) =>
       `var<storage, read> ${name}: array<${wgslStorageElementType(storage.elementType, "render")}>;\n`,
     ).join("");
+    if (workspace.channels?.length) {
+      source += `${buildWgslChannelAuthoringSource(workspace.channels, !workspace.compute)}\n`;
+    }
+    const uniformTypes = new Map([
+      ["float", "f32"], ["vec2", "vec2f"], ["vec3", "vec3f"], ["vec4", "vec4f"], ["bool", "bool"],
+    ]);
+    for (const { name, type } of workspace.customUniforms ?? []) {
+      const wgslType = uniformTypes.get(type);
+      if (wgslType && isValidShaderIdentifier(name)) {
+        source += `var<private> ${name}: ${wgslType};\n`;
+      }
+    }
     let lineOffset = source.split("\n").length - 1;
     this.segments = ordered.map(file => {
       const segment = { file, start: source.length, end: source.length + file.source.length, lineOffset };
@@ -43,7 +55,13 @@ export class WgslDebugSourceMap {
   }
 
   originalRange(range: DebugSourceRange): { sourceUri: string; range: DebugSourceRange } {
-    const segment = [...this.segments].reverse().find(segment => segment.lineOffset <= range.start.line)!;
+    const segment = [...this.segments].reverse().find(segment => segment.lineOffset <= range.start.line);
+    if (!segment) {
+      // Renderer-owned values have no clickable declaration in the editor.
+      return { sourceUri: this.workspace.rootUri, range: {
+        start: { line: -1, character: 0 }, end: { line: -1, character: 0 },
+      } };
+    }
     return { sourceUri: segment.file.uri, range: {
       start: { ...range.start, line: range.start.line - segment.lineOffset },
       end: { ...range.end, line: range.end.line - segment.lineOffset },

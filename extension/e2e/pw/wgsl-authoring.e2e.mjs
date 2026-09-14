@@ -116,8 +116,14 @@ test.describe('WGSL authoring in VS Code', () => {
       await window.keyboard.press('F2');
       const renameInput = window.locator('.rename-box input, .rename-input input').first();
       await expect(renameInput).toBeVisible();
+      // VS Code selects the name after showing the widget. Typing before that
+      // readiness transition lets its delayed selection replace typed letters.
+      await expect(renameInput).toBeFocused();
+      await expect.poll(() => renameInput.evaluate(input => [input.selectionStart, input.selectionEnd]))
+        .toEqual([0, 'sharedTone'.length]);
       await renameInput.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
       await renameInput.pressSequentially('curve');
+      await expect(renameInput).toHaveValue('curve');
       await renameInput.press('Enter');
       await expect(window.locator('.view-line').filter({ hasText: /fn\s+curve\(value:/ })).toBeVisible();
       await vscode.evaluateInHost(async (vscode, files) => {

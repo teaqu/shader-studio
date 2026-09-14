@@ -3630,13 +3630,32 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   getCustomUniformInfo(): { name: string; type: string }[] {
-    return this.customUniformManager.getUniformInfo();
+    return this.visibleCustomUniformManager().getUniformInfo();
   }
   getCustomUniformDeclarations(): string {
-    return this.customUniformManager.getDeclarations();
+    return this.visibleCustomUniformManager().getDeclarations();
   }
   getCurrentCustomUniforms(): CaptureCustomUniform[] {
-    return this.customUniformManager.getCurrentValues();
+    return this.visibleCustomUniformManager().getCurrentValues();
+  }
+
+  /**
+   * Script uniforms of the compile that callers see: the installed generation,
+   * or the first compile while it is still pending. Variable capture resolves
+   * its compile context against that same snapshot, so a capture issued before
+   * the first install must not build its shader without the script's uniforms.
+   */
+  private visibleCustomUniformManager(): CustomUniformManager {
+    const pending = this.installedCompile || this.disposed ? null : this.lastCompile;
+    if (!pending?.customUniformDeclarations || !pending.customUniformInfo) {
+      return this.customUniformManager;
+    }
+    const manager = new CustomUniformManager();
+    manager.loadDeclarations(pending.customUniformDeclarations, pending.customUniformInfo);
+    if (this.pendingCustomUniformValues) {
+      manager.updateValues(this.pendingCustomUniformValues);
+    }
+    return manager;
   }
   setCustomUniformValues(values: CustomUniform[]): void {
     this.pendingCustomUniformValues = values.map((value) => this.copyCustomUniform(value));

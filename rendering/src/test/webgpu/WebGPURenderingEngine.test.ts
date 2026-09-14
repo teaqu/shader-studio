@@ -1774,6 +1774,94 @@ describe("WebGPURenderingEngine", () => {
       expect(engine.getCustomUniformInfo()).toEqual([{ name: "gain", type: "float" }]);
     });
 
+    it("exposes a pending first compile's script uniforms before it installs", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const pending = deferred<{ success: true; wgsl: string }>();
+      compiler.compile.mockImplementation((() => pending.promise) as never);
+      engine.setCustomUniformValues([{ name: "gain", type: "float", value: 0.75 }]);
+
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledOnce());
+
+      // Variable capture resolves its compile context against this pending
+      // compile, so its uniforms must come from the same compile: otherwise the
+      // capture shader is built without the script's declarations.
+      expect(engine.getVariableCaptureCompileContext().slangPassName).toBe("Image");
+      expect(engine.getCustomUniformDeclarations()).toBe("uniform float gain;");
+      expect(engine.getCustomUniformInfo()).toEqual([{ name: "gain", type: "float" }]);
+      expect(engine.getCurrentCustomUniforms()).toEqual([{ name: "gain", type: "float", value: 0.75 }]);
+
+      pending.resolve({ success: true, wgsl: "// wgsl" });
+      expect((await compile)?.success).toBe(true);
+      expect(engine.getCurrentCustomUniforms()).toEqual([{ name: "gain", type: "float", value: 0.75 }]);
+    });
+
+    it("keeps the installed script uniforms while a later compile is pending", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      await engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+      const pending = deferred<{ success: true; wgsl: string }>();
+      compiler.compile.mockImplementation((() => pending.promise) as never);
+
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return tint; }",
+        null,
+        "/image.slang",
+        {},
+        "uniform vec4 tint;",
+        [{ name: "tint", type: "vec4" }],
+      );
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledTimes(2));
+
+      // The capture context still reads the installed generation.
+      expect(engine.getCustomUniformDeclarations()).toBe("uniform float gain;");
+      expect(engine.getCustomUniformInfo()).toEqual([{ name: "gain", type: "float" }]);
+
+      pending.resolve({ success: true, wgsl: "// wgsl" });
+      expect((await compile)?.success).toBe(true);
+      expect(engine.getCustomUniformDeclarations()).toBe("uniform vec4 tint;");
+      expect(engine.getCustomUniformInfo()).toEqual([{ name: "tint", type: "vec4" }]);
+    });
+
+    it("reports no script uniforms after dispose, even while a compile is pending", async () => {
+      const engine = new WebGPURenderingEngine(assets);
+      const { compiler } = stubEngineInternals(engine);
+      const pending = deferred<{ success: true; wgsl: string }>();
+      compiler.compile.mockImplementation((() => pending.promise) as never);
+      const compile = engine.compileShaderPipeline(
+        "float4 mainImage(float2 c) { return float4(gain); }",
+        null,
+        "/image.slang",
+        {},
+        "uniform float gain;",
+        [{ name: "gain", type: "float" }],
+      );
+      await vi.waitFor(() => expect(compiler.compile).toHaveBeenCalledOnce());
+
+      engine.dispose();
+
+      expect(engine.getCustomUniformDeclarations()).toBe("");
+      expect(engine.getCustomUniformInfo()).toEqual([]);
+      expect(engine.getCurrentCustomUniforms()).toEqual([]);
+      pending.resolve({ success: true, wgsl: "// wgsl" });
+      await compile;
+    });
+
     it("packs iDate and GLSL-compatible channel resolutions per pass", () => {
       const engine = new WebGPURenderingEngine(assets);
       stubDeviceAndContext(engine);

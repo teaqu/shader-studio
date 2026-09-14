@@ -6,6 +6,7 @@ import {
   extractSlangFunctionContext,
   extractWgslFunctionContext,
 } from "@shader-studio/debug";
+import { resourcesForPass, resolveAuthoringChannelBindings } from "@shader-studio/types";
 import type {
   DebugAnalysisRequest,
   DebugDiagnostic,
@@ -48,6 +49,7 @@ export interface DebugRequestInputs {
   bufferPathMap: Record<string, string>;
   bufferCodes: Record<string, string>;
   slangModules: SlangSourceModule[];
+  customUniforms?: { name: string; type: string }[];
   getDebugTarget: (imageCode: string, config: ShaderConfig | null) => DebugTarget;
 }
 
@@ -187,6 +189,10 @@ class WgslDebugStrategy implements DebugPlanStrategy {
       : undefined;
     const storage = Object.fromEntries(Object.entries(inputs.config?.storage ?? {})
       .map(([name, declaration]) => [name, { elementType: declaration.elementType }]));
+    const channels = resolveAuthoringChannelBindings(resourcesForPass(inputs.config, ownerPassName))
+      .map(({ resource, slot }) => ({ name: resource.name, slot, kind: resource.kind }))
+      .filter((channel): channel is { name: string; slot: number; kind: 'texture-2d' | 'texture-cube' | 'texture-3d' } =>
+        channel.kind === 'texture-2d' || channel.kind === 'texture-cube' || channel.kind === 'texture-3d');
     return {
       workspace: {
         rootUri: rootPath,
@@ -194,8 +200,10 @@ class WgslDebugStrategy implements DebugPlanStrategy {
         passName: ownerPassName,
         ...(compute ? { compute } : {}),
         storage,
+        channels,
+        customUniforms: inputs.customUniforms ?? [],
         files,
-        contentHash: debugWorkspaceHash(files, compute, storage),
+        contentHash: debugWorkspaceHash(files, compute, storage, channels, inputs.customUniforms ?? []),
       },
       sourceUri: selectedPath,
       position: { line: rawLine, character: Math.max(0, selectedLineContent.search(/\S/)) },
@@ -253,6 +261,8 @@ function debugWorkspaceHash(
   files: Array<{ path: string; source: string; version: number }>,
   compute?: { entryPoint?: string; storageNames?: string[] },
   storage?: Record<string, { elementType: string }>,
+  channels?: { name: string; slot: number; kind: string }[],
+  customUniforms?: { name: string; type: string }[],
 ): string {
   let hash = 2166136261;
   for (const file of [...files].sort((left, right) => left.path.localeCompare(right.path))) {
@@ -260,7 +270,7 @@ function debugWorkspaceHash(
       hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
     }
   }
-  for (const character of JSON.stringify({ compute, storage })) {
+  for (const character of JSON.stringify({ compute, storage, channels, customUniforms })) {
     hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");

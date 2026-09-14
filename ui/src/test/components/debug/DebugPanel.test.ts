@@ -326,6 +326,24 @@ describe('DebugPanel', () => {
     expect(container.querySelector('.uniforms-section')).toBeFalsy();
   });
 
+  it.each(['/shader.glsl', '/shader.slang', '/shader.wgsl'])('lists only built-in uniforms for %s, never script values', (filePath) => {
+    // The host still holds script values (the Script tab shows them); spread so
+    // this stays a runtime check that nothing forwards them into the panel.
+    const hostScriptValues = { customUniformValues: { uLevel: 0.75, tint: [1, 0.5, 0.25], enabled: true } };
+    const { container } = render(DebugPanel, {
+      debugState: makeDebugState({ filePath, isVariableInspectorEnabled: true }),
+      getUniforms: mockGetUniforms,
+      uniforms: mockUniforms,
+      ...hostScriptValues,
+    });
+
+    const names = Array.from(container.querySelectorAll('.uniforms-section .uniform-name')).map(el => el.textContent);
+    expect(names).toEqual([
+      'iTime', 'iResolution', 'iMouse', 'iFrame', 'iTimeDelta', 'iFrameRate',
+      'iDate', 'iSampleRate', 'iCameraPos', 'iCameraDir',
+    ]);
+  });
+
   it('lock button toggles active state', async () => {
     const mockDebugManager = createMockShaderDebugManager();
     const { container } = render(DebugPanel, {

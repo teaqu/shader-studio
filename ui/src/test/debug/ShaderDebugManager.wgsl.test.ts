@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ShaderDebugManager } from '../../lib/ShaderDebugManager';
 import { debugPlanStrategy } from '../../lib/debugLanguageStrategies';
 import type { ShaderConfig } from '@shader-studio/types';
@@ -32,6 +32,7 @@ describe('ShaderDebugManager - WGSL language mode', () => {
       bufferPathMap: { Image: '/image.wgsl', Simulate: '/simulate.wgsl' },
       bufferCodes: { Simulate: source },
       slangModules: [],
+      customUniforms: [],
       getDebugTarget: () => ({ passName: 'Simulate', code: source, config }),
     });
   }
@@ -67,6 +68,96 @@ describe('ShaderDebugManager - WGSL language mode', () => {
     expect(first.workspace.storage).toEqual({ values: { elementType: 'f32' } });
     expect(second.workspace.storage).toEqual({ values: { elementType: 'vec4f' } });
     expect(second.workspace.contentHash).not.toBe(first.workspace.contentHash);
+  });
+
+  it('carries only the selected pass channel bindings and script uniforms into the WGSL workspace', () => {
+    const config: ShaderConfig = {
+      version: '1.0',
+      storage: { state: { count: 4, elementType: 'f32' } },
+      passes: {
+        Image: { inputs: { scene: { type: 'buffer', source: 'Scene' } } },
+      },
+    };
+    const strategy = debugPlanStrategy('wgsl')!;
+    const request = strategy.buildRequest({
+      imageCode: wgslShader,
+      originalImageCode: wgslShader,
+      config,
+      currentLine: 1,
+      lineContent: '  var uv: vec2f = coord / iResolution.xy;',
+      filePath: '/image.wgsl',
+      variablePreview: null,
+      imagePassPath: '/image.wgsl',
+      bufferPathMap: { Image: '/image.wgsl', Scene: '/scene.wgsl' },
+      bufferCodes: { Scene: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }' },
+      slangModules: [],
+      customUniforms: [{ name: 'uGain', type: 'float' }, { name: 'uTint', type: 'vec3' }],
+      getDebugTarget: () => ({ passName: 'Image', code: wgslShader, config }),
+    });
+
+    expect(request?.workspace.channels).toEqual([{ name: 'scene', slot: 0, kind: 'texture-2d' }]);
+    expect(request?.workspace.customUniforms).toEqual([
+      { name: 'uGain', type: 'float' },
+      { name: 'uTint', type: 'vec3' },
+    ]);
+  });
+
+  it('invalidates WGSL capture plans when channel bindings change', () => {
+    const code = `fn mainImage(coord: vec2f) -> vec4f {
+  let value = coord.x;
+  return vec4f(value);
+}`;
+    const textureConfig: ShaderConfig = {
+      version: '1.0',
+      passes: { Image: { inputs: { source: { type: 'texture', path: '/source.png' } } } },
+    };
+    const cubeConfig: ShaderConfig = {
+      version: '1.0',
+      passes: { Image: { inputs: { source: { type: 'cubemap', path: '/source.ktx2' } } } },
+    };
+    manager.setImageShaderCode(code);
+    manager.setShaderContext(textureConfig, '/image.wgsl', {});
+    manager.toggleEnabled();
+    manager.updateDebugLine(1, '  let value = coord.x;', '/image.wgsl');
+
+    const textureCapture = manager.getCapturePlan(code, textureConfig);
+    const cubeCapture = manager.getCapturePlan(code, cubeConfig);
+    if (!textureCapture || !cubeCapture || 'error' in textureCapture || 'error' in cubeCapture) {
+      throw new Error('Expected WGSL capture plans');
+    }
+    expect(cubeCapture.plan.workspaceHash).not.toBe(textureCapture.plan.workspaceHash);
+  });
+
+  it('updates, retains, and clears script-uniform context through public capture planning', () => {
+    const code = `fn mainImage(coord: vec2f) -> vec4f {
+  let value = coord.x;
+  return vec4f(value);
+}`;
+    const config: ShaderConfig = { version: '1.0', passes: { Image: {} } };
+    const captureRefresh = vi.fn();
+    manager.setImageShaderCode(code);
+    manager.setShaderContext(config, '/image.wgsl', {}, [], {}, [{ name: 'uGain', type: 'float' }]);
+    manager.setCaptureStateCallback(captureRefresh);
+    manager.toggleEnabled();
+    manager.updateDebugLine(1, '  let value = coord.x;', '/image.wgsl');
+
+    const first = manager.getCapturePlan(code, config);
+    captureRefresh.mockClear();
+    manager.setShaderContext(config, '/image.wgsl', {}, [], {}, [{ name: 'uGain', type: 'vec3' }]);
+    const changed = manager.getCapturePlan(code, config);
+    manager.setShaderContext(config, '/image.wgsl', {});
+    const omitted = manager.getCapturePlan(code, config);
+    manager.setShaderContext(config, '/image.wgsl', {}, [], {}, []);
+    const cleared = manager.getCapturePlan(code, config);
+    if (!first || !changed || !omitted || !cleared
+      || 'error' in first || 'error' in changed || 'error' in omitted || 'error' in cleared) {
+      throw new Error('Expected WGSL capture plans');
+    }
+
+    expect(captureRefresh).toHaveBeenCalledTimes(2);
+    expect(changed.plan.workspaceHash).not.toBe(first.plan.workspaceHash);
+    expect(omitted.plan.workspaceHash).toBe(changed.plan.workspaceHash);
+    expect(cleared.plan.workspaceHash).not.toBe(changed.plan.workspaceHash);
   });
 
   it('omits compute metadata for a render WGSL workspace', () => {

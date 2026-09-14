@@ -260,6 +260,7 @@ describe('ShaderPipeline — overlay cursor gate', () => {
           { BufferA: 'updated buffer code' },
           [],
           mainEvent.data.bufferPathMap,
+          [],
         );
       },
     );
@@ -1026,6 +1027,51 @@ describe('ShaderPipeline — unlocked vertex-source routing', () => {
   it('keeps an ordinary shader as main when unlocked', () => {
     expect(pipeline.getShaderMessageTarget({ path: '/project/shader.wgsl', code: fragmentCode }))
       .toEqual({ kind: 'main' });
+  });
+
+  it('forwards explicit script uniform metadata to the debug context', () => {
+    const config = { version: '1.0', passes: { Image: {} } };
+    lastEventWith({
+      type: 'shaderSource',
+      code: fragmentCode,
+      path: '/project/main.wgsl',
+      config,
+      buffers: {},
+      customUniformInfo: [{ name: 'uGain', type: 'float' }],
+    });
+
+    pipeline.updateCurrentConfig(config);
+
+    expect(mocks.shaderDebugManager.setShaderContext).toHaveBeenCalledWith(
+      config,
+      '/project/main.wgsl',
+      {},
+      [],
+      {},
+      [{ name: 'uGain', type: 'float' }],
+    );
+  });
+
+  it('clears script uniforms for a complete no-script context but preserves them for an omitted context', () => {
+    const base = {
+      type: 'shaderSource' as const,
+      code: fragmentCode,
+      path: '/project/main.wgsl',
+      config: { version: '1.0', passes: { Image: {} } },
+      buffers: {},
+    };
+
+    lastEventWith({ ...base, scriptContextOmitted: false });
+    pipeline.updateCurrentConfig(base.config);
+    expect(mocks.shaderDebugManager.setShaderContext).toHaveBeenLastCalledWith(
+      base.config, base.path, base.buffers, [], {}, [],
+    );
+
+    lastEventWith({ ...base, scriptContextOmitted: true });
+    pipeline.updateCurrentConfig(base.config);
+    expect(mocks.shaderDebugManager.setShaderContext).toHaveBeenLastCalledWith(
+      base.config, base.path, base.buffers,
+    );
   });
 
   it('refreshes the viewed owner for a linked vertex source', async () => {

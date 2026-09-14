@@ -1,8 +1,4 @@
 import type { DebugSourcePosition, DebugSourceRange } from "@shader-studio/types";
-import {
-  SHADER_STUDIO_BUILTIN_UNIFORMS,
-  SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS,
-} from "@shader-studio/types";
 import type {
   WgslAnalysisDocument,
   WgslStatement,
@@ -14,26 +10,6 @@ export type {
   WgslStatement,
   WgslSymbol,
 };
-
-const WGSL_HOST_GLOBAL_NAMES: ReadonlySet<string> = new Set([
-  ...SHADER_STUDIO_BUILTIN_UNIFORMS
-    .filter((entry) => entry.languages.includes("wgsl"))
-    .map((entry) => entry.name),
-  ...SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS
-    .filter((entry) => entry.languages.includes("wgsl"))
-    .map((entry) => entry.name),
-]);
-
-/**
- * Whether a symbol is a synthetic host global seeded by the analyzer
- * (zero-range declaration at the file origin with a catalog name), as opposed
- * to a user declaration that merely shares the name.
- */
-export function isWgslHostGlobalSymbol(symbol: WgslSymbol): boolean {
-  return WGSL_HOST_GLOBAL_NAMES.has(symbol.name)
-    && symbol.declaration.start.line === 0 && symbol.declaration.start.character === 0
-    && symbol.declaration.end.line === 0 && symbol.declaration.end.character === 0;
-}
 
 /** Shared line/character geometry over analysis ranges. No parser lives here. */
 export function comparePositions(left: DebugSourcePosition, right: DebugSourcePosition): number {

@@ -505,6 +505,100 @@ describe("MonacoLanguageServiceManager", () => {
     manager.dispose();
   });
 
+  for (const language of ['glsl', 'wgsl'] as const) {
+    it.each(['owned', 'none', 'missing'] as const)(`keeps the ${language} file's %s Common context when another preview supplies its environment`, async context => {
+      const fixture = monacoFixture(language);
+      const service = serviceFixture();
+      const uri = fixture.model.uri.toString();
+      const ownCommon = { uri: `file:///owner.common.${language}`, text: 'owned declarations', version: 1 };
+      const foreignCommon = { uri: `file:///other.common.${language}`, text: 'foreign declarations', version: 2 };
+      const documents = [
+        { uri, text: fixture.model.getValue(), version: 1, stage: 'fragment' as const,
+          commonUri: context === 'none' ? undefined : context === 'missing' ? 'file:///missing' : ownCommon.uri },
+        { ...ownCommon, stage: 'fragment' as const },
+      ];
+      const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+        glsl: async () => service, slang: async () => service, wgsl: async () => service,
+      }, { getWorkspaceDocuments: async () => documents });
+      const environment = { ...ENVIRONMENT, documentUri: uri, languageId: language, commonFile: foreignCommon };
+      await manager.syncEnvironment(environment);
+      expect(service.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({
+        commonFile: context === 'owned' ? ownCommon : undefined,
+      }));
+      await manager.syncEnvironment({ ...environment, generation: 2 });
+      expect(service.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({
+        commonFile: context === 'owned' ? ownCommon : undefined,
+      }));
+      manager.dispose();
+    });
+  }
+
+  it.each(['glsl', 'slang', 'wgsl'] as const)('keeps pending %s signature help when the current buffer finishes saving', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    const uri = fixture.model.uri.toString();
+    let storedVersion = 1;
+    let reply!: (value: Awaited<ReturnType<LanguageService['signatureHelp']>>) => void;
+    service.signatureHelp = vi.fn(() => new Promise(resolve => {
+      reply = resolve;
+    }));
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    }, { getWorkspaceDocuments: async () => [{ uri, text: storedVersion === 1 ? 'previously saved source' : fixture.model.getValue(), version: storedVersion, stage: 'fragment' }] });
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: uri, languageId: language });
+    const provider = fixture.languages.registerSignatureHelpProvider.mock.calls.find(call => call[0] === language)![1];
+    const pending = provider.provideSignatureHelp(fixture.model, POSITION);
+    await vi.waitFor(() => expect(service.signatureHelp).toHaveBeenCalledOnce());
+    storedVersion++;
+    const hover = fixture.languages.registerHoverProvider.mock.calls.find(call => call[0] === language)![1];
+    await hover.provideHover(fixture.model, POSITION);
+    // A fresh editor message must retain the provider-owned workspace inventory.
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: uri, languageId: language, generation: 100 });
+    reply({ signatures: [{ label: 'shade(color, gain)', parameters: [] }] });
+    expect((await pending)?.value.signatures[0].label).toBe('shade(color, gain)');
+    manager.dispose();
+  });
+
+  for (const language of ['glsl', 'slang', 'wgsl'] as const) {
+    it.each(['dependency', 'stage', 'text', 'resources'] as const)(`rejects pending ${language} signature help after a real %s change`, async change => {
+      const fixture = monacoFixture(language);
+      const service = serviceFixture();
+      const uri = fixture.model.uri.toString();
+      let dependencyVersion = 1;
+      let stage: 'fragment' | 'vertex' = 'fragment';
+      let reply!: (value: Awaited<ReturnType<LanguageService['signatureHelp']>>) => void;
+      service.signatureHelp = vi.fn(() => new Promise(resolve => {
+        reply = resolve;
+      }));
+      const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+        glsl: async () => service, slang: async () => service, wgsl: async () => service,
+      }, { getWorkspaceDocuments: async () => [
+        { uri, text: fixture.model.getValue(), version: 1, stage },
+        { uri: `file:///dependency.${language}`, text: `value ${dependencyVersion}`, version: dependencyVersion, stage: 'fragment' },
+      ] });
+      const environment = { ...ENVIRONMENT, documentUri: uri, languageId: language };
+      await manager.syncEnvironment(environment);
+      const provider = fixture.languages.registerSignatureHelpProvider.mock.calls.find(call => call[0] === language)![1];
+      const pending = provider.provideSignatureHelp(fixture.model, POSITION);
+      await vi.waitFor(() => expect(service.signatureHelp).toHaveBeenCalledOnce());
+      if (change === 'dependency') {
+        dependencyVersion++;
+      }
+      if (change === 'stage') {
+        stage = 'vertex';
+      }
+      if (change === 'text') {
+        fixture.state.version++;
+      }
+      await manager.syncEnvironment({ ...environment, generation: 2,
+        resources: change === 'resources' ? [{ name: 'albedo', kind: 'texture-2d' }] : [],
+      });
+      reply({ signatures: [{ label: 'shade(color, gain)', parameters: [] }] });
+      expect(await pending).toBeNull();
+      manager.dispose();
+    });
+  }
+
   it.each(['glsl', 'slang', 'wgsl'] as const)('waits for the first %s environment before signature help from typing', async language => {
     const fixture = monacoFixture(language);
     const service = serviceFixture();

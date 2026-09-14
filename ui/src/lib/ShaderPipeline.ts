@@ -509,6 +509,17 @@ export class ShaderPipeline {
   }
 
   private setDebugShaderContext(message: ShaderSourceMessage): void {
+    if (message.customUniformInfo !== undefined || !message.scriptContextOmitted) {
+      this.shaderDebugManager.setShaderContext(
+        message.config ?? null,
+        message.path,
+        message.buffers ?? {},
+        message.slangModules ?? [],
+        message.bufferPathMap ?? {},
+        message.customUniformInfo ?? [],
+      );
+      return;
+    }
     const args: Parameters<ShaderDebugManager['setShaderContext']> = [
       message.config ?? null,
       message.path,

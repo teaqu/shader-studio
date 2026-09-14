@@ -14,6 +14,17 @@ import {
 } from './VirtualWorkspace';
 import { WebExtensionHost } from './WebExtensionHost';
 
+const EXPLORER_STATE_KEY = 'shader-studio-explorer-state';
+
+function savedExplorerState(fallback: unknown): unknown {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(EXPLORER_STATE_KEY) ?? 'null');
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function createWorkspace() {
   const seeds = createDefaultWorkspaceFiles();
   if (typeof indexedDB === 'undefined') {
@@ -124,6 +135,15 @@ export class WebTransport implements Transport {
     return {
       postMessage: (message) => {
         if (this.connected) {
+          if (message.type === 'saveState') {
+            // Preferences must be durable when the control changes, even if
+            // thumbnail/workspace writes are queued when the page unloads.
+            try {
+              localStorage.setItem(EXPLORER_STATE_KEY, JSON.stringify(message.state ?? null));
+            } catch {
+              // Restricted/quota-limited storage retains the workspace fallback.
+            }
+          }
           void this.host.then(async (host) => {
             await host.handleExplorerMessage(message);
             if (typeof message.path === 'string') {
@@ -142,7 +162,8 @@ export class WebTransport implements Transport {
         void this.host.then((host) => {
           if (!disposed && this.connected) {
             cleanup = host.onExplorerMessage((message) => {
-              handler(new MessageEvent('message', { data: message }));
+              handler(new MessageEvent('message', { data: message.type === 'shadersUpdate'
+                ? { ...message, savedState: savedExplorerState(message.savedState) } : message }));
             });
           }
         });

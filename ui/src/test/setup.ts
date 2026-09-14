@@ -215,6 +215,7 @@ const monacoMock = {
         getVisibleRanges: vi.fn(() => []),
       });
     }),
+    getEditors: vi.fn(() => []),
     // ShaderEditor resolves its model by uri before falling back to creating one.
     getModel: vi.fn((uri: { toString(): string }) => editorModels.get(uri.toString()) ?? null),
     createModel: vi.fn((value: string, language: string, uri?: { toString(): string }) => {

@@ -70,6 +70,7 @@ export class ShaderDebugManager {
   private bufferCodes: Record<string, string> = {};
   private shaderContextKey: string | null = null;
   private slangModules: SlangSourceModule[] = [];
+  private customUniforms: { name: string; type: string }[] = [];
   private variablePreview: VariablePreviewState | null = null;
   private language: ShaderDialect = 'glsl';
 
@@ -104,6 +105,7 @@ export class ShaderDebugManager {
     buffers: Record<string, string>,
     slangModules: SlangSourceModule[] = [],
     resolvedBufferPathMap: Record<string, string> = {},
+    customUniforms?: { name: string; type: string }[],
   ): void {
     const bufferPathMap: Record<string, string> = {};
     const passes = config?.passes ?? {};
@@ -113,7 +115,8 @@ export class ShaderDebugManager {
       }
     }
     const paths = { ...bufferPathMap, ...resolvedBufferPathMap };
-    const contextKey = JSON.stringify([imagePath, buffers, slangModules, paths]);
+    const nextCustomUniforms = customUniforms ?? this.customUniforms;
+    const contextKey = JSON.stringify([imagePath, buffers, slangModules, paths, nextCustomUniforms]);
     if (this.shaderContextKey === contextKey) {
       return;
     }
@@ -121,6 +124,7 @@ export class ShaderDebugManager {
     this.shaderContextKey = contextKey;
     this.bufferCodes = buffers;
     this.slangModules = slangModules;
+    this.customUniforms = nextCustomUniforms;
     this.bufferPathMap = paths;
     this.imagePassPath = resolvedBufferPathMap.Image
       ?? (imagePath && this.isBufferPath(imagePath) ? null : imagePath);
@@ -297,6 +301,7 @@ export class ShaderDebugManager {
       bufferPathMap: this.bufferPathMap,
       bufferCodes: this.bufferCodes,
       slangModules: this.slangModules,
+      customUniforms: this.customUniforms,
       getDebugTarget: (code, targetConfig) => this.getDebugTarget(code, targetConfig),
     };
   }

@@ -333,7 +333,14 @@
     if (!editor) {
       return false;
     }
-    return editor.hasTextFocus();
+    if (editor.hasTextFocus()) {
+      return true;
+    }
+    // Host updates affect every pane attached to this model. A background
+    // pane must not apply a stale snapshot over another pane's active edits.
+    const model = editor.getModel();
+    return !!model && monaco.editor.getEditors().some(candidate =>
+      candidate.getModel() === model && candidate.hasTextFocus());
   }
 
   function runEditorAction(actionId: string, args?: unknown) {
@@ -1010,9 +1017,14 @@
         const model = uri ? monaco.editor.getModel(uri)
           ?? monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath), uri)
           : monaco.editor.createModel(shaderCode, languageForShaderPath(shaderPath));
+        // A second pane may already be typing in this URI model. Even an
+        // identical setValue flushes it and resets every attached cursor.
+        const modelWasAttached = model.isAttachedToEditor?.() ?? false;
         editor.setModel(model);
         editorModelUri = model.uri.toString();
-        applyHostContent(shaderCode);
+        if (!modelWasAttached) {
+          applyHostContent(shaderCode);
+        }
         contentReplaced = true;
         const nextViewState = shaderPath ? savedViewStates.get(shaderPath) : null;
         if (nextViewState) {

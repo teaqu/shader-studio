@@ -131,6 +131,42 @@ describe("analyzeWgslSite", () => {
     });
   });
 
+  it("types locals from module-scope values without listing the module values", () => {
+    const source = [
+      "var<private> uFog: f32;",
+      "const uHue: f32 = 0.25;",
+      "override uGain: f32 = 1.0;",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let fog = uFog * uHue * uGain;",
+      "  return vec4f(fog);",
+      "}",
+    ].join("\n");
+    const result = analyze(source, { line: 5, character: 4 });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.analysis.visibleValues.map((value) => `${value.name}:${value.typeName}`))
+      .toEqual(["coord:vec2f", "fog:f32", "_dbgReturn:vec4f"]);
+  });
+
+  it("keeps block-scoped locals and a local shadowing a module value", () => {
+    const source = [
+      "var<private> uFog: f32;",
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let uFog = vec3f(1.0);",
+      "  if coord.x > 0.0 {",
+      "    let inner = uFog.x;",
+      "    return vec4f(inner);",
+      "  }",
+      "  return vec4f(uFog, 1.0);",
+      "}",
+    ].join("\n");
+    const result = analyze(source, { line: 5, character: 6 });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.analysis.visibleValues.map((value) => `${value.name}:${value.typeName}`))
+      .toEqual(["coord:vec2f", "uFog:vec3f", "inner:f32", "_dbgReturn:vec4f"]);
+  });
+
   it("fails closed outside any callable", () => {
     expect(analyze("var<private> x: f32 = 1.0;", { line: 0, character: 4 })).toMatchObject({
       ok: false,

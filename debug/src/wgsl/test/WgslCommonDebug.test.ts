@@ -52,11 +52,15 @@ describe("WGSL common debugging", () => {
     const result = new WgslDebugEngine().planCapture(request('/main.wgsl', 1), ['stale']);
     expect(result).toMatchObject({ ok: false, diagnostics: [{ sourceUri: '/main.wgsl', range: { start: { line: 1 } } }] });
   });
-  it('retains the provenance of common globals in root analysis', () => {
-    const result = new WgslDebugEngine().analyze(request('/main.wgsl', 1));
-    expect(result).toMatchObject({ ok: true, analysis: { visibleValues: expect.arrayContaining([
-      expect.objectContaining({ name: 'gain', sourceUri: '/common.wgsl', declarationRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 10 } } }),
-    ]) } });
+  it('does not list common globals as values of root or common callables', () => {
+    const engine = new WgslDebugEngine();
+    for (const [uri, line] of [['/main.wgsl', 1], ['/common.wgsl', 2]] as const) {
+      const result = engine.analyze(request(uri, line));
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.analysis.visibleValues.map((value) => value.name)).not.toContain('gain');
+      }
+    }
   });
 
   it('keeps common parameter edits in common and coordinate setup in the root', () => {

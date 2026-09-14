@@ -30,7 +30,6 @@
     sampleSize?: number;
     refreshMode?: RefreshMode;
     pollingMs?: number;
-    customUniformValues?: Record<string, number | number[] | boolean>;
     isVariableCaptureLoading?: boolean;
     variableCaptureIssues?: CaptureIssue[];
     onCaptureSettingsChanged?: () => void;
@@ -52,7 +51,6 @@
     sampleSize: sampleSizeOverride = undefined,
     refreshMode: refreshModeOverride = undefined,
     pollingMs: pollingMsOverride = undefined,
-    customUniformValues = {},
     isVariableCaptureLoading: variableCaptureLoadingOverride = undefined,
     variableCaptureIssues: variableCaptureIssuesOverride = undefined,
     onCaptureSettingsChanged = () => {},
@@ -126,7 +124,6 @@
   const hasContentAboveUniforms = $derived((showParams && ctx && ctx.parameters.length > 0) || showLoops);
   const hasContentAboveErrors = $derived((isInlineOn && !hasVariable) || (showParams && ctx && ctx.parameters.length > 0) || showLoops);
   const capturedVariables = $derived(debugState?.capturedVariables);
-  const customUniformEntries = $derived(Object.entries(customUniformValues));
   const isLineTooltipVisible = $derived(
     isLineTooltipTriggerHovered || (isLineTooltipHoverArmed && isLineTooltipHovered)
   );
@@ -346,22 +343,6 @@
       return '—';
     }
     return Array.from(v).map(n => n.toFixed(1)).join(', ');
-  }
-
-  function formatCustomValue(val: number | number[] | boolean | undefined): string {
-    if (val === undefined) {
-      return '—';
-    }
-    if (typeof val === 'boolean') {
-      return val ? 'true' : 'false';
-    }
-    if (typeof val === 'number') {
-      return val.toFixed(3);
-    }
-    if (Array.isArray(val)) {
-      return val.map(v => v.toFixed(2)).join(', ');
-    }
-    return String(val);
   }
 
   function activateHeaderControl(action: () => void) {
@@ -727,9 +708,6 @@
           <div class="uniform-row"><span class="uniform-name">iSampleRate</span><span class="uniform-value">{displayedUniforms.sampleRate}</span></div>
           <div class="uniform-row"><span class="uniform-name">iCameraPos</span><span class="uniform-value">{formatVec(displayedUniforms.cameraPos)}</span></div>
           <div class="uniform-row"><span class="uniform-name">iCameraDir</span><span class="uniform-value">{formatVec(displayedUniforms.cameraDir)}</span></div>
-          {#each customUniformEntries as [name, value], i}
-            <div class="uniform-row" class:custom-first={i === 0}><span class="uniform-name">{name}</span><span class="uniform-value">{formatCustomValue(value)}</span></div>
-          {/each}
         {:else}
           <div class="uniform-row"><span class="uniform-value">—</span></div>
         {/if}
@@ -1046,12 +1024,6 @@
     color: var(--vscode-descriptionForeground);
     font-style: italic;
     font-size: 12px;
-  }
-
-  .uniform-row.custom-first {
-    border-top: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.06));
-    margin-top: 2px;
-    padding-top: 4px;
   }
 
   .uniform-name {

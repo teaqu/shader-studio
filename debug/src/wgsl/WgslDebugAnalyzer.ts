@@ -20,7 +20,6 @@ import {
   comparePositions,
   containsPosition,
   containsRange,
-  isWgslHostGlobalSymbol,
   offsetAt,
   rangeSize,
 } from "./model";
@@ -137,14 +136,15 @@ function visibleValuesAt(
   sourceUri: string,
   boundary: DebugSourcePosition,
 ): DebugVisibleValue[] {
+  const moduleScopeIds = new Set(document.scopes.filter((scope) => scope.kind === "global").map((scope) => scope.id));
   const values = visibleSymbolsAtPosition(document, boundary)
     .filter((symbol) => (symbol.kind === "variable" || symbol.kind === "parameter" || symbol.kind === "constant")
       && symbol.typeName !== undefined
       && isWgslCapturableType(symbol.typeName)
-      // Host globals (iTime, iResolution, ...) type user code but are engine
-      // state, not shader variables: listing them would flood every capture
-      // with slots the other languages never show.
-      && !isWgslHostGlobalSymbol(symbol))
+      // Module-scope values (host globals, script uniforms, Common and pass
+      // globals) type user code but are not locals of the callable: listing
+      // them would flood every capture with slots GLSL and Slang never show.
+      && !moduleScopeIds.has(symbol.scopeId))
     .map((symbol) => ({
       id: symbol.id,
       name: symbol.name,

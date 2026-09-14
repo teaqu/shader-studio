@@ -12,6 +12,73 @@ describe('WebTransport', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     resetShellState();
+    const values = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    });
+  });
+
+  it('persists explorer preferences before queued workspace saves can finish', async () => {
+    const transport = new WebTransport();
+    const explorer = transport.getShaderExplorerHostApi();
+    explorer.postMessage({ type: 'saveState', state: { hideBufferShaders: false, showOptions: true } });
+    // Reload can interrupt asynchronous workspace IO immediately after a click.
+    expect(JSON.parse(localStorage.getItem('shader-studio-explorer-state') ?? 'null'))
+      .toEqual({ hideBufferShaders: false, showOptions: true });
+    transport.dispose();
+    const reloaded = new WebTransport();
+    const receive = vi.fn();
+    reloaded.getShaderExplorerHostApi().onMessage(receive);
+    reloaded.getShaderExplorerHostApi().postMessage({ type: 'requestShaders' });
+    await eventually(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ savedState: { hideBufferShaders: false, showOptions: true } }),
+    })));
+    reloaded.dispose();
+  });
+
+  it.each(['{broken', 'null', '42', '[]'])('falls back to workspace preferences for invalid local state %s', async saved => {
+    localStorage.setItem('shader-studio-explorer-state', saved);
+    const transport = new WebTransport();
+    const receive = vi.fn();
+    const explorer = transport.getShaderExplorerHostApi();
+    explorer.onMessage(receive);
+    explorer.postMessage({ type: 'requestShaders' });
+    await eventually(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ savedState: null }),
+    })));
+    transport.dispose();
+  });
+
+  it('uses the workspace fallback when browser preference storage is unavailable', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('Storage blocked');
+      },
+      setItem: () => {
+        throw new Error('Quota exceeded');
+      },
+    });
+    const transport = new WebTransport();
+    const receive = vi.fn();
+    const explorer = transport.getShaderExplorerHostApi();
+    explorer.onMessage(receive);
+    expect(() => explorer.postMessage({ type: 'saveState', state: { hideBufferShaders: false } })).not.toThrow();
+    explorer.postMessage({ type: 'requestShaders' });
+    await eventually(() => expect(receive).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ savedState: { hideBufferShaders: false } }),
+    })));
+    transport.dispose();
+  });
+
+  it('does not persist explorer messages after disposal', () => {
+    const transport = new WebTransport();
+    const explorer = transport.getShaderExplorerHostApi();
+    transport.dispose();
+    explorer.postMessage({ type: 'saveState', state: { hideBufferShaders: false } });
+    expect(localStorage.getItem('shader-studio-explorer-state')).toBeNull();
   });
 
   it('identifies itself as the web host transport', () => {

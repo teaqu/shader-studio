@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
+import { findShownAppFrame } from './shader-frame.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-validation');
@@ -206,19 +207,10 @@ export const test = base.extend({
       throw new Error(`unexpected non-builtin extensions: ${nonBuiltinExtensionIds.join(', ')}`);
     }
 
-    /** The frame hosting the Shader Studio app, found by content: VS Code's
-     *  internal webview frame names differ across versions. */
-    const shaderFrame = async (timeout = 90_000) => waitFor(async () => {
-      for (const frame of window.frames()) {
-        try {
-          const canvas = frame.locator('.canvas-container').first();
-          if (await canvas.isVisible()) {
-            return frame;
-          }
-        } catch { /* frame detached mid-scan */ }
-      }
-      return null;
-    }, { timeout, message: 'no frame hosting the Shader Studio app appeared' });
+    const shaderFrame = async (timeout = 90_000) => waitFor(
+      () => findShownAppFrame(window.frames()),
+      { timeout, message: 'no frame hosting the Shader Studio app appeared' },
+    );
 
     await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
 

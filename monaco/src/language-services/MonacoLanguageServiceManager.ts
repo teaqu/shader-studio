@@ -69,10 +69,16 @@ export class MonacoLanguageServiceManager {
     }
     const previous = this.environments.get(environment.documentUri);
     if (previous) {
+      // Workspace inventory is owned by the provider, not individual editor
+      // environment messages. Do not remove and re-add it on every save.
+      if (this.options.getWorkspaceDocuments) {
+        environment = withWorkspaceContext(environment, previous.workspaceDocuments);
+      }
       // Several editors can share one file. Their local counters cannot replace
       // the service's monotonically increasing revision for that file.
       const changed = JSON.stringify({ ...environment, generation: 0 }) !== JSON.stringify({ ...previous, generation: 0 });
-      environment = { ...environment, generation: Math.max(environment.generation, previous.generation + Number(changed)) };
+      environment = { ...environment, generation: !this.options.getWorkspaceDocuments || changed
+        ? Math.max(environment.generation, previous.generation + Number(changed)) : previous.generation };
     }
     const colorsChanged = previous?.generation !== environment.generation;
     this.syncVirtualModels(environment);
@@ -432,8 +438,15 @@ snapshots.get(change.uri)!.model.setValue(change.after);
         return undefined;
       }
       const latest = this.environments.get(model.uri.toString());
-      if (latest && JSON.stringify(latest.workspaceDocuments) !== JSON.stringify(workspaceDocuments)) {
-        const refreshed = { ...latest, generation: latest.generation + 1, workspaceDocuments };
+      const refreshedContext = latest && withWorkspaceContext(latest, workspaceDocuments);
+      if (latest && refreshedContext && JSON.stringify(latest) !== JSON.stringify(refreshedContext)) {
+        // The owner's source has its own document revision. Persisting that
+        // buffer changes its stored timestamp, not its analysis environment.
+        const dependencies = (files: ShaderAuthoringEnvironment['workspaceDocuments']) => files?.map(file =>
+          file.uri === latest.documentUri ? { ...file, text: '', version: 0 } : file);
+        const changed = JSON.stringify({ ...latest, workspaceDocuments: dependencies(latest.workspaceDocuments) })
+          !== JSON.stringify({ ...refreshedContext, workspaceDocuments: dependencies(workspaceDocuments) });
+        const refreshed = { ...refreshedContext, generation: latest.generation + Number(changed) };
         this.environments.set(model.uri.toString(), refreshed);
         this.syncVirtualModels(refreshed);
       }
@@ -688,4 +701,20 @@ function highlightKind(kind: number | undefined): Monaco.languages.DocumentHighl
 }
 function markerSeverity(severity: number | undefined): Monaco.MarkerSeverity {
   return severity === 2 ? 4 : severity === 3 ? 2 : severity === 4 ? 1 : 8;
+}
+
+/** A detached editor's Common belongs to its configured owner, not the preview. */
+function withWorkspaceContext(
+  environment: ShaderAuthoringEnvironment,
+  workspaceDocuments: ShaderAuthoringEnvironment['workspaceDocuments'],
+): ShaderAuthoringEnvironment {
+  const owner = workspaceDocuments?.find(file => file.uri === environment.documentUri);
+  const common = owner?.commonUri ? workspaceDocuments?.find(file => file.uri === owner.commonUri) : undefined;
+  return {
+    ...environment,
+    workspaceDocuments,
+    ...(owner && environment.languageId !== 'slang' ? {
+      commonFile: common ? { uri: common.uri, text: common.text, version: common.version } : undefined,
+    } : {}),
+  };
 }

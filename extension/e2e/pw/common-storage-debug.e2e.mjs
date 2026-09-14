@@ -7,16 +7,16 @@ const directory = join(workspacePath, 'common-storage-debug');
 test.beforeEach(async ({ vscode }) => {
   await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.closeAllEditors'));
 });
-async function showFileAtLine(vscode, targetPath, line) {
-  await vscode.evaluateInHost(async (vscode, path, lineNumber) => {
+async function showFileAtLine(vscode, targetPath, line, { beside = false } = {}) {
+  await vscode.evaluateInHost(async (vscode, path, lineNumber, openBeside) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, {
-      viewColumn: vscode.ViewColumn.One, preserveFocus: false, preview: false,
+      viewColumn: openBeside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, preserveFocus: false, preview: false,
     });
     const position = new vscode.Position(lineNumber, 4);
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
-  }, targetPath, line);
+  }, targetPath, line, beside);
 }
 
 async function ensureShaderView(vscode) {
@@ -179,7 +179,9 @@ for (const language of ['wgsl', 'slang']) {
       await expectCanvasPixels(frame, [159, 159, 159]);
       await vscode.evaluateInHost(vscode => vscode.window.activeTextEditor.document.save());
       await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('workbench.action.closeActiveEditor'));
-      await showFileAtLine(vscode, root, 2);
+      // Closing the only editor collapses its group, so column One is now the
+      // preview's group. Reopen beside it: stacked on top, the preview is hidden.
+      await showFileAtLine(vscode, root, 2, { beside: true });
       frame = await vscode.shaderFrame();
       await expect(row(frame, 'formula').locator('.var-value')).toHaveText('0.625');
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);

@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "script": "./chain.uniforms.ts",
+  "passes": {
+    "common": { "path": "./chain.common.wgsl" },
+    "BufferA": { "path": "./chain.buffer.wgsl", "inputs": {} },
+    "Image": { "inputs": { "iChannel0": { "type": "buffer", "source": "BufferA" } } }
+  }
+}

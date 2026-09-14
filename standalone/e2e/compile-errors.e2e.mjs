@@ -4,19 +4,25 @@ import { expect, test } from '@playwright/test';
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
 
 test.describe('renderer diagnostics', () => {
-  for (const language of ['glsl', 'slang']) {
+  for (const language of ['glsl', 'slang', 'wgsl']) {
     for (const separate of [false, true]) {
       test(`${language} renderer compile errors appear and clear in the ${separate ? 'separate' : 'main'} editor`, async ({ page }) => {
         await page.goto('/');
-        await page.getByTestId(language === 'glsl' ? 'shader-option-aurora-glsl' : 'shader-option-aurora-slang-slang').click();
+        await page.getByTestId(language === 'glsl'
+          ? 'shader-option-aurora-glsl'
+          : language === 'slang' ? 'shader-option-aurora-slang-slang' : 'shader-option-aurora-wgsl-wgsl').click();
         if (separate) {
           await page.getByRole('button', { name: 'Open in separate editor' }).click();
         }
         const editor = separate ? page.getByTestId('file-editor') : page.getByTestId('web-editor');
         const valid = language === 'glsl'
           ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
-          : 'float4 mainImage(float2 coord) { return float4(1.0); }';
-        const broken = '#error standalone_compile_regression\n' + valid;
+          : language === 'slang'
+            ? 'float4 mainImage(float2 coord) { return float4(1.0); }'
+            : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }';
+        const broken = language === 'wgsl'
+          ? 'fn mainImage(coord: vec2f) -> vec4f {\n  let standalone_compile_regression = ;\n  return vec4f(1.0);\n}'
+          : '#error standalone_compile_regression\n' + valid;
         await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
         await page.keyboard.press('ControlOrMeta+A');
         await page.keyboard.insertText(broken);

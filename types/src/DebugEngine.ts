@@ -1,3 +1,5 @@
+import type { SlangChannelDeclaration } from './shader-environment/SlangChannels';
+
 export interface DebugSourcePosition { line: number; character: number; }
 export interface DebugSourceRange { start: DebugSourcePosition; end: DebugSourcePosition; }
 export interface DebugSourceUnit {
@@ -19,6 +21,9 @@ export interface DebugWorkspace {
   };
   /** Configured storage types used only for analysis; bindings remain renderer-owned. */
   storage?: Record<string, { elementType: string }>;
+  /** Renderer-provided declarations for WGSL analysis, never emitted in debug plans. */
+  channels?: SlangChannelDeclaration[];
+  customUniforms?: { name: string; type: string }[];
   files: DebugSourceUnit[];
   contentHash: string;
 }

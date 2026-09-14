@@ -1,26 +1,48 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 
-test('buffer shaders are hidden by default and the explorer option survives reload', async ({ page }) => {
-  await page.goto('/');
-  const explorer = page.getByTestId('web-shader-explorer');
-  const trails = explorer.getByTestId('shader-option-trails-buffer-glsl');
-  const glow = explorer.getByTestId('shader-option-glow-buffer-glsl');
-  await expect(explorer.getByTestId('shader-option-glow-trails-glsl')).toBeVisible();
-  await expect(trails).toHaveCount(0);
-  await expect(glow).toHaveCount(0);
-  await explorer.getByTitle('Options', { exact: true }).click();
-  await explorer.getByLabel('Hide Buffers', { exact: true }).uncheck();
-  await expect(trails).toBeVisible();
-  await expect(glow).toBeVisible();
-  await page.reload();
-  await expect(trails).toBeVisible();
-  await expect(glow).toBeVisible();
-  await expect(explorer.getByLabel('Hide Buffers', { exact: true })).not.toBeChecked();
-  await explorer.getByLabel('Hide Buffers', { exact: true }).check();
-  await expect(trails).toHaveCount(0);
-  await expect(glow).toHaveCount(0);
-});
+for (const pendingSave of [false, true]) {
+  test(`buffer shaders are hidden by default and the explorer option survives reload (pending saves: ${pendingSave})`, async ({ page }) => {
+    await page.goto('/');
+    const explorer = page.getByTestId('web-shader-explorer');
+    const trails = explorer.getByTestId('shader-option-trails-buffer-glsl');
+    const glow = explorer.getByTestId('shader-option-glow-buffer-glsl');
+    await expect(explorer.getByTestId('shader-option-glow-trails-glsl')).toBeVisible();
+    await expect(trails).toHaveCount(0);
+    await expect(glow).toHaveCount(0);
+    await explorer.getByTitle('Options', { exact: true }).click();
+    // Hold subsequent workspace database opens until navigation. A preference
+    // must survive reload even while thumbnail/workspace writes are pending.
+    if (pendingSave) {
+      await page.evaluate(() => {
+        const open = indexedDB.open.bind(indexedDB);
+        indexedDB.open = (...args) => {
+          const request = open(...args);
+          request.addEventListener('success', event => {
+            event.stopImmediatePropagation();
+            request.result.close();
+          });
+          return request;
+        };
+      });
+    }
+    await explorer.getByLabel('Hide Buffers', { exact: true }).uncheck();
+    await expect(trails).toBeVisible();
+    await expect(glow).toBeVisible();
+    await page.reload();
+    await expect(trails).toBeVisible();
+    await expect(glow).toBeVisible();
+    await expect(explorer.getByLabel('Hide Buffers', { exact: true })).not.toBeChecked();
+    await explorer.getByLabel('Hide Buffers', { exact: true }).check();
+    await expect(trails).toHaveCount(0);
+    await expect(glow).toHaveCount(0);
+    await page.reload();
+    await expect(explorer.getByTestId('shader-option-glow-trails-glsl')).toBeVisible();
+    await expect(trails).toHaveCount(0);
+    await expect(glow).toHaveCount(0);
+    await expect(explorer.getByLabel('Hide Buffers', { exact: true })).toBeChecked();
+  });
+}
 
 test('standalone menu triggers use dropdown styling', async ({ page }) => {
   await page.goto('/');
@@ -806,6 +828,62 @@ for (const separate of [false, true]) {
     });
   }
 }
+
+test('a delayed preview selection preserves Slang typing in its separate editor', async ({ page }) => {
+  const { workspace } = await import('./language-service-fixtures.mjs');
+  await page.goto('/');
+  const slang = page.getByTestId('shader-option-aurora-slang-slang');
+  await slang.click();
+  await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
+  const editor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora-slang.slang"]');
+  await expect(editor.locator('.monaco-editor')).toBeVisible();
+  await page.getByTitle('Options', { exact: true }).click();
+  await page.getByLabel('Open Files', { exact: true }).uncheck();
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('void mainImage(out vec4 fragColor');
+  // Hold completion of the real workspace transaction that precedes selection
+  // publication. Release it after the first character, without delaying typing.
+  await page.evaluate(() => {
+    window.pendingSelectionCommits = [];
+    window.holdSelectionCommit = true;
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (...args) {
+      const tx = transaction.apply(this, args);
+      if (args[1] === 'readwrite') {
+        tx.addEventListener('complete', event => {
+          if (window.holdSelectionCommit) {
+            event.stopImmediatePropagation();
+            window.pendingSelectionCommits.push(() => tx.dispatchEvent(new Event('complete')));
+          }
+        });
+      }
+      return tx;
+    };
+  });
+  await editor.locator('.view-lines').click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.insertText('float4 mainImage(float2 coord) {\n  return ');
+  await page.keyboard.type('n');
+  await expect(editor.locator('.view-lines')).toContainText('return n');
+  await expect.poll(() => page.evaluate(() => window.pendingSelectionCommits.length)).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    window.holdSelectionCommit = false;
+    for (const commit of window.pendingSelectionCommits) {
+      commit();
+    }
+    window.pendingSelectionCommits = [];
+  });
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('float4 mainImage(float2 coord)');
+  await page.keyboard.type('orm');
+  await expect(editor.locator('.view-lines')).toContainText('return norm');
+  const suggestions = page.locator('.suggest-widget:visible');
+  await expect(suggestions).toContainText('normalize');
+  await suggestions.getByRole('option').filter({ hasText: /^normalize/ }).first().click();
+  await expect(editor.locator('.view-lines')).toContainText('return normalize');
+  await expect.poll(async () => (await workspace(page))['/shaders/aurora-slang.slang']).toContain('return normalize');
+  await page.reload();
+  await expect(editor.locator('.view-lines')).toContainText('return normalize');
+});
 
 test('explorer Open Files reuses one editor and only reopens it when checked', async ({ page }) => {
   await page.goto('/');

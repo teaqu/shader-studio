@@ -3,7 +3,6 @@ import {
   comparePositions,
   containsPosition,
   containsRange,
-  isWgslHostGlobalSymbol,
   offsetAt,
   rangeSize,
 } from "../model";
@@ -36,26 +35,5 @@ describe("WGSL debug source model", () => {
     expect(offsetAt(source, { line: 1, character: 2 })).toBe(5);
     expect(offsetAt(source, { line: 2, character: 1 })).toBe(8);
     expect(offsetAt(source, { line: 9, character: 0 })).toBe(source.length);
-  });
-
-  it("recognizes synthetic host globals but not user declarations", () => {
-    const origin = { line: 0, character: 0 };
-    const synthetic = {
-      id: "wgsl:0", name: "iTime", kind: "variable", scopeId: "wgsl:1", typeName: "f32",
-      declaration: { start: { ...origin }, end: { ...origin } },
-      definition: { start: { ...origin }, end: { ...origin } },
-      references: [],
-    } as const;
-    const userShadow = {
-      ...synthetic,
-      id: "wgsl:9",
-      declaration: { start: { line: 3, character: 4 }, end: { line: 3, character: 9 } },
-      definition: { start: { line: 3, character: 4 }, end: { line: 3, character: 9 } },
-    };
-    const userOther = { ...userShadow, id: "wgsl:10", name: "myTime" };
-
-    expect(isWgslHostGlobalSymbol(synthetic)).toBe(true);
-    expect(isWgslHostGlobalSymbol(userShadow)).toBe(false);
-    expect(isWgslHostGlobalSymbol(userOther)).toBe(false);
   });
 });

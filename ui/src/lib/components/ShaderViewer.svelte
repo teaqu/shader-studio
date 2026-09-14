@@ -1662,7 +1662,6 @@
         onExpandVarHistogram={handleExpandVarHistogram}
         onVarClick={handleVarClick}
         onCaptureSettingsChanged={notifyVariableCaptureManager}
-        {customUniformValues}
         {errors}
       />
     {/if}
