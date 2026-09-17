@@ -205,4 +205,38 @@ describe('inference gaps found by the language-service corpus sweep', () => {
     expect(types.pos2d).toBe('vec2f');
     expect(types.missing).toBeUndefined();
   });
+
+  it("infers declarations in a for-loop initializer", () => {
+    const document = parseWgslDocument(URI, [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  var total = 0.0;",
+      "  for (var i = 0; i < 3; i++) {",
+      "    total += f32(i);",
+      "  }",
+      "  for (var j = 0u; j < 2u; j++) { }",
+      "  for (let k = coord.x; total < k; total += 1.0) { }",
+      "  for (var typed: i32 = 0; typed < 1; typed++) { }",
+      "  for (var unknown = mystery(); ; ) { break; }",
+      "  return vec4f(total);",
+      "}",
+    ].join("\n"), "fragment");
+    const types = Object.fromEntries(document.symbols.map(symbol => [symbol.name, symbol.typeName]));
+
+    expect(types.i).toBe("i32");
+    expect(types.j).toBe("u32");
+    expect(types.k).toBe("f32");
+    expect(types.typed).toBe("i32");
+    expect(types.unknown).toBeUndefined();
+  });
+
+  it("does not add the for-loop initializer to the statement list", () => {
+    const document = parseWgslDocument(URI, [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  for (var i = 0; i < 3; i++) { }",
+      "  return vec4f(0.0);",
+      "}",
+    ].join("\n"), "fragment");
+
+    expect(document.statements.map(statement => statement.kind)).toEqual(["for", "return"]);
+  });
 });

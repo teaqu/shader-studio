@@ -57,6 +57,7 @@ describe("wgslTypes", () => {
       "texture_multisampled_2d<f32>",
       "texture_depth_2d",
       "texture_depth_cube",
+      "texture_external",
       "texture_storage_2d<rgba8unorm, write>",
       "texture_storage_2d_array<rgba16float, read_write>",
     ]) {
@@ -97,7 +98,7 @@ describe("wgslTypes", () => {
   it("treats every closed type family as a builtin value type", () => {
     for (const name of [
       "vec4f", "vec2<f32>", "mat4x4f", "mat3x2<f32>",
-      "sampler", "texture_depth_2d", "texture_storage_2d<rgba8unorm, write>",
+      "sampler", "texture_depth_2d", "texture_external", "texture_storage_2d<rgba8unorm, write>",
       "atomic<u32>", "array<f32, 4>", "ptr<function, f32>",
     ]) {
       expect(isBuiltinValueType(name)).toBe(true);

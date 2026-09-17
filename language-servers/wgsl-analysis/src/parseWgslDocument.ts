@@ -82,6 +82,11 @@ class WgslParser {
   private symbols: MutableSymbol[] = [];
   private scopes: MutableScope[] = [];
   private statements: Array<{ kind: WgslStatementKind; start: Position; end: Position; scopeId: string }> = [];
+  /**
+   * Declarations in a `for` initializer. They are part of the loop statement,
+   * not statements of their own, but their initializers still type the symbol.
+   */
+  private readonly forInitializerDeclarations: Array<{ start: Position; end: Position; scopeId: string }> = [];
   private scopeStack: Array<{ frame: MutableScope; bindings: ScopeBindings }> = [];
   private readonly unresolved = new Map<string, { name: string; kind: WgslUnresolvedReference["kind"]; ranges: Range[] }>();
   private readonly diagnostics: WgslParseDiagnostic[] = [];
@@ -389,8 +394,10 @@ class WgslParser {
         || visiting.has(symbol.id) || depth > 16) {
         return undefined;
       }
-      const statement = this.statements.find((candidate) => candidate.kind === "declaration"
-        && candidate.scopeId === symbol.scopeId
+      const statement = [
+        ...this.statements.filter((candidate) => candidate.kind === "declaration"),
+        ...this.forInitializerDeclarations,
+      ].find((candidate) => candidate.scopeId === symbol.scopeId
         && containsDocumentRange(candidate, symbol.declaration));
       if (!statement) {
         return undefined;
@@ -1350,7 +1357,10 @@ class WgslParser {
     if (this.checkText(";")) {
       this.advance();
     } else if (this.peek().text === "var" || this.peek().text === "let" || this.peek().text === "const") {
+      const start = this.tokenStart(this.peek());
+      const scopeId = this.scopeStack[this.scopeStack.length - 1]!.frame.id;
       this.parseVariableDeclaration();
+      this.forInitializerDeclarations.push({ start, end: this.statementEnd(), scopeId });
     } else {
       this.parseAssignmentExpression();
       this.expectSemicolon("for initializer");

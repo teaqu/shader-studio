@@ -55,12 +55,14 @@ const TEXTURE_BASES = new Set([
   "texture_storage_3d",
 ]);
 
-const DEPTH_TEXTURES = new Set([
+/** Texture types spelled without a template list. */
+const UNPARAMETERIZED_TEXTURES = new Set([
   "texture_depth_2d",
   "texture_depth_2d_array",
   "texture_depth_cube",
   "texture_depth_cube_array",
   "texture_depth_multisampled_2d",
+  "texture_external",
 ]);
 
 export function vectorType(typeName: string): WgslVectorType | undefined {
@@ -125,7 +127,7 @@ export function resolveSwizzleType(ownerType: string, selection: string): string
 }
 
 export function isWgslTextureType(typeName: string): boolean {
-  if (DEPTH_TEXTURES.has(typeName)) {
+  if (UNPARAMETERIZED_TEXTURES.has(typeName)) {
     return true;
   }
   const parameterized = /^([A-Za-z_][A-Za-z0-9_]*)<\s*(.+?)\s*>$/.exec(typeName);
