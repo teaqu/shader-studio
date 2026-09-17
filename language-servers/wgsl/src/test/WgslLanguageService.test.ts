@@ -169,6 +169,86 @@ describe("WgslLanguageService", () => {
     expect(JSON.stringify((await hoverAt(1, 33))?.contents)).toContain("i32 iFrame");
   });
 
+  it("documents builtin uniforms instead of claiming the shader declared them", async () => {
+    const instance = new WgslLanguageService();
+    const text = `fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(iResolution.xy, iTime, 1.0);\n}`;
+    await instance.syncEnvironment(environment());
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const resolution = JSON.stringify((await instance.hover({ document: revision, position: { line: 1, character: 16 } }))?.contents);
+    expect(resolution).toContain("Canvas dimensions");
+    expect(resolution).not.toContain("Declared in");
+  });
+
+  it("documents stage-gated builtin uniforms on their stage", async () => {
+    const instance = new WgslLanguageService();
+    const text = `@compute @workgroup_size(1)\nfn main() {\n  let index = iDispatch;\n}`;
+    await instance.syncEnvironment({ ...environment(), stage: "compute" });
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const dispatch = JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 16 } }))?.contents);
+    expect(dispatch).toContain("i32 iDispatch");
+    expect(dispatch).toContain("repetition index");
+    expect(dispatch).not.toContain("Declared in");
+  });
+
+  it("does not attribute builtin uniforms to the Common file", async () => {
+    const commonUri = "file:///workspace/common.wgsl";
+    const instance = new WgslLanguageService();
+    const text = `fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(helper(iTime));\n}`;
+    await instance.syncEnvironment({
+      ...environment(),
+      commonFile: { uri: commonUri, text: "fn helper(t: f32) -> f32 { return t; }", version: 1 },
+    });
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const time = JSON.stringify((await instance.hover({ document: revision, position: { line: 1, character: 23 } }))?.contents);
+    expect(time).toContain("f32 iTime");
+    expect(time).not.toContain("Declared in");
+    const helper = JSON.stringify((await instance.hover({ document: revision, position: { line: 1, character: 16 } }))?.contents);
+    expect(helper).toContain("Declared in Shader Studio Common");
+  });
+
+  it("gives builtin uniforms no source declaration to navigate, highlight, or outline", async () => {
+    const instance = new WgslLanguageService();
+    const text = `fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(iTime, iTime, 0.0, 1.0);\n}`;
+    await instance.syncEnvironment(environment());
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const atTime = { document: revision, position: { line: 1, character: 16 } };
+
+    expect(await instance.definition(atTime)).toEqual([]);
+    const origin = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+    const highlights = await instance.documentHighlights(atTime);
+    expect(highlights.map((item) => item.range)).not.toContainEqual(origin);
+    expect(highlights.map((item) => item.range.start)).toEqual([{ line: 1, character: 15 }, { line: 1, character: 22 }]);
+    expect(highlights.every((item) => item.kind === DocumentHighlightKind.Read)).toBe(true);
+    const references = await instance.references({ ...atTime, includeDeclaration: true });
+    expect(references.map((item) => item.range.start)).toEqual([{ line: 1, character: 15 }, { line: 1, character: 22 }]);
+    expect((await instance.documentSymbols({ document: revision })).map((symbol) => symbol.name)).toEqual(["mainImage"]);
+  });
+
+  it("still navigates an authored global that shadows a builtin name", async () => {
+    const instance = new WgslLanguageService();
+    const text = `var<private> iTime: f32 = 0.0;\nfn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(iTime);\n}`;
+    await instance.syncEnvironment(environment());
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const atTime = { document: revision, position: { line: 2, character: 16 } };
+
+    expect((await instance.definition(atTime)).map((item) => item.range.start)).toEqual([{ line: 0, character: 13 }]);
+    expect((await instance.documentHighlights(atTime)).map((item) => item.kind)).toEqual([DocumentHighlightKind.Write, DocumentHighlightKind.Read]);
+    expect((await instance.documentSymbols({ document: revision })).map((symbol) => symbol.name)).toEqual(["iTime", "mainImage"]);
+  });
+
+  it("still describes an authored global that shadows a builtin name", async () => {
+    const instance = new WgslLanguageService();
+    const text = `var<private> iTime: f32 = 0.0;\nfn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(iTime);\n}`;
+    await instance.syncEnvironment(environment());
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const time = JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 16 } }))?.contents);
+    expect(time).toContain("Declared in this shader");
+  });
+
   it("resolves definitions across the common file", async () => {
     const instance = new WgslLanguageService();
     await instance.syncEnvironment({

@@ -271,9 +271,12 @@ export class WgslLanguageService implements LanguageService {
     if (site?.kind === "member") {
       return memberHover(site, state.document.text, params.document.uri, state.environment, this.includeAnalyses.get(params.document.uri) ?? []);
     }
-    const userSymbol = symbolAtPosition(state.analysis, params.position)
+    // Host globals are synthetic declarations of Shader Studio builtins; they
+    // fall through to the builtin documentation below.
+    const resolved = symbolAtPosition(state.analysis, params.position)
       ?? visibleSymbolsAtPosition(state.analysis, params.position).find((symbol) => symbol.name === word)
       ?? state.analysis.symbols.find((symbol) => symbol.name === word);
+    const userSymbol = resolved && !state.analysis.hostGlobalIds.has(resolved.id) ? resolved : undefined;
     if (userSymbol) {
       const vertexHook = state.environment.stage === "vertex" ? vertexHookFeature(state.analysis, userSymbol) : undefined;
       if (vertexHook) {
@@ -286,7 +289,7 @@ export class WgslLanguageService implements LanguageService {
       return markdownHover(userSymbol.signature ?? `${userSymbol.typeName ?? userSymbol.kind} ${userSymbol.name}`, "Declared in this shader.");
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
-      const included = analysis.symbols.find((symbol) => symbol.name === word);
+      const included = analysis.symbols.find((symbol) => symbol.name === word && !analysis.hostGlobalIds.has(symbol.id));
       if (included) {
         const description = analysis.uri === state.environment.commonFile?.uri
           ? "Declared in Shader Studio Common."
@@ -323,11 +326,14 @@ export class WgslLanguageService implements LanguageService {
     const symbol = symbolAtPosition(state.analysis, params.position)
       ?? visibleSymbolsAtPosition(state.analysis, params.position).find((candidate) => candidate.name === name)
       ?? state.analysis.symbols.find((candidate) => candidate.name === name);
+    if (symbol && state.analysis.hostGlobalIds.has(symbol.id)) {
+      return [];
+    }
     if (symbol) {
       return [{ uri: params.document.uri, range: symbol.declaration }];
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
-      const included = analysis.symbols.find((candidate) => candidate.name === name);
+      const included = analysis.symbols.find((candidate) => candidate.name === name && !analysis.hostGlobalIds.has(candidate.id));
       if (included) {
         return analysis.uri === CHANNEL_DECLARATIONS_URI ? [] : [{ uri: analysis.uri, range: included.declaration }];
       }
@@ -383,6 +389,7 @@ export class WgslLanguageService implements LanguageService {
       state.analysis.scopes.filter((scope) => scope.kind === "global").map((scope) => scope.id),
     );
     return state.analysis.symbols
+      .filter((symbol) => !state.analysis.hostGlobalIds.has(symbol.id))
       .filter((symbol) => globalScopeIds.has(symbol.scopeId) || symbol.kind === "function" || symbol.kind === "type")
       .map((symbol) => ({
         name: symbol.name,
@@ -395,11 +402,15 @@ export class WgslLanguageService implements LanguageService {
 
   async references(params: ReferenceParams): Promise<Location[]> {
     const state = this.current(params);
-    const symbol = state ? symbolAtPosition(state.analysis, params.position) : null;
-    if (!symbol) {
-      return state ? this.includedReferences(state, params, params.includeDeclaration) : [];
+    if (!state) {
+      return [];
     }
-    const ranges = params.includeDeclaration
+    const symbol = symbolAtPosition(state.analysis, params.position);
+    if (!symbol) {
+      return this.includedReferences(state, params, params.includeDeclaration);
+    }
+    const synthetic = state.analysis.hostGlobalIds.has(symbol.id);
+    const ranges = params.includeDeclaration && !synthetic
       ? [symbol.declaration, ...symbol.references]
       : symbol.references;
     const shared = this.commonUses(symbol, params.document.uri);
@@ -411,17 +422,21 @@ export class WgslLanguageService implements LanguageService {
 
   async documentHighlights(params: DocumentPositionParams): Promise<DocumentHighlight[]> {
     const state = this.current(params);
-    const symbol = state ? symbolAtPosition(state.analysis, params.position) : null;
+    if (!state) {
+      return [];
+    }
+    const symbol = symbolAtPosition(state.analysis, params.position);
     if (!symbol) {
-      if (!state) {
-        return [];
-      }
       const included = this.includedSymbolAt(state, params.position);
       return included ? orderedRanges(includedReferenceRanges(state.analysis, included.symbol))
         .map((range) => ({ range, kind: DocumentHighlightKind.Read })) : [];
     }
+    // Synthetic host globals have no source declaration to mark as a write.
+    const declaration = state.analysis.hostGlobalIds.has(symbol.id)
+      ? []
+      : [{ range: symbol.declaration, kind: DocumentHighlightKind.Write }];
     return [
-      { range: symbol.declaration, kind: DocumentHighlightKind.Write },
+      ...declaration,
       ...orderedRanges(symbol.references).map((range) => ({ range, kind: DocumentHighlightKind.Read })),
     ];
   }

@@ -473,8 +473,14 @@ describe("WGSL corpus mirrors: authored identifier sweep", () => {
       const structNames = new Set([...analysis.symbols, ...(commonAnalysis?.symbols ?? [])]
         .filter((symbol) => symbol.kind === "type" && symbol.typeName === undefined).map((symbol) => symbol.name));
       const passSupplied = new Set(doc.passSuppliedNames ?? []);
-      const commonNames = new Set(commonAnalysis?.symbols.map((symbol) => symbol.name) ?? []);
-      const documentGlobals = new Set(analysis.symbols.map((symbol) => symbol.name));
+      const authoredNames = (source: typeof analysis | undefined) => (source?.symbols ?? [])
+        .filter((symbol) => !source?.hostGlobalIds.has(symbol.id))
+        .map((symbol) => symbol.name);
+      const commonNames = new Set(authoredNames(commonAnalysis));
+      const documentGlobals = new Set(authoredNames(analysis));
+      const builtinNames = new Set(analysis.symbols
+        .filter((symbol) => analysis.hostGlobalIds.has(symbol.id))
+        .map((symbol) => symbol.name));
       const gaps: string[] = [];
       wgslSweptDocs.add(label);
       for (const { token, index, category } of sites) {
@@ -503,6 +509,9 @@ describe("WGSL corpus mirrors: authored identifier sweep", () => {
               : commonNames.has(token.text) ? /Shader Studio Common/ : undefined;
             if (owner && !owner.test(contents) && !/Component selection|Field of/.test(contents)) {
               gaps.push(`${where}: hover names the wrong owner: ${contents.slice(0, 100)}`);
+            }
+            if (!owner && builtinNames.has(token.text) && contents.includes("Declared in")) {
+              gaps.push(`${where}: builtin hover claims an authored owner: ${contents.slice(0, 100)}`);
             }
           }
         } else if (category === "attribute-argument") {
