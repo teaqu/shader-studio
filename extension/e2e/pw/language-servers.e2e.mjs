@@ -2,11 +2,13 @@ import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 
 const fixturePath = join(workspacePath, 'language-servers');
+const wgslFixturePath = join(fixturePath, 'wgsl');
+const intrinsicNeedles = { glsl: 'texture(iChannel0', slang: 'fmod(', wgsl: 'fract(' };
 // vscode.DocumentHighlightKind.Write
 const vscodeWriteHighlight = 2;
 
 async function languageSnapshot(vscodeFixture, filePath, language) {
-  return vscodeFixture.evaluateInHost(async (vscode, targetPath, expectedLanguage) => {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath, expectedLanguage, intrinsicNeedle) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     if (document.languageId !== expectedLanguage) {
       throw new Error(`Expected ${targetPath} to use ${expectedLanguage}, got ${document.languageId}`);
@@ -64,9 +66,11 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       : [];
     const completionItems = completions?.items ?? [];
     const completionDocs = {};
-    const documentedCompletions = expectedLanguage === 'glsl'
-      ? new Set(['texture'])
-      : new Set(['normalize', 'fmod', 'inputs', 'iChannel0']);
+    const documentedCompletions = {
+      glsl: new Set(['texture']),
+      slang: new Set(['normalize', 'fmod', 'inputs', 'iChannel0']),
+      wgsl: new Set(['normalize', 'fract', 'iChannel0', 'iChannel0Sample']),
+    }[expectedLanguage];
     for (const item of completionItems) {
       const label = typeof item.label === 'string' ? item.label : item.label.label;
       if (documentedCompletions.has(label)) {
@@ -91,14 +95,14 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       labels: completionItems.map((item) => typeof item.label === 'string' ? item.label : item.label.label),
       completionDocs,
       completionEntries: completionItems.filter((item) => (
-        ['normalize', 'iChannel0'].includes(typeof item.label === 'string' ? item.label : item.label.label)
+        ['normalize', 'iChannel0', 'iChannel0Sample'].includes(typeof item.label === 'string' ? item.label : item.label.label)
       )).map((item) => ({
         label: typeof item.label === 'string' ? item.label : item.label.label,
         detail: item.detail ?? '',
         documentation: markdown(item.documentation),
       })),
       builtinHover: await hover('iResolution'),
-      intrinsicHover: await hover(expectedLanguage === 'glsl' ? 'texture(iChannel0' : 'fmod('),
+      intrinsicHover: await hover(intrinsicNeedle),
       channelHover: await hover('iChannel0'),
       hookHover: await hover('mainImage'),
       coordinateHover: await hover('pixelPosition'),
@@ -113,11 +117,16 @@ async function languageSnapshot(vscodeFixture, filePath, language) {
       })),
       colorPresentations: (colorPresentations ?? []).map((item) => item.label),
     };
-  }, filePath, language);
+  }, filePath, language, intrinsicNeedles[language]);
 }
 
-async function navigationSnapshot(vscodeFixture, filePath) {
-  return vscodeFixture.evaluateInHost(async (vscode, targetPath) => {
+const navigationNeedles = {
+  glsl: { declaration: 'shade(float value)' },
+  wgsl: { declaration: 'shade(value: f32)' },
+};
+
+async function navigationSnapshot(vscodeFixture, filePath, language = 'glsl') {
+  return vscodeFixture.evaluateInHost(async (vscode, targetPath, needles) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
     const source = document.getText();
     const position = (needle, occurrence = 0, offset = 1) => {
@@ -133,7 +142,7 @@ async function navigationSnapshot(vscodeFixture, filePath) {
     const references = await vscode.commands.executeCommand(
       'vscode.executeReferenceProvider',
       document.uri,
-      position('shade(float value)'),
+      position(needles.declaration),
     );
     const highlights = await vscode.commands.executeCommand(
       'vscode.executeDocumentHighlights',
@@ -168,7 +177,7 @@ async function navigationSnapshot(vscodeFixture, filePath) {
       rename: describeEdit(renameEdit),
       includedRename,
     };
-  }, filePath);
+  }, filePath, navigationNeedles[language]);
 }
 
 async function stageSnapshot(vscodeFixture, filePath, expectations) {
@@ -374,8 +383,62 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['float4(1.0, 0.5, 0.0, 1.0)']);
   });
 
-  test('describes locals, members, and nested arguments in GLSL and Slang', async ({ vscode }) => {
-    for (const language of ['glsl', 'slang']) {
+  test('provides the complete WGSL authoring feature set', async ({ vscode }) => {
+    const result = await languageSnapshot(vscode, join(wgslFixturePath, 'image.wgsl'), 'wgsl');
+
+    for (const label of ['normalize', 'fract', 'iChannel0', 'iChannel0Sample', 'iResolution', 'shade', 'twice']) {
+      expect(result.labels, `Missing WGSL completion ${label}`).toContain(label);
+    }
+    expect(result.completionDocs.normalize).toMatch(/unit vector/i);
+    expect(result.completionDocs.fract).toMatch(/fraction/i);
+    for (const stageOnly of ['mainVertex', 'writeOutput', 'iDispatch']) {
+      expect(result.labels, `Unexpected fragment completion ${stageOnly}`).not.toContain(stageOnly);
+    }
+    for (const foreign of ['inputs', 'fmod', 'sampleIChannel0']) {
+      expect(result.labels, `Unexpected non-WGSL completion ${foreign}`).not.toContain(foreign);
+    }
+    expect(result.builtinHover).toMatch(/Canvas dimensions/);
+    expect(result.intrinsicHover).toMatch(/fraction/i);
+    expect(result.channelHover).toMatch(/input channel|channel/i);
+    expect(result.hookHover).toMatch(/fragment entry point/i);
+    expect(result.coordinateHover).toMatch(/lower-left/i);
+    expect(result.definitions.some((item) => item.path.endsWith('common.wgsl') && item.line === 0), JSON.stringify(result.definitions)).toBeTruthy();
+    expect(result.signatures.some((item) => item.includes('shade'))).toBeTruthy();
+    // Built-in uniforms are documented, never listed as shader declarations.
+    expect([...result.symbols].sort()).toEqual(['mainImage', 'shade']);
+    expect(result.builtinHover).not.toMatch(/Declared in/);
+    expect(result.colors[0]).toEqual({ red: 1, green: 0.5, blue: 0, alpha: 1 });
+    // The literal is a vec3f; editing its colour must keep the WGSL constructor.
+    expect(result.colorPresentations, JSON.stringify(result.colorPresentations)).toEqual(['vec3f(1.0, 0.5, 0.0)']);
+  });
+
+  test('resolves WGSL references, highlights, and renames across Common', async ({ vscode }) => {
+    const result = await navigationSnapshot(vscode, join(wgslFixturePath, 'image.wgsl'), 'wgsl');
+
+    // `shade` is declared on line 3 and called on line 11.
+    expect(result.references.every((item) => item.path.endsWith('image.wgsl')), JSON.stringify(result.references)).toBeTruthy();
+    expect(result.references.map((item) => item.line).sort((a, b) => a - b)).toEqual([2, 10]);
+
+    // `literalColor` is declared on line 8 and read on line 10.
+    expect(result.highlights.map((item) => item.line).sort((a, b) => a - b)).toEqual([7, 9]);
+    expect(result.highlights.some((item) => item.kind === vscodeWriteHighlight)).toBeTruthy();
+
+    // Renaming `uv` rewrites its declaration and its single use.
+    expect(result.rename).toHaveLength(1);
+    expect(result.rename[0].path.endsWith('image.wgsl')).toBeTruthy();
+    expect(result.rename[0].edits.map((item) => item.line).sort((a, b) => a - b)).toEqual([8, 10]);
+    expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
+
+    // `twice` is declared in the configured Common pass.
+    expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
+      .sort((left, right) => left.file.localeCompare(right.file))).toEqual([
+      { file: 'common.wgsl', edits: [{ line: 0, newText: 'doubled' }] },
+      { file: 'image.wgsl', edits: [{ line: 3, newText: 'doubled' }] },
+    ]);
+  });
+
+  test('describes locals, members, and nested arguments in GLSL, Slang, and WGSL', async ({ vscode }) => {
+    for (const language of ['glsl', 'slang', 'wgsl']) {
       const result = await vscode.evaluateInHost(async (vscode, targetPath, vector) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         await vscode.window.showTextDocument(document, { preview: false });
@@ -402,9 +465,10 @@ test.describe('Shader language servers in VS Code', () => {
           signature: signature?.signatures[signature.activeSignature ?? 0]?.label ?? '',
           activeParameter: signature?.activeParameter,
         };
-      }, join(fixturePath, `members.${language}`), language === 'glsl' ? 'vec2' : 'float2');
+      }, language === 'wgsl' ? join(wgslFixturePath, 'members.wgsl') : join(fixturePath, `members.${language}`), { glsl: 'vec2', slang: 'float2', wgsl: 'vec2f' }[language]);
 
-      const [float2, float3] = language === 'glsl' ? ['vec2', 'vec3'] : ['float2', 'float3'];
+      const [float2, float3] = { glsl: ['vec2', 'vec3'], slang: ['float2', 'float3'], wgsl: ['vec2f', 'vec3f'] }[language];
+      // Every language's hover names a value as `type name`, WGSL included.
       expect(result.localHover, `${language} local hover`).toContain(`${float2} uv`);
       expect(result.fieldHover, `${language} field hover`).toMatch(/rough/);
       expect(result.fieldHover, `${language} field hover`).toMatch(/Material/);
@@ -440,9 +504,28 @@ test.describe('Shader language servers in VS Code', () => {
     }
     expect(!compute.labels.includes('mainImage')).toBeTruthy();
     expect(!compute.labels.includes('mainVertex')).toBeTruthy();
+
+    const wgslVertex = await stageSnapshot(vscode, join(wgslFixturePath, 'vertex.wgsl'), ['mainVertex', 'deformed', 'surfaceNormal', 'textureUv']);
+    expect(wgslVertex.hovers.mainVertex).toMatch(/vertex hook/i);
+    expect(wgslVertex.hovers.deformed).toMatch(/vertex position/i);
+    expect(wgslVertex.hovers.surfaceNormal).toMatch(/vertex normal/i);
+    expect(wgslVertex.hovers.textureUv).toMatch(/texture coordinate/i);
+    expect(wgslVertex.labels).not.toContain('mainImage');
+    expect(wgslVertex.labels).not.toContain('writeOutput');
+
+    // WGSL attribute names carry no hover; their builtin-value arguments do.
+    const wgslCompute = await stageSnapshot(vscode, join(wgslFixturePath, 'compute.wgsl'), ['global_invocation_id', 'iDispatch', 'writeOutput']);
+    expect(wgslCompute.hovers.global_invocation_id).toMatch(/global workgroup-grid/i);
+    expect(wgslCompute.hovers.iDispatch).toMatch(/repetition index/i);
+    expect(wgslCompute.hovers.writeOutput).toMatch(/compute pass output texture/i);
+    for (const label of ['iDispatch', 'writeOutput']) {
+      expect(wgslCompute.labels, `Missing WGSL compute completion ${label}`).toContain(label);
+    }
+    expect(wgslCompute.labels).not.toContain('mainImage');
+    expect(wgslCompute.labels).not.toContain('mainVertex');
   });
 
-  test('publishes GLSL parser and Slang compiler diagnostics', async ({ vscode }) => {
+  test('publishes GLSL parser, Slang compiler, and WGSL service diagnostics', async ({ vscode }) => {
     const glslDocument = await openDiagnosticDocument(vscode, join(fixturePath, 'diagnostic.glsl'));
     const glslUri = glslDocument.uri;
     expect(glslDocument.diagnostics.length > 0, JSON.stringify(glslDocument.diagnostics)).toBeTruthy();
@@ -457,6 +540,14 @@ test.describe('Shader language servers in VS Code', () => {
     const slang = await waitForDiagnostic(vscode, slangUri, 'undefined identifier');
     expect(slang, JSON.stringify(slangDocument.diagnostics)).toBeTruthy();
     expect(slang.source).toBe('shader-studio-slang-compiler');
+
+    const wgslDocument = await openDiagnosticDocument(vscode, join(wgslFixturePath, 'diagnostic.wgsl'));
+    const wgslUri = wgslDocument.uri;
+    const wgsl = await waitForDiagnostic(vscode, wgslUri, "undefined identifier 'unknownValue'");
+    expect(wgsl, JSON.stringify(wgslDocument.diagnostics)).toBeTruthy();
+    expect(wgsl.source).toBe('shader-studio-wgsl-ls');
+    await replaceDiagnosticDocument(vscode, wgslUri, 'fn mainImage(p: vec2f) -> vec4f { return vec4f(p, 0.0, 1.0); }');
+    await waitForDiagnostic(vscode, wgslUri, "undefined identifier 'unknownValue'", false);
   });
 
 });

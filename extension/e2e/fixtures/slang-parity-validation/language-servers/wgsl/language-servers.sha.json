@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "path": "./image.wgsl",
+      "vertex": "./vertex.wgsl",
+      "inputs": {
+        "iChannel0": { "type": "texture", "path": "../../orientation-texture.svg" }
+      }
+    },
+    "Members": {
+      "path": "./members.wgsl"
+    },
+    "Compute": {
+      "type": "compute",
+      "path": "./compute.wgsl",
+      "entryPoint": "computeMain"
+    },
+    "common": {
+      "path": "./common.wgsl"
+    }
+  }
+}

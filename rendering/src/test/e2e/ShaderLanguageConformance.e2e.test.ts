@@ -27,6 +27,9 @@ const conformanceCases: ConformanceCase[] = [
       slang: {
         image: "float4 mainImage(float2 fragCoord) { return float4(1.0, 0.0, 128.0 / 255.0, 1.0); }",
       },
+      wgsl: {
+        image: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0, 0.0, 128.0 / 255.0, 1.0); }",
+      },
     },
   },
   {
@@ -53,6 +56,12 @@ const conformanceCases: ConformanceCase[] = [
           return float4(cell, 0.0, 1.0);
         }`,
       },
+      wgsl: {
+        image: `fn mainImage(coord: vec2f) -> vec4f {
+          let cell = step(iResolution.xy * 0.5, coord);
+          return vec4f(cell, 0.0, 1.0);
+        }`,
+      },
     },
   },
   {
@@ -69,6 +78,11 @@ const conformanceCases: ConformanceCase[] = [
         buffers: { common: "float4 commonColor() { return float4(0.0, 1.0, 1.0, 1.0); }" },
         config: { version: "1", passes: { Image: {}, common: { path: "common.slang" } } },
       },
+      wgsl: {
+        image: "fn mainImage(coord: vec2f) -> vec4f { return commonColor(); }",
+        buffers: { common: "fn commonColor() -> vec4f { return vec4f(0.0, 1.0, 1.0, 1.0); }" },
+        config: { version: "1", passes: { Image: {}, common: { path: "common.wgsl" } } },
+      },
     },
   },
   {
@@ -83,6 +97,12 @@ const conformanceCases: ConformanceCase[] = [
       },
       slang: {
         image: "float4 mainImage(float2 fragCoord) { return testColor; }",
+        customUniformDeclarations: "uniform vec4 testColor;",
+        customUniformInfo: [{ name: "testColor", type: "vec4" }],
+        customUniformValues: [{ name: "testColor", type: "vec4", value: [1, 1, 0, 1] }],
+      },
+      wgsl: {
+        image: "fn mainImage(coord: vec2f) -> vec4f { return testColor; }",
         customUniformDeclarations: "uniform vec4 testColor;",
         customUniformInfo: [{ name: "testColor", type: "vec4" }],
         customUniformValues: [{ name: "testColor", type: "vec4", value: [1, 1, 0, 1] }],
@@ -119,11 +139,24 @@ const conformanceCases: ConformanceCase[] = [
           },
         },
       },
+      wgsl: {
+        image: "fn mainImage(coord: vec2f) -> vec4f { return iChannel0Sample(coord / iResolution.xy); }",
+        buffers: {
+          BufferA: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0, 0.0, 1.0, 1.0); }",
+        },
+        config: {
+          version: "1",
+          passes: {
+            Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+            BufferA: { path: "buffer-a.wgsl", resolution: { width: 2, height: 2 } },
+          },
+        },
+      },
     },
   },
 ];
 
-describe.each(["glsl", "slang"] as const)("%s canvas conformance", (language) => {
+describe.each(["glsl", "slang", "wgsl"] as const)("%s canvas conformance", (language) => {
   for (const testCase of conformanceCases) {
     it(testCase.name, { timeout: 30_000 }, async () => {
       const harness = createShaderCanvasHarness(language);
@@ -149,6 +182,11 @@ describe.each(["glsl", "slang"] as const)("%s canvas conformance", (language) =>
           return iFrame == 0 ? float4(1.0, 0.0, 0.0, 1.0) : float4(0.0, 1.0, 0.0, 1.0);
         }`,
       },
+      wgsl: {
+        image: `fn mainImage(coord: vec2f) -> vec4f {
+          return select(vec4f(0.0, 1.0, 0.0, 1.0), vec4f(1.0, 0.0, 0.0, 1.0), iFrame == 0);
+        }`,
+      },
     };
     try {
       await harness.compile(program[language]);
@@ -160,26 +198,41 @@ describe.each(["glsl", "slang"] as const)("%s canvas conformance", (language) =>
   });
 });
 
-describe("Slang-only canvas conformance", () => {
+const computePrograms: Record<"slang" | "wgsl", ShaderProgram> = {
+  slang: {
+    image: "float4 mainImage(float2 fragCoord) { return iChannel0.Sample(fragCoord / iResolution.xy); }",
+    buffers: {
+      ComputePattern: `[shader("compute")]
+        [numthreads(1, 1, 1)]
+        void fillCanvas(uint3 dispatchThreadID : SV_DispatchThreadID) {
+          writeOutput(dispatchThreadID.xy, float4(0.0, 0.0, 1.0, 1.0));
+        }`,
+    },
+  },
+  wgsl: {
+    image: "fn mainImage(coord: vec2f) -> vec4f { return iChannel0Sample(coord / iResolution.xy); }",
+    buffers: {
+      ComputePattern: `@compute @workgroup_size(1, 1, 1)
+        fn fillCanvas(@builtin(global_invocation_id) id: vec3u) {
+          writeOutput(id.xy, vec4f(0.0, 0.0, 1.0, 1.0));
+        }`,
+    },
+  },
+};
+
+describe.each(["slang", "wgsl"] as const)("%s compute canvas conformance", (language) => {
   it("runs a native compute pass and samples its output", { timeout: 30_000 }, async () => {
-    const harness = createShaderCanvasHarness("slang");
+    const harness = createShaderCanvasHarness(language);
     try {
       await harness.compile({
-        image: "float4 mainImage(float2 fragCoord) { return iChannel0.Sample(fragCoord / iResolution.xy); }",
-        buffers: {
-          ComputePattern: `[shader("compute")]
-            [numthreads(1, 1, 1)]
-            void fillCanvas(uint3 dispatchThreadID : SV_DispatchThreadID) {
-              writeOutput(dispatchThreadID.xy, float4(0.0, 0.0, 1.0, 1.0));
-            }`,
-        },
+        ...computePrograms[language],
         config: {
           version: "1",
           passes: {
             Image: { inputs: { iChannel0: { type: "buffer", source: "ComputePattern" } } },
             ComputePattern: {
               type: "compute",
-              path: "compute-pattern.slang",
+              path: `compute-pattern.${language}`,
               entryPoint: "fillCanvas",
               resolution: { width: 2, height: 2 },
             },

@@ -1,7 +1,7 @@
 /// <reference types="@webgpu/types" />
 
 describe('WebGPU browser availability', () => {
-  it('creates an adapter and device for Slang browser tests', async () => {
+  it('creates an adapter and device for Slang and WGSL browser tests', async () => {
     expect(navigator.gpu).toBeDefined();
 
     const adapter = await navigator.gpu.requestAdapter();

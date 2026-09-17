@@ -9,6 +9,7 @@ const computeImagePath = join(fixtureDir, 'compute-image.wgsl');
 const computeUpdatePath = join(fixtureDir, 'compute-update.wgsl');
 const matrixPath = join(fixtureDir, 'matrix.wgsl');
 const matrixCommonPath = join(fixtureDir, 'matrix-common.wgsl');
+const stepControlsPath = join(fixtureDir, 'step-controls.wgsl');
 
 test.use({ vscodeKey: 'wgsl-debug-parity' });
 
@@ -70,6 +71,18 @@ async function setInlineRendering(frame, enabled) {
     await button.click();
   }
 }
+
+async function setDebugToggle(frame, label, active) {
+  const button = frame.getByLabel(label, { exact: true }).first();
+  await expect(button).toBeVisible();
+  if (await button.evaluate(element => element.classList.contains('active')) !== active) {
+    await button.click();
+  }
+  await expect.poll(() => button.evaluate(element => element.classList.contains('active'))).toBe(active);
+}
+
+const near = (rgb, expected, tolerance = 3) => rgb.length === 3
+  && rgb.every((channel, index) => Math.abs(channel - expected[index]) <= tolerance);
 
 async function setParameterExpression(frame, name, value) {
   const selector = `[aria-label="Expression for ${name}"]`;
@@ -291,5 +304,59 @@ test.describe('WGSL debug parity in the VS Code webview', () => {
     await expect(basis).toBeVisible({ timeout: 45_000 });
     await expect(basis.locator('.var-value')).toHaveText(/^\(0\.500,\s*0\.250,\s*0\.125,\s*0\.750\)$/);
     await expect(frame.locator('[aria-label="Show capture errors"]')).toHaveCount(0);
+  });
+
+  test('applies step and normalize controls to WGSL inline and full-shader previews', async ({ vscode }) => {
+    // The preceding matrix test leaves the shared webview locked to its shader.
+    for (const existingFrame of vscode.window.frames()) {
+      if (await existingFrame.locator('.canvas-container').count()) {
+        await setPreviewLocked(existingFrame, false);
+      }
+    }
+    await showFileAtLine(vscode, stepControlsPath, 0);
+    await ensureShaderView(vscode);
+    let frame = await vscode.shaderFrame();
+    await expect(frame.locator('.canvas-container canvas').first()).toBeVisible();
+    await enableVariableInspector(frame);
+    await setPreviewLocked(frame, true);
+    await setInlineRendering(frame, true);
+    await setDebugToggle(frame, 'Toggle step threshold', false);
+
+    // 0.375 renders as a dark grey line preview; the default 0.5 edge turns it black.
+    await showFileAtLine(vscode, stepControlsPath, 1);
+    frame = await vscode.shaderFrame();
+    await expect.poll(
+      () => frame.evaluate(() => document.querySelector('.header-info')?.textContent?.trim() ?? ''),
+      { message: 'debug panel never followed the cursor', timeout: 30_000 },
+    ).toContain('L2');
+    await expectCanvasColor(frame, rgb => near(rgb, [96, 96, 96]), 'dim value never previewed as dark grey');
+    await setDebugToggle(frame, 'Toggle step threshold', true);
+    await expect(frame.getByLabel('Step edge threshold', { exact: true })).toBeVisible();
+    await expectCanvasColor(frame, rgb => near(rgb, [0, 0, 0]), 'step never thresholded the dim value to black');
+
+    // 0.75 sits above the edge, so the same threshold turns it white.
+    await showFileAtLine(vscode, stepControlsPath, 2);
+    frame = await vscode.shaderFrame();
+    await expectCanvasColor(frame, rgb => near(rgb, [255, 255, 255]), 'step never thresholded the bright value to white');
+
+    // Normalize keeps a valid preview and cycles back to off.
+    const normalize = frame.getByLabel('Cycle normalize mode', { exact: true });
+    await normalize.click();
+    await expect.poll(() => normalize.evaluate(element => element.classList.contains('active'))).toBe(true);
+    await expectCanvasColor(frame, rgb => rgb.length === 3 && rgb[0] === rgb[1] && rgb[1] === rgb[2],
+      'normalized scalar preview was not greyscale');
+    await expect(frame.locator('[aria-label="Show capture errors"]')).toHaveCount(0);
+    for (let attempt = 0; attempt < 3 && await normalize.evaluate(element => element.classList.contains('active')); attempt++) {
+      await normalize.click();
+    }
+    await expect.poll(() => normalize.evaluate(element => element.classList.contains('active'))).toBe(false);
+
+    // With inline rendering off, the step applies to the whole shader:
+    // (0.375, 0.75, 0) becomes pure green.
+    await setInlineRendering(frame, false);
+    await expectCanvasColor(frame, rgb => near(rgb, [0, 255, 0]), 'step never applied to the full WGSL shader');
+    await setDebugToggle(frame, 'Toggle step threshold', false);
+    await expectCanvasColor(frame, rgb => near(rgb, [96, 191, 0]), 'full WGSL shader did not return to its authored colour');
+    await setInlineRendering(frame, true);
   });
 });

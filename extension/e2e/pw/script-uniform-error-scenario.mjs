@@ -25,7 +25,7 @@ export function registerScriptUniformErrorScenario(test, expect, scenario) {
 
     test('shows the valid script uniform and constant value while the source fails', async ({ vscode }) => {
       const frame = await open(vscode, scenario.scriptTabShaderPath);
-      await expect.poll(() => tooltipText(frame), { message: 'the broken shader was never reported', timeout: 90_000 }).toMatch(/error/i);
+      await expect.poll(() => tooltipText(frame), { message: 'the broken shader was never reported', timeout: 90_000 }).toMatch(scenario.brokenSourcePattern ?? /error/i);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('notifications.clearAll'));
       await openConfigPanel(frame);
       const scriptTab = frame.locator('.tab-label', { hasText: 'Script' });

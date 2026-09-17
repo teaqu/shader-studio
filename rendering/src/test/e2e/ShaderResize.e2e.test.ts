@@ -105,9 +105,56 @@ const programs: Record<ShaderLanguage, ShaderProgram> = {
       },
     },
   },
+  wgsl: {
+    image: `fn expectedCanvasSize() -> vec2f {
+      if (iFrame == 0) { return vec2f(80.0, 60.0); }
+      if (iFrame == 1) { return vec2f(120.0, 90.0); }
+      return vec2f(64.0, 48.0);
+    }
+    fn mainImage(coord: vec2f) -> vec4f {
+      let history = iChannel0Sample(vec2f(12.5, 10.5) / iResolution.xy).r;
+      let scaledSize = iChannel1Sample(vec2f(0.5)).g;
+      let fixedSize = iChannel2Sample(vec2f(0.5)).b;
+      let canvasSize = select(0.0, 1.0, all(iResolution.xy == expectedCanvasSize()));
+      return vec4f(history, scaledSize, fixedSize, 1.0) * vec4f(vec3f(canvasSize), 1.0);
+    }`,
+    buffers: {
+      History: `fn mainImage(coord: vec2f) -> vec4f {
+        let previous = iChannel0Sample(coord / iResolution.xy);
+        let seed = select(0.0, 1.0, iFrame == 0 && all(abs(coord - vec2f(12.5, 10.5)) < vec2f(1.0)));
+        return max(previous, vec4f(seed, 0.0, 0.0, 1.0));
+      }`,
+      Scaled: `fn mainImage(coord: vec2f) -> vec4f {
+        var expected = vec2f(32.0, 24.0);
+        if (iFrame == 0) { expected = vec2f(40.0, 30.0); } else if (iFrame == 1) { expected = vec2f(60.0, 45.0); }
+        return vec4f(0.0, select(0.0, 1.0, all(iResolution.xy == expected)), 0.0, 1.0);
+      }`,
+      Fixed: `fn mainImage(coord: vec2f) -> vec4f {
+        return vec4f(0.0, 0.0, select(0.0, 1.0, all(iResolution.xy == vec2f(7.0, 5.0))), 1.0);
+      }`,
+    },
+    config: {
+      version: "1",
+      passes: {
+        History: {
+          path: "history.wgsl",
+          inputs: { iChannel0: { type: "buffer", source: "History" } },
+        },
+        Scaled: { path: "scaled.wgsl", resolution: { scale: 0.5 } },
+        Fixed: { path: "fixed.wgsl", resolution: { width: 7, height: 5 } },
+        Image: {
+          inputs: {
+            iChannel0: { type: "buffer", source: "History" },
+            iChannel1: { type: "buffer", source: "Scaled" },
+            iChannel2: { type: "buffer", source: "Fixed" },
+          },
+        },
+      },
+    },
+  },
 };
 
-describe.each(["glsl", "slang"] as const)("%s runtime canvas resize", (language) => {
+describe.each(["glsl", "slang", "wgsl"] as const)("%s runtime canvas resize", (language) => {
   it("updates pass resolutions and preserves feedback when growing and shrinking", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness(language);
     try {

@@ -4,7 +4,7 @@ import { centrePixel } from './canvas-pixel.mjs';
 import { openConfigPanel } from './config-panel.mjs';
 
 export function registerScriptConstantTests(language) {
-  const suffix = language === 'slang' ? '-slang' : '';
+  const suffix = language === 'glsl' ? '' : `-${language}`;
 
 
   const shaderPath = join(workspacePath, `script-constants${suffix}.${language}`);
@@ -22,7 +22,7 @@ export function registerScriptConstantTests(language) {
  * the real host shows this: it needs the extension's delta batches and the
  * viewer's compile together.
  */
-  test.describe(`a script constant across a bare-file preview ${language} ${language === 'slang' ? '@gpu' : ''}`, () => {
+  test.describe(`a script constant across a bare-file preview ${language} ${language === 'glsl' ? '' : '@gpu'}`, () => {
     const centreRed = async (frame) => (await centrePixel(frame))[0];
 
     const uniformNames = (frame) => frame.evaluate(

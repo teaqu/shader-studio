@@ -18,6 +18,11 @@ const mousePrograms: Record<ShaderLanguage, ShaderProgram> = {
       return float4(iMouse.xy / iResolution.xy, 0.0, 1.0);
     }`,
   },
+  wgsl: {
+    image: `fn mainImage(coord: vec2f) -> vec4f {
+      return vec4f(iMouse.xy / iResolution.xy, 0.0, 1.0);
+    }`,
+  },
 };
 
 /** Canvas is 2x2, so these land on distinct integer mouse pixels. */
@@ -40,7 +45,7 @@ function dispatchPointer(
   }));
 }
 
-describe.each(["glsl", "slang"] as const)("%s paused input freezing", (language) => {
+describe.each(["glsl", "slang", "wgsl"] as const)("%s paused input freezing", (language) => {
   it("keeps iMouse frozen while paused and picks the pointer back up on resume", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness(language);
     harness.canvas.setPointerCapture = () => {};

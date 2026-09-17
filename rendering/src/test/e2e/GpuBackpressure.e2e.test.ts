@@ -40,11 +40,19 @@ const heavy: Record<ShaderLanguage, string> = {
     }
     return float4(float3(acc / 20000.0), 1.0);
   }`,
+  wgsl: `fn mainImage(coord: vec2f) -> vec4f {
+    let uv = coord / iResolution.xy;
+    var acc = 0.0;
+    for (var i = 0; i < 20000; i++) {
+      acc += sin(uv.x * f32(i) + iTime) * cos(uv.y * f32(i) * 1.37);
+    }
+    return vec4f(vec3f(acc / 20000.0), 1.0);
+  }`,
 };
 
 /** The private counter each engine paces against — same fields the fake-backed unit tests read. */
 function inFlightCount(engine: object, language: ShaderLanguage): number {
-  return language === "slang"
+  return language !== "glsl"
     ? (engine as { framesInFlight: number }).framesInFlight
     : (engine as { inFlightFences: unknown[] }).inFlightFences.length;
 }
@@ -86,10 +94,10 @@ async function sampleMaxInFlight(language: ShaderLanguage, windowMs: number): Pr
 }
 
 describe("GPU backpressure invariant against a real device", () => {
-  it("never lets more than MAX_FRAMES_IN_FLIGHT real WebGPU submissions queue up", { timeout: 60_000 }, async () => {
-    const maxSeen = await sampleMaxInFlight("slang", 600);
+  it.each(["slang", "wgsl"] as const)("never lets more than MAX_FRAMES_IN_FLIGHT real WebGPU %s submissions queue up", { timeout: 60_000 }, async (language) => {
+    const maxSeen = await sampleMaxInFlight(language, 600);
 
-    console.log("[GpuBackpressure] webgpu maxFramesInFlight", maxSeen);
+    console.log(`[GpuBackpressure] webgpu ${language} maxFramesInFlight`, maxSeen);
     // Greater than 0 proves the shader is genuinely GPU-bound enough for the
     // cap to matter, not just trivially satisfied by a shader that never
     // has two frames outstanding.

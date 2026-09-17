@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { centrePixel } from './canvas-pixel.mjs';
 
 export function registerScriptContextTests(language) {
-  const suffix = language === 'slang' ? '-slang' : '';
+  const suffix = language === 'glsl' ? '' : `-${language}`;
 
 
   const shaderPath = join(workspacePath, `script-context${suffix}.${language}`);
@@ -20,7 +20,7 @@ export function registerScriptContextTests(language) {
  * shader, which compares it against the renderer's own uniforms and paints one
  * channel per agreement. White is agreement; any disagreement is visible.
  */
-  test.describe(`the context a uniform script is given ${language} ${language === 'slang' ? '@gpu' : ''}`, () => {
+  test.describe(`the context a uniform script is given ${language} ${language === 'glsl' ? '' : '@gpu'}`, () => {
     const centre = centrePixel;
 
     const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -31,6 +31,20 @@ async function errors(vscode, path) {
   return vscode.evaluateInHost((vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
     .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => d.message), path);
 }
+async function expectPauseTooltip(vscode, frame, text) {
+  await frame.getByLabel('Toggle pause', { exact: true }).hover();
+  try {
+    await expect(frame.locator('.error-tooltip.visible')).toContainText(text, { timeout: 20_000 });
+  } catch (failure) {
+    const state = await frame.evaluate(() => ({
+      buttonHovered: document.querySelector('[aria-label="Toggle pause"]')?.matches(':hover') ?? null,
+      buttonClass: document.querySelector('[aria-label="Toggle pause"]')?.className ?? null,
+      tooltips: Array.from(document.querySelectorAll('.error-tooltip'), el => `${el.className}: ${el.textContent?.slice(0, 80)}`),
+    })).catch(error => ({ evaluateFailed: String(error) }));
+    const current = await vscode.shaderFrame(5_000).catch(() => null);
+    throw new Error(`${failure.message}\nDIAG ${JSON.stringify({ detached: frame.isDetached(), sameFrame: current === frame, state })}`);
+  }
+}
 async function expectPreviewLock(frame, locked) {
   const lock = frame.locator('button.collapse-lock');
   await expect(lock).toHaveClass(locked ? /active/ : /^(?!.*active)/);
@@ -221,8 +235,7 @@ for (const owner of ['Image', 'Common', 'vertex']) {
       await edit(vscode, '\n\n  requires\n    unknown_extension;\n' + original);
       frame = await vscode.shaderFrame();
       await expect(frame.getByLabel('Toggle pause', { exact: true })).toHaveClass(/error/);
-      await frame.getByLabel('Toggle pause', { exact: true }).hover();
-      await expect(frame.locator('.error-tooltip.visible')).toContainText(owner === 'vertex'
+      await expectPauseTooltip(vscode, frame, owner === 'vertex'
         ? 'Image (vertex): L4:5' : `${owner}: WGSL L4:5`);
       await expect.poll(() => vscode.evaluateInHost((vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
         .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })), target))
@@ -236,8 +249,7 @@ for (const owner of ['Image', 'Common', 'vertex']) {
         await edit(vscode, '\n\n' + original.replace('{}', '{\n  missingVertex();\n}'));
         frame = await vscode.shaderFrame();
         await expect(frame.getByLabel('Toggle pause', { exact: true })).toHaveClass(/error/);
-        await frame.getByLabel('Toggle pause', { exact: true }).hover();
-        await expect(frame.locator('.error-tooltip.visible')).toContainText('Image (vertex): L4:3');
+        await expectPauseTooltip(vscode, frame, 'Image (vertex): L4:3');
         await expect.poll(() => vscode.evaluateInHost((vscode, path) => vscode.languages.getDiagnostics(vscode.Uri.file(path))
           .filter(d => d.severity === vscode.DiagnosticSeverity.Error).map(d => ({ line: d.range.start.line, column: d.range.start.character })), target))
           .toEqual([{ line: 3, column: 2 }]);

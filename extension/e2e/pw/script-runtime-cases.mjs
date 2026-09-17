@@ -37,7 +37,7 @@ function value(frame, name) {
 
 export function registerScriptRuntimeTests(language) {
   test.use({ vscodeKey: `script-runtime-${language}` });
-  test.describe(`script runtime parity ${language} ${language === 'slang' ? '@gpu' : ''}`, () => {
+  test.describe(`script runtime parity ${language} ${language === 'glsl' ? '' : '@gpu'}`, () => {
     test.beforeEach(async ({ vscode }) => {
       await vscode.evaluateInHost(async (vscode) => {
         await vscode.commands.executeCommand('workbench.action.closeAllEditors');

@@ -38,6 +38,19 @@ const inputPrograms: Record<ShaderLanguage, ShaderProgram> = {
     }`,
     config: { version: "1", passes: { Image: { inputs: { iChannel0: { type: "keyboard" } } } } },
   },
+  wgsl: {
+    image: `fn keyRow(row: f32) -> f32 {
+      return iChannel0Sample(vec2f((65.0 + 0.5) / 256.0, (row + 0.5) / 3.0)).r;
+    }
+    fn mainImage(coord: vec2f) -> vec4f {
+      let keyState = vec3f(keyRow(0.0), keyRow(1.0), keyRow(2.0));
+      if (coord.x < iResolution.x * 0.5) {
+        return vec4f(keyState, 1.0);
+      }
+      return vec4f(select(0.0, 1.0, iMouse.z > 0.0), iMouse.xy / iResolution.xy, 1.0);
+    }`,
+    config: { version: "1", passes: { Image: { inputs: { iChannel0: { type: "keyboard" } } } } },
+  },
 };
 
 const mediaPrograms: Record<ShaderLanguage, string> = {
@@ -48,6 +61,10 @@ const mediaPrograms: Record<ShaderLanguage, string> = {
   slang: `float4 mainImage(float2 fragCoord) {
     float2 uv = fragCoord / iResolution.xy;
     return float4(iChannel0.Sample(uv).rgb, 1.0);
+  }`,
+  wgsl: `fn mainImage(coord: vec2f) -> vec4f {
+    let uv = coord / iResolution.xy;
+    return vec4f(iChannel0Sample(uv).rgb, 1.0);
   }`,
 };
 
@@ -125,7 +142,7 @@ function interactionPixels(key: Pixel, mouse: Pixel): Pixel[] {
   return [key, mouse, key, mouse];
 }
 
-describe.each(["glsl", "slang"] as const)("%s input and media progression", (language) => {
+describe.each(["glsl", "slang", "wgsl"] as const)("%s input and media progression", (language) => {
   it("propagates held, pressed, toggled, released, and pointer state", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness(language);
     harness.canvas.setPointerCapture = () => {};
