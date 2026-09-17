@@ -468,8 +468,9 @@ test.describe('Shader language servers in VS Code', () => {
       }, language === 'wgsl' ? join(wgslFixturePath, 'members.wgsl') : join(fixturePath, `members.${language}`), { glsl: 'vec2', slang: 'float2', wgsl: 'vec2f' }[language]);
 
       const [float2, float3] = { glsl: ['vec2', 'vec3'], slang: ['float2', 'float3'], wgsl: ['vec2f', 'vec3f'] }[language];
-      // Every language's hover names a value as `type name`, WGSL included.
-      expect(result.localHover, `${language} local hover`).toContain(`${float2} uv`);
+      // Each language spells the declaration its own way.
+      const localDeclaration = language === 'wgsl' ? `let uv: ${float2}` : `${float2} uv`;
+      expect(result.localHover, `${language} local hover`).toContain(localDeclaration);
       expect(result.fieldHover, `${language} field hover`).toMatch(/rough/);
       expect(result.fieldHover, `${language} field hover`).toMatch(/Material/);
       expect(result.componentHover, `${language} component hover`).toContain(float3);
@@ -513,8 +514,8 @@ test.describe('Shader language servers in VS Code', () => {
     expect(wgslVertex.labels).not.toContain('mainImage');
     expect(wgslVertex.labels).not.toContain('writeOutput');
 
-    // WGSL attribute names carry no hover; their builtin-value arguments do.
-    const wgslCompute = await stageSnapshot(vscode, join(wgslFixturePath, 'compute.wgsl'), ['global_invocation_id', 'iDispatch', 'writeOutput']);
+    const wgslCompute = await stageSnapshot(vscode, join(wgslFixturePath, 'compute.wgsl'), ['workgroup_size', 'global_invocation_id', 'iDispatch', 'writeOutput']);
+    expect(wgslCompute.hovers.workgroup_size).toContain('@workgroup_size(x, y?, z?)');
     expect(wgslCompute.hovers.global_invocation_id).toMatch(/global workgroup-grid/i);
     expect(wgslCompute.hovers.iDispatch).toMatch(/repetition index/i);
     expect(wgslCompute.hovers.writeOutput).toMatch(/compute pass output texture/i);

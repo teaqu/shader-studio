@@ -21,7 +21,7 @@ function fn(
   return Object.freeze({
     name,
     kind: "function" as const,
-    signature: `${returnType} ${name}(${parameters.map(([type, parameter]) => `${type} ${parameter}`).join(", ")})`,
+    signature: `fn ${name}(${parameters.map(([type, parameter]) => `${parameter}: ${type}`).join(", ")})${returnType === "void" ? "" : ` -> ${returnType}`}`,
     returnType,
     parameters: Object.freeze(parameters.map(([type, parameter]) => Object.freeze({ name: parameter, type }))),
     description,
@@ -38,7 +38,7 @@ function builtinValue(
   return Object.freeze({
     name,
     kind: "variable" as const,
-    signature: `${type} ${name}`,
+    signature: `${name}: ${type}`,
     returnType: type,
     parameters: Object.freeze([]),
     description,
@@ -227,4 +227,39 @@ export const WGSL_INTRINSICS: readonly WgslIntrinsic[] = Object.freeze([
 
 export function findWgslIntrinsics(name: string): readonly WgslIntrinsic[] {
   return WGSL_INTRINSICS.filter((intrinsic) => intrinsic.name === name);
+}
+
+export interface WgslAttribute {
+  readonly name: string;
+  readonly signature: string;
+  readonly description: string;
+}
+
+function attribute(name: string, parameters: string, description: string): WgslAttribute {
+  return Object.freeze({ name, signature: `@${name}${parameters}`, description });
+}
+
+/** Every attribute the WGSL specification defines. */
+export const WGSL_ATTRIBUTES: readonly WgslAttribute[] = Object.freeze([
+  attribute("align", "(bytes)", "Sets the byte alignment of a structure member; must be a power of two."),
+  attribute("binding", "(index)", "Binding number of a resource within its bind group."),
+  attribute("blend_src", "(index)", "Selects the dual-source blend output for a fragment output location."),
+  attribute("builtin", "(name)", "Binds a parameter or return value to a built-in value such as `position` or `global_invocation_id`."),
+  attribute("compute", "", "Marks a function as a compute shader entry point."),
+  attribute("const", "", "Marks a built-in function as usable in constant expressions."),
+  attribute("diagnostic", "(severity, rule)", "Sets the severity of a diagnostic rule for the attached function or statement."),
+  attribute("fragment", "", "Marks a function as a fragment shader entry point."),
+  attribute("group", "(index)", "Bind group index of a resource."),
+  attribute("id", "(index)", "Numeric pipeline constant ID of an override declaration."),
+  attribute("interpolate", "(type, sampling?)", "Controls how a user-defined inter-stage value is interpolated: flat, linear, or perspective."),
+  attribute("invariant", "", "Makes a vertex `position` output invariant across pipelines that compute it identically."),
+  attribute("location", "(index)", "Input or output location of a user-defined inter-stage value."),
+  attribute("must_use", "", "Makes calling the function without using its result an error."),
+  attribute("size", "(bytes)", "Sets the byte size reserved for a structure member."),
+  attribute("vertex", "", "Marks a function as a vertex shader entry point."),
+  attribute("workgroup_size", "(x, y?, z?)", "Size of the compute workgroup along x, y, and z; missing dimensions default to 1."),
+]);
+
+export function findWgslAttribute(name: string): WgslAttribute | undefined {
+  return WGSL_ATTRIBUTES.find((item) => item.name === name);
 }

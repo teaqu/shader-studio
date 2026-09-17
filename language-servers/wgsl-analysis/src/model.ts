@@ -15,6 +15,12 @@ export interface WgslSymbol {
   readonly kind: WgslSymbolKind;
   readonly typeName?: string;
   readonly signature?: string;
+  /**
+   * The keyword the symbol was declared with, spelled as written: `let`,
+   * `var<private>`, `override`, `struct`, `fn`... Absent for parameters,
+   * fields, and host globals, which have no declaration keyword.
+   */
+  readonly declarationKeyword?: string;
   readonly declaration: Range;
   readonly definition: Range;
   readonly references: readonly Range[];

@@ -59,7 +59,7 @@ import {
   type WgslSymbol,
   type WgslToken,
 } from "@shader-studio/wgsl-analysis";
-import { WGSL_INTRINSICS, findWgslIntrinsics } from "./intrinsics.js";
+import { WGSL_INTRINSICS, findWgslAttribute, findWgslIntrinsics } from "./intrinsics.js";
 import { WGSL_VERTEX_HOOK_FEATURES, type WgslVertexHookFeature } from "./vertexHook.js";
 import {
   WGSL_MAIN_IMAGE_COORDINATE_DESCRIPTION,
@@ -259,10 +259,11 @@ export class WgslLanguageService implements LanguageService {
     if (!word) {
       return null;
     }
-    const site = identifierSite(state.document.text, params.position);
-    if (site?.kind === "attribute-name") {
-      return null;
+    if (isAttributeName(state.document.text, params.position)) {
+      const attribute = findWgslAttribute(word);
+      return attribute ? markdownHover(attribute.signature, attribute.description) : null;
     }
+    const site = identifierSite(state.document.text, params.position);
     if (site?.kind === "attribute-argument") {
       // Attribute arguments name builtin values, never authored symbols.
       const builtin = findWgslIntrinsics(word).find((item) => item.kind === "variable");
@@ -286,7 +287,7 @@ export class WgslLanguageService implements LanguageService {
       if (fragmentHook) {
         return markdownHover(fragmentHook.signature, fragmentHook.description);
       }
-      return markdownHover(userSymbol.signature ?? `${userSymbol.typeName ?? userSymbol.kind} ${userSymbol.name}`, "Declared in this shader.");
+      return markdownHover(declarationLabel(state.analysis, userSymbol), declarationDocumentation(state.analysis, userSymbol, "Declared in this shader."));
     }
     for (const analysis of this.includeAnalyses.get(params.document.uri) ?? []) {
       const included = analysis.symbols.find((symbol) => symbol.name === word && !analysis.hostGlobalIds.has(symbol.id));
@@ -294,16 +295,17 @@ export class WgslLanguageService implements LanguageService {
         const description = analysis.uri === state.environment.commonFile?.uri
           ? "Declared in Shader Studio Common."
           : "Declared in an included shader file.";
-        return markdownHover(included.signature ?? `${included.typeName ?? included.kind} ${included.name}`, description);
+        return markdownHover(declarationLabel(analysis, included), declarationDocumentation(analysis, included, description));
       }
     }
     const doc = SHADER_STUDIO_SYMBOL_DOCS.find((item) => item.name === word && item.languages.includes("wgsl"));
     if (doc) {
-      return markdownHover(`${doc.wgslType ?? "built-in"} ${doc.name}`, doc.description);
+      // Built-ins are injected as private globals.
+      return markdownHover(`var<private> ${typedName(doc.name, doc.wgslType)}`, doc.description);
     }
     const uniform = state.environment.customUniforms.find((item) => item.name === word);
     if (uniform) {
-      return markdownHover(`${authoringValueWgslType(uniform.type)} ${uniform.name}`, "Shader Studio custom uniform.");
+      return markdownHover(`var<private> ${typedName(uniform.name, authoringValueWgslType(uniform.type))}`, "Shader Studio custom uniform.");
     }
     const resource = state.environment.resources.find((item) => item.name === word);
     if (resource) {
@@ -1008,18 +1010,54 @@ function signatureInformation(
 }
 
 function functionSignatures(analysis: WgslAnalysisDocument, name: string, provenance: string): SignatureInformation[] {
-  const symbolsById = new Map(analysis.symbols.map((symbol) => [symbol.id, symbol]));
   return analysis.symbols
     .filter((symbol) => symbol.kind === "function" && symbol.name === name)
-    .map((symbol) => {
-      const scope = analysis.scopes.find((item) => item.kind === "function" && item.name === name && rangeContains(item.range, symbol.definition));
-      const parameters = (scope?.symbolIds ?? [])
-        .map((id) => symbolsById.get(id))
-        .filter((candidate): candidate is WgslSymbol => candidate?.kind === "parameter")
-        .map((parameter) => ({ name: parameter.name, type: parameter.typeName ?? "unknown" }));
-      const comment = leadingComment(analysis.source, symbol.declaration.start.line);
-      return signatureInformation(name, parameters, symbol.typeName, [comment, provenance].filter(Boolean).join("\n\n"));
-    });
+    .map((symbol) => functionSignature(analysis, symbol, declarationDocumentation(analysis, symbol, provenance)));
+}
+
+function functionSignature(analysis: WgslAnalysisDocument, symbol: WgslSymbol, documentation?: string): SignatureInformation {
+  const scope = analysis.scopes.find((item) => item.kind === "function" && item.name === symbol.name && rangeContains(item.range, symbol.definition));
+  const parameters = (scope?.symbolIds ?? [])
+    .map((id) => analysis.symbols.find((candidate) => candidate.id === id))
+    .filter((candidate): candidate is WgslSymbol => candidate?.kind === "parameter")
+    .map((parameter) => ({ name: parameter.name, type: parameter.typeName ?? "unknown" }));
+  return signatureInformation(symbol.name, parameters, symbol.typeName, documentation);
+}
+
+/** `name: type`, or the bare name when the type is unknown. */
+function typedName(name: string, typeName: string | undefined): string {
+  return typeName === undefined ? name : `${name}: ${typeName}`;
+}
+
+/** An authored declaration as WGSL spells it: `let uv: vec2f`, `fn f(x: f32) -> f32`, `struct S`. */
+function declarationLabel(analysis: WgslAnalysisDocument, symbol: WgslSymbol): string {
+  switch (symbol.kind) {
+    case "function":
+      return functionSignature(analysis, symbol).label;
+    case "parameter":
+    case "field":
+      return typedName(symbol.name, symbol.typeName);
+    case "type":
+      if (symbol.declarationKeyword !== "alias") {
+        return `struct ${symbol.name}`;
+      }
+      return symbol.typeName === undefined ? `alias ${symbol.name}` : `alias ${symbol.name} = ${symbol.typeName}`;
+    default:
+      return `${symbol.declarationKeyword ?? (symbol.kind === "constant" ? "const" : "let")} ${typedName(symbol.name, symbol.typeName)}`;
+  }
+}
+
+/** A declaration's leading `//` comment, when it has one, above where it came from. */
+function declarationDocumentation(analysis: WgslAnalysisDocument, symbol: WgslSymbol, provenance: string): string {
+  const comment = leadingComment(analysis.source, symbol.declaration.start.line);
+  return [comment, provenance].filter(Boolean).join("\n\n");
+}
+
+/** Whether the identifier under the cursor names an attribute: `@` sits right before it. */
+function isAttributeName(source: string, position: Position): boolean {
+  const line = source.split("\n")[position.line] ?? "";
+  const start = position.character - (line.slice(0, position.character).match(/[A-Za-z_][A-Za-z0-9_]*$/)?.[0].length ?? 0);
+  return /@\s*$/.test(line.slice(0, start));
 }
 
 /** Contiguous `//` lines directly above a declaration, skipping its attribute lines. */
@@ -1595,16 +1633,16 @@ function memberHover(
   }
   const result = BUILTIN_RESULT_FIELDS[resolved.name]?.find((field) => field.name === site.name);
   if (result) {
-    return markdownHover(`${result.type} ${site.name}`, result.description);
+    return markdownHover(typedName(site.name, result.type), result.description);
   }
   const vector = resolved.vector;
   if (vector) {
     const set = WGSL_SWIZZLE_SETS.find((candidate) => [...site.name].every((component) => candidate.slice(0, vector.size).includes(component)));
     const type = site.name.length === 1 ? vector.componentType : wgslVectorTypeName(vector.componentType, site.name.length);
     return set && site.name.length <= 4 && type
-      ? markdownHover(`${type} ${site.name}`, `Component selection on \`${access.expression}\`.`)
+      ? markdownHover(typedName(site.name, type), `Component selection on \`${access.expression}\`.`)
       : null;
   }
   const field = resolved.fields?.find((candidate) => candidate.name === site.name);
-  return field ? markdownHover(`${field.type} ${site.name}`, `Field of \`${resolved.name}\`.`) : null;
+  return field ? markdownHover(typedName(site.name, field.type), `Field of \`${resolved.name}\`.`) : null;
 }

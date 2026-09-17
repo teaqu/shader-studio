@@ -107,6 +107,55 @@ describe("parseWgslDocument declarations", () => {
   });
 });
 
+describe("parseWgslDocument declaration keywords", () => {
+  it("records the keyword each value and type was declared with", () => {
+    const document = parseWgslDocument(URI, [
+      "var<private> glow: f32 = 0.0;",
+      "@group(0) @binding(0) var<storage, read> values: array<f32>;",
+      "@group(0) @binding(1) var tex: texture_2d<f32>;",
+      "@id(0) override gain: f32 = 1.0;",
+      "const N = 4;",
+      "struct Material { rough: f32, };",
+      "alias Row = array<f32, 4>;",
+      "fn f(x: f32) -> f32 {",
+      "  let a = x;",
+      "  var b: f32 = a;",
+      "  const c = 2.0;",
+      "  for (var i = 0; i < 1; i++) { }",
+      "  return a + b + c;",
+      "}",
+    ].join("\n"), "fragment");
+    const keywords = Object.fromEntries(document.symbols
+      .filter((symbol) => !document.hostGlobalIds.has(symbol.id))
+      .map((symbol) => [symbol.name, symbol.declarationKeyword]));
+
+    expect(keywords).toEqual({
+      glow: "var<private>",
+      values: "var<storage, read>",
+      tex: "var",
+      gain: "override",
+      N: "const",
+      Material: "struct",
+      rough: undefined,
+      Row: "alias",
+      f: "fn",
+      x: undefined,
+      a: "let",
+      b: "var",
+      c: "const",
+      i: "var",
+    });
+  });
+
+  it("leaves host globals without a source keyword", () => {
+    const document = parseWgslDocument(URI, "fn f() {}", "fragment");
+    const hostGlobals = document.symbols.filter((symbol) => document.hostGlobalIds.has(symbol.id));
+
+    expect(hostGlobals.length).toBeGreaterThan(0);
+    expect(hostGlobals.every((symbol) => symbol.declarationKeyword === undefined)).toBe(true);
+  });
+});
+
 describe("parseWgslDocument statements", () => {
   it("parses every statement form", () => {
     const source = [

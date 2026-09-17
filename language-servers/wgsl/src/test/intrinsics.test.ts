@@ -21,7 +21,7 @@ describe("WGSL_INTRINSICS", () => {
   it("spells the two-argument arc tangent atan2, as WGSL does", () => {
     expect(findWgslIntrinsics("atan").map((item) => item.parameters.length)).toEqual([1]);
     expect(findWgslIntrinsics("atan2")).toEqual([expect.objectContaining({
-      signature: "T atan2(T y, T x)",
+      signature: "fn atan2(y: T, x: T) -> T",
       parameters: [{ name: "y", type: "T" }, { name: "x", type: "T" }],
     })]);
   });
@@ -63,7 +63,7 @@ describe("WGSL_INTRINSICS", () => {
       }
     }
     expect(findWgslIntrinsics("subgroupBallot")[0]?.signature).toContain("vec4u");
-    expect(findWgslIntrinsics("subgroupElect")[0]?.signature).toContain("bool subgroupElect()");
+    expect(findWgslIntrinsics("subgroupElect")[0]?.signature).toBe("fn subgroupElect() -> bool");
     expect(findWgslIntrinsics("quadSwapX")[0]?.signature).toContain("quadSwapX");
   });
 
@@ -131,5 +131,15 @@ describe("WGSL_INTRINSICS", () => {
   it("returns nothing unknown without throwing", () => {
     expect(findWgslIntrinsics("notABUILTIN")).toEqual([]);
     expect(findWgslIntrinsics("texture2D")).toEqual([]);
+  });
+
+  it("spells signatures in WGSL declaration syntax", () => {
+    expect(findWgslIntrinsics("sin")[0]?.signature).toBe("fn sin(angle: T) -> T");
+    expect(findWgslIntrinsics("bitcast")[0]?.signature).toBe("fn bitcast(e: S) -> T");
+    expect(findWgslIntrinsics("global_invocation_id")[0]?.signature).toBe("global_invocation_id: vec3u");
+    for (const intrinsic of WGSL_INTRINSICS) {
+      const expected = intrinsic.kind === "function" ? /^fn \w+\(.*\)( -> .+)?$/ : /^\w+: .+$/;
+      expect(intrinsic.signature, intrinsic.name).toMatch(expected);
+    }
   });
 });

@@ -518,6 +518,11 @@ describe("WGSL corpus mirrors: authored identifier sweep", () => {
           if (hover && (!contents.includes(token.text) || contents.includes("Declared in"))) {
             gaps.push(`${where}: attribute argument hovers an authored symbol: ${contents.slice(0, 80)}`);
           }
+        } else if (category === "attribute-name") {
+          // Attributes document themselves, never a same-named authored symbol.
+          if (!contents.includes(`@${token.text}`) || contents.includes("Declared in")) {
+            gaps.push(`${where}: attribute hover ${hover ? `is not its documentation: ${contents.slice(0, 80)}` : "missing"}`);
+          }
         } else if (hover && category !== "predeclared-type") {
           gaps.push(`${where}: unexpected hover ${contents.slice(0, 80)}`);
         }

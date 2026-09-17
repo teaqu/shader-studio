@@ -3,8 +3,8 @@ struct Material {
     rough: f32,
 };
 
-fn blend(uv: vec2f, lo: vec2f, hi: vec2f) -> f32 {
-    return uv.x + lo.x + hi.x;
+fn blend(point: vec2f, lo: vec2f, hi: vec2f) -> f32 {
+    return point.x + lo.x + hi.x;
 }
 
 fn mainImage(pixelPosition: vec2f) -> vec4f {

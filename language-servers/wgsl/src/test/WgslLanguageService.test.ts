@@ -149,7 +149,7 @@ describe("WgslLanguageService", () => {
     const instance = await service();
 
     expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 4 } }))?.contents))
-      .toContain("shade(vec3f) -> vec3f");
+      .toContain("fn shade(x: vec3f) -> vec3f");
     expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 24 } }))?.contents))
       .toContain("iTime");
     expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 32 } }))?.contents))
@@ -164,9 +164,9 @@ describe("WgslLanguageService", () => {
     const hoverAt = (line: number, character: number) =>
       instance.hover({ document: revision, position: { line, character } });
 
-    expect(JSON.stringify((await hoverAt(1, 11))?.contents)).toContain("vec3f iResolution");
-    expect(JSON.stringify((await hoverAt(1, 25))?.contents)).toContain("f32 iTime");
-    expect(JSON.stringify((await hoverAt(1, 33))?.contents)).toContain("i32 iFrame");
+    expect(JSON.stringify((await hoverAt(1, 11))?.contents)).toContain("var<private> iResolution: vec3f");
+    expect(JSON.stringify((await hoverAt(1, 25))?.contents)).toContain("var<private> iTime: f32");
+    expect(JSON.stringify((await hoverAt(1, 33))?.contents)).toContain("var<private> iFrame: i32");
   });
 
   it("documents builtin uniforms instead of claiming the shader declared them", async () => {
@@ -187,7 +187,7 @@ describe("WgslLanguageService", () => {
     await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
 
     const dispatch = JSON.stringify((await instance.hover({ document: revision, position: { line: 2, character: 16 } }))?.contents);
-    expect(dispatch).toContain("i32 iDispatch");
+    expect(dispatch).toContain("var<private> iDispatch: i32");
     expect(dispatch).toContain("repetition index");
     expect(dispatch).not.toContain("Declared in");
   });
@@ -203,7 +203,7 @@ describe("WgslLanguageService", () => {
     await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
 
     const time = JSON.stringify((await instance.hover({ document: revision, position: { line: 1, character: 23 } }))?.contents);
-    expect(time).toContain("f32 iTime");
+    expect(time).toContain("var<private> iTime: f32");
     expect(time).not.toContain("Declared in");
     const helper = JSON.stringify((await instance.hover({ document: revision, position: { line: 1, character: 16 } }))?.contents);
     expect(helper).toContain("Declared in Shader Studio Common");
@@ -1113,11 +1113,14 @@ describe("WGSL member typing and hover gaps found by the corpus sweep", () => {
       .toContain("fn writeOutput(coord: vec2u, layer: u32, color: vec4f)");
   });
 
-  it("does not hover an authored symbol for an attribute of the same name", async () => {
+  it("documents an attribute rather than an authored symbol of the same name", async () => {
     const text = "@compute @workgroup_size(1) fn compute(@builtin(global_invocation_id) id: vec3u) {}";
     const instance = await open(text, { stage: "compute" });
-    expect(await hoverAt(instance, text, "compute", 1)).toBeNull();
-    expect(await hoverAt(instance, text, "compute", 1, 1)).toContain("compute(vec3u)");
+    const attribute = await hoverAt(instance, text, "compute", 1);
+    expect(attribute).toContain("@compute");
+    expect(attribute).toContain("compute shader entry point");
+    expect(attribute).not.toContain("compute(");
+    expect(await hoverAt(instance, text, "compute", 1, 1)).toContain("fn compute(id: vec3u)");
     expect(await hoverAt(instance, text, "global_invocation_id", 1)).toContain("Global workgroup-grid coordinates");
   });
 
@@ -1131,9 +1134,9 @@ fn mainImage(coord: vec2f) -> vec4f {
 }`;
     const instance = await open(text);
     const field = await hoverAt(instance, text, "light.color", "light.".length + 1);
-    expect(field).toContain("vec3f color");
+    expect(field).toContain("color: vec3f");
     expect(field).toContain("Field of `Light`");
-    expect(await hoverAt(instance, text, "coord.xy", "coord.".length + 1)).toContain("vec2f xy");
+    expect(await hoverAt(instance, text, "coord.xy", "coord.".length + 1)).toContain("xy: vec2f");
     expect(await hoverAt(instance, text, "unknownThing.color", "unknownThing.".length + 1)).toBeNull();
   });
 });
@@ -1200,5 +1203,114 @@ fn helper(v: f32) -> f32 { return cycleA(v); }`;
     await instance.syncEnvironment({ ...environment(), documentUri: commonUri, passName: "common", resources: [] });
     await instance.openDocument({ uri: commonUri, languageId: "wgsl", version: 1, text: commonText });
     expect(await errorsOf(instance, { ...revision, uri: commonUri })).toEqual([]);
+  });
+});
+
+describe("WGSL hover labels use WGSL declaration syntax", () => {
+  const hoverAt = async (instance: WgslLanguageService, text: string, needle: string, delta = 1, occurrence = 0) => {
+    const hover = await instance.hover({ document: revision, position: positionOf(text, needle, delta, occurrence) });
+    return hover ? JSON.stringify(hover.contents) : "";
+  };
+
+  const text = `var<private> glow: f32 = 0.0;
+@group(0) @binding(0) var<storage, read> values: array<f32>;
+@id(0) override gain: f32 = 1.0;
+const LIMIT = 4;
+struct Material { rough: f32, }
+alias Row = array<f32, 4>;
+// Scales a value.
+fn scale(amount: f32, by: f32) -> f32 { return amount * by; }
+fn apply() { }
+fn mainImage(coord: vec2f) -> vec4f {
+  let uv = coord;
+  var total: f32 = glow + gain + values[0];
+  const k = 2.0;
+  let unknown = mystery();
+  let m = Material(0.5);
+  let row: Row = Row();
+  apply();
+  for (var i = 0; i < LIMIT; i++) { total += scale(m.rough, k) + row[0] + f32(i); }
+  return vec4f(uv * total, unknown, tint.x);
+}`;
+
+  it.each([
+    ["let uv", "let uv: vec2f"],
+    ["var total", "var total: f32"],
+    ["const k", "const k: f32"],
+    ["let unknown", "let unknown"],
+    ["var i", "var i: i32"],
+    ["var<private> glow", "var<private> glow: f32"],
+    ["var<storage, read> values", "var<storage, read> values: array<f32>"],
+    ["override gain", "override gain: f32"],
+    ["const LIMIT", "const LIMIT"],
+    ["struct Material", "struct Material"],
+    ["alias Row", "alias Row = array<f32, 4>"],
+    ["(amount", "amount: f32"],
+    ["fn scale", "fn scale(amount: f32, by: f32) -> f32"],
+    ["fn apply", "fn apply()"],
+  ])("labels %s as %s", async (needle, label) => {
+    const instance = await open(text);
+    const name = needle.split(/[\s(]/).filter(Boolean).pop()!;
+    const hover = await hoverAt(instance, text, needle, needle.lastIndexOf(name) + 1);
+    expect(hover).toContain(`\`\`\`wgsl\\n${label}\\n\`\`\``);
+  });
+
+  it("keeps a function's leading comment in its hover", async () => {
+    const instance = await open(text);
+    expect(await hoverAt(instance, text, "scale(m.rough", 1)).toContain("Scales a value.");
+  });
+
+  it("labels custom uniforms as the private globals they are injected as", async () => {
+    const instance = await open(text);
+    expect(await hoverAt(instance, text, "tint.x", 1)).toContain("var<private> tint: vec3f");
+  });
+
+  it("labels a Common declaration in WGSL syntax", async () => {
+    const commonUri = "file:///workspace/common.wgsl";
+    const source = "fn mainImage(coord: vec2f) -> vec4f {\n  return vec4f(SHADE * helper(coord.x));\n}";
+    const instance = await open(source, {
+      commonFile: { uri: commonUri, text: "const SHADE: f32 = 0.5;\nfn helper(t: f32) -> f32 { return t; }", version: 1 },
+    });
+    expect(await hoverAt(instance, source, "SHADE")).toContain("const SHADE: f32");
+    expect(await hoverAt(instance, source, "helper")).toContain("fn helper(t: f32) -> f32");
+  });
+});
+
+describe("WGSL attribute hovers", () => {
+  const hoverAt = async (instance: WgslLanguageService, text: string, needle: string) => {
+    const hover = await instance.hover({ document: revision, position: positionOf(text, needle, 2) });
+    return hover ? JSON.stringify(hover.contents) : "";
+  };
+
+  it.each([
+    ["@compute", "compute", "@compute", "compute shader entry point"],
+    ["@workgroup_size", "compute", "@workgroup_size(x, y?, z?)", "workgroup"],
+    ["@fragment", "fragment", "@fragment", "fragment shader entry point"],
+    ["@vertex", "vertex", "@vertex", "vertex shader entry point"],
+    ["@builtin", "compute", "@builtin(name)", "built-in value"],
+    ["@location", "fragment", "@location(index)", "location"],
+    ["@group", "compute", "@group(index)", "bind group"],
+    ["@binding", "compute", "@binding(index)", "binding"],
+    ["@id", "fragment", "@id(index)", "override"],
+    ["@must_use", "fragment", "@must_use", "result"],
+    ["@align", "fragment", "@align(bytes)", "alignment"],
+    ["@size", "fragment", "@size(bytes)", "size"],
+    ["@interpolate", "fragment", "@interpolate(type, sampling?)", "interpolat"],
+    ["@invariant", "fragment", "@invariant", "invariant"],
+    ["@diagnostic", "fragment", "@diagnostic(severity, rule)", "diagnostic"],
+    ["@blend_src", "fragment", "@blend_src(index)", "blend"],
+    ["@const", "fragment", "@const", "constant"],
+  ] as const)("documents %s", async (needle, stage, signature, description) => {
+    const text = `${needle} fn f() {}`;
+    const instance = await open(text, { stage });
+    const hover = await hoverAt(instance, text, needle);
+    expect(hover).toContain(signature);
+    expect(hover.toLowerCase()).toContain(description);
+  });
+
+  it("returns nothing for an attribute WGSL does not define", async () => {
+    const text = "@madeup fn f() {}";
+    const instance = await open(text);
+    expect(await hoverAt(instance, text, "@madeup")).toBe("");
   });
 });

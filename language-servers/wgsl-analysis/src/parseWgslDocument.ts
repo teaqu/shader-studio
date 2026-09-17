@@ -29,6 +29,7 @@ interface MutableSymbol {
   kind: WgslSymbolKind;
   typeName?: string;
   signature?: string;
+  declarationKeyword?: string;
   declaration: Range;
   definition: Range;
   references: Range[];
@@ -253,7 +254,7 @@ class WgslParser {
     name: string,
     kind: WgslSymbolKind,
     nameToken: WgslToken,
-    options: { typeName?: string; signature?: string } = {},
+    options: { typeName?: string; signature?: string; declarationKeyword?: string } = {},
   ): MutableSymbol {
     const frame = this.scopeStack[this.scopeStack.length - 1]!.frame;
     const symbol: MutableSymbol = {
@@ -262,6 +263,7 @@ class WgslParser {
       kind,
       ...(options.typeName === undefined ? {} : { typeName: options.typeName }),
       ...(options.signature === undefined ? {} : { signature: options.signature }),
+      ...(options.declarationKeyword === undefined ? {} : { declarationKeyword: options.declarationKeyword }),
       declaration: this.tokenRange(nameToken),
       definition: this.tokenRange(nameToken),
       references: [],
@@ -856,7 +858,7 @@ class WgslParser {
       return;
     }
     this.advance();
-    this.declareSymbol(nameToken.text, "type", nameToken);
+    this.declareSymbol(nameToken.text, "type", nameToken, { declarationKeyword: "struct" });
     this.beginScope(nameToken.text, "type", this.tokenStart(structToken));
     if (!this.checkText("{")) {
       this.error("Expected '{' after the struct name.", this.peek());
@@ -926,7 +928,7 @@ class WgslParser {
       nameToken.text,
       "type",
       nameToken,
-      aliased === undefined ? {} : { typeName: aliased.text },
+      aliased === undefined ? { declarationKeyword: "alias" } : { typeName: aliased.text, declarationKeyword: "alias" },
     );
     if (!this.checkText(";")) {
       this.error("Expected ';' after the alias declaration.", this.peek());
@@ -937,8 +939,11 @@ class WgslParser {
 
   private parseVariableDeclaration(): void {
     const keyword = this.advance();
+    let declarationKeyword = keyword.text;
     if (this.checkText("<")) {
+      const templateStart = this.peek().offset;
       this.skipBalanced("<", ">");
+      declarationKeyword += this.source.slice(templateStart, this.lastConsumedEnd).replace(/\s+/g, " ");
     }
     const nameToken = this.peek();
     if (nameToken.kind !== "identifier") {
@@ -962,7 +967,7 @@ class WgslParser {
       nameToken.text,
       kind,
       nameToken,
-      typeName === undefined ? {} : { typeName },
+      typeName === undefined ? { declarationKeyword } : { typeName, declarationKeyword },
     );
     if (!this.checkText(";")) {
       this.error(`Expected ';' after the '${nameToken.text}' declaration.`, this.peek());
@@ -981,7 +986,7 @@ class WgslParser {
       return;
     }
     this.advance();
-    const symbol = this.declareSymbol(nameToken.text, "function", nameToken);
+    const symbol = this.declareSymbol(nameToken.text, "function", nameToken, { declarationKeyword: "fn" });
     this.beginScope(nameToken.text, "function", this.tokenStart(fnToken));
     if (!this.checkText("(")) {
       this.error("Expected '(' after the function name.", this.peek());
