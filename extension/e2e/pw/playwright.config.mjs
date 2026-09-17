@@ -9,6 +9,9 @@ export default defineConfig({
   globalSetup: join(here, 'global-setup.mjs'),
   testDir: here,
   testMatch: '**/*.e2e.mjs',
+  // The corpus rig needs the corpus root as its workspace; it has its own
+  // config (playwright.corpus.config.mjs, `test:e2e:vscode:corpus`).
+  testIgnore: '**/corpus-extension-host.e2e.mjs',
   outputDir: join(extensionPath, '.playwright'),
   // Two workers locally, not more: measured 1 -> 23.0s, 2 -> 14.7s, 4 -> 15.6s,
   // so a fourth window buys nothing while each one costs a full VS Code with its
