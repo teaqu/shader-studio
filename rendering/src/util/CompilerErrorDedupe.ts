@@ -72,6 +72,18 @@ export function splitCompilerErrorBlocks(errors: readonly string[] | undefined):
 
 /** glslang reports `ERROR: <shader>:<line>:` after the line has been mapped back. */
 const GLSL_REPORTED_LINE = /ERROR:\s*\d+:(\d+):/;
+/**
+ * WGSL diagnostics are formatted `<pass>: WGSL L<line>:<column>` once mapped to
+ * the authored source. Common, vertex and generated-code lines use other
+ * prefixes or owners and never name a line of the pass being edited.
+ */
+const WGSL_REPORTED_LINE = /(?:^|\n)\s*([^:\n]+):\s*WGSL\s+L(\d+):/g;
+
+function wgslReportedLines(entry: string): number[] {
+  return [...entry.matchAll(WGSL_REPORTED_LINE)]
+    .filter((match) => match[1]!.trim() !== "Common")
+    .map((match) => Number.parseInt(match[2]!, 10));
+}
 
 /**
  * The first source line the compiler complained about, or null when it named
@@ -79,6 +91,11 @@ const GLSL_REPORTED_LINE = /ERROR:\s*\d+:(\d+):/;
  */
 export function firstReportedErrorLine(errors: readonly string[] | undefined): number | null {
   let earliest: number | null = null;
+  for (const entry of errors ?? []) {
+    for (const line of typeof entry === "string" ? wgslReportedLines(entry) : []) {
+      earliest = earliest === null ? line : Math.min(earliest, line);
+    }
+  }
   for (const block of splitCompilerErrorBlocks(errors)) {
     const glsl = block.text.match(GLSL_REPORTED_LINE);
     const line = block.location?.line ?? (glsl ? Number.parseInt(glsl[1], 10) : undefined);

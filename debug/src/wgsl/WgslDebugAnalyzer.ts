@@ -26,6 +26,7 @@ import {
 import { isWgslMatrix2x2F32 } from "./WgslEmitter";
 
 const CAPTURE_SCALARS = new Set(["bool", "i32", "u32", "f32", "f16"]);
+const CONTROL_FLOW_KINDS: ReadonlySet<string> = new Set(["if", "switch", "loop", "for", "while"]);
 const VECTOR_TYPE = /^vec([234])([fhiu])$/;
 const VECTOR_PARAMETERIZED = /^vec([234])<\s*([iu]32|f32|f16)\s*>$/;
 
@@ -59,8 +60,14 @@ export function analyzeWgslSite(
   if (!statement || !containsRange(callableScope.range, statement.range)) {
     return failure(sourceUri, position, "wgsl-debug-site-not-executed", siteMessage(source, sourceUri, position));
   }
-  if (statement.kind === "if" || statement.kind === "switch" || statement.kind === "loop"
-    || statement.kind === "for" || statement.kind === "while") {
+  if (CONTROL_FLOW_KINDS.has(statement.kind)) {
+    // On the brace that closes a block, report what the block leaves behind:
+    // its own declarations, holding their last-iteration values. Capturing from
+    // the block's final statement makes those reachable, as GLSL and Slang do.
+    const closing = lastStatementOfBlock(document, statement, position);
+    if (closing) {
+      return analyzeStatementSite(document, source, sourceUri, position, closing, callableScope, callableSymbol);
+    }
     return analyzeControlFlowSite(document, sourceUri, position, statement, callableScope, callableSymbol);
   }
   return analyzeStatementSite(document, source, sourceUri, position, statement, callableScope, callableSymbol);
@@ -244,6 +251,22 @@ function smallestContainingStatement(
     .sort((left, right) => rangeSize(left.range) - rangeSize(right.range))[0];
 }
 
+/** The last plain statement inside a control-flow block, when `position` is on its closing line. */
+function lastStatementOfBlock(
+  document: WgslAnalysisDocument,
+  controlFlow: WgslStatement,
+  position: DebugSourcePosition,
+): WgslStatement | undefined {
+  if (position.line !== controlFlow.range.end.line) {
+    return undefined;
+  }
+  return document.statements
+    .filter((candidate) => !CONTROL_FLOW_KINDS.has(candidate.kind)
+      && candidate !== controlFlow
+      && containsRange(controlFlow.range, candidate.range))
+    .sort((left, right) => comparePositions(right.range.end, left.range.end))[0];
+}
+
 function nearestPrecedingStatement(
   document: WgslAnalysisDocument,
   position: DebugSourcePosition,
@@ -254,9 +277,8 @@ function nearestPrecedingStatement(
 }
 
 function enclosingControlFlow(document: WgslAnalysisDocument, statement: WgslStatement): DebugControlFlow[] {
-  const kinds = new Set(["if", "switch", "loop", "for", "while"]);
   return document.statements
-    .filter((candidate) => kinds.has(candidate.kind) && containsRange(candidate.range, statement.range))
+    .filter((candidate) => CONTROL_FLOW_KINDS.has(candidate.kind) && containsRange(candidate.range, statement.range))
     .sort((left, right) => comparePositions(left.range.start, right.range.start))
     .map((candidate) => ({ kind: candidate.kind as DebugControlFlow["kind"], range: candidate.range }));
 }

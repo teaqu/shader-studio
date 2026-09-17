@@ -254,3 +254,31 @@ it("types explicit-level channel sampling in compute captures without fragment-o
     expect(result.analysis.visibleValues.map(value => value.name)).toEqual(["value"]);
   }
 });
+
+it("plans a capture from a loop's closing brace", () => {
+  const loop = [
+    "fn mainImage(coord: vec2f) -> vec4f {",
+    "  var total = 0.0;",
+    "  for (var i = 0; i < 3; i++) {",
+    "    let layer = f32(i) * coord.x;",
+    "    total += layer;",
+    "  }",
+    "  return vec4f(total);",
+    "}",
+  ].join("\n");
+  const engine = new WgslDebugEngine();
+  const request = {
+    workspace: { ...workspace(), files: [{ ...workspace().files[0]!, source: loop }] },
+    sourceUri: "file:///work/main.wgsl",
+    position: { line: 5, character: 2 },
+  };
+  const result = engine.analyze(request);
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    return;
+  }
+  const layer = result.analysis.visibleValues.find(value => value.name === "layer");
+  expect(layer).toBeDefined();
+
+  expect(engine.planCapture(request, [layer!.id])).toMatchObject({ ok: true });
+});

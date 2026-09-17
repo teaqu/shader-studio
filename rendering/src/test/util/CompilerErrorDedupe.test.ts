@@ -305,3 +305,24 @@ describe("firstReportedErrorLine", () => {
     expect(firstReportedErrorLine(undefined)).toBeNull();
   });
 });
+
+describe("firstReportedErrorLine for WGSL", () => {
+  it("finds the line a WGSL compiler error names", () => {
+    expect(firstReportedErrorLine(["Image: WGSL L3:18 missing initializer for 'let' declaration"])).toBe(3);
+  });
+
+  it("reports the earliest of several WGSL errors", () => {
+    expect(firstReportedErrorLine([
+      "Image: WGSL L9:5 unresolved value 'x'",
+      "Image: WGSL L4:1 expected ';'",
+    ])).toBe(4);
+  });
+
+  it("ignores lines that belong to Common, the vertex hook, or generated code", () => {
+    expect(firstReportedErrorLine([
+      "Common: WGSL L2:1 unresolved value 'x'",
+      "Image (vertex): L1:1 unresolved value 'y'",
+      "Image: WGSL internal: L40:1 type mismatch",
+    ])).toBeNull();
+  });
+});

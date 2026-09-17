@@ -167,6 +167,62 @@ describe("analyzeWgslSite", () => {
       .toEqual(["coord:vec2f", "uFog:vec3f", "inner:f32", "_dbgReturn:vec4f"]);
   });
 
+  describe("on the brace that closes a block", () => {
+    const LOOP = [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  var total = 0.0;",
+      "  for (var i = 0; i < 3; i++) {",
+      "    let layer = f32(i) * coord.x;",
+      "    if layer > 0.5 {",
+      "      total += layer;",
+      "    }",
+      "    total *= 0.5;",
+      "  }",
+      "  return vec4f(total);",
+      "}",
+    ].join("\n");
+
+    function names(position: DebugSourcePosition): string[] {
+      const result = analyze(LOOP, position);
+      return result.ok ? result.analysis.visibleValues.map((value) => value.name) : [];
+    }
+
+    it("reports what the loop leaves behind, from its final statement", () => {
+      const result = analyze(LOOP, { line: 8, character: 2 });
+
+      expect(names({ line: 8, character: 2 })).toEqual(expect.arrayContaining(["coord", "total", "i", "layer"]));
+      expect(result).toMatchObject({
+        ok: true,
+        analysis: { statementRange: { start: { line: 7, character: 4 } } },
+      });
+    });
+
+    it("reports an if block's own final statement on its closing brace", () => {
+      expect(names({ line: 6, character: 4 })).toEqual(expect.arrayContaining(["total", "i", "layer"]));
+    });
+
+    it("keeps the control-flow site on the loop header", () => {
+      const result = analyze(LOOP, { line: 2, character: 2 });
+
+      expect(names({ line: 2, character: 2 })).not.toContain("layer");
+      expect(result).toMatchObject({ ok: true, analysis: { statementRange: { start: { line: 2, character: 2 } } } });
+    });
+
+    it("keeps the control-flow site for an empty block", () => {
+      const source = [
+        "fn mainImage(coord: vec2f) -> vec4f {",
+        "  var total = 0.0;",
+        "  loop {",
+        "  }",
+        "  return vec4f(total);",
+        "}",
+      ].join("\n");
+      const result = analyzeWgslSite(source, URI, { line: 3, character: 2 });
+
+      expect(result).toMatchObject({ ok: true, analysis: { statementRange: { start: { line: 2, character: 2 } } } });
+    });
+  });
+
   it("fails closed outside any callable", () => {
     expect(analyze("var<private> x: f32 = 1.0;", { line: 0, character: 4 })).toMatchObject({
       ok: false,

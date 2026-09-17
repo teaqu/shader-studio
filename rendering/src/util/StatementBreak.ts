@@ -12,9 +12,10 @@
 /**
  * Lines opening a block rather than ending a statement. A keyword only counts
  * as one when it carries what it needs: a bare `if` or `switch` left mid-edit
- * is exactly the unterminated statement being looked for.
+ * is exactly the unterminated statement being looked for. WGSL may omit the
+ * parentheses around a condition and adds `loop`/`continuing` blocks.
  */
-const CONTROL_HEAD = /^(?:(?:if|for|while|switch)\s*\(|(?:else|do)\b|case\b.*:|default\s*:)/;
+const CONTROL_HEAD = /^(?:(?:if|for|while|switch)\s*\(|(?:if|while|switch)\s+[^\s(]|(?:else|do|loop|continuing)\b|case\b.*:|default\s*:)/;
 const TERMINATORS = /[;{}:,]$/;
 const CONTINUES = /[+\-*/%<>=&|^?~!(,[]$/;
 /**
@@ -22,7 +23,7 @@ const CONTINUES = /[+\-*/%<>=&|^?~!(,[]$/;
  * a keyword, a closing brace, or a declaration - `float frame = ...` cannot be
  * the tail of the expression on the line before it.
  */
-const STATEMENT_START = /^(?:(?:return|if|for|while|switch|do|break|continue|discard)\b|[}#]|\w[\w<>]*\s+\w+\s*[=;([]|\w+(?:\.\w+)*\s*[-+*/%]?=[^=])/;
+const STATEMENT_START = /^(?:(?:return|if|for|while|switch|do|break|continue|discard|let|var|const|loop)\b|[}#]|\w[\w<>]*\s+\w+\s*[=;([]|\w+(?:\.\w+)*\s*[-+*/%]?=[^=])/;
 const PREPROCESSOR = /^#/;
 
 /**
@@ -71,7 +72,7 @@ export function firstUnterminatedStatementLine(code: string): number | null {
     // got the statement it opens.
     if (depth > 0 && !insideStatement && openGroups === 0 && CONTROL_HEAD.test(trimmed)) {
       const follows = nextCode(lines, index);
-      const needsBlock = /^switch\s*\(/.test(trimmed);
+      const needsBlock = /^switch\b/.test(trimmed);
       const opensBlock = trimmed.endsWith("{") || follows.startsWith("{");
       if (needsBlock ? !opensBlock : (!opensBlock && (follows === "" || follows.startsWith("}")))) {
         return index + 1;
@@ -181,17 +182,29 @@ export function enclosingFunctionRange(code: string, line: number): { start: num
   return found ? { start: found.start + 1, end: found.end + 1 } : null;
 }
 
-function enclosingFunction(lines: string[], line: number): { start: number; end: number; returnType: string } | null {
-  const signature = /^\s*(\w[\w<>, ]*?)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
+/** `type name(...)` in GLSL and Slang. */
+const C_SIGNATURE = /^\s*(\w[\w<>, ]*?)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
+/** WGSL `fn name(...) -> @attr type`; the return type is absent for no value. */
+const WGSL_SIGNATURE = /^\s*(?:@\w+(?:\([^)]*\))?\s*)*fn\s+\w+\s*\([^;]*\)\s*(?:->\s*(?:@\w+(?:\([^)]*\))?\s*)*([^{]*?))?\s*\{?\s*$/;
 
+/** The return type a signature line declares, or null when it is not one. */
+function signatureReturnType(text: string): string | null {
+  const wgsl = text.match(WGSL_SIGNATURE);
+  if (wgsl) {
+    return wgsl[1]?.trim() || "void";
+  }
+  return text.match(C_SIGNATURE)?.[1]?.trim() ?? null;
+}
+
+function enclosingFunction(lines: string[], line: number): { start: number; end: number; returnType: string } | null {
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].replace(/\/\/.*$/, "").match(signature);
-    if (!match) {
+    const returnType = signatureReturnType(lines[index].replace(/\/\/.*$/, ""));
+    if (returnType === null) {
       continue;
     }
     const end = blockEnd(lines, index);
     if (end > index && line >= index && line <= end) {
-      return { start: index, end, returnType: match[1].trim() };
+      return { start: index, end, returnType };
     }
   }
   return null;
@@ -218,7 +231,8 @@ function blockEnd(lines: string[], start: number): number {
 
 /**
  * A value of `type` to return from a function cut short. Constructor syntax
- * rather than a cast: `(float)0` is Slang-only and a syntax error in GLSL.
+ * rather than a cast: `(float)0` is Slang-only and a syntax error in GLSL, and
+ * WGSL has no casts at all. A WGSL function without a return type reads as void.
  */
 function defaultReturn(returnType: string): string {
   return returnType === "void" ? "return;" : `return ${returnType}(0);`;
