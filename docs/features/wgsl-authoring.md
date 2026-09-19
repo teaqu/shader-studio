@@ -31,7 +31,7 @@ WGSL and Slang share the WebGPU pipeline, but the languages differ in how you re
   }
   ```
   See [Vertex Shaders](vertex-shaders.md).
-- **Assign single components, not swizzles.** WGSL assigns one component at a time, so `position.xy = ...` is not portable: Chromium's compiler accepts it, the one in VS Code rejects it with `cannot assign to value of type 'vec2<f32>'`. Write the components separately, or replace the whole vector:
+- **Assign single components, not swizzles.** Base WGSL assigns one component at a time. Assigning a swizzle (`position.xy = ...`) needs the optional `swizzle_assignment` language feature, which a browser either has or does not: there is nothing to enable, and the renderer cannot turn it on. Recent Chromium has it; the Chromium inside VS Code does not yet, and rejects the assignment with `cannot assign to value of type 'vec2<f32>'`. For a shader that runs in both, write the components separately or replace the whole vector:
   ```wgsl
   let nudged = (*position).xy + offset;
   (*position).x = nudged.x;

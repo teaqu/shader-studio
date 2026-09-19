@@ -15,8 +15,8 @@ fn simulateBodies(@builtin(global_invocation_id) id: vec3u) {
         force += gravityForce(current, bodies[j]);
     }
 
-    // Whole-vector stores: WGSL assigns single components only, and a
-    // multi-component swizzle store that Chromium accepts VS Code rejects.
+    // Whole-vector stores: a swizzle store needs the optional
+    // `swizzle_assignment` language feature, which VS Code's Chromium lacks.
     current.velocity = vec4f(current.velocity.xyz + force * 0.0001, current.velocity.w);
     current.position = vec4f(current.position.xyz + current.velocity.xyz * 0.0001, current.position.w);
 
