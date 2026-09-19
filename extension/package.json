@@ -1,7 +1,7 @@
 {
   "name": "shader-studio",
   "displayName": "Shader Studio",
-  "description": "Live GLSL and Slang shader preview, editor, and visual debugger with WebGL and WebGPU pipelines.",
+  "description": "A GLSL and Slang Shadertoy style editor for VS Code with hot reloading and debugging.",
   "version": "1.1.1",
   "publisher": "teaqu",
   "repository": {
