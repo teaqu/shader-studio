@@ -840,12 +840,10 @@ describe("shader corpus through the UI transport layer", () => {
       "slang/flow.slang: standalone host does not resolve model geometry assets",
       "slang/foundation/debugging/debug-coverage.slang: standalone host does not inline Slang imports/includes",
       "slang/foundation/debugging/passes/history.slang: standalone host does not inline Slang imports/includes",
-      "slang/test.slang: standalone host does not inline Slang imports/includes",
-      "slang/texture.slang: standalone host does not inline Slang imports/includes",
       "slang/two-meshes.slang: standalone host does not resolve model geometry assets",
       "slang/uniforms.slang: standalone host has no script evaluator for custom uniforms",
     ]);
-    expect(compared).toBe(15);
+    expect(compared).toBe(17);
   });
 
   it("compiles a vertex source activated as the shader itself", async () => {
