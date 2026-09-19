@@ -1,14 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LocalStorageWorkspaceJournal,
+  MemoryWorkspaceJournal,
   MemoryWorkspaceStore,
   VirtualWorkspace,
   type VirtualWorkspaceFile,
+  type VirtualWorkspaceStore,
 } from '../VirtualWorkspace';
 
 const seedFiles: VirtualWorkspaceFile[] = [
   { path: '/shaders/first.glsl', contents: 'first', createdAt: 10, modifiedAt: 10 },
   { path: '/shaders/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 10 },
 ];
+
+/** A store whose writes never land, standing in for a reload that abandons
+ * an in-flight save. Loads keep returning what was committed before it. */
+class StalledWorkspaceStore implements VirtualWorkspaceStore {
+  constructor(private readonly committed: VirtualWorkspaceFile[]) {}
+
+  async load(): Promise<VirtualWorkspaceFile[]> {
+    return this.committed.map(file => ({ ...file }));
+  }
+
+  save(): Promise<void> {
+    return new Promise<void>(() => {});
+  }
+
+  async clear(): Promise<void> {}
+}
 
 describe('VirtualWorkspace', () => {
   it.each(['glsl', 'slang', 'wgsl'])('commits all %s rename files in one persisted snapshot', async language => {
@@ -158,6 +177,119 @@ describe('VirtualWorkspace', () => {
     expect(restored.exists('/shaders/new-default.glsl')).toBe(false);
   });
 
+  it('replays an edit whose store save never committed', async () => {
+    // A reload can abandon the queued write. The edit is journalled the moment
+    // it is made, so the next workspace opens with it rather than the text the
+    // store last committed.
+    const store = new StalledWorkspaceStore(seedFiles);
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    workspace.writeText('/shaders/first.glsl', 'edited');
+
+    const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
+    expect(reloaded.readText('/shaders/first.glsl')).toBe('edited');
+    expect(reloaded.readText('/shaders/first.sha.json')).toBe('{}');
+  });
+
+  it('replays a creation and a deletion whose save never committed', async () => {
+    const store = new StalledWorkspaceStore(seedFiles);
+    const journal = new MemoryWorkspaceJournal();
+    let now = 20;
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => now++, journal);
+    workspace.writeText('/shaders/second.glsl', 'second');
+    workspace.delete('/shaders/first.glsl');
+
+    const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 99, journal);
+    expect(reloaded.readText('/shaders/second.glsl')).toBe('second');
+    expect(reloaded.exists('/shaders/first.glsl')).toBe(false);
+  });
+
+  it('drops the journal once the store has committed the same state', async () => {
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    workspace.writeText('/shaders/first.glsl', 'edited');
+    await workspace.flush();
+
+    expect(journal.read()).toBeNull();
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+      .toBe('edited');
+  });
+
+  it('keeps the stored copy when the journal describes an older edit', async () => {
+    // A save that committed without the journal being cleared must not undo
+    // the newer text a later session persisted over it.
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    journal.record({
+      files: [{ path: '/shaders/first.glsl', contents: 'stale', createdAt: 10, modifiedAt: 15 }],
+      deleted: [{ path: '/shaders/first.sha.json', at: 15 }],
+    });
+    await store.save([
+      { path: '/shaders/first.glsl', contents: 'newer', createdAt: 10, modifiedAt: 40 },
+      { path: '/shaders/first.sha.json', contents: '{}', createdAt: 10, modifiedAt: 40 },
+    ]);
+
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 50, journal);
+    expect(workspace.readText('/shaders/first.glsl')).toBe('newer');
+    expect(workspace.exists('/shaders/first.sha.json')).toBe(true);
+  });
+
+  it('lets a committed transaction retire a journalled edit, and a refused one add none', async () => {
+    // A transaction round-trips the whole snapshot, so it is authoritative
+    // once it commits. A refused one changed nothing and must leave nothing
+    // behind for the next open to replay.
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    workspace.writeText('/shaders/first.glsl', 'edited');
+    expect(journal.read()?.files.map(file => file.contents)).toEqual(['edited']);
+    await workspace.flush();
+    expect(journal.read()).toBeNull();
+
+    await expect(workspace.applyTextTransaction(
+      [{ path: '/shaders/first.glsl', before: 'stale', after: 'renamed' }],
+    )).rejects.toThrow('stale or duplicated');
+    expect(journal.read()).toBeNull();
+
+    await workspace.applyTextTransaction(
+      [{ path: '/shaders/first.glsl', before: 'edited', after: 'renamed' }],
+    );
+    expect(journal.read()).toBeNull();
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+      .toBe('renamed');
+  });
+
+  it('folds a replayed edit back into the store so the next open needs no journal', async () => {
+    const stalled = new StalledWorkspaceStore(seedFiles);
+    const journal = new MemoryWorkspaceJournal();
+    (await VirtualWorkspace.open(stalled, seedFiles, () => 20, journal))
+      .writeText('/shaders/first.glsl', 'edited');
+
+    const store = new MemoryWorkspaceStore();
+    await store.save(seedFiles);
+    const reloaded = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
+    expect(reloaded.readText('/shaders/first.glsl')).toBe('edited');
+    // Opening does not wait on the write, so the journal stands until it lands.
+    expect(journal.read()?.files.map(file => file.contents)).toEqual(['edited']);
+    await reloaded.flush();
+    expect(journal.read()).toBeNull();
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 40, new MemoryWorkspaceJournal()))
+      .readText('/shaders/first.glsl')).toBe('edited');
+  });
+
+  it('clearing the workspace discards the journal with it', async () => {
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    workspace.writeText('/shaders/first.glsl', 'edited');
+    await workspace.clear();
+
+    expect(journal.read()).toBeNull();
+    expect((await VirtualWorkspace.open(store, seedFiles, () => 30, journal)).readText('/shaders/first.glsl'))
+      .toBe('first');
+  });
+
   it('normalizes paths and rejects traversal outside the workspace root', async () => {
     const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
 
@@ -204,5 +336,88 @@ describe('VirtualWorkspace', () => {
 
     const restored = await VirtualWorkspace.open(store, seedFiles);
     expect(restored.list()).toEqual(seedFiles);
+  });
+});
+
+describe('LocalStorageWorkspaceJournal', () => {
+  const key = 'shader-studio-workspace-journal';
+  const record = {
+    files: [{ path: '/shaders/first.glsl', contents: 'edited', createdAt: 10, modifiedAt: 20 }],
+    deleted: [{ path: '/shaders/second.glsl', at: 20 }],
+  };
+
+  function fakeStorage(entries: Record<string, string> = {}) {
+    const items = new Map(Object.entries(entries));
+    return {
+      getItem: (name: string) => items.get(name) ?? null,
+      setItem: (name: string, value: string) => void items.set(name, value),
+      removeItem: (name: string) => void items.delete(name),
+      items,
+    } as unknown as Storage & { items: Map<string, string> };
+  }
+
+  it('round-trips a record and clears it', () => {
+    const storage = fakeStorage();
+    const journal = new LocalStorageWorkspaceJournal(key, () => storage);
+    expect(journal.read()).toBeNull();
+    journal.record(record);
+    // Written before the store is even asked, so a fresh page sees it.
+    expect(new LocalStorageWorkspaceJournal(key, () => storage).read()).toEqual(record);
+    journal.clear();
+    expect(journal.read()).toBeNull();
+  });
+
+  it.each([
+    ['not JSON', 'not json at all'],
+    ['a scalar', '42'],
+    ['an array', '[1, 2]'],
+    ['null', 'null'],
+  ])('reads %s as no record', (_label, stored) => {
+    const storage = fakeStorage({ [key]: stored });
+    expect(new LocalStorageWorkspaceJournal(key, () => storage).read()).toBeNull();
+  });
+
+  it('drops entries that are not whole workspace files', () => {
+    const storage = fakeStorage({
+      [key]: JSON.stringify({
+        files: [{ path: '/shaders/first.glsl' }, ...record.files, 'nonsense'],
+        deleted: [{ path: '/shaders/second.glsl' }, ...record.deleted, null],
+      }),
+    });
+    expect(new LocalStorageWorkspaceJournal(key, () => storage).read()).toEqual(record);
+  });
+
+  it('treats a missing files or deleted list as empty', () => {
+    const storage = fakeStorage({ [key]: JSON.stringify({ files: record.files }) });
+    expect(new LocalStorageWorkspaceJournal(key, () => storage).read()).toEqual({ files: record.files, deleted: [] });
+  });
+
+  it('discards the record rather than keeping a stale one when storage is full', () => {
+    const storage = fakeStorage();
+    let full = false;
+    const journal = new LocalStorageWorkspaceJournal(key, () => full
+      ? { ...storage, setItem: () => {
+        throw new Error('QuotaExceededError');
+      } } as unknown as Storage
+      : storage);
+    journal.record(record);
+    full = true;
+    journal.record({ files: [{ path: '/shaders/first.glsl', contents: 'later', createdAt: 10, modifiedAt: 30 }], deleted: [] });
+    full = false;
+    expect(journal.read()).toBeNull();
+  });
+
+  it('survives storage that is absent or throws on every access', () => {
+    for (const storage of [
+      () => undefined as unknown as Storage,
+      () => {
+        throw new Error('SecurityError');
+      },
+    ]) {
+      const journal = new LocalStorageWorkspaceJournal(key, storage);
+      expect(journal.read()).toBeNull();
+      expect(() => journal.record(record)).not.toThrow();
+      expect(() => journal.clear()).not.toThrow();
+    }
   });
 });

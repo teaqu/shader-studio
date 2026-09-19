@@ -991,6 +991,48 @@ test('config double clicks open and focus standalone file editors', async ({ pag
 });
 
 
+for (const language of ['glsl', 'slang', 'wgsl']) {
+  test(`${language} edits survive a reload that abandons the queued workspace write`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId(language === 'glsl'
+      ? 'shader-option-aurora-glsl'
+      : `shader-option-aurora-${language}-${language}`).click();
+    const editor = page.getByTestId('web-editor');
+    await expect(editor.locator('.view-lines')).toContainText('mainImage');
+    // Hold every subsequent workspace database open, so nothing this test
+    // types can reach IndexedDB before the reload discards the queued write.
+    await page.evaluate(() => {
+      const open = indexedDB.open.bind(indexedDB);
+      indexedDB.open = (...args) => {
+        const request = open(...args);
+        request.addEventListener('success', event => {
+          event.stopImmediatePropagation();
+          request.result.close();
+        });
+        return request;
+      };
+    });
+    // Deliberately broken: the preview turning red is the signal that the
+    // host compiled this exact text, so only the database write is still
+    // outstanding when the reload lands.
+    const source = language === 'wgsl'
+      ? 'fn mainImage(coord: vec2f) -> vec4f {\n  let pending_write_regression = ;\n  return vec4f(0.25);\n}'
+      : `#error pending_write_regression\n${language === 'glsl'
+        ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); }'
+        : 'float4 mainImage(float2 coord) { return float4(0.25); }'}`;
+    await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.insertText(source);
+    await expect(page.getByTestId('web-preview').getByLabel('Toggle pause')).toHaveClass(/error/);
+    await expect(editor.locator('.view-lines')).toContainText('pending_write_regression');
+    await page.reload();
+    await expect(editor.locator('.view-lines')).toContainText('pending_write_regression');
+    // The replay is folded back, so a second reload needs no journal.
+    await page.reload();
+    await expect(editor.locator('.view-lines')).toContainText('pending_write_regression');
+  });
+}
+
 test('focused standalone file editor selects the preview and persists after reload', async ({ page }) => {
   await page.goto('/');
   const aurora = page.getByTestId('shader-option-aurora-glsl');

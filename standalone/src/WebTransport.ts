@@ -9,6 +9,7 @@ import type {
 import { createDefaultWorkspaceFiles, resolveDefaultAssetUrl } from './defaultWorkspace';
 import {
   IndexedDbWorkspaceStore,
+  LocalStorageWorkspaceJournal,
   MemoryWorkspaceStore,
   VirtualWorkspace,
 } from './VirtualWorkspace';
@@ -30,8 +31,11 @@ function createWorkspace() {
   if (typeof indexedDB === 'undefined') {
     return VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds);
   }
-  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(), seeds)
-    .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds));
+  // Edits are journalled synchronously: a reload during a queued database
+  // write must not take the text back to the last committed snapshot.
+  const journal = new LocalStorageWorkspaceJournal();
+  return VirtualWorkspace.open(new IndexedDbWorkspaceStore(), seeds, undefined, journal)
+    .catch(() => VirtualWorkspace.open(new MemoryWorkspaceStore(), seeds, undefined, journal));
 }
 
 export class WebTransport implements Transport {

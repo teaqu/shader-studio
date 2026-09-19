@@ -11,9 +11,97 @@ export interface VirtualWorkspaceStore {
   clear(): Promise<void>;
 }
 
+/** Everything a store write has been asked to persist but has not confirmed:
+ * the files it would add or change, and the paths it would remove. */
+export interface VirtualWorkspaceJournalRecord {
+  files: VirtualWorkspaceFile[];
+  deleted: { path: string; at: number }[];
+}
+
+/** A synchronous record of edits whose store save has not committed yet.
+ * Store writes are asynchronous and a reload abandons the ones still queued,
+ * so each edit lands here first and is replayed by the next workspace. */
+export interface VirtualWorkspaceJournal {
+  read(): VirtualWorkspaceJournalRecord | null;
+  record(record: VirtualWorkspaceJournalRecord): void;
+  clear(): void;
+}
+
 function cloneFiles(files: VirtualWorkspaceFile[]): VirtualWorkspaceFile[] {
   return files.map((file) => ({ ...file }));
 }
+
+export class MemoryWorkspaceJournal implements VirtualWorkspaceJournal {
+  private pending: VirtualWorkspaceJournalRecord | null = null;
+
+  read(): VirtualWorkspaceJournalRecord | null {
+    return this.pending
+      ? { files: cloneFiles(this.pending.files), deleted: this.pending.deleted.map((entry) => ({ ...entry })) }
+      : null;
+  }
+
+  record(record: VirtualWorkspaceJournalRecord): void {
+    this.pending = { files: cloneFiles(record.files), deleted: record.deleted.map((entry) => ({ ...entry })) };
+  }
+
+  clear(): void {
+    this.pending = null;
+  }
+}
+
+/** Journals through `localStorage`, which commits before the keystroke that
+ * caused the edit returns. Restricted or full storage degrades to no journal
+ * rather than failing the edit. */
+export class LocalStorageWorkspaceJournal implements VirtualWorkspaceJournal {
+  constructor(
+    private readonly key = 'shader-studio-workspace-journal',
+    /** Read per call: storage can be absent, and reading it can throw. */
+    private readonly storage: () => Storage = () => localStorage,
+  ) {}
+
+  read(): VirtualWorkspaceJournalRecord | null {
+    try {
+      const raw: unknown = JSON.parse(this.storage().getItem(this.key) ?? 'null');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return null;
+      }
+      const { files, deleted } = raw as Partial<VirtualWorkspaceJournalRecord>;
+      return {
+        files: (Array.isArray(files) ? files : []).filter((file): file is VirtualWorkspaceFile =>
+          !!file && typeof file.path === 'string' && typeof file.contents === 'string'
+          && typeof file.createdAt === 'number' && typeof file.modifiedAt === 'number'),
+        deleted: (Array.isArray(deleted) ? deleted : []).filter((entry): entry is { path: string; at: number } =>
+          !!entry && typeof entry.path === 'string' && typeof entry.at === 'number'),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  record(record: VirtualWorkspaceJournalRecord): void {
+    try {
+      this.storage().setItem(this.key, JSON.stringify(record));
+    } catch {
+      // Out of quota or blocked: drop the stale record rather than replaying
+      // an edit the next open cannot trust to be the newest one.
+      this.clear();
+    }
+  }
+
+  clear(): void {
+    try {
+      this.storage().removeItem(this.key);
+    } catch {
+      // Nothing to clear when storage is unavailable.
+    }
+  }
+}
+
+const noJournal: VirtualWorkspaceJournal = {
+  read: () => null,
+  record: () => {},
+  clear: () => {},
+};
 
 export class MemoryWorkspaceStore implements VirtualWorkspaceStore {
   private files: VirtualWorkspaceFile[] | null = null;
@@ -108,32 +196,77 @@ export class IndexedDbWorkspaceStore implements VirtualWorkspaceStore {
 
 export class VirtualWorkspace {
   private readonly files = new Map<string, VirtualWorkspaceFile>();
+  /** The snapshot the store has confirmed. The journal carries the difference
+   * between it and the files in memory. */
+  private committed = new Map<string, VirtualWorkspaceFile>();
   private pendingSave: Promise<void> = Promise.resolve();
+  private saveSequence = 0;
   private revision = 0;
 
   private constructor(
     private readonly store: VirtualWorkspaceStore,
     files: VirtualWorkspaceFile[],
     private readonly now: () => number,
+    private readonly journal: VirtualWorkspaceJournal,
   ) {
     for (const file of files) {
       const path = this.normalizePath(file.path);
       this.files.set(path, { ...file, path });
     }
+    this.committed = new Map([...this.files].map(([path, file]) => [path, { ...file }]));
   }
 
   static async open(
     store: VirtualWorkspaceStore,
     seedFiles: VirtualWorkspaceFile[],
     now: () => number = () => Date.now(),
+    journal: VirtualWorkspaceJournal = noJournal,
   ): Promise<VirtualWorkspace> {
     const storedFiles = await store.load();
-    const workspace = new VirtualWorkspace(store, storedFiles ?? seedFiles, now);
+    const workspace = new VirtualWorkspace(store, storedFiles ?? seedFiles, now, journal);
     if (storedFiles === null) {
       workspace.queueSave();
       await workspace.flush();
+      return workspace;
+    }
+    if (workspace.replayJournal()) {
+      // Queued, not awaited: opening the workspace must not wait on the store
+      // that failed to keep up in the first place. The journal survives until
+      // this write commits.
+      workspace.queueSave();
     }
     return workspace;
+  }
+
+  /** Apply the edits a previous session recorded but never saw committed.
+   * An entry older than the stored copy is discarded: the store won that
+   * race, and replaying would undo the newer text. */
+  private replayJournal(): boolean {
+    const pending = this.journal.read();
+    if (!pending) {
+      return false;
+    }
+    let applied = false;
+    for (const file of pending.files) {
+      const path = this.normalizePath(file.path);
+      const stored = this.files.get(path);
+      if (!stored || stored.modifiedAt < file.modifiedAt) {
+        this.files.set(path, { ...file, path });
+        applied = true;
+      }
+    }
+    for (const entry of pending.deleted) {
+      const path = this.normalizePath(entry.path);
+      const stored = this.files.get(path);
+      if (stored && stored.modifiedAt <= entry.at) {
+        this.files.delete(path);
+        applied = true;
+      }
+    }
+    if (!applied) {
+      this.journal.clear();
+    }
+    return applied;
   }
 
   exists(path: string): boolean {
@@ -205,6 +338,9 @@ export class VirtualWorkspace {
         this.files.set(file.path, file);
       }
       this.revision++;
+      // The whole snapshot round-tripped, so it supersedes anything the
+      // journal was still holding for an earlier write.
+      this.onCommitted(snapshot, ++this.saveSequence);
       onCommit();
     });
     // A failed transaction must not poison future editor saves.
@@ -252,6 +388,9 @@ export class VirtualWorkspace {
   async clear(): Promise<void> {
     this.revision++;
     this.files.clear();
+    this.committed.clear();
+    this.saveSequence++;
+    this.journal.clear();
     this.pendingSave = this.pendingSave.then(() => this.store.clear());
     await this.pendingSave;
   }
@@ -286,6 +425,38 @@ export class VirtualWorkspace {
   private queueSave(): void {
     this.revision++;
     const snapshot = this.list();
-    this.pendingSave = this.pendingSave.then(() => this.store.save(snapshot));
+    // Recorded before the write is even queued: this is the only step that
+    // has already happened once the edit returns to the caller.
+    this.journal.record(this.pendingAgainstCommitted(snapshot));
+    const sequence = ++this.saveSequence;
+    this.pendingSave = this.pendingSave
+      .then(() => this.store.save(snapshot))
+      .then(() => this.onCommitted(snapshot, sequence));
+  }
+
+  /** What the store has not confirmed yet: files that differ from the
+   * committed snapshot, and paths that are no longer present. */
+  private pendingAgainstCommitted(snapshot: VirtualWorkspaceFile[]): VirtualWorkspaceJournalRecord {
+    const paths = new Set(snapshot.map((file) => file.path));
+    // Dated by the newest file either side knows about rather than by reading
+    // the clock: it outranks every copy this session saw, and loses to a file
+    // a later session writes over the deleted path.
+    const at = Math.max(0, ...[...this.committed.values(), ...snapshot].map((file) => file.modifiedAt));
+    return {
+      files: snapshot.filter((file) => {
+        const stored = this.committed.get(file.path);
+        return !stored || stored.contents !== file.contents || stored.modifiedAt !== file.modifiedAt;
+      }).map((file) => ({ ...file })),
+      deleted: [...this.committed.keys()].filter((path) => !paths.has(path)).map((path) => ({ path, at })),
+    };
+  }
+
+  private onCommitted(snapshot: VirtualWorkspaceFile[], sequence: number): void {
+    this.committed = new Map(snapshot.map((file) => [file.path, { ...file }]));
+    // A later edit has its own journal record; only the newest write may
+    // declare the journal spent.
+    if (sequence === this.saveSequence) {
+      this.journal.clear();
+    }
   }
 }
