@@ -1,6 +1,13 @@
 # Change Log
 ### Unreleased
 
+- Fixed WGSL built-in uniforms such as `iResolution` and `iTime` being treated as shader declarations: they now show their documentation on hover, stay out of the document outline, and no longer take go-to-definition to the top of the file.
+- WGSL hovers now read as WGSL declares things (`let uv: vec2f`, `var<storage, read> values: array<f32>`, `struct Material`, `fn scale(amount: f32, by: f32) -> f32`), and a function's leading comment appears with it.
+- WGSL attributes such as `@compute`, `@workgroup_size` and `@builtin` are now documented on hover.
+- Fixed WGSL variable capture reporting nothing while the file holds a statement that does not parse; as in GLSL and Slang, values declared above the break are captured.
+- Fixed WGSL capture omitting a block's values on its closing brace, and never capturing a `for (var i = 0; ...)` loop counter.
+- Documented that assigning to a swizzle (`position.xy = ...`) needs the optional `swizzle_assignment` WGSL language feature, which the Chromium inside VS Code does not have yet.
+
 - Fixed delayed preview selection and stale host echoes resetting the cursor and splitting typed text in editors sharing the same shader.
 
 - Fixed standalone Hide Buffers preferences being lost when reloading during workspace saves.
