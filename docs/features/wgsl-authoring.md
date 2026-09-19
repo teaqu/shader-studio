@@ -31,6 +31,14 @@ WGSL and Slang share the WebGPU pipeline, but the languages differ in how you re
   }
   ```
   See [Vertex Shaders](vertex-shaders.md).
+- **Assign single components, not swizzles.** WGSL assigns one component at a time, so `position.xy = ...` is not portable: Chromium's compiler accepts it, the one in VS Code rejects it with `cannot assign to value of type 'vec2<f32>'`. Write the components separately, or replace the whole vector:
+  ```wgsl
+  let nudged = (*position).xy + offset;
+  (*position).x = nudged.x;
+  (*position).y = nudged.y;
+
+  body.velocity = vec4f(body.velocity.xyz + force, body.velocity.w);
+  ```
 - **No imports.** WGSL has no module system: a shader file plus the [Common pass](config-buffers.md) text (prepended verbatim when configured) is the whole program. Shared code goes in the Common pass, exactly as with GLSL.
 - **No preprocessor.** There is no `#define`, `#if`, or macro expansion. Use `const` / `override` declarations and plain WGSL control flow instead. Snippets that relied on the GLSL preprocessor will not translate line-for-line.
 - **`enable` directives are supported.** Module-scope `enable`, `requires`, and `diagnostic()` directives are hoisted above the generated prelude so they take effect for the whole module. If an `enable` names an extension the GPU does not support (for example `enable f16;` on hardware without `shader-f16`), compilation fails with an error naming the missing requirement.

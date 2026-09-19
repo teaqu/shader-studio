@@ -52,7 +52,7 @@ function canvasSize(project: (typeof projects)[number]): number {
   if (hasSpatialGeometry || isLargeSimulation) {
     return 128;
   }
-  if (some((input) => ["audio", "video", "cubemap"].includes(input.type))) {
+  if (inputs.some((input) => ["audio", "video", "cubemap"].includes(input.type))) {
     return 96;
   }
   const isSmallContract = /(?:precision|custom-uniforms|versions\/|intellisense|keyboard|test\.)/.test(project.name);

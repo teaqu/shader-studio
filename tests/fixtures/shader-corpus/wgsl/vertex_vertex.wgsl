@@ -10,9 +10,15 @@
 
 fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
     let transform = vertexTransform[0];
-    (*position).xy = (*position).xy * transform.xy + transform.zw;
+    // NOTE: WGSL assigns single components only. Chromium's compiler accepts a
+    // multi-component swizzle store, VS Code's rejects it, so keep the portable
+    // form: build the new value, then write x and y separately.
+    let placed = (*position).xy * transform.xy + transform.zw;
+    (*position).x = placed.x;
+    (*position).y = placed.y;
 
     let channelColor = iChannel3SampleLevel(*uv, 0.0).rgb;
-    // NOTE: plain assignment — see intellisense.vert.wgsl.
-    (*position).xy = (*position).xy + (channelColor.rg - vec2f(0.5)) * 0.16;
+    let wobbled = (*position).xy + (channelColor.rg - vec2f(0.5)) * 0.16;
+    (*position).x = wobbled.x;
+    (*position).y = wobbled.y;
 }
