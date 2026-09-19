@@ -57,27 +57,27 @@ suite("SlangDependencyGraph", () => {
     }]);
   });
 
-  test("treats the retired shader_studio module as an ordinary missing import", () => {
+  test("keeps resolving later imports after one of them is missing", () => {
     const readPaths: string[] = [];
     const result = collectSlangDependencies({
       rootPath: "/shader/image.slang",
       rootSource: [
-        "import shader_studio;",
+        "import missing_palette;",
         "import palette;",
       ].join("\n"),
       ownerPass: "Image",
       readSource: (filePath) => {
         readPaths.push(path.normalize(filePath));
-        return filePath.endsWith("palette.slang") ? "module palette;" : null;
+        return filePath.endsWith("missing-palette.slang") ? null : "module palette;";
       },
     });
 
-    assert.deepStrictEqual(result.errors.map((error) => error.moduleName), ["shader_studio"]);
+    assert.deepStrictEqual(result.errors.map((error) => error.moduleName), ["missing_palette"]);
     assert.strictEqual(result.errors[0].code, "slang-module-not-found");
-    assert.strictEqual(result.errors[0].resolvedPath, path.normalize("/shader/shader-studio.slang"));
+    assert.strictEqual(result.errors[0].resolvedPath, path.normalize("/shader/missing-palette.slang"));
     assert.deepStrictEqual(result.modules.map((module) => module.moduleName), ["palette"]);
     assert.deepStrictEqual(readPaths, [
-      path.normalize("/shader/shader-studio.slang"),
+      path.normalize("/shader/missing-palette.slang"),
       path.normalize("/shader/palette.slang"),
     ]);
   });

@@ -350,10 +350,8 @@ function normalize(source: string, uri: string) {
   let previousCodeToken = '';
   let text = '';
   const tokens = /\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\r\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[A-Za-z_][A-Za-z0-9_]*|[^]/g;
-  // The host import is implicit; it introduces no user-owned symbols.
   const blank = (text: string) => text.replace(/[^\r\n]/g, ' ');
   const input = source
-    .replace(/^[ \t]*import[ \t]+(?:shader_studio|"shader-studio\.slang")[ \t]*;?[ \t]*$/gm, blank)
     // These attributes and system semantics contain no user symbol references.
     // Other attributes (including nonliteral numthreads arguments) stay intact
     // and are rejected by the parser rather than losing a reference.

@@ -58,7 +58,7 @@ checks the edited source with the Slang compiler. Standard stage attributes,
 literal `numthreads` dimensions, and `SV_` system semantics are supported. Generic
 helpers, methods, and imports can participate when the service resolves their
 declarations. A rename is declined if the symbol cannot be resolved or the edited
-source fails validation. The implicit `shader_studio` import is supported.
+source fails validation.
 
 Embedded editors in hosts without support for saving edits across files offer
 single-file rename only; they decline a cross-file edit without applying it.

@@ -2,6 +2,7 @@
 ### Unreleased
 
 - Fixed standalone edits being lost when the page reloaded before the workspace write reached the browser database. Each edit is now recorded the moment you make it and replayed on the next load.
+- Breaking: `import shader_studio;` is gone. It resolved to a generated stub module that was removed long ago, so a shader that still imports it reports an ordinary missing-module error. Delete the line; the built-in uniforms need no import.
 
 - Fixed WGSL built-in uniforms such as `iResolution` and `iTime` being treated as shader declarations: they now show their documentation on hover, stay out of the document outline, and no longer take go-to-definition to the top of the file.
 - WGSL hovers now read as WGSL declares things (`let uv: vec2f`, `var<storage, read> values: array<f32>`, `struct Material`, `fn scale(amount: f32, by: f32) -> f32`), and a function's leading comment appears with it.

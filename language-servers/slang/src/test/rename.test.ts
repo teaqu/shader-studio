@@ -84,6 +84,15 @@ float curve(float value) { return value; }`);
     expect(apply(source, edit)).toBe("import palette;\nfloat curve(float x) { return x; }\nfloat h(float v) { return curve(v); }");
   });
 
+  it("declines a file with a quoted import rather than guessing at its module", () => {
+    // A quoted path is a file reference the service does not resolve, so no
+    // spelling of one is exempt from the refusal.
+    for (const module of ["palette.slang", "lib/palette.slang"]) {
+      const source = `import "${module}";\nfloat tone(float x) { return x; }\nfloat h(float v) { return tone(v); }`;
+      expect(renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve")).toBeNull();
+    }
+  });
+
   it("refuses an imported name while renaming locals around it", () => {
     const source = "import palette;\nfloat h(float v) { return tone(v); }";
     expect(renameSlangSymbol([document(source)], uri, position(source, "tone"), "curve")).toBeNull();
