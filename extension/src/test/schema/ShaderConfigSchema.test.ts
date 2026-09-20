@@ -102,7 +102,7 @@ suite('Shader config JSON schema', () => {
         Image: {},
         common: { path: 'common.glsl', geometry: { type: 'cube' } }
       }
-    }, 'should NOT have additional properties');
+    }, 'should be equal to one of the allowed values');
   });
 
   test('accepts image and buffer resolution settings plus current polling field', () => {
@@ -164,7 +164,7 @@ suite('Shader config JSON schema', () => {
             iChannel2: { type: 'cubemap', path: 'skybox.png', filter: 'nearest', wrap: 'repeat', vflip: true },
             iChannel3: { type: 'audio', path: 'music.mp3', startTime: 1, endTime: 4, muted: false },
             iKeyboard: { type: 'keyboard' },
-            previousFrame: { type: 'buffer', source: 'BufferA' }
+            previousFrame: { type: 'buffer', source: 'BufferA', filter: 'nearest', wrap: 'repeat' }
           }
         },
         BufferA: {
@@ -176,6 +176,19 @@ suite('Shader config JSON schema', () => {
         }
       }
     });
+  });
+
+  test('rejects unsupported buffer sampling values', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            state: { type: 'buffer', source: 'BufferA', filter: 'cubic' }
+          }
+        }
+      }
+    }, 'should NOT have additional properties');
   });
 
   test('accepts storage and all compute pass configuration fields', () => {
@@ -219,6 +232,21 @@ suite('Shader config JSON schema', () => {
         }
       }
     });
+  });
+
+  test('accepts producer output formats but rejects them on Image', () => {
+    for (const outputFormat of ['auto', 'rgba16float', 'rgba32float']) {
+      assertValid({
+        version: '1.0',
+        passes: {
+          Image: {},
+          BufferA: { path: 'a.wgsl', outputFormat },
+          Compute: { type: 'compute', path: 'c.wgsl', outputFormat },
+        },
+      });
+    }
+    assertInvalid({ version: '1.0', passes: { Image: { outputFormat: 'rgba32float' } } }, 'should NOT have additional properties');
+    assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.wgsl', outputFormat: 'rgba8unorm' } } }, 'should be equal to one of the allowed values');
   });
 
   test('accepts storage without stride', () => {

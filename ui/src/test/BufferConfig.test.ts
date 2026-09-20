@@ -226,6 +226,23 @@ describe('BufferConfig', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('should validate buffer sampling options', () => {
+      const valid = new BufferConfig('Image', {
+        inputs: {
+          state: { type: 'buffer', source: 'BufferA', filter: 'nearest', wrap: 'repeat' },
+        },
+      });
+      expect(valid.validate()).toEqual({ isValid: true, errors: [] });
+
+      for (const input of [
+        { type: 'buffer', source: 'BufferA', filter: 'cubic' },
+        { type: 'buffer', source: 'BufferA', wrap: 'mirror' },
+      ]) {
+        const invalid = new BufferConfig('Image', { inputs: { state: input as never } });
+        expect(invalid.validate().isValid).toBe(false);
+      }
+    });
+
     it('should accept buffer input with custom source name', () => {
       const config: BufferPass = {
         path: 'shader.glsl',

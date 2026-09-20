@@ -341,7 +341,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       passKind: "compute",
       workgroupSize: [8, 8, 1],
       outputLayers: 1,
-      outputImageFormat: "rgba16f",
+      outputImageFormat: "rgba32f",
       hasOutput: false,
       entryPoint: "computeMainEntry",
     });
@@ -438,7 +438,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       expect(texture.descriptor).toEqual({
         label: "ComputeSim compute output",
         size: { width: 320, height: 180, depthOrArrayLayers: 3 },
-        format: "rgba16float",
+        format: "rgba32float",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
     }

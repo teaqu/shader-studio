@@ -22,6 +22,24 @@
     const all = new Set([...MIN_BUFFERS, ...availableBufferNames]);
     return [...all].sort();
   });
+
+  function selectBuffer(source: string) {
+    onSelect(tempInput?.type === "buffer"
+      ? { ...tempInput, source }
+      : { type: "buffer", source });
+  }
+
+  function updateBufferFilter(event: Event) {
+    if (tempInput?.type !== "buffer") return;
+    const filter = (event.currentTarget as HTMLSelectElement).value as "linear" | "nearest";
+    onSelect({ ...tempInput, filter });
+  }
+
+  function updateBufferWrap(event: Event) {
+    if (tempInput?.type !== "buffer") return;
+    const wrap = (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp";
+    onSelect({ ...tempInput, wrap });
+  }
 </script>
 
 <div class="misc-grid">
@@ -31,13 +49,28 @@
       <button
         class="misc-card"
         class:selected={tempInput?.type === "buffer" && tempInput.source === buf}
-        onclick={() => onSelect({ type: "buffer", source: buf })}
+        onclick={() => selectBuffer(buf)}
       >
         <ChannelPreview channelInput={{ type: "buffer", source: buf }} {getWebviewUri} />
         <div class="misc-card-label">{buf}</div>
       </button>
     {/each}
   </div>
+
+  {#if tempInput?.type === "buffer"}
+    <div class="buffer-sampling">
+      <label for="buffer-filter">Filter:</label>
+      <select id="buffer-filter" value={tempInput.filter ?? "linear"} onchange={updateBufferFilter}>
+        <option value="linear">Linear</option>
+        <option value="nearest">Nearest</option>
+      </select>
+      <label for="buffer-wrap">Wrap:</label>
+      <select id="buffer-wrap" value={tempInput.wrap ?? "clamp"} onchange={updateBufferWrap}>
+        <option value="clamp">Clamp</option>
+        <option value="repeat">Repeat</option>
+      </select>
+    </div>
+  {/if}
 
   <div class="misc-section-label">Other</div>
   <div class="misc-options">
@@ -71,6 +104,14 @@
   .misc-options {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(72px, 96px));
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .buffer-sampling {
+    display: grid;
+    grid-template-columns: auto minmax(100px, 1fr);
+    align-items: center;
     gap: 8px;
     margin-bottom: 8px;
   }

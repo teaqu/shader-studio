@@ -5,6 +5,7 @@ import type {
   ShaderLanguageId,
   TextureConfigInput,
   VideoConfigInput,
+  BufferOutputFormat,
 } from "@shader-studio/types";
 
 export type RenderPassName = string;
@@ -18,6 +19,12 @@ export type RenderPassChannel =
       source: string;
       readFrom: ChannelReadTiming;
       layer?: number;
+      filter?: "linear" | "nearest";
+      wrap?: "repeat" | "clamp";
+      effectiveFilter?: "linear" | "nearest";
+      samplingFallbackReason?: string;
+      sampleType?: "float" | "unfilterable-float";
+      samplerType?: "filtering" | "non-filtering";
     }
   | {
       kind: "texture"; slot: number; key: string; path: string;
@@ -76,6 +83,8 @@ export interface RenderPassNode {
   kind: "render" | "compute";
   output: "texture" | "canvas" | "none";
   outputLayers: number;
+  outputFormat?: BufferOutputFormat;
+  resolvedOutputFormat?: "rgba16float" | "rgba32float";
   dispatch?: DispatchSpec;
   dispatchCount: number;
   dispatchOnce: boolean;

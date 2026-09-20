@@ -11,9 +11,11 @@ const TEXTURE_TYPE_CUBEMAP = 2; // piRenderer.TEXTYPE.CUBEMAP
 export function bindTextures(
   gl: WebGL2RenderingContext,
   textures: (PiTexture | null)[],
+  samplers: readonly (WebGLSampler | null)[] = [],
 ): void {
   for (let i = 0; i < textures.length; i++) {
     gl.activeTexture(gl.TEXTURE0 + i);
+    gl.bindSampler(i, samplers[i] ?? null);
     const tex = textures[i];
     if (tex) {
       if (tex.mType === TEXTURE_TYPE_2D) {

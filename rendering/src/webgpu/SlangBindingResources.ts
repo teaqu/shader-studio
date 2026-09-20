@@ -4,10 +4,10 @@ import type { SlangChannelResource } from "./SlangPassPipeline";
 
 export function slangChannelLayoutEntries(plan: SlangBindingPlan, visibility: GPUShaderStageFlags): GPUBindGroupLayoutEntry[] {
   return [
-    ...plan.textures.map(({ binding, kind }) => ({ binding, visibility, texture: {
-      sampleType: "float" as const, ...(kind === "cubemap" ? { viewDimension: "cube" as const } : {}),
+    ...plan.textures.map(({ binding, kind, sampleType }) => ({ binding, visibility, texture: {
+      sampleType: sampleType ?? "float", ...(kind === "cubemap" ? { viewDimension: "cube" as const } : {}),
     } })),
-    ...plan.samplers.map(({ binding }) => ({ binding, visibility, sampler: { type: "filtering" as const } })),
+    ...plan.samplers.map(({ binding, samplerType }) => ({ binding, visibility, sampler: { type: samplerType ?? "filtering" } })),
   ].sort((a, b) => a.binding - b.binding);
 }
 

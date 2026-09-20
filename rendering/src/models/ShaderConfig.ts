@@ -1,6 +1,9 @@
 export interface BufferConfigInput {
   type: 'buffer';
   source: string;
+  layer?: number;
+  filter?: "linear" | "nearest";
+  wrap?: "repeat" | "clamp";
 }
 
 export interface TextureConfigInput {
@@ -34,4 +37,3 @@ export interface VideoConfigInput {
 }
 
 export type ConfigInput = BufferConfigInput | TextureConfigInput | KeyboardConfigInput | VideoConfigInput | CubemapConfigInput;
-

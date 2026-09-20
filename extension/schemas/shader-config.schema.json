@@ -93,6 +93,9 @@
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
+        },
+        "outputFormat": {
+          "$ref": "#/definitions/BufferOutputFormat"
         }
       },
       "additionalProperties": false
@@ -152,6 +155,9 @@
           "minimum": 1,
           "maximum": 8,
           "description": "Number of texture-array layers in the optional compute output"
+        },
+        "outputFormat": {
+          "$ref": "#/definitions/BufferOutputFormat"
         },
         "dispatch": {
           "$ref": "#/definitions/ComputeDispatch"
@@ -215,6 +221,11 @@
           "additionalProperties": false
         }
       ]
+    },
+    "BufferOutputFormat": {
+      "type": "string",
+      "enum": ["auto", "rgba16float", "rgba32float"],
+      "description": "Storage precision for this producer pass (default: auto)"
     },
     "StorageBuffers": {
       "type": "object",
@@ -356,6 +367,16 @@
               "type": "integer",
               "minimum": 0,
               "description": "Texture-array layer of a multi-layer compute output"
+            },
+            "filter": {
+              "type": "string",
+              "enum": ["linear", "nearest"],
+              "description": "Buffer sampling filter (default: linear)"
+            },
+            "wrap": {
+              "type": "string",
+              "enum": ["repeat", "clamp"],
+              "description": "Buffer addressing mode (default: clamp)"
             }
           },
           "additionalProperties": false

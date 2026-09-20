@@ -6,6 +6,8 @@ export interface SlangBindingChannel {
   kind?: string;
   textureIdentity?: string;
   samplerIdentity?: string;
+  sampleType?: "float" | "unfilterable-float";
+  samplerType?: "filtering" | "non-filtering";
 }
 
 /** Stable source identities, never transient GPU views (fallbacks and feedback can change). */
@@ -27,7 +29,10 @@ export function getSlangTextureIdentity(channel: RenderPassChannel): string {
 }
 
 export function getSlangSamplerSettings(channel: RenderPassChannel): { filter: "nearest" | "linear" | "mipmap"; wrap: "clamp" | "repeat" } {
-  if (channel.kind === "buffer" || channel.kind === "audio") {
+  if (channel.kind === "buffer") {
+    return { filter: channel.effectiveFilter ?? channel.filter ?? "linear", wrap: channel.wrap ?? "clamp" };
+  }
+  if (channel.kind === "audio") {
     return { filter: "linear", wrap: "clamp" };
   }
   if (channel.kind === "keyboard") {
@@ -44,29 +49,31 @@ export function getSlangChannels(channels: readonly RenderPassChannel[]) {
     slot: channel.slot, key: channel.key, kind: channel.kind,
     textureIdentity: getSlangTextureIdentity(channel),
     samplerIdentity: JSON.stringify(getSlangSamplerSettings(channel)),
+    ...(channel.kind === "buffer" && channel.sampleType ? { sampleType: channel.sampleType } : {}),
+    ...(channel.kind === "buffer" && channel.samplerType ? { samplerType: channel.samplerType } : {}),
   }));
 }
 
 export function buildSlangBindingPlan(channels: readonly SlangBindingChannel[]) {
   let nextBinding = 1;
-  const textures: Array<{ binding: number; slot: number; kind?: string }> = [];
-  const samplers: Array<{ binding: number; slot: number }> = [];
+  const textures: Array<{ binding: number; slot: number; kind?: string; sampleType?: "float" | "unfilterable-float" }> = [];
+  const samplers: Array<{ binding: number; slot: number; samplerType?: "filtering" | "non-filtering" }> = [];
   const textureBindings = new Map<string, number>();
   const samplerBindings = new Map<string, number>();
   const bindings = [...channels].sort((a, b) => a.slot - b.slot).map(channel => {
-    const textureKey = JSON.stringify([channel.kind === "cubemap" ? "cube" : "2d", channel.textureIdentity ?? { slot: channel.slot }]);
-    const samplerKey = channel.samplerIdentity ?? `slot:${channel.slot}`;
+    const textureKey = JSON.stringify([channel.kind === "cubemap" ? "cube" : "2d", channel.sampleType ?? "float", channel.textureIdentity ?? { slot: channel.slot }]);
+    const samplerKey = JSON.stringify([channel.samplerType ?? "filtering", channel.samplerIdentity ?? `slot:${channel.slot}`]);
     let textureBinding = textureBindings.get(textureKey);
     if (textureBinding === undefined) {
       textureBinding = nextBinding++;
       textureBindings.set(textureKey, textureBinding);
-      textures.push({ binding: textureBinding, slot: channel.slot, kind: channel.kind });
+      textures.push({ binding: textureBinding, slot: channel.slot, kind: channel.kind, sampleType: channel.sampleType });
     }
     let samplerBinding = samplerBindings.get(samplerKey);
     if (samplerBinding === undefined) {
       samplerBinding = nextBinding++;
       samplerBindings.set(samplerKey, samplerBinding);
-      samplers.push({ binding: samplerBinding, slot: channel.slot });
+      samplers.push({ binding: samplerBinding, slot: channel.slot, samplerType: channel.samplerType });
     }
     return { ...channel, textureBinding, samplerBinding };
   });

@@ -224,6 +224,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
         geometry: "fullscreen",
         output: "none",
         outputLayers: outputLayersByPass.get(name) ?? 1,
+        outputFormat: computeConfig.outputFormat,
         dispatch,
         dispatchCount,
         dispatchOnce,
@@ -253,6 +254,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       kind: "render",
       output: "texture",
       outputLayers: 1,
+      outputFormat: "outputFormat" in passConfig ? passConfig.outputFormat : undefined,
       dispatchCount: 1,
       dispatchOnce: false,
       workgroupSize: [...TEXEL_WORKGROUP_SIZE],
@@ -1046,6 +1048,8 @@ function resolveChannels(options: {
       source: input.source,
       readFrom: "previous-frame",
       ...(input.layer === undefined ? {} : { layer: input.layer }),
+      ...(input.filter === undefined ? {} : { filter: input.filter }),
+      ...(input.wrap === undefined ? {} : { wrap: input.wrap }),
     });
   }
 

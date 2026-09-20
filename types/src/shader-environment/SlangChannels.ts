@@ -49,7 +49,7 @@ export function channelSampleFunction(kind: SlangChannelKind, method: SlangChann
 }
 
 export function buildChannelSamplingFunctions(kinds: readonly SlangChannelKind[], language: 'slang' | 'wgsl', fragmentStage = true): string {
-  return [...new Set(kinds)].map(kind => {
+  const sampling = [...new Set(kinds)].map(kind => {
     const description = describeSlangChannel(kind);
     return description.methods.filter(method => language === 'slang' || fragmentStage || !method.requiresFragment).map(method => {
       const name = channelSampleFunction(kind, method.name);
@@ -71,6 +71,21 @@ export function buildChannelSamplingFunctions(kinds: readonly SlangChannelKind[]
 }`;
     }).join('\n');
   }).join('\n');
+  if (!kinds.includes('texture-2d')) {
+    return sampling;
+  }
+  const load = language === 'slang'
+    ? `float4 load2D(Texture2D<float4> texture, int2 pixel)
+{
+    uint width, height;
+    texture.GetDimensions(width, height);
+    return texture.Load(int3(pixel.x, int(height) - 1 - pixel.y, 0));
+}`
+    : `fn load2D(texture: texture_2d<f32>, pixel: vec2i) -> vec4f {
+  let size = textureDimensions(texture, 0);
+  return textureLoad(texture, vec2i(pixel.x, i32(size.y) - 1 - pixel.y), 0);
+}`;
+  return `${sampling}\n${load}`;
 }
 
 /** Shared by editor declarations and renderer bindings; native access uses native coordinates. */
@@ -92,6 +107,11 @@ ${requiresFragment ? '    [require(wgsl, fragment)]\n' : ''}    float4 ${name}($
     {
         return ${name}(sampler, ${args});
     }`).join('\n');
+    const load = kind === 'texture-2d' ? `
+    float4 Load(int2 pixel)
+    {
+        return load2D(texture, pixel);
+    }` : '';
     return `struct ShaderStudioChannel${description.shape}
 {
     ${description.textureType} texture;
@@ -100,6 +120,7 @@ ${requiresFragment ? '    [require(wgsl, fragment)]\n' : ''}    float4 ${name}($
     float time;
     bool loaded;
 ${methods}
+${load}
 };`;
   }).join('\n\n');
   const textureNames = new Map<number, string>();
@@ -177,6 +198,9 @@ export function buildWgslChannelAuthoringSource(declarations: readonly SlangChan
         return `${identifier}: ${type === 'float' ? 'f32' : type!.replace('float', 'vec') + 'f'}`;
       }).join(', ');
       lines.push(`fn ${name}${method.name}(${parameters}) -> vec4f { return ${channelSampleFunction(kind, method.name)}(${name}Texture, ${name}Sampler, ${method.arguments}); }`);
+    }
+    if (kind === 'texture-2d') {
+      lines.push(`fn ${name}Load(pixel: vec2i) -> vec4f { return load2D(${name}Texture, pixel); }`);
     }
     lines.push(`fn ${name}Size() -> ${dimensions} { return ${name}.size; }`, `fn ${name}Time() -> f32 { return ${name}.time; }`, `fn ${name}Loaded() -> bool { return ${name}.loaded; }`);
   }

@@ -552,6 +552,29 @@ describe("ConfigValidator", () => {
           expect(result.errors).toHaveLength(0);
         });
 
+        it("accepts supported buffer sampling and rejects invalid values", () => {
+          const valid = {
+            version: "1.0",
+            passes: {
+              Image: {
+                inputs: {
+                  state: { type: "buffer", source: "BufferA", filter: "nearest", wrap: "repeat" }
+                }
+              }
+            }
+          };
+          expect(ConfigValidator.validateConfig(valid as never)).toEqual({ isValid: true, errors: [] });
+
+          for (const input of [
+            { type: "buffer", source: "BufferA", filter: "cubic" },
+            { type: "buffer", source: "BufferA", wrap: "mirror" },
+          ]) {
+            const invalid = { version: "1.0", passes: { Image: { inputs: { state: input } } } };
+            expect(ConfigValidator.validateConfig(invalid as never).errors)
+              .toContain("Image pass has invalid input configuration for state");
+          }
+        });
+
         it("should reject buffer input without source", () => {
           const config = {
             version: "1.0",

@@ -28,6 +28,7 @@ import {
 } from "./uniforms";
 import { CustomUniformManager, type CustomUniform } from "../webgl/CustomUniformManager";
 import { ConfigValidator } from "../util/ConfigValidator";
+import { resolveGraphBufferFormats } from "../util/BufferFormatResolver";
 import {
   buildSlangPassGraph,
   resolvePassResolution,
@@ -380,9 +381,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.device = device;
       ConfigValidator.setChannelLimit(this.resolveChannelLimit(device.limits));
       this.meshResources = new WebGPUMeshResources(device);
-      this.bufferTextureFormat = adapter.features?.has?.("float32-filterable")
-        ? HIGH_PRECISION_BUFFER_TEXTURE_FORMAT
-        : BUFFER_TEXTURE_FORMAT;
+      this.bufferTextureFormat = HIGH_PRECISION_BUFFER_TEXTURE_FORMAT;
       this.maxTextureDimension2D = this.resolveDeviceTextureLimit(device);
       this.clampCanvasToTextureLimit();
       this.resourceManager = new ResourceManager(new WebGPUTextureBackend(this.device));
@@ -816,6 +815,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       maxOutputLayers: this.resolveMaxOutputLayers(),
       maxStorageBuffers: this.resolveMaxStorageBuffers(),
     });
+    resolveGraphBufferFormats(graph, {
+      rgba16floatRenderable: true,
+      rgba32floatRenderable: true,
+      float32Filterable: this.device.features?.has?.("float32-filterable") === true,
+    });
     const graphMs = this.now() - graphStartedAt;
 
     if (graph.errors.length > 0) {
@@ -1043,7 +1047,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
               ...(pass.kind === "compute"
-                ? { outputImageFormat: this.wgslImageFormat(this.bufferTextureFormat) }
+                ? { outputImageFormat: this.wgslImageFormat(pass.resolvedOutputFormat ?? this.bufferTextureFormat) }
                 : {}),
               ...(pass.kind === "compute" ? { entryPoint: pass.entryPoint } : {}),
               ...(passModules.length > 0 ? { modules: passModules } : {}),
@@ -2112,6 +2116,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.workgroupSize,
       hasOutput,
       hasOutput ? pass.outputLayers : null,
+      hasOutput ? pass.resolvedOutputFormat : null,
       customUniforms,
       modules,
     ]);
@@ -2156,6 +2161,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.dispatchOnce,
       pass.output,
       pass.outputLayers,
+      pass.resolvedOutputFormat,
     ]);
   }
 
@@ -2253,7 +2259,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         channels,
         storage,
         uniformBufferSize,
-        bufferTextureFormat: this.bufferTextureFormat,
+        bufferTextureFormat: pass.resolvedOutputFormat ?? this.bufferTextureFormat,
         sourceLineOffset: compilation?.sourceLineOffset,
         sourceLineCount: compilation?.sourceLineCount,
         commonRange: compilation?.commonRange,
@@ -2274,7 +2280,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         sourceLineCount: compilation?.sourceLineCount,
         commonRange: compilation?.commonRange,
         directiveRanges: compilation?.directiveRanges,
-      });
+      }, pass.resolvedOutputFormat ?? this.bufferTextureFormat);
   }
 
   /**
@@ -2770,7 +2776,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
           return null;
         }
         const size = computeSource?.getOutputSize?.() ?? renderSource?.getOutputSize?.();
-        resources.push({ slot: channel.slot, textureView, ...size });
+        resources.push({
+          slot: channel.slot,
+          textureView,
+          ...size,
+          ...(
+            channel.filter === undefined && channel.wrap === undefined && channel.samplerType !== "non-filtering"
+              ? {}
+              : { sampler: this.getChannelSampler(channel) }
+          ),
+        });
       } else if (channel.kind === "texture") {
         const handle = this.resourceManager?.getImageTextureCache()[getSlangTextureIdentity(channel)]
           ?? this.resourceManager?.getDefaultTexture();

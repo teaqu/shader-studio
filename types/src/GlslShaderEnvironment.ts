@@ -56,7 +56,11 @@ ${fragmentStage ? `vec4 texture(${type} channel, ${coord} uv, float bias) { retu
 vec4 textureLod(${type} channel, ${coord} uv, float lod) { return textureLod(channel.sampler, uv, lod); }
 vec4 textureGrad(${type} channel, ${coord} uv, ${coord} dx, ${coord} dy) { return textureGrad(channel.sampler, uv, dx, dy); }
 ${size} textureSize(${type} channel, int lod) { return textureSize(channel.sampler, lod); }
-${sampler === 'samplerCube' ? '' : `vec4 texelFetch(${type} channel, ${size} coord, int lod) { return texelFetch(channel.sampler, coord, lod); }`}`;
+${sampler === 'samplerCube' ? '' : `vec4 texelFetch(${type} channel, ${size} coord, int lod) { return texelFetch(channel.sampler, coord, lod); }
+${sampler === 'sampler2D' ? `vec4 load2D(${type} channel, ivec2 pixel) { return texelFetch(channel.sampler, pixel, 0); }` : ''}`}`;
   });
-  return [...definitions, ...named.map(binding => `uniform ShaderStudioChannel${binding.samplerType.slice('sampler'.length)} ${binding.key};`)].join('\n');
+  const load2D = bindings.some(binding => binding.samplerType === 'sampler2D')
+    ? 'vec4 load2D(sampler2D textureHandle, ivec2 pixel) { return texelFetch(textureHandle, pixel, 0); }'
+    : '';
+  return [load2D, ...definitions, ...named.map(binding => `uniform ShaderStudioChannel${binding.samplerType.slice('sampler'.length)} ${binding.key};`)].filter(Boolean).join('\n');
 }

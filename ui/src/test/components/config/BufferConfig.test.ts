@@ -24,6 +24,25 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
+  it('loads and updates producer output precision without showing it for Image', async () => {
+    const onUpdate = vi.fn();
+    const { getByLabelText } = render(BufferConfig, {
+      bufferName: 'BufferA',
+      config: { path: 'a.wgsl', inputs: {}, outputFormat: 'rgba16float' } as BufferPass,
+      onUpdate,
+      getWebviewUri: () => undefined,
+    });
+    const format = getByLabelText('Output format') as HTMLSelectElement;
+    expect(format.value).toBe('rgba16float');
+    await fireEvent.change(format, { target: { value: 'rgba32float' } });
+    expect(onUpdate).toHaveBeenCalledWith('BufferA', expect.objectContaining({ outputFormat: 'rgba32float' }));
+
+    const image = render(BufferConfig, {
+      bufferName: 'Image', config: { inputs: {} }, onUpdate: vi.fn(), getWebviewUri: () => undefined, isImagePass: true,
+    });
+    expect(image.container.querySelector('[aria-label="Output format"]')).toBeNull();
+  });
+
   it('opens the configured vertex shader in VS Code when overlay is closed', async () => {
     setEditorOverlayVisible(false);
     setOverlayActiveFile('Image');

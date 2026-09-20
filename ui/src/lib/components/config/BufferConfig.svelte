@@ -14,6 +14,7 @@
     GeometryType,
     ComputePass,
     ShaderLanguageId,
+    BufferOutputFormat,
   } from "@shader-studio/types";
   import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
@@ -385,6 +386,11 @@
     updateConfig({ ...config, vertex: path });
   }
 
+  function handleOutputFormat(event: Event) {
+    const outputFormat = (event.currentTarget as HTMLSelectElement).value as BufferOutputFormat;
+    updateConfig({ ...config, outputFormat } as EditableConfig);
+  }
+
   function openVertexShaderInOverlay() {
     if (!config.vertex) {
       return;
@@ -415,6 +421,22 @@
           {postMessage}
           {onMessage}
         />
+
+        {#if bufferName !== "common"}
+          <div class="resolution-row">
+            <label class="resolution-label" for="output-format-{bufferName}">Output format</label>
+            <select
+              id="output-format-{bufferName}"
+              aria-label="Output format"
+              value={'outputFormat' in config ? config.outputFormat ?? 'auto' : 'auto'}
+              onchange={handleOutputFormat}
+            >
+              <option value="auto">Auto (32-bit preferred)</option>
+              <option value="rgba16float">RGBA 16-bit float</option>
+              <option value="rgba32float">RGBA 32-bit float</option>
+            </select>
+          </div>
+        {/if}
 
         {#if passType === 'compute' && onComputeCommit}
           <ComputePassControls

@@ -1,4 +1,4 @@
-import { buildSlangChannels } from './SlangChannels';
+import { buildSlangChannels, buildWgslChannelAuthoringSource } from './SlangChannels';
 import { describe, expect, it } from 'vitest';
 import { buildSlangAuthoringModule } from './SlangEnvironmentGenerator';
 
@@ -55,5 +55,17 @@ describe('Slang named channel API', () => {
     const source = generate([{ name: 'iChannel7', kind: 'texture-2d', slot: 1 }]);
     expect(source).toContain('ShaderStudioChannel2D iChannel7');
     expect(source).not.toContain('ShaderStudioChannel2D iChannel1');
+  });
+
+  it('generates bottom-left integer load helpers without a sampler', () => {
+    const slang = buildSlangChannels([{ name: 'state', slot: 0, kind: 'texture-2d' }]);
+    expect(slang).toContain('float4 load2D(Texture2D<float4> texture, int2 pixel)');
+    expect(slang).toContain('int(height) - 1 - pixel.y');
+    expect(slang).toContain('float4 Load(int2 pixel)');
+
+    const wgsl = buildWgslChannelAuthoringSource([{ name: 'state', slot: 0, kind: 'texture-2d' }], true);
+    expect(wgsl).toContain('fn load2D(texture: texture_2d<f32>, pixel: vec2i)');
+    expect(wgsl).toContain('i32(size.y) - 1 - pixel.y');
+    expect(wgsl).toContain('fn stateLoad(pixel: vec2i)');
   });
 });

@@ -13,6 +13,7 @@ const createMockGl = () => ({
   TEXTURE_CUBE_MAP: 34067,
   activeTexture: vi.fn(),
   bindTexture: vi.fn(),
+  bindSampler: vi.fn(),
 }) as unknown as WebGL2RenderingContext;
 
 const createMockTexture = (type: number = TEXTURE_TYPE_2D): PiTexture => ({
@@ -115,5 +116,15 @@ describe("bindTextures", () => {
     expect(gl.activeTexture).toHaveBeenCalledTimes(16);
     expect(gl.bindTexture).toHaveBeenCalledTimes(16);
     expect(gl.activeTexture).toHaveBeenLastCalledWith(gl.TEXTURE0 + 15);
+  });
+
+  it("binds per-input samplers and clears sampler state from other slots", () => {
+    const tex = createMockTexture(TEXTURE_TYPE_2D);
+    const nearestRepeat = { label: "nearest-repeat" } as unknown as WebGLSampler;
+
+    bindTextures(gl as any, [tex, tex], [nearestRepeat, null]);
+
+    expect(gl.bindSampler).toHaveBeenNthCalledWith(1, 0, nearestRepeat);
+    expect(gl.bindSampler).toHaveBeenNthCalledWith(2, 1, null);
   });
 });

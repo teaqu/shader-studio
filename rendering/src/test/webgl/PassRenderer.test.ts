@@ -62,6 +62,20 @@ const createMockGl = () => ({
   TEXTURE_CUBE_MAP: 34067,
   activeTexture: vi.fn(),
   bindTexture: vi.fn(),
+  createSampler: vi.fn()
+    .mockReturnValueOnce({ label: "sampler-0" })
+    .mockReturnValueOnce({ label: "sampler-1" }),
+  samplerParameteri: vi.fn(),
+  bindSampler: vi.fn(),
+  deleteSampler: vi.fn(),
+  TEXTURE_MAG_FILTER: 0x2800,
+  TEXTURE_MIN_FILTER: 0x2801,
+  TEXTURE_WRAP_S: 0x2802,
+  TEXTURE_WRAP_T: 0x2803,
+  NEAREST: 0x2600,
+  LINEAR: 0x2601,
+  REPEAT: 0x2901,
+  CLAMP_TO_EDGE: 0x812f,
   DEPTH_TEST: 0x0b71,
   LEQUAL: 0x0203,
   DEPTH_BUFFER_BIT: 0x0100,
@@ -599,6 +613,38 @@ describe("PassRenderer", () => {
       // Should bind the front buffer texture
       expect(mockGl.bindTexture).toHaveBeenCalledWith(mockGl.TEXTURE_2D, selfTexture.mObjectID);
       expect(mockRenderer.SetShaderTextureUnit).toHaveBeenCalledWith("iChannel0", 0);
+    });
+
+    it("isolates sampling when one buffer is bound with two sampler settings", () => {
+      const sharedTexture = createMockTexture(8, 8);
+      mockBufferManager.getPassBuffers.mockReturnValue({
+        BufferA: { front: { mTex0: sharedTexture }, back: { mTex0: createMockTexture() } },
+      });
+      const passConfig: Pass = {
+        geometry: "fullscreen",
+        name: "Image",
+        shaderSrc: "",
+        inputs: {
+          nearest: { type: "buffer", source: "BufferA", filter: "nearest", wrap: "repeat" },
+          linear: { type: "buffer", source: "BufferA", filter: "linear", wrap: "clamp" },
+        },
+      };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockGl.bindTexture).toHaveBeenNthCalledWith(1, mockGl.TEXTURE_2D, sharedTexture.mObjectID);
+      expect(mockGl.bindTexture).toHaveBeenNthCalledWith(2, mockGl.TEXTURE_2D, sharedTexture.mObjectID);
+      expect(mockGl.bindSampler).toHaveBeenNthCalledWith(1, 0, { label: "sampler-0" });
+      expect(mockGl.bindSampler).toHaveBeenNthCalledWith(2, 1, { label: "sampler-1" });
+      expect(mockGl.samplerParameteri).toHaveBeenCalledWith(
+        { label: "sampler-0" }, mockGl.TEXTURE_MAG_FILTER, mockGl.NEAREST,
+      );
+      expect(mockGl.samplerParameteri).toHaveBeenCalledWith(
+        { label: "sampler-1" }, mockGl.TEXTURE_WRAP_S, mockGl.CLAMP_TO_EDGE,
+      );
+
+      passRenderer.dispose();
+      expect(mockGl.deleteSampler).toHaveBeenCalledTimes(2);
     });
 
     it("should still render when gl context is null (no WebGL texture binding)", () => {
