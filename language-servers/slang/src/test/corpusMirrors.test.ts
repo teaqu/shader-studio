@@ -4,7 +4,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { stageForPass } from "@shader-studio/types";
 import createSlangModule from "../../../../ui/src/slang/slang-wasm.js";
-import { swizzleSelections } from "@shader-studio/language-server-core";
 import { SlangLanguageService } from "../SlangLanguageService";
 import { SLANG_COMPUTE_FEATURES } from "../computeFeatures";
 import {
@@ -434,10 +433,8 @@ describe("Slang corpus mirrors in the language service", () => {
         }
         if (category === "member") {
           const labels = (await service.completion({ document: revision, position: start })).map((item) => item.label);
-          const permutation = /^(?:[xyzw]{1,4}|[rgba]{1,4})$/.test(token.text) && !SLANG_OFFERED_SWIZZLES.has(token.text);
-          const expected = permutation ? token.text[0]! : token.text;
-          if (!labels.includes(expected)) {
-            gaps.push(`${where}: member completion lacks ${expected} (${labels.length} items)`);
+          if (!labels.includes(token.text)) {
+            gaps.push(`${where}: member completion lacks ${token.text} (${labels.length} items)`);
           }
         }
         const open = slangCallOpen(tokens, index);
@@ -505,7 +502,6 @@ const SLANG_KEYWORDS = new Set([
 // `void` is a core Slang struct, not a keyword: the server hovers it as one.
 const SLANG_BUILTIN_TYPE = /^(?:void|bool|int|uint|float|half|double|(?:bool|int|uint|float|half|double)[1-4](?:x[1-4])?|(?:RW)?Texture(?:1D|2D|3D|Cube)(?:Array)?|SamplerState|SamplerComparisonState|(?:RW)?StructuredBuffer|ConstantBuffer|Atomic)$/;
 const SLANG_DIRECTIVE_LINES = new Set(["#", "module", "import", "__include", "implementing", "__exported"]);
-const SLANG_OFFERED_SWIZZLES = new Set(swizzleSelections(4, ["xyzw", "rgba"]));
 const slangSweepTotals = new Map<string, number>();
 const slangSweptDocs = new Set<string>();
 const countSlangSite = (key: string) => slangSweepTotals.set(key, (slangSweepTotals.get(key) ?? 0) + 1);

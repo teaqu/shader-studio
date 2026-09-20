@@ -105,7 +105,7 @@ describe("MonacoLanguageServiceManager", () => {
     await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: fixture.model.getLanguageId() });
     return {
       completion: fixture.languages.registerCompletionItemProvider.mock.calls[0][1] as never as {
-        provideCompletionItems(model: unknown, position: unknown): Promise<{ incomplete?: boolean; suggestions: { label: string }[] }>;
+        provideCompletionItems(model: unknown, position: unknown): Promise<{ incomplete?: boolean; suggestions: { label: string; sortText?: string }[] }>;
       },
       hover: fixture.languages.registerHoverProvider.mock.calls[0][1] as never as {
       provideHover(model: unknown, position: unknown): Promise<unknown>;
@@ -169,6 +169,28 @@ describe("MonacoLanguageServiceManager", () => {
 
     expect(result.suggestions.map((item) => item.label)).toEqual(["normalize"]);
     expect(result.incomplete).toBe(false);
+  });
+
+  it("preserves language-service ranking in Monaco completion items", async () => {
+    const fixture = monacoFixture();
+    const service = serviceFixture();
+    service.completion = vi.fn(async () => [{ label: "x", kind: 5, sortText: "0000" }]) as never;
+    const { completion } = await providersFor(fixture, service);
+
+    const result = await completion.provideCompletionItems(fixture.model, POSITION);
+
+    expect(result.suggestions).toContainEqual(expect.objectContaining({ label: "x", sortText: "0000" }));
+  });
+
+  it("leaves non-member completion ordering to Monaco", async () => {
+    const fixture = monacoFixture();
+    const service = serviceFixture();
+    service.completion = vi.fn(async () => [{ label: "normalize", kind: 3, sortText: "0000" }]) as never;
+    const { completion } = await providersFor(fixture, service);
+
+    const result = await completion.provideCompletionItems(fixture.model, POSITION);
+
+    expect(result.suggestions).toContainEqual(expect.objectContaining({ label: "normalize", sortText: undefined }));
   });
 
   it("still drops other results that the model outran", async () => {

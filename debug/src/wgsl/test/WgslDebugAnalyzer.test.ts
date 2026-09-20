@@ -93,6 +93,36 @@ describe("analyzeWgslSite", () => {
     });
   });
 
+  it("captures supported values inferred through targeted builtins while filtering aggregates", () => {
+    const source = [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let bits = bitcast<vec2u>(coord);",
+      "  let leading = countLeadingZeros(bits);",
+      "  let transposed = transpose(mat2x3f());",
+      "  let column = transposed[0];",
+      "  let compared = coord < vec2f(0.5);",
+      "  let comparisonX = compared.x;",
+      "  return vec4f(vec2f(leading), column);",
+      "}",
+    ].join("\n");
+    const result = analyze(source, { line: 7, character: 4 });
+
+    expect(result).toMatchObject({ ok: true });
+    const values = result.ok ? result.analysis.visibleValues.map((value) => `${value.name}:${value.typeName}`) : [];
+    expect(values).toEqual(expect.arrayContaining([
+      "bits:vec2u",
+      "leading:vec2u",
+      "column:vec2f",
+      "comparisonX:bool",
+    ]));
+    expect(values.some((value) => value.startsWith("transposed:"))).toBe(false);
+    expect(values.some((value) => value.startsWith("compared:"))).toBe(false);
+    expect(analyze(source, { line: 3, character: 8 })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: "wgsl-debug-non-capturable-type" }],
+    });
+  });
+
   it("selects an assignment target as preview", () => {
     const assigned = analyze(SOURCE, { line: 4, character: 10 });
     const tint = assigned.ok ? assigned.analysis.visibleValues.find((item) => item.name === "tint") : undefined;

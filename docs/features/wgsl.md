@@ -31,8 +31,8 @@ Signature help shows named parameters and documentation for authored, Common,
 channel, and built-in functions. Add leading `//` comments to document your own
 functions. Signature help also works inside nested calls and template arguments.
 
-Vector component completion suggests components and prefixes such as `x`, `xy`,
-and `xyz`. Other valid selections, such as `yx`, can be typed manually.
+Vector component completion includes all valid one-to-four-component read selections,
+including reordered and repeated forms such as `yx`, `xxxx`, and `bgra`.
 
 ## Debugging and Capture Types
 
@@ -43,8 +43,11 @@ function parameter overrides, and loop iteration caps are supported.
 Scalar and vector locals, parameters, and return values can be captured, including
 values read from arrays, struct fields, and configured storage. Types are inferred
 for many unannotated `let` and `var` declarations, including expressions using
-`iTime`, `sin`, `select`, and pointer dereferences. If a local initialized from a
-channel sample or another function is missing from capture, add an explicit type.
+`iTime`, `sin`, `select`, pointer dereferences, `bitcast`, integer bit operations,
+`transpose`, vector comparisons, and scalar-matrix multiplication. Direct built-in
+expressions such as `normalize(uv).yx` receive the same member completion as a local.
+If a local initialized from an unsupported expression is missing from capture, add
+an explicit type.
 Whole arrays, whole structs, and arbitrary pointer values cannot be displayed as
 capture rows; select an element or field instead.
 
@@ -58,7 +61,8 @@ let basis = mat2x2f(0.125, 0.25, 0.5, 0.75);
 ```
 
 Larger matrices and `f16` matrices are not capturable as a whole. Select a supported
-column or scalar component instead. Matrix capture in the Variable Inspector is
+column or scalar component instead. Boolean vectors are also inferred for vector
+comparisons but are not capturable as a whole; select a scalar component. Matrix capture in the Variable Inspector is
 separate from the Storage inspector, which edits scalar and vector buffer elements.
 
 ## Compute Debugging Limits

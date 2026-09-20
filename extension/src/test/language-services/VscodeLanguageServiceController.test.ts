@@ -14,6 +14,7 @@ import {
   dynamicUniformNames,
   findUniformTokenRanges,
   isCurrentRevision,
+  toCompletionItem,
 } from "../../language-services/VscodeLanguageServiceController";
 import {
   ShaderAuthoringEnvironmentProvider,
@@ -73,6 +74,13 @@ suite("VS Code language-service revisions", () => {
       { line: 0, startCharacter: 14, endCharacter: 19 },
       { line: 2, startCharacter: 13, endCharacter: 18 },
     ]);
+  });
+
+  test("preserves language-service completion ranking in VS Code items", () => {
+    const item = toCompletionItem({ label: "yx", kind: 5, sortText: "0005:yx" });
+
+    assert.strictEqual(item.sortText, "0005:yx");
+    assert.strictEqual(toCompletionItem({ label: "normalize", kind: 3, sortText: "0000" }).sortText, undefined);
   });
 
   test("highlights configured input and storage names alongside custom uniforms", () => {

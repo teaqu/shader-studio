@@ -289,8 +289,15 @@ describe("parseWgslExpression", () => {
   });
 
   it("parses type constructors and bitcasts", () => {
-    expect(parseWgslExpression("vec4<f32>(1.0)")).toMatchObject({ kind: "call", name: "vec4<f32>" });
-    expect(parseWgslExpression("array<vec4f, 2>(a, b)")).toMatchObject({ kind: "call", name: "array<vec4f, 2>" });
+    expect(parseWgslExpression("vec4<f32>(1.0)")).toMatchObject({
+      kind: "call", name: "vec4<f32>", callee: "vec4", templateArguments: ["f32"],
+    });
+    expect(parseWgslExpression("array<vec4f, 2>(a, b)")).toMatchObject({
+      kind: "call", name: "array<vec4f, 2>", callee: "array", templateArguments: ["vec4f", "2"],
+    });
+    expect(parseWgslExpression("bitcast<array<vec2u, 2>>(value)")).toMatchObject({
+      kind: "call", callee: "bitcast", templateArguments: ["array<vec2u, 2>"],
+    });
   });
 });
 

@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { stageForPass } from "@shader-studio/types";
 import { parseGlslDocument, symbolAtPosition } from "@shader-studio/glsl-analysis";
-import { swizzleSelections } from "@shader-studio/language-server-core";
 import { GlslLanguageService } from "../GlslLanguageService";
 import { GLSL_INTRINSICS } from "../intrinsics";
 
@@ -468,9 +467,6 @@ function tokenizeGlslSweep(source: string): GlslSweepToken[] {
   return tokens;
 }
 
-/** Offered GLSL swizzles: components and prefix runs from each set, as completion lists them. */
-const GLSL_OFFERED_SWIZZLES = new Set(swizzleSelections(4, ["xyzw", "rgba", "stpq"]));
-
 function glslArgumentPositions(tokens: readonly GlslSweepToken[], open: number): { line: number; character: number }[] {
   const positions = [{ line: tokens[open]!.line, character: tokens[open]!.character + 1 }];
   for (let cursor = open, depth = 0; cursor < tokens.length; cursor++) {
@@ -570,10 +566,8 @@ describe("GLSL corpus mirrors: authored identifier sweep", () => {
         }
         if (category === "member") {
           const labels = (await instance.completion({ document: revision, position: start })).map((item) => item.label);
-          const permutation = /^(?:[xyzw]{1,4}|[rgba]{1,4}|[stpq]{1,4})$/.test(token.text) && !GLSL_OFFERED_SWIZZLES.has(token.text);
-          const expected = permutation ? token.text[0]! : token.text;
-          if (!labels.includes(expected)) {
-            gaps.push(`${where}: member completion lacks ${expected} (${labels.length} items)`);
+          if (!labels.includes(token.text)) {
+            gaps.push(`${where}: member completion lacks ${token.text} (${labels.length} items)`);
           }
         }
         if (tokens[index + 1]?.text === "(" && (category === "reference" || category === "builtin-type")) {

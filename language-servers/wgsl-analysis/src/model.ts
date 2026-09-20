@@ -81,6 +81,8 @@ export interface WgslInferenceContext {
   readonly valueType?: (name: string) => string | undefined;
   /** Return type of a function; generic results such as `T` are ignored. */
   readonly functionType?: (name: string) => string | undefined;
+  /** Target of an alias declared outside this document, such as one from Common. */
+  readonly aliasType?: (name: string) => string | undefined;
   /** Field type of a struct the document does not declare, such as one from Common. */
   readonly fieldType?: (owner: string, field: string) => string | undefined;
 }

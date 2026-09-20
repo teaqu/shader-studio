@@ -6,6 +6,8 @@
 - Breaking: Slang channels are now accessed directly. Replace `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and `inputs.albedo.size` with `albedo.size`. The `.sha.json` `inputs` field is unchanged.
 - Breaking: remove `import shader_studio;` from Slang shaders. Built-in uniforms are available without an import.
 - Improved WGSL hover documentation for variables, functions, built-in uniforms, and attributes such as `@compute` and `@workgroup_size`.
+- Vector completion now offers reordered and repeated swizzles such as `yx`, `xxxx`, and `bgra` in GLSL, Slang, and WGSL.
+- WGSL hover, completion, and variable inspection now infer more valid expressions, including `bitcast`, integer bit operations, matrix transpose and scaling, and vector comparisons.
 - Fixed false warnings for valid WGSL storage types, including half-precision values, vectors, matrices, and integer atomics. Storage structs containing integer atomic fields now infer and bind their stride correctly.
 - Fixed WGSL variable inspection hiding values from channel samples, loop counters, and values at a block's closing brace. Values above a syntax error can now still be inspected.
 - The WGSL Variable Inspector now shows function parameters and local variables. View built-in uniforms in the debug panel and script values in the config panel's Script tab.

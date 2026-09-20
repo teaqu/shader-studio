@@ -561,10 +561,13 @@ function toVsRange(range: { start: { line: number; character: number }; end: { l
 function toLspRange(range: vscode.Range) {
   return { start: { line: range.start.line, character: range.start.character }, end: { line: range.end.line, character: range.end.character } };
 }
-function toCompletionItem(item: import("vscode-languageserver-protocol").CompletionItem): vscode.CompletionItem {
+export function toCompletionItem(item: import("vscode-languageserver-protocol").CompletionItem): vscode.CompletionItem {
   const result = new vscode.CompletionItem(item.label, (item.kind ?? 6) as vscode.CompletionItemKind);
   result.detail = item.detail;
   result.documentation = toMarkdown(item.documentation);
+  // Preserve explicit member ranking without letting upstream global sort keys
+  // displace user/workspace symbols in VS Code's prefix-filtered list.
+  result.sortText = item.kind === 5 ? item.sortText : undefined;
   if (item.textEdit && "range" in item.textEdit) {
     result.range = toVsRange(item.textEdit.range);
   }

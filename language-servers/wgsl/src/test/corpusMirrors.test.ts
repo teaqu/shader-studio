@@ -3,7 +3,6 @@ import { join, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildWgslChannelAuthoringSource, stageForPass } from "@shader-studio/types";
-import { swizzleSelections } from "@shader-studio/language-server-core";
 import { parseWgslDocument, tokenizeWgsl, type WgslToken } from "@shader-studio/wgsl-analysis";
 import { WgslLanguageService } from "../WgslLanguageService";
 
@@ -432,9 +431,6 @@ function memberRoot(tokens: readonly WgslToken[], index: number): string | undef
   }
 }
 
-/** Swizzles core offers: components and prefix runs, not every permutation such as `yx` or `xyx`. */
-const OFFERED_SWIZZLES = new Set(swizzleSelections(4, ["xyzw", "rgba"]));
-
 /** Argument start positions of the call whose `(` is at `open`, stopping at the matching `)`. */
 function argumentPositions(tokens: readonly WgslToken[], open: number): { line: number; character: number }[] {
   const positions = [{ line: tokens[open]!.line, character: tokens[open]!.character + 1 }];
@@ -531,11 +527,8 @@ describe("WGSL corpus mirrors: authored identifier sweep", () => {
         }
         if (category === "member") {
           const labels = (await instance.completion({ document: revision, position: start })).map((item) => item.label);
-          const permutation = /^(?:[xyzw]{1,4}|[rgba]{1,4})$/.test(token.text) && !OFFERED_SWIZZLES.has(token.text);
-          // A permutation is valid WGSL but outside the offered runs: its owner must still resolve.
-          const expected = permutation ? token.text[0]! : token.text;
-          if (!labels.includes(expected)) {
-            gaps.push(`${where}: member completion lacks ${expected} (${labels.length} items)`);
+          if (!labels.includes(token.text)) {
+            gaps.push(`${where}: member completion lacks ${token.text} (${labels.length} items)`);
           }
         }
         const isCall = tokens[index + 1]?.text === "(";

@@ -802,9 +802,10 @@ function memberCompletions(
   }
   const vector = resolved.vector;
   if (vector) {
-    return swizzleSelections(vector.size, GLSL_SWIZZLE_SETS).map((selection) => ({
+    return swizzleSelections(vector.size, GLSL_SWIZZLE_SETS).map((selection, index) => ({
       label: selection,
       kind: CompletionItemKind.Field,
+      sortText: index.toString().padStart(4, "0"),
       detail: selection.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, selection.length),
       documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
     }));

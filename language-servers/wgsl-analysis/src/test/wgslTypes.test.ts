@@ -27,7 +27,7 @@ describe("wgslTypes", () => {
     expect(vectorType("vec3i")).toEqual({ componentType: "i32", size: 3 });
     expect(vectorType("vec2u")).toEqual({ componentType: "u32", size: 2 });
     expect(vectorType("vec3<f32>")).toEqual({ componentType: "f32", size: 3 });
-    expect(vectorType("vec2<bool>")).toBeUndefined();
+    expect(vectorType("vec2<bool>")).toEqual({ componentType: "bool", size: 2 });
     expect(vectorType("vec4f ")).toBeUndefined();
     expect(vectorType("vec5f")).toBeUndefined();
   });
@@ -35,7 +35,7 @@ describe("wgslTypes", () => {
   it("names canonical vector types", () => {
     expect(vectorTypeName("f32", 4)).toBe("vec4f");
     expect(vectorTypeName("i32", 2)).toBe("vec2i");
-    expect(vectorTypeName("bool", 3)).toBeUndefined();
+    expect(vectorTypeName("bool", 3)).toBe("vec3<bool>");
   });
 
   it("parses matrix types in alias and parameterized form", () => {
@@ -90,6 +90,7 @@ describe("wgslTypes", () => {
     expect(resolveSwizzleType("vec3f", "xy")).toBe("vec2f");
     expect(resolveSwizzleType("vec4h", "w")).toBe("f16");
     expect(resolveSwizzleType("vec2<f32>", "yx")).toBe("vec2f");
+    expect(resolveSwizzleType("vec3<bool>", "zyx")).toBe("vec3<bool>");
     expect(resolveSwizzleType("vec3f", "rgba")).toBeUndefined();
     expect(resolveSwizzleType("vec2f", "z")).toBeUndefined();
     expect(resolveSwizzleType("f32", "x")).toBeUndefined();

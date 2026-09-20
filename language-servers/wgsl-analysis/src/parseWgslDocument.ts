@@ -12,12 +12,13 @@ import type {
   WgslUnresolvedReference,
 } from "./model.js";
 import { tokenizeWgsl, type WgslToken } from "./tokenizer.js";
-import { isBuiltinValueType, matrixType, parseWgslArrayType, parseWgslPointerType, resolveSwizzleType, vectorType, vectorTypeName } from "./wgslTypes.js";
+import { isBuiltinValueType } from "./wgslTypes.js";
+import { inferWgslExpressionType } from "./inferWgslExpressionType.js";
 
 export type WgslExpression =
   | { readonly kind: "identifier"; readonly name: string }
   | { readonly kind: "literal"; readonly text: string }
-  | { readonly kind: "call"; readonly name: string; readonly args: readonly WgslExpression[] }
+  | { readonly kind: "call"; readonly name: string; readonly callee?: string; readonly templateArguments?: readonly string[]; readonly args: readonly WgslExpression[] }
   | { readonly kind: "member"; readonly object: WgslExpression; readonly member: string }
   | { readonly kind: "index"; readonly object: WgslExpression; readonly index: WgslExpression }
   | { readonly kind: "unary"; readonly operator: string; readonly operand: WgslExpression }
@@ -425,166 +426,28 @@ class WgslParser {
     }
   }
 
-  private resolveAliasType(typeName: string): string {
-    const visited = new Set<string>();
-    let resolved = typeName;
-    while (!visited.has(resolved)) {
-      visited.add(resolved);
-      const alias = this.symbols.find(symbol => symbol.kind === "type" && symbol.name === resolved && symbol.typeName !== undefined);
-      if (!alias?.typeName) {
-        break;
-      }
-      resolved = alias.typeName;
-    }
-    return resolved;
-  }
-
   private inferExpressionType(
     expression: WgslExpression,
     self: MutableSymbol,
     inferSymbol: (symbol: MutableSymbol, depth: number) => string | undefined,
     depth: number,
   ): string | undefined {
-    switch (expression.kind) {
-      case "identifier": {
-        const target = this.resolveValueSymbol(expression.name, self);
-        if (!target) {
-          return this.context.valueType?.(expression.name);
-        }
-        return target.id === self.id ? undefined : inferSymbol(target, depth);
-      }
-      case "literal":
-        return scalarLiteralType(expression.text);
-      case "call": {
-        if (isBuiltinValueType(expression.name)) {
-          return expression.name;
-        }
-        const builtin = this.inferBuiltinCallType(expression, self, inferSymbol, depth);
-        if (builtin !== undefined) {
-          return builtin;
-        }
-        const callee = this.symbols.find((candidate) => candidate.kind === "function"
-          && candidate.name === expression.name && candidate.typeName !== undefined);
-        if (callee?.typeName !== undefined) {
-          return callee.typeName;
-        }
-        const structType = this.symbols.find((candidate) => candidate.kind === "type"
-          && candidate.name === expression.name);
-        if (structType) {
-          return structType.name;
-        }
-        const external = this.context.functionType?.(expression.name);
-        return external !== undefined && isConcreteTypeName(external) ? external : undefined;
-      }
-      case "member": {
-        const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
-        if (owner === undefined) {
-          return undefined;
-        }
-        const resolved = this.resolveAliasType(owner);
-        const typeScope = this.scopes.find(scope => scope.kind === "type" && scope.name === resolved);
-        if (!typeScope) {
-          return resolveSwizzleType(resolved, expression.member) ?? this.context.fieldType?.(resolved, expression.member);
-        }
-        return this.symbols.find(symbol => symbol.kind === "field" && symbol.scopeId === typeScope.id && symbol.name === expression.member)?.typeName;
-      }
-      case "index": {
-        const owner = this.inferExpressionType(expression.object, self, inferSymbol, depth);
-        if (owner === undefined) {
-          return undefined;
-        }
-        const resolved = this.resolveAliasType(owner);
-        const matrix = matrixType(resolved);
-        return parseWgslArrayType(resolved)?.elementType ?? vectorType(resolved)?.componentType
-          ?? (matrix ? vectorTypeName(matrix.componentType, matrix.rows) : undefined);
-      }
-      case "unary": {
-        if (expression.operator === "!") {
-          return "bool";
-        }
-        if (expression.operator === "-" || expression.operator === "+" || expression.operator === "~") {
-          return this.inferExpressionType(expression.operand, self, inferSymbol, depth);
-        }
-        if (expression.operator === "*") {
-          const pointer = this.inferExpressionType(expression.operand, self, inferSymbol, depth);
-          return pointer === undefined ? undefined : parseWgslPointerType(this.resolveAliasType(pointer))?.elementType;
-        }
-        return undefined;
-      }
-      case "binary": {
-        if (COMPARISON_OPERATORS.has(expression.operator)
-          || expression.operator === "&&" || expression.operator === "||") {
-          return "bool";
-        }
-        if (!ARITHMETIC_OPERATORS.has(expression.operator)) {
-          return undefined;
-        }
-        const left = this.inferExpressionType(expression.left, self, inferSymbol, depth);
-        const right = this.inferExpressionType(expression.right, self, inferSymbol, depth);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        if (sameWgslType(left, right)) {
-          return left;
-        }
-        // WGSL splats a scalar across a vector operand.
-        if (isWgslScalarType(left) && vectorType(right) !== undefined) {
-          return right;
-        }
-        if (isWgslScalarType(right) && vectorType(left) !== undefined) {
-          return left;
-        }
-        return undefined;
-      }
-    }
-  }
-
-  /**
-   * Result type of a builtin call from its arguments. Only covers builtins
-   * whose result is fixed by their inputs: type-preserving unary math,
-   * same-or-splatted multi-argument math, and component-reducing queries.
-   * Anything else (sampling, packing, atomics, derivatives) stays undefined.
-   */
-  private inferBuiltinCallType(
-    expression: { readonly name: string; readonly args: readonly WgslExpression[] },
-    self: MutableSymbol,
-    inferSymbol: (symbol: MutableSymbol, depth: number) => string | undefined,
-    depth: number,
-  ): string | undefined {
-    const arguments_ = expression.args.map((argument) => this.inferExpressionType(argument, self, inferSymbol, depth + 1));
-    if (TYPE_PRESERVING_BUILTINS.has(expression.name)) {
-      return arguments_.length > 0 ? arguments_[0] : undefined;
-    }
-    if (expression.name === "arrayLength") {
-      return "u32";
-    }
-    if (expression.name === "select") {
-      const [falseValue, trueValue] = arguments_;
-      return falseValue !== undefined && trueValue !== undefined && sameWgslType(falseValue, trueValue) ? falseValue : undefined;
-    }
-    if (expression.name === "dot" || expression.name === "length" || expression.name === "distance") {
-      const vector = arguments_.length > 0 && arguments_[0] !== undefined
-        ? vectorType(arguments_[0]!)
-        : undefined;
-      return vector?.componentType;
-    }
-    if (!VARIADIC_MATH_BUILTINS.has(expression.name)) {
-      return undefined;
-    }
-    const defined = arguments_.filter((argument): argument is string => argument !== undefined);
-    if (defined.length === 0 || defined.length !== arguments_.length) {
-      return undefined;
-    }
-    if (defined.every((argument) => sameWgslType(argument, defined[0]!))) {
-      return defined[0];
-    }
-    // WGSL splats scalar arguments across a vector one (mix, clamp, ...).
-    const vectors = defined.filter((argument) => vectorType(argument) !== undefined);
-    if (vectors.length > 0 && vectors.every((argument) => sameWgslType(argument, vectors[0]!))
-      && defined.every((argument) => sameWgslType(argument, vectors[0]!) || isWgslScalarType(argument))) {
-      return vectors[0];
-    }
-    return undefined;
+    return inferWgslExpressionType(expression, {
+      valueType: (name) => {
+        const target = this.resolveValueSymbol(name, self);
+        return target && target.id !== self.id ? inferSymbol(target, depth + 1) : this.context.valueType?.(name);
+      },
+      functionType: (name) => this.symbols.find((candidate) => candidate.kind === "function"
+        && candidate.name === name && candidate.typeName !== undefined)?.typeName ?? this.context.functionType?.(name),
+      aliasType: (name) => this.symbols.find((symbol) => symbol.kind === "type" && symbol.name === name)?.typeName
+        ?? this.context.aliasType?.(name),
+      fieldType: (owner, field) => {
+        const typeScope = this.scopes.find(scope => scope.kind === "type" && scope.name === owner);
+        return this.symbols.find(symbol => symbol.kind === "field" && symbol.scopeId === typeScope?.id && symbol.name === field)?.typeName
+          ?? this.context.fieldType?.(owner, field);
+      },
+      hasType: (name) => this.symbols.some((candidate) => candidate.kind === "type" && candidate.name === name),
+    }, depth);
   }
 
   /**
@@ -1628,7 +1491,13 @@ class WgslParser {
       } else {
         this.advance();
       }
-      return { kind: "call", name, args };
+      return {
+        kind: "call",
+        name,
+        callee: token.text,
+        templateArguments: name === token.text ? undefined : splitTemplateArgumentText(name),
+        args,
+      };
     }
     this.recordValueReference(token.text, token, false);
     return { kind: "identifier", name: token.text };
@@ -1643,6 +1512,29 @@ function buildLineStarts(source: string): number[] {
     }
   }
   return starts;
+}
+
+function splitTemplateArgumentText(name: string): string[] {
+  const start = name.indexOf("<");
+  if (start < 0 || !name.endsWith(">")) {
+    return [];
+  }
+  const arguments_: string[] = [];
+  let depth = 0;
+  let argumentStart = start + 1;
+  for (let index = argumentStart; index < name.length - 1; index++) {
+    const character = name[index];
+    if (character === "<") {
+      depth += 1;
+    } else if (character === ">") {
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      arguments_.push(name.slice(argumentStart, index).trim());
+      argumentStart = index + 1;
+    }
+  }
+  arguments_.push(name.slice(argumentStart, -1).trim());
+  return arguments_.filter(Boolean);
 }
 
 export function parseWgslDocument(
@@ -1686,14 +1578,6 @@ function containsDocumentRange(outer: Range, inner: Range): boolean {
   return comparePosition(outer.start, inner.start) <= 0 && comparePosition(inner.end, outer.end) <= 0;
 }
 
-const COMPARISON_OPERATORS = new Set(["==", "!=", "<", ">", "<=", ">="]);
-
-const ARITHMETIC_OPERATORS = new Set([
-  "+", "-", "*", "/", "%", "|", "&", "^", "<<", ">>",
-]);
-
-const WGSL_SCALARS = new Set(["bool", "i32", "u32", "f32", "f16"]);
-
 const SLANG_TO_WGSL_TYPE: Record<string, string> = {
   bool: "bool",
   float: "f32",
@@ -1707,72 +1591,6 @@ const SLANG_TO_WGSL_TYPE: Record<string, string> = {
 /** Maps a catalog slang type to its WGSL spelling, if it has a plain one. */
 function wgslHostGlobalType(slangType: string): string | undefined {
   return SLANG_TO_WGSL_TYPE[slangType.trim()];
-}
-
-/** Unary builtins whose result has their operand's concrete type. */
-const TYPE_PRESERVING_BUILTINS = new Set([
-  "abs", "acos", "acosh", "asin", "asinh", "atan", "atanh",
-  "ceil", "cos", "cosh", "degrees", "dpdx", "dpdy", "exp", "exp2",
-  "floor", "fract", "fwidth", "inverseSqrt", "log", "log2",
-  "normalize", "quantizeToF16", "radians", "round", "saturate",
-  "sign", "sin", "sinh", "sqrt", "tan", "tanh", "trunc",
-]);
-
-/**
- * Multi-argument builtins whose result shares one argument type: either every
- * argument agrees, or a single vector type splats across scalar siblings.
- */
-const VARIADIC_MATH_BUILTINS = new Set([
-  "atan2", "clamp", "cross", "faceForward", "fma", "ldexp",
-  "max", "min", "mix", "pow", "reflect", "refract", "remainder",
-  "smoothstep", "step",
-]);
-
-/** `vec2<f32>` and `vec2f` spell one type, as do matrix aliases and their parameterized forms. */
-function sameWgslType(left: string, right: string): boolean {
-  return canonicalTypeKey(left) === canonicalTypeKey(right);
-}
-
-function canonicalTypeKey(typeName: string): string {
-  const trimmed = typeName.trim();
-  const vector = vectorType(trimmed);
-  if (vector) {
-    return `vec${vector.size}<${vector.componentType}>`;
-  }
-  const matrix = matrixType(trimmed);
-  return matrix ? `mat${matrix.columns}x${matrix.rows}<${matrix.componentType}>` : trimmed;
-}
-
-/** A named type rather than a catalogue placeholder such as `T`, `vecN<bool>`, or `__modfResult`. */
-function isConcreteTypeName(typeName: string): boolean {
-  return isBuiltinValueType(typeName) || (/^[A-Za-z]\w+$/.test(typeName) && !/^[A-Z]$/.test(typeName));
-}
-
-function isWgslScalarType(typeName: string): boolean {
-  return WGSL_SCALARS.has(typeName.trim());
-}
-
-function scalarLiteralType(text: string): string | undefined {
-  const trimmed = text.trim();
-  if (trimmed === "true" || trimmed === "false") {
-    return "bool";
-  }
-  if (/^0[xX][0-9a-fA-F]+$/.test(trimmed) || /^\d+i$/.test(trimmed)) {
-    return "i32";
-  }
-  if (/^\d+u$/.test(trimmed)) {
-    return "u32";
-  }
-  if (/^\d+h$/.test(trimmed) || /^(\d+\.\d*|\.\d+|\d+[eE])[^a-zA-Z]*h$/.test(trimmed)) {
-    return "f16";
-  }
-  if (/^(\d+\.\d*|\.\d+|\d+[eE][-+]?\d+|\d+f)$/.test(trimmed)) {
-    return "f32";
-  }
-  if (/^\d+$/.test(trimmed)) {
-    return "i32";
-  }
-  return undefined;
 }
 
 /**

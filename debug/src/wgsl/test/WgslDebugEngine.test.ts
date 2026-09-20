@@ -167,6 +167,35 @@ describe("WGSL generated debug context", () => {
       expect(plan.plan.files[0]!.source).toContain(" = col;");
     }
   });
+
+  it("plans captures for bitcast and integer builtin results inferred without annotations", () => {
+    const ws = workspace();
+    ws.files[0]!.source = [
+      "fn mainImage(coord: vec2f) -> vec4f {",
+      "  let bits = bitcast<vec2u>(coord);",
+      "  let leading = countLeadingZeros(bits);",
+      "  return vec4f(vec2f(leading), 0.0, 1.0);",
+      "}",
+    ].join("\n");
+    const request = { workspace: ws, sourceUri: ws.rootUri, position: { line: 3, character: 2 } };
+    const engine = new WgslDebugEngine();
+    const analyzed = engine.analyze(request);
+    expect(analyzed).toMatchObject({ ok: true });
+    if (!analyzed.ok) {
+      return;
+    }
+    expect(analyzed.analysis.visibleValues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "bits", typeName: "vec2u" }),
+      expect.objectContaining({ name: "leading", typeName: "vec2u" }),
+    ]));
+    const captured = analyzed.analysis.visibleValues.filter((value) => value.name === "bits" || value.name === "leading");
+    const plan = engine.planCapture(request, captured.map((value) => value.id));
+    expect(plan).toMatchObject({ ok: true });
+    if (plan.ok) {
+      expect(plan.plan.files[0]?.source).toContain(" = bits;");
+      expect(plan.plan.files[0]?.source).toContain(" = leading;");
+    }
+  });
 });
 
 

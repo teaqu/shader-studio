@@ -121,6 +121,60 @@ describe("declaration type inference", () => {
 
     expect(types.gain).toBe("f32");
   });
+
+  it("infers targeted template, integer, and matrix builtins without guessing invalid calls", () => {
+    const types = variableTypes([
+      "alias Mask = vec2u;",
+      "alias Matrix = mat2x3f;",
+      "fn shade(uv: vec2f, mask: Mask, matrix: Matrix) {",
+      "  let bits = bitcast<vec2u>(uv);",
+      "  let leading = countLeadingZeros(mask);",
+      "  let trailing = countTrailingZeros(mask);",
+      "  let ones = countOneBits(mask);",
+      "  let reversed = reverseBits(mask);",
+      "  let transposed = transpose(matrix);",
+      "  let determinant = determinant(mat2x2h());",
+      "  let badBitcast = bitcast<vec2u>();",
+      "  let badTranspose = transpose(uv);",
+      "}",
+    ].join("\n"));
+
+    expect(types.bits).toBe("vec2u");
+    expect(types.leading).toBe("vec2u");
+    expect(types.trailing).toBe("vec2u");
+    expect(types.ones).toBe("vec2u");
+    expect(types.reversed).toBe("vec2u");
+    expect(types.transposed).toBe("mat3x2f");
+    expect(types.determinant).toBe("f16");
+    expect(types.badBitcast).toBeUndefined();
+    expect(types.badTranspose).toBeUndefined();
+  });
+
+  it("preserves result shapes for comparisons, boolean negation, and scalar-matrix multiplication", () => {
+    const types = variableTypes([
+      "fn shade(uv: vec2f, mask: vec2<bool>, matrix: mat2x3f, halfMatrix: mat3x2h) {",
+      "  let compared = uv < vec2f(0.5);",
+      "  let scalarCompared = uv.x < 0.5;",
+      "  let inverted = !mask;",
+      "  let scaledRight = matrix * 0.5;",
+      "  let scaledLeft = 2.0 * matrix;",
+      "  let scaledHalf = halfMatrix * 0.5;",
+      "  let incompatible = matrix * vec2f(1.0);",
+      "  let mismatched = uv < vec3f(0.5);",
+      "  let mixedInteger = vec2u(1u) + 1.0;",
+      "}",
+    ].join("\n"));
+
+    expect(types.compared).toBe("vec2<bool>");
+    expect(types.scalarCompared).toBe("bool");
+    expect(types.inverted).toBe("vec2<bool>");
+    expect(types.scaledRight).toBe("mat2x3f");
+    expect(types.scaledLeft).toBe("mat2x3f");
+    expect(types.scaledHalf).toBe("mat3x2h");
+    expect(types.incompatible).toBeUndefined();
+    expect(types.mismatched).toBeUndefined();
+    expect(types.mixedInteger).toBeUndefined();
+  });
 });
 
 describe('storage expression inference', () => {

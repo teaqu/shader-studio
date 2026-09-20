@@ -27,7 +27,7 @@ export interface WgslPointerType {
 }
 
 const VECTOR_ALIAS = /^vec([234])([fhiu])$/;
-const VECTOR_PARAMETERIZED = /^vec([234])<\s*([iu]32|f32|f16)\s*>$/;
+const VECTOR_PARAMETERIZED = /^vec([234])<\s*(bool|[iu]32|f32|f16)\s*>$/;
 const MATRIX_ALIAS = /^mat([234])x([234])([fh])$/;
 const MATRIX_PARAMETERIZED = /^mat([234])x([234])<\s*(f32|f16)\s*>$/;
 const ATOMIC = /^atomic<\s*([iu]32)\s*>$/;
@@ -81,6 +81,9 @@ export function vectorType(typeName: string): WgslVectorType | undefined {
 export { vectorTypeName as wgslVectorTypeName };
 
 export function vectorTypeName(componentType: string, size: number): string | undefined {
+  if (componentType === "bool") {
+    return size < 2 || size > 4 ? undefined : `vec${size}<bool>`;
+  }
   const suffixes: Readonly<Record<string, string>> = {
     f32: "f",
     f16: "h",

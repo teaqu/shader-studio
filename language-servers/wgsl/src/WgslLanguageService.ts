@@ -767,9 +767,10 @@ function memberCompletions(
   }
   const vector = resolved.vector;
   if (vector) {
-    return swizzleSelections(vector.size, WGSL_SWIZZLE_SETS).map((selection) => ({
+    return swizzleSelections(vector.size, WGSL_SWIZZLE_SETS).map((selection, index) => ({
       label: selection,
       kind: CompletionItemKind.Field,
+      sortText: index.toString().padStart(4, "0"),
       detail: selection.length === 1 ? vector.componentType : wgslVectorTypeName(vector.componentType, selection.length),
       documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
     }));
@@ -1523,7 +1524,12 @@ const BUILTIN_RESULT_FIELDS: Readonly<Record<string, readonly { name: string; ty
 /** Environment declarations that document inference may consult. */
 function inferenceContext(environment: ShaderAuthoringEnvironment, includes: readonly WgslAnalysisDocument[]): WgslInferenceContext {
   const context = expressionContext(environment, includes);
-  return { valueType: context.variableType, functionType: context.functionType, fieldType: context.fieldType };
+  return {
+    valueType: context.variableType,
+    functionType: context.functionType,
+    aliasType: context.aliasType,
+    fieldType: context.fieldType,
+  };
 }
 
 /** A field of a struct declared in Common or generated declarations, following their aliases. */
@@ -1554,6 +1560,8 @@ function expressionContext(environment: ShaderAuthoringEnvironment, includes: re
     functionType: (name: string) => includedGlobalType(includes, name, true)
       ?? generatedWgslFunctions(environment).find((item) => item.name === name)?.returnType
       ?? uniqueIntrinsicReturnType(environment.stage, name),
+    aliasType: (name: string) => includes.flatMap((document) => document.symbols)
+      .find((symbol) => symbol.kind === "type" && symbol.name === name)?.typeName,
     fieldType: (owner: string, field: string) => includedFieldType(includes, owner, field),
   };
 }

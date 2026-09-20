@@ -9,7 +9,7 @@ export interface MemberAccess {
 
 const IDENTIFIER_CHARACTER = /[A-Za-z0-9_]/;
 const NUMERIC_LITERAL = /^\d+(?:\.\d*)?$/;
-const CLOSING_BRACKETS: Readonly<Record<string, string>> = { ")": "(", "]": "[" };
+const CLOSING_BRACKETS: Readonly<Record<string, string>> = { ")": "(", "]": "[", ">": "<" };
 
 /**
  * Describes the member selection being typed at `position`, so completion can offer
@@ -32,19 +32,41 @@ export function findMemberAccess(source: string, position: Position): MemberAcce
   return expression && !NUMERIC_LITERAL.test(expression) ? { expression, prefix } : undefined;
 }
 
-/**
- * Component selections offered for a vector of `size` components, listing each
- * component of every set followed by the runs that start at its first component.
- */
+const SWIZZLE_SELECTION_CACHE = new Map<string, string[]>();
+
+/** Component selections offered for reading a vector of `size` components. */
 export function swizzleSelections(size: number, sets: readonly string[]): string[] {
-  if (size < 2 || size > 4) {
+  if (!Number.isInteger(size) || size < 2 || size > 4) {
     return [];
   }
-  return sets.flatMap((set) => {
+  const key = `${size}:${sets.join(",")}`;
+  const cached = SWIZZLE_SELECTION_CACHE.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const common = sets.flatMap((set) => {
     const components = [...set].slice(0, size);
     const runs = components.map((_, index) => components.slice(0, index + 1).join("")).slice(1);
     return [...components, ...runs];
   });
+  const commonSet = new Set(common);
+  const remaining = sets.flatMap((set) => allSelections([...set].slice(0, size)))
+    .filter((selection) => !commonSet.has(selection))
+    .sort((left, right) => left.length - right.length || (left < right ? -1 : left > right ? 1 : 0));
+  const selections = [...common, ...remaining];
+  SWIZZLE_SELECTION_CACHE.set(key, selections);
+  return selections;
+}
+
+function allSelections(components: readonly string[]): string[] {
+  let previous = [""];
+  const result: string[] = [];
+  for (let length = 1; length <= 4; length++) {
+    previous = previous.flatMap((prefix) => components.map((component) => prefix + component));
+    result.push(...previous);
+  }
+  return result;
 }
 
 export type MemberExpressionStep =

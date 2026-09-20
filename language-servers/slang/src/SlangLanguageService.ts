@@ -1301,9 +1301,10 @@ function memberCompletions(
   }
   const vector = resolved.vector;
   if (vector) {
-    return swizzleSelections(vector.size, SLANG_SWIZZLE_SETS).map((selection) => ({
+    return swizzleSelections(vector.size, SLANG_SWIZZLE_SETS).map((selection, index) => ({
       label: selection,
       kind: CompletionItemKind.Field,
+      sortText: index.toString().padStart(4, "0"),
       detail: selection.length === 1 ? vector.componentType : slangVectorTypeName(vector.componentType, selection.length),
       documentation: { kind: MarkupKind.Markdown, value: `Component selection on \`${resolved.name}\`.` },
     }));

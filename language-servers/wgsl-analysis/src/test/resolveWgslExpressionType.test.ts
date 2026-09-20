@@ -77,6 +77,39 @@ describe("resolveWgslExpressionType", () => {
     })).toMatchObject({ name: "vec3f" });
   });
 
+  it("uses argument-aware inference for direct builtin calls and chained selections", () => {
+    const source = [
+      "alias Mask = vec2u;",
+      "fn main(uv: vec2f, mask: Mask, matrix: mat2x3f) {",
+      "  let value = uv.x;",
+      "}",
+    ].join("\n");
+    const resolve = (expression: string) => resolveWgslExpressionType({
+      uri: URI, source, stage: "fragment", position: { line: 2, character: 2 }, expression,
+    });
+
+    expect(resolve("normalize(uv)")).toMatchObject({ name: "vec2f", vector: { size: 2 } });
+    expect(resolve("normalize(uv).yx")).toMatchObject({ name: "vec2f" });
+    expect(resolve("bitcast<vec2u>(uv)")).toMatchObject({ name: "vec2u", vector: { componentType: "u32", size: 2 } });
+    expect(resolve("countLeadingZeros(mask).x")).toMatchObject({ name: "u32" });
+    expect(resolve("transpose(matrix)[0].xy")).toMatchObject({ name: "vec2f" });
+    expect(resolve("bitcast<vec2u>()")).toBeUndefined();
+    expect(resolve("mystery(uv)")).toBeUndefined();
+  });
+
+  it("resolves boolean vector and scalar-matrix operator expressions", () => {
+    const source = "fn main(uv: vec2f, matrix: mat2x3f) { let value = uv.x; }";
+    const resolve = (expression: string) => resolveWgslExpressionType({
+      uri: URI, source, stage: "fragment", position: { line: 0, character: 47 }, expression,
+    });
+
+    expect(resolve("uv < vec2f(0.5)")).toMatchObject({ name: "vec2<bool>", vector: { componentType: "bool", size: 2 } });
+    expect(resolve("(uv < vec2f(0.5)).x")).toMatchObject({ name: "bool" });
+    expect(resolve("matrix * 0.5")).toMatchObject({ name: "mat2x3f" });
+    expect(resolve("0.5 * matrix")).toMatchObject({ name: "mat2x3f" });
+    expect(resolve("uv < vec3f(0.5)")).toBeUndefined();
+  });
+
   it("returns undefined for unknown names and empty expressions", () => {
     expect(resolveWgslExpressionType({
       uri: URI,

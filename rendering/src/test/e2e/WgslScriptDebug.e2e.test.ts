@@ -105,6 +105,68 @@ it("previews and captures locals typed by script uniforms in a WGSL debug plan",
   }
 });
 
+it("compiles and captures targeted inferred builtin and operator results", { timeout: 30_000 }, async () => {
+  const source = [
+    "fn mainImage(coord: vec2f) -> vec4f {",
+    "  let bits = bitcast<vec2u>(vec2f(1.0, 2.0));",
+    "  let leading = countLeadingZeros(bits);",
+    "  let matrix = mat2x3f(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);",
+    "  let transposed = transpose(matrix);",
+    "  let column = transposed[0];",
+    "  let scaled = matrix * 0.5;",
+    "  let scaledColumn = scaled[1];",
+    "  let compared = vec2f(0.25, 0.75) < vec2f(0.5);",
+    "  let comparisonX = compared.x;",
+    "  return vec4f(column, scaledColumn.x, select(0.0, 1.0, comparisonX));",
+    "}",
+  ].join("\n");
+  const config = { version: "1.0", passes: { Image: { inputs: {} } } };
+  const harness = createShaderCanvasHarness("wgsl");
+  try {
+    await harness.compile({ path: "/shaders/inference.wgsl", image: source, config });
+    const workspace: DebugWorkspace = {
+      rootUri: "file:///shaders/inference.wgsl",
+      rootPath: "/shaders/inference.wgsl",
+      passName: "Image",
+      contentHash: "inference",
+      files: [{ uri: "file:///shaders/inference.wgsl", path: "/shaders/inference.wgsl", source, version: 1, moduleName: "", ownerPass: "Image" }],
+    };
+    const request = { workspace, sourceUri: workspace.rootUri, position: { line: 10, character: 2 } };
+    const debug = new WgslDebugEngine();
+    const analysis = debug.analyze(request);
+    expect(analysis).toMatchObject({ ok: true });
+    if (!analysis.ok) {
+      return;
+    }
+    const names = analysis.analysis.visibleValues.map(value => value.name);
+    expect(names).toEqual(expect.arrayContaining(["bits", "leading", "column", "scaledColumn", "comparisonX"]));
+    expect(names).not.toEqual(expect.arrayContaining(["matrix", "transposed", "scaled", "compared"]));
+    const selected = analysis.analysis.visibleValues.filter(value => ["bits", "leading", "column", "scaledColumn", "comparisonX"].includes(value.name));
+    const plan = debug.planCapture(request, selected.map(value => value.id));
+    if (!plan.ok) {
+      throw new Error(plan.diagnostics.map(item => item.message).join("\n"));
+    }
+    const capturer = harness.engine.createVariableCapturer();
+    try {
+      capturer.setCompileContext(harness.engine.getVariableCaptureCompileContext(source, "Image", "/shaders/inference.wgsl"));
+      const root = plan.plan.files.find(file => file.uri === plan.plan.rootUri)!;
+      const captures = plan.plan.captureSlots.map(slot => ({ varName: slot.name, varType: slot.typeName, captureShader: root.source, selectorIndex: slot.index, hidden: slot.hidden, debugPlan: plan.plan }));
+      expect(await capturer.issueCaptureGrid(captures, harness.engine.getCaptureUniforms(), 1, 1)).toBe(captures.length);
+      const results = await captureResults(capturer, captures.length);
+      expect([...results.find(result => result.varName === "bits")!.rgba]).toEqual([1_065_353_216, 1_073_741_824, 0, 1]);
+      expect([...results.find(result => result.varName === "leading")!.rgba]).toEqual([2, 1, 0, 1]);
+      expect([...results.find(result => result.varName === "column")!.rgba]).toEqual([1, 4, 0, 1]);
+      expect([...results.find(result => result.varName === "scaledColumn")!.rgba]).toEqual([2, 2.5, 3, 1]);
+      expect([...results.find(result => result.varName === "comparisonX")!.rgba]).toEqual([1, 1, 1, 1]);
+      expect(capturer.getLastError()).toBeNull();
+    } finally {
+      capturer.dispose();
+    }
+  } finally {
+    harness.dispose();
+  }
+});
+
 // No channel inputs, so capture can compile at once instead of waiting for the
 // pending compile's pass textures; only the script's declarations are at stake.
 const pendingImage = `fn mainImage(coord: vec2f) -> vec4f {

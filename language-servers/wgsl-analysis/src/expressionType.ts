@@ -1,16 +1,11 @@
-import { parseMemberExpression, type MemberExpressionStep } from "@shader-studio/language-server-core";
 import type { ShaderStage } from "@shader-studio/types";
 import type { Position } from "vscode-languageserver-protocol";
 import type { WgslAnalysisDocument, WgslSymbol } from "./model.js";
-import { visibleSymbolsAtPosition } from "./parseWgslDocument.js";
+import { inferWgslExpressionType } from "./inferWgslExpressionType.js";
+import { parseWgslExpression, visibleSymbolsAtPosition } from "./parseWgslDocument.js";
 import { parseWgslDocumentAtPosition } from "./recovery.js";
 import {
-  isBuiltinValueType,
-  matrixType,
-  parseWgslPointerType,
-  resolveSwizzleType,
   vectorType,
-  vectorTypeName,
   type WgslVectorType,
 } from "./wgslTypes.js";
 
@@ -43,6 +38,8 @@ export interface WgslExpressionContext {
   readonly variableType?: (name: string) => string | undefined;
   /** Return types for functions the document does not declare, such as intrinsics. */
   readonly functionType?: (name: string) => string | undefined;
+  /** Targets for aliases declared outside this document, such as Common aliases. */
+  readonly aliasType?: (name: string) => string | undefined;
   /** Field types of structs the document does not declare, such as Common's. */
   readonly fieldType?: (owner: string, field: string) => string | undefined;
 }
@@ -56,11 +53,8 @@ export function resolveWgslExpressionType(
   request: WgslExpressionRequest,
   context: WgslExpressionContext = {},
 ): WgslResolvedType | undefined {
-  // `(*pointer).member`: resolve the pointer, then select from what it points to.
-  const dereference = /^\s*\(\s*\*\s*([^()]+?)\s*\)([\s\S]*)$/.exec(request.expression);
-  const steps = parseMemberExpression(dereference ? dereference[1]! : request.expression);
-  const trailing = dereference ? parseMemberExpression(`_${dereference[2]}`).slice(1) : [];
-  if (!steps.length || (dereference && dereference[2]!.trim() !== "" && trailing.length === 0)) {
+  const expression = parseWgslExpression(request.expression);
+  if (!expression) {
     return undefined;
   }
   const analysis = parseWgslDocumentAtPosition(
@@ -71,30 +65,18 @@ export function resolveWgslExpressionType(
     { valueType: context.variableType, functionType: context.functionType, fieldType: context.fieldType },
   );
   const documents = [analysis, ...context.includes ?? []];
-  let typeName = walkSteps(leadingStepType(steps[0], analysis, documents, request.position, context), steps.slice(1), documents);
-  if (dereference) {
-    const pointer = typeName === undefined ? undefined : parseWgslPointerType(resolveAlias(typeName, documents));
-    typeName = walkSteps(pointer?.elementType, trailing, documents);
-  }
+  const typeName = inferWgslExpressionType(expression, {
+    valueType: (name) => visibleSymbolsAtPosition(analysis, request.position)
+      .find((symbol) => symbol.name === name && isValueSymbol(symbol))?.typeName
+      ?? declaredType(documents.slice(1), name, "value")
+      ?? context.variableType?.(name),
+    functionType: (name) => declaredType(documents, name, "function") ?? context.functionType?.(name),
+    aliasType: (name) => aliasTarget(name, documents) ?? context.aliasType?.(name),
+    fieldType: (owner, field) => structFields(owner, documents)?.find((candidate) => candidate.name === field)?.type
+      ?? context.fieldType?.(owner, field),
+    hasType: (name) => documents.some((document) => document.symbols.some((symbol) => symbol.kind === "type" && symbol.name === name)),
+  });
   return typeName ? describeType(typeName, documents) : undefined;
-}
-
-function walkSteps(
-  initial: string | undefined,
-  steps: readonly MemberExpressionStep[],
-  documents: readonly WgslAnalysisDocument[],
-): string | undefined {
-  let typeName = initial;
-  for (const step of steps) {
-    if (!typeName) {
-      return undefined;
-    }
-    typeName = resolveAlias(typeName, documents);
-    typeName = step.kind === "index"
-      ? indexedTypeName(typeName)
-      : resolveSwizzleType(typeName, step.kind === "member" ? step.name : "") ?? structFields(typeName, documents)?.find((field) => step.kind === "member" && field.name === step.name)?.type;
-  }
-  return typeName;
 }
 
 function describeType(name: string, documents: readonly WgslAnalysisDocument[]): WgslResolvedType {
@@ -105,29 +87,6 @@ function describeType(name: string, documents: readonly WgslAnalysisDocument[]):
   }
   const fields = structFields(resolvedName, documents);
   return fields ? { name: resolvedName, fields } : { name: resolvedName };
-}
-
-function leadingStepType(
-  step: MemberExpressionStep | undefined,
-  analysis: WgslAnalysisDocument,
-  documents: readonly WgslAnalysisDocument[],
-  position: Position,
-  context: WgslExpressionContext,
-): string | undefined {
-  if (step?.kind === "call") {
-    if (isBuiltinValueType(step.name)) {
-      return step.name;
-    }
-    return declaredType(documents, step.name, "function") ?? context.functionType?.(step.name);
-  }
-  if (step?.kind !== "identifier") {
-    return undefined;
-  }
-  const visible = visibleSymbolsAtPosition(analysis, position)
-    .find((symbol) => symbol.name === step.name && isValueSymbol(symbol));
-  return visible?.typeName
-    ?? declaredType(documents.slice(1), step.name, "value")
-    ?? context.variableType?.(step.name);
 }
 
 function declaredType(
@@ -172,26 +131,16 @@ function resolveAlias(name: string, documents: readonly WgslAnalysisDocument[]):
   let resolved = name;
   while (!visited.has(resolved)) {
     visited.add(resolved);
-    const alias = documents.flatMap((document) => document.symbols)
-      .find((symbol) => symbol.kind === "type" && symbol.name === resolved && symbol.typeName !== undefined);
-    if (!alias?.typeName) {
+    const target = aliasTarget(resolved, documents);
+    if (!target) {
       break;
     }
-    resolved = alias.typeName;
+    resolved = target;
   }
   return resolved;
 }
 
-/** Element type of an indexed value: array elements, vector components, or matrix columns. */
-function indexedTypeName(typeName: string): string | undefined {
-  const array = /^array<\s*(.+?)\s*(?:,\s*\d+\s*)?>$/.exec(typeName);
-  if (array?.[1]) {
-    return array[1];
-  }
-  const vector = vectorType(typeName);
-  if (vector) {
-    return vector.componentType;
-  }
-  const matrix = matrixType(typeName);
-  return matrix ? vectorTypeName(matrix.componentType, matrix.rows) : undefined;
+function aliasTarget(name: string, documents: readonly WgslAnalysisDocument[]): string | undefined {
+  return documents.flatMap((document) => document.symbols)
+    .find((symbol) => symbol.kind === "type" && symbol.name === name && symbol.typeName !== undefined)?.typeName;
 }

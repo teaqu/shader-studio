@@ -10,7 +10,7 @@ export interface SlangMatrixType {
 }
 
 const SCALAR_COMPONENT_TYPES = ["float", "half", "double", "int", "uint", "bool"] as const;
-const SWIZZLE_SETS = ["xyzw", "rgba", "stpq"] as const;
+const SWIZZLE_SETS = ["xyzw", "rgba"] as const;
 
 /** Every component-selector alphabet Slang accepts, for callers that need the raw list. */
 export const SLANG_SWIZZLE_SETS: readonly string[] = SWIZZLE_SETS;

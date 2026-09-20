@@ -27,6 +27,8 @@ describe("findMemberAccess", () => {
       .toEqual({ expression: "points[index + 1]", prefix: "" });
     expect(findMemberAccess("  lights[0].color.", { line: 0, character: 18 }))
       .toEqual({ expression: "lights[0].color", prefix: "" });
+    expect(findMemberAccess("  bitcast<vec2u>(uv).", { line: 0, character: 21 }))
+      .toEqual({ expression: "bitcast<vec2u>(uv)", prefix: "" });
   });
 
   it("ignores positions that are not member selections", () => {
@@ -55,21 +57,46 @@ describe("findMemberAccess", () => {
 });
 
 describe("swizzleSelections", () => {
-  it("lists single components and contiguous runs for each component set", () => {
-    expect(swizzleSelections(2, ["xyzw", "rgba"])).toEqual([
-      "x", "y", "xy",
-      "r", "g", "rg",
-    ]);
+  it("lists every one-to-four-component read selection without mixing naming sets", () => {
+    const selections = swizzleSelections(2, ["xyzw", "rgba"]);
+
+    expect(selections).toEqual(expect.arrayContaining(["x", "y", "xx", "yx", "xxx", "xyxy", "xxxx", "rg", "grrr"]));
+    expect(selections).not.toEqual(expect.arrayContaining(["z", "b", "xr", "rx"]));
+    expect(selections.every((selection) => selection.length >= 1 && selection.length <= 4)).toBe(true);
+    expect(new Set(selections).size).toBe(selections.length);
   });
 
   it("limits selections to the components the vector actually has", () => {
-    expect(swizzleSelections(3, ["xyzw"])).toEqual(["x", "y", "z", "xy", "xyz"]);
-    expect(swizzleSelections(4, ["stpq"])).toEqual(["s", "t", "p", "q", "st", "stp", "stpq"]);
+    expect(swizzleSelections(3, ["xyzw"])).toEqual(expect.arrayContaining(["zyx", "zzzz"]));
+    expect(swizzleSelections(3, ["xyzw"])).not.toContain("w");
+    expect(swizzleSelections(4, ["stpq"])).toEqual(expect.arrayContaining(["ts", "qpts", "qqqq"]));
+  });
+
+  it.each([
+    [2, 2, 60],
+    [3, 2, 240],
+    [4, 2, 680],
+    [2, 3, 90],
+    [3, 3, 360],
+    [4, 3, 1_020],
+  ])("returns the independently counted cardinality for width %i and %i sets", (size, setCount, count) => {
+    expect(swizzleSelections(size, ["xyzw", "rgba", "stpq"].slice(0, setCount))).toHaveLength(count);
+  });
+
+  it("keeps common selections first, then orders the rest by length and spelling", () => {
+    const selections = swizzleSelections(2, ["xyzw", "rgba"]);
+
+    expect(selections.slice(0, 6)).toEqual(["x", "y", "xy", "r", "g", "rg"]);
+    const remaining = selections.slice(6);
+    expect(remaining).toEqual([...remaining].sort((left, right) => left.length - right.length || left.localeCompare(right)));
+    expect(swizzleSelections(2, ["xyzw", "rgba"])).toEqual(selections);
   });
 
   it("returns nothing for sizes outside the vector range", () => {
+    expect(swizzleSelections(0, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(1, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(5, ["xyzw"])).toEqual([]);
+    expect(swizzleSelections(Number.NaN, ["xyzw"])).toEqual([]);
   });
 });
 

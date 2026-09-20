@@ -181,6 +181,7 @@ export class MonacoLanguageServiceManager {
           kind: (item.kind ?? this.monaco.languages.CompletionItemKind.Variable) as Monaco.languages.CompletionItemKind,
           detail: item.detail,
           documentation: markdownValue(item.documentation),
+          sortText: item.kind === 5 ? item.sortText : undefined,
           insertText: item.textEdit?.newText ?? (typeof item.insertText === "string" ? item.insertText : item.label),
           range: item.textEdit && "range" in item.textEdit
             ? toMonacoRange(this.monaco, item.textEdit.range)

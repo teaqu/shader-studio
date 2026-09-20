@@ -191,3 +191,60 @@ test('WGSL 2x2 matrices capture in authored column order in the standalone debug
   await expect(row('inferred').locator('.var-value')).toHaveText(/^\(0\.750,\s*0\.500,\s*0\.250,\s*0\.125\)$/);
   await expect(panel.getByLabel('Show capture errors')).toHaveCount(0);
 });
+
+test('WGSL inferred builtins and operator shapes complete, persist, and capture in the standalone host', async ({ page }) => {
+  const source = [
+    'fn mainImage(coord: vec2f) -> vec4f {',
+    '    let direct = normalize(vec2f(1.0, 2.0));',
+    '    let bits = bitcast<vec2u>(vec2f(1.0, 2.0));',
+    '    let leading = countLeadingZeros(bits);',
+    '    let matrix = mat2x3f(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);',
+    '    let transposed = transpose(matrix);',
+    '    let column = transposed[0];',
+    '    let scaledColumn = (matrix * 0.5)[1];',
+    '    let compared = vec2f(0.25, 0.75) < vec2f(0.5);',
+    '    let comparisonX = compared.x;',
+    '    return vec4f(column, scaledColumn.x, select(0.0, 1.0, comparisonX));',
+    '}',
+    '',
+  ].join('\n');
+  let editor = await openShader(page, 'wgsl-inference', [
+    ['wgsl-inference.wgsl', source],
+    ['wgsl-inference.sha.json', JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } })],
+  ]);
+  await editor.locator('.view-line').filter({ hasText: 'let direct' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('.y');
+  const suggestion = page.getByRole('option', { name: /^yx,/ }).first();
+  await expect(suggestion).toBeVisible();
+  await suggestion.click();
+  await expect.poll(() => lineText(editor, 1)).toContain('normalize(vec2f(1.0, 2.0)).yx;');
+  await expect.poll(async () => (await workspace(page))['/shaders/wgsl-inference.wgsl']).toContain('normalize(vec2f(1.0, 2.0)).yx;');
+
+  await editor.locator('.view-line').getByText('bits', { exact: true }).first().hover();
+  await expect(page.locator('.monaco-hover').filter({ visible: true })).toContainText('vec2u');
+
+  await page.reload();
+  await page.getByTestId('shader-option-wgsl-inference-wgsl').click();
+  editor = page.getByTestId('web-editor');
+  await expect.poll(() => lineText(editor, 1)).toContain('normalize(vec2f(1.0, 2.0)).yx;');
+  const panel = page.locator('.debug-panel');
+  if (!await panel.isVisible()) {
+    await page.getByTestId('web-preview').getByLabel('Toggle debug mode').click();
+  }
+  if (await panel.locator('.variables-section').count() === 0) {
+    await panel.getByLabel('Toggle variable inspector').click();
+  }
+  await editor.locator('.view-line').filter({ hasText: 'return vec4f' }).click();
+  const row = name => panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: new RegExp(`^${name}$`) }) });
+  await expect(row('bits').locator('.var-type')).toHaveText('vec2u');
+  await expect(row('leading').locator('.var-type')).toHaveText('vec2u');
+  await expect(row('leading').locator('.var-value')).toHaveText(/^\(2(?:\.0+)?,\s*1(?:\.0+)?\)$/);
+  await expect(row('column').locator('.var-type')).toHaveText('vec2f');
+  await expect(row('scaledColumn').locator('.var-type')).toHaveText('vec3f');
+  await expect(row('comparisonX').locator('.var-type')).toHaveText('bool');
+  await expect(row('transposed')).toHaveCount(0);
+  await expect(row('compared')).toHaveCount(0);
+  await expect(panel.getByLabel('Show capture errors')).toHaveCount(0);
+});
