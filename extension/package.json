@@ -21,13 +21,10 @@
     "wgsl",
     "webgl",
     "webgpu",
-    "graphics",
     "shadertoy",
-    "shader toy",
     "shader viewer",
     "shader editor",
     "openGL",
-    "debugging",
     "debugger",
     "shader debugger"
   ],
