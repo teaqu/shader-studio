@@ -1,6 +1,6 @@
 # Configure Passes and Inputs
 
-The config panel is where you set up multi-pass pipelines and bind assets to shader inputs. Everything is stored in a `.sha.json` file that the visual editor writes for you.
+The config panel is where you set up shader passes and choose their inputs. Everything is stored in a `.sha.json` file that the visual editor writes for you.
 
 ## Opening the Config Panel
 
@@ -25,8 +25,8 @@ The tab bar at the top shows every pass in your shader. Click **+ New** to add a
 |-----|-------------|
 | **Image** | Always present. The final rendered output. No file path — this is your `mainImage` shader. |
 | **Named buffer pass** | An intermediate fragment render pass backed by a `.glsl`, `.slang`, or `.wgsl` file. Names and pass counts are unrestricted. |
-| **Compute pass** | A Slang/WebGPU compute pass declared with `"type": "compute"` and backed by a `.slang` or `.wgsl` file. |
-| **Common** | Shared GLSL, Slang, or WGSL included at the top of every pass. Not a render pass — has no framebuffer. |
+| **Compute pass** | A Slang or WGSL compute pass declared with `"type": "compute"` and backed by a `.slang` or `.wgsl` file. |
+| **Common** | Shared functions, constants, and types used by other passes. |
 | **Script** | A TypeScript or JavaScript file that drives custom `uniform` values per frame. |
 
 !!! note
@@ -59,7 +59,7 @@ See [Resolution](resolution.md) for how these settings interact with the toolbar
 
 ## Buffer Passes
 
-Each fragment buffer pass renders a `.glsl`, `.slang`, or `.wgsl` file to an offscreen framebuffer that other passes can read as a texture. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, Slang uses direct globals such as `iChannelN`, and WGSL uses free functions such as `iChannelNSample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
+Each buffer pass uses a `.glsl`, `.slang`, or `.wgsl` file to produce an image that other passes can sample. Buffer pass names are ordinary identifiers such as `Flow`, `BloomHorizontal`, or `BufferA`; there is no `BufferA`–`BufferD` name set or four-pass limit. Every pass can configure its own channels: GLSL uses `iChannelN` and `iChN`, Slang uses direct globals such as `iChannelN`, and WGSL uses free functions such as `iChannelNSample(uv)`. See [Channels](channels.md) for how to bind textures, video, audio, and more.
 
 **Path field** — points to the shader file for this buffer. Three path forms are supported:
 
@@ -90,24 +90,20 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 | **Plane** | A flat 3D plane. |
 | **Cube** | A unit cube centred at the origin. |
 | **Sphere** | A UV-mapped sphere. |
-| **Model** | A custom GLB mesh in the VS Code extension. Standalone does not resolve model assets. |
+| **Model** | A custom GLB mesh. |
 
 When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
 
 ## Compute Passes
 
-For a Slang shader, declare a compute pass with `"type": "compute"`; its pass name can be any valid identifier. The **+ Compute** action adds a pass entry; give it a `.slang` path containing one native `[shader("compute")]` entry point with `[numthreads(...)]`. For a WGSL shader, give it a `.wgsl` path containing one `@compute` entry point with `@workgroup_size(...)`. Storage declarations and fields such as `dispatch`, `dispatchCount`, `dispatchOnce`, and `outputLayers` are currently edited in the raw `.sha.json` view.
-
-See [Compute Passes](compute.md) for the authoring convention, storage layout rules, and executable examples.
+Use **+ Compute** to add a compute pass, then select its `.slang` or `.wgsl` file.
+See [Compute Passes](compute.md) for shader examples, storage buffers, and dispatch settings.
 
 ---
 
 ## The Script Pass
 
-!!! note "VS Code extension only"
-    Standalone does not execute browser scripts or provide script-driven custom uniforms.
-
-The Script pass drives custom `uniform` values per frame from a TypeScript or JavaScript file. It has no framebuffer — it only produces uniform data.
+The Script pass drives custom `uniform` values per frame from a TypeScript or JavaScript file. Use it to animate parameters or bring external data into your shader.
 
 ### Exporting Uniforms
 
@@ -136,7 +132,7 @@ export function uniforms(ctx: {
 
 ### Type Inference
 
-Types are inferred from the return value on the first call. The returned values are **injected as GLSL uniforms automatically** — no declaration needed in your shader.
+Types are inferred from the return value on the first call. Use the returned names directly in your shader without declaring them.
 
 | Return type | GLSL uniform |
 |-------------|-------------|
@@ -146,7 +142,7 @@ Types are inferred from the return value on the first call. The returned values 
 | `[n, n, n, n]` | `uniform vec4 uRect;` |
 | `boolean` | `uniform bool uEnabled;` |
 
-WGSL and Slang shaders receive the same values as globals with the script's field names — no declaration needed. In WGSL they arrive as `var<private>` globals (`f32`, `vec2<f32>`, `vec3<f32>`, `vec4<f32>`, `bool`); in Slang as the corresponding `float` / `floatN` / `bool` globals.
+WGSL and Slang shaders receive the same values as globals with the script's field names — no declaration needed. WGSL uses `f32`, `vec2<f32>`, `vec3<f32>`, `vec4<f32>`, and `bool`; Slang uses the corresponding `float`, `floatN`, and `bool` types.
 
 ### Polling Rate
 
@@ -176,7 +172,7 @@ Because the script runs in Node.js, you can pull in values from anywhere — gam
 
 ## The Common Pass
 
-The Common pass points to a `.glsl`, `.slang`, or `.wgsl` file whose contents are prepended to every other pass before compilation. Use it for shared utility functions, constants, and type definitions. The common file must be written in the same language as the passes that include it — WGSL has no `#include` mechanism, so shared WGSL code lives in the common file verbatim.
+Use the Common pass for shared utility functions, constants, and types. Select a `.glsl`, `.slang`, or `.wgsl` file written in the same language as your other passes.
 
 === "GLSL"
     ```glsl
@@ -223,7 +219,7 @@ The Common pass points to a `.glsl`, `.slang`, or `.wgsl` file whose contents ar
 You can then use `hash`, `noise`, or `PI` in any Image or named buffer pass.
 
 !!! note
-    Common is not rendered — it has no framebuffer. It is purely a code injection, equivalent to a `#include`.
+    Common provides shared code; it does not produce an image of its own.
 
 ---
 

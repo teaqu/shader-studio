@@ -6,9 +6,8 @@ browser. Fragment shaders define `mainImage`, vertex shaders use the
 `[shader("compute")]` entry points. A WebGPU-capable host is required.
 
 Slang supports multipass rendering, Common helpers, storage buffers, textures,
-cubemaps, audio/video, and keyboard input. Module imports, model geometry, and
-script uniforms are available in the VS Code extension; standalone does not
-resolve imports or model assets and does not execute scripts. See
+cubemaps, audio/video, keyboard input, module imports, model geometry, and
+script uniforms. See
 [Channels](channels.md) for channel metadata and sampling.
 
 ## Channels
@@ -29,10 +28,8 @@ vector components, channel methods, and storage buffers. Signature help follows
 nested and generic calls. See [Language Servers](language-servers.md) for rename
 instructions and limitations.
 
-Diagnostics come from the Slang compiler and language service, including unused
-locals and parameters. Entry parameters with an `SV_` semantic are exempt from
-unused-parameter warnings. Generated prelude symbols reached through `__include`
-are not available for hover or rename.
+The editor reports errors and marks unused locals and parameters. Entry
+parameters with an `SV_` semantic are not marked as unused.
 
 ## Debugging
 
@@ -43,14 +40,14 @@ are supported. `float2x2` values capture as four components; larger matrices
 cannot be captured as a whole. Select a column or scalar component instead.
 Vertex-stage debugging is unavailable.
 
-Compute inline previews and variable capture both replay an invocation as a
-fragment; neither dispatches a compute workgroup. Output writes are suppressed.
+Compute inline previews and variable capture inspect one invocation at a time
+without updating the pass's output texture.
 Read-only storage access is supported, but workgroup memory, barriers, subgroup
-operations, atomics on workgroup memory, and configured storage writes report
-`slang-debug-unsupported-syntax`. These restrictions apply to compute debugging,
+operations, atomics on workgroup memory, and configured storage writes are not
+supported during compute debugging. These restrictions apply to compute debugging,
 not normal compute rendering. Fragment-stage subgroup previews remain available.
 
-Replay cannot reproduce cooperative workgroups. Avoid relying on it to inspect
+Compute debugging cannot reproduce threads working together in a workgroup. Avoid relying on it to inspect
 side effects hidden in imported code or complex macros.
 
 See [Language Support](language-support.md) to compare GLSL, Slang, and WGSL.

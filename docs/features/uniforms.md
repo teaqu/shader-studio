@@ -1,6 +1,6 @@
 # Uniforms
 
-Uniforms are how a shader reads values that change per frame or per setup: time, resolution, mouse state, input channels, and your own custom parameters. Shader Studio declares the built-ins for you and can inject custom ones from a script pass.
+Uniforms are how a shader reads values that change per frame or per setup: time, resolution, mouse state, input channels, and your own custom parameters. Shader Studio declares the built-ins for you and can read custom ones from a Script pass.
 
 ## Built-in uniforms
 
@@ -39,9 +39,6 @@ uses its `inputs` field. See [Channels](channels.md) for configuring slots.
 
 ## Custom uniforms
 
-Script-driven custom uniforms are available in the VS Code extension only.
-Standalone does not execute browser scripts.
-
 Add a [Script pass](config-buffers.md#the-script-pass) in the config panel to compute custom uniform values each frame from TypeScript or JavaScript:
 
 ```ts
@@ -54,7 +51,7 @@ export function uniforms(ctx: { time: number }) {
 }
 ```
 
-Types are inferred from the return value on the first call. Supported types: `float`, `vec2`, `vec3`, `vec4`, `bool` — in Slang they arrive as `float`, `float2`, `float3`, `float4`, and `bool`. The values are injected as uniforms automatically — use `uSpeed` and `uOffset` in your shader with no declaration. See [The Script Pass](config-buffers.md#the-script-pass) for exporting, polling, and Node.js APIs.
+Types are inferred from the return value on the first call. Supported types: `float`, `vec2`, `vec3`, `vec4`, `bool` — in Slang they arrive as `float`, `float2`, `float3`, `float4`, and `bool`. The values are available automatically — use `uSpeed` and `uOffset` in your shader with no declaration. See [The Script Pass](config-buffers.md#the-script-pass) for exporting, polling, and Node.js APIs.
 
 ## Next
 

@@ -55,7 +55,7 @@ WGSL configs may use WGSL spellings for the same types; Slang spellings still re
 
 Storage survives across frames and recompiles when its declaration is unchanged. **Reset** recreates every buffer with zeroed contents.
 
-Compute passes see `RWStructuredBuffer<T>`; vertex and fragment stages see read-only `StructuredBuffer<T>`. Access buffers by name — the engine declares and binds them automatically:
+Compute passes can read and write storage; vertex and fragment shaders can only read it. Access buffers by name without declaring them in your shader:
 
 ```slang
 positions[id.x] = float4(0.0, 1.0, 0.0, 1.0);
@@ -83,7 +83,7 @@ positions[id.x] = vec4f(0.0, 1.0, 0.0, 1.0);
 
 ## Writing a Texture Output
 
-When a buffer input references a compute pass as its `source`, an output texture is allocated and a `writeOutput` helper is available in the compute shader:
+Add a buffer input that references your compute pass, then use `writeOutput` in the compute shader to set its pixels:
 
 ```slang
 [shader("compute")]
@@ -112,8 +112,9 @@ Storage writes are visible to every later pass in the frame. Use two named buffe
 ## Limitations
 
 - Compute shaders require Slang or WGSL; there is no GLSL fallback.
-- Compute variable capture/debugging and indirect dispatch are not implemented.
-- Every storage buffer is bound to every pass.
+- Compute debugging inspects one invocation at a time and cannot reproduce cooperative workgroups. See the limits for [Slang](slang.md#debugging) and [WGSL](wgsl.md#compute-debugging-limits).
+- Indirect dispatch is not supported.
+- Storage buffers are shared across passes.
 - Custom-typed buffers cannot be accessed from `common`; define the struct there and access from pass files.
 
 ## Next

@@ -1,7 +1,7 @@
 # GLSL Support
 
-GLSL shaders (`.glsl`) run on the WebGL2 pipeline. GLSL is the original
-Shader Studio language: fragment shaders use the `mainImage` contract,
+GLSL shaders (`.glsl`) use WebGL2. GLSL is the original
+Shader Studio language: fragment shaders use `mainImage`,
 optional vertex shaders use the vertex hook (see [Vertex
 Shaders](vertex-shaders.md)), and buffer passes compose multipass projects
 (see [Configure Buffers And Inputs](config-buffers.md)).
@@ -13,12 +13,11 @@ Named channel metadata and sampling examples are in [Channels](channels.md).
 - **Editing:** completion, hover, go to definition, references, highlights, and
   rename. Diagnostics report unresolved symbols and unused locals. See
   [Language Servers](language-servers.md) for editor instructions and rename scope.
-- **Includes:** environment-provided `#include`s complete and navigate. GLSL
+- **Includes:** completion and navigation work in available `#include` files. GLSL
   has no module imports and no generics.
 - **Rendering:** single pass, multipass buffers, Common, vertex shaders,
   textures, cubemaps, audio/video inputs, keyboard input, model geometry and
-  script custom uniforms. There is no compute and no storage-buffer support — WebGL2 has
-  neither.
+  script custom uniforms. Compute passes and storage buffers are not available for GLSL.
 - **Debugging:** inline rendering and fragment-stage variable capture work,
   including inside Common helpers.
 - **Hosts:** VS Code extension and standalone browser.

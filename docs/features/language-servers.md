@@ -1,8 +1,7 @@
 # Language Servers
 
-Shader Studio provides built-in language services for GLSL, Slang, and WGSL. They run
-inside the Shader Studio extension, so you do not need to install a separate
-shader extension or a native language-server executable.
+Shader Studio includes editor support for GLSL, Slang, and WGSL. No additional
+shader extension is needed.
 
 All three services are enabled by default. Open a shader file in VS Code and use the
 normal editor features such as completion (`Ctrl+Space`), hover, and **Go to
@@ -18,8 +17,8 @@ Definition**.
 | Go to Definition | Yes | Yes | Yes |
 | Document symbols / Outline | Yes | Yes | Yes |
 | Find references / highlight | Yes | Yes | Yes |
-| Rename | Yes | Scoped, compiler-validated | Yes |
-| Diagnostics | Parser diagnostics | Official Slang compiler and language-server diagnostics | Basic syntax, name, and stage checks before compiling; full validation from the WebGPU compiler |
+| Rename | Yes | Yes, with limits below | Yes |
+| Error checking | Syntax checks | Syntax and type checks | Basic checks as you type; full checks when compiling |
 | Color decorators and picker | `vec3` and `vec4` literals | `float3` and `float4` literals | `vec3f`/`vec4f` and `vec3<f32>`/`vec4<f32>` literals |
 
 Completion and hover include:
@@ -32,7 +31,7 @@ Completion and hover include:
 - Functions and types provided by configured Common and dependency files
 - Custom uniforms from the active Script and resources from the Shader Studio
   configuration
-- Stage-specific fragment, vertex, and compute contracts
+- Entry points and built-ins for fragment, vertex, and compute shaders
 
 Hover shows local and parameter types, struct fields, and vector components.
 Slang and WGSL also describe channel access and configured storage. Signature help
@@ -53,15 +52,10 @@ files. GLSL `#include` files can participate too. All target files must be avail
 and writable for the edits to be applied. This is separate from renaming a shader
 file in the explorer.
 
-Slang rename respects local shadowing and overloads, rejects name collisions, and
-checks the edited source with the Slang compiler. Standard stage attributes,
-literal `numthreads` dimensions, and `SV_` system semantics are supported. Generic
-helpers, methods, and imports can participate when the service resolves their
-declarations. A rename is declined if the symbol cannot be resolved or the edited
-source fails validation.
-
-Embedded editors in hosts without support for saving edits across files offer
-single-file rename only; they decline a cross-file edit without applying it.
+Slang rename handles local names and overloaded functions, and checks that the
+change does not introduce errors. It can also update generic helpers, methods,
+and imports. If a symbol cannot be identified safely or the change would fail
+validation, the rename is declined.
 
 ## Color Picker
 

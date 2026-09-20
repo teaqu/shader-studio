@@ -1,6 +1,5 @@
 # Settings
 
-
 Open VS Code settings (`Cmd+,` / `Ctrl+,`) and search for `shader-studio` to find all Shader Studio settings.
 
 You can also open settings directly from the preview toolbar: **Menu → Settings**.
@@ -13,7 +12,7 @@ You can also open settings directly from the preview toolbar: **Menu → Setting
 | `shader-studio.enableSnippets` | boolean | `true` | Yes | Enable bundled [GLSL, Slang, and WGSL code snippets](../features/code-snippets.md). |
 | `shader-studio.languageServers.glsl.enabled` | boolean | `true` | No | Enable [GLSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
 | `shader-studio.languageServers.slang.enabled` | boolean | `true` | No | Enable [Slang completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
-| `shader-studio.languageServers.wgsl.enabled` | boolean | `true` | No | Enable [WGSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). Full validation comes from the WebGPU compiler. |
+| `shader-studio.languageServers.wgsl.enabled` | boolean | `true` | No | Enable [WGSL completion, hover, navigation, symbols, diagnostics, and colors](../features/language-servers.md). |
 | `shader-studio.editor.colorDecorators` | boolean | `true` | No | Show [editable color swatches](../features/language-servers.md#color-picker) for literal shader color constructors. |
 | `shader-studio.navigateOnBufferSwitch` | boolean | `true` | No | When enabled, switching buffers in the config panel or editor overlay syncs the active file in the VS Code editor. Works in combination with shader lock. |
 | `shader-studio.lockEditorGroup` | boolean | `true` | No | Use VS Code editor-group locking to keep the preview group for the shader panel. |

@@ -1,6 +1,5 @@
 # Recording
 
-
 Shader Studio can capture your shader output as a screenshot, video, or animated GIF.
 
 ## Opening the Recording Panel
@@ -24,7 +23,7 @@ Click **Capture** to save. A live canvas preview updates as you change options.
 
 ## Video
 
-Record shader output as an MP4 (H.264) or WebM (VP8) file using the browser's WebCodecs API.
+Record shader output as an MP4 (H.264) or WebM (VP8) file.
 
 | Option | Description |
 |--------|-------------|
@@ -40,7 +39,7 @@ Click **Record** to start. A progress bar shows rendering and finalization phase
 
 ## GIF
 
-Record an animated GIF using the gifski encoder (WASM).
+Record an animated GIF.
 
 | Option | Description |
 |--------|-------------|

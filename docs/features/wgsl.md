@@ -6,8 +6,8 @@ for `mainImage`, uniforms, vertex hooks, compute entry points, and storage types
 
 WGSL supports single-pass and multipass rendering, Common helpers, vertex and
 compute passes, storage buffers, textures, cubemaps, audio/video, and keyboard input.
-Model geometry and script uniforms are available in the VS Code extension, not
-standalone. See [Channels](channels.md) for sampling.
+Model geometry and script uniforms are also supported. See [Channels](channels.md)
+for sampling.
 
 ## Editor Support and Diagnostics
 
@@ -16,24 +16,20 @@ rename are available. See [Language Servers](language-servers.md) for instructio
 and the scope of rename in each editor. WGSL has no user-defined generics,
 function overloads, or import/include mechanism; put shared code in Common.
 
-Before compilation, the language service reports syntax errors, undefined names,
+As you type, the editor reports syntax errors, undefined names,
 reserved words, and uses of built-ins or `discard` in an incompatible shader stage.
 It reports the first syntax error; fix that error to see name and stage diagnostics.
-These checks do not type-check expressions, function arguments, or return values.
-Full validation comes from the renderer's WebGPU compiler. Compiler errors point
-to the authored shader, Common, or vertex source where possible and refresh when
-you [compile](compile-modes.md) again.
+To check expression types, function arguments, and return values,
+[compile](compile-modes.md) your shader. Errors point to the relevant shader,
+Common, or vertex file where possible.
 
-When editing Common itself, the language service reports syntax errors only.
-Stage checks run in the context of a pass: if a compute entry calls a Common
-helper that uses `dpdx`, the diagnostic appears at the pass's call and identifies
-the Common helper and line. Helpers that no entry calls do not receive stage
-diagnostics. Compiler diagnostics can still point into Common when a pass compiles.
+When editing Common, syntax errors appear as you type. Compile a pass that uses
+Common to check its helpers fully. If a helper uses an operation unavailable in
+that pass, such as `dpdx` in compute code, the error identifies the helper and line.
 
 Signature help shows named parameters and documentation for authored, Common,
 channel, and built-in functions. Add leading `//` comments to document your own
-functions. It follows nested calls and template arguments and suggests a signature
-based on the number of arguments; it does not check argument types.
+functions. Signature help also works inside nested calls and template arguments.
 
 Vector component completion suggests components and prefixes such as `x`, `xy`,
 and `xyz`. Other valid selections, such as `yx`, can be typed manually.
@@ -67,16 +63,16 @@ separate from the Storage inspector, which edits scalar and vector buffer elemen
 
 ## Compute Debugging Limits
 
-Compute debugging replays a selected invocation as a fragment on the canvas; it
-does not dispatch a workgroup. `global_invocation_id` comes from the canvas
+Compute debugging previews one invocation at a time; it cannot reproduce threads
+working together in a workgroup. `global_invocation_id` comes from the canvas
 coordinate, with `z = 0` and `iDispatch = 0`. Direct `global_invocation_id`,
 `local_invocation_id`, `workgroup_id`, and `local_invocation_index` parameters are
 supported with literal workgroup dimensions. Other entry parameter forms report
 an unsupported diagnostic.
 
 Read-only storage access is supported. Workgroup memory, barriers, atomics,
-subgroup operations, and writes to configured storage report
-`wgsl-debug-unsupported-syntax`. Use normal compute rendering for code that needs
+subgroup operations, and writes to configured storage are not supported during
+compute debugging. Use normal compute rendering for code that needs
 cooperative workgroups or storage writes. Vertex-stage debugging is unavailable.
 
 See [Language Support](language-support.md) to compare GLSL, Slang, and WGSL.

@@ -9,7 +9,7 @@ Shader Studio uses a dockable panel system. Panels (Preview, Debug, Config, Perf
 - **Drag the sash** (the divider between panels) to resize
 - **Tab headers** auto-hide when only one panel is in a group. To view the tabs again, move your mouse near the top of the panel and they will appear
 
-The current panel arrangement is tracked while you work, but it is only written to the active layout profile when you choose **Menu → Layout → Save current layout**.
+Choose **Menu → Layout → Save current layout** to save your changes to the active profile.
 
 ## Layout profiles
 
@@ -44,21 +44,6 @@ Switching profiles loads the saved panel arrangement. Your current layout is **n
 Use **Menu → Layout → Restore Saved Layout** to discard unsaved changes and reload the active profile's saved layout. If the active profile has no saved layout yet, Shader Studio falls back to the default arrangement.
 
 Use **Menu → Layout → Reset to Default** to rebuild the default panel arrangement directly. This does not overwrite the active profile until you save the current layout.
-
-## Profile storage
-
-Profiles are stored in `.shader-studio/profiles/` alongside your shader project:
-
-```
-.shader-studio/
-  profiles/
-    index.json         # profile list and active profile ID
-    default.json       # per-profile layout data
-    wide-editor.json
-    ...
-```
-
-The `index.json` file records the profile order and which profile is active. Each profile file stores a full snapshot of panel state and layout.
 
 ## Default profile
 

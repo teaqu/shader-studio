@@ -1,6 +1,5 @@
 # Variable Inspector
 
-
 The variable inspector captures the values of **all in-scope variables** at the current debug line and displays them in the debug panel. It supports two capture modes: **sampling** (across the canvas) and **pixel mode** (a single pixel under the cursor).
 
 ## Enabling
@@ -16,25 +15,28 @@ The inspector automatically finds all variables in scope at the current debug li
 - Variables declared before the debug line in the current function
 - Function parameters
 - Variables from enclosing scopes (e.g. outer blocks)
-- Global variables declared before the current line
+
+For Slang and WGSL, the inspector shows function parameters and local variables.
+Use the Uniforms section for built-ins and the config panel's Script tab for
+script values.
 
 ### Supported Types
 
-| Type | Channels Captured | Notes |
-|------|-------------------|-------|
-| `float` | 1 (R) | Displayed as a single scalar value |
-| `int` | 1 (R) | Cast to float for capture |
-| `bool` | 1 (R) | `true` = 1.0, `false` = 0.0 |
-| `vec2` | 2 (RG) | Two-component display |
-| `vec3` | 3 (RGB) | Three-component display |
-| `vec4` | 4 (RGBA) | Four-component display |
-| `mat2` | 4 (RGBA) | Two columns packed as `vec4(col0, col1)` |
+| Value | Display |
+|-------|---------|
+| Scalar (`float`, `int`, `bool`) | A single value; booleans appear as 0 or 1 |
+| Vector (`vec2`, `vec3`, `vec4`) | Each component's value |
+| 2×2 matrix (`mat2`) | Four values in column order |
 
-Larger matrices (`mat3`, `mat4`), samplers, and `out`/`inout` parameters are excluded — `mat3` (9 floats) and `mat4` (16 floats) don't fit in a single RGBA pixel. A maximum of **15 variables** are captured per line.
+Slang and WGSL support their equivalent scalar, vector, and 2×2 matrix types.
+See [Language Support](../features/language-support.md) for details.
+For larger matrices, arrays, or structs, select a supported component or field.
+Samplers and `out`/`inout` parameters are not shown. Up to **15 variables** can
+be captured on a line.
 
 ### Whole-Shader Mode
 
-When no specific debug line is selected (debug line is -1), the inspector captures variables at the last line of `mainImage`, giving you a snapshot of the final state of all local variables.
+When no specific debug line is selected, the inspector captures variables at the last line of `mainImage`, giving you a snapshot of the final state of all local variables.
 
 ## Capture Modes
 
@@ -55,11 +57,8 @@ Samples the variable across a grid of points spanning the full canvas. Each grid
 
 The size buttons appear in the Variables section header. The active size is highlighted.
 
-The requested grid size is capped to the **current render resolution**. This matters most when the preview is very small:
-
-- if the canvas is effectively `1 × 1`, the inspector samples at most `1 × 1`
-- if custom resolution is active, the cap uses that live custom resolution after scale has been applied
-- Resolution changes from the toolbar or config panel both update this cap immediately
+The sampling grid cannot exceed the current preview resolution. For example, a
+`1 × 1` preview provides just one sample.
 
 ### Pixel Mode
 
@@ -67,17 +66,15 @@ Captures variable values at a **single pixel** under the cursor. The [pixel insp
 
 ![Pixel mode](../assets/images/var-inspector-pixel-mode.png)
 
-In pixel mode, the shader runs once at that single pixel to capture the variable values.
-
 ## Refresh Modes
 
 Control how often captures are updated. The refresh mode buttons appear in the Variables section header.
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
-| **Manual** | Recapture only when state changes (cursor move, shader edit) | Stable analysis, lowest GPU cost |
+| **Manual** | Recapture only when state changes (cursor move, shader edit) | Stable analysis, lowest performance impact |
 | **Polling** | Recapture every N milliseconds | Monitoring animated values at controlled cost |
-| **Realtime** | Recapture every frame (~60Hz) | Watching live animations, highest GPU cost |
+| **Realtime** | Recapture every frame (~60Hz) | Watching live animations, highest performance impact |
 | **Pause** | Freeze captured values, no new captures | Inspecting a snapshot without changes |
 
 ### Polling Interval
@@ -92,33 +89,22 @@ Click the expand button on a varying variable (sampling mode) to see detailed st
 
 ### Scalar Variables (float, int, bool)
 
-Expanded view shows:
-
-- **Greyscale frequency bar** — a horizontal bar showing the distribution of values across the brightness range
-- **Histogram** — a 20-bin histogram showing value distribution
-    - Bar height represents the count of samples in each bin
-    - Y-axis grid lines at 25%, 50%, 75%
-    - Hover over a bar to see the bin range, sample count, and percentage
-    - A **zero-crossing indicator** (dashed vertical line) appears when the data spans both negative and positive values
+Expanded view shows a **greyscale frequency bar** and a **histogram** of the
+sampled values. Taller bars mean more samples in that range. Hover over a bar
+for its range, count, and percentage. A dashed marker highlights zero when the
+values include both negative and positive numbers.
 
 ### Vector Variables (vec2, vec3, vec4)
 
-Expanded view shows:
-
-- **Color frequency bar** — a stacked horizontal bar showing the top 20 most common colors
-    - Each segment's width represents its frequency as a percentage
-    - Colors are quantized to 8 levels per channel for grouping
-    - Hover over a segment to see a color swatch, hex code, its RGB components, and percentage
-- **Per-channel histograms** — separate 20-bin histograms for each component
-    - Labeled by channel: X/Y/Z/W (or R/G/B/A)
-    - Color-coded to match the channel (red for X/R, green for Y/G, blue for Z/B)
-    - Shared axis bounds across channels for easy comparison
+The **color frequency bar** shows the most common colors. Hover over a segment
+for its color values and percentage. **Per-channel histograms** show how each
+component varies, using matching scales so you can compare them.
 
 ## Tips
 
 - Use **manual** refresh mode when you don't need continuous updates
 - Start with **32x32** grid and increase only if you need more spatial detail
-- Only expand variables you need histograms for — histograms are computed lazily on expand
+- Expand a variable to see its value distribution
 - Use **pixel mode** when you only care about values at a specific point
 - Use **pause** to freeze captures while you analyze results
 - If captures look unexpectedly coarse or oversized, check the live resolution shown in the toolbar, because the inspector follows that effective render size exactly

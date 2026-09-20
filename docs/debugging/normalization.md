@@ -1,7 +1,6 @@
 # Normalization and Step
 
-
-Normalization modes and the step threshold are post-processing tools that transform the debug visualization to make certain value ranges visible. They can be used together and work in both inline rendering mode and on the full unmodified shader.
+Normalization modes and the step threshold adjust the debug display to make certain value ranges visible. They can be used together and work in both inline rendering mode and on the full unmodified shader.
 
 ## Normalization Modes
 
@@ -9,7 +8,7 @@ Cycle through modes by clicking the **chart icon** in the debug panel header. A 
 
 ### Off (Default)
 
-Raw values are displayed directly. The GPU clamps output to 0–1, which means:
+The display range is 0–1:
 
 - Negative values appear as **black** (indistinguishable from 0)
 - Values above 1.0 appear as **white** (indistinguishable from 1)
@@ -71,19 +70,11 @@ Key properties:
 - Visualizing magnitude regardless of direction
 - Debugging distance fields where you only care about distance, not inside/outside
 
-
-
 ## Step Threshold
 
 Step is an **independent toggle** — it can be combined with any normalization mode or used alone. Toggle it with the **staircase icon**. When enabled, a number input appears for the edge value.
 
 ### How It Works
-
-Applies the GLSL `step()` function to the visualization output:
-
-```glsl
-fragColor = vec4(step(vec3(edge), fragColor.rgb), 1.0);
-```
 
 Each color channel is independently compared to the threshold:
 
@@ -91,12 +82,6 @@ Each color channel is independently compared to the threshold:
 - At or above the edge: **white** (1.0)
 
 The edge value ranges from 0.0 to 1.0 (default **0.5**). You can type a value or drag-scrub the input to adjust it.
-
-
-
-
-
-
 
 ## Next
 

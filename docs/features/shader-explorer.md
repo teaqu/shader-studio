@@ -11,7 +11,7 @@ The Shader Explorer is available in two forms — the **sidebar** for persistent
 
 ![Shader explorer sidebar](../assets/images/shader-explorer.png)
 
-State (search, sort, page, card size) persists independently for each view.
+Each view remembers its own search, sorting, page, and card-size choices.
 
 ## Browsing and Navigation
 
@@ -42,7 +42,7 @@ Click the options button to expand the display settings panel:
 
 ## Refresh
 
-Click the **refresh button** in the toolbar to re-scan the workspace for shaders and regenerate all thumbnails. There is a short rendering delay (~3 seconds) while thumbnails are captured.
+Click the **refresh button** in the toolbar to re-scan the workspace for shaders and regenerate all thumbnails.
 
 Clicking an individual shader card also refreshes that shader's thumbnail — useful after editing a shader to update its preview in the explorer.
 

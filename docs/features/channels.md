@@ -37,7 +37,7 @@ Open the pass you want to configure, then use the channel grid:
 Click an existing channel to edit or remove it. Channels can also be renamed, as long as the name is a valid identifier for the shader language.
 
 !!! note
-    Shader Studio injects channel uniforms automatically. For most channel types, you do not need to declare `uniform sampler2D iChannelN;` in your shader.
+    Channel uniforms are available automatically. For most channel types, you do not need to declare `uniform sampler2D iChannelN;` in your shader.
 
 ## Sampling Channels in GLSL
 
@@ -111,9 +111,7 @@ let playbackSeconds = albedo.time; // f32
 let ready = albedo.loaded; // bool
 ```
 
-WGSL supports metadata structs, but texture/sampler handles cannot be struct
-members and user-defined methods are unavailable. That is why the handles are
-separate globals. Legacy `albedoSample`, `albedoSampleLevel`, `albedoSampleGrad`,
+Use `albedoTexture` and `albedoSampler` for sampling, and `albedo` for metadata. Legacy `albedoSample`, `albedoSampleLevel`, `albedoSampleGrad`,
 `albedoSize()`, `albedoTime()` and `albedoLoaded()` remain supported.
 
 ## Shared Sampling Rules
@@ -128,13 +126,12 @@ separate globals. Legacy `albedoSample`, `albedoSampleLevel`, `albedoSampleGrad`
 | `sampleCubeGrad` | `direction, dx, dy` |
 
 2D convenience functions and Slang methods use bottom-left UV coordinates,
-matching `mainImage` pixel coordinates. They flip texture Y and the Y component
-of gradients once. Cubemap directions are unchanged. Native texture operations
+matching `mainImage` pixel coordinates. Cubemaps use direction vectors. Native texture operations
 use their language's native coordinates.
 
 Filter, wrap and mipmap settings remain in the channel configuration and determine
 its sampler. Each shared function takes an explicit sampler, so another channel's
-sampler can be used without changing the texture. There are no new sampler presets.
+sampler can be used without changing the texture.
 
 Implicit `sample2D`/`sampleCube` and Slang `Sample` require a fragment stage.
 Use `Level` or explicit `Grad` operations in vertex and compute code. For WGSL
@@ -150,10 +147,10 @@ Derivative expressions themselves (`ddx`, `dpdx`, etc.) still require fragment c
 | `.loaded` | `int` (0/1) | `bool` | `bool` | A usable resource is available. |
 
 Metadata updates with the current frame. Pausing or reaching the end of a video
-does not unload its last usable frame. Pending video elements are published only
-after a decoded frame has produced a texture. A configured but unavailable input
+keeps its last frame available. A video reports loaded once its first frame is
+ready to sample. A configured but unavailable input
 reports unloaded; a name absent from the configuration is a compile error.
-The runtime supports 2D and cubemap inputs; volume/3D assets are not configurable.
+Channels support 2D and cubemap inputs; volume/3D assets are not configurable.
 
 ## Choosing a Channel Type
 
@@ -287,7 +284,7 @@ vec4 sky  = texture(iChannel0, dir);  // samplerCube lookup — direction, not U
 
 ## Pass Output (Buffer) Channels
 
-Read the texture output of a renderable pass. The `source` field accepts arbitrary fragment buffer pass names such as `Flow` and arbitrary names of Slang or WGSL compute passes declared with `"type": "compute"`. Referencing a compute pass causes Shader Studio to allocate its output texture. `common` is shared code rather than a renderable source, and `Image` cannot be used as a source. Pass names and counts are not limited to `BufferA` through `BufferD`.
+Read the texture output of a renderable pass. The `source` field accepts arbitrary fragment buffer pass names such as `Flow` and arbitrary names of Slang or WGSL compute passes declared with `"type": "compute"`. To sample a compute pass, write its output with `writeOutput`. `common` is shared code rather than a renderable source, and `Image` cannot be used as a source. Pass names and counts are not limited to `BufferA` through `BufferD`.
 
 For a compute pass with `outputLayers` greater than 1, set `layer` to select one texture-array layer. It defaults to 0 and must be less than the source pass's `outputLayers`:
 
@@ -310,8 +307,6 @@ vec4 prev = texture(iChannel0, bufferUV);
     Use `iChannelResolution[N].xy` to get the buffer's resolution for UV mapping, especially if the buffer has a fixed resolution different from the canvas.
 
 **Frame timing:** a pass samples the current-frame output of a source that runs earlier in the frame. A self-reference or reference to a source that runs later reads that source's *previous* output. This enables feedback loops, particle trails, and simulations. Compute passes run before fragment buffer passes, then Image runs last.
-
-
 
 ## Keyboard Channels
 

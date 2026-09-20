@@ -1,6 +1,5 @@
 # Config File Format (`.sha.json`)
 
-
 This page describes the raw JSON config format. Most users will find it easier to use the [Config panel](../features/config-buffers.md) in the UI instead — this reference is for those who prefer editing the file directly.
 
 ## Naming Convention
@@ -142,9 +141,6 @@ vec4 col = texture(iChannel0, normalize(dir));
 
 ## Script-Driven Uniforms
 
-Script-driven uniforms are available in the VS Code extension only. Standalone
-does not execute browser scripts.
-
 Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values each frame. The script exports named values; their types are inferred automatically:
 
 ```json
@@ -235,7 +231,7 @@ Each pass can bind input channels with configuration keys such as `iChannel0` an
 
 | Type | Fields | Description |
 |------|--------|-------------|
-| `buffer` | `source`, optional `layer` | Read from an arbitrary fragment buffer pass or a compute pass (the reference allocates its output texture); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
+| `buffer` | `source`, optional `layer` | Read from an arbitrary fragment buffer pass or a compute pass (write its pixels with `writeOutput`); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
 | `texture` | `path`, `filter`, `wrap`, `vflip`, `grayscale` | Image file |
 | `video` | `path`, `filter`, `wrap`, `vflip`, `muted` | Video file |
 | `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |

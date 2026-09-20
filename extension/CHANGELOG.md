@@ -1,39 +1,22 @@
 # Change Log
+
 ### Unreleased
 
-- Fixed false "invalid element type" warnings for the full native WGSL storage vocabulary, including `f16`, vector and matrix spellings and aliases, and integer atomics. Shared `float4`-style aliases and custom types remain accepted, and storage structs containing integer atomic fields now infer and bind their stride correctly.
-- Standalone edits now save only the file you changed instead of rewriting the whole workspace, so saving stays fast as the number of shaders grows. Existing workspaces are carried over on first load.
-- Fixed standalone edits being lost when the page reloaded before the workspace write reached the browser database. Each edit is now recorded the moment you make it and replayed on the next load.
-- Made standalone recovery independent of repeated or rolled-back wall clocks, including legacy journal entries tied with older stored text.
-- Added UI corpus and standalone Chromium, Firefox export, and development-server browser suites to the shared release verification gate.
-- Documented that standalone does not execute Script passes, resolve model assets, or resolve Slang imports/includes.
-- Breaking: `import shader_studio;` is gone. It resolved to a generated stub module that was removed long ago, so a shader that still imports it reports an ordinary missing-module error. Delete the line; the built-in uniforms need no import.
-
-- Fixed WGSL built-in uniforms such as `iResolution` and `iTime` being treated as shader declarations: they now show their documentation on hover, stay out of the document outline, and no longer take go-to-definition to the top of the file.
-- WGSL hovers now read as WGSL declares things (`let uv: vec2f`, `var<storage, read> values: array<f32>`, `struct Material`, `fn scale(amount: f32, by: f32) -> f32`), and a function's leading comment appears with it.
-- WGSL attributes such as `@compute`, `@workgroup_size` and `@builtin` are now documented on hover.
-- Fixed WGSL variable capture reporting nothing while the file holds a statement that does not parse; as in GLSL and Slang, values declared above the break are captured.
-- Fixed WGSL capture omitting a block's values on its closing brace, and never capturing a `for (var i = 0; ...)` loop counter.
-- Documented that assigning to a swizzle (`position.xy = ...`) needs the optional `swizzle_assignment` WGSL language feature, which the Chromium inside VS Code does not have yet.
-
-- Fixed delayed preview selection and stale host echoes resetting the cursor and splitting typed text in editors sharing the same shader.
-
-- Fixed standalone Hide Buffers preferences being lost when reloading during workspace saves.
-- Fixed signature help disappearing when a pending editor save refreshes the standalone workspace, including nested WGSL calls.
-- Fixed detached GLSL/WGSL editors inheriting another preview's Common authoring context.
-- Fixed the WGSL variable inspector hiding locals derived from channel samples, and listing module globals and script uniforms as captured variables; like Slang it now shows only the function's parameters and locals.
-- The debug panel's Uniforms section now lists only built-in uniforms in every language; script values stay in the config panel's Script tab.
-- Fixed WebGPU variable capture failing with unresolved script uniforms when it ran before a script-driven shader's first compile finished.
-
-- Breaking: Slang channel objects are now direct globals. Replace
-  `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and use direct metadata
-  such as `albedo.size`; the `.sha.json` `inputs` field is unchanged.
-- Added first-class WGSL shader support: `.wgsl` authoring with syntax highlighting, snippets, and diagnostics, a `mainImage` image pipeline on WebGPU, free-function channel accessors, a `ptr<function, …>` vertex hook, storage/compute passes, script-pass uniforms, `enable`/`requires` directive hoisting, plan-based step debugging with the variable inspector (including type inference for unannotated locals), and WGSL sections in the Channels, Vertex Shaders, and configuration docs plus a new WGSL Shaders guide.
-
-- Fixed editor navigation losing pending source edits, applying delayed edits to the wrong file, or leaving completions attached to the previous file.
-- Fixed standalone selection changes being lost on an immediate reload.
-- Fixed WGSL entry-point detection for shaders that use Common helpers.
-- Fixed unhandled word-highlighting cancellations when switching editor files.
+- Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.
+- Breaking: Slang channels are now accessed directly. Replace `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and `inputs.albedo.size` with `albedo.size`. The `.sha.json` `inputs` field is unchanged.
+- Breaking: remove `import shader_studio;` from Slang shaders. Built-in uniforms are available without an import.
+- Improved WGSL hover documentation for variables, functions, built-in uniforms, and attributes such as `@compute` and `@workgroup_size`.
+- Fixed false warnings for valid WGSL storage types, including half-precision values, vectors, matrices, and integer atomics. Storage structs containing integer atomic fields now infer and bind their stride correctly.
+- Fixed WGSL variable inspection hiding values from channel samples, loop counters, and values at a block's closing brace. Values above a syntax error can now still be inspected.
+- The WGSL Variable Inspector now shows function parameters and local variables. View built-in uniforms in the debug panel and script values in the config panel's Script tab.
+- Fixed variable inspection sometimes failing when opening a shader that uses script uniforms.
+- Fixed WGSL shaders failing to compile when using Common helpers.
+- Fixed the cursor jumping and typed text appearing in the wrong place when editing the same shader in multiple editors.
+- Fixed switching files losing edits, applying edits to the wrong file, or showing completions and Common helpers from another shader.
+- Fixed signature help disappearing while editing, including inside nested WGSL calls.
+- Fixed errors when switching files with symbol highlighting active.
+- Standalone saves stay responsive as your workspace grows.
+- Fixed standalone edits, shader selection, and Hide Buffers preferences being lost after an immediate reload, including when the system clock changes.
 
 ### 1.1.1
 
@@ -60,10 +43,10 @@
 - Fixes: a broken config reports the error instead of showing a black frame, error markers no longer linger after the code is fixed, the mouse position holds still while paused and follows hover, and cubemaps work in the variable inspector.
 
 ### 1.0.2
-- Added a toggleable canvas marker for the locked pixel inspector position, with the preference persisted across sessions.
+- Added a toggleable marker for the locked pixel inspector position. Your choice is remembered between sessions.
 
 ### 1.0.1
-- Fixed extension activation in published installs when the script bundler dependency is not present in the VSIX.
+- Fixed the extension failing to start after installation.
 
 ### 1.0.0
 - First stable release of Shader Studio.
@@ -72,7 +55,7 @@
 - Visual debugging tools including pixel inspection, inline rendering, variable capture, normalization, loop controls, and parameter controls.
 - Monaco editor overlay with compile modes, shader locking, panel layout persistence, and profile management.
 - Shader Explorer, snippet library, time controls, recording, resolution controls, camera uniforms, and performance tooling.
-- Improved documentation, marketplace assets, and release packaging for VS Code Marketplace, Open VSX, and GitHub Releases.
+- Improved documentation and installation from VS Code Marketplace, Open VSX, and GitHub Releases.
 
 ### 0.2
 - Pixel Inspector
@@ -88,14 +71,14 @@
 - Common buffer bug fix
 
 ### 0.0.9
-- Added video input support (including schema, config, and UI updates)
+- Added video inputs
 - Added common buffer
 - Better error handling
 - Bug fixes
 
 ### 0.0.8
 - Shader Explorer
-- HW_PERFORMANCE
+- Added performance monitoring
 - bug fixes
 
 ### 0.0.7
@@ -103,8 +86,8 @@
 
 ### 0.0.6
 - Electron install fix on macos
-- Run based on file extension not just language id
-- Recomend syntax highlighter
+- Fixed shader detection for supported file extensions
+- Recommended a shader syntax highlighter
 
 ### 0.0.5
 - Create default shader from menu
@@ -118,8 +101,7 @@
 
 ### 0.0.2
 - Changed config UI to act like a markdown preview.
-- Rendering now independent of Svelte UI.
-- More docs in extension readme.
+- Expanded the extension guide.
 - Fixed locked shader not refreshing to new file on unlock.
 - Fixed JSON not updating when changing texture config on the UI.
 - Fixed shader breaking on invalid config.

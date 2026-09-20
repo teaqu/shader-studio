@@ -1,6 +1,6 @@
 # Shader Studio
 
-A VS Code extension for live previewing, editing, and debugging shaders. Write Shadertoy-style GLSL fragment shaders for the WebGL pipeline or Slang and WGSL shaders for the WebGPU pipeline — with real-time preview, visual debugging that shows what every line computes, and a full pipeline for multi-pass effects including compute shaders.
+A VS Code extension for live previewing, editing, and debugging shaders. Write GLSL, Slang, and WGSL shaders with real-time previews, visual debugging, and multipass effects, including compute shaders.
 
 Want to try Shader Studio before installing? [Try it in standalone web mode](https://teaqu.github.io/shader-studio/app/).
 
@@ -94,7 +94,7 @@ Debug mode works inside `mainImage`, helper functions, and buffer passes. See [D
 
 ### JavaScript Transpilation (Experimental)
 
-Shader Studio can transpile your GLSL into JavaScript (using [glsl-transpiler](https://github.com/stackgl/glsl-transpiler)) so you can step through it with the standard VS Code debugger, set breakpoints, and inspect variables. Slang and WGSL shaders use the Variable Inspector; see the [language support guide](https://teaqu.github.io/shader-studio/docs/features/language-support/) for capture and compute-debugging limits. Run **Shader Studio: Transpile GLSL to JavaScript (for debugging)** from the Command Palette. See [JavaScript Transpilation](https://teaqu.github.io/shader-studio/docs/help/transpilation/).
+Shader Studio can transpile your GLSL into JavaScript so you can step through it with the standard VS Code debugger, set breakpoints, and inspect variables. Slang and WGSL shaders use the Variable Inspector; see the [language support guide](https://teaqu.github.io/shader-studio/docs/features/language-support/) for capture and compute-debugging limits. Run **Shader Studio: Transpile GLSL to JavaScript (for debugging)** from the Command Palette. See [JavaScript Transpilation](https://teaqu.github.io/shader-studio/docs/help/transpilation/).
 
 ## Time Controls
 

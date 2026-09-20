@@ -1,6 +1,5 @@
 # Performance
 
-
 The **FPS** display in the preview toolbar shows the live frame rate.
 
 Click it to open the FPS menu:
@@ -34,7 +33,7 @@ Switch between **ms** and **fps** views with the toggle buttons.
 
 ### Statistics
 
-Below the graph, four numbers summarise the visible window and follow its zoom
+Below the graph, these statistics summarise the visible window and follow its zoom
 and pan:
 
 | Value | Meaning |
@@ -51,36 +50,18 @@ jumpy but the FPS display seems fine, check **late** and **worst** rather than
 the frame rate — a couple of late frames per second is enough to see, while
 barely moving the average.
 
-**gpu** is measured differently by each engine, so compare it against **p50**
-within one engine — or before and after a change on the same engine — rather
-than between GLSL and Slang/WGSL. The Slang/WGSL figure reflects GPU execution; the GLSL
-one is taken from a fence that cannot pass until the frame has been presented,
-so it carries a refresh interval of waiting that is not shader work.
+Compare **gpu** with **p50** before and after a change while using the same
+shader language. Measurements differ between GLSL and Slang/WGSL, so avoid
+direct comparisons between them. A much higher **gpu** value can mean the GPU
+is falling behind, even if the FPS display looks healthy.
 
-**gpu** deserves attention when the preview looks frozen while the frame rate
-looks fine. The render loop does not wait for the GPU, so a backend can accept
-frames faster than the hardware retires them: the loop keeps reporting its own
-rate while the image on screen falls behind. A **gpu** value far above the
-frame time means work is queueing up, and what you are seeing is that backlog
-rather than the reported frame rate.
-
-Lateness is judged against the frame time the shader is actually achieving,
-not against a target rate: a shader running steadily at 30fps reports no late
-frames, because even delivery looks smooth however far below the refresh rate
-it sits. The same shader dropping the occasional frame does report them.
+**Late** measures uneven frame delivery at the shader's current rate. A shader
+running steadily at 30 fps has no late frames; occasional delays increase the count.
 
 ### Logging to the Console
 
-The toolbar's output button prints one line per second to the developer
-console while it is enabled:
-
-```
-[Performance] {"engine":"slang","fps":62,"p50":15.8,"p95":17.6,"worst":36.1,"late":2,"samples":180,"refreshHz":73}
-```
-
-Useful for comparing two runs — the same shader in GLSL and in Slang, say —
-since the numbers can be copied out and read side by side instead of watched
-on a moving graph.
+Use the toolbar's output button to log a performance summary to the developer
+console once per second. Copy the results to compare runs.
 
 ### Controls
 

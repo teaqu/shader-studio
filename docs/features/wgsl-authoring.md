@@ -1,8 +1,8 @@
 # WGSL Shaders
 
-WGSL (WebGPU Shading Language) shaders run on the WebGPU pipeline, alongside GLSL (WebGL) and Slang (WebGPU). WGSL is a good choice when you want WebGPU features — storage buffers, compute passes — with a stable, browser-native shading language and no Slang toolchain involved.
+WGSL (WebGPU Shading Language) supports image shaders, vertex shaders, storage buffers, and compute passes.
 
-WGSL shaders need a WebGPU-capable browser or host. If WebGPU is unavailable, a WGSL shader fails with an error naming the missing feature instead of rendering silently wrong output.
+WGSL shaders require WebGPU support in your browser and device.
 
 ## The `mainImage` Function
 
@@ -17,11 +17,11 @@ fn mainImage(coord: vec2f) -> vec4f {
 
 `coord` is in pixels with a bottom-left origin, matching `fragCoord` in GLSL and Slang.
 
-The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`. Do not redeclare them — they are injected as `var<private>` globals and initialised at every entry point.
+The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`. Use these names directly without declaring them.
 
 ## Differences from Slang
 
-WGSL and Slang share the WebGPU pipeline, but the languages differ in how you reach the same engine features:
+WGSL and Slang offer the same rendering features, with a few differences in shader syntax:
 
 - **Channel metadata uses dot access; native handles stay separate.** Use `albedo.size`, `.time`, and `.loaded`, then sample with `sample2D(albedoTexture, albedoSampler, uv)`. Slang uses the same function name with `albedo.texture` and `albedo.sampler`. WGSL cannot put handles in structs or expose Slang's optional methods. Legacy per-channel functions remain available; see [Channels](channels.md).
 - **The vertex hook takes pointers.** WGSL has no `inout` parameters, so `mainVertex` receives `ptr<function, …>` pointers and you modify the pointed-to values:
@@ -31,7 +31,7 @@ WGSL and Slang share the WebGPU pipeline, but the languages differ in how you re
   }
   ```
   See [Vertex Shaders](vertex-shaders.md).
-- **Assign single components, not swizzles.** Base WGSL assigns one component at a time. Assigning a swizzle (`position.xy = ...`) needs the optional `swizzle_assignment` language feature, which a browser either has or does not: there is nothing to enable, and the renderer cannot turn it on. Recent Chromium has it; the Chromium inside VS Code does not yet, and rejects the assignment with `cannot assign to value of type 'vec2<f32>'`. For a shader that runs in both, write the components separately or replace the whole vector:
+- **Assign single components, not swizzles.** Assigning a swizzle (`position.xy = ...`) requires support for the optional `swizzle_assignment` language feature. For compatibility across browsers and VS Code, write the components separately or replace the whole vector:
   ```wgsl
   let nudged = (*position).xy + offset;
   (*position).x = nudged.x;
@@ -39,20 +39,17 @@ WGSL and Slang share the WebGPU pipeline, but the languages differ in how you re
 
   body.velocity = vec4f(body.velocity.xyz + force, body.velocity.w);
   ```
-- **No imports.** WGSL has no module system: a shader file plus the [Common pass](config-buffers.md) text (prepended verbatim when configured) is the whole program. Shared code goes in the Common pass, exactly as with GLSL.
+- **No imports.** Put shared functions and types in the [Common pass](config-buffers.md), as with GLSL.
 - **No preprocessor.** There is no `#define`, `#if`, or macro expansion. Use `const` / `override` declarations and plain WGSL control flow instead. Snippets that relied on the GLSL preprocessor will not translate line-for-line.
-- **`enable` directives are supported.** Module-scope `enable`, `requires`, and `diagnostic()` directives are hoisted above the generated prelude so they take effect for the whole module. If an `enable` names an extension the GPU does not support (for example `enable f16;` on hardware without `shader-f16`), compilation fails with an error naming the missing requirement.
+- **`enable` directives are supported.** Use `enable`, `requires`, and `diagnostic()` directives at the top of your shader or Common file. If an `enable` names an extension the GPU does not support (for example `enable f16;` on hardware without `shader-f16`), compilation fails with an error naming the missing requirement.
 
 ## Script-Pass Uniforms
 
-Script passes run in the VS Code extension only. Standalone does not execute
-browser scripts or inject their custom uniforms.
-
-Values returned by a [Script pass](config-buffers.md) are injected as `var<private>` globals with the script's field names — no declaration needed in your shader. The type mapping mirrors GLSL: `number` becomes `f32`, `[n, n]` becomes `vec2<f32>`, and so on up to `vec4<f32>`, with `boolean` arriving as `bool`.
+Values returned by a [Script pass](config-buffers.md) are available under the script's field names — no declaration needed in your shader. The type mapping mirrors GLSL: `number` becomes `f32`, `[n, n]` becomes `vec2<f32>`, and so on up to `vec4<f32>`, with `boolean` arriving as `bool`.
 
 ## Compute Passes
 
-WGSL compute shaders declare their own entry points with `@compute` and `@workgroup_size`, and the engine discovers them automatically:
+Declare a compute entry point with `@compute` and choose its workgroup size with `@workgroup_size`:
 
 ```wgsl
 @compute @workgroup_size(8, 8)
@@ -65,7 +62,7 @@ Storage buffers configured on the pass are declared for you; sampling and unifor
 
 ## Storage Buffers
 
-Use native WGSL types in the storage configuration, such as `f32`, `vec3f`, `atomic<u32>`, or a struct declared in your shader or Common code. The engine infers array strides, including vector padding, nested arrays and structs, and member `@align` / `@size` attributes. Half-precision types require `enable f16;` and GPU support for `shader-f16`. [WebGPU storage bindings](https://www.w3.org/TR/webgpu/#dom-gpudevice-createbindgroup) use whole four-byte units, so a buffer with an odd number of two-byte elements includes one padding element in `arrayLength`. Use an even count when shader code relies on that length.
+Use native WGSL types in the storage configuration, such as `f32`, `vec3f`, `atomic<u32>`, or a struct declared in your shader or Common code. Buffer sizes are calculated automatically, including padding, nested arrays and structs, and `@align` / `@size` attributes. Half-precision types require `enable f16;` and GPU support for `shader-f16`. For buffers of `f16` scalars, use an even element count if your shader relies on `arrayLength`; an odd count includes an extra padding element.
 
 The Storage inspector can read and edit scalar and vector values using either WGSL or Slang type names, including `f16`. Custom structs and matrices still require shader code to inspect their fields.
 
@@ -74,7 +71,7 @@ The Storage inspector can read and edit scalar and vector values using either WG
 `.wgsl` files get syntax highlighting, bracket matching, comment toggling,
 completion, hover, and navigation. Snippets cover `mainImage`, channel sampling,
 vertex hooks, and compute entry points. The editor reports basic errors before
-compilation; the renderer supplies full WGSL validation. See
+compilation; compiling checks the shader fully. See
 [WGSL editor support](wgsl.md#editor-support-and-diagnostics) for diagnostic limits
 and [Language Servers](language-servers.md) for rename and color editing.
 

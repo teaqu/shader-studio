@@ -1,6 +1,6 @@
 # JavaScript Transpilation
 
-Shader Studio can transpile GLSL shaders to JavaScript for debugging using the [`glsl-transpiler`](https://github.com/stackgl/glsl-transpiler) library. This lets you step through shader execution with the VS Code debugger — breakpoints, variable inspection, and line-by-line stepping.
+Convert a GLSL shader to JavaScript for debugging. This lets you step through shader execution with the VS Code debugger — breakpoints, variable inspection, and line-by-line stepping.
 
 ## Running
 

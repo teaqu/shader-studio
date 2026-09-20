@@ -1,11 +1,10 @@
 # Inline Rendering
 
-
-Inline rendering is the core debug visualization. When enabled, placing your cursor on a line containing a variable rewrites the shader to render that variable's value as color output across the entire canvas. Turning debug mode on uses the cursor already placed in the active shader editor, so you do not need to move it first.
+Place the cursor on a line to preview its value as color across the canvas. Turning debug mode on uses the cursor already placed in the active shader editor, so you do not need to move it first.
 
 ## Variable Detection
 
-The debug system detects variables from these line patterns:
+You can preview values on these kinds of lines:
 
 | Pattern | Example |
 |---------|---------|
@@ -27,8 +26,6 @@ When the cursor is on a non-debuggable line, the debug system tries to find the 
 
 When the cursor is on the entry line of `mainImage` (the opening `{` or first non-meaningful line), the system resolves to the last meaningful line in the function body instead.
 
-If a line has invalid syntax that would prevent compilation, the system preserves the original shader and lets the compiler surface the error directly.
-
 ## Type Visualization
 
 The table below shows GLSL inline visualization. Slang and WGSL also support
@@ -36,11 +33,11 @@ scalar and vector previews; see their language guides for capture limits.
 
 | Type | Visualization | Notes |
 |------|--------------|-------|
-| `float` | Grayscale — `vec4(vec3(value), 1.0)` | 0.0 = black, 1.0 = white |
-| `vec2` | Red and green — `vec4(value, 0.0, 1.0)` | X maps to red, Y maps to green |
-| `vec3` | RGB color — `vec4(value, 1.0)` | Direct color interpretation |
+| `float` | Grayscale | 0.0 = black, 1.0 = white |
+| `vec2` | Red and green | X maps to red, Y maps to green |
+| `vec3` | RGB color | Direct color interpretation |
 | `vec4` | Direct output | All four channels passed through |
-| `int` | Grayscale with float conversion | Cast to float, then grayscale |
+| `int` | Grayscale | 0 = black, 1 = white |
 | `bool` | Black or white | `false` = black, `true` = white |
 | `mat2/3/4` | First column visualized | Extracted and displayed as vector |
 
@@ -48,9 +45,7 @@ This table describes canvas previews, not whole-matrix capture in the Variable
 Inspector. See [WGSL capture types](../features/wgsl.md#debugging-and-capture-types)
 for supported matrices and component ordering.
 
-
-
-Values outside the 0–1 range are clamped by the GPU, making negative values appear as black and values above 1 appear as white. Use [normalization modes](normalization.md) to see out-of-range values.
+Negative values appear black and values above 1 appear white. Use [normalization modes](normalization.md) to see out-of-range values.
 
 ## Debugging in Helper Functions
 
@@ -79,13 +74,8 @@ This is useful when you want to use normalization or variable capture on the unm
 
 ## Resolution Behavior
 
-Inline rendering always uses the **current live preview resolution**, not a stale config snapshot.
-
-- Changing the toolbar **scale**, **fixed size**, or **aspect ratio** updates inline rendering immediately.
-- Changing the Image pass resolution in the config panel also updates inline rendering immediately.
-- When fixed size is active, the selected **scale still applies** to the render target.
-
-This means the debug image you see should match the same effective canvas size shown in the toolbar resolution button.
+Inline previews use the current preview resolution, including the scale, fixed
+size, and aspect ratio selected in the toolbar or config panel.
 
 ## Next
 

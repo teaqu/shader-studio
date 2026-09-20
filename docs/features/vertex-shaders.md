@@ -51,7 +51,7 @@ Your vertex shader must define a `mainVertex` function. It receives the mesh ver
     }
     ```
 
-    WGSL has no `inout` parameters, so the hook receives pointers. Dereference them to read or modify the vertex data: `(*position).y += 0.1;`. The engine passes the address of each attribute (`&position, &normal, &uv`), so writing through the pointer changes the rendered geometry exactly as `inout` does in GLSL and Slang.
+    WGSL has no `inout` parameters, so the hook receives pointers. Dereference them to read or modify the vertex data: `(*position).y += 0.1;`. Changes to these values affect the rendered geometry, as with `inout` in GLSL and Slang.
 
 ## Geometry Context
 
