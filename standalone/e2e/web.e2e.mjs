@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
+import {
+  addShaderFiles,
+  putWorkspaceFiles,
+  readWorkspaceFiles,
+  removeWorkspacePaths,
+} from './workspace-store.mjs';
 
 for (const pendingSave of [false, true]) {
   test(`buffer shaders are hidden by default and the explorer option survives reload (pending saves: ${pendingSave})`, async ({ page }) => {
@@ -485,21 +491,8 @@ test('shader explorer context menu extends beyond the dock and remains clickable
   await expect(menu).toHaveCount(0);
   await expect(page.getByTestId('shader-option-renamed-texture-glsl')).toBeVisible();
   // Workspace writes are queued asynchronously; reload once IndexedDB has committed the rename.
-  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const database = open.result;
-      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        database.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        database.close();
-        resolve(read.result?.some((file) => file.path.endsWith('/renamed-texture.glsl')) ?? false);
-      };
-    };
-  }))).toBe(true);
+  await expect.poll(async () => (await readWorkspaceFiles(page))
+    .some((file) => file.path.endsWith('/renamed-texture.glsl'))).toBe(true);
   await page.reload();
   await expect(page.getByTestId('shader-option-renamed-texture-glsl')).toBeVisible();
 });
@@ -527,28 +520,16 @@ test('forks a shader from the preview menu and persists the independent copy', a
   await editor.locator('.inputarea').press('ControlOrMeta+A');
   await page.keyboard.insertText(editedSource);
   // Wait for the actual persisted edit before navigating away or reloading.
-  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const database = open.result;
-      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        database.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        database.close();
-        const files = read.result ?? [];
-        const source = files.find((file) => file.path.endsWith('/nebula-texture.glsl'));
-        const copy = files.find((file) => file.path.endsWith('/nebula-texture.1.glsl'));
-        const config = files.find((file) => file.path.endsWith('/nebula-texture.sha.json'));
-        const copyConfig = files.find((file) => file.path.endsWith('/nebula-texture.1.sha.json'));
-        resolve(Boolean(copy?.contents.includes('fork-only edit')
-          && source && !source.contents.includes('fork-only edit')
-          && config && copyConfig?.contents === config.contents));
-      };
-    };
-  }))).toBe(true);
+  await expect.poll(async () => {
+    const files = await readWorkspaceFiles(page);
+    const source = files.find((file) => file.path.endsWith('/nebula-texture.glsl'));
+    const copy = files.find((file) => file.path.endsWith('/nebula-texture.1.glsl'));
+    const config = files.find((file) => file.path.endsWith('/nebula-texture.sha.json'));
+    const copyConfig = files.find((file) => file.path.endsWith('/nebula-texture.1.sha.json'));
+    return Boolean(copy?.contents.includes('fork-only edit')
+      && source && !source.contents.includes('fork-only edit')
+      && config && copyConfig?.contents === config.contents);
+  }).toBe(true);
 
   await page.reload();
   await expect(fork).toHaveAttribute('aria-pressed', 'true');
@@ -596,23 +577,8 @@ test('creates a WGSL shader when selected, edits it, renders it, and persists it
   await editor.locator('.inputarea').press('ControlOrMeta+A');
   await page.keyboard.insertText(editedSource);
   // Wait for the actual persisted edit before reloading.
-  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const database = open.result;
-      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        database.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        database.close();
-        const files = read.result ?? [];
-        const copy = files.find((file) => file.path.endsWith('/wgsl-created.wgsl'));
-        resolve(Boolean(copy?.contents.includes('wgsl-only edit')));
-      };
-    };
-  }))).toBe(true);
+  await expect.poll(async () => Boolean((await readWorkspaceFiles(page))
+    .find((file) => file.path.endsWith('/wgsl-created.wgsl'))?.contents.includes('wgsl-only edit'))).toBe(true);
 
   await page.reload();
   await expect(page.getByTestId('shader-option-wgsl-created-wgsl')).toHaveAttribute('aria-pressed', 'true');
@@ -623,21 +589,8 @@ test('selecting shaders leaves their modification times unchanged after reload',
   await page.goto('/');
   const editor = page.getByTestId('web-editor');
   await expect(editor.locator('.monaco-editor')).toBeVisible();
-  const readShaders = () => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const database = open.result;
-      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        database.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        database.close();
-        resolve(read.result.filter((file) => /\.(glsl|slang|wgsl)$/.test(file.path)));
-      };
-    };
-  }));
+  const readShaders = async () => (await readWorkspaceFiles(page))
+    .filter((file) => /\.(glsl|slang|wgsl)$/.test(file.path));
   const before = await readShaders();
   for (const [id, text] of [
     ['nebula-texture-glsl', 'texture(iChannel0, uv)'],
@@ -715,33 +668,14 @@ test('keeps a buffer and its image shader open in separate editors', async ({ pa
   await page.goto('/');
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
   await unloadForFixtureWrite(page);
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const request = indexedDB.open('shader-studio-web', 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        const files = read.result;
-        const add = (path, contents) => files.push({ path, contents, createdAt: Date.now(), modifiedAt: Date.now() });
-        add('/shaders/test-buffer.glsl', '// buffer source\nvoid mainImage(out vec4 c, in vec2 p) { c = vec4(1.0); }');
-        add('/shaders/test-image.glsl', '// image source\nvoid mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, p / iResolution.xy); }');
-        add('/shaders/test-image.sha.json', JSON.stringify({ version: '1.0', passes: {
-          'Buffer A': { path: 'test-buffer.glsl', inputs: {} },
-          Image: { inputs: { iChannel0: { type: 'buffer', source: 'Buffer A' } } },
-        } }));
-        store.put(files, 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close(); resolve();
-      };
-      tx.onerror = () => {
-        db.close(); reject(tx.error);
-      };
-    };
-  }));
+  await addShaderFiles(page, [
+    ['test-buffer.glsl', '// buffer source\nvoid mainImage(out vec4 c, in vec2 p) { c = vec4(1.0); }'],
+    ['test-image.glsl', '// image source\nvoid mainImage(out vec4 c, in vec2 p) { c = texture(iChannel0, p / iResolution.xy); }'],
+    ['test-image.sha.json', JSON.stringify({ version: '1.0', passes: {
+      'Buffer A': { path: 'test-buffer.glsl', inputs: {} },
+      Image: { inputs: { iChannel0: { type: 'buffer', source: 'Buffer A' } } },
+    } })],
+  ]);
   await page.goto('/');
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Open Files', { exact: true }).check();
@@ -930,39 +864,20 @@ test('config double clicks open and focus standalone file editors', async ({ pag
   await page.goto('/');
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
   await unloadForFixtureWrite(page);
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const request = indexedDB.open('shader-studio-web', 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        const files = read.result;
-        const file = files.find((file) => file.path === '/shaders/glow-trails.sha.json');
-        const config = JSON.parse(file.contents);
-        config.script = '../navigation-script.ts';
-        config.passes.Image.vertex = 'navigation-vertex.glsl';
-        config.passes.common = { path: 'navigation-common.glsl' };
-        file.contents = JSON.stringify(config);
-        for (const [path, contents] of [
-          ['/navigation-script.ts', '// navigation script'],
-          ['/shaders/navigation-vertex.glsl', '// navigation vertex'],
-          ['/shaders/navigation-common.glsl', '// navigation common'],
-        ]) {
-          files.push({ path, contents, createdAt: Date.now(), modifiedAt: Date.now() });
-        }
-        store.put(files, 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close(); resolve();
-      };
-      tx.onerror = () => {
-        db.close(); reject(tx.error);
-      };
-    };
-  }));
+  const existing = await readWorkspaceFiles(page);
+  const glowTrails = existing.find((file) => file.path === '/shaders/glow-trails.sha.json');
+  const glowConfig = JSON.parse(glowTrails.contents);
+  glowConfig.script = '../navigation-script.ts';
+  glowConfig.passes.Image.vertex = 'navigation-vertex.glsl';
+  glowConfig.passes.common = { path: 'navigation-common.glsl' };
+  await putWorkspaceFiles(page, [
+    { ...glowTrails, contents: JSON.stringify(glowConfig) },
+    ...[
+      ['/navigation-script.ts', '// navigation script'],
+      ['/shaders/navigation-vertex.glsl', '// navigation vertex'],
+      ['/shaders/navigation-common.glsl', '// navigation common'],
+    ].map(([path, contents]) => ({ path, contents, createdAt: Date.now(), modifiedAt: Date.now() })),
+  ]);
   await page.goto('/');
   await page.getByTestId('shader-option-glow-trails-glsl').click();
   await page.getByTestId('web-preview').getByLabel('Toggle config panel').click();
@@ -1380,25 +1295,7 @@ test('opens the config file of the selected shader from the preview menu', async
 test('generates a missing config file and opens it', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const request = indexedDB.open('shader-studio-web', 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        store.put(read.result.filter((file) => file.path !== '/shaders/aurora.sha.json'), 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close(); resolve();
-      };
-      tx.onerror = () => {
-        db.close(); reject(tx.error);
-      };
-    };
-  }));
+  await removeWorkspacePaths(page, ['/shaders/aurora.sha.json']);
   await page.reload();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await page.getByLabel('Open options menu').click();
@@ -1441,22 +1338,11 @@ test('switches layout profiles in the standalone shell and keeps the active one 
   await page.getByRole('button', { name: 'Debugging', exact: true }).click();
   await expect(configTab).toBeVisible();
   // Reload only once the active profile has reached the persisted workspace.
-  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const database = open.result;
-      const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        database.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        database.close();
-        const index = (read.result ?? []).find((file) => file.path === '/.shader-studio/profiles/index.json');
-        resolve(index ? JSON.parse(index.contents).active : null);
-      };
-    };
-  }))).toBe('debugging');
+  await expect.poll(async () => {
+    const index = (await readWorkspaceFiles(page))
+      .find((file) => file.path === '/.shader-studio/profiles/index.json');
+    return index ? JSON.parse(index.contents).active : null;
+  }).toBe('debugging');
 
   await page.reload();
   await expect(configTab).toBeVisible();
@@ -1580,23 +1466,11 @@ for (const { label, option, extension, sourceText } of [
       await expect(editor.locator('.view-lines')).toContainText(sourceText);
       await expect(result.locator('.shader-thumbnail img')).toBeVisible();
       await expect(result.locator('.shader-error')).toHaveCount(0);
-      await expect.poll(() => page.evaluate(({ name, extension }) => new Promise((resolve, reject) => {
-        const open = indexedDB.open('shader-studio-web', 1);
-        open.onerror = () => reject(open.error);
-        open.onsuccess = () => {
-          const database = open.result;
-          const read = database.transaction('state', 'readonly').objectStore('state').get('workspace');
-          read.onerror = () => {
-            database.close(); reject(read.error);
-          };
-          read.onsuccess = () => {
-            database.close();
-            const files = read.result ?? [];
-            resolve(files.some((file) => file.path.endsWith(`/${name}.${extension}`))
-            && files.some((file) => file.path.endsWith(`/${name}.sha.json`)));
-          };
-        };
-      }), { name, extension })).toBe(true);
+      await expect.poll(async () => {
+        const files = await readWorkspaceFiles(page);
+        return files.some((file) => file.path.endsWith(`/${name}.${extension}`))
+          && files.some((file) => file.path.endsWith(`/${name}.sha.json`));
+      }).toBe(true);
       await page.reload();
       await expect(result).toHaveAttribute('aria-pressed', 'true');
       await expect(editor.locator('.view-lines')).toContainText(sourceText);
@@ -1614,29 +1488,7 @@ async function seedWgslAuditFiles(page, entries) {
   await page.goto('/');
   await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
   await unloadForFixtureWrite(page);
-  await page.evaluate((entries) => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        const files = read.result ?? [];
-        for (const [name, contents] of entries) {
-          files.push({ path: `/shaders/${name}`, contents, createdAt: Date.now(), modifiedAt: Date.now() });
-        }
-        store.put(files, 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close(); resolve();
-      };
-      tx.onerror = () => {
-        db.close(); reject(tx.error);
-      };
-    };
-  }), entries);
+  await addShaderFiles(page, entries);
   await page.goto('/');
 }
 
@@ -1687,21 +1539,9 @@ test('creates a valid WGSL vertex hook from the config panel', async ({ page }) 
   page.once('dialog', (dialog) => dialog.accept(dialog.defaultValue()));
   await vertex.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(vertex.locator('input')).toHaveValue(/\.vert\.wgsl$/);
-  await expect.poll(() => page.evaluate(() => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      const read = db.transaction('state', 'readonly').objectStore('state').get('workspace');
-      read.onerror = () => {
-        db.close(); reject(read.error);
-      };
-      read.onsuccess = () => {
-        db.close();
-        resolve(read.result?.find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '');
-      };
-    };
-  }))).toContain('position: ptr<function, vec3f>');
+  await expect.poll(async () => (await readWorkspaceFiles(page))
+    .find((file) => file.path.endsWith('.vert.wgsl'))?.contents ?? '')
+    .toContain('position: ptr<function, vec3f>');
   await page.reload();
   await expect(page.getByTestId('shader-option-aurora-wgsl-wgsl')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('web-preview').getByLabel('Change FPS limit')).not.toContainText('0.0 FPS');

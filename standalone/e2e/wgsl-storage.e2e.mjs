@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
+import { addShaderFiles } from './workspace-store.mjs';
 async function pasteSource(page, editor, source) {
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
@@ -16,30 +17,7 @@ async function seedWgslAuditFiles(page, entries) {
   // Seed before boot so initialization cannot overwrite the fixture transaction.
   await page.route('**/__debug_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html></html>' }));
   await page.goto('/__debug_fixture__');
-  await page.evaluate((filesToAdd) => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onupgradeneeded = () => open.result.createObjectStore('state');
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        const files = read.result ?? [];
-        for (const [name, contents] of filesToAdd) {
-          files.push({ path: `/shaders/${name}`, contents, createdAt: Date.now(), modifiedAt: Date.now() });
-        }
-        store.put(files, 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close(); resolve();
-      };
-      tx.onerror = () => {
-        db.close(); reject(tx.error);
-      };
-    };
-  }), entries);
+  await addShaderFiles(page, entries);
   await page.goto('/');
 }
 

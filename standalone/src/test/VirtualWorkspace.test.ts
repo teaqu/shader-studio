@@ -4,6 +4,7 @@ import {
   MemoryWorkspaceJournal,
   MemoryWorkspaceStore,
   VirtualWorkspace,
+  workspaceRecordWrites,
   type VirtualWorkspaceFile,
   type VirtualWorkspaceStore,
 } from '../VirtualWorkspace';
@@ -29,7 +30,145 @@ class StalledWorkspaceStore implements VirtualWorkspaceStore {
   async clear(): Promise<void> {}
 }
 
+/** A store whose saves resolve only when the test releases them, so a burst of
+ * edits can be observed while the first write is still in flight. */
+class GatedWorkspaceStore implements VirtualWorkspaceStore {
+  readonly saved: VirtualWorkspaceFile[][] = [];
+  private readonly gates: (() => void)[] = [];
+
+  constructor(private files: VirtualWorkspaceFile[] | null = null) {}
+
+  async load(): Promise<VirtualWorkspaceFile[] | null> {
+    return this.files ? this.files.map(file => ({ ...file })) : null;
+  }
+
+  save(files: VirtualWorkspaceFile[]): Promise<void> {
+    this.saved.push(files.map(file => ({ ...file })));
+    this.files = files.map(file => ({ ...file }));
+    return new Promise<void>(resolve => this.gates.push(resolve));
+  }
+
+  async clear(): Promise<void> {
+    this.files = null;
+  }
+
+  /** Let every write issued so far complete. */
+  release(): void {
+    for (const gate of this.gates.splice(0)) {
+      gate();
+    }
+  }
+}
+
+/** Release writes until the workspace has nothing left queued. Writes start on
+ * a microtask, so the gates must be opened repeatedly rather than once. */
+async function drain(store: GatedWorkspaceStore, workspace: VirtualWorkspace): Promise<void> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    store.release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  await workspace.flush();
+}
+
+describe('workspaceRecordWrites', () => {
+  const file = (path: string, contents: string, modifiedAt = 1): VirtualWorkspaceFile =>
+    ({ path, contents, createdAt: 1, modifiedAt });
+
+  it('writes only the records whose contents or timestamps changed', () => {
+    const previous = new Map([
+      ['/a.wgsl', file('/a.wgsl', 'one')],
+      ['/b.wgsl', file('/b.wgsl', 'two')],
+    ]);
+    const writes = workspaceRecordWrites(previous, [
+      file('/a.wgsl', 'one'),
+      file('/b.wgsl', 'two changed', 2),
+    ]);
+    expect(writes.put.map(entry => entry.path)).toEqual(['/b.wgsl']);
+    expect(writes.delete).toEqual([]);
+  });
+
+  it('deletes records the snapshot no longer carries', () => {
+    const previous = new Map([
+      ['/a.wgsl', file('/a.wgsl', 'one')],
+      ['/gone.wgsl', file('/gone.wgsl', 'bye')],
+    ]);
+    const writes = workspaceRecordWrites(previous, [file('/a.wgsl', 'one')]);
+    expect(writes.put).toEqual([]);
+    expect(writes.delete).toEqual(['/gone.wgsl']);
+  });
+
+  it('writes everything when nothing is known to be stored yet', () => {
+    const writes = workspaceRecordWrites(new Map(), [file('/a.wgsl', 'one'), file('/b.wgsl', 'two')]);
+    expect(writes.put.map(entry => entry.path)).toEqual(['/a.wgsl', '/b.wgsl']);
+    expect(writes.delete).toEqual([]);
+  });
+
+  it('treats a same-path record with a new creation time as a write', () => {
+    const previous = new Map([['/a.wgsl', file('/a.wgsl', 'one')]]);
+    const writes = workspaceRecordWrites(previous, [
+      { path: '/a.wgsl', contents: 'one', createdAt: 99, modifiedAt: 1 },
+    ]);
+    expect(writes.put.map(entry => entry.path)).toEqual(['/a.wgsl']);
+  });
+});
+
 describe('VirtualWorkspace', () => {
+  it('coalesces queued saves so a typing burst writes once more, not once each', async () => {
+    // Every save carries a complete snapshot, so a queued-but-unstarted write
+    // is superseded by the next one. Without coalescing, N keystrokes queue N
+    // full writes when only the last matters.
+    const store = new GatedWorkspaceStore(seedFiles);
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    workspace.writeText('/shaders/first.glsl', 'a');
+    workspace.writeText('/shaders/first.glsl', 'ab');
+    workspace.writeText('/shaders/first.glsl', 'abc');
+    workspace.writeText('/shaders/first.glsl', 'abcd');
+    await drain(store, workspace);
+
+    // At most one write in flight plus one carrying the coalesced remainder;
+    // without coalescing this is four.
+    expect(store.saved.length).toBeLessThanOrEqual(2);
+    expect(store.saved.at(-1)!.find(file => file.path === '/shaders/first.glsl')!.contents).toBe('abcd');
+    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('abcd');
+  });
+
+  it('replays the last edit of a burst whose writes a reload abandoned', async () => {
+    // Coalescing drops queued writes, so the journal is what stands between a
+    // typing burst and a reload that lands before the store catches up.
+    const store = new StalledWorkspaceStore(seedFiles);
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    for (const text of ['b', 'bu', 'buf', 'buff', 'buffer edit']) {
+      workspace.writeText('/shaders/first.glsl', text);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const reopened = await VirtualWorkspace.open(store, seedFiles, () => 30, journal);
+    expect(reopened.readText('/shaders/first.glsl')).toBe('buffer edit');
+  });
+
+  it('keeps the journal until the coalesced write commits', async () => {
+    const store = new GatedWorkspaceStore(seedFiles);
+    const journal = new MemoryWorkspaceJournal();
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 20, journal);
+    workspace.writeText('/shaders/first.glsl', 'a');
+    workspace.writeText('/shaders/first.glsl', 'ab');
+    expect(journal.read()?.files.map(file => file.contents)).toEqual(['ab']);
+    await drain(store, workspace);
+    expect(journal.read()).toBeNull();
+  });
+
+  it('coalesces deletions and renames with the edits around them', async () => {
+    const store = new GatedWorkspaceStore(seedFiles);
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    workspace.writeText('/shaders/second.glsl', 'second');
+    workspace.rename('/shaders/second.glsl', '/shaders/third.glsl');
+    workspace.delete('/shaders/first.sha.json');
+    await drain(store, workspace);
+    const reopened = await VirtualWorkspace.open(store, []);
+    expect(reopened.list().map(file => file.path)).toEqual(['/shaders/first.glsl', '/shaders/third.glsl']);
+  });
+
   it.each(['glsl', 'slang', 'wgsl'])('commits all %s rename files in one persisted snapshot', async language => {
     const store = new MemoryWorkspaceStore();
     const files = ['main', 'common'].map(name => ({ path: `/shaders/${name}.${language}`, contents: 'tone', createdAt: 1, modifiedAt: 1 }));

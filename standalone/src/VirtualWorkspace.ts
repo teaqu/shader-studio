@@ -119,79 +119,165 @@ export class MemoryWorkspaceStore implements VirtualWorkspaceStore {
   }
 }
 
+/** Database layout. v1 kept the whole workspace in one array under
+ * `state/workspace`, so every edit rewrote every file. v2 keys one record per
+ * path in `files`, with `meta` recording that a workspace exists at all —
+ * without it an emptied workspace is indistinguishable from an unused one and
+ * would be re-seeded with the defaults. */
+const WORKSPACE_DB_VERSION = 2;
+const FILES_STORE = 'files';
+const META_STORE = 'meta';
+const META_KEY = 'workspace';
+const LEGACY_STORE = 'state';
+const LEGACY_KEY = 'workspace';
+
+/** The per-path writes that turn `previous` into `snapshot`. Pure so the
+ * record-level diff is testable without a database. */
+export function workspaceRecordWrites(
+  previous: ReadonlyMap<string, VirtualWorkspaceFile>,
+  snapshot: readonly VirtualWorkspaceFile[],
+): { put: VirtualWorkspaceFile[]; delete: string[] } {
+  const paths = new Set(snapshot.map((file) => file.path));
+  return {
+    put: snapshot.filter((file) => {
+      const stored = previous.get(file.path);
+      return !stored
+        || stored.contents !== file.contents
+        || stored.modifiedAt !== file.modifiedAt
+        || stored.createdAt !== file.createdAt;
+    }).map((file) => ({ ...file })),
+    delete: [...previous.keys()].filter((path) => !paths.has(path)),
+  };
+}
+
+function isWorkspaceFile(value: unknown): value is VirtualWorkspaceFile {
+  const file = value as Partial<VirtualWorkspaceFile> | null;
+  return !!file && typeof file.path === 'string' && typeof file.contents === 'string'
+    && typeof file.createdAt === 'number' && typeof file.modifiedAt === 'number';
+}
+
 export class IndexedDbWorkspaceStore implements VirtualWorkspaceStore {
-  constructor(
-    private readonly databaseName = 'shader-studio-web',
-    private readonly recordKey = 'workspace',
-  ) {}
+  /** One connection for the life of the store: opening per save cost an
+   * open/close round trip on every keystroke. */
+  private connection: Promise<IDBDatabase> | null = null;
+  /** What this store believes the database holds, so a save writes only the
+   * records that actually changed. */
+  private stored = new Map<string, VirtualWorkspaceFile>();
+
+  constructor(private readonly databaseName = 'shader-studio-web') {}
 
   async load(): Promise<VirtualWorkspaceFile[] | null> {
     const database = await this.openDatabase();
-    return new Promise((resolve, reject) => {
-      const request = database.transaction('state', 'readonly').objectStore('state').get(this.recordKey);
-      request.onsuccess = () => {
-        database.close();
-        resolve(Array.isArray(request.result) ? cloneFiles(request.result) : null);
-      };
-      request.onerror = () => {
-        database.close();
-        reject(request.error ?? new Error('Failed to load the virtual workspace'));
-      };
+    const [records, marker] = await new Promise<[unknown[], unknown]>((resolve, reject) => {
+      const transaction = database.transaction([FILES_STORE, META_STORE], 'readonly');
+      const files = transaction.objectStore(FILES_STORE).getAll();
+      const meta = transaction.objectStore(META_STORE).get(META_KEY);
+      transaction.oncomplete = () => resolve([files.result ?? [], meta.result]);
+      transaction.onerror = () => reject(transaction.error ?? new Error('Failed to load the virtual workspace'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Loading the virtual workspace was aborted'));
     });
+    if (marker === undefined) {
+      this.stored = new Map();
+      return null;
+    }
+    const files = records.filter(isWorkspaceFile)
+      // Sorted like VirtualWorkspace.list, which callers compare against.
+      .sort((first, second) => first.path.localeCompare(second.path));
+    this.stored = new Map(files.map((file) => [file.path, { ...file }]));
+    return cloneFiles(files);
   }
 
   async save(files: VirtualWorkspaceFile[]): Promise<void> {
     const database = await this.openDatabase();
+    const writes = workspaceRecordWrites(this.stored, files);
     await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction('state', 'readwrite');
-      transaction.objectStore('state').put(cloneFiles(files), this.recordKey);
-      transaction.oncomplete = () => {
-        database.close();
-        resolve();
-      };
-      transaction.onerror = () => {
-        database.close();
-        reject(transaction.error ?? new Error('Failed to save the virtual workspace'));
-      };
-      transaction.onabort = () => {
-        database.close();
-        reject(transaction.error ?? new Error('Saving the virtual workspace was aborted'));
-      };
+      const transaction = database.transaction([FILES_STORE, META_STORE], 'readwrite');
+      const store = transaction.objectStore(FILES_STORE);
+      for (const file of writes.put) {
+        store.put({ ...file }, file.path);
+      }
+      for (const path of writes.delete) {
+        store.delete(path);
+      }
+      transaction.objectStore(META_STORE).put({ savedAt: Date.now() }, META_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Failed to save the virtual workspace'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Saving the virtual workspace was aborted'));
     });
+    this.stored = new Map(files.map((file) => [file.path, { ...file }]));
   }
 
   async clear(): Promise<void> {
     const database = await this.openDatabase();
     await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction('state', 'readwrite');
-      transaction.objectStore('state').delete(this.recordKey);
-      transaction.oncomplete = () => {
-        database.close();
-        resolve();
-      };
-      transaction.onerror = () => {
-        database.close();
-        reject(transaction.error ?? new Error('Failed to clear the virtual workspace'));
-      };
-      transaction.onabort = () => {
-        database.close();
-        reject(transaction.error ?? new Error('Clearing the virtual workspace was aborted'));
-      };
+      const transaction = database.transaction([FILES_STORE, META_STORE], 'readwrite');
+      transaction.objectStore(FILES_STORE).clear();
+      transaction.objectStore(META_STORE).delete(META_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Failed to clear the virtual workspace'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Clearing the virtual workspace was aborted'));
     });
+    this.stored = new Map();
   }
 
   private openDatabase(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.databaseName, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains('state')) {
-          request.result.createObjectStore('state');
-        }
+    if (this.connection) {
+      return this.connection;
+    }
+    this.connection = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(this.databaseName, WORKSPACE_DB_VERSION);
+      request.onupgradeneeded = (event) => migrateWorkspaceDatabase(request, event.oldVersion);
+      request.onsuccess = () => {
+        const database = request.result;
+        // Another tab upgrading, or the browser evicting the connection, must
+        // not leave a dead handle cached for every later save.
+        database.onversionchange = () => {
+          this.connection = null;
+          database.close();
+        };
+        database.onclose = () => {
+          this.connection = null;
+        };
+        resolve(database);
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error('Failed to open the virtual workspace database'));
+      request.onerror = () => {
+        this.connection = null;
+        reject(request.error ?? new Error('Failed to open the virtual workspace database'));
+      };
     });
+    return this.connection;
   }
+}
+
+/** Create the v2 stores and carry a v1 workspace across, one record per path.
+ * Runs inside the version-change transaction, so the upgrade either completes
+ * with the files moved or does not happen at all. */
+function migrateWorkspaceDatabase(request: IDBOpenDBRequest, oldVersion: number): void {
+  const database = request.result;
+  if (!database.objectStoreNames.contains(FILES_STORE)) {
+    database.createObjectStore(FILES_STORE);
+  }
+  if (!database.objectStoreNames.contains(META_STORE)) {
+    database.createObjectStore(META_STORE);
+  }
+  if (oldVersion === 0 || !database.objectStoreNames.contains(LEGACY_STORE)) {
+    return;
+  }
+  const transaction = request.transaction!;
+  const legacy = transaction.objectStore(LEGACY_STORE);
+  const legacyRecord = legacy.get(LEGACY_KEY);
+  legacyRecord.onsuccess = () => {
+    if (!Array.isArray(legacyRecord.result)) {
+      return;
+    }
+    const files = transaction.objectStore(FILES_STORE);
+    for (const file of legacyRecord.result.filter(isWorkspaceFile)) {
+      files.put({ ...file }, file.path);
+    }
+    transaction.objectStore(META_STORE).put({ savedAt: Date.now() }, META_KEY);
+    // The array is now a stale duplicate of the records beside it.
+    legacy.delete(LEGACY_KEY);
+  };
 }
 
 export class VirtualWorkspace {
@@ -200,6 +286,9 @@ export class VirtualWorkspace {
    * between it and the files in memory. */
   private committed = new Map<string, VirtualWorkspaceFile>();
   private pendingSave: Promise<void> = Promise.resolve();
+  /** The newest snapshot waiting for a write slot, replaced rather than
+   * queued behind when another edit arrives first. */
+  private queuedSave: { snapshot: VirtualWorkspaceFile[]; sequence: number } | null = null;
   private saveSequence = 0;
   private revision = 0;
 
@@ -429,9 +518,23 @@ export class VirtualWorkspace {
     // has already happened once the edit returns to the caller.
     this.journal.record(this.pendingAgainstCommitted(snapshot));
     const sequence = ++this.saveSequence;
-    this.pendingSave = this.pendingSave
-      .then(() => this.store.save(snapshot))
-      .then(() => this.onCommitted(snapshot, sequence));
+    const alreadyQueued = this.queuedSave !== null;
+    this.queuedSave = { snapshot, sequence };
+    if (alreadyQueued) {
+      // A queued write that has not started is superseded: each save carries a
+      // complete snapshot, so the later one covers everything the earlier did.
+      // A typing burst then costs one write, not one per keystroke.
+      return;
+    }
+    this.pendingSave = this.pendingSave.then(async () => {
+      const queued = this.queuedSave;
+      this.queuedSave = null;
+      if (!queued) {
+        return;
+      }
+      await this.store.save(queued.snapshot);
+      this.onCommitted(queued.snapshot, queued.sequence);
+    });
   }
 
   /** What the store has not confirmed yet: files that differ from the

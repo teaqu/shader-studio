@@ -1,36 +1,12 @@
 import { expect, test } from '@playwright/test';
+import { addShaderFiles } from './workspace-store.mjs';
 
 async function seedWorkspaceFiles(page, entries) {
   // Write the fixture before the app starts so its workspace persistence cannot
   // race the IndexedDB transaction.
   await page.route('**/__wgsl_globals_fixture__', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html></html>' }));
   await page.goto('/__wgsl_globals_fixture__');
-  await page.evaluate((filesToAdd) => new Promise((resolve, reject) => {
-    const open = indexedDB.open('shader-studio-web', 1);
-    open.onupgradeneeded = () => open.result.createObjectStore('state');
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const db = open.result;
-      const tx = db.transaction('state', 'readwrite');
-      const store = tx.objectStore('state');
-      const read = store.get('workspace');
-      read.onsuccess = () => {
-        const files = read.result ?? [];
-        for (const [name, contents] of filesToAdd) {
-          files.push({ path: `/shaders/${name}`, contents, createdAt: Date.now(), modifiedAt: Date.now() });
-        }
-        store.put(files, 'workspace');
-      };
-      tx.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-      tx.onerror = () => {
-        db.close();
-        reject(tx.error);
-      };
-    };
-  }), entries);
+  await addShaderFiles(page, entries);
   await page.goto('/');
 }
 

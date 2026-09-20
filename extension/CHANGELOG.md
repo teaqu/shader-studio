@@ -2,6 +2,7 @@
 ### Unreleased
 
 - Fixed a false "invalid element type" warning on WGSL shaders whose config declares storage in WGSL's own types, such as `f32` or `vec4<f32>`. Both those and the shared `float4`-style names are accepted, as the renderer has always accepted them.
+- Standalone edits now save only the file you changed instead of rewriting the whole workspace, so saving stays fast as the number of shaders grows. Existing workspaces are carried over on first load.
 - Fixed standalone edits being lost when the page reloaded before the workspace write reached the browser database. Each edit is now recorded the moment you make it and replayed on the next load.
 - Breaking: `import shader_studio;` is gone. It resolved to a generated stub module that was removed long ago, so a shader that still imports it reports an ordinary missing-module error. Delete the line; the built-in uniforms need no import.
 

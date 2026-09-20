@@ -1,5 +1,6 @@
 import { PNG } from 'pngjs';
 import { expect, test } from '@playwright/test';
+import { putWorkspaceFiles, readWorkspaceFiles } from './workspace-store.mjs';
 
 // Slang rendering needs a WebGPU adapter in headless Chromium.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu'] } });
@@ -12,42 +13,22 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       // Seed before the app mounts so its workspace autosave cannot overwrite the fixture.
       await page.route('**/', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
       await page.goto('/');
-      await page.evaluate(async (language) => {
-        const files = [
-          [`/shaders/aurora.${language}`, language === 'glsl'
-            ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
-            : language === 'slang'
-              ? 'float4 mainImage(float2 coord) { return float4(1.0); }'
-              : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
-          [`/shaders/shared.${language}`, '// shared functions'],
-          [`/shaders/vertex.${language}`, language === 'glsl'
-            ? 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
-            : language === 'slang'
-              ? 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}'
-              : 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
-          ['/shaders/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
-            Image: { inputs: {}, vertex: `vertex.${language}` }, common: { path: `shared.${language}` },
-          } })],
-        ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 }));
-        await new Promise((resolve, reject) => {
-          const request = indexedDB.open('shader-studio-web', 1);
-          request.onupgradeneeded = () => request.result.createObjectStore('state');
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => {
-            const db = request.result;
-            const tx = db.transaction('state', 'readwrite');
-            tx.objectStore('state').put(files, 'workspace');
-            tx.oncomplete = () => {
-              db.close();
-              resolve();
-            };
-            tx.onerror = () => {
-              db.close();
-              reject(tx.error);
-            };
-          };
-        });
-      }, language);
+      await putWorkspaceFiles(page, [
+        [`/shaders/aurora.${language}`, language === 'glsl'
+          ? 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'
+          : language === 'slang'
+            ? 'float4 mainImage(float2 coord) { return float4(1.0); }'
+            : 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }'],
+        [`/shaders/shared.${language}`, '// shared functions'],
+        [`/shaders/vertex.${language}`, language === 'glsl'
+          ? 'void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {}'
+          : language === 'slang'
+            ? 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {}'
+            : 'fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {}'],
+        ['/shaders/aurora.sha.json', JSON.stringify({ version: '1.0', passes: {
+          Image: { inputs: {}, vertex: `vertex.${language}` }, common: { path: `shared.${language}` },
+        } })],
+      ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
       await page.unroute('**/');
       await page.reload();
       await expect(page.getByTestId('web-editor').locator('.monaco-editor')).toBeVisible();
@@ -67,22 +48,8 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await page.keyboard.press('ControlOrMeta+Home');
       await page.keyboard.insertText('// navigation edit\n');
       await expect(page.getByTestId('web-preview').getByLabel('Toggle pause')).not.toHaveClass(/error/);
-      await expect.poll(() => page.evaluate((path) => new Promise((resolve, reject) => {
-        const request = indexedDB.open('shader-studio-web', 1);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          const db = request.result;
-          const read = db.transaction('state', 'readonly').objectStore('state').get('workspace');
-          read.onsuccess = () => {
-            db.close();
-            resolve(read.result.find(file => file.path === path)?.contents ?? '');
-          };
-          read.onerror = () => {
-            db.close();
-            reject(read.error);
-          };
-        };
-      }), path)).toContain('navigation edit');
+      await expect.poll(async () => (await readWorkspaceFiles(page))
+        .find(file => file.path === path)?.contents ?? '').toContain('navigation edit');
       await page.reload();
       await expect(editor.locator('.monaco-editor')).toBeVisible();
       await expect(editor.locator('.view-lines')).toContainText('navigation edit');
@@ -97,37 +64,19 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
 test('a detached buffer retains its owner Common authoring context after preview navigation', async ({ page }) => {
   await page.route('**/__detached_common_context__', route => route.fulfill({ contentType: 'text/html', body: '<html></html>' }));
   await page.goto('/__detached_common_context__');
-  await page.evaluate(async () => {
-    const files = [
-      ['/shaders/owner-a.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'],
-      ['/shaders/owner-a.common.glsl', 'vec4 ownerColor(float value) { return vec4(value); }'],
-      ['/shaders/owner-a.buffer.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = ownerColor(coord.x); }'],
-      ['/shaders/owner-a.sha.json', JSON.stringify({ version: '1.0', passes: {
-        common: { path: 'owner-a.common.glsl' }, Image: { inputs: {} }, BufferA: { path: 'owner-a.buffer.glsl', inputs: {} },
-      } })],
-      ['/shaders/owner-b.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, ownerColor(coord.x), 0.0, 1.0); }'],
-      ['/shaders/owner-b.common.glsl', 'float ownerColor(float value) { return 1.0; }'],
-      ['/shaders/owner-b.sha.json', JSON.stringify({ version: '1.0', passes: {
-        common: { path: 'owner-b.common.glsl' }, Image: { inputs: {} },
-      } })],
-    ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 }));
-    await new Promise((resolve, reject) => {
-      const request = indexedDB.open('shader-studio-web', 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('state');
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const db = request.result;
-        const tx = db.transaction('state', 'readwrite');
-        tx.objectStore('state').put(files, 'workspace');
-        tx.oncomplete = () => {
-          db.close(); resolve();
-        };
-        tx.onerror = () => {
-          db.close(); reject(tx.error);
-        };
-      };
-    });
-  });
+  await putWorkspaceFiles(page, [
+    ['/shaders/owner-a.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(1.0); }'],
+    ['/shaders/owner-a.common.glsl', 'vec4 ownerColor(float value) { return vec4(value); }'],
+    ['/shaders/owner-a.buffer.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = ownerColor(coord.x); }'],
+    ['/shaders/owner-a.sha.json', JSON.stringify({ version: '1.0', passes: {
+      common: { path: 'owner-a.common.glsl' }, Image: { inputs: {} }, BufferA: { path: 'owner-a.buffer.glsl', inputs: {} },
+    } })],
+    ['/shaders/owner-b.glsl', 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.0, ownerColor(coord.x), 0.0, 1.0); }'],
+    ['/shaders/owner-b.common.glsl', 'float ownerColor(float value) { return 1.0; }'],
+    ['/shaders/owner-b.sha.json', JSON.stringify({ version: '1.0', passes: {
+      common: { path: 'owner-b.common.glsl' }, Image: { inputs: {} },
+    } })],
+  ].map(([path, contents]) => ({ path, contents, createdAt: 1, modifiedAt: 1 })));
   await page.unroute('**/__detached_common_context__');
   await page.goto('/');
   await page.getByTestId('shader-option-owner-a-glsl').click();
