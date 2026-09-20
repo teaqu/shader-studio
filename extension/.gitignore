@@ -11,3 +11,6 @@ glsl-deps
 .vscode-test/
 .playwright/
 *.vsix
+
+# Per-worker workspaces written by the config-edit-feedback e2e tests
+e2e/fixtures/slang-parity-validation/config-edit-feedback-*/
