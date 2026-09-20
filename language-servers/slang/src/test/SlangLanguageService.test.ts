@@ -560,13 +560,13 @@ float value = inputs;`;
 
     const items = await service.completion({ document: revision, position: { line: 3, character: 7 } });
 
-    expect(items).toHaveLength(60);
-    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["yx", "xx", "xyxy", "xxxx", "gr"]));
-    expect(items.map((item) => item.label)).not.toEqual(expect.arrayContaining(["z", "s", "xr"]));
+    expect(items).toHaveLength(8);
+    expect(items.some((item) => ["xx", "xyxy", "xxxx", "z", "s", "xr"].includes(item.label))).toBe(false);
+    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["yx", "gr"]));
     expect(items.slice(0, 6).map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg"]);
     expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "float", kind: CompletionItemKind.Field }));
     expect(items).toContainEqual(expect.objectContaining({ label: "xy", detail: "float2" }));
-    expect(items).toContainEqual(expect.objectContaining({ label: "xxxx", detail: "float4" }));
+    expect(items).toContainEqual(expect.objectContaining({ label: "yx", detail: "float2" }));
     expect(items.map((item) => item.sortText)).toEqual(items.map((_, index) => index.toString().padStart(4, "0")));
   });
 

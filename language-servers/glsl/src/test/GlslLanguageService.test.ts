@@ -217,13 +217,13 @@ void mainImage(out vec4 color, in vec2 coord) {
 
     const items = await instance.completion({ document: revision, position: { line: 2, character: 5 } });
 
-    expect(items).toHaveLength(90);
-    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["yx", "xx", "xyxy", "xxxx", "gr", "ts"]));
-    expect(items.map((item) => item.label)).not.toEqual(expect.arrayContaining(["z", "xr"]));
+    expect(items).toHaveLength(12);
+    expect(items.some((item) => ["xx", "xyxy", "xxxx", "z", "xr"].includes(item.label))).toBe(false);
+    expect(items.map((item) => item.label)).toEqual(expect.arrayContaining(["yx", "gr", "ts"]));
     expect(items.slice(0, 9).map((item) => item.label)).toEqual(["x", "y", "xy", "r", "g", "rg", "s", "t", "st"]);
     expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "float", kind: CompletionItemKind.Field }));
     expect(items).toContainEqual(expect.objectContaining({ label: "xy", detail: "vec2" }));
-    expect(items).toContainEqual(expect.objectContaining({ label: "xxxx", detail: "vec4" }));
+    expect(items).toContainEqual(expect.objectContaining({ label: "yx", detail: "vec2" }));
     expect(items.map((item) => item.sortText)).toEqual(items.map((_, index) => index.toString().padStart(4, "0")));
   });
 

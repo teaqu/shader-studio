@@ -34,7 +34,7 @@ export function findMemberAccess(source: string, position: Position): MemberAcce
 
 const SWIZZLE_SELECTION_CACHE = new Map<string, string[]>();
 
-/** Component selections offered for reading a vector of `size` components. */
+/** Curated completion suggestions; type inference still accepts every valid swizzle. */
 export function swizzleSelections(size: number, sets: readonly string[]): string[] {
   if (!Number.isInteger(size) || size < 2 || size > 4) {
     return [];
@@ -50,23 +50,20 @@ export function swizzleSelections(size: number, sets: readonly string[]): string
     const runs = components.map((_, index) => components.slice(0, index + 1).join("")).slice(1);
     return [...components, ...runs];
   });
-  const commonSet = new Set(common);
-  const remaining = sets.flatMap((set) => allSelections([...set].slice(0, size)))
-    .filter((selection) => !commonSet.has(selection))
-    .sort((left, right) => left.length - right.length || (left < right ? -1 : left > right ? 1 : 0));
-  const selections = [...common, ...remaining];
+  const rearrangements = sets.flatMap((set) => {
+    const components = [...set].slice(0, size);
+    const reversed = [components.slice(0, 2).reverse().join("")];
+    if (size >= 3) {
+      reversed.push(components.slice(0, 3).reverse().join(""));
+    }
+    if (size === 4 && set === "rgba") {
+      reversed.push("bgra");
+    }
+    return reversed;
+  });
+  const selections = [...common, ...rearrangements];
   SWIZZLE_SELECTION_CACHE.set(key, selections);
   return selections;
-}
-
-function allSelections(components: readonly string[]): string[] {
-  let previous = [""];
-  const result: string[] = [];
-  for (let length = 1; length <= 4; length++) {
-    previous = previous.flatMap((prefix) => components.map((component) => prefix + component));
-    result.push(...previous);
-  }
-  return result;
 }
 
 export type MemberExpressionStep =

@@ -48,6 +48,10 @@ describe("resolveSlangExpressionType", () => {
     expect(resolve("basis[0]")?.name).toBe("float4");
   });
 
+  it.each(["uv.xxxx", "m.albedo.yxzz", "m.albedo.grrr"])("resolves valid swizzles omitted from suggestions: %s", (expression) => {
+    expect(resolve(expression)?.name).toBe("float4");
+  });
+
   it("resolves generic vector declarations", () => {
     expect(resolve("tinted")).toEqual({ name: "half3", vector: { componentType: "half", size: 3 } });
   });

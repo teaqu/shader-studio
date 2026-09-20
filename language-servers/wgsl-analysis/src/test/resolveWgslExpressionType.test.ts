@@ -50,6 +50,16 @@ describe("resolveWgslExpressionType", () => {
     })).toMatchObject({ name: "f32" });
   });
 
+  it.each(["uv.xxxx", "light.color.yxzz", "light.color.grrr"])("resolves valid swizzles omitted from suggestions: %s", (expression) => {
+    expect(resolveWgslExpressionType({
+      uri: URI,
+      source: SOURCE,
+      stage: "fragment",
+      position: { line: 5, character: 0 },
+      expression,
+    })?.name).toBe("vec4f");
+  });
+
   it("resolves builtin constructor calls and indexed elements", () => {
     expect(resolveWgslExpressionType({
       uri: URI,

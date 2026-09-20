@@ -45,6 +45,9 @@ for (const fixture of fixtures) {
     await expect(options.nth(0)).toHaveAccessibleName(/^x,/);
     await expect(options.nth(1)).toHaveAccessibleName(/^y,/);
     await expect(options.nth(2)).toHaveAccessibleName(/^xy,/);
+    await expect(options).toHaveCount(fixture.language === 'GLSL' ? 12 : 8);
+    await expect(suggestions.getByRole('option', { name: /^yx,/ })).toBeVisible();
+    await expect(suggestions.getByRole('option', { name: /^gg,/ })).toHaveCount(0);
 
     await page.keyboard.type(fixture.selection);
     const choice = suggestions.getByRole('option', { name: new RegExp(`^${fixture.selection},`) }).first();

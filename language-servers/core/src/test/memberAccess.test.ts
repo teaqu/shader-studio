@@ -57,44 +57,47 @@ describe("findMemberAccess", () => {
 });
 
 describe("swizzleSelections", () => {
-  it("lists every one-to-four-component read selection without mixing naming sets", () => {
-    const selections = swizzleSelections(2, ["xyzw", "rgba"]);
-
-    expect(selections).toEqual(expect.arrayContaining(["x", "y", "xx", "yx", "xxx", "xyxy", "xxxx", "rg", "grrr"]));
-    expect(selections).not.toEqual(expect.arrayContaining(["z", "b", "xr", "rx"]));
-    expect(selections.every((selection) => selection.length >= 1 && selection.length <= 4)).toBe(true);
-    expect(new Set(selections).size).toBe(selections.length);
-  });
-
-  it("limits selections to the components the vector actually has", () => {
-    expect(swizzleSelections(3, ["xyzw"])).toEqual(expect.arrayContaining(["zyx", "zzzz"]));
-    expect(swizzleSelections(3, ["xyzw"])).not.toContain("w");
-    expect(swizzleSelections(4, ["stpq"])).toEqual(expect.arrayContaining(["ts", "qpts", "qqqq"]));
+  it("offers only components, common prefixes, and useful rearrangements", () => {
+    expect(swizzleSelections(2, ["xyzw", "rgba"])).toEqual([
+      "x", "y", "xy", "r", "g", "rg", "yx", "gr",
+    ]);
+    expect(swizzleSelections(3, ["xyzw"])).toEqual(["x", "y", "z", "xy", "xyz", "yx", "zyx"]);
+    expect(swizzleSelections(4, ["rgba"])).toEqual([
+      "r", "g", "b", "a", "rg", "rgb", "rgba", "gr", "bgr", "bgra",
+    ]);
+    expect(swizzleSelections(4, ["stpq"])).toEqual([
+      "s", "t", "p", "q", "st", "stp", "stpq", "ts", "pts",
+    ]);
   });
 
   it.each([
-    [2, 2, 60],
-    [3, 2, 240],
-    [4, 2, 680],
-    [2, 3, 90],
-    [3, 3, 360],
-    [4, 3, 1_020],
-  ])("returns the independently counted cardinality for width %i and %i sets", (size, setCount, count) => {
-    expect(swizzleSelections(size, ["xyzw", "rgba", "stpq"].slice(0, setCount))).toHaveLength(count);
+    [2, 2, 8],
+    [3, 2, 14],
+    [4, 2, 19],
+    [2, 3, 12],
+    [3, 3, 21],
+    [4, 3, 28],
+  ])("keeps width %i with %i naming sets to %i suggestions", (size, setCount, count) => {
+    const selections = swizzleSelections(size, ["xyzw", "rgba", "stpq"].slice(0, setCount));
+    expect(selections).toHaveLength(count);
+    expect(new Set(selections).size).toBe(count);
+    expect(selections.some((selection) => ["xx", "xxxx", "yxzz", "xr", "qpts"].includes(selection))).toBe(false);
   });
 
-  it("keeps common selections first, then orders the rest by length and spelling", () => {
+  it("keeps common selections ahead of rearrangements across naming sets", () => {
     const selections = swizzleSelections(2, ["xyzw", "rgba"]);
-
     expect(selections.slice(0, 6)).toEqual(["x", "y", "xy", "r", "g", "rg"]);
-    const remaining = selections.slice(6);
-    expect(remaining).toEqual([...remaining].sort((left, right) => left.length - right.length || left.localeCompare(right)));
     expect(swizzleSelections(2, ["xyzw", "rgba"])).toEqual(selections);
+    expect(swizzleSelections(2, ["rgba", "xyzw"])).toEqual([
+      "r", "g", "rg", "x", "y", "xy", "gr", "yx",
+    ]);
+    expect(swizzleSelections(2, [])).toEqual([]);
   });
 
   it("returns nothing for sizes outside the vector range", () => {
     expect(swizzleSelections(0, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(1, ["xyzw"])).toEqual([]);
+    expect(swizzleSelections(2.5, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(5, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(Number.NaN, ["xyzw"])).toEqual([]);
   });

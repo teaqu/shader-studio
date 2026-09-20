@@ -321,8 +321,8 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
 
       const completions = await service.completion({ document, position: { line: 3, character: 7 } });
 
-      expect(completions).toHaveLength(60);
-      expect(completions.map((item) => item.label)).toEqual(expect.arrayContaining(["x", "y", "xy", "yx", "xxxx", "r", "g", "rg"]));
+      expect(completions).toHaveLength(8);
+      expect(completions.map((item) => item.label)).toEqual(expect.arrayContaining(["x", "y", "xy", "yx", "r", "g", "rg"]));
       expect(completions.some((item) => item.label === "abs")).toBe(false);
     } finally {
       await service.dispose();

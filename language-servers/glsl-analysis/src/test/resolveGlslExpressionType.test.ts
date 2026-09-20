@@ -48,6 +48,10 @@ describe("resolveGlslExpressionType", () => {
     expect(resolve("m.albedo.rg")).toBe("vec2");
   });
 
+  it.each(["uv.xxxx", "m.albedo.yxzz", "m.albedo.grrr"])("resolves valid swizzles omitted from suggestions: %s", (expression) => {
+    expect(resolveGlslExpressionType(request(shader, expression, cursor.line, cursor.character))?.name).toBe("vec4");
+  });
+
   it("resolves calls to local functions and built-in constructors", () => {
     const resolve = (expression: string) => resolveGlslExpressionType(request(shader, expression, cursor.line, cursor.character))?.name;
 

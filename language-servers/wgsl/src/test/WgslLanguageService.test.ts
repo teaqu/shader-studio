@@ -141,13 +141,13 @@ describe("WgslLanguageService", () => {
     const items = await instance.completion({ document: revision, position: { line: 1, character: 21 } });
     const labels = items.map((item) => item.label);
 
-    expect(items).toHaveLength(60);
-    expect(labels).toEqual(expect.arrayContaining(["yx", "xx", "xyxy", "xxxx", "gr"]));
-    expect(labels).not.toEqual(expect.arrayContaining(["z", "s", "xr"]));
+    expect(items).toHaveLength(8);
+    expect(items.some((item) => ["xx", "xyxy", "xxxx", "z", "s", "xr"].includes(item.label))).toBe(false);
+    expect(labels).toEqual(expect.arrayContaining(["yx", "gr"]));
     expect(labels.slice(0, 6)).toEqual(["x", "y", "xy", "r", "g", "rg"]);
     expect(labels).not.toContain("shade");
     expect(items).toContainEqual(expect.objectContaining({ label: "x", detail: "f32", kind: CompletionItemKind.Field }));
-    expect(items).toContainEqual(expect.objectContaining({ label: "xxxx", detail: "vec4f" }));
+    expect(items).toContainEqual(expect.objectContaining({ label: "yx", detail: "vec2f" }));
     expect(items.map((item) => item.sortText)).toEqual(items.map((_, index) => index.toString().padStart(4, "0")));
   });
 
@@ -1106,10 +1106,10 @@ describe("WGSL member typing and hover gaps found by the corpus sweep", () => {
 
   it("shares argument-aware builtin inference between locals, hover, and direct member completion", async () => {
     const signature = "fn mainImage(coord: vec2f, mask: vec2u, matrix: mat2x3f)";
-    expect(await membersOf("", "normalize(coord).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
-    expect(await membersOf("", "bitcast<vec2u>(coord).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
-    expect(await membersOf("", "countLeadingZeros(mask).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
-    expect(await membersOf("", "transpose(matrix)[0].", {}, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
+    expect(await membersOf("", "normalize(coord).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
+    expect(await membersOf("", "bitcast<vec2u>(coord).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
+    expect(await membersOf("", "countLeadingZeros(mask).", {}, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
+    expect(await membersOf("", "transpose(matrix)[0].", {}, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
 
     const text = `${signature} {
   let bits = bitcast<vec2u>(coord);
@@ -1127,8 +1127,8 @@ describe("WGSL member typing and hover gaps found by the corpus sweep", () => {
   it("resolves Common aliases before interpreting direct builtin arguments", async () => {
     const commonFile = { uri: "file:///workspace/common.wgsl", version: 1, text: "alias Coords = vec2f; alias Mask = vec2u;" };
     const signature = "fn mainImage(coord: Coords, mask: Mask)";
-    expect(await membersOf("", "normalize(coord).", { commonFile }, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
-    expect(await membersOf("", "reverseBits(mask).", { commonFile }, signature)).toEqual(expect.arrayContaining(["yx", "xxxx"]));
+    expect(await membersOf("", "normalize(coord).", { commonFile }, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
+    expect(await membersOf("", "reverseBits(mask).", { commonFile }, signature)).toEqual(expect.arrayContaining(["yx", "xy"]));
   });
 
   it("completes modf and frexp result fields", async () => {
