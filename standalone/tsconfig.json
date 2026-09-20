@@ -22,6 +22,9 @@
       "@shader-studio/types": [
         "../types/src/index.ts"
       ],
+      "@shader-studio/rendering/*": [
+        "../rendering/src/*"
+      ],
       "@shader-studio/shader-explorer/*": [
         "../shader-explorer/src/*"
       ]

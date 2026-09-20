@@ -63,6 +63,164 @@ const SOURCES: ReadonlyArray<{
     config: EMPTY_CONFIG,
   },
   {
+    path: '/shaders/particle-swarm.wgsl',
+    code: `// Particle Swarm: WGSL compute passes push 16384 particles through a
+// flow field and tally them into an atomic density grid; this Image pass
+// only reads that grid. Open Config to see the storage buffers and passes.
+// Drag in the preview to pull the swarm towards the pointer.
+fn cellDensity(cell: vec2i) -> f32 {
+	let size = vec2i(GRID);
+	let wrapped = vec2u((cell % size + size) % size);
+	return f32(atomicLoad(&density[wrapped.y * GRID.x + wrapped.x]));
+}
+
+fn mainImage(coord: vec2f) -> vec4f {
+	// Bilinear read of the grid, so cells do not show up as hard squares.
+	let gridPosition = coord / iResolution.xy * vec2f(GRID) - 0.5;
+	let base = vec2i(floor(gridPosition));
+	let f = fract(gridPosition);
+	let packed = mix(
+		mix(cellDensity(base), cellDensity(base + vec2i(1, 0)), f.x),
+		mix(cellDensity(base + vec2i(0, 1)), cellDensity(base + vec2i(1, 1)), f.x),
+		f.y);
+
+	let intensity = 1.0 - exp(-packed * 0.4);
+	let colour = mix(vec3f(0.02, 0.03, 0.07), vec3f(0.2, 0.7, 1.0), intensity)
+		+ vec3f(1.0, 0.55, 0.2) * pow(intensity, 5.0);
+	return vec4f(colour, 1.0);
+}`,
+    config: {
+      version: '1.0',
+      storage: {
+        particles: { count: 16384, elementType: 'vec4<f32>' },
+        density: { count: 36864, elementType: 'atomic<u32>' },
+      },
+      passes: {
+        common: { path: 'particle-swarm/common.buffer.wgsl' },
+        Seed: {
+          type: 'compute',
+          path: 'particle-swarm/swarm.buffer.wgsl',
+          entryPoint: 'seedParticles',
+          dispatch: { cover: 'particles' },
+          dispatchOnce: true,
+        },
+        Clear: {
+          type: 'compute',
+          path: 'particle-swarm/swarm.buffer.wgsl',
+          entryPoint: 'clearDensity',
+          dispatch: { cover: 'density' },
+        },
+        Advect: {
+          type: 'compute',
+          path: 'particle-swarm/swarm.buffer.wgsl',
+          entryPoint: 'advectParticles',
+          dispatch: { cover: 'particles' },
+        },
+        Image: { inputs: {} },
+      },
+    },
+    buffers: [
+      {
+        path: '/shaders/particle-swarm/common.buffer.wgsl',
+        code: `// Shared by every pass. The storage buffers themselves (particles,
+// density) are declared in the Storage tab of the config, so no pass has
+// to declare them. GRID must stay in step with the density count there.
+const GRID = vec2u(256u, 144u);
+const PARTICLE_COUNT = 16384u;
+
+fn hash21(p: vec2f) -> f32 {
+	var h = fract(p * vec2f(0.1031, 0.1030));
+	h += dot(h, h.yx + 33.33);
+	return fract((h.x + h.y) * h.x);
+}
+
+fn valueNoise(p: vec2f) -> f32 {
+	let cell = floor(p);
+	let f = fract(p);
+	let blend = f * f * (3.0 - 2.0 * f);
+	return mix(
+		mix(hash21(cell), hash21(cell + vec2f(1.0, 0.0)), blend.x),
+		mix(hash21(cell + vec2f(0.0, 1.0)), hash21(cell + vec2f(1.0, 1.0)), blend.x),
+		blend.y);
+}
+
+// Curl of a drifting noise field: a divergence-free flow, so the swarm
+// keeps swirling instead of collapsing into sinks.
+fn flowField(p: vec2f, t: f32) -> vec2f {
+	let e = 0.015;
+	let drift = vec2f(0.0, t * 0.06);
+	let centre = valueNoise(p * 2.0 + drift);
+	let dx = valueNoise((p + vec2f(e, 0.0)) * 2.0 + drift) - centre;
+	let dy = valueNoise((p + vec2f(0.0, e)) * 2.0 + drift) - centre;
+	return vec2f(-dy, dx) / e;
+}
+
+fn densityIndex(position: vec2f) -> u32 {
+	let cell = vec2u(clamp(position * vec2f(GRID), vec2f(0.0), vec2f(GRID) - 1.0));
+	return cell.y * GRID.x + cell.x;
+}`,
+      },
+      {
+        path: '/shaders/particle-swarm/swarm.buffer.wgsl',
+        code: `// Three compute kernels in one file. Each pass in the config picks its
+// kernel with entryPoint, and they run in config order every frame:
+// Seed (once) -> Clear -> Advect.
+
+// Run once per compile and on Reset: scatter the particles, no velocity.
+@compute @workgroup_size(64, 1, 1)
+fn seedParticles(@builtin(global_invocation_id) id: vec3u) {
+	if (id.x >= PARTICLE_COUNT) {
+		return;
+	}
+	let n = f32(id.x);
+	particles[id.x] = vec4f(hash21(vec2f(n, 1.7)), hash21(vec2f(n, 9.3)), 0.0, 0.0);
+}
+
+// Zero the grid before this frame's particles are counted into it.
+@compute @workgroup_size(64, 1, 1)
+fn clearDensity(@builtin(global_invocation_id) id: vec3u) {
+	if (id.x >= GRID.x * GRID.y) {
+		return;
+	}
+	atomicStore(&density[id.x], 0u);
+}
+
+// Move each particle along the flow field, then tally it into the grid.
+// Many particles land in the same cell, so the counter has to be atomic.
+@compute @workgroup_size(64, 1, 1)
+fn advectParticles(@builtin(global_invocation_id) id: vec3u) {
+	if (id.x >= PARTICLE_COUNT) {
+		return;
+	}
+
+	let particle = particles[id.x];
+	let dt = clamp(iTimeDelta, 0.0, 0.05);
+	let aspect = vec2f(iResolution.x / iResolution.y, 1.0);
+	var position = particle.xy;
+	var velocity = particle.zw;
+
+	// Chase the flow rather than accumulating momentum: the field is
+	// divergence-free, so tracking it keeps the swarm spread out instead of
+	// piling every particle into the same few streams.
+	var desired = flowField(position * aspect, iTime) * 0.08;
+	if (iMouse.z > 0.0) {
+		let toPointer = iMouse.xy / iResolution.xy - position;
+		let distance = length(toPointer);
+		if (distance > 0.0001) {
+			desired += toPointer / distance * 0.25 * exp(-distance * 4.0);
+		}
+	}
+	velocity = mix(desired, velocity, exp(-dt * 6.0));
+
+	// fract() wraps negatives too, so particles re-enter on the far edge.
+	position = fract(position + velocity * dt);
+	particles[id.x] = vec4f(position, velocity);
+	atomicAdd(&density[densityIndex(position)], 1u);
+}`,
+      },
+    ],
+  },
+  {
     path: '/shaders/nebula-texture.glsl',
     code: `void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 uv = fragCoord / iResolution.xy;
