@@ -379,7 +379,118 @@ describe("ShaderPipeline", () => {
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    it("should clear resources and buffers (but not reset time) after flagReloadOnNextApply + recompile", async () => {
+    describe("reload-flagged config edits", () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+
+      /**
+       * Installs BufferA and BufferB, then returns the live buffer map so a
+       * test can assert which entries survive the next compile by identity.
+       */
+      const installTwoBufferPasses = async (config: ShaderConfig) => {
+        let installedBuffers: Record<string, unknown> = {};
+        mockBufferManager.getPassBuffers.mockImplementation(() => installedBuffers);
+        mockBufferManager.setPassBuffers.mockImplementation((next) => {
+          installedBuffers = next;
+        });
+        // The reuse check reads the installed texture size, so the mock has to
+        // carry the dimensions a real ping-pong pair would report.
+        mockBufferManager.createPingPongBuffers.mockImplementation((
+          width: number, height: number, requiresDepth: boolean, outputFormat: string,
+        ) => ({
+          front: { mTex0: { mXres: width, mYres: height } },
+          back: { mTex0: { mXres: width, mYres: height } },
+          requiresDepth,
+          outputFormat: outputFormat === "rgba16float" ? "rgba16float" : "rgba32float",
+        }));
+        await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", {
+          BufferA: shaderCode,
+          BufferB: shaderCode,
+        });
+        return {
+          buffers: () => installedBuffers,
+          bufferA: installedBuffers.BufferA,
+          bufferB: installedBuffers.BufferB,
+        };
+      };
+
+      const twoBufferConfig = (outputFormat?: "rgba16float" | "rgba32float"): ShaderConfig => ({
+        version: "1",
+        passes: {
+          BufferA: { path: "buffer-a.glsl", inputs: {}, ...(outputFormat ? { outputFormat } : {}) },
+          BufferB: { path: "buffer-b.glsl", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferB" } } },
+        },
+      } as ShaderConfig);
+
+      it("keeps simulation feedback for passes a reload leaves unchanged", async () => {
+        const installed = await installTwoBufferPasses(twoBufferConfig());
+        mockBufferManager.createPingPongBuffers.mockClear();
+        mockResourceManager.cleanup.mockClear();
+
+        shaderPipeline.flagReloadOnNextApply();
+        await shaderPipeline.compileShaderPipeline(shaderCode, twoBufferConfig(), "shader.glsl", {
+          BufferA: shaderCode,
+          BufferB: shaderCode,
+        });
+
+        expect(installed.buffers().BufferA).toBe(installed.bufferA);
+        expect(installed.buffers().BufferB).toBe(installed.bufferB);
+        expect(mockBufferManager.createPingPongBuffers).not.toHaveBeenCalled();
+        // File-backed inputs still reload; only the buffer wipe is dropped.
+        expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
+        expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      });
+
+      it("reallocates only the pass whose output format changed", async () => {
+        const installed = await installTwoBufferPasses(twoBufferConfig("rgba32float"));
+        mockBufferManager.createPingPongBuffers.mockClear();
+
+        shaderPipeline.flagReloadOnNextApply();
+        await shaderPipeline.compileShaderPipeline(
+          shaderCode,
+          twoBufferConfig("rgba16float"),
+          "shader.glsl",
+          { BufferA: shaderCode, BufferB: shaderCode },
+        );
+
+        expect(installed.buffers().BufferA).not.toBe(installed.bufferA);
+        expect(installed.buffers().BufferB).toBe(installed.bufferB);
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(1);
+        expect(mockBufferManager.createPingPongBuffers)
+          .toHaveBeenCalledWith(800, 600, false, "rgba16float");
+      });
+
+      it("still wipes every buffer on reset", async () => {
+        const installed = await installTwoBufferPasses(twoBufferConfig());
+        mockBufferManager.createPingPongBuffers.mockClear();
+
+        shaderPipeline.resetTime();
+        await shaderPipeline.compileShaderPipeline(shaderCode, twoBufferConfig(), "shader.glsl", {
+          BufferA: shaderCode,
+          BufferB: shaderCode,
+        });
+
+        expect(installed.buffers().BufferA).not.toBe(installed.bufferA);
+        expect(installed.buffers().BufferB).not.toBe(installed.bufferB);
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(2);
+      });
+
+      it("still wipes every buffer when the shader path changes", async () => {
+        const installed = await installTwoBufferPasses(twoBufferConfig());
+        mockBufferManager.createPingPongBuffers.mockClear();
+
+        await shaderPipeline.compileShaderPipeline(shaderCode, twoBufferConfig(), "other.glsl", {
+          BufferA: shaderCode,
+          BufferB: shaderCode,
+        });
+
+        expect(installed.buffers().BufferA).not.toBe(installed.bufferA);
+        expect(installed.buffers().BufferB).not.toBe(installed.bufferB);
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("should clear resources (but not reset time) after flagReloadOnNextApply + recompile", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
 
@@ -2559,6 +2670,78 @@ describe("ShaderPipeline", () => {
     });
   });
 
+  describe("buffer output formats", () => {
+    it.each([undefined, 'auto', 'rgba32float', 'rgba16float'] as const)(
+      'passes configured format %s to buffer allocation', async (outputFormat) => {
+        const result = await shaderPipeline.compileShaderPipeline('image', {
+          version: '1', passes: {
+            BufferA: { path: 'a.glsl', outputFormat }, Image: {},
+          },
+        }, 'image.glsl', { BufferA: 'buffer' });
+        expect(result.success).toBe(true);
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(
+          800, 600, false, outputFormat ?? 'auto',
+        );
+      },
+    );
+
+    it('keeps installed buffers and shaders when a format switch cannot allocate', async () => {
+      const original = {
+        front: { mTex0: { mXres: 800, mYres: 600 } }, back: {},
+        requiresDepth: false, outputFormat: 'rgba32float',
+      };
+      let installed: Record<string, unknown> = {};
+      mockBufferManager.getPassBuffers.mockImplementation(() => installed);
+      mockBufferManager.setPassBuffers.mockImplementation(next => {
+        installed = next; 
+      });
+      mockBufferManager.createPingPongBuffers.mockReturnValueOnce(original);
+      const compile = (outputFormat: 'rgba16float' | 'rgba32float') =>
+        shaderPipeline.compileShaderPipeline('image', {
+          version: '1', passes: { BufferA: { path: 'a.glsl', outputFormat }, Image: {} },
+        }, 'image.glsl', { BufferA: 'buffer' });
+      await compile('rgba32float');
+      const shaders = shaderPipeline.getPassShaders();
+      mockBufferManager.createPingPongBuffers.mockImplementationOnce(() => {
+        throw new Error('half-float target unavailable');
+      });
+      await expect(compile('rgba16float')).resolves.toEqual({
+        success: false, errors: ['Failed to allocate buffers: half-float target unavailable'],
+      });
+      expect(installed.BufferA).toBe(original);
+      expect(shaderPipeline.getPassShaders()).toBe(shaders);
+    });
+
+    it('reallocates only when the resolved output format changes', async () => {
+      let installed: Record<string, unknown> = {};
+      mockBufferManager.getPassBuffers.mockImplementation(() => installed);
+      mockBufferManager.setPassBuffers.mockImplementation(next => {
+        installed = next; 
+      });
+      mockBufferManager.createPingPongBuffers.mockImplementation((width, height, requiresDepth, format) => ({
+        front: { mTex0: { mXres: width, mYres: height } }, back: {}, requiresDepth,
+        outputFormat: format === 'rgba16float' ? 'rgba16float' : 'rgba32float',
+      }));
+      const compile = (outputFormat?: 'auto' | 'rgba16float' | 'rgba32float') =>
+        shaderPipeline.compileShaderPipeline('image', {
+          version: '1', passes: { BufferA: { path: 'a.glsl', outputFormat }, Image: {} },
+        }, 'image.glsl', { BufferA: 'buffer' });
+      await compile();
+      await compile('auto');
+      await compile('rgba32float');
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(1);
+      const original = installed.BufferA;
+      await compile('rgba16float');
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(2);
+      expect(installed.BufferA).not.toBe(original);
+      expect(mockBufferManager.cleanupBuffers).toHaveBeenCalledWith({ BufferA: original });
+      await compile('rgba16float');
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(2);
+      await compile('rgba32float');
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledTimes(3);
+    });
+  });
+
   describe("buffer pass resolutions", () => {
     it("allocates ping-pong buffers using each buffer pass resolution", async () => {
       const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
@@ -2593,8 +2776,8 @@ describe("ShaderPipeline", () => {
         },
       );
 
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(800, 600, false);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(400, 300, false);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(800, 600, false, "auto");
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(400, 300, false, "auto");
     });
 
     it("clamps compile-time ping-pong buffers to WebGL render limits", async () => {
@@ -2635,9 +2818,9 @@ describe("ShaderPipeline", () => {
         },
       );
 
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(6_000, 4_096, false);
-      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false);
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false, "auto");
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(6_000, 4_096, false, "auto");
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(8_192, 4_096, false, "auto");
     });
   });
 

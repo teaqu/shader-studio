@@ -215,7 +215,8 @@ Buffer passes use a simpler fixed-size resolution:
 }
 ```
 
-WebGPU fragment buffer and compute passes accept `outputFormat`:
+Buffer passes accept `outputFormat` on both backends, as do WebGPU compute
+passes:
 
 | Value | Meaning |
 |---|---|

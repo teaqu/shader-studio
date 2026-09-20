@@ -1,3 +1,4 @@
+import type { BufferOutputFormat } from "@shader-studio/types";
 import type { PiRenderer, PiTexture, PiRenderTarget, PiShader } from "../types/piRenderer";
 import type { Buffer, Buffers } from "../models";
 
@@ -11,13 +12,28 @@ export class BufferManager {
     this.copyShader = this.createCopyShader();
   }
 
-  public createPingPongBuffers(width: number, height: number, requiresDepth: boolean = false): Buffer {
+  public createPingPongBuffers(
+    width: number,
+    height: number,
+    requiresDepth: boolean = false,
+    requestedFormat: BufferOutputFormat = "auto",
+  ): Buffer {
+    const outputFormat = requestedFormat === "rgba16float" ? "rgba16float" : "rgba32float";
+    const textureFormat = outputFormat === "rgba16float"
+      ? this.renderer.TEXFMT.C4F16
+      : this.renderer.TEXFMT.C4F32;
     const filter = this.renderer.FILTER.LINEAR;
 
-    const frontTex = this.createFloatTexture(width, height, filter);
-    const backTex = this.createFloatTexture(width, height, filter);
+    const frontTex = this.createFloatTexture(width, height, filter, textureFormat);
+    const backTex = this.createFloatTexture(width, height, filter, textureFormat);
 
     if (!frontTex || !backTex) {
+      if (frontTex) {
+        this.renderer.DestroyTexture(frontTex);
+      }
+      if (backTex) {
+        this.renderer.DestroyTexture(backTex);
+      }
       throw new Error("Failed to create ping-pong textures");
     }
 
@@ -28,7 +44,19 @@ export class BufferManager {
       backTex, null, null, null, null, requiresDepth
     );
 
-    return { front: frontRT, back: backRT, requiresDepth };
+    if (!frontRT || !backRT) {
+      if (frontRT) {
+        this.renderer.DestroyRenderTarget(frontRT);
+      }
+      if (backRT) {
+        this.renderer.DestroyRenderTarget(backRT);
+      }
+      this.renderer.DestroyTexture(frontTex);
+      this.renderer.DestroyTexture(backTex);
+      throw new Error(`Failed to create ${outputFormat} ping-pong render targets`);
+    }
+
+    return { front: frontRT, back: backRT, requiresDepth, outputFormat };
   }
 
   public resizeBuffers(
@@ -43,7 +71,10 @@ export class BufferManager {
       if (name !== "Image" && name !== "common") {
         const bufW = bufferResolutions?.[name]?.width ?? newWidth;
         const bufH = bufferResolutions?.[name]?.height ?? newHeight;
-        const newBuffer = this.createPingPongBuffers(bufW, bufH);
+        const oldBuffer = oldBuffers[name]!;
+        const newBuffer = this.createPingPongBuffers(
+          bufW, bufH, oldBuffer.requiresDepth, oldBuffer.outputFormat,
+        );
 
         if (this.shouldCopyExistingBuffers(oldBuffers, name, newBuffer)) {
           this.copyExistingBuffers(oldBuffers[name]!, newBuffer);
@@ -85,12 +116,12 @@ export class BufferManager {
     return this.renderer.CreateShader(vs, fs);
   }
 
-  private createFloatTexture(width: number, height: number, filter: any): PiTexture | null {
+  private createFloatTexture(width: number, height: number, filter: number, format: number): PiTexture | null {
     return this.renderer.CreateTexture(
       this.renderer.TEXTYPE.T2D,
       width,
       height,
-      this.renderer.TEXFMT.C4F32,
+      format,
       filter,
       this.renderer.TEXWRP.CLAMP,
       null,

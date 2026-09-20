@@ -10,7 +10,7 @@ const createMockRenderer = (): PiRenderer => {
 
   return {
     FILTER: { LINEAR: 1, NONE: 0 },
-    TEXFMT: { C4F32: 5 },
+    TEXFMT: { C4F32: 5, C4F16: 3 },
     TEXTYPE: { T2D: 0 },
     TEXWRP: { CLAMP: 0 },
 
@@ -108,6 +108,61 @@ describe('BufferManager', () => {
   });
 
   describe('Buffer Creation', () => {
+    it.each([
+      [undefined, 5], ['auto', 5], ['rgba32float', 5], ['rgba16float', 3],
+    ] as const)('allocates both textures for output format %s', (format, expected) => {
+      const buffer = bufferManager.createPingPongBuffers(32, 24, false, format);
+      expect(buffer.front?.mTex0?.mFormat).toBe(expected);
+      expect(buffer.back?.mTex0?.mFormat).toBe(expected);
+    });
+
+    it.each([1, 2])('cleans up when texture %s cannot be allocated', (failedCall) => {
+      const create = vi.mocked(mockRenderer.CreateTexture);
+      const implementation = create.getMockImplementation()!;
+      create.mockImplementationOnce((...args) => failedCall === 1 ? null : implementation(...args))
+        .mockImplementationOnce((...args) => failedCall === 2 ? null : implementation(...args));
+      expect(() => bufferManager.createPingPongBuffers(32, 24, false, 'rgba16float'))
+        .toThrow('Failed to create ping-pong textures');
+      expect(mockRenderer.DestroyTexture).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([1, 2])('rejects incomplete render target %s and cleans allocated resources', (failedCall) => {
+      const create = vi.mocked(mockRenderer.CreateRenderTarget);
+      const implementation = create.getMockImplementation()!;
+      create.mockImplementationOnce((...args) => failedCall === 1 ? null : implementation(...args))
+        .mockImplementationOnce((...args) => failedCall === 2 ? null : implementation(...args));
+      expect(() => bufferManager.createPingPongBuffers(32, 24, false, 'rgba16float'))
+        .toThrow('Failed to create rgba16float ping-pong render targets');
+      expect(mockRenderer.DestroyTexture).toHaveBeenCalledTimes(2);
+      expect(mockRenderer.DestroyRenderTarget).toHaveBeenCalledTimes(1);
+    });
+
+    it('resizes mixed formats independently and copies both sides', () => {
+      bufferManager.setPassBuffers({
+        BufferA: bufferManager.createPingPongBuffers(32, 24, false, 'rgba16float'),
+        BufferB: bufferManager.createPingPongBuffers(32, 24, false, 'rgba32float'),
+      });
+      bufferManager.resizeBuffers(64, 48, { BufferA: { width: 16, height: 12 } });
+      const { BufferA, BufferB } = bufferManager.getPassBuffers();
+      expect(BufferA?.front?.mTex0).toMatchObject({ mFormat: 3, mXres: 16, mYres: 12 });
+      expect(BufferA?.back?.mTex0?.mFormat).toBe(3);
+      expect(BufferB?.front?.mTex0).toMatchObject({ mFormat: 5, mXres: 64, mYres: 48 });
+      expect(BufferB?.back?.mTex0?.mFormat).toBe(5);
+      expect(mockRenderer.DrawUnitQuad_XY).toHaveBeenCalledTimes(4);
+    });
+
+    it('preserves half-float storage and depth when resizing', () => {
+      bufferManager.setPassBuffers({
+        BufferA: bufferManager.createPingPongBuffers(32, 24, true, 'rgba16float'),
+      });
+      bufferManager.resizeBuffers(64, 48);
+      const buffer = bufferManager.getPassBuffers().BufferA!;
+      expect(buffer.front?.mTex0?.mFormat).toBe(3);
+      expect(buffer.back?.mTex0?.mFormat).toBe(3);
+      expect(buffer.requiresDepth).toBe(true);
+      expect(buffer.front?.mTex0?.mXres).toBe(64);
+    });
+
     it('should create ping pong buffers with correct dimensions', () => {
       const buffer = bufferManager.createPingPongBuffers(800, 600);
       

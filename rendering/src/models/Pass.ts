@@ -1,4 +1,4 @@
-import type { BufferResolution, GeometryType } from "@shader-studio/types";
+import type { BufferOutputFormat, BufferResolution, GeometryType } from "@shader-studio/types";
 
 export type Pass = {
   name: string;
@@ -10,4 +10,5 @@ export type Pass = {
   modelMesh?: string;
   path?: string;
   resolution?: BufferResolution;
+  outputFormat?: BufferOutputFormat;
 }

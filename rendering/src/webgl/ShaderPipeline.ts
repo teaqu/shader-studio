@@ -196,6 +196,7 @@ export class ShaderPipeline {
           } : {}),
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
           resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
+          outputFormat: this.isBufferPass(pass) ? (pass as BufferPass).outputFormat : undefined,
         };
       })
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
@@ -321,7 +322,11 @@ export class ShaderPipeline {
     const currentPassBuffers = this.bufferManager.getPassBuffers();
     const nextPassBuffers: Buffers = {};
     const allocatedPassBuffers: Buffers = {};
-    const forceFreshBuffers = appliesReset || reloadsStructure || pathChanged;
+    // A reload reloads file-backed resources; it does not discard feedback.
+    // Buffers are reallocated per pass below when their size, depth, or output
+    // format actually changed, matching WebGPU, where a config edit rebuilds
+    // only the passes whose pipeline key moved.
+    const forceFreshBuffers = appliesReset || pathChanged;
 
     try {
       for (const pass of nextPasses) {
@@ -335,12 +340,14 @@ export class ShaderPipeline {
           this.renderLimits,
         );
         const requiresDepth = pass.geometry !== "fullscreen";
+        const outputFormat = pass.outputFormat === "rgba16float" ? "rgba16float" : "rgba32float";
         const current = currentPassBuffers[pass.name];
         const matches = !forceFreshBuffers
           && current
           && current.front?.mTex0?.mXres === size.width
           && current.front?.mTex0?.mYres === size.height
-          && (current.requiresDepth ?? false) === requiresDepth;
+          && (current.requiresDepth ?? false) === requiresDepth
+          && (current.outputFormat ?? "rgba32float") === outputFormat;
         if (matches) {
           nextPassBuffers[pass.name] = current;
         } else {
@@ -348,6 +355,7 @@ export class ShaderPipeline {
             size.width,
             size.height,
             requiresDepth,
+            pass.outputFormat ?? "auto",
           );
           nextPassBuffers[pass.name] = allocated;
           allocatedPassBuffers[pass.name] = allocated;

@@ -7,8 +7,9 @@
  * | `skip`      | Structurally equal, or only input `muted` changed  | Nothing — no message sent                         | UI mute controls already applied the runtime change; persisted mute is reused on load |
  * | `recompile` | Only live-safe loop fields changed:                | Plain `shaderSource` resend (no `reload` flag).   | Audio/video keep playing (loop reapplied in place by the loaders); ping-pong buffers   |
  * |             | `startTime`, `endTime` on inputs                   | Loaders reapply these idempotently to cached media| keep their contents; `iTime` unaffected; shader caches make this cheap                 |
- * | `reload`    | Anything else changed (paths, types, filter/wrap/  | `shaderSource` resend with `reload: true`: all    | Media playback restarts (audio silent until user action, video re-syncs); buffers      |
- * |             | vflip/grayscale, resolution, passes, script, ...)  | resources destroyed and reloaded on next apply    | wiped; `iTime` NOT reset                                                               |
+ * | `reload`    | Anything else changed (paths, types, filter/wrap/  | `shaderSource` resend with `reload: true`: all    | Media playback restarts (audio silent until user action, video re-syncs); ping-pong    |
+ * |             | vflip/grayscale, resolution, passes, script, ...)  | resources destroyed and reloaded on next apply    | buffers keep their contents unless the pass's own size, depth, or output format        |
+ * |             |                                                    |                                                   | changed; `iTime` NOT reset                                                             |
  *
  * Safe defaults — all resolve to `reload`: no snapshot yet for the path,
  * either config unparseable, or any changed field this classifier does not

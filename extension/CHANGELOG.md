@@ -13,6 +13,8 @@
 - The WGSL Variable Inspector now shows function parameters and local variables. View built-in uniforms in the debug panel and script values in the config panel's Script tab.
 - Fixed variable inspection sometimes failing when opening a shader that uses script uniforms.
 - Fixed WGSL shaders failing to compile when using Common helpers.
+- GLSL buffer passes now honour the Output format setting; previously WebGL always stored 32-bit buffers and ignored `rgba16float`.
+- Fixed a config edit restarting running GLSL simulations: WebGL reallocated every buffer, while WebGPU kept the passes the edit did not change. Buffers now survive unless their own size, depth, or output format changed.
 - Fixed the cursor jumping and typed text appearing in the wrong place when editing the same shader in multiple editors.
 - Fixed switching files losing edits, applying edits to the wrong file, or showing completions and Common helpers from another shader.
 - Fixed signature help disappearing while editing, including inside nested WGSL calls.

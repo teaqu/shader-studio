@@ -112,7 +112,7 @@ let ready = albedo.loaded; // bool
 ```
 
 Use `albedoTexture` and `albedoSampler` for sampling, and `albedo` for metadata. Legacy `albedoSample`, `albedoSampleLevel`, `albedoSampleGrad`,
-`albedoSize()`, `albedoTime()` and `albedoLoaded()` remain supported.
+`albedoLoad`, `albedoSize()`, `albedoTime()` and `albedoLoaded()` remain supported.
 
 ## Shared Sampling Rules
 
@@ -329,7 +329,7 @@ Find **Output format** at the bottom of a buffer or compute pass's settings.
 Image has no output-format setting: it displays the final result on the canvas,
 while buffers store values for other passes to use.
 
-For WebGPU, the corresponding JSON setting is `outputFormat`:
+The corresponding JSON setting is `outputFormat`:
 
 ```json
 "Simulation": {
@@ -339,13 +339,14 @@ For WebGPU, the corresponding JSON setting is `outputFormat`:
 }
 ```
 
-The Config panel exposes the same setting. WebGL buffer outputs remain `RGBA32F`.
-Supported WebGPU values are `auto`,
-`rgba16float`, and `rgba32float`; omission is the same as `auto`.
+The Config panel exposes the same setting. Supported values are `auto`,
+`rgba16float`, and `rgba32float`; omission is the same as `auto`. Both backends
+honour the setting.
 
 | Backend | Buffer format | Precision per component |
 |---|---|---|
-| WebGL (GLSL) | `RGBA32F` | 32-bit float |
+| WebGL (GLSL), `auto` or `rgba32float` | `RGBA32F` | 32-bit float |
+| WebGL (GLSL), `rgba16float` | `RGBA16F` | 16-bit float |
 | WebGPU (Slang and WGSL), `auto` or `rgba32float` | `rgba32float` | 32-bit float |
 | WebGPU (Slang and WGSL), `rgba16float` | `rgba16float` | 16-bit float |
 
@@ -377,11 +378,13 @@ ivec2 p = ivec2(fragCoord); // in bounds of state
 vec4 cell = load2D(state, p);
 ```
 
-**WGSL:** pass the channel's texture and a bottom-left pixel coordinate.
+**WGSL:** call the shared helper with the channel's texture, or the channel's
+`Load` convenience function. Both take a bottom-left pixel coordinate.
 
 ```wgsl
 let p = vec2i(coord); // in bounds of state
 let cell = load2D(stateTexture, p);
+let sameCell = stateLoad(p);
 ```
 
 **Slang:** call the shared helper or the channel's `Load` convenience method.
@@ -393,7 +396,7 @@ float4 sameCell = state.Load(p);
 ```
 
 !!! warning
-    `load2D` and Slang channel `.Load` use bottom-left integer
+    `load2D`, WGSL `<name>Load` and Slang channel `.Load` use bottom-left integer
     coordinates. Native WGSL `textureLoad` and Slang `.texture.Load` retain their
     native top-left coordinates. Use native operations directly when your integer
     coordinates are already top-left; do not apply the conversion twice.
