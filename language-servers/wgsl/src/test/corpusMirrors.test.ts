@@ -12,8 +12,9 @@ import { WgslLanguageService } from "../WgslLanguageService";
  * (tests/fixtures/shader-corpus/wgsl). Each document opens
  * with the environment the extension would build from its sibling config —
  * stage, channel resources, script uniforms, common file — and asserts:
- * zero parser diagnostics, working hover on the entry point (plus "Common"
- * provenance for common helpers), and a working completion list.
+ * zero parser diagnostics, zero error/warning diagnostics from the assembled
+ * service, working hover on the entry point (plus "Common" provenance for
+ * common helpers), and a working completion list.
  * A dedicated case pins tooltip docs for the exotic builtins exercised by
  * intellisense.wgsl, and a negative case proves the diagnostic assertions
  * are not vacuous.
@@ -266,10 +267,19 @@ describe("WGSL corpus mirrors in the language service", () => {
       const parsed = parseWgslDocument(doc.fileRel, doc.text, stage);
       expect(parsed.parsedSuccessfully).toBe(true);
       expect(parsed.diagnostics).toEqual([]);
-      const { hoverText } = await openMirror(doc.fileRel, doc.text, {
+      const { hoverText, instance, revision } = await openMirror(doc.fileRel, doc.text, {
         stage, passName: doc.pass, resources: doc.resources,
         customUniforms: doc.customUniforms, commonFile: doc.commonFile,
       });
+      // Two layers, one service instance: the raw parser above, the assembled
+      // service here. Hints (unused parameters and the like) are advisory;
+      // errors and warnings must be clean, matching the GLSL and Slang sweeps.
+      const problems = (await instance.diagnostics({ document: revision }))
+        .filter((item) => (item.severity ?? 1) <= 2);
+      expect(
+        problems.map((item) => `${item.range.start.line + 1}: ${item.message}`),
+        `${label}: unexpected diagnostics`,
+      ).toEqual([]);
       const hover = await hoverText(doc.entry);
       expect(hover, `${label}: no hover for ${doc.entry}`).not.toBeNull();
       expect(hover).toContain(doc.entry);
@@ -278,19 +288,6 @@ describe("WGSL corpus mirrors in the language service", () => {
         expect(commonHover, `${label}: no Common hover for ${doc.commonHelper}`).not.toBeNull();
         expect(commonHover).toContain("Common");
       }
-    },
-  );
-
-  it.each(DOCS.map((d) => `${d.configRel} :: ${d.pass} (${d.fileRel})`))(
-    "reports no language-service errors on valid corpus source: %s",
-    async (label) => {
-      const doc = DOCS.find((d) => `${d.configRel} :: ${d.pass} (${d.fileRel})` === label)!;
-      const { instance, revision } = await openMirror(doc.fileRel, doc.text, {
-        stage: doc.stage, passName: doc.pass, resources: doc.resources,
-        customUniforms: doc.customUniforms, commonFile: doc.commonFile,
-      });
-      const errors = (await instance.diagnostics({ document: revision })).filter((item) => item.severity === 1);
-      expect(errors.map((item) => `${item.range.start.line + 1}: ${item.message}`)).toEqual([]);
     },
   );
 

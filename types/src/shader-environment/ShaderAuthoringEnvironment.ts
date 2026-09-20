@@ -6,6 +6,7 @@ import {
 } from "./BuiltinUniforms";
 import { isShaderLanguageReservedTerm } from "./ShaderLanguageReservedTerms";
 import type { ShaderLanguageId } from "./ShaderLanguages";
+import { WGSL_NATIVE_STORAGE_ELEMENT_TYPES } from "../wgslStorage";
 
 export type ShaderStage = ShaderStudioBuiltinStage;
 
@@ -161,6 +162,12 @@ function isValidStorageElementType(
   languageId: ShaderAuthoringEnvironment["languageId"],
 ): boolean {
   if (BUILTIN_STORAGE_ELEMENT_TYPES.has(elementType)) {
+    return true;
+  }
+  // A WGSL config spells element types in WGSL (`f32`, `vec4<f32>`) as often as
+  // it uses the shared aliases; the renderer passes those through untouched, so
+  // treating them as reserved words warned on valid shaders.
+  if (languageId === "wgsl" && WGSL_NATIVE_STORAGE_ELEMENT_TYPES.has(elementType.replace(/\s+/g, ""))) {
     return true;
   }
   if (!STORAGE_ELEMENT_TYPE.test(elementType)) {

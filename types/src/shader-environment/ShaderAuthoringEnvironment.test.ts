@@ -13,7 +13,7 @@ import {
   type ShaderAuthoringEnvironment,
 } from "../index";
 
-function baseEnvironment(languageId: "glsl" | "slang"): ShaderAuthoringEnvironment {
+function baseEnvironment(languageId: "glsl" | "slang" | "wgsl"): ShaderAuthoringEnvironment {
   return {
     documentUri: `file:///shaders/image.${languageId}`,
     languageId,
@@ -777,6 +777,52 @@ describe("ShaderAuthoringEnvironment", () => {
       code: "invalid-element-type",
       message: 'Storage resource "particles" has an invalid element type.',
     });
+  });
+
+  it("accepts native WGSL storage element types", () => {
+    // WGSL configs spell storage element types in WGSL, exactly as the Slang
+    // corpus spells them in Slang (`f32`/`vec4<f32>` against `float`/`float4`),
+    // and the renderer resolves both through wgslStorageElementType. Rejecting
+    // the native spelling as a reserved word warned on valid shaders.
+    for (const elementType of [
+      "f32", "i32", "u32",
+      "vec2<f32>", "vec3<f32>", "vec4<f32>",
+      "vec2<i32>", "vec4<u32>",
+      "vec2f", "vec4f", "vec4u", "vec3i",
+      "atomic<u32>", "atomic<i32>",
+      "mat2x2<f32>", "mat4x4<f32>",
+    ]) {
+      const environment = {
+        ...baseEnvironment("wgsl"),
+        resources: [{ name: "particles", kind: "storage" as const, elementType }],
+      };
+      expect(validateShaderAuthoringEnvironment(environment), elementType).toEqual([]);
+    }
+  });
+
+  it("keeps the shared config vocabulary valid for WGSL storage", () => {
+    // `float4` and `Atomic<uint>` are config-level aliases the WGSL renderer
+    // maps, so both vocabularies must validate for a WGSL document.
+    for (const elementType of ["float", "float4", "Atomic<uint>", "Particle"]) {
+      const environment = {
+        ...baseEnvironment("wgsl"),
+        resources: [{ name: "particles", kind: "storage" as const, elementType }],
+      };
+      expect(validateShaderAuthoringEnvironment(environment), elementType).toEqual([]);
+    }
+  });
+
+  it("still rejects invalid WGSL storage element types", () => {
+    for (const elementType of ["uniform", "fn", "Particle\nvar injected: f32", "vec4<uniform>"]) {
+      const environment = {
+        ...baseEnvironment("wgsl"),
+        resources: [{ name: "particles", kind: "storage" as const, elementType }],
+      };
+      expect(validateShaderAuthoringEnvironment(environment), elementType).toContainEqual({
+        code: "invalid-element-type",
+        message: 'Storage resource "particles" has an invalid element type.',
+      });
+    }
   });
 
   it("rejects keyword storage element types", () => {

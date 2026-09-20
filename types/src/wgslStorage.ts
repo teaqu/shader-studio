@@ -22,3 +22,15 @@ const WGSL_STORAGE_ELEMENT_TYPES: Record<string, { render: string; compute: stri
 export function wgslStorageElementType(elementType: string, passKind: "render" | "compute"): string {
   return WGSL_STORAGE_ELEMENT_TYPES[elementType]?.[passKind] ?? elementType;
 }
+
+/**
+ * Storage element types a WGSL config may spell natively, rather than through
+ * the shared `float4`/`Atomic<uint>` aliases above. Derived from the table so
+ * the two cannot drift, plus WGSL's predeclared vector aliases (`vec4f`).
+ * `wgslStorageElementType` passes these through unchanged, so the renderer has
+ * always accepted them; authoring validation must agree.
+ */
+export const WGSL_NATIVE_STORAGE_ELEMENT_TYPES: ReadonlySet<string> = new Set([
+  ...Object.values(WGSL_STORAGE_ELEMENT_TYPES).flatMap(({ render, compute }) => [render, compute]),
+  ...[2, 3, 4].flatMap((size) => ["f", "i", "u"].map((suffix) => `vec${size}${suffix}`)),
+]);
