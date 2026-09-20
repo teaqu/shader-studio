@@ -16,6 +16,13 @@ fn mainImage(coord: vec2f) -> vec4f {
 ```
 
 `coord` is in pixels with a bottom-left origin, matching `fragCoord` in GLSL and Slang.
+Use `load2D(texture, pixel)` or the generated `<channelName>Load(pixel)` helper for
+an exact mip-zero read in the same bottom-left coordinate system. Native
+`textureLoad` remains available with its top-left coordinates. See
+[Buffer Precision and Exact Reads](channels.md#buffer-precision-and-exact-reads)
+for sampling and output-format controls.
+Implicit texture sampling also requires [uniform control flow](channels.md#shared-sampling-rules),
+even inside `mainImage`.
 
 The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`. Use these names directly without declaring them.
 

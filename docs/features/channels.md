@@ -129,11 +129,22 @@ Use `albedoTexture` and `albedoSampler` for sampling, and `albedo` for metadata.
 matching `mainImage` pixel coordinates. Cubemaps use direction vectors. Native texture operations
 use their language's native coordinates.
 
-Filter, wrap and mipmap settings remain in the channel configuration and determine
-its sampler. Each shared function takes an explicit sampler, so another channel's
-sampler can be used without changing the texture.
+Texture, video, cubemap, and buffer channels expose per-input filter and wrap
+settings. Buffer inputs support `linear` or `nearest` filtering and `clamp` or
+`repeat` wrapping; their defaults are `linear` and `clamp`. Mipmaps are not yet
+available for buffer outputs. Each shared function takes an explicit sampler, so
+another channel's sampler can be used without changing the texture. Two inputs
+can therefore read the same buffer with different sampling settings.
 
-Implicit `sample2D`/`sampleCube` and Slang `Sample` require a fragment stage.
+Implicit `sample2D`/`sampleCube` and Slang `Sample` require a fragment stage
+and uniform control flow: do not call them inside a branch or loop whose execution
+differs between neighboring fragments (for example, a condition based on pixel
+coordinates or sampled data). WGSL validation, including Slang compiled for WebGPU,
+can reject these calls with a derivative-uniformity error. Move the sample before
+the branch, or use `sample2DLevel(..., 0.0)` / Slang `SampleLevel(uv, 0.0)` when
+you need to sample inside it. Explicit level zero still uses the sampler's filtering;
+it does not make a read texel-exact.
+
 Use `Level` or explicit `Grad` operations in vertex and compute code. For WGSL
 `<name>Sample` calls in compute code, use `<name>SampleLevel(uv, 0.0)` or the shared level function.
 Derivative expressions themselves (`ddx`, `dpdx`, etc.) still require fragment code.
@@ -292,7 +303,9 @@ For a compute pass with `outputLayers` greater than 1, set `layer` to select one
 "iChannel0": {
   "type": "buffer",
   "source": "ComputeBlur",
-  "layer": 1
+  "layer": 1,
+  "filter": "nearest",
+  "wrap": "repeat"
 }
 ```
 
@@ -306,7 +319,106 @@ vec4 prev = texture(iChannel0, bufferUV);
 !!! note
     Use `iChannelResolution[N].xy` to get the buffer's resolution for UV mapping, especially if the buffer has a fixed resolution different from the canvas.
 
-**Frame timing:** a pass samples the current-frame output of a source that runs earlier in the frame. A self-reference or reference to a source that runs later reads that source's *previous* output. This enables feedback loops, particle trails, and simulations. Compute passes run before fragment buffer passes, then Image runs last.
+### Buffer Precision and Exact Reads
+
+For simulations and packed state, both the output format and the read operation
+matter. For WebGPU, set `outputFormat` on a fragment buffer or compute pass:
+
+```json
+"Simulation": {
+  "path": "simulation.wgsl",
+  "outputFormat": "rgba32float",
+  "inputs": {}
+}
+```
+
+The Config panel exposes the same setting. WebGL buffer outputs remain `RGBA32F`.
+Supported WebGPU values are `auto`,
+`rgba16float`, and `rgba32float`; omission is the same as `auto`.
+
+| Backend | Buffer format | Precision per component |
+|---|---|---|
+| WebGL (GLSL) | `RGBA32F` | 32-bit float |
+| WebGPU (Slang and WGSL), `auto` or `rgba32float` | `rgba32float` | 32-bit float |
+| WebGPU (Slang and WGSL), `rgba16float` | `rgba16float` | 16-bit float |
+
+`auto` targets 32-bit storage and does not reduce storage precision merely because
+32-bit linear filtering is unavailable. If the selected format cannot be used as
+a pass output, compilation reports an error instead of silently choosing another
+format. Explicit `rgba16float` remains useful when its smaller storage and reduced
+precision are desired. Declaring an `f32` / `float` variable does not prevent
+rounding when a value is written to a 16-bit output texture. A texel-exact read
+cannot recover precision already lost on write.
+
+Buffer inputs accept `filter: "nearest" | "linear"` and
+`wrap: "clamp" | "repeat"` alongside `source` and optional `layer`. Sampling is
+configured per input rather than per source. On WebGPU devices that cannot filter
+32-bit float textures, a linear request uses nearest filtering while retaining
+32-bit storage and the requested JSON value. Use `load2D` for packed state, cell
+grids, or any read that must bypass filtering entirely. Loads also bypass wrapping;
+keep coordinates in bounds or implement clamping/repeating yourself.
+
+The following examples read a configured buffer channel named `state` at a
+bottom-left-origin integer pixel `p`. Use the **source buffer's** dimensions,
+especially when it differs in size from the current pass.
+
+**GLSL:** pass either a 2D sampler or a named 2D channel. The helper forwards to
+`texelFetch` at mip zero.
+
+```glsl
+ivec2 p = ivec2(fragCoord); // in bounds of state
+vec4 cell = load2D(state, p);
+```
+
+**WGSL:** use the shared helper or the generated named-channel helper. Both convert
+bottom-left authoring coordinates to native texture coordinates.
+
+```wgsl
+let p = vec2i(coord); // in bounds of state
+let cell = load2D(stateTexture, p);
+// Equivalent shorthand for this configured channel:
+let sameCell = stateLoad(p);
+```
+
+**Slang:** call the shared helper or the channel's `Load` convenience method.
+
+```slang
+int2 p = int2(fragCoord); // in bounds of state
+float4 cell = load2D(state.texture, p);
+float4 sameCell = state.Load(p);
+```
+
+!!! warning
+    `load2D`, WGSL `<name>Load`, and Slang channel `.Load` use bottom-left integer
+    coordinates. Native WGSL `textureLoad` and Slang `.texture.Load` retain their
+    native top-left coordinates. Use native operations directly when your integer
+    coordinates are already top-left; do not apply the conversion twice.
+
+### Pass Execution Order
+
+Fragment buffer passes run in their declaration order in the `.sha.json` `passes`
+object, **not alphabetical order**. On WebGPU, compute passes run first in their
+own declaration order, followed by fragment buffers in their declaration order.
+`Image` runs last regardless of where it appears in the config. `common` is shared
+code and does not execute as a pass. Input dependencies do not reorder passes.
+
+A pass reads the **current-frame** output of a source that has already run. A
+self-reference or a reference to a source that runs later reads that source's
+**previous-frame** output.
+
+For fragment passes declared as `BufferA`, `BufferB`, `BufferC`, `BufferD`:
+
+| Read | Output seen |
+|---|---|
+| `BufferB` reads `BufferA` | Current frame |
+| `BufferA` reads `BufferB` | Previous frame |
+| `BufferD` reads itself | Previous frame |
+| `Image` reads any buffer | Current frame |
+
+The same rule applies across WebGPU pass groups: a fragment pass sees a compute
+pass's current output, while a compute pass sees a fragment buffer's previous
+output. Renaming passes does not change timing; changing declaration order within
+a group does.
 
 ## Keyboard Channels
 

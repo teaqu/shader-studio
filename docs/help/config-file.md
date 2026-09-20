@@ -210,9 +210,22 @@ Buffer passes use a simpler fixed-size resolution:
 ```json
 "Flow": {
   "path": "flow.glsl",
-  "resolution": { "width": 512, "height": 512 }
+  "resolution": { "width": 512, "height": 512 },
+  "outputFormat": "rgba32float"
 }
 ```
+
+WebGPU fragment buffer and compute passes accept `outputFormat`:
+
+| Value | Meaning |
+|---|---|
+| `auto` (default) | Prefer `rgba32float` storage |
+| `rgba16float` | Explicit four-component 16-bit float storage |
+| `rgba32float` | Explicit four-component 32-bit float storage |
+
+If the requested format cannot be rendered or stored, pipeline creation reports
+an error rather than silently changing precision. The `Image` canvas format is
+not controlled by this field.
 
 ## Passes
 
@@ -231,7 +244,7 @@ Each pass can bind input channels with configuration keys such as `iChannel0` an
 
 | Type | Fields | Description |
 |------|--------|-------------|
-| `buffer` | `source`, optional `layer` | Read from an arbitrary fragment buffer pass or a compute pass (write its pixels with `writeOutput`); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
+| `buffer` | `source`, optional `layer`, `filter`, `wrap` | Read from an arbitrary fragment buffer pass or a compute pass (write its pixels with `writeOutput`); `common` and `Image` are not sources, and `layer` selects a compute texture-array layer |
 | `texture` | `path`, `filter`, `wrap`, `vflip`, `grayscale` | Image file |
 | `video` | `path`, `filter`, `wrap`, `vflip`, `muted` | Video file |
 | `audio` | `path`, `startTime`, `endTime`, `muted` | Audio file with FFT/waveform texture |
@@ -241,6 +254,14 @@ Each pass can bind input channels with configuration keys such as `iChannel0` an
 Channel bindings remain under each pass's `inputs` field in `.sha.json`.
 Shader access uses the configured channel name. See [Channels](../features/channels.md)
 for GLSL, Slang, and WGSL metadata and sampling examples.
+
+Buffer input `filter` accepts `linear` (default) or `nearest`; `wrap` accepts
+`clamp` (default) or `repeat`. These settings belong to the input, so two channels
+can read one source with different samplers. Buffer mipmaps and `vflip` are not
+supported. On WebGPU without 32-bit float filtering, a linear request falls back
+to nearest without reducing the source's 32-bit storage precision. See
+[Buffer Precision and Exact Reads](../features/channels.md#buffer-precision-and-exact-reads)
+for exact-load helpers and coordinate conventions.
 
 ### Texture / Video / Cubemap Options
 
@@ -268,6 +289,10 @@ A buffer can read its own previous frame's output by binding itself as an input:
 ```
 
 This is how Shadertoy-style feedback effects work (trails, fluid simulations, game of life).
+For reads from other passes, an earlier source supplies its current frame and a
+later source supplies its previous frame. Declaration order determines buffer
+order; WebGPU runs compute passes first, and `Image` always runs last. See
+[Pass Execution Order](../features/channels.md#pass-execution-order) for examples.
 
 ## File Paths
 
