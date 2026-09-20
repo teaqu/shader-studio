@@ -29,7 +29,9 @@ test('opening a config file shows its own shader immediately, with no edit requi
     return frame.evaluate(() => {
       const canvas = document.querySelector('.canvas-container canvas');
       const context = canvas?.getContext('webgl2') || canvas?.getContext('webgl');
-      if (!context) return null;
+      if (!context) {
+        return null;
+      }
       const pixel = new Uint8Array(4);
       context.readPixels(
         Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1,

@@ -38,7 +38,9 @@ test.describe('compile errors while debug mode is on', () => {
     ).toBe(true);
     await frame.evaluate(() => {
       const debugButton = document.querySelector('button.collapse-debug[aria-label="Toggle debug mode"]');
-      if (debugButton && !debugButton.classList.contains('active')) debugButton.click();
+      if (debugButton && !debugButton.classList.contains('active')) {
+        debugButton.click();
+      }
     });
     await expect.poll(() => frame.locator('.debug-panel').count(), { timeout: 30_000 }).toBeGreaterThan(0);
     await frame.getByLabel('Toggle variable inspector').click();
@@ -76,7 +78,9 @@ test.describe('compile errors while debug mode is on', () => {
     ).toContain('L57');
     await expect.poll(async () => {
       const names = await frame.locator('.variables-section .var-name').count();
-      if (names > 0) return 'captured';
+      if (names > 0) {
+        return 'captured';
+      }
       return frame.evaluate(() => JSON.stringify({
         section: document.querySelector('.variables-section')?.textContent?.replace(/\s+/g, ' ').slice(0, 200) ?? null,
         issues: Array.from(document.querySelectorAll('.error-tooltip-block'), (el) => el.textContent?.trim().slice(0, 90)),

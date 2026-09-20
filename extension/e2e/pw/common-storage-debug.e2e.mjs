@@ -88,7 +88,9 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
     } finally {
       await revertFixtureEditors(vscode, directory);
-      for (const path of [root, common, config]) rmSync(path, { force: true });
+      for (const path of [root, common, config]) {
+        rmSync(path, { force: true });
+      }
     }
   });
 }
@@ -148,7 +150,9 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
       await test.info().attach('storage-debug-state', { body: await frame.locator('body').innerText(), contentType: 'text/plain' });
       throw error;
     } finally {
-      for (const path of [root, config, computePath]) rmSync(path, { force: true });
+      for (const path of [root, config, computePath]) {
+        rmSync(path, { force: true });
+      }
     }
   });
 }
@@ -225,7 +229,9 @@ test('Slang compute replay refuses subgroup results and recovers after an edit',
     await expect(frame.getByLabel('Show capture errors')).toHaveCount(0);
   } finally {
     await revertFixtureEditors(vscode, directory);
-    for (const path of [root, compute, config]) rmSync(path, { force: true });
+    for (const path of [root, compute, config]) {
+      rmSync(path, { force: true });
+    }
   }
 });
 

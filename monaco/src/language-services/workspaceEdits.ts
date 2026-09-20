@@ -7,7 +7,9 @@ export function applyTextEdits(text: string, edits: readonly TextEdit[]): string
   const lines = text.split('\n');
   const starts: number[] = [];
   let cursor = 0;
-  for (const line of lines) { starts.push(cursor); cursor += line.length + 1; }
+  for (const line of lines) {
+    starts.push(cursor); cursor += line.length + 1; 
+  }
   const offset = (position: Position): number => {
     const { line, character } = position;
     if (!Number.isInteger(line) || !Number.isInteger(character) || line < 0 || line >= lines.length
@@ -24,6 +26,8 @@ export function applyTextEdits(text: string, edits: readonly TextEdit[]): string
       throw new Error('Rename contains overlapping text edits. No files were changed.');
     }
   }
-  for (const change of changes.reverse()) text = text.slice(0, change.start) + change.text + text.slice(change.end);
+  for (const change of changes.reverse()) {
+    text = text.slice(0, change.start) + change.text + text.slice(change.end);
+  }
   return text;
 }

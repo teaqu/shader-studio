@@ -10,13 +10,19 @@ export function extractSlangFunctionContext(source: string, debugLine: number): 
     contentHash: "context0",
     files: [{ uri: path, path, source, version: 1, moduleName: "", ownerPass: "Image" }],
   });
-  if (!created.ok) return null;
+  if (!created.ok) {
+    return null;
+  }
   const file = created.workspace.filesByUri.get(created.workspace.rootUri);
-  if (!file) return null;
+  if (!file) {
+    return null;
+  }
   const callable = [...file.structure.callables.values()]
     .filter((candidate) => candidate.bodyRange.start.line <= debugLine && candidate.bodyRange.end.line >= debugLine)
     .sort((left, right) => rangeLineSpan(left.bodyRange) - rangeLineSpan(right.bodyRange))[0];
-  if (!callable) return null;
+  if (!callable) {
+    return null;
+  }
 
   const parameters = callable.parameters
     .filter((parameter) => parameter.access !== "write")

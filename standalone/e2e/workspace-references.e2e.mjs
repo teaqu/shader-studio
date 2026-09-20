@@ -21,7 +21,9 @@ for (const { language, extension, pass, helper } of [
     const editor = page.getByTestId('web-editor');
     await editor.locator('.view-line').getByText('tone', { exact: true }).dblclick();
     await page.keyboard.press('Home');
-    for (let column = 0; column < pass.indexOf('tone') + 1; column++) await page.keyboard.press('ArrowRight');
+    for (let column = 0; column < pass.indexOf('tone') + 1; column++) {
+      await page.keyboard.press('ArrowRight');
+    }
     await page.keyboard.press('Shift+F12');
     const peek = page.locator('.reference-zone-widget');
     await expect(peek).toBeVisible();

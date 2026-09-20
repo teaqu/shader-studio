@@ -197,33 +197,51 @@ function evaluateCondition(expression: string, macros: Map<string, SlangMacroDef
     (_match, parenthesized: string | undefined, bare: string | undefined) => macros.has(parenthesized ?? bare ?? "") ? "1" : "0",
   );
   const tokens = expandedDefined.match(/&&|\|\||==|!=|<=|>=|[()!<>]|0[xX][0-9a-fA-F]+|\d+|[A-Za-z_][A-Za-z0-9_]*/g);
-  if (!tokens || tokens.join("").length !== expandedDefined.replace(/\s+/g, "").length) return null;
+  if (!tokens || tokens.join("").length !== expandedDefined.replace(/\s+/g, "").length) {
+    return null;
+  }
   const conditionTokens = tokens;
   let cursor = 0;
   const macroValue = (name: string, seen = new Set<string>()): number | null => {
-    if (seen.has(name)) return null;
+    if (seen.has(name)) {
+      return null;
+    }
     const macro = macros.get(name);
-    if (!macro || macro.functionLike) return 0;
+    if (!macro || macro.functionLike) {
+      return 0;
+    }
     const body = macro.bodyTokens.map((token) => token.text).join("").trim();
-    if (!body) return 1;
+    if (!body) {
+      return 1;
+    }
     const numeric = Number(body);
-    if (Number.isFinite(numeric)) return numeric;
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(body)) return macroValue(body, new Set([...seen, name]));
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(body)) {
+      return macroValue(body, new Set([...seen, name]));
+    }
     return null;
   };
   const primary = (): number | null => {
     const token = tokens[cursor++];
     if (token === "(") {
       const value = orExpression();
-      if (tokens[cursor++] !== ")") return null;
+      if (tokens[cursor++] !== ")") {
+        return null;
+      }
       return value;
     }
     if (token === "!") {
       const value = primary();
       return value === null ? null : Number(!value);
     }
-    if (/^0[xX]/.test(token ?? "")) return Number.parseInt(token, 16);
-    if (/^\d+$/.test(token ?? "")) return Number(token);
+    if (/^0[xX]/.test(token ?? "")) {
+      return Number.parseInt(token, 16);
+    }
+    if (/^\d+$/.test(token ?? "")) {
+      return Number(token);
+    }
     return token && /^[A-Za-z_]/.test(token) ? macroValue(token) : null;
   };
   const comparison = (): number | null => {
@@ -231,13 +249,22 @@ function evaluateCondition(expression: string, macros: Map<string, SlangMacroDef
     while (["==", "!=", "<", ">", "<=", ">="].includes(tokens[cursor])) {
       const operator = tokens[cursor++];
       const right = primary();
-      if (left === null || right === null) return null;
-      if (operator === "==") left = Number(left === right);
-      else if (operator === "!=") left = Number(left !== right);
-      else if (operator === "<") left = Number(left < right);
-      else if (operator === ">") left = Number(left > right);
-      else if (operator === "<=") left = Number(left <= right);
-      else left = Number(left >= right);
+      if (left === null || right === null) {
+        return null;
+      }
+      if (operator === "==") {
+        left = Number(left === right);
+      } else if (operator === "!=") {
+        left = Number(left !== right);
+      } else if (operator === "<") {
+        left = Number(left < right);
+      } else if (operator === ">") {
+        left = Number(left > right);
+      } else if (operator === "<=") {
+        left = Number(left <= right);
+      } else {
+        left = Number(left >= right);
+      }
     }
     return left;
   };
@@ -246,7 +273,9 @@ function evaluateCondition(expression: string, macros: Map<string, SlangMacroDef
     while (tokens[cursor] === "&&") {
       cursor += 1;
       const right = comparison();
-      if (left === null || right === null) return null;
+      if (left === null || right === null) {
+        return null;
+      }
       left = Number(Boolean(left) && Boolean(right));
     }
     return left;
@@ -256,7 +285,9 @@ function evaluateCondition(expression: string, macros: Map<string, SlangMacroDef
     while (conditionTokens[cursor] === "||") {
       cursor += 1;
       const right = andExpression();
-      if (left === null || right === null) return null;
+      if (left === null || right === null) {
+        return null;
+      }
       left = Number(Boolean(left) || Boolean(right));
     }
     return left;

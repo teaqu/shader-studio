@@ -25,7 +25,9 @@ describe("createWgslWorkspace", () => {
     const result = createWgslWorkspace(input);
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     expect(result.workspace.rootUri).toBe("file:///work/main.wgsl");
     expect([...result.workspace.filesByUri.keys()]).toEqual([
       "file:///work/main.wgsl",

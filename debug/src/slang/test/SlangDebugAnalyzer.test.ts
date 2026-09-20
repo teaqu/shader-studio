@@ -18,7 +18,9 @@ function analyze(position: DebugSourcePosition) {
     rootUri: "/work/main.slang", rootPath: "/work/main.slang", passName: "Image", contentHash: "hash",
     files: [{ uri: "/work/main.slang", path: "/work/main.slang", source, version: 1, moduleName: "", ownerPass: "Image" }],
   });
-  if (!created.ok) throw new Error(created.diagnostics[0].message);
+  if (!created.ok) {
+    throw new Error(created.diagnostics[0].message);
+  }
   return analyzeSlangSite(created.workspace.filesByUri.get(created.workspace.rootUri)!, position);
 }
 
@@ -99,14 +101,23 @@ const fExp: Record<number, { ok: boolean; vars?: string[] }> = {
 
 describe("foundation.slang line coverage", () => {
   const ws = createSlangWorkspace({ rootUri:"/f.slang",rootPath:"/f.slang",passName:"Image",contentHash:"f",files:[{uri:"/f.slang",path:"/f.slang",source:fShader,version:1,moduleName:"",ownerPass:"Image"}]});
-  if(!ws.ok)throw new Error(ws.diagnostics[0].message);
+  if(!ws.ok){
+    throw new Error(ws.diagnostics[0].message);
+  }
   const f=ws.workspace.filesByUri.get(ws.workspace.rootUri)!;
-  fShader.split("\n").forEach((line,i)=>{const exp=fExp[i];if(!exp)return;
+  fShader.split("\n").forEach((line,i)=>{
+    const exp=fExp[i];if(!exp){
+      return;
+    }
     it(`L${i} "${line.trim().slice(0,50)||"(empty)"}" → ${exp.ok?"OK":"FAIL"}`,()=>{
       const r=analyzeSlangSite(f,{line:i,character:Math.max(0,line.search(/\S/))});
       expect(r.ok).toBe(exp.ok);
-      if(exp.ok&&exp.vars&&r.ok)expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
-      if(!exp.ok)expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      if(exp.ok&&exp.vars&&r.ok){
+        expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
+      }
+      if(!exp.ok){
+        expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      }
     });
   });
 });
@@ -172,14 +183,23 @@ const vaExp: Record<number,{ok:boolean;vars?:string[]}> = {
 
 describe("video_audio.slang line coverage", () => {
   const ws = createSlangWorkspace({ rootUri:"/va.slang",rootPath:"/va.slang",passName:"Image",contentHash:"va",files:[{uri:"/va.slang",path:"/va.slang",source:vaShader,version:1,moduleName:"",ownerPass:"Image"}]});
-  if(!ws.ok)throw new Error(ws.diagnostics[0].message);
+  if(!ws.ok){
+    throw new Error(ws.diagnostics[0].message);
+  }
   const f=ws.workspace.filesByUri.get(ws.workspace.rootUri)!;
-  vaShader.split("\n").forEach((line,i)=>{const exp=vaExp[i];if(!exp)return;
+  vaShader.split("\n").forEach((line,i)=>{
+    const exp=vaExp[i];if(!exp){
+      return;
+    }
     it(`L${i} "${line.trim().slice(0,55)||"(empty)"}" → ${exp.ok?"OK":"FAIL"}`,()=>{
       const r=analyzeSlangSite(f,{line:i,character:Math.max(0,line.search(/\S/))});
       expect(r.ok).toBe(exp.ok);
-      if(exp.ok&&exp.vars&&r.ok)expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
-      if(!exp.ok)expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      if(exp.ok&&exp.vars&&r.ok){
+        expect(r.analysis.visibleValues.map(v=>v.name)).toEqual(exp.vars);
+      }
+      if(!exp.ok){
+        expect(r.diagnostics?.[0]?.message).toMatch(/Select a line|Not an executable/);
+      }
     });
   });
 });
@@ -188,10 +208,16 @@ describe("video_audio.slang line coverage", () => {
 function computeOffset(processed: string, original: string): number {
   const pl = processed.split("\n"), ol = original.split("\n");
   for (let i = 0; i < ol.length; i++) {
-    const t = ol[i].trim(); if (!t) continue;
-    if (ol.filter((l: string) => l.trim() === t).length !== 1) continue;
+    const t = ol[i].trim(); if (!t) {
+      continue;
+    }
+    if (ol.filter((l: string) => l.trim() === t).length !== 1) {
+      continue;
+    }
     const pi = pl.findIndex((l: string) => l.trim() === t);
-    if (pi >= 0 && pi !== i) return pi - i;
+    if (pi >= 0 && pi !== i) {
+      return pi - i;
+    }
   }
   return 0;
 }
@@ -252,18 +278,28 @@ const pSrc = [
 
 describe("processed source + line offset", () => {
   const ws = createSlangWorkspace({ rootUri:"/p.slang",rootPath:"/p.slang",passName:"Image",contentHash:"p",files:[{uri:"/p.slang",path:"/p.slang",source:pSrc,version:1,moduleName:"",ownerPass:"Image"}]});
-  if(!ws.ok)throw new Error(ws.diagnostics[0].message);
+  if(!ws.ok){
+    throw new Error(ws.diagnostics[0].message);
+  }
   const f=ws.workspace.filesByUri.get(ws.workspace.rootUri)!;
   const off = pSrc.split("\n").findIndex(l=>l.trim()==="float4 mainImage(float2 fragCoord)") - fShader.split("\n").findIndex(l=>l.trim()==="float4 mainImage(float2 fragCoord)");
 
-  it("computes positive offset", () => { expect(off).toBeGreaterThan(0); });
+  it("computes positive offset", () => {
+    expect(off).toBeGreaterThan(0); 
+  });
 
   fShader.split("\n").forEach((line,orig)=>{
-    const exp = fExp[orig]; if(!exp?.ok) return;
+    const exp = fExp[orig]; if(!exp?.ok) {
+      return;
+    }
     it(`original L${orig} → processed L${orig+off}`,()=>{
       const r=analyzeSlangSite(f,{line:orig+off,character:Math.max(0,line.search(/\S/))});
       expect(r.ok).toBe(true);
-      if(r.ok&&exp.vars) for(const v of exp.vars) expect(r.analysis.visibleValues.map(x=>x.name)).toContain(v);
+      if(r.ok&&exp.vars) {
+        for(const v of exp.vars) {
+          expect(r.analysis.visibleValues.map(x=>x.name)).toContain(v);
+        }
+      }
     });
   });
 });

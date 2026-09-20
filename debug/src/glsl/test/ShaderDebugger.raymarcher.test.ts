@@ -119,7 +119,9 @@ const lines = SHADER.split('\n');
 // Helper to find line number by content
 function findLine(content: string): number {
   const idx = lines.findIndex(l => l.includes(content));
-  if (idx === -1) throw new Error(`Line not found: ${content}`);
+  if (idx === -1) {
+    throw new Error(`Line not found: ${content}`);
+  }
   return idx;
 }
 

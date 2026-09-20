@@ -19,13 +19,17 @@ describe("WGSL common debugging", () => {
     const input = request();
     const analyzed = engine.analyze(input);
     expect(analyzed.ok).toBe(true);
-    if (!analyzed.ok) throw new Error("analysis failed");
+    if (!analyzed.ok) {
+      throw new Error("analysis failed");
+    }
     const value = analyzed.analysis.visibleValues.find((item) => item.name === "value")!;
     expect(value).toMatchObject({ typeName: "f32", sourceUri: "/common.wgsl", declarationRange: { start: { line: 2 } } });
     const planned = mode === "capture" ? engine.planCapture(input, [value.id])
       : mode === "explicit" ? engine.planPreviewValue(input, value.id, options) : engine.planPreview(input, options);
     expect(planned.ok).toBe(true);
-    if (!planned.ok) throw new Error(planned.diagnostics[0]?.message);
+    if (!planned.ok) {
+      throw new Error(planned.diagnostics[0]?.message);
+    }
     expect(planned.plan).toMatchObject({ rootUri: "/main.wgsl", selectedSourceUri: "/common.wgsl" });
     const commonFile = planned.plan.files.find((file) => file.path === "/common.wgsl")!;
     const rootFile = planned.plan.files.find((file) => file.path === "/main.wgsl")!;
@@ -65,7 +69,9 @@ describe("WGSL common debugging", () => {
 
   it('keeps common parameter edits in common and coordinate setup in the root', () => {
     const result = new WgslDebugEngine().planPreview(request(), { ...options, customParameters: new Map([[0, 'coord / iResolution.xy']]) });
-    if (!result.ok) throw new Error('plan failed');
+    if (!result.ok) {
+      throw new Error('plan failed');
+    }
     expect(result.plan.files.find(file => file.path === '/common.wgsl')?.source).toContain('let p: vec2f = _ssdbg_deadbeef_coord / iResolution.xy;');
     expect(result.plan.files.find(file => file.path === '/main.wgsl')?.source).toContain('_ssdbg_deadbeef_coord = coord;');
   });

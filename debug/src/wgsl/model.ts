@@ -32,8 +32,14 @@ export function offsetAt(source: string, position: DebugSourcePosition): number 
   let line = 0;
   let character = 0;
   for (let offset = 0; offset < source.length; offset += 1) {
-    if (line === position.line && character === position.character) return offset;
-    if (source[offset] === "\n") { line += 1; character = 0; } else character += 1;
+    if (line === position.line && character === position.character) {
+      return offset;
+    }
+    if (source[offset] === "\n") {
+      line += 1; character = 0; 
+    } else {
+      character += 1;
+    }
   }
   return source.length;
 }

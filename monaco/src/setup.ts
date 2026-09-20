@@ -21,7 +21,9 @@ const jsonRegistrations = new WeakSet<object>();
  * @param monaco - The monaco-editor module instance
  */
 export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
-  if (registered) return;
+  if (registered) {
+    return;
+  }
 
   // Worker stub — CSP blocks blob workers in VS Code webviews.
   // Monaco requires getWorker to return a Worker-like object.
@@ -34,7 +36,9 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
           terminate() {},
           addEventListener() {},
           removeEventListener() {},
-          dispatchEvent() { return false; },
+          dispatchEvent() {
+            return false; 
+          },
           onerror: null,
           onmessageerror: null,
         } as any;
@@ -61,7 +65,9 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
 
 /** Register the Slang Monarch tokenizer independently from GLSL. */
 export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
-  if (slangRegistrations.has(monaco)) return;
+  if (slangRegistrations.has(monaco)) {
+    return;
+  }
 
   if (!monaco.languages.getLanguages().some((language) => language.id === 'slang')) {
     monaco.languages.register({ id: 'slang' });
@@ -74,7 +80,9 @@ export function setupMonacoSlang(monaco: typeof import('monaco-editor')) {
 
 /** Register the WGSL Monarch tokenizer independently from GLSL and Slang. */
 export function setupMonacoWgsl(monaco: typeof import('monaco-editor')) {
-  if (wgslRegistrations.has(monaco)) return;
+  if (wgslRegistrations.has(monaco)) {
+    return;
+  }
 
   if (!monaco.languages.getLanguages().some((language) => language.id === 'wgsl')) {
     monaco.languages.register({ id: 'wgsl' });
@@ -87,7 +95,9 @@ export function setupMonacoWgsl(monaco: typeof import('monaco-editor')) {
 
 /** Register the worker-free JSON tokenizer used for shader config files. */
 export function setupMonacoJson(monaco: typeof import('monaco-editor')) {
-  if (jsonRegistrations.has(monaco)) return;
+  if (jsonRegistrations.has(monaco)) {
+    return;
+  }
 
   if (!monaco.languages.getLanguages().some((language) => language.id === 'json')) {
     monaco.languages.register({ id: 'json', extensions: ['.json'] });

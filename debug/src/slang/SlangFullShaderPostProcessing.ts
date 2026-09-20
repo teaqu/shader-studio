@@ -7,7 +7,9 @@ export function applySlangFullShaderPostProcessing(
   source: string,
   options: DebugPreviewOptions,
 ): string | null {
-  if (options.normalizeMode === "off" && options.stepEdge === null) return null;
+  if (options.normalizeMode === "off" && options.stepEdge === null) {
+    return null;
+  }
   const path = "/shader-studio/full-preview.slang";
   const created = createSlangWorkspace({
     rootUri: path,
@@ -16,11 +18,15 @@ export function applySlangFullShaderPostProcessing(
     contentHash: "full0000",
     files: [{ uri: path, path, source, version: 1, moduleName: "", ownerPass: "Image" }],
   });
-  if (!created.ok) return null;
+  if (!created.ok) {
+    return null;
+  }
   const file = created.workspace.filesByUri.get(created.workspace.rootUri);
   const mainImage = file && [...file.structure.callables.values()]
     .find((callable) => callable.kind === "free" && callable.name === "mainImage");
-  if (!mainImage || mainImage.returnTypeName !== "float4") return null;
+  if (!mainImage || mainImage.returnTypeName !== "float4") {
+    return null;
+  }
 
   const originalName = "_ssdbg_full_userMain";
   const color = applySlangPreviewPostProcessing(`${originalName}(fragCoord)`, options);

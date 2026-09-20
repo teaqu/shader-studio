@@ -95,10 +95,15 @@ function normalizePath(value: string): string {
   const absolute = value.startsWith("/");
   const segments: string[] = [];
   for (const segment of value.split("/")) {
-    if (!segment || segment === ".") continue;
+    if (!segment || segment === ".") {
+      continue;
+    }
     if (segment === "..") {
-      if (segments.length > 0 && segments[segments.length - 1] !== "..") segments.pop();
-      else if (!absolute) segments.push(segment);
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop();
+      } else if (!absolute) {
+        segments.push(segment);
+      }
       continue;
     }
     segments.push(segment);

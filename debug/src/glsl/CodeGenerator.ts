@@ -160,8 +160,12 @@ export class CodeGenerator {
     for (let i = functionStart; i < lines.length; i++) {
       const stripped = lines[i].replace(/\/\/.*$/, '');
       for (const char of stripped) {
-        if (char === '{') braceDepth++;
-        if (char === '}') braceDepth--;
+        if (char === '{') {
+          braceDepth++;
+        }
+        if (char === '}') {
+          braceDepth--;
+        }
       }
     }
 
@@ -819,8 +823,12 @@ export class CodeGenerator {
 
     for (let i = mainImageLine; i < lines.length; i++) {
       for (const char of lines[i]) {
-        if (char === '{') { braceDepth++; braceStarted = true; }
-        if (char === '}') { braceDepth--; }
+        if (char === '{') {
+          braceDepth++; braceStarted = true; 
+        }
+        if (char === '}') {
+          braceDepth--; 
+        }
       }
       if (braceStarted && braceDepth === 0) {
         closingBraceLine = i;

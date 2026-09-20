@@ -456,7 +456,9 @@ function parseStatementsAndDeclarations(
     }
     const parsedDeclarations = parseDirectStatementDeclarations(document, tokens, start, index, scope.id, range);
     if (parsedDeclarations.length > 0) {
-      for (const declaration of parsedDeclarations) declarations.set(declaration.id, declaration);
+      for (const declaration of parsedDeclarations) {
+        declarations.set(declaration.id, declaration);
+      }
       const statement = createStatement(tokens[start], "declaration", range, scope.id);
       statements.set(statement.id, statement);
       continue;
@@ -592,11 +594,15 @@ function parseDirectStatementDeclarations(
   while (segmentStart < endIndex) {
     const comma = findTopLevelToken(tokens, segmentStart, endIndex, ",");
     segments.push({ start: segmentStart, end: comma ?? endIndex });
-    if (comma === undefined) break;
+    if (comma === undefined) {
+      break;
+    }
     segmentStart = comma + 1;
   }
   const firstSegment = segments[0];
-  if (!firstSegment) return [];
+  if (!firstSegment) {
+    return [];
+  }
   const first = parseDirectStatementDeclaration(
     document,
     tokens,
@@ -605,17 +611,25 @@ function parseDirectStatementDeclarations(
     scopeId,
     statementRange,
   );
-  if (!first) return [];
-  if (segments.length === 1) return [first];
+  if (!first) {
+    return [];
+  }
+  if (segments.length === 1) {
+    return [first];
+  }
 
   const baseTypeName = first.typeName.replace(/(?:\[[^\]]*\])+$/, "");
   const declarations = [first];
   for (const segment of segments.slice(1)) {
     const equalsIndex = findTokenInRange(tokens, segment.start, segment.end, "=") ?? segment.end;
     const nameToken = tokens[segment.start];
-    if (!nameToken || nameToken.kind !== "identifier") return [];
+    if (!nameToken || nameToken.kind !== "identifier") {
+      return [];
+    }
     const suffix = arraySuffixText(document, tokens, segment.start + 1, equalsIndex);
-    if (suffix === null) return [];
+    if (suffix === null) {
+      return [];
+    }
     declarations.push(directDeclaration(
       document,
       nameToken,
@@ -664,7 +678,9 @@ function appendForInitializerDeclarations(
     if (parsedDeclarations.length === 0) {
       continue;
     }
-    for (const declaration of parsedDeclarations) declarations.set(declaration.id, declaration);
+    for (const declaration of parsedDeclarations) {
+      declarations.set(declaration.id, declaration);
+    }
     const statement = createStatement(tokens[startIndex], "declaration", range, scope.id);
     statements.set(statement.id, statement);
   }

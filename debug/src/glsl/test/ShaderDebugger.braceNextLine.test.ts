@@ -33,7 +33,9 @@ const lines = SHADER_BRACE_NEXT_LINE.split('\n');
 
 function findLine(content: string): number {
   const idx = lines.findIndex(l => l.includes(content));
-  if (idx === -1) throw new Error(`Line not found: ${content}`);
+  if (idx === -1) {
+    throw new Error(`Line not found: ${content}`);
+  }
   return idx;
 }
 

@@ -12,7 +12,9 @@ async function inspectScopes(vscode, needle, offset = 1) {
       viewColumn: vscode.ViewColumn.One, preview: false, preserveFocus: false,
     });
     const start = document.getText().indexOf(target);
-    if (start < 0) throw new Error(`Missing scope target ${target}`);
+    if (start < 0) {
+      throw new Error(`Missing scope target ${target}`);
+    }
     const position = document.positionAt(start + targetOffset);
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));

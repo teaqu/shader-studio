@@ -31,6 +31,8 @@ test('renames a GLSL reference selected through the editor', async ({ vscode }) 
     }, shaderPath);
     expect(readFileSync(shaderPath, 'utf8')).toBe(source.replaceAll('tone', 'curve'));
   } finally {
-    try { rmSync(shaderPath); } catch { /* fixture cleanup */ }
+    try {
+      rmSync(shaderPath); 
+    } catch { /* fixture cleanup */ }
   }
 });

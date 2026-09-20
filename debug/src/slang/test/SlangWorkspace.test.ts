@@ -25,7 +25,9 @@ describe("createSlangWorkspace", () => {
     const result = createSlangWorkspace(input);
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     expect(result.workspace.rootUri).toBe("file:///work/main.slang");
     expect([...result.workspace.filesByUri.keys()]).toEqual([
       "file:///work/main.slang",

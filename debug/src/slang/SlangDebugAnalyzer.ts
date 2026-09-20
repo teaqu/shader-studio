@@ -195,13 +195,17 @@ function visibleDeclarationsAtScope(
     });
   const names = new Set<string>();
   return candidates.filter((declaration) => {
-    if (names.has(declaration.name)) return false;
+    if (names.has(declaration.name)) {
+      return false;
+    }
     names.add(declaration.name);
     return true;
   }).sort((left, right) => {
     const leftParameter = parameterIds.has(left.id);
     const rightParameter = parameterIds.has(right.id);
-    if (leftParameter !== rightParameter) return leftParameter ? -1 : 1;
+    if (leftParameter !== rightParameter) {
+      return leftParameter ? -1 : 1;
+    }
     return comparePositions(left.range.start, right.range.start);
   });
 }
@@ -213,18 +217,26 @@ function previewDeclaration(
   declarations: SlangDeclarationNode[],
 ): SlangDeclarationNode | undefined {
   const declared = declarations.find((declaration) => sameRange(declaration.statementRange, statement.range));
-  if (declared) return declared;
+  if (declared) {
+    return declared;
+  }
   const identifier = assignmentTarget(file, statement.range);
-  if (identifier) return declarations.find((declaration) => declaration.name === identifier);
+  if (identifier) {
+    return declarations.find((declaration) => declaration.name === identifier);
+  }
   return undefined;
 }
 
 function assignmentTarget(file: SlangWorkspaceFile, range: DebugSourceRange): string | undefined {
   const tokens = file.preprocessor.activeTokens.filter((token) => containsRange(range, token.range));
   const equals = tokens.findIndex((token) => token.text === "=");
-  if (equals < 1) return undefined;
+  if (equals < 1) {
+    return undefined;
+  }
   for (let index = equals - 1; index >= 0; index -= 1) {
-    if (tokens[index].kind === "identifier") return tokens[index].text;
+    if (tokens[index].kind === "identifier") {
+      return tokens[index].text;
+    }
   }
   return undefined;
 }
@@ -234,12 +246,16 @@ function syntheticReturnValue(
   statement: SlangStatementNode,
   callable: SlangCallableNode,
 ): DebugVisibleValue | undefined {
-  if (statement.kind !== "return" || !isSlangCapturableType(callable.returnTypeName)) return undefined;
+  if (statement.kind !== "return" || !isSlangCapturableType(callable.returnTypeName)) {
+    return undefined;
+  }
   const statementStart = offsetAt(file.source.source, statement.range.start);
   const statementEnd = offsetAt(file.source.source, statement.range.end);
   const expression = file.source.source.slice(statementStart, statementEnd)
     .match(/^\s*return\s+([\s\S]*?);?\s*$/)?.[1]?.trim();
-  if (!expression) return undefined;
+  if (!expression) {
+    return undefined;
+  }
   return {
     id: `return:${file.source.uri}:${statement.range.start.line}:${statement.range.start.character}`,
     name: "_dbgReturn",
@@ -321,8 +337,14 @@ function offsetAt(source: string, position: DebugSourcePosition): number {
   let line = 0;
   let character = 0;
   for (let offset = 0; offset < source.length; offset += 1) {
-    if (line === position.line && character === position.character) return offset;
-    if (source[offset] === "\n") { line += 1; character = 0; } else character += 1;
+    if (line === position.line && character === position.character) {
+      return offset;
+    }
+    if (source[offset] === "\n") {
+      line += 1; character = 0; 
+    } else {
+      character += 1;
+    }
   }
   return source.length;
 }

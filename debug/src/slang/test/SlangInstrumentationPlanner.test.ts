@@ -15,10 +15,14 @@ describe("planSlangInstrumentation", () => {
         source: "float4 mainImage(float2 fragCoord) {\n  float value = fragCoord.x;\n  return float4(value);\n}\n",
       }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     const analysis = analyzeSlangSite(file, { line: 1, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [analysis.analysis.previewValueId!], "preview");
 
@@ -32,7 +36,9 @@ describe("planSlangInstrumentation", () => {
         ],
       },
     });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0].source;
     expect(output).toContain("static bool _ssdbg_a1b2c3d4_executed;");
     expect(output).toContain("static float _ssdbg_a1b2c3d4_slot1;");
@@ -53,10 +59,14 @@ describe("planSlangInstrumentation", () => {
         source: "float4 mainImage(float2 fragCoord) {\n  float current = fragCoord.x;\n  return float4(current);\n}\n",
       }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     const analysis = analyzeSlangSite(file, { line: 1, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, ["value-from-version-1"], "capture");
 
@@ -83,17 +93,25 @@ describe("planSlangInstrumentation", () => {
       contentHash: "default1234",
       files: [{ uri: "/work/default.slang", path: "/work/default.slang", source, version: 1, moduleName: "", ownerPass: "Image" }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     const analysis = analyzeSlangSite(file, { line: 4, character: 10 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const col = analysis.analysis.visibleValues.find((value) => value.name === "col");
-    if (!col) throw new Error("Expected col to be visible at the return statement");
+    if (!col) {
+      throw new Error("Expected col to be visible at the return statement");
+    }
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [col.id], "capture");
 
     expect(result).toMatchObject({ ok: true });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0].source;
     expect(output.indexOf("_ssdbg_defa1234_executed = true;")).toBeLessThan(output.indexOf("return float4(col, 1.0);"));
   });
@@ -113,10 +131,14 @@ describe("planSlangInstrumentation", () => {
       contentHash: "compute1234",
       files: [{ uri: "/work/compute.slang", path: "/work/compute.slang", source, version: 1, moduleName: "", ownerPass: "ComputeValues" }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     const analysis = analyzeSlangSite(file, { line: 2, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [analysis.analysis.previewValueId!], "preview");
 
@@ -145,18 +167,26 @@ describe("planSlangInstrumentation", () => {
       contentHash: "ifctrl123",
       files: [{ uri: "/work/if-ctrl.slang", path: "/work/if-ctrl.slang", source, version: 1, moduleName: "", ownerPass: "Image" }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     // Cursor on the if-statement header (line 4, "  if (col.x > 0.5)")
     const analysis = analyzeSlangSite(file, { line: 4, character: 6 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const col = analysis.analysis.visibleValues.find((value) => value.name === "col");
-    if (!col) throw new Error("Expected col to be visible at the if header");
+    if (!col) {
+      throw new Error("Expected col to be visible at the if header");
+    }
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [col.id], "capture");
 
     expect(result).toMatchObject({ ok: true });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0].source;
     // Capture assignment must appear BEFORE the if statement
     const execIndex = output.indexOf("_ssdbg_fc123000_executed = true;");
@@ -184,14 +214,20 @@ describe("planSlangInstrumentation", () => {
       contentHash: "compute5678",
       files: [{ uri: "/work/compute-output.slang", path: "/work/compute-output.slang", source, version: 1, moduleName: "", ownerPass: "ComputeOutput" }],
     });
-    if (!created.ok) throw new Error(created.diagnostics[0].message);
+    if (!created.ok) {
+      throw new Error(created.diagnostics[0].message);
+    }
     const file = created.workspace.filesByUri.get(created.workspace.rootUri)!;
     const analysis = analyzeSlangSite(file, { line: 4, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0].message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0].message);
+    }
 
     const result = planSlangInstrumentation(created.workspace, file, analysis.analysis, [analysis.analysis.previewValueId!], "preview");
     expect(result).toMatchObject({ ok: true, plan: { captureSlots: [{ hidden: true }, { name: "value" }] } });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0].source;
     expect(output).not.toContain('[shader("compute")]');
     expect(output).not.toContain('SV_DispatchThreadID');

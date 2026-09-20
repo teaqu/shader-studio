@@ -15,10 +15,14 @@ const SOURCE = [
 
 function planAt(line: number, valueNames: string[], mode: "preview" | "capture" = "preview") {
   const analysis = analyzeWgslSite(SOURCE, URI, { line, character: 8 });
-  if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+  if (!analysis.ok) {
+    throw new Error(analysis.diagnostics[0]?.message);
+  }
   const values = analysis.analysis.visibleValues.filter((value) => valueNames.includes(value.name));
   const result = planWgslInstrumentation(SOURCE, URI, "deadbeef", analysis.analysis, values.map((value) => value.id), mode);
-  if (!result.ok) throw new Error(result.diagnostics[0]?.message);
+  if (!result.ok) {
+    throw new Error(result.diagnostics[0]?.message);
+  }
   return { plan: result.plan, analysis: analysis.analysis };
 }
 
@@ -68,7 +72,9 @@ describe("planWgslInstrumentation", () => {
   it("rejects instrumentation that would collide with its own prefix", () => {
     const clashing = `${SOURCE}\nvar<private> _ssdbg_deadbeef_slot1: f32;`;
     const analysis = analyzeWgslSite(clashing, URI, { line: 1, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
     const values = analysis.analysis.visibleValues.filter((value) => value.name === "value");
 
     expect(planWgslInstrumentation(clashing, URI, "deadbeef", analysis.analysis, values.map((value) => value.id), "preview"))
@@ -77,7 +83,9 @@ describe("planWgslInstrumentation", () => {
 
   it("rejects stale value requests", () => {
     const analysis = analyzeWgslSite(SOURCE, URI, { line: 1, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
 
     expect(planWgslInstrumentation(SOURCE, URI, "deadbeef", analysis.analysis, ["wgsl:nope"], "preview"))
       .toMatchObject({ ok: false, diagnostics: [{ code: "wgsl-debug-stale-request" }] });
@@ -86,7 +94,9 @@ describe("planWgslInstrumentation", () => {
   it("replays compute entries", () => {
     const compute = "@compute @workgroup_size(8, 8, 1)\nfn mainCompute(@builtin(global_invocation_id) id: vec3u) {\n  var x: f32 = 1.0;\n}";
     const analysis = analyzeWgslSite(compute, URI, { line: 2, character: 8 });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
     const values = analysis.analysis.visibleValues.filter((value) => value.name === "x");
 
     expect(planWgslInstrumentation(compute, URI, "deadbeef", analysis.analysis, values.map((value) => value.id), "preview"))

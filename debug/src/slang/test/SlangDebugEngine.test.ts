@@ -15,7 +15,9 @@ describe("SlangDebugEngine", () => {
     const engine = new SlangDebugEngine();
     const analysis = engine.analyze(request);
     expect(analysis).toMatchObject({ ok: true, analysis: { previewValueId: "declaration:file:///work/main.slang:1:8" } });
-    if (!analysis.ok) return;
+    if (!analysis.ok) {
+      return;
+    }
 
     expect(engine.planPreview(request, { normalizeMode: "off", stepEdge: null })).toMatchObject({ ok: true, plan: { captureSlots: [{ index: 0, hidden: true }, { index: 1, name: "value" }] } });
     expect(engine.planCapture(request, [analysis.analysis.previewValueId!])).toMatchObject({ ok: true, plan: { captureSlots: [{ index: 0, hidden: true }, { index: 1, name: "value" }] } });
@@ -67,9 +69,13 @@ describe("SlangDebugEngine", () => {
       ...request,
       position: { line: 2, character: 2 },
     });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
     const value = analysis.analysis.visibleValues.find((candidate) => candidate.name === "value");
-    if (!value) throw new Error("Expected value to be visible");
+    if (!value) {
+      throw new Error("Expected value to be visible");
+    }
 
     expect(engine.planPreviewValue({ ...request, position: { line: 2, character: 2 } }, value.id, {
       normalizeMode: "off",
@@ -85,7 +91,9 @@ describe("SlangDebugEngine", () => {
     const result = engine.planPreview(request, { normalizeMode: "soft", stepEdge: 0.25 });
 
     expect(result).toMatchObject({ ok: true });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0]?.source ?? "";
     expect(output).toContain("/ (abs(");
     expect(output).toContain("* 0.5 + 0.5");
@@ -111,9 +119,13 @@ describe("SlangDebugEngine", () => {
   it("applies absolute normalization to explicitly selected Slang values", () => {
     const engine = new SlangDebugEngine();
     const analysis = engine.analyze({ ...request, position: { line: 2, character: 2 } });
-    if (!analysis.ok) throw new Error(analysis.diagnostics[0]?.message);
+    if (!analysis.ok) {
+      throw new Error(analysis.diagnostics[0]?.message);
+    }
     const value = analysis.analysis.visibleValues.find((candidate) => candidate.name === "value");
-    if (!value) throw new Error("Expected value to be visible");
+    if (!value) {
+      throw new Error("Expected value to be visible");
+    }
 
     const result = engine.planPreviewValue(
       { ...request, position: { line: 2, character: 2 } },
@@ -121,7 +133,9 @@ describe("SlangDebugEngine", () => {
       { normalizeMode: "abs", stepEdge: null },
     );
     expect(result).toMatchObject({ ok: true });
-    if (!result.ok) return;
+    if (!result.ok) {
+      return;
+    }
     const output = result.plan.files[0]?.source ?? "";
     expect(output).toContain("abs(");
     expect(output).toContain("/ (abs(");

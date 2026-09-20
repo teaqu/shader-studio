@@ -420,11 +420,15 @@ export class ShaderDebugger {
 
     for (const pair of paramPairs) {
       const match = pair.match(/(?:(in|out|inout)\s+)?(vec[234]|float|int|bool|mat[234]|sampler2D)\s+(\w+)/);
-      if (!match) continue;
+      if (!match) {
+        continue;
+      }
 
       const qualifier = match[1];
       // Skip 'out' parameters — they are outputs, not inputs
-      if (qualifier === 'out') continue;
+      if (qualifier === 'out') {
+        continue;
+      }
 
       const type = match[2];
       const name = match[3];
@@ -519,8 +523,12 @@ export class ShaderDebugger {
     for (let i = functionStart; i < lines.length; i++) {
       const strippedFuncLine = lines[i].replace(/\/\/.*$/, '');
       for (const char of strippedFuncLine) {
-        if (char === '{') { funcBraceDepth++; funcBodyStarted = true; }
-        if (char === '}') { funcBraceDepth--; }
+        if (char === '{') {
+          funcBraceDepth++; funcBodyStarted = true; 
+        }
+        if (char === '}') {
+          funcBraceDepth--; 
+        }
       }
       if (funcBodyStarted && funcBraceDepth === 0) {
         funcEnd = i;
@@ -657,8 +665,12 @@ export class ShaderDebugger {
       for (let i = functionStart; i <= truncationEnd; i++) {
         const stripped = lines[i].replace(/\/\/.*$/, '');
         for (const char of stripped) {
-          if (char === '{') depth++;
-          if (char === '}') depth--;
+          if (char === '{') {
+            depth++;
+          }
+          if (char === '}') {
+            depth--;
+          }
         }
       }
       if (depth > 1) {
@@ -666,8 +678,12 @@ export class ShaderDebugger {
         for (let i = truncationEnd + 1; i < lines.length; i++) {
           const stripped = lines[i].replace(/\/\/.*$/, '');
           for (const char of stripped) {
-            if (char === '{') depth++;
-            if (char === '}') depth--;
+            if (char === '{') {
+              depth++;
+            }
+            if (char === '}') {
+              depth--;
+            }
           }
           if (depth <= 1) {
             truncationEnd = i;
@@ -731,10 +747,14 @@ export class ShaderDebugger {
     const blocks: Array<{ openLine: number; endLine: number }> = [];
     for (let lineIndex = functionStart; lineIndex <= truncationEnd; lineIndex++) {
       for (const character of lines[lineIndex].replace(/\/\/.*$/, '')) {
-        if (character === '{') openBlocks.push({ openLine: lineIndex });
+        if (character === '{') {
+          openBlocks.push({ openLine: lineIndex });
+        }
         if (character === '}') {
           const block = openBlocks.pop();
-          if (block) blocks.push({ ...block, endLine: lineIndex });
+          if (block) {
+            blocks.push({ ...block, endLine: lineIndex });
+          }
         }
       }
     }
@@ -742,7 +762,9 @@ export class ShaderDebugger {
       .filter(candidate => candidate.openLine < line && line < candidate.endLine)
       .filter(candidate => candidate.endLine <= truncationEnd)
       .sort((left, right) => right.openLine - left.openLine)[0];
-    if (!block || block.openLine === functionStart) return null;
+    if (!block || block.openLine === functionStart) {
+      return null;
+    }
 
     let headerLine = functionStart + 1;
     for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
