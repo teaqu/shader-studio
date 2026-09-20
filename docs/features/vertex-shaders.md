@@ -71,25 +71,32 @@ For 3D geometry types (plane, cube, sphere, model), the engine applies the model
 
 All standard shader uniforms are available in the vertex shader:
 
-| Built-in | Type (GLSL) | Type (Slang) | Description |
-|----------|-------------|--------------|-------------|
-| `iResolution` | `vec3` | `float3` | Canvas resolution in pixels |
-| `iTime` | `float` | `float` | Shader time in seconds |
-| `iTimeDelta` | `float` | `float` | Time since last frame |
-| `iFrameRate` | `float` | `float` | Current frame rate |
-| `iMouse` | `vec4` | `float4` | Mouse position and button state |
-| `iFrame` | `int` | `int` | Current frame number |
-| `iDate` | `vec4` | `float4` | Year, month, day, seconds |
-| `iChannelTime` | `float[N]` | — | Playback time per configured channel (use `iChannelN.time` in Slang) |
-| `iSampleRate` | `float` | `float` | Audio sample rate |
-| `iCameraPos` | `vec3` | `float3` | Camera position in world space |
-| `iCameraDir` | `vec3` | `float3` | Camera forward direction |
+| Built-in | Type (GLSL) | Type (Slang) | Type (WGSL) | Description |
+|----------|-------------|--------------|-------------|-------------|
+| `iResolution` | `vec3` | `float3` | `vec3f` | Canvas resolution in pixels |
+| `iTime` | `float` | `float` | `f32` | Shader time in seconds |
+| `iTimeDelta` | `float` | `float` | `f32` | Time since last frame |
+| `iFrameRate` | `float` | `float` | `f32` | Current frame rate |
+| `iMouse` | `vec4` | `float4` | `vec4f` | Mouse position and button state |
+| `iFrame` | `int` | `int` | `i32` | Current frame number |
+| `iDate` | `vec4` | `float4` | `vec4f` | Year, month, day, seconds |
+| `iChannelTime` | `float[N]` | — | — | Playback time per configured channel (use channel metadata in Slang and WGSL) |
+| `iSampleRate` | `float` | `float` | `f32` | Audio sample rate |
+| `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
+| `iCameraDir` | `vec3` | `float3` | `vec3f` | Camera forward direction |
 
 === "GLSL"
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.
 
 === "Slang"
     Configured inputs are available as `<config key>`, for example `iChannel0` or `noise`. Slang channel methods are available in all shader stages. In a vertex shader, use explicit-level sampling such as `iChannel0.SampleLevel(textureUv, 0.0)`; `Sample(uv)` is fragment-only.
+
+=== "WGSL"
+    Configured inputs expose metadata as `<config key>` and native handles as
+    `<config key>Texture` and `<config key>Sampler`. In a vertex shader, use an
+    explicit level, for example
+    `sample2DLevel(iChannel0Texture, iChannel0Sampler, textureUv, 0.0)`;
+    `sample2D` is fragment-only.
 
 ## Fragment Shader Access
 
@@ -111,6 +118,7 @@ When using 3D geometry, the fragment shader receives per-pixel interpolated valu
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iWorldPosition: vec3<f32>` — world-space position of the fragment
     - `iNormal: vec3<f32>` — world-space interpolated normal
+    - `iCameraPosition: vec3<f32>` — world-space camera position
 
 ## Examples
 
@@ -125,6 +133,16 @@ A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for 
         // position is in clip space; offset to create a ripple
         position.x += sin(uv.y * 20.0 + iTime) * 0.1;
         position.y += cos(uv.x * 20.0 + iTime) * 0.1;
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // warp.vert.wgsl
+    fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        let ripple = sin((*uv).y * 20.0 + iTime) * 0.1;
+        (*position).x += ripple;
+        (*position).y += cos((*uv).x * 20.0 + iTime) * 0.1;
     }
     ```
 
@@ -157,6 +175,16 @@ A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for 
         float wave = sin(position.x * 5.0 + iTime) *
                      cos(position.z * 5.0 + iTime) * 0.2;
         position.y += wave;
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // noise.vert.wgsl
+    fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        let wave = sin((*position).x * 5.0 + iTime) *
+                   cos((*position).z * 5.0 + iTime) * 0.2;
+        (*position).y += wave;
     }
     ```
 
