@@ -945,6 +945,15 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.resetTime();
     testHarness.engine.render(2000);
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig({ dispatchOnce: true }),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
+    testHarness.engine.render(2016);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
       .toHaveLength(2);
   });
 
@@ -1228,6 +1237,14 @@ describe("WebGPURenderingEngine compute compilation", () => {
     testHarness.engine.render(1016);
     testHarness.engine.resetTime();
     testHarness.engine.render(2000);
+    expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))
+      .toHaveLength(1);
+    await testHarness.engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      computeConfig(),
+      "/shader.slang",
+      { ComputeSim: COMPUTE_SOURCE },
+    );
     testHarness.engine.render(2016);
 
     expect(testHarness.commandEvents.filter(({ type }) => type === "dispatchWorkgroups"))

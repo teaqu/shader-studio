@@ -994,14 +994,45 @@ describe("WebGPURenderingEngine", () => {
     const code = "float4 mainImage(float2 c) { return float4(0); }";
     await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
     const buffer = (engine as any).passPipelines.get("BufferA") as SlangPassPipeline;
-    const resetSpy = vi.spyOn(buffer, "resetOutputTextures");
 
     engine.resetTime();
-    expect(resetSpy).not.toHaveBeenCalled();
+    expect((engine as any).passPipelines.get("BufferA")).toBe(buffer);
     const result = await engine.compileShaderPipeline(code, config, "/image.slang", { BufferA: code });
 
     expect(result?.success).toBe(true);
-    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect((engine as any).passPipelines.get("BufferA")).not.toBe(buffer);
+  });
+
+  it("invalidates paused uniforms only when a reset compilation publishes", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubEngineInternals(engine);
+    const code = "float4 mainImage(float2 c) { return float4(0); }";
+    await engine.compileShaderPipeline(code, null, "/image.slang");
+    engine.togglePause();
+    const frozen = {
+      time: 3,
+      timeDelta: 0,
+      frameRate: 60,
+      frame: 19,
+      mouse: [1, 2, 3, 4],
+      date: [2026, 8, 20, 0],
+      cameraPos: [0, 0, 0],
+      cameraDir: [0, 0, -1],
+    };
+    (engine as any).pausedUniformInput = frozen;
+    (engine as any).pausedCustomUniformValues = [{ name: "seed", type: "float", value: 9 }];
+
+    engine.resetTime();
+
+    expect((engine as any).pausedUniformInput).toBe(frozen);
+    expect(engine.getTimeManager().isPaused()).toBe(true);
+
+    await engine.compileShaderPipeline(`${code}\n// reset`, null, "/image.slang");
+
+    expect((engine as any).pausedUniformInput).toBeNull();
+    expect((engine as any).pausedCustomUniformValues).toBeNull();
+    expect(engine.getTimeManager().getFrame()).toBe(0);
+    expect(engine.getTimeManager().isPaused()).toBe(true);
   });
 
   it("compiles arbitrary configured buffer names", async () => {
