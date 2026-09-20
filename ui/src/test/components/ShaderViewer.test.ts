@@ -699,6 +699,16 @@ describe('ShaderViewer', () => {
     expect(container).toBeTruthy();
   });
 
+  it('requests initial shader delivery without a destructive resource refresh', async () => {
+    render(ShaderViewer, { onInitialized: vi.fn() });
+    await tick();
+    await tick();
+
+    expect(mockTransport.postMessage).toHaveBeenCalledWith({
+      type: 'refresh', payload: { reason: 'initial' },
+    });
+  });
+
   it('pixel inspector zoom is rendered inside DebugPanel via PixelInspectorSection', () => {
     expect(shaderViewerSource).toContain('getInspectorState');
     expect(shaderViewerSource).toContain('setInspectorState');

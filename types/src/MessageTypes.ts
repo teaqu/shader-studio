@@ -48,6 +48,8 @@ export interface RefreshMessage extends BaseMessage {
   type: "refresh";
   payload: {
     path?: string;
+    /** Initial source delivery must preserve any simulation already installed. */
+    reason?: "initial";
   };
 }
 

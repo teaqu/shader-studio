@@ -112,12 +112,13 @@ export class MessageHandler {
     this.outputChannel.info("Refresh request received from UI");
 
     const shaderPath = message.payload?.path;
+    const options = message.payload?.reason === 'initial' ? [{ reload: false }] : [];
     if (shaderPath) {
       this.outputChannel.info(`Requesting refresh for shader at path: ${shaderPath}`);
-      vscode.commands.executeCommand('shader-studio.refreshSpecificShaderByPath', shaderPath);
+      vscode.commands.executeCommand('shader-studio.refreshSpecificShaderByPath', shaderPath, ...options);
     } else {
       this.outputChannel.info("Requesting refresh for current/active shader");
-      vscode.commands.executeCommand('shader-studio.refreshCurrentShader');
+      vscode.commands.executeCommand('shader-studio.refreshCurrentShader', ...options);
     }
   }
 

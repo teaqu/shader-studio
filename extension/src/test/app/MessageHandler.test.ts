@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { MessageHandler } from '../../app/transport/MessageHandler';
 import { ErrorHandler } from '../../app/ErrorHandler';
-import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage, ShaderLockStateMessage } from '@shader-studio/types';
+import { ShowConfigMessage, GenerateConfigMessage, ShaderSourceMessage, LogMessage, ErrorMessage, WarningMessage, DebugModeStateMessage, ShaderLockStateMessage, RefreshMessage } from '@shader-studio/types';
 
 suite('MessageHandler Test Suite', () => {
   let messageHandler: MessageHandler;
@@ -160,6 +160,51 @@ suite('MessageHandler Test Suite', () => {
     // Verify it requested config generation without URI
     sinon.assert.calledOnce(executeCommandStub);
     sinon.assert.calledWith(executeCommandStub, 'shader-studio.generateConfigFromUI');
+  });
+
+  test('routes an initial refresh to a non-destructive current-shader refresh', () => {
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    const message: RefreshMessage = {
+      type: 'refresh',
+      payload: { reason: 'initial' },
+    };
+
+    messageHandler.handleMessage(message);
+
+    sinon.assert.calledOnceWithExactly(
+      executeCommandStub,
+      'shader-studio.refreshCurrentShader',
+      { reload: false },
+    );
+  });
+
+  test('routes an initial path refresh to a non-destructive specific-shader refresh', () => {
+    const executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    const message: RefreshMessage = {
+      type: 'refresh',
+      payload: { path: '/mock/path/startup.glsl', reason: 'initial' },
+    };
+
+    messageHandler.handleMessage(message);
+
+    sinon.assert.calledOnceWithExactly(
+      executeCommandStub,
+      'shader-studio.refreshSpecificShaderByPath',
+      '/mock/path/startup.glsl',
+      { reload: false },
+    );
+  });
+
+  test('keeps explicit current-shader refresh on the default reload path', () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    messageHandler.handleMessage({ type: 'refresh', payload: {} });
+    sinon.assert.calledOnceWithExactly(execute, 'shader-studio.refreshCurrentShader');
+  });
+
+  test('keeps explicit path refresh on the default reload path', () => {
+    const execute = sandbox.stub(vscode.commands, 'executeCommand').resolves();
+    messageHandler.handleMessage({ type: 'refresh', payload: { path: '/mock/shader.glsl' } });
+    sinon.assert.calledOnceWithExactly(execute, 'shader-studio.refreshSpecificShaderByPath', '/mock/shader.glsl');
   });
 
   test('should clear errors when shader compilation succeeds', () => {

@@ -1330,7 +1330,9 @@
 
       transport.postMessage({ type: 'debug', payload: ['Svelte with piLibs initialized'] });
       transport.postMessage({ type: 'languageServiceReady' });
-      transport.postMessage({ type: 'refresh' });
+      // The host's first source can arrive before this listener is ready. Ask
+      // for it again without clearing feedback if it already started running.
+      transport.postMessage({ type: 'refresh', payload: { reason: 'initial' } });
 
       editorOverlayManager = new EditorOverlayManager(
         transport, () => renderingEngine, editorOverlayCallbacks,

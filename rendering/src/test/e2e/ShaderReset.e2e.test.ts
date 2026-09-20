@@ -171,7 +171,7 @@ const whiteFrame = (): Pixel[] => Array.from(
 );
 
 describe.each(["glsl", "wgsl", "slang"] as const)("%s atomic reset", (language) => {
-  it("publishes reset resources with frame zero and matches 30 fresh Emergence frames", { timeout: 120_000 }, async () => {
+  it("publishes reset resources with frame zero and matches 30 fresh diagnostic frames", { timeout: 120_000 }, async () => {
     const fresh = createShaderCanvasHarness(language);
     const reset = createShaderCanvasHarness(language);
     try {

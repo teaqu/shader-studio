@@ -573,6 +573,13 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderFromPathSpy, shaderPath, { reload: true });
   });
 
+  test('initial path refresh preserves feedback', async () => {
+    const shaderPath = '/mock/path/startup.glsl';
+    const send = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+    await shaderStudio['refreshSpecificShaderByPath'](shaderPath, { reload: false });
+    sinon.assert.calledOnceWithExactly(send, shaderPath, { reload: false });
+  });
+
   test('foreground path activation claims analysis ownership before refreshing', async () => {
     const shaderPath = '/mock/path/foreground.glsl';
     const claim = sandbox.spy(shaderStudio['shaderProvider'], 'claimActiveAnalysisContext');
@@ -622,6 +629,21 @@ suite('Shader Studio Test Suite', () => {
     sinon.assert.calledWith(sendShaderFromPathSpy, lastViewedFile, { reload: true });
   });
 
+  test('initial refresh preserves feedback when it falls back to the last viewed file', async () => {
+    const lastViewedFile = '/mock/path/last-shader.glsl';
+    const fs = require('fs');
+
+    fs.readFileSync.returns('void mainImage(out vec4 fragColor, in vec2 fragCoord) {}');
+    shaderStudio['glslFileTracker'].setLastViewedGlslFile(lastViewedFile);
+    sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
+    sandbox.stub(vscode.window, 'visibleTextEditors').value([]);
+    const sendShaderFromPathSpy = sandbox.spy(shaderStudio['shaderProvider'], 'sendShaderFromPath');
+
+    await shaderStudio['refreshCurrentShader']({ reload: false });
+
+    sinon.assert.calledOnceWithExactly(sendShaderFromPathSpy, lastViewedFile, { reload: false });
+  });
+
   test('refreshCurrentShader should call sendShaderFromEditor with reload when active GLSL editor exists', async () => {
     const mockEditor = createMockGLSLEditor();
 
@@ -635,6 +657,16 @@ suite('Shader Studio Test Suite', () => {
 
     sinon.assert.calledOnce(sendShaderSpy);
     sinon.assert.calledWith(sendShaderSpy, mockEditor, { reload: true });
+  });
+
+  test('initial refresh preserves feedback when an active GLSL editor exists', async () => {
+    const mockEditor = createMockGLSLEditor();
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
+    sendShaderSpy.resetHistory();
+
+    await shaderStudio['refreshCurrentShader']({ reload: false });
+
+    sinon.assert.calledOnceWithExactly(sendShaderSpy, mockEditor, { reload: false });
   });
 
   test('toggleEditorOverlay command should target the active shader panel', () => {
