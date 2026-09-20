@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ShaderDebugger, SlangDebugEngine, VariableCaptureBuilder, WgslDebugEngine } from "@shader-studio/debug";
-import type { DebugAnalysisRequest } from "@shader-studio/types";
+import type { DebugAnalysisRequest, ShaderDebugEngine } from "@shader-studio/types";
 import projects from "virtual:shader-fixture-corpus";
 import {
   createShaderCanvasHarness,
@@ -30,11 +30,17 @@ function expectedCompileError(project: (typeof projects)[number]): RegExp | unde
 }
 
 /**
- * Documented WGSL compute-replay limits (see compute debugging in
- * docs/features/wgsl-authoring.md). A plan that fails ONLY with these
+ * Documented compute-replay limits, shared by both plan engines (see compute
+ * debugging in docs/features/wgsl-authoring.md). Both replay a compute pass as
+ * a fragment shader with read-only storage bindings, and both word the refusal
+ * identically after the engine name. A plan that fails ONLY with these
  * diagnostics is pinned as expected, not a failure; anything else fails.
+ *
+ * Deliberately narrow: storage writes only. Workgroup memory, barriers and
+ * subgroup refusals are NOT excused here, so a fixture that starts hitting one
+ * fails loudly rather than being absorbed by a wider pattern.
  */
-const expectedWgslReplayLimits: RegExp[] = [
+const expectedComputeReplayLimits: RegExp[] = [
   /does not support writes to configured storage/,
 ];
 
@@ -148,6 +154,40 @@ const knownBlackOutput = new Set<string>([
   "wgsl/compute-lab/storage-edit-colours.wgsl",
 ]);
 
+/** Per-language sweep coverage: how much of the corpus each engine plans. */
+interface LanguageTally {
+  lines: number;
+  inline: number;
+  capture: number;
+  /** Lines the engine declined to analyse at all — blanks, comments, braces. */
+  unanalysed: number;
+}
+
+/**
+ * Floors pinned to measured coverage with ~5% headroom, like the committed
+ * triplet signatures in ui/src/test/e2e/triplet-signatures.ts. Plan counts only
+ * rise as the corpus grows, so a drop is a real regression and re-pinning is a
+ * deliberate edit. `unanalysed` is a ceiling expressed as a RATIO of that
+ * language's lines, so adding fixtures does not force an edit — it exists
+ * because an unanalysable line is skipped silently, and a parser regression
+ * would otherwise show up as nothing at all.
+ *
+ * Measured on 12f849ff + Slang compute-replay metadata (2026-09-19):
+ *   glsl  1012 lines, 862 inline, 872 capture, 150 unanalysed (0.148)
+ *   slang 2302 lines, 885 inline, 1198 capture, 838 unanalysed (0.364)
+ *   wgsl  2318 lines, 833 inline, 1153 capture, 916 unanalysed (0.395)
+ */
+const coverageFloors: Record<ShaderLanguage, {
+  lines: number;
+  inline: number;
+  capture: number;
+  unanalysedRatio: number;
+}> = {
+  glsl: { lines: 960, inline: 818, capture: 828, unanalysedRatio: 0.16 },
+  slang: { lines: 2_180, inline: 840, capture: 1_138, unanalysedRatio: 0.39 },
+  wgsl: { lines: 2_200, inline: 791, capture: 1_095, unanalysedRatio: 0.42 },
+};
+
 interface DebugSweepFailure {
   project: string;
   pass: string;
@@ -203,11 +243,20 @@ function slangRequest(
       ownerPass: "Image",
     });
   }
+  const ownerPass = isCommon ? "Image" : pass;
+  const passConfig = project.config?.passes?.[ownerPass];
+  const compute = passConfig && "type" in passConfig && passConfig.type === "compute"
+    ? {
+      ...("entryPoint" in passConfig && passConfig.entryPoint ? { entryPoint: passConfig.entryPoint as string } : {}),
+      storageNames: Object.keys(project.config?.storage ?? {}),
+    }
+    : undefined;
   return {
     workspace: {
       rootUri: rootPath,
       rootPath,
-      passName: isCommon ? "Image" : pass,
+      passName: ownerPass,
+      ...(compute ? { compute } : {}),
       contentHash: `${project.name}:${pass}`,
       files,
     },
@@ -507,21 +556,27 @@ describe("slang-multipass-test shader corpus", () => {
     const failures: DebugSweepFailure[] = [];
     const slangEngine = new SlangDebugEngine();
     const wgslEngine = new WgslDebugEngine();
-    let lineCount = 0;
-    let inlinePlanCount = 0;
-    let capturePlanCount = 0;
-    let wgslPlanCount = 0;
+    const tallies: Record<ShaderLanguage, LanguageTally> = {
+      glsl: { lines: 0, inline: 0, capture: 0, unanalysed: 0 },
+      slang: { lines: 0, inline: 0, capture: 0, unanalysed: 0 },
+      wgsl: { lines: 0, inline: 0, capture: 0, unanalysed: 0 },
+    };
 
     for (const project of projects) {
+      const tally = tallies[project.language as ShaderLanguage];
       for (const { pass, source } of debugSources(project)) {
         const lines = source.split("\n");
         for (let line = 0; line < lines.length; line += 1) {
-          lineCount += 1;
+          tally.lines += 1;
           if (project.language === "glsl") {
             try {
               const inline = ShaderDebugger.modifyShaderForLineDebug(source, line, lines[line]);
               if (inline) {
-                inlinePlanCount += 1;
+                tally.inline += 1;
+              } else {
+                // GLSL has no analyse step: a line the rewriter declines is the
+                // same signal as analysis.ok === false for the plan engines.
+                tally.unanalysed += 1;
               }
             } catch (error) {
               failures.push({
@@ -550,7 +605,7 @@ describe("slang-multipass-test shader corpus", () => {
                 if (!capture) {
                   throw new Error(`${variables.length} visible variables produced no capture shader`);
                 }
-                capturePlanCount += 1;
+                tally.capture += 1;
               }
             } catch (error) {
               failures.push({
@@ -565,109 +620,85 @@ describe("slang-multipass-test shader corpus", () => {
             continue;
           }
 
-          if (project.language === "wgsl") {
-            const request = wgslRequest(project, pass, source, line);
-            const analysis = wgslEngine.analyze(request);
-            if (!analysis.ok) {
-              continue;
-            }
-            const pushUnlessLimited = (
-              stage: "inline" | "capture",
-              diagnostics: Array<{ message: string }>,
-            ) => {
-              // Every diagnostic must be a known replay limit; a real error
-              // bundled alongside one still fails.
-              if (
-                diagnostics.length > 0 &&
-                diagnostics.every((diagnostic) =>
-                  expectedWgslReplayLimits.some((limit) => limit.test(diagnostic.message)))) {
-                return;
-              }
-              failures.push({
-                project: project.name,
-                pass,
-                line,
-                stage,
-                source: lines[line],
-                message: diagnostics.map((diagnostic) => diagnostic.message).join("; "),
-              });
-            };
-            if (analysis.analysis.previewValueId) {
-              const inline = wgslEngine.planPreview(request, {
-                normalizeMode: "off",
-                stepEdge: null,
-              });
-              if (inline.ok) {
-                inlinePlanCount += 1;
-                wgslPlanCount += 1;
-              } else {
-                pushUnlessLimited("inline", inline.diagnostics);
-              }
-            }
-
-            const capture = wgslEngine.planCapture(
-              request,
-              analysis.analysis.visibleValues.map((value) => value.id),
-              { normalizeMode: "off", stepEdge: null },
-            );
-            if (capture.ok) {
-              capturePlanCount += 1;
-              wgslPlanCount += 1;
-            } else {
-              pushUnlessLimited("capture", capture.diagnostics);
-            }
-            continue;
-          }
-          const request = slangRequest(project, pass, source, line);
-          const analysis = slangEngine.analyze(request);
+          // Slang and WGSL are planned through one body so the two engines are
+          // held to the same contract: same request metadata, same excuse list.
+          const isWgsl = project.language === "wgsl";
+          const engine: ShaderDebugEngine = isWgsl ? wgslEngine : slangEngine;
+          const request = isWgsl
+            ? wgslRequest(project, pass, source, line)
+            : slangRequest(project, pass, source, line);
+          const analysis = engine.analyze(request);
           if (!analysis.ok) {
+            tally.unanalysed += 1;
             continue;
           }
+          const pushUnlessLimited = (
+            stage: "inline" | "capture",
+            diagnostics: Array<{ message: string }>,
+          ) => {
+            // Every diagnostic must be a known replay limit; a real error
+            // bundled alongside one still fails.
+            if (
+              diagnostics.length > 0 &&
+              diagnostics.every((diagnostic) =>
+                expectedComputeReplayLimits.some((limit) => limit.test(diagnostic.message)))) {
+              return;
+            }
+            failures.push({
+              project: project.name,
+              pass,
+              line,
+              stage,
+              source: lines[line],
+              message: diagnostics.map((diagnostic) => diagnostic.message).join("; "),
+            });
+          };
           if (analysis.analysis.previewValueId) {
-            const inline = slangEngine.planPreview(request, {
+            const inline = engine.planPreview(request, {
               normalizeMode: "off",
               stepEdge: null,
             });
             if (inline.ok) {
-              inlinePlanCount += 1;
+              tally.inline += 1;
             } else {
-              failures.push({
-                project: project.name,
-                pass,
-                line,
-                stage: "inline",
-                source: lines[line],
-                message: inline.diagnostics.map((diagnostic) => diagnostic.message).join("; "),
-              });
+              pushUnlessLimited("inline", inline.diagnostics);
             }
           }
 
-          const capture = slangEngine.planCapture(
+          const capture = engine.planCapture(
             request,
             analysis.analysis.visibleValues.map((value) => value.id),
             { normalizeMode: "off", stepEdge: null },
           );
           if (capture.ok) {
-            capturePlanCount += 1;
+            tally.capture += 1;
           } else {
-            failures.push({
-              project: project.name,
-              pass,
-              line,
-              stage: "capture",
-              source: lines[line],
-              message: capture.diagnostics.map((diagnostic) => diagnostic.message).join("; "),
-            });
+            pushUnlessLimited("capture", capture.diagnostics);
           }
         }
       }
     }
 
-    expect(lineCount).toBeGreaterThan(3_000);
-    expect(inlinePlanCount).toBeGreaterThan(500);
-    expect(capturePlanCount).toBeGreaterThan(500);
-    expect(wgslPlanCount).toBeGreaterThan(500);
     expect(formatDebugSweepFailures(failures)).toBe("");
+    // Assert per language: aggregates let one engine's coverage collapse while
+    // another's growth hides it.
+    const shortfalls: string[] = [];
+    for (const [language, floor] of Object.entries(coverageFloors) as Array<[ShaderLanguage, typeof coverageFloors[ShaderLanguage]]>) {
+      const tally = tallies[language];
+      for (const metric of ["lines", "inline", "capture"] as const) {
+        if (tally[metric] < floor[metric]) {
+          shortfalls.push(`${language}.${metric}: ${tally[metric]} < floor ${floor[metric]}`);
+        }
+      }
+      const ratio = tally.lines === 0 ? 1 : tally.unanalysed / tally.lines;
+      if (ratio > floor.unanalysedRatio) {
+        shortfalls.push(
+          `${language}.unanalysed: ${tally.unanalysed}/${tally.lines} = ${ratio.toFixed(3)}`
+          + ` > ceiling ${floor.unanalysedRatio}`,
+        );
+      }
+    }
+    expect(shortfalls.join("\n")).toBe("");
   });
 
   it("compiles and executes every debugger-coverage line on the real backends", { timeout: 60_000 }, async () => {
