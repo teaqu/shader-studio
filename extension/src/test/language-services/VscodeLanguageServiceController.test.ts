@@ -470,6 +470,48 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
+  for (const language of ["wgsl", "slang"] as const) {
+    test(`declares configured storage for a ${language} compute pass in a subdirectory`, async function() {
+      this.timeout(20_000);
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-storage-e2e-`));
+      const passDirectory = path.join(directory, "passes");
+      const computePath = path.join(passDirectory, `sim.${language}`);
+      const compute = language === "wgsl"
+        ? "@compute @workgroup_size(64, 1, 1)\nfn simulate(@builtin(global_invocation_id) id: vec3u) {\n  particles[id.x] = vec4f(1.0);\n}"
+        : "[shader(\"compute\")]\n[numthreads(64, 1, 1)]\nvoid simulate(uint3 id : SV_DispatchThreadID) {\n  particles[id.x] = float4(1.0);\n}";
+      try {
+        fs.mkdirSync(passDirectory, { recursive: true });
+        fs.writeFileSync(computePath, compute);
+        fs.writeFileSync(path.join(directory, `swarm.${language}`), language === "wgsl"
+          ? "fn mainImage(coord: vec2f) -> vec4f { return particles[0]; }"
+          : "float4 mainImage(float2 coord) { return particles[0]; }");
+        fs.writeFileSync(path.join(directory, "swarm.sha.json"), JSON.stringify({
+          version: "1.0",
+          storage: { particles: { count: 16, elementType: language === "wgsl" ? "vec4<f32>" : "float4" } },
+          passes: {
+            Image: {},
+            Sim: { type: "compute", path: `passes/sim.${language}`, entryPoint: "simulate" },
+          },
+        }));
+        await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+        const document = await vscode.workspace.openTextDocument(computePath);
+
+        const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+        // The pass file sits beside its config's directory, not next to the
+        // config: the owning shader still has to supply its storage, or every
+        // use of `particles` reports an undefined identifier while compiling.
+        assert.strictEqual(environment?.passName, "Sim");
+        assert.strictEqual(environment?.stage, "compute");
+        assert.ok(environment?.resources.some((resource) => resource.name === "particles"),
+          JSON.stringify(environment?.resources));
+      } finally {
+        clearLoadedShaderProjectSnapshots();
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   for (const language of ["glsl", "slang", "wgsl"] as const) {
     test(`offers a typed ${language} selection outside the curated swizzle list`, async function() {
       this.timeout(20_000);
