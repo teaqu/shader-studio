@@ -51,6 +51,21 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
   });
 }
 
+test('WGSL named channel Load renders after editing and persists across reload', async ({ page }) => {
+  const initial = 'fn mainImage(p: vec2f) -> vec4f { return vec4f(1,0,0,1); }';
+  const good = 'fn mainImage(p: vec2f) -> vec4f { return vec4f(0,1,0,1) + albedoLoad(vec2i(0)).rrrr; }';
+  await openProject(page, [
+    ['load.wgsl', initial],
+    ['load.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { albedo: { type: 'keyboard' } } } } })],
+  ], 'load-wgsl');
+
+  await replaceSource(page, good);
+  await expectGreen(page);
+  await expect.poll(async () => (await workspace(page))['/shaders/load.wgsl']).toBe(good);
+  await page.reload();
+  await expectGreen(page);
+});
+
 test('WGSL compute reports implicit sampling and recovers after an explicit-LOD edit', async ({ page }) => {
   const invalid = '@compute @workgroup_size(1) fn update(@builtin(global_invocation_id) id: vec3u) { writeOutput(id.xy, vec4f(0,1,0,1) + keysSample(vec2f(0))); }';
   const valid = invalid.replace('keysSample(vec2f(0))', 'sample2DLevel(keysTexture, keysSampler, vec2f(0), 0)');

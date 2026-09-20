@@ -8,7 +8,7 @@ const environment: ShaderAuthoringEnvironment = {
   customUniforms: [], virtualFiles: [], resources: [{ name: 'albedo', kind: 'texture-2d' }],
 };
 describe('public channel identifier collisions', () => {
-  it.each(['albedoTexture', 'albedoSampler', 'albedoSample', 'albedoSize'])('rejects the generated name %s as another resource', name => {
+  it.each(['albedoTexture', 'albedoSampler', 'albedoSample', 'albedoLoad', 'albedoSize'])('rejects the generated name %s as another resource', name => {
     expect(validateShaderAuthoringEnvironment({ ...environment, resources: [...environment.resources, { name, kind: 'texture-2d' }] }))
       .toContainEqual(expect.objectContaining({ code: 'generated-identifier-collision' }));
   });

@@ -114,7 +114,7 @@ const WGSL_GENERATED_API_NAMES = [
  * The slot is parametric, so a pattern covers every slot; the fixed names above
  * stay a plain set like the other vocabularies in this file.
  */
-const WGSL_GENERATED_ACCESSOR_PATTERN = /^iChannel\d+(Sample|SampleLevel|SampleGrad|Size|Time|Loaded)$/;
+const WGSL_GENERATED_ACCESSOR_PATTERN = /^iChannel\d+(Sample|SampleLevel|SampleGrad|Load|Size|Time|Loaded)$/;
 
 const WGSL_RESERVED_IDENTIFIERS = new Set<string>([
   ...WGSL_KEYWORDS,

@@ -255,7 +255,11 @@ function channelAccessors(channel: WgslChannelAccessors, fragmentStage: boolean)
     ? `fn ${key}Sample(${coordName}: ${coordType}) -> vec4<f32> {
   return textureSample(${textureVar}, ${samplerVar}, ${sampleCoord});
 }` : '';
-  return `${sample}
+  const load = cube ? '' : `
+fn ${key}Load(pixel: vec2i) -> vec4f {
+  return load2D(${textureVar}, pixel);
+}`;
+  return `${sample}${load}
 fn ${key}SampleLevel(${coordName}: ${coordType}, lod: f32) -> vec4<f32> {
   return textureSampleLevel(${textureVar}, ${samplerVar}, ${sampleCoord}, lod);
 }

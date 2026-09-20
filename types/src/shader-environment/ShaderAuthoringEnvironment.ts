@@ -352,7 +352,7 @@ export function validateShaderAuthoringEnvironment(
   if (environment.languageId === 'wgsl') {
     const generated = new Set<string>();
     for (const resource of environment.resources.filter(resource => resource.kind !== 'storage')) {
-      for (const suffix of ['Texture', 'Sampler', 'Sample', 'SampleLevel', 'SampleGrad', 'Size', 'Time', 'Loaded']) {
+      for (const suffix of ['Texture', 'Sampler', 'Sample', 'SampleLevel', 'SampleGrad', 'Load', 'Size', 'Time', 'Loaded']) {
         const name = `${resource.name}${suffix}`;
         if (names.has(name) || generated.has(name)) {
           issues.push({ code: 'generated-identifier-collision', message: `Generated channel identifier "${name}" conflicts with another declaration.` });

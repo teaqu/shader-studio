@@ -10,6 +10,7 @@ describe('WGSL named inputs rendering', () => {
     'patternSample(uv)',
     'patternSampleLevel(uv, 0.0)',
     'patternSampleGrad(uv, dpdx(uv), dpdy(uv))',
+    'patternLoad(vec2i(c))',
     'sample2D(patternTexture, patternSampler, uv)',
     'textureSample(patternTexture, patternSampler, vec2f(uv.x, 1.0 - uv.y))',
   ])('preserves bottom-left image coordinates through %s', { timeout: 30_000 }, async (sample) => {

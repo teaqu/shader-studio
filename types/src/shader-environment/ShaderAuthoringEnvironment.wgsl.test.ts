@@ -76,6 +76,7 @@ describe("ShaderAuthoringEnvironment WGSL reserved identifiers", () => {
     "iChannel0Sample",
     "iChannel0SampleLevel",
     "iChannel0SampleGrad",
+    "iChannel0Load",
     "iChannel0Size",
     "iChannel0Time",
     "iChannel0Loaded",

@@ -90,6 +90,33 @@ function storageNode(name: string, binding: number, elementType: string, builtin
 }
 
 describe("wrapWgslImageSource uniform block", () => {
+  it("provides the editor-advertised channel Load helper with ShaderToy coordinates", () => {
+    const { source } = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return stateLoad(vec2i(0)); }", {
+      channels: [channel("state", 0)],
+    });
+
+    expect(source).toContain("fn stateLoad(pixel: vec2i) -> vec4f {");
+    expect(source).toContain("return load2D(stateTexture, pixel);");
+  });
+
+  it("provides Load in compute and vertex modules but never for cubemaps", () => {
+    const compute = wrapWgslComputeSource("@compute @workgroup_size(1) fn update() { let cell = stateLoad(vec2i(0)); }", {
+      channels: [channel("state", 0)],
+      workgroupSize: [1, 1, 1], outputLayers: 1, hasOutput: false,
+    }).source;
+    const vertex = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
+      channels: [channel("state", 0)],
+      vertexCode: "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let cell = stateLoad(vec2i(0)); }",
+    }).source;
+    const cubemap = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
+      channels: [channel("sky", 0, "cubemap")],
+    }).source;
+
+    expect(compute).toContain("fn stateLoad(pixel: vec2i) -> vec4f {");
+    expect(vertex).toContain("fn stateLoad(pixel: vec2i) -> vec4f {");
+    expect(cubemap).not.toContain("fn skyLoad(");
+  });
+
   it.each([4, 5, 8])("reproduces the packed byte offsets for %i channels", (channelCount) => {
     const channels = Array.from({ length: channelCount }, (_, slot) => channel(`iChannel${slot}`, slot));
     const { source } = wrapWgslImageSource("fn mainImage(coord: vec2<f32>) -> vec4<f32> { return vec4<f32>(0.0); }", { channels });
@@ -622,6 +649,9 @@ describe("wrapWgslImageSource golden module", () => {
       fn iChannel0Sample(uv: vec2<f32>) -> vec4<f32> {
         return textureSample(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
       }
+      fn iChannel0Load(pixel: vec2i) -> vec4f {
+        return load2D(iChannel0Texture, pixel);
+      }
       fn iChannel0SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
         return textureSampleLevel(iChannel0Texture, iChannel0Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
       }
@@ -634,6 +664,9 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iChannel1: _ss_ChannelMetadata;
       fn iChannel1Sample(uv: vec2<f32>) -> vec4<f32> {
         return textureSample(iChannel1Texture, iChannel1Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
+      }
+      fn iChannel1Load(pixel: vec2i) -> vec4f {
+        return load2D(iChannel1Texture, pixel);
       }
       fn iChannel1SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
         return textureSampleLevel(iChannel1Texture, iChannel1Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
@@ -660,6 +693,9 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iChannel3: _ss_ChannelMetadata;
       fn iChannel3Sample(uv: vec2<f32>) -> vec4<f32> {
         return textureSample(iChannel3Texture, iChannel3Sampler, vec2<f32>(uv.x, 1.0 - uv.y));
+      }
+      fn iChannel3Load(pixel: vec2i) -> vec4f {
+        return load2D(iChannel3Texture, pixel);
       }
       fn iChannel3SampleLevel(uv: vec2<f32>, lod: f32) -> vec4<f32> {
         return textureSampleLevel(iChannel3Texture, iChannel3Sampler, vec2<f32>(uv.x, 1.0 - uv.y), lod);
