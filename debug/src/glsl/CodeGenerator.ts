@@ -824,10 +824,10 @@ export class CodeGenerator {
     for (let i = mainImageLine; i < lines.length; i++) {
       for (const char of lines[i]) {
         if (char === '{') {
-          braceDepth++; braceStarted = true; 
+          braceDepth++; braceStarted = true;
         }
         if (char === '}') {
-          braceDepth--; 
+          braceDepth--;
         }
       }
       if (braceStarted && braceDepth === 0) {

@@ -53,7 +53,7 @@ test('carries a pre-existing single-array workspace over to per-path records', a
   await expect(page.getByTestId(`shader-option-${basename}-wgsl`)).toBeVisible();
 });
 
-test('WGSL storage declared with native element types raises no editor diagnostic', async ({ page }) => {
+test('WGSL storage declared with native vectors and matrices raises no editor diagnostic', async ({ page }) => {
   // Regression: `f32`/`vec4<f32>` are how a WGSL config spells storage element
   // types, and the renderer accepts them, but authoring validation rejected
   // them as reserved words and warned on every line 1 of a valid shader.
@@ -69,7 +69,12 @@ test('WGSL storage declared with native element types raises no editor diagnosti
     [shaderName, source],
     [`${basename}.sha.json`, JSON.stringify({
       version: '1.0',
-      storage: { samples: { count: 256, elementType: 'f32' } },
+      storage: {
+        samples: { count: 256, elementType: 'f32' },
+        directions: { count: 4, elementType: 'vec3<i32>' },
+        bases: { count: 2, elementType: 'mat2x3<f32>' },
+        transforms: { count: 2, elementType: 'mat4x2f' },
+      },
       passes: { Image: { inputs: {} } },
     })],
   ]);

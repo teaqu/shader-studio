@@ -291,6 +291,9 @@ export class VirtualWorkspace {
   private queuedSave: { snapshot: VirtualWorkspaceFile[]; sequence: number } | null = null;
   private saveSequence = 0;
   private revision = 0;
+  /** Last logical edit time. Wall clocks can repeat or move backwards, so
+   * persisted conflict ordering must not use them directly. */
+  private timestamp = 0;
 
   private constructor(
     private readonly store: VirtualWorkspaceStore,
@@ -302,6 +305,13 @@ export class VirtualWorkspace {
       const path = this.normalizePath(file.path);
       this.files.set(path, { ...file, path });
     }
+    const pending = this.journal.read();
+    this.timestamp = Math.max(
+      0,
+      ...files.flatMap(file => [file.createdAt, file.modifiedAt]),
+      ...(pending?.files.flatMap(file => [file.createdAt, file.modifiedAt]) ?? []),
+      ...(pending?.deleted.map(entry => entry.at) ?? []),
+    );
     this.committed = new Map([...this.files].map(([path, file]) => [path, { ...file }]));
   }
 
@@ -342,6 +352,14 @@ export class VirtualWorkspace {
       if (!stored || stored.modifiedAt < file.modifiedAt) {
         this.files.set(path, { ...file, path });
         applied = true;
+      } else if (stored.modifiedAt === file.modifiedAt && stored.contents !== file.contents) {
+        this.files.set(path, {
+          ...file,
+          path,
+          createdAt: stored.createdAt,
+          modifiedAt: this.nextTimestamp(),
+        });
+        applied = true;
       }
     }
     for (const entry of pending.deleted) {
@@ -369,7 +387,7 @@ export class VirtualWorkspace {
   writeText(path: string, contents: string): void {
     const normalizedPath = this.normalizePath(path);
     const existing = this.files.get(normalizedPath);
-    const timestamp = this.now();
+    const timestamp = this.nextTimestamp();
     this.files.set(normalizedPath, {
       path: normalizedPath,
       contents,
@@ -416,8 +434,9 @@ export class VirtualWorkspace {
       if (revision !== this.revision || !isCurrent()) {
         throw new Error('Rename request is stale. No files were changed.');
       }
+      const timestamp = this.nextTimestamp();
       const snapshot = original.map(file => targets.has(file.path)
-        ? { ...file, contents: targets.get(file.path)!, modifiedAt: this.now() } : file);
+        ? { ...file, contents: targets.get(file.path)!, modifiedAt: timestamp } : file);
       await this.store.save(snapshot);
       const persisted = await this.store.load();
       if (JSON.stringify(persisted) !== JSON.stringify(snapshot)) {
@@ -509,6 +528,11 @@ export class VirtualWorkspace {
       parts.push(part);
     }
     return `/${parts.join('/')}`;
+  }
+
+  private nextTimestamp(): number {
+    this.timestamp = Math.max(this.now(), this.timestamp + 1);
+    return this.timestamp;
   }
 
   private queueSave(): void {

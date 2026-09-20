@@ -22,6 +22,25 @@ describe('WGSL storage type mapping', () => {
   });
 
   describe('native element type set', () => {
+    it('covers every native scalar, vector, matrix alias, and integer atomic spelling', () => {
+      const expected = [
+        'f16', 'f32', 'i32', 'u32',
+        ...[2, 3, 4].flatMap(size => [
+          `vec${size}<f16>`, `vec${size}<f32>`, `vec${size}<i32>`, `vec${size}<u32>`,
+          `vec${size}h`, `vec${size}f`, `vec${size}i`, `vec${size}u`,
+        ]),
+        ...[2, 3, 4].flatMap(columns => [2, 3, 4].flatMap(rows => [
+          `mat${columns}x${rows}<f16>`, `mat${columns}x${rows}<f32>`,
+          `mat${columns}x${rows}h`, `mat${columns}x${rows}f`,
+        ])),
+        'atomic<i32>', 'atomic<u32>',
+      ];
+
+      for (const native of expected) {
+        expect(WGSL_NATIVE_STORAGE_ELEMENT_TYPES.has(native), native).toBe(true);
+      }
+    });
+
     it('covers every spelling the alias table resolves to', () => {
       // Derived from the table, so a new alias cannot land with its WGSL
       // spelling missing from what authoring validation accepts.

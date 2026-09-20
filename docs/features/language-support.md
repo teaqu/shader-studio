@@ -28,8 +28,8 @@ See [Language Servers](language-servers.md) for editor instructions and rename s
 | Storage buffers | No | Yes | Yes |
 | Texture / cubemap / audio / video / keyboard inputs | Yes | Yes | Yes |
 | Named channel metadata | Yes | Yes | Yes; texture and sampler handles are separate |
-| Model geometry | Yes | Yes | Yes |
-| Custom uniforms from script | Yes | Yes | Yes |
+| Model geometry | Yes (VS Code extension) | Yes (VS Code extension) | Yes (VS Code extension) |
+| Custom uniforms from script | Yes (VS Code extension) | Yes (VS Code extension) | Yes (VS Code extension) |
 
 See [Channels](channels.md) for the public channel API and compatibility details.
 
@@ -61,5 +61,7 @@ Slang and WGSL require WebGPU; GLSL uses WebGL2.
 - Whole arrays, structs, and arbitrary pointers are not capture rows; inspect
   supported elements or fields instead.
 - Workspace symbol search and vertex-stage debugging are unavailable.
+- Standalone does not execute Script passes, resolve model assets, or resolve
+  Slang imports/includes. These features remain available in the VS Code extension.
 
 Language details: [GLSL](glsl.md) · [Slang](slang.md) · [WGSL](wgsl.md).

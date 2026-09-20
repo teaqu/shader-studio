@@ -161,13 +161,14 @@ function isValidStorageElementType(
   elementType: string,
   languageId: ShaderAuthoringEnvironment["languageId"],
 ): boolean {
-  if (BUILTIN_STORAGE_ELEMENT_TYPES.has(elementType)) {
+  const normalized = elementType.replace(/\s+/g, "");
+  if (BUILTIN_STORAGE_ELEMENT_TYPES.has(normalized)) {
     return true;
   }
   // A WGSL config spells element types in WGSL (`f32`, `vec4<f32>`) as often as
   // it uses the shared aliases; the renderer passes those through untouched, so
   // treating them as reserved words warned on valid shaders.
-  if (languageId === "wgsl" && WGSL_NATIVE_STORAGE_ELEMENT_TYPES.has(elementType.replace(/\s+/g, ""))) {
+  if (languageId === "wgsl" && WGSL_NATIVE_STORAGE_ELEMENT_TYPES.has(normalized)) {
     return true;
   }
   if (!STORAGE_ELEMENT_TYPE.test(elementType)) {
@@ -176,6 +177,11 @@ function isValidStorageElementType(
   const tokens = elementType.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
   const [outer, inner] = tokens;
   if (!outer || FORBIDDEN_STORAGE_ELEMENT_TYPE_TOKENS.has(outer) || isShaderLanguageReservedTerm(languageId, outer)) {
+    return false;
+  }
+  // WGSL has no user-defined generic types. The native and shared generic
+  // spellings returned above are the complete supported set.
+  if (languageId === "wgsl" && inner) {
     return false;
   }
   return !inner

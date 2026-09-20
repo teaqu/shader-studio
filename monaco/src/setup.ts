@@ -37,7 +37,7 @@ export function setupMonacoGlsl(monaco: typeof import('monaco-editor')) {
           addEventListener() {},
           removeEventListener() {},
           dispatchEvent() {
-            return false; 
+            return false;
           },
           onerror: null,
           onmessageerror: null,

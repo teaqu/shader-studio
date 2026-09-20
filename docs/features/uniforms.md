@@ -39,6 +39,9 @@ uses its `inputs` field. See [Channels](channels.md) for configuring slots.
 
 ## Custom uniforms
 
+Script-driven custom uniforms are available in the VS Code extension only.
+Standalone does not execute browser scripts.
+
 Add a [Script pass](config-buffers.md#the-script-pass) in the config panel to compute custom uniform values each frame from TypeScript or JavaScript:
 
 ```ts

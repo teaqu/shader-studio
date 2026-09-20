@@ -779,19 +779,25 @@ describe("ShaderAuthoringEnvironment", () => {
     });
   });
 
-  it("accepts native WGSL storage element types", () => {
+  it("accepts every native WGSL numeric storage family, alias, and whitespace form", () => {
     // WGSL configs spell storage element types in WGSL, exactly as the Slang
     // corpus spells them in Slang (`f32`/`vec4<f32>` against `float`/`float4`),
     // and the renderer resolves both through wgslStorageElementType. Rejecting
     // the native spelling as a reserved word warned on valid shaders.
-    for (const elementType of [
-      "f32", "i32", "u32",
-      "vec2<f32>", "vec3<f32>", "vec4<f32>",
-      "vec2<i32>", "vec4<u32>",
-      "vec2f", "vec4f", "vec4u", "vec3i",
+    const nativeTypes = [
+      "f16", "f32", "i32", "u32",
+      ...[2, 3, 4].flatMap(size => [
+        `vec${size}<f16>`, `vec${size}<f32>`, `vec${size}<i32>`, `vec${size}<u32>`,
+        `vec${size}h`, `vec${size}f`, `vec${size}i`, `vec${size}u`,
+      ]),
+      ...[2, 3, 4].flatMap(columns => [2, 3, 4].flatMap(rows => [
+        `mat${columns}x${rows}<f16>`, `mat${columns}x${rows}<f32>`,
+        `mat${columns}x${rows}h`, `mat${columns}x${rows}f`,
+      ])),
       "atomic<u32>", "atomic<i32>",
-      "mat2x2<f32>", "mat4x4<f32>",
-    ]) {
+      " vec3 < f16 > ", " mat4x2 < f32 > ", " atomic < i32 > ",
+    ];
+    for (const elementType of nativeTypes) {
       const environment = {
         ...baseEnvironment("wgsl"),
         resources: [{ name: "particles", kind: "storage" as const, elementType }],
@@ -803,7 +809,7 @@ describe("ShaderAuthoringEnvironment", () => {
   it("keeps the shared config vocabulary valid for WGSL storage", () => {
     // `float4` and `Atomic<uint>` are config-level aliases the WGSL renderer
     // maps, so both vocabularies must validate for a WGSL document.
-    for (const elementType of ["float", "float4", "Atomic<uint>", "Particle"]) {
+    for (const elementType of ["float", "float4", "Atomic<uint>", "Atomic < uint >", "Particle"]) {
       const environment = {
         ...baseEnvironment("wgsl"),
         resources: [{ name: "particles", kind: "storage" as const, elementType }],
@@ -813,7 +819,11 @@ describe("ShaderAuthoringEnvironment", () => {
   });
 
   it("still rejects invalid WGSL storage element types", () => {
-    for (const elementType of ["uniform", "fn", "Particle\nvar injected: f32", "vec4<uniform>"]) {
+    for (const elementType of [
+      "uniform", "fn", "Particle\nvar injected: f32", "vec4<uniform>",
+      "vec1<f32>", "vec5<f32>", "vec3<f64>", "mat1x2<f32>", "mat2x5<f32>",
+      "mat2x2<i32>", "atomic<f32>",
+    ]) {
       const environment = {
         ...baseEnvironment("wgsl"),
         resources: [{ name: "particles", kind: "storage" as const, elementType }],

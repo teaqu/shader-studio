@@ -25,12 +25,20 @@ export function wgslStorageElementType(elementType: string, passKind: "render" |
 
 /**
  * Storage element types a WGSL config may spell natively, rather than through
- * the shared `float4`/`Atomic<uint>` aliases above. Derived from the table so
- * the two cannot drift, plus WGSL's predeclared vector aliases (`vec4f`).
+ * the shared `float4`/`Atomic<uint>` aliases above. Includes the table's
+ * outputs plus WGSL's numeric scalars, vectors, matrices, and native aliases.
  * `wgslStorageElementType` passes these through unchanged, so the renderer has
  * always accepted them; authoring validation must agree.
  */
 export const WGSL_NATIVE_STORAGE_ELEMENT_TYPES: ReadonlySet<string> = new Set([
   ...Object.values(WGSL_STORAGE_ELEMENT_TYPES).flatMap(({ render, compute }) => [render, compute]),
-  ...[2, 3, 4].flatMap((size) => ["f", "i", "u"].map((suffix) => `vec${size}${suffix}`)),
+  "f16",
+  ...[2, 3, 4].flatMap((size) => ["f16", "f32", "i32", "u32"].map((scalar) => `vec${size}<${scalar}>`)),
+  ...[2, 3, 4].flatMap((size) => ["h", "f", "i", "u"].map((suffix) => `vec${size}${suffix}`)),
+  ...[2, 3, 4].flatMap((columns) => [2, 3, 4].flatMap((rows) => [
+    `mat${columns}x${rows}<f16>`,
+    `mat${columns}x${rows}<f32>`,
+    `mat${columns}x${rows}h`,
+    `mat${columns}x${rows}f`,
+  ])),
 ]);

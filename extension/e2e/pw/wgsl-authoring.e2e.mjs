@@ -86,6 +86,31 @@ test.describe('WGSL authoring in VS Code', () => {
     expect(labels).toContain('select');
   });
 
+  test('accepts native WGSL vector and nonsquare matrix storage in the editor', async ({ vscode }) => {
+    const shaderPath = join(fixtureDir, 'native-storage.wgsl');
+    const configPath = join(fixtureDir, 'native-storage.sha.json');
+    try {
+      writeFileSync(shaderPath, 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(bases[0][0], 1.0); }\n');
+      writeFileSync(configPath, JSON.stringify({
+        version: '1.0',
+        storage: {
+          directions: { count: 4, elementType: 'vec3<i32>' },
+          bases: { count: 2, elementType: 'mat2x3<f32>' },
+          transforms: { count: 2, elementType: 'mat4x2f' },
+        },
+        passes: { Image: { inputs: {} } },
+      }));
+      await showShader(vscode, shaderPath);
+      await vscode.evaluateInHost(async vscode => vscode.commands.executeCommand('shader-studio.view'));
+      const uri = await vscode.evaluateInHost(async (vscode, path) =>
+        (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(), shaderPath);
+      await waitForDiagnostic(vscode, uri, 'invalid element type', false);
+    } finally {
+      rmSync(shaderPath, { force: true });
+      rmSync(configPath, { force: true });
+    }
+  });
+
   test('renames a Common WGSL helper across its configured pass', async ({ vscode }) => {
     const passPath = join(fixtureDir, 'common-rename.wgsl');
     const commonPath = join(fixtureDir, 'common-rename.common.wgsl');

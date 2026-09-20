@@ -32,6 +32,11 @@ If IndexedDB is unavailable or cannot be opened, the app falls back to memory; c
 
 The asset picker does not browse files on your computer. You can use the bundled texture and cubemap, but local workspace asset selection is not available in standalone mode. Screenshots and recordings are saved as browser downloads.
 
+Standalone also does not execute Script passes or expose their custom uniforms,
+resolve model geometry assets, or resolve Slang imports/includes. Use the VS Code
+extension for those features. Workspace-root `@/` shader paths are supported and
+resolve from `/` in the virtual workspace.
+
 ## Run Locally from Source
 
 From the repository root, install dependencies and start the standalone app:

@@ -147,6 +147,20 @@ describe('VirtualWorkspace', () => {
     expect(reopened.readText('/shaders/first.glsl')).toBe('buffer edit');
   });
 
+  it('allocates increasing timestamps for repeated edits under a fixed or rolled-back clock', async () => {
+    let now = 10;
+    const workspace = await VirtualWorkspace.open(new StalledWorkspaceStore(seedFiles), seedFiles, () => now);
+    workspace.writeText('/shaders/first.glsl', 'fixed one');
+    workspace.writeText('/shaders/first.glsl', 'fixed two');
+    now = 2;
+    workspace.writeText('/shaders/first.glsl', 'rolled back');
+
+    expect(workspace.stat('/shaders/first.glsl')).toMatchObject({
+      createdAt: 10,
+      modifiedAt: 13,
+    });
+  });
+
   it('keeps the journal until the coalesced write commits', async () => {
     const store = new GatedWorkspaceStore(seedFiles);
     const journal = new MemoryWorkspaceJournal();
@@ -372,6 +386,44 @@ describe('VirtualWorkspace', () => {
     const workspace = await VirtualWorkspace.open(store, seedFiles, () => 50, journal);
     expect(workspace.readText('/shaders/first.glsl')).toBe('newer');
     expect(workspace.exists('/shaders/first.sha.json')).toBe(true);
+  });
+
+  it('recovers a legacy tied journal with different text and advances its timestamp', async () => {
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    await store.save(seedFiles);
+    journal.record({
+      files: [{ path: '/shaders/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 10 }],
+      deleted: [],
+    });
+
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 5, journal);
+    expect(workspace.stat('/shaders/first.glsl')).toEqual({
+      path: '/shaders/first.glsl', contents: 'pending', createdAt: 10, modifiedAt: 11,
+    });
+  });
+
+  it('does not replay an identical tied journal record', async () => {
+    const store = new MemoryWorkspaceStore();
+    const journal = new MemoryWorkspaceJournal();
+    await store.save(seedFiles);
+    journal.record({ files: [{ ...seedFiles[0]! }], deleted: [] });
+
+    const workspace = await VirtualWorkspace.open(store, seedFiles, () => 5, journal);
+    expect(workspace.stat('/shaders/first.glsl')).toEqual(seedFiles[0]);
+    expect(journal.read()).toBeNull();
+  });
+
+  it('uses one monotonic timestamp for every changed file in a text transaction', async () => {
+    const files = [
+      { path: '/a.wgsl', contents: 'old', createdAt: 4, modifiedAt: 40 },
+      { path: '/b.wgsl', contents: 'old', createdAt: 5, modifiedAt: 50 },
+    ];
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), files, () => 10);
+    await workspace.applyTextTransaction(files.map(file => ({ path: file.path, before: 'old', after: 'new' })));
+
+    expect(workspace.list().map(file => file.modifiedAt)).toEqual([51, 51]);
+    expect(workspace.list().map(file => file.createdAt)).toEqual([4, 5]);
   });
 
   it('lets a committed transaction retire a journalled edit, and a refused one add none', async () => {

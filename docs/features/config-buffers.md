@@ -90,7 +90,7 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 | **Plane** | A flat 3D plane. |
 | **Cube** | A unit cube centred at the origin. |
 | **Sphere** | A UV-mapped sphere. |
-| **Model** | A custom GLB mesh. Shows a file picker to select a `.glb` file and, for multi-mesh models, a dropdown to pick which mesh to render. |
+| **Model** | A custom GLB mesh in the VS Code extension. Standalone does not resolve model assets. |
 
 When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
 
@@ -103,6 +103,9 @@ See [Compute Passes](compute.md) for the authoring convention, storage layout ru
 ---
 
 ## The Script Pass
+
+!!! note "VS Code extension only"
+    Standalone does not execute browser scripts or provide script-driven custom uniforms.
 
 The Script pass drives custom `uniform` values per frame from a TypeScript or JavaScript file. It has no framebuffer — it only produces uniform data.
 

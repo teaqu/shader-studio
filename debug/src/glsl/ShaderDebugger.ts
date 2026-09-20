@@ -524,10 +524,10 @@ export class ShaderDebugger {
       const strippedFuncLine = lines[i].replace(/\/\/.*$/, '');
       for (const char of strippedFuncLine) {
         if (char === '{') {
-          funcBraceDepth++; funcBodyStarted = true; 
+          funcBraceDepth++; funcBodyStarted = true;
         }
         if (char === '}') {
-          funcBraceDepth--; 
+          funcBraceDepth--;
         }
       }
       if (funcBodyStarted && funcBraceDepth === 0) {

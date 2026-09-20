@@ -1,9 +1,12 @@
 # Change Log
 ### Unreleased
 
-- Fixed a false "invalid element type" warning on WGSL shaders whose config declares storage in WGSL's own types, such as `f32` or `vec4<f32>`. Both those and the shared `float4`-style names are accepted, as the renderer has always accepted them.
+- Fixed false "invalid element type" warnings for the full native WGSL storage vocabulary, including `f16`, vector and matrix spellings and aliases, and integer atomics. Shared `float4`-style aliases and custom types remain accepted.
 - Standalone edits now save only the file you changed instead of rewriting the whole workspace, so saving stays fast as the number of shaders grows. Existing workspaces are carried over on first load.
 - Fixed standalone edits being lost when the page reloaded before the workspace write reached the browser database. Each edit is now recorded the moment you make it and replayed on the next load.
+- Made standalone recovery independent of repeated or rolled-back wall clocks, including legacy journal entries tied with older stored text.
+- Added UI corpus and standalone Chromium, Firefox export, and development-server browser suites to the shared release verification gate.
+- Documented that standalone does not execute Script passes, resolve model assets, or resolve Slang imports/includes.
 - Breaking: `import shader_studio;` is gone. It resolved to a generated stub module that was removed long ago, so a shader that still imports it reports an ordinary missing-module error. Delete the line; the built-in uniforms need no import.
 
 - Fixed WGSL built-in uniforms such as `iResolution` and `iTime` being treated as shader declarations: they now show their documentation on hover, stay out of the document outline, and no longer take go-to-definition to the top of the file.

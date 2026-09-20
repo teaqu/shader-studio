@@ -10,13 +10,22 @@ test('answers language-service requests against the dev server', async ({ page }
   const input = editor.locator('.inputarea');
   await editor.locator('.view-lines').click();
   await input.press('ControlOrMeta+A');
-  await page.keyboard.insertText([
+  const source = [
     'void mainImage(out vec4 fragColor, in vec2 fragCoord) {',
     '  vec2 uv = fragCoord / iResolution.xy;',
     '  ',
     '  fragColor = vec4(uv, 0.0, 1.0);',
     '}',
-  ].join('\n'));
+  ].join('\n');
+  // Paste the complete document so Monaco does not auto-close the opening
+  // brace and leave this language-service fixture with a second trailing `}`.
+  await page.evaluate(text => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', text);
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', {
+      clipboardData, bubbles: true, cancelable: true,
+    }));
+  }, source);
   await editor.locator('.view-lines .view-line').nth(2).click();
   await input.press('End');
 

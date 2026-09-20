@@ -914,19 +914,35 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       : `shader-option-aurora-${language}-${language}`).click();
     const editor = page.getByTestId('web-editor');
     await expect(editor.locator('.view-lines')).toContainText('mainImage');
-    // Hold every subsequent workspace database open, so nothing this test
-    // types can reach IndexedDB before the reload discards the queued write.
-    await page.evaluate(() => {
-      const open = indexedDB.open.bind(indexedDB);
-      indexedDB.open = (...args) => {
-        const request = open(...args);
-        request.addEventListener('success', event => {
-          event.stopImmediatePropagation();
-          request.result.close();
-        });
-        return request;
+    const selectedPath = `/shaders/${language === 'glsl' ? 'aurora.glsl' : `aurora-${language}.${language}`}`;
+    const selected = (await readWorkspaceFiles(page)).find(file => file.path === selectedPath);
+    expect(selected).toBeTruthy();
+    const storedText = selected.contents;
+    // The store caches its database connection, so intercept the actual
+    // workspace transaction. Suppress its per-file writes and hold its
+    // completion callback: the synchronous journal is then the only durable
+    // copy when reload abandons this page. Freeze the clock at the stored
+    // timestamp to exercise the legacy collision that used to discard it.
+    await page.evaluate((modifiedAt) => {
+      Date.now = () => modifiedAt;
+      window.holdWorkspaceWrites = true;
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (...args) {
+        if (window.holdWorkspaceWrites && this.name === 'files') {
+          return {};
+        }
+        return put.apply(this, args);
       };
-    });
+      const transaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function (...args) {
+        const tx = transaction.apply(this, args);
+        const stores = Array.isArray(args[0]) ? args[0] : [args[0]];
+        if (args[1] === 'readwrite' && stores.includes('files') && stores.includes('meta')) {
+          tx.addEventListener('complete', event => event.stopImmediatePropagation());
+        }
+        return tx;
+      };
+    }, selected.modifiedAt);
     // Deliberately broken: the preview turning red is the signal that the
     // host compiled this exact text, so only the database write is still
     // outstanding when the reload lands.
@@ -940,6 +956,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
     await page.keyboard.insertText(source);
     await expect(page.getByTestId('web-preview').getByLabel('Toggle pause')).toHaveClass(/error/);
     await expect(editor.locator('.view-lines')).toContainText('pending_write_regression');
+    expect((await readWorkspaceFiles(page)).find(file => file.path === selected.path)?.contents).toBe(storedText);
     await page.reload();
     await expect(editor.locator('.view-lines')).toContainText('pending_write_regression');
     // The replay is folded back, so a second reload needs no journal.
@@ -1511,6 +1528,30 @@ fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.2, 0.4, 0.6, 1.0); }`],
     // Read the presented WebGPU canvas directly: headless compositor screenshots
     // return black here even when canvas.toDataURL contains the rendered pixels.
     const png = await canvas.evaluate((element) => element.toDataURL());
+    const { width, height, data } = PNG.sync.read(Buffer.from(png.split(',')[1], 'base64'));
+    const index = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+    return [...data.subarray(index, index + 3)];
+  }).toEqual([51, 102, 153]);
+  await expect(shader.locator('.shader-error')).toHaveCount(0);
+});
+
+test('renders WGSL storage declared with a native nonsquare matrix type', async ({ page }) => {
+  await seedWgslAuditFiles(page, [
+    ['native-matrix.wgsl', `fn mainImage(coord: vec2f) -> vec4f {
+  let basis = bases[0];
+  return vec4f(0.2 + abs(basis[0].x), 0.4, 0.6, 1.0);
+}`],
+    ['native-matrix.sha.json', JSON.stringify({
+      version: '1.0',
+      storage: { bases: { count: 2, elementType: 'mat2x3<f32>' } },
+      passes: { Image: { inputs: {} } },
+    })],
+  ]);
+  const shader = page.getByTestId('shader-option-native-matrix-wgsl');
+  await shader.click();
+  const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect.poll(async () => {
+    const png = await canvas.evaluate(element => element.toDataURL());
     const { width, height, data } = PNG.sync.read(Buffer.from(png.split(',')[1], 'base64'));
     const index = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
     return [...data.subarray(index, index + 3)];

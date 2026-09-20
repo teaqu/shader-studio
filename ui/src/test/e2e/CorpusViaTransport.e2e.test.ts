@@ -75,8 +75,6 @@ function rawCorpusSource(path: string): string | undefined {
  * - script uniforms: `ScriptEvaluator` exists only in `extension/src/app`.
  * - model geometry: only `extension/.../ConfigPathConverter.ts` resolves
  *   `geometry.resolved_path`; the standalone host resolves inputs only.
- * - `@/` source paths: `WebExtensionHost.resolveSourcePath` has no `@/` branch,
- *   though the feature is documented in `docs/features/config-buffers.md`.
  * - Slang imports/includes: inlining lives in the extension's
  *   `SlangDependencyGraph`, not in the standalone host.
  *
@@ -91,12 +89,6 @@ function unsupportedByStandaloneHost(project: Project): string | null {
   const passes = Object.values(project.config?.passes ?? {});
   if (passes.some((pass) => pass && "geometry" in pass && pass.geometry?.type === "model")) {
     return "standalone host does not resolve model geometry assets";
-  }
-  if (passes.some((pass) => {
-    const candidate = pass as { path?: string; vertex?: string } | undefined;
-    return candidate?.path?.startsWith("@/") || candidate?.vertex?.startsWith("@/");
-  })) {
-    return "standalone host does not resolve @/ source paths";
   }
   // The raw workspace file, not the corpus loader's copy: the loader has
   // already inlined dependencies, so its sources no longer show the imports

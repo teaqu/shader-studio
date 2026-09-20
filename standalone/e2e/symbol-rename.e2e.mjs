@@ -14,7 +14,7 @@ for (const { name, extension, pass, helper } of [
       page.on('console', message => {
         const text = message.text(); if (message.type() === 'error' || text.includes('environment')) {
           console.log(`[${message.type()}]`, text.slice(0, 300));
-        } 
+        }
       });
       const basename = `symbol-rename-${extension}`;
       const shaderName = `${basename}.${extension}`;

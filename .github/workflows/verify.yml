@@ -141,6 +141,50 @@ jobs:
       - name: Run shader fixture corpus E2E tests
         run: npm run test:e2e:corpus -w rendering
 
+      - name: Run UI transport corpus E2E tests
+        run: npm run test:e2e -w ui
+
+  standalone-e2e:
+    name: Standalone browser E2E
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install pinned Slang WASM binary
+        run: node ui/scripts/ensure-slang-wasm.mjs
+
+      - name: Build workspace test dependencies
+        run: npm run build:deps -w extension
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium firefox
+
+      - name: Run all standalone browser projects
+        id: standalone-e2e
+        run: npm run test:e2e -w @shader-studio/standalone
+
+      - name: Upload standalone E2E results
+        if: ${{ failure() && steps.standalone-e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-e2e-failures
+          path: standalone/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   vscode-e2e:
     name: Installed VSIX E2E (GPU)
     runs-on: macos-15

@@ -8,7 +8,7 @@ export function applyTextEdits(text: string, edits: readonly TextEdit[]): string
   const starts: number[] = [];
   let cursor = 0;
   for (const line of lines) {
-    starts.push(cursor); cursor += line.length + 1; 
+    starts.push(cursor); cursor += line.length + 1;
   }
   const offset = (position: Position): number => {
     const { line, character } = position;

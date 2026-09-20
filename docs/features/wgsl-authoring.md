@@ -45,6 +45,9 @@ WGSL and Slang share the WebGPU pipeline, but the languages differ in how you re
 
 ## Script-Pass Uniforms
 
+Script passes run in the VS Code extension only. Standalone does not execute
+browser scripts or inject their custom uniforms.
+
 Values returned by a [Script pass](config-buffers.md) are injected as `var<private>` globals with the script's field names — no declaration needed in your shader. The type mapping mirrors GLSL: `number` becomes `f32`, `[n, n]` becomes `vec2<f32>`, and so on up to `vec4<f32>`, with `boolean` arriving as `bool`.
 
 ## Compute Passes

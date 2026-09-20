@@ -42,6 +42,18 @@ suite('Packaged extension CI gates', () => {
     assert.strictEqual(commands.filter(command => command.includes('vsce package')).length, 1);
     assert.ok(commands.includes('npm test'));
     assert.ok(commands.includes('npm run test:e2e -w rendering'));
+    assert.ok(commands.includes('npm run test:e2e -w ui'));
+    assert.ok(commands.includes('npm run test:e2e -w @shader-studio/standalone'));
+  });
+
+  test('runs every standalone browser project and retains failure artifacts', () => {
+    const job = verify.jobs['standalone-e2e'];
+    assert.strictEqual(job['runs-on'], 'macos-15');
+    assert.ok(job.steps?.some(step => step.run === 'npx playwright install chromium firefox'));
+    const run = job.steps?.find(step => step.id === 'standalone-e2e');
+    assert.strictEqual(run?.run, 'npm run test:e2e -w @shader-studio/standalone');
+    const results = job.steps?.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+    assert.strictEqual(results?.with?.path, 'standalone/test-results/');
   });
 
   test('runs complementary GPU and non-GPU selections against the exact same packaged artifact', () => {

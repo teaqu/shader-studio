@@ -5,8 +5,9 @@ browser. A WebGPU-capable host is required. Start with [WGSL Shaders](wgsl-autho
 for `mainImage`, uniforms, vertex hooks, compute entry points, and storage types.
 
 WGSL supports single-pass and multipass rendering, Common helpers, vertex and
-compute passes, storage buffers, textures, cubemaps, audio/video, keyboard input,
-model geometry, and script uniforms. See [Channels](channels.md) for sampling.
+compute passes, storage buffers, textures, cubemaps, audio/video, and keyboard input.
+Model geometry and script uniforms are available in the VS Code extension, not
+standalone. See [Channels](channels.md) for sampling.
 
 ## Editor Support and Diagnostics
 

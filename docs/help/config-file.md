@@ -142,6 +142,9 @@ vec4 col = texture(iChannel0, normalize(dir));
 
 ## Script-Driven Uniforms
 
+Script-driven uniforms are available in the VS Code extension only. Standalone
+does not execute browser scripts.
+
 Add a `script` field to run a TypeScript or JavaScript file that computes custom uniform values each frame. The script exports named values; their types are inferred automatically:
 
 ```json

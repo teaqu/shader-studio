@@ -341,7 +341,7 @@ function offsetAt(source: string, position: DebugSourcePosition): number {
       return offset;
     }
     if (source[offset] === "\n") {
-      line += 1; character = 0; 
+      line += 1; character = 0;
     } else {
       character += 1;
     }

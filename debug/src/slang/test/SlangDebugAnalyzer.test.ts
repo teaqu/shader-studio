@@ -285,7 +285,7 @@ describe("processed source + line offset", () => {
   const off = pSrc.split("\n").findIndex(l=>l.trim()==="float4 mainImage(float2 fragCoord)") - fShader.split("\n").findIndex(l=>l.trim()==="float4 mainImage(float2 fragCoord)");
 
   it("computes positive offset", () => {
-    expect(off).toBeGreaterThan(0); 
+    expect(off).toBeGreaterThan(0);
   });
 
   fShader.split("\n").forEach((line,orig)=>{

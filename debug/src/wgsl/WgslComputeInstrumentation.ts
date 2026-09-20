@@ -186,7 +186,7 @@ function readAttribute(tokens: readonly WgslToken[], start: number): { name: str
       if (token.text === "(") {
         depth += 1;
       } else if (token.text === ")" && --depth === 0) {
-        end += 1; break; 
+        end += 1; break;
       } else if (depth === 1 && token.kind === "identifier") {
         values.push(token.text);
       }

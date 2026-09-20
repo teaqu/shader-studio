@@ -5,9 +5,11 @@ browser. Fragment shaders define `mainImage`, vertex shaders use the
 [vertex hook](vertex-shaders.md), and [compute passes](compute.md) declare
 `[shader("compute")]` entry points. A WebGPU-capable host is required.
 
-Slang supports multipass rendering, Common helpers, module imports, storage
-buffers, textures, cubemaps, audio/video, keyboard input, model geometry, and
-script uniforms. See [Channels](channels.md) for channel metadata and sampling.
+Slang supports multipass rendering, Common helpers, storage buffers, textures,
+cubemaps, audio/video, and keyboard input. Module imports, model geometry, and
+script uniforms are available in the VS Code extension; standalone does not
+resolve imports or model assets and does not execute scripts. See
+[Channels](channels.md) for channel metadata and sampling.
 
 ## Channels
 
