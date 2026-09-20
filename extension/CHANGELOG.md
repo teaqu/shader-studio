@@ -1,12 +1,12 @@
 # Change Log
 
-### Unreleased
+### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.
 - Breaking: Slang channels are now accessed directly. Replace `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and `inputs.albedo.size` with `albedo.size`. The `.sha.json` `inputs` field is unchanged.
 - Breaking: remove `import shader_studio;` from Slang shaders. Built-in uniforms are available without an import.
 - Improved WGSL hover documentation for variables, functions, built-in uniforms, and attributes such as `@compute` and `@workgroup_size`.
-- Vector completion now offers reordered and repeated swizzles such as `yx`, `xxxx`, and `bgra` in GLSL, Slang, and WGSL.
+- Vector completion now lists components, contiguous runs such as `xy`, `yz`, and `zw`, and reversals such as `yx`, `zyx`, and `bgra` in GLSL, Slang, and WGSL. Any other valid selection, such as `xyx` or `xxxx`, is offered as soon as you type it.
 - WGSL hover, completion, and variable inspection now infer more valid expressions, including `bitcast`, integer bit operations, matrix transpose and scaling, and vector comparisons.
 - Fixed false warnings for valid WGSL storage types, including half-precision values, vectors, matrices, and integer atomics. Storage structs containing integer atomic fields now infer and bind their stride correctly.
 - Fixed WGSL variable inspection hiding values from channel samples, loop counters, and values at a block's closing brace. Values above a syntax error can now still be inspected.
@@ -15,10 +15,12 @@
 - Fixed WGSL shaders failing to compile when using Common helpers.
 - GLSL buffer passes now honour the Output format setting; previously WebGL always stored 32-bit buffers and ignored `rgba16float`.
 - Fixed a config edit restarting running GLSL simulations: WebGL reallocated every buffer, while WebGPU kept the passes the edit did not change. Buffers now survive unless their own size, depth, or output format changed.
+- Fixed WGSL channel load helpers offered by completion failing to compile.
 - Fixed the cursor jumping and typed text appearing in the wrong place when editing the same shader in multiple editors.
 - Fixed switching files losing edits, applying edits to the wrong file, or showing completions and Common helpers from another shader.
 - Fixed signature help disappearing while editing, including inside nested WGSL calls.
 - Fixed errors when switching files with symbol highlighting active.
+- Standalone ships a WGSL compute example, Particle Swarm, driving 16384 particles through compute passes and storage buffers.
 - Standalone saves stay responsive as your workspace grows.
 - Fixed standalone edits, shader selection, and Hide Buffers preferences being lost after an immediate reload, including when the system clock changes.
 

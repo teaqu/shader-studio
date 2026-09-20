@@ -2,7 +2,7 @@
   "name": "shader-studio",
   "displayName": "Shader Studio",
   "description": "A GLSL, Slang and WGSL Shadertoy style editor for VS Code with hot reloading and debugging.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "publisher": "teaqu",
   "repository": {
     "type": "git",
