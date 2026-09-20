@@ -321,8 +321,15 @@ vec4 prev = texture(iChannel0, bufferUV);
 
 ### Buffer Precision and Exact Reads
 
-For simulations and packed state, both the output format and the read operation
-matter. For WebGPU, set `outputFormat` on a fragment buffer or compute pass:
+Most shaders can leave **Output format** on **Auto**. For simulations, 32-bit
+storage helps preserve values that later passes read or that feed back into the
+next frame. Choose 16-bit when lower memory use matters more than precision.
+
+Find **Output format** at the bottom of a buffer or compute pass's settings.
+Image has no output-format setting: it displays the final result on the canvas,
+while buffers store values for other passes to use.
+
+For WebGPU, the corresponding JSON setting is `outputFormat`:
 
 ```json
 "Simulation": {
@@ -370,14 +377,11 @@ ivec2 p = ivec2(fragCoord); // in bounds of state
 vec4 cell = load2D(state, p);
 ```
 
-**WGSL:** use the shared helper or the generated named-channel helper. Both convert
-bottom-left authoring coordinates to native texture coordinates.
+**WGSL:** pass the channel's texture and a bottom-left pixel coordinate.
 
 ```wgsl
 let p = vec2i(coord); // in bounds of state
 let cell = load2D(stateTexture, p);
-// Equivalent shorthand for this configured channel:
-let sameCell = stateLoad(p);
 ```
 
 **Slang:** call the shared helper or the channel's `Load` convenience method.
@@ -389,7 +393,7 @@ float4 sameCell = state.Load(p);
 ```
 
 !!! warning
-    `load2D`, WGSL `<name>Load`, and Slang channel `.Load` use bottom-left integer
+    `load2D` and Slang channel `.Load` use bottom-left integer
     coordinates. Native WGSL `textureLoad` and Slang `.texture.Load` retain their
     native top-left coordinates. Use native operations directly when your integer
     coordinates are already top-left; do not apply the conversion twice.

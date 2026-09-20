@@ -225,7 +225,9 @@ WebGPU fragment buffer and compute passes accept `outputFormat`:
 
 If the requested format cannot be rendered or stored, pipeline creation reports
 an error rather than silently changing precision. The `Image` canvas format is
-not controlled by this field.
+not controlled by this field. In the Config panel, **Output format** appears at
+the bottom of buffer and compute pass settings. Leave it on **Auto** unless you
+want to trade precision for lower memory use with 16-bit storage.
 
 ## Passes
 

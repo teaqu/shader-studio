@@ -422,22 +422,6 @@
           {onMessage}
         />
 
-        {#if bufferName !== "common"}
-          <div class="resolution-row">
-            <label class="resolution-label" for="output-format-{bufferName}">Output format</label>
-            <select
-              id="output-format-{bufferName}"
-              aria-label="Output format"
-              value={'outputFormat' in config ? config.outputFormat ?? 'auto' : 'auto'}
-              onchange={handleOutputFormat}
-            >
-              <option value="auto">Auto (32-bit preferred)</option>
-              <option value="rgba16float">RGBA 16-bit float</option>
-              <option value="rgba32float">RGBA 32-bit float</option>
-            </select>
-          </div>
-        {/if}
-
         {#if passType === 'compute' && onComputeCommit}
           <ComputePassControls
             pass={config as ComputePass}
@@ -650,6 +634,23 @@
           {postMessage}
           {onMessage}
         />
+      </div>
+    {/if}
+    {#if !isImagePass && bufferName !== "common"}
+      <div class="config-item">
+        <div class="resolution-row">
+          <label class="resolution-label" for="output-format-{bufferName}">Output format</label>
+          <select
+            id="output-format-{bufferName}"
+            aria-label="Output format"
+            value={'outputFormat' in config ? config.outputFormat ?? 'auto' : 'auto'}
+            onchange={handleOutputFormat}
+          >
+            <option value="auto">Auto (32-bit preferred)</option>
+            <option value="rgba16float">RGBA 16-bit float</option>
+            <option value="rgba32float">RGBA 32-bit float</option>
+          </select>
+        </div>
       </div>
     {/if}
   </div>

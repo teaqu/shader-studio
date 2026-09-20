@@ -24,6 +24,17 @@ function getMainPathConfig(container: HTMLElement): HTMLElement {
 }
 
 describe('BufferConfig', () => {
+  it.each(['render', 'compute'] as const)('places output format last in %s pass settings', (passType) => {
+    const { container } = render(BufferConfig, {
+      bufferName: 'Simulation',
+      passType,
+      config: { path: 'simulation.wgsl', inputs: {} },
+      onUpdate: vi.fn(),
+      getWebviewUri: () => undefined,
+    });
+    expect(container.querySelector('.buffer-details > :last-child select[aria-label="Output format"]')).not.toBeNull();
+  });
+
   it('loads and updates producer output precision without showing it for Image', async () => {
     const onUpdate = vi.fn();
     const { getByLabelText } = render(BufferConfig, {

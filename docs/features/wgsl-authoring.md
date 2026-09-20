@@ -16,15 +16,28 @@ fn mainImage(coord: vec2f) -> vec4f {
 ```
 
 `coord` is in pixels with a bottom-left origin, matching `fragCoord` in GLSL and Slang.
-Use `load2D(texture, pixel)` or the generated `<channelName>Load(pixel)` helper for
-an exact mip-zero read in the same bottom-left coordinate system. Native
-`textureLoad` remains available with its top-left coordinates. See
-[Buffer Precision and Exact Reads](channels.md#buffer-precision-and-exact-reads)
-for sampling and output-format controls.
-Implicit texture sampling also requires [uniform control flow](channels.md#shared-sampling-rules),
-even inside `mainImage`.
 
 The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`. Use these names directly without declaring them.
+
+## Reading Textures and Buffers
+
+Use `sample2D` for filtered colors, or `load2D` when you need the exact value of
+one cell, such as a simulation state or pixel-art grid. With an input named `state`:
+
+```wgsl
+let cell = load2D(stateTexture, vec2i(12, 8));
+```
+
+This reads pixel (12, 8), counting from the bottom-left of the source texture.
+Keep the pixel within the source's dimensions. The read uses the original texture
+level (mip zero) and ignores filtering and wrapping settings. It can be used in
+fragment or compute code, including helper functions; it is not specific to
+`mainImage`.
+
+Native `textureLoad` uses top-left coordinates instead. For filtered reads,
+implicit sampling requires [uniform control flow](channels.md#shared-sampling-rules).
+See [Channels](channels.md#buffer-precision-and-exact-reads) for sampling settings,
+storage precision, and examples in all three shader languages.
 
 ## Differences from Slang
 
