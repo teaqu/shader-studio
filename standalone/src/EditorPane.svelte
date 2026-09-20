@@ -4,6 +4,7 @@
   import { getViewerSession, ShaderEditor } from '@shader-studio/ui';
 
   import { getEditorDocument, setEditorDocument } from './state/editorDocuments.svelte';
+  import { passNameForFile } from './passSources';
   import type { WebTransport } from './WebTransport';
   import { requestEditor } from './state/shellState.svelte';
   interface Props { path?: string; transport?: WebTransport; }
@@ -39,6 +40,13 @@
   });
   // File panes stay on their own document when the preview switches shaders.
   const fileSession = $derived(session?.shaderPath === path ? session : null);
+  // A pass file is authored against its owning shader's config: without it the
+  // language service knows none of the configured storage or channels, and
+  // reports every use of them as an undefined identifier. The preview's own
+  // active buffer says nothing about which pass this file is.
+  const owningPass = $derived(session?.shaderPath && path
+    ? passNameForFile(session.config, session.shaderPath, path)
+    : undefined);
   let vimMode = $state(false);
 </script>
 
@@ -48,7 +56,11 @@
     {#if fileCode !== null}
       <div class="editor-content">
         <ShaderEditor isVisible={true} shaderCode={fileCode} shaderPath={path} {transport}
-          errors={fileSession?.errors ?? []} activeBufferName={commonEditorPath === path ? "Common" : (fileSession?.activeBufferName ?? "Image")}
+          errors={fileSession?.errors ?? []}
+          activeBufferName={owningPass ?? (commonEditorPath === path ? "Common" : (fileSession?.activeBufferName ?? "Image"))}
+          config={owningPass ? session?.config : undefined}
+          customUniformInfo={owningPass ? session?.customUniformInfo : undefined}
+          slangModules={owningPass ? session?.slangModules : undefined}
           commonPath={session?.commonPath}
           commonSource={session?.commonSource}
           onCursorChange={(line, lineContent) => transport?.postMessage({ type: "cursorPosition", payload: { line, lineContent, filePath: path! } })}

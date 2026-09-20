@@ -1,6 +1,7 @@
 import { configPathForShader, parseVertexPassKey, resolveConfiguredPath, shaderLanguageForPath, stageForPass, vertexPassKey } from '@shader-studio/types';
 import type { ConfiguredPathHost, ProfileData, ProfileIndex, ShaderConfig, ShaderLanguageId } from '@shader-studio/types';
 import type { VirtualWorkspace } from './VirtualWorkspace';
+import { virtualConfiguredPathHost } from './passSources';
 
 type HostMessage = { type: string; [key: string]: unknown };
 type MessageHandler = (message: HostMessage) => void;
@@ -10,30 +11,6 @@ const EXPLORER_STATE_PATH = '/.shader-studio/explorer-state.json';
 const PROFILE_INDEX_PATH = '/.shader-studio/profiles/index.json';
 const DEFAULT_CONFIG_TEXT = JSON.stringify({ version: '1.0', passes: { Image: { inputs: {} } } }, null, 2);
 
-/** The virtual workspace is rooted at `/`, so `@/` resolves from there;
- * `..` above the root clamps instead of escaping (the old resolver dropped
- * such passes; clamping keeps them addressable and `exists` still filters
- * anything that is not really there). */
-const virtualConfiguredPathHost: ConfiguredPathHost = {
-  workspaceRootFor: () => '/',
-  joinPath: (base, ...segments) => `${base}/${segments.join('/')}`,
-  dirnameOf: (value) => value.slice(0, value.lastIndexOf('/')) || '/',
-  normalizePath: (value) => {
-    const parts: string[] = [];
-    for (const part of value.replace(/\\/g, '/').split('/')) {
-      if (!part || part === '.') {
-        continue;
-      }
-      if (part === '..') {
-        parts.pop();
-      } else {
-        parts.push(part);
-      }
-    }
-    return `/${parts.join('/')}`;
-  },
-  isAbsolutePath: (value) => value.startsWith('/'),
-};
 
 /** Resolves a user-requested new filename against the shader's directory.
  * Absolute names resolve from the workspace root; anything escaping the
