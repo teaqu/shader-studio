@@ -4,6 +4,7 @@ import type {
   LanguageService,
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
+import { isMemberSelection } from "@shader-studio/language-server-core";
 import { isCommonPassName, type ShaderAuthoringEnvironment } from "@shader-studio/types";
 import type { DiagnosticSink } from "../app/DiagnosticArbiter";
 import {
@@ -116,9 +117,15 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
       },
     }, uniformSemanticLegend));
     this.disposables.push(vscode.languages.registerCompletionItemProvider(selector, {
-      provideCompletionItems: async (document, position) => (
-        (await this.request(document, (service, revision) => service.completion({ document: revision, position }), [])).map(toCompletionItem)
-      ),
+      provideCompletionItems: async (document, position) => {
+        const items = (await this.request(document, (service, revision) => service.completion({ document: revision, position }), [])).map(toCompletionItem);
+        // A member list holds the curated selections plus the one being typed,
+        // so it has to be recomputed per keystroke. Returning a plain array
+        // marks it settled, and VS Code then filters it itself: `col.ra` would
+        // keep only `rgba`, which matches the same keystrokes and means
+        // something else, instead of offering `ra`.
+        return new vscode.CompletionList(items, isMemberSelection(document.lineAt(position.line).text, position.character));
+      },
     }, "."));
     this.disposables.push(vscode.languages.registerHoverProvider(selector, {
       provideHover: async (document, position) => {

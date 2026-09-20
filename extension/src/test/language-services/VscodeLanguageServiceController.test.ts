@@ -470,6 +470,40 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
+  for (const language of ["glsl", "slang", "wgsl"] as const) {
+    test(`offers a typed ${language} selection outside the curated swizzle list`, async function() {
+      this.timeout(20_000);
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `shader-studio-${language}-swizzle-e2e-`));
+      const shaderPath = path.join(directory, `swizzle.${language}`);
+      const text = language === "glsl"
+        ? "void mainImage(out vec4 color, vec2 coord) {\n  vec4 wide = vec4(coord, 0.0, 1.0);\n  color = vec4(wide.ra, 0.0, 1.0);\n}"
+        : language === "slang"
+          ? "float4 mainImage(float2 coord) {\n  float4 wide = float4(coord, 0.0, 1.0);\n  return float4(wide.ra, 0.0, 1.0);\n}"
+          : "fn mainImage(coord: vec2f) -> vec4f {\n  let wide = vec4f(coord, 0.0, 1.0);\n  return vec4f(wide.ra, 0.0, 1.0);\n}";
+      try {
+        fs.writeFileSync(shaderPath, text);
+        await vscode.extensions.getExtension("teaqu.shader-studio")?.activate();
+        const document = await vscode.workspace.openTextDocument(shaderPath);
+        const line = text.split("\n")[2]!;
+        const position = new vscode.Position(2, line.indexOf(".ra") + 3);
+
+        const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
+          "vscode.executeCompletionItemProvider", document.uri, position,
+        );
+
+        // `ra` reads components that are not adjacent, so it is not curated; it
+        // is offered because the author is writing it.
+        assert.ok(completions.items.some((item) => item.label === "ra"),
+          completions.items.map((item) => String(item.label)).join(","));
+        // Without this VS Code filters the settled list itself, and `col.ra`
+        // keeps only `rgba`, which matches the same keystrokes.
+        assert.strictEqual(completions.isIncomplete, true);
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
   for (const language of ["glsl", "slang"] as const) {
     test(`connects configured Common to ${language} IntelliSense for a buffer`, async function() {
       this.timeout(20_000);

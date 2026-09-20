@@ -8,7 +8,7 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
     const value = { dispose: vi.fn() }; disposables.push(value); return value;
   };
   // Mutable so a test can simulate the user typing while a request is in flight.
-  const state = { version: 1, disposed: false, attached: false };
+  const state = { version: 1, disposed: false, attached: false, line: "vec3(1.0, 0.0, 0.0)" };
   const model = {
     uri: { toString: () => `file:///image.${languageId}` },
     getLanguageId: () => {
@@ -22,6 +22,7 @@ function monacoFixture(languageId: ShaderLanguage = "glsl") {
     isDisposed: () => state.disposed,
     isAttachedToEditor: () => state.attached,
     getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
+    getLineContent: () => state.line,
     onDidChangeContent: vi.fn(() => disposable()),
   };
   const languages = {
@@ -169,6 +170,22 @@ describe("MonacoLanguageServiceManager", () => {
 
     expect(result.suggestions.map((item) => item.label)).toEqual(["normalize"]);
     expect(result.incomplete).toBe(false);
+  });
+
+  it("marks a member selection incomplete so typed swizzles are recomputed", async () => {
+    const fixture = monacoFixture();
+    const { completion } = await providersFor(fixture, serviceFixture());
+    fixture.state.line = "  uv.xy";
+
+    // Column 6 sits inside the selection: the service adds whatever valid
+    // swizzle is being typed, which client-side filtering of a settled list
+    // would never produce.
+    const inside = await completion.provideCompletionItems(fixture.model, { lineNumber: 1, column: 6 });
+    fixture.state.line = "  normalize(uv)";
+    const plain = await completion.provideCompletionItems(fixture.model, { lineNumber: 1, column: 12 });
+
+    expect(inside.incomplete).toBe(true);
+    expect(plain.incomplete).toBe(false);
   });
 
   it("preserves language-service ranking in Monaco completion items", async () => {

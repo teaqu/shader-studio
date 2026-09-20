@@ -26,7 +26,8 @@ import {
   findMemberAccess,
   isInsideBlock,
   isPositionInComment,
-  swizzleSelections,
+  swizzleCompletions,
+  memberSelectionAt,
   type ColorPresentationParams,
   type DocumentParams,
   type DocumentPositionParams,
@@ -802,13 +803,16 @@ function memberCompletions(
   }
   const vector = resolved.vector;
   if (vector) {
-    return swizzleSelections(vector.size, GLSL_SWIZZLE_SETS).map((selection, index) => ({
-      label: selection,
-      kind: CompletionItemKind.Field,
-      sortText: index.toString().padStart(4, "0"),
-      detail: selection.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, selection.length),
-      documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
-    }));
+    // Includes whatever valid selection is being typed, so a deliberate
+    // `uv.xyx` completes instead of closing the popup on no match.
+    return swizzleCompletions(vector.size, GLSL_SWIZZLE_SETS, memberSelectionAt(source, position))
+      .map((selection, index) => ({
+        label: selection,
+        kind: CompletionItemKind.Field,
+        sortText: index.toString().padStart(4, "0"),
+        detail: selection.length === 1 ? vector.componentType : glslVectorTypeName(vector.componentType, selection.length),
+        documentation: markdownDocumentation(`Component selection on \`${resolved.name}\`.`),
+      }));
   }
   return (resolved.fields ?? []).map((field) => ({
     label: field.name,

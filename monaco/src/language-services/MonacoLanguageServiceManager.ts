@@ -4,6 +4,7 @@ import type {
   LanguageService,
   ShaderLanguage,
 } from "@shader-studio/language-server-core";
+import { isMemberSelection } from "@shader-studio/language-server-core";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { applyTextEdits, type WorkspaceTextChange } from "./workspaceEdits";
 import { setLanguageServiceMarkers } from "./markerArbitration";
@@ -176,7 +177,12 @@ export class MonacoLanguageServiceManager {
         } while (response.stale && response.value.length === 0);
         const { value: result, stale } = response;
         const word = model.getWordUntilPosition(position);
-        return { incomplete: stale, suggestions: result.map((item) => ({
+        // Member selections are recomputed from what has been typed: the list
+        // holds the curated swizzles plus the one being written, so Monaco has
+        // to ask again per keystroke instead of filtering a settled list down to
+        // nothing and closing the popup.
+        const member = isMemberSelection(model.getLineContent(position.lineNumber), position.column - 1);
+        return { incomplete: stale || member, suggestions: result.map((item) => ({
           label: item.label,
           kind: (item.kind ?? this.monaco.languages.CompletionItemKind.Variable) as Monaco.languages.CompletionItemKind,
           detail: item.detail,

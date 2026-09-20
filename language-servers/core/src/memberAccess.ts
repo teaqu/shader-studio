@@ -34,7 +34,14 @@ export function findMemberAccess(source: string, position: Position): MemberAcce
 
 const SWIZZLE_SELECTION_CACHE = new Map<string, string[]>();
 
-/** Curated completion suggestions; type inference still accepts every valid swizzle. */
+/**
+ * Curated completion suggestions: single components, contiguous runs such as
+ * `xy`, `yz` and `zw`, and the reversals worth a suggestion. Repeats (`xxxx`)
+ * and arbitrary permutations (`xyx`) are left out so a member list stays
+ * readable next to real fields; `swizzleCompletions` adds back whichever one
+ * the author is actually typing, and type inference accepts every valid
+ * selection either way.
+ */
 export function swizzleSelections(size: number, sets: readonly string[]): string[] {
   if (!Number.isInteger(size) || size < 2 || size > 4) {
     return [];
@@ -47,7 +54,10 @@ export function swizzleSelections(size: number, sets: readonly string[]): string
 
   const common = sets.flatMap((set) => {
     const components = [...set].slice(0, size);
-    const runs = components.map((_, index) => components.slice(0, index + 1).join("")).slice(1);
+    // Every contiguous run of two or more, by start then length: xy, xyz, xyzw, yz, yzw, zw.
+    const runs = components.flatMap((_, start) => components
+      .slice(start + 1)
+      .map((__, index) => components.slice(start, start + index + 2).join("")));
     return [...components, ...runs];
   });
   const rearrangements = sets.flatMap((set) => {
@@ -64,6 +74,49 @@ export function swizzleSelections(size: number, sets: readonly string[]): string
   const selections = [...common, ...rearrangements];
   SWIZZLE_SELECTION_CACHE.set(key, selections);
   return selections;
+}
+
+/**
+ * The curated suggestions, plus `typed` itself when the author is writing a
+ * valid selection the curated list leaves out. Keeps the list short while a
+ * deliberate `uv.xyx` still completes instead of closing the popup.
+ */
+export function swizzleCompletions(size: number, sets: readonly string[], typed: string): string[] {
+  const curated = swizzleSelections(size, sets);
+  return isSwizzleSelection(typed, size, sets) && !curated.includes(typed)
+    ? [typed, ...curated]
+    : curated;
+}
+
+/** True when `typed` reads components of one naming set that the vector actually has. */
+export function isSwizzleSelection(typed: string, size: number, sets: readonly string[]): boolean {
+  if (typed.length < 1 || typed.length > 4) {
+    return false;
+  }
+  return sets.some((set) => {
+    const components = [...set].slice(0, size);
+    return [...typed].every((character) => components.includes(character));
+  });
+}
+
+/**
+ * The whole member identifier at `position`, including characters to the right
+ * of the cursor, so completion invoked at `uv.|xyx` sees the selection being
+ * edited rather than an empty prefix.
+ */
+export function memberSelectionAt(source: string, position: Position): string {
+  const line = source.split("\n")[position.line];
+  if (line === undefined || position.character < 0 || position.character > line.length) {
+    return "";
+  }
+  const before = line.slice(0, position.character).match(/[A-Za-z0-9_]*$/)?.[0] ?? "";
+  const after = line.slice(position.character).match(/^[A-Za-z0-9_]*/)?.[0] ?? "";
+  return before + after;
+}
+
+/** True when `character` on `line` sits in a member selection such as `uv.xy`. */
+export function isMemberSelection(line: string, character: number): boolean {
+  return findMemberAccess(line, { line: 0, character }) !== undefined;
 }
 
 export type MemberExpressionStep =

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { findMemberAccess, parseMemberExpression, swizzleSelections } from "../memberAccess";
+import {
+  findMemberAccess,
+  isMemberSelection,
+  memberSelectionAt,
+  parseMemberExpression,
+  swizzleCompletions,
+  swizzleSelections,
+} from "../memberAccess";
 
 describe("findMemberAccess", () => {
   it("reports the expression a member is being selected from", () => {
@@ -57,26 +64,33 @@ describe("findMemberAccess", () => {
 });
 
 describe("swizzleSelections", () => {
-  it("offers only components, common prefixes, and useful rearrangements", () => {
+  it("offers components, contiguous runs, and useful rearrangements", () => {
     expect(swizzleSelections(2, ["xyzw", "rgba"])).toEqual([
       "x", "y", "xy", "r", "g", "rg", "yx", "gr",
     ]);
-    expect(swizzleSelections(3, ["xyzw"])).toEqual(["x", "y", "z", "xy", "xyz", "yx", "zyx"]);
+    expect(swizzleSelections(3, ["xyzw"])).toEqual(["x", "y", "z", "xy", "xyz", "yz", "yx", "zyx"]);
     expect(swizzleSelections(4, ["rgba"])).toEqual([
-      "r", "g", "b", "a", "rg", "rgb", "rgba", "gr", "bgr", "bgra",
+      "r", "g", "b", "a", "rg", "rgb", "rgba", "gb", "gba", "ba", "gr", "bgr", "bgra",
     ]);
     expect(swizzleSelections(4, ["stpq"])).toEqual([
-      "s", "t", "p", "q", "st", "stp", "stpq", "ts", "pts",
+      "s", "t", "p", "q", "st", "stp", "stpq", "tp", "tpq", "pq", "ts", "pts",
     ]);
+  });
+
+  it("offers runs that do not start at the first component", () => {
+    // `iMouse.zw` and `rect.zw` are as common as `.xy`; a prefix-only list missed them.
+    expect(swizzleSelections(4, ["xyzw"])).toEqual(expect.arrayContaining(["yz", "zw", "yzw"]));
+    expect(swizzleSelections(3, ["rgba"])).toEqual(expect.arrayContaining(["gb"]));
+    expect(swizzleSelections(3, ["rgba"])).not.toContain("ba");
   });
 
   it.each([
     [2, 2, 8],
-    [3, 2, 14],
-    [4, 2, 19],
+    [3, 2, 16],
+    [4, 2, 25],
     [2, 3, 12],
-    [3, 3, 21],
-    [4, 3, 28],
+    [3, 3, 24],
+    [4, 3, 37],
   ])("keeps width %i with %i naming sets to %i suggestions", (size, setCount, count) => {
     const selections = swizzleSelections(size, ["xyzw", "rgba", "stpq"].slice(0, setCount));
     expect(selections).toHaveLength(count);
@@ -100,6 +114,65 @@ describe("swizzleSelections", () => {
     expect(swizzleSelections(2.5, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(5, ["xyzw"])).toEqual([]);
     expect(swizzleSelections(Number.NaN, ["xyzw"])).toEqual([]);
+  });
+});
+
+describe("swizzleCompletions", () => {
+  it("adds the selection being typed when the curated list leaves it out", () => {
+    const completions = swizzleCompletions(3, ["xyzw", "rgba"], "xyx");
+
+    // First, so the exact match is what Enter accepts.
+    expect(completions[0]).toBe("xyx");
+    expect(completions.slice(1)).toEqual(swizzleSelections(3, ["xyzw", "rgba"]));
+  });
+
+  it("never duplicates a curated selection", () => {
+    for (const typed of ["xy", "zw", "x", "bgra"]) {
+      const completions = swizzleCompletions(4, ["xyzw", "rgba"], typed);
+      expect(completions).toEqual(swizzleSelections(4, ["xyzw", "rgba"]));
+      expect(completions.filter((selection) => selection === typed)).toHaveLength(1);
+    }
+  });
+
+  it("refuses selections the vector cannot make", () => {
+    const curated = swizzleSelections(2, ["xyzw", "rgba"]);
+    // Out of range for a vec2, mixed naming sets, too long, and not a swizzle at all.
+    for (const typed of ["xz", "xr", "xyxyx", "", "size", "Sample"]) {
+      expect(swizzleCompletions(2, ["xyzw", "rgba"], typed), typed).toEqual(curated);
+    }
+  });
+
+  it("accepts repeats and permutations the curated list omits", () => {
+    expect(swizzleCompletions(4, ["xyzw"], "xxxx")[0]).toBe("xxxx");
+    expect(swizzleCompletions(4, ["xyzw"], "wzyx")[0]).toBe("wzyx");
+    expect(swizzleCompletions(4, ["rgba"], "grrr")[0]).toBe("grrr");
+  });
+});
+
+describe("memberSelectionAt", () => {
+  it("reads the whole identifier around the cursor", () => {
+    // Completion invoked right after the dot still sees the selection being edited.
+    expect(memberSelectionAt("uv.xyx", { line: 0, character: 3 })).toBe("xyx");
+    expect(memberSelectionAt("uv.xyx", { line: 0, character: 5 })).toBe("xyx");
+    expect(memberSelectionAt("uv.xyx", { line: 0, character: 6 })).toBe("xyx");
+    expect(memberSelectionAt("a;\nuv.zw + 1.0", { line: 1, character: 4 })).toBe("zw");
+  });
+
+  it("reports nothing outside a line or an identifier", () => {
+    expect(memberSelectionAt("uv.", { line: 0, character: 3 })).toBe("");
+    expect(memberSelectionAt("uv.xy", { line: 4, character: 0 })).toBe("");
+    expect(memberSelectionAt("uv.xy", { line: 0, character: 99 })).toBe("");
+    expect(memberSelectionAt("uv.xy", { line: 0, character: -1 })).toBe("");
+  });
+});
+
+describe("isMemberSelection", () => {
+  it("separates member selections from plain identifiers", () => {
+    expect(isMemberSelection("  uv.xy", 5)).toBe(true);
+    expect(isMemberSelection("  uv.", 5)).toBe(true);
+    expect(isMemberSelection("  uv", 4)).toBe(false);
+    expect(isMemberSelection("  1.5", 5)).toBe(false);
+    expect(isMemberSelection("", 0)).toBe(false);
   });
 });
 
