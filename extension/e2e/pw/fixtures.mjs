@@ -145,6 +145,15 @@ export const test = base.extend({
 
     const window = await app.firstWindow({ timeout: 60_000 });
     await window.waitForSelector('.monaco-workbench', { timeout: 60_000 });
+    // Opt-in only: specs must work at whatever width the host opens with, and
+    // this exists to reproduce a narrow workbench (SHADER_STUDIO_E2E_WINDOW=900x700),
+    // where the preview toolbar collapses controls into its options menu.
+    if (process.env.SHADER_STUDIO_E2E_WINDOW) {
+      const [width, height] = process.env.SHADER_STUDIO_E2E_WINDOW.split('x').map(Number);
+      await app.evaluate(async ({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+      }, { width, height });
+    }
 
     const port = Number(await waitFor(
       () => (existsSync(portFile) ? readFileSync(portFile, 'utf8').trim() : null),

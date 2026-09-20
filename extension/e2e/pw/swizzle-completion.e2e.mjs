@@ -74,6 +74,14 @@ test.describe('native vector swizzle completion', () => {
 
         await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup'));
         const widget = vscode.window.locator('.suggest-widget');
+        // The focus command resolves before the editor takes keyboard focus, and
+        // a keystroke sent into that gap is dropped for good: the poll below can
+        // only watch for an edit that will now never arrive. Which element holds
+        // that focus differs by VS Code version (textarea, then native edit
+        // context), so this asks only that it lives in the editor part.
+        await expect.poll(() => vscode.window.evaluate(() =>
+          Boolean(document.activeElement?.closest('.part.editor'))),
+        { message: 'the editor never took keyboard focus' }).toBe(true);
         await vscode.window.keyboard.type('.');
         await expect.poll(() => vscode.evaluateInHost(async (vscode) =>
           vscode.window.activeTextEditor?.document.getText() ?? '',

@@ -43,8 +43,11 @@ const knownBlackOutput = new Set<string>([
   // (SlangBindingPlan dedupes every keyboard channel to one binding, so no
   // device limit is exceeded), which is black until a key is held. Holding a
   // key lights the frame — covered by "pinned black-output fixtures reach
-  // their intended visible result". GLSL fails to compile outright (each
-  // keyboard input takes a WebGL texture unit) with a surfaced error.
+  // their intended visible result". GLSL gives each keyboard input its own
+  // texture unit, so it either exceeds the device limit and surfaces a compile
+  // error, or compiles where the limit is high enough and renders the same
+  // idle black.
+  "glsl/33channels_glsl.glsl",
   "slang/33channels.slang",
   "wgsl/33channels.wgsl",
   // Legitimate: the fixture documents a single 1x1x1 dispatch covering one

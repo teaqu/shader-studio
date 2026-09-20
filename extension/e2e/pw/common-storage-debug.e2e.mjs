@@ -2,6 +2,7 @@ import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 import { replaceSource, expectCanvasPixels, setPreviewLocked, revertFixtureEditors, setParameterExpression } from './editor-actions.mjs';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { openConfigPanel } from './config-panel.mjs';
 test.use({ vscodeKey: 'common-storage-debug' });
 const directory = join(workspacePath, 'common-storage-debug');
 test.beforeEach(async ({ vscode }) => {
@@ -124,7 +125,7 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
       await expectCanvasPixels(frame, [0, 255, 0]);
       await vscode.evaluateInHost(vscode => vscode.commands.executeCommand('notifications.clearAll'));
       await expect(frame.getByLabel('Toggle debug mode', { exact: true }).first()).toBeEnabled();
-      await frame.getByLabel('Toggle config panel', { exact: true }).click();
+      await openConfigPanel(frame);
       await frame.locator('.config-panel').getByRole('button', { name: 'Storage', exact: true }).click();
       await frame.getByLabel('Inspect values', { exact: true }).click();
       const inspector = frame.getByLabel('Inspect values', { exact: true });

@@ -1,6 +1,7 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { openConfigPanel } from './config-panel.mjs';
 
 test.setTimeout(45_000);
 test.use({ vscodeKey: 'language-file-creation' });
@@ -23,7 +24,7 @@ async function prepareShader(vscode, shaderPath, configPath, source) {
 
 async function openConfig(frame) {
   await expect(frame.locator('.config-panel')).toBeHidden();
-  await frame.getByLabel('Toggle config panel', { exact: true }).click();
+  await openConfigPanel(frame);
   await expect(frame.locator('.config-panel')).toBeVisible();
 }
 
@@ -79,7 +80,7 @@ for (const language of [
     test.afterEach(async ({ vscode }) => {
       const frame = await vscode.shaderFrame();
       if (await frame.locator('.config-panel').isVisible()) {
-        await frame.getByLabel('Toggle config panel', { exact: true }).click();
+        await openConfigPanel(frame);
         await expect(frame.locator('.config-panel')).toBeHidden();
       }
       await vscode.evaluateInHost(async vscode => {
