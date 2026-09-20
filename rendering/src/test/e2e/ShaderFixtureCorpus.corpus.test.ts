@@ -146,6 +146,10 @@ async function paintSentinel(harness: ShaderCanvasHarness, language: ShaderLangu
  * storage-edit-colours. Anything not listed must draw a lit pixel.
  */
 const knownBlackOutput = new Set<string>([
+  // Every language's 33channels sums 31 idle keyboard textures and divides:
+  // black by construction. GLSL was left off and drew non-black only where the
+  // driver handed back something other than zeros for the idle keys.
+  "glsl/33channels_glsl.glsl",
   "slang/33channels.slang",
   "wgsl/33channels.wgsl",
   "slang/compute-lab/raw-workgroups.slang",
