@@ -396,6 +396,13 @@ describe("Slang corpus mirrors in the language service", () => {
       const gaps: string[] = [];
       slangSweptDocs.add(label);
       for (const [index, token] of tokens.entries()) {
+        // See the GLSL sweep: yield to the macrotask queue so the worker can
+        // answer the reporter while this runs.
+        if (index % 50 === 0) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 0); 
+          });
+        }
         if (token.kind !== "identifier") {
           continue;
         }

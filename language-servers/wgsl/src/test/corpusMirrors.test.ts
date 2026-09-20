@@ -477,6 +477,13 @@ describe("WGSL corpus mirrors: authored identifier sweep", () => {
       const gaps: string[] = [];
       wgslSweptDocs.add(label);
       for (const { token, index, category } of sites) {
+        // See the GLSL sweep: yield to the macrotask queue so the worker can
+        // answer the reporter while this runs.
+        if (index % 50 === 0) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 0); 
+          });
+        }
         countWgslSite(passSupplied.has(category === "member" ? memberRoot(tokens, index) ?? "" : token.text) ? "pass-supplied" : category);
         const where = `${token.line + 1}:${token.character + 1} ${category} '${token.text}'`;
         const start = { line: token.line, character: token.character };

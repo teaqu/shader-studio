@@ -222,6 +222,10 @@ jobs:
           SHADER_STUDIO_E2E_GREP: '@gpu'
           # Override the runner's default GPU exclusion for this selection.
           SHADER_STUDIO_E2E_GREP_INVERT: '(?!)'
+          # A runner opens the workbench at whatever size it defaults to, and the
+          # preview collapses controls and splits editor groups by the width it
+          # gets. Pin a desktop-sized window so layout is the same every run.
+          SHADER_STUDIO_E2E_WINDOW: '1600x1000'
         run: npm run test:e2e:vsix -w extension
 
       - name: Upload installed-VSIX E2E traces
@@ -265,7 +269,9 @@ jobs:
         env:
           SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
           SHADER_STUDIO_E2E_GREP_INVERT: '@gpu'
-        run: xvfb-run -a npm run test:e2e:vsix -w extension
+          SHADER_STUDIO_E2E_WINDOW: '1600x1000'
+        # The virtual display has to be larger than the window it hosts.
+        run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
 
       - name: Upload installed-VSIX E2E traces
         if: ${{ failure() && steps.vsix-e2e.outcome == 'failure' }}

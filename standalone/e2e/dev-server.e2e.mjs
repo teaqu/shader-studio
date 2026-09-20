@@ -32,6 +32,17 @@ test('answers language-service requests against the dev server', async ({ page }
   await page.keyboard.type('uv.', { delay: 100 });
 
   const suggestions = page.locator('.suggest-widget:visible');
-  await expect(suggestions).toBeVisible();
+  // The worker is served unbundled here, so it can still be loading when the
+  // selector is typed. Monaco closes a session that had nothing to show and
+  // does not reopen it by itself, so retype the selector until the service
+  // answers rather than waiting on a session that has already gone.
+  await expect.poll(async () => {
+    if (await suggestions.isVisible()) {
+      return true;
+    }
+    await input.press('Backspace');
+    await page.keyboard.type('.', { delay: 100 });
+    return suggestions.isVisible();
+  }, { message: 'the dev-server language service never offered completions', timeout: 60_000 }).toBe(true);
   await expect(suggestions).toContainText('xy');
 });

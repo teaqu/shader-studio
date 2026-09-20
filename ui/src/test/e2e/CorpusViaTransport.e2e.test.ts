@@ -798,6 +798,13 @@ describe("shader corpus through the UI transport layer", () => {
         "slang/video.slang",
         "wall-clock output: pulse and marker driven by sin(iTime) and frac(iTime)",
       ],
+      [
+        "slang/intellisense.slang",
+        "device-dependent output: an intrinsic catalogue whose transcendental and "
+        + "packing results differ by a luma bucket across GPUs (10 of 64 cells "
+        + "drifted by one level on a CI runner; agreement still compares the three "
+        + "languages within a run)",
+      ],
     ]);
     const observed: Record<string, string> = {};
     for (const triplet of triplets) {

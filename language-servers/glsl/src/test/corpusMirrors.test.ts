@@ -515,6 +515,14 @@ describe("GLSL corpus mirrors: authored identifier sweep", () => {
       const gaps: string[] = [];
       glslSweptDocs.add(label);
       for (const [index, token] of tokens.entries()) {
+        // Awaiting service calls only drains microtasks, so a sweep this long
+        // never yields to the macrotask queue that carries Vitest's reporter
+        // RPC, and the run fails on a reporting timeout with every test green.
+        if (index % 50 === 0) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, 0); 
+          });
+        }
         if (token.kind !== "identifier") {
           continue;
         }
