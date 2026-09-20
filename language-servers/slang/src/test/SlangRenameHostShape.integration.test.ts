@@ -39,7 +39,9 @@ function apply(source: string, result: WorkspaceEdit | null, documentUri: string
     .reduce((text, edit) => text.slice(0, offset(edit.range.start)) + edit.newText + text.slice(offset(edit.range.end)), source);
 }
 
-describe("Slang rename in host workspace shape", () => {
+// Compiler-backed like SlangRename.integration.test.ts: the 5s default is a
+// generic limit, not one measured against a real Slang compile under load.
+describe("Slang rename in host workspace shape", { timeout: 30_000 }, () => {
   let module: SlangLanguageServerModule;
   let service: SlangLanguageService;
   beforeAll(async () => {

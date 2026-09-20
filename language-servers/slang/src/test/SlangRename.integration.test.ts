@@ -31,7 +31,11 @@ function apply(source: string, result: WorkspaceEdit | null, documentUri = uri):
     .reduce((text, edit) => text.slice(0, offset(edit.range.start)) + edit.newText + text.slice(offset(edit.range.end)), source);
 }
 
-describe("Slang rename with the bundled compiler", () => {
+// Every case drives a real compile through the bundled Slang compiler: 0.5-2.4s
+// each on an idle machine, and this file takes 74s under the full workspace run
+// against 32s alone, so Vitest's generic 5s default times out under load. The
+// module load above already carries its own limit for the same reason.
+describe("Slang rename with the bundled compiler", { timeout: 30_000 }, () => {
   let module: SlangLanguageServerModule;
   let service: SlangLanguageService;
   beforeAll(async () => {

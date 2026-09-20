@@ -96,13 +96,16 @@ suite('Shader config JSON schema', () => {
   });
 
   test('rejects geometry on the Common pass', () => {
+    // Common is its own definition with no geometry and no additional
+    // properties, so the rejection names the offending pass rather than
+    // reporting a failed branch of a union.
     assertInvalid({
       version: '1.0',
       passes: {
         Image: {},
         common: { path: 'common.glsl', geometry: { type: 'cube' } }
       }
-    }, 'should be equal to one of the allowed values');
+    }, 'data.passes.common should NOT have additional properties');
   });
 
   test('accepts image and buffer resolution settings plus current polling field', () => {

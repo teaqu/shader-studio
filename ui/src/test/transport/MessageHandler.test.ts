@@ -200,7 +200,7 @@ describe("MessageHandler", () => {
       (messageHandler as any).lastEvent = { data: {} } as MessageEvent;
 
       const onResetCallback = vi.fn();
-      messageHandler.reset(onResetCallback);
+      await messageHandler.reset(onResetCallback);
 
       expect(mockRenderingEngine.cleanup).not.toHaveBeenCalled();
       expect(onResetCallback).toHaveBeenCalledTimes(1);

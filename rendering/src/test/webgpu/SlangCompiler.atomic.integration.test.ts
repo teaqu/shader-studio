@@ -40,7 +40,10 @@ function compiledWgsl(result: SlangCompileResult): string {
 
 // The 21 MiB binary is deliberately gitignored. CI installs the pinned binary;
 // local source-only checkouts skip this integration suite until the UI asset is installed.
-describe.runIf(hasBundledSlangWasm)("SlangCompiler atomic storage with bundled slang-wasm", () => {
+// Each case is a real slang-wasm compile, like the module load below: seconds of
+// work, not the milliseconds Vitest's generic 5s default assumes, and slower
+// again when the whole workspace suite competes for the CPU.
+describe.runIf(hasBundledSlangWasm)("SlangCompiler atomic storage with bundled slang-wasm", { timeout: 30_000 }, () => {
   let slang: SlangModuleApi;
 
   beforeAll(async () => {

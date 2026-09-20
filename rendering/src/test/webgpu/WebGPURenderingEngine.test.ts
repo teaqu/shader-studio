@@ -3141,7 +3141,9 @@ describe("WebGPURenderingEngine", () => {
 
       expect(engine.getFrameTimeHistory()).toHaveLength(3600);
       expect(engine.getFrameTimeCount()).toBe(frames);
-    });
+      // 3700 rendered frames is the point of the test, so it is seconds of real
+      // work rather than the millisecond case Vitest's 5s default assumes.
+    }, 20_000);
   });
 
   describe("render loop", () => {
