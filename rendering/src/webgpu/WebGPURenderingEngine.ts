@@ -2222,7 +2222,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   private static storageCacheKey(node: StorageBindingNode): string {
-    return JSON.stringify([node.elementType, node.count, node.stride]);
+    return JSON.stringify([node.elementType, node.count, node.stride, node.containsAtomic === true]);
   }
 
   private createPassPipeline(

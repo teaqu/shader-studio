@@ -49,6 +49,8 @@ export interface StorageBindingNode {
   elementType: string;
   /** True when elementType is on the built-in whitelist (declared before common). */
   builtin: boolean;
+  /** True when WGSL requires a read-write binding because the element contains an atomic. */
+  containsAtomic?: boolean;
   count: number;
   stride: number;
 }

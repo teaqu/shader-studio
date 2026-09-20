@@ -498,10 +498,11 @@ export class SlangPassPipeline {
     entries.push(...slangChannelLayoutEntries(plan, this.descriptor.vertexChannels ? GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT : GPUShaderStage.FRAGMENT));
     const storageBaseBinding = plan.nextBinding;
     for (const node of this.descriptor.storage ?? []) {
+      const writable = node.containsAtomic === true;
       entries.push({
         binding: storageBaseBinding + node.binding,
-        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-        buffer: { type: "read-only-storage" },
+        visibility: writable ? GPUShaderStage.FRAGMENT : GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: writable ? "storage" : "read-only-storage" },
       });
     }
     if (this.isMesh()) {

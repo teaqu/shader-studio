@@ -365,8 +365,8 @@ export function buildWgslStorageDeclarations(
   passKind: "render" | "compute",
   baseBinding = 1 + channelCount * 2,
 ): { beforeCommon: string; afterCommon: string } {
-  const access = passKind === "compute" ? "read_write" : "read";
   const declaration = (node: StorageBindingNode) => {
+    const access = passKind === "compute" || node.containsAtomic ? "read_write" : "read";
     const element = wgslStorageElementType(node.elementType, passKind);
     return `@group(0) @binding(${baseBinding + node.binding}) var<storage, ${access}> ${node.name}: array<${element}>;\n`;
   };

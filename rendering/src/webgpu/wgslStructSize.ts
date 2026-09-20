@@ -26,6 +26,7 @@ export interface WgslStructInfo {
   name: string;
   size: number;
   alignment: number;
+  containsAtomic: boolean;
 }
 
 interface WgslField {
@@ -34,12 +35,20 @@ interface WgslField {
   alignment?: number;
 }
 
-const WGSL_TYPE_SIZES: Record<string, { size: number; alignment: number }> = {
+interface WgslTypeLayout {
+  size: number;
+  alignment: number;
+  containsAtomic?: boolean;
+}
+
+const WGSL_TYPE_SIZES: Record<string, WgslTypeLayout> = {
   f16: { size: 2, alignment: 2 },
   f32: { size: 4, alignment: 4 },
   i32: { size: 4, alignment: 4 },
   u32: { size: 4, alignment: 4 },
   bool: { size: 4, alignment: 4 },
+  atomic_i32: { size: 4, alignment: 4, containsAtomic: true },
+  atomic_u32: { size: 4, alignment: 4, containsAtomic: true },
   vec2f: { size: 8, alignment: 8 },
   vec3f: { size: 12, alignment: 16 },
   vec4f: { size: 16, alignment: 16 },
@@ -73,12 +82,12 @@ const WGSL_TYPE_SIZES: Record<string, { size: number; alignment: number }> = {
 };
 
 /** Known built-in type sizes. Returns undefined for unknown/custom types. */
-function builtinTypeLayout(typeName: string): { size: number; alignment: number } | undefined {
+function builtinTypeLayout(typeName: string): WgslTypeLayout | undefined {
   return WGSL_TYPE_SIZES[normalizeTypeName(typeName)];
 }
 
 /** Parse struct definitions across several WGSL sources for stride auto-fill. */
-export function parseWgslStructs(sources: string[]): Map<string, { size: number; alignment: number }> {
+export function parseWgslStructs(sources: string[]): Map<string, WgslStructInfo> {
   return extractStructSizes(sources.join("\n"));
 }
 
@@ -128,6 +137,7 @@ function structBodySize(
 
   let offset = 0;
   let maxAlignment = 1;
+  let containsAtomic = false;
   let hasUnresolvedField = false;
 
   for (const line of lines) {
@@ -144,6 +154,7 @@ function structBodySize(
     offset = alignUp(offset, layout.alignment);
     offset += layout.size;
     maxAlignment = Math.max(maxAlignment, layout.alignment);
+    containsAtomic ||= layout.containsAtomic === true;
   }
 
   if (hasUnresolvedField) {
@@ -151,10 +162,10 @@ function structBodySize(
   }
 
   const size = alignUp(offset, maxAlignment);
-  return { name: "", size, alignment: maxAlignment };
+  return { name: "", size, alignment: maxAlignment, containsAtomic };
 }
 
-function fieldLayout(field: WgslField, knownStructs: Map<string, WgslStructInfo>): { size: number; alignment: number } | undefined {
+function fieldLayout(field: WgslField, knownStructs: Map<string, WgslStructInfo>): WgslTypeLayout | undefined {
   const natural = builtinTypeLayout(field.type) ?? knownStructs.get(field.type) ?? arrayLayout(field.type, knownStructs);
   if (!natural) {
     return undefined;
@@ -162,10 +173,11 @@ function fieldLayout(field: WgslField, knownStructs: Map<string, WgslStructInfo>
   return {
     alignment: Math.max(natural.alignment, field.alignment ?? 0),
     size: Math.max(natural.size, field.size ?? 0),
+    containsAtomic: natural.containsAtomic,
   };
 }
 
-function arrayLayout(type: string, knownStructs: Map<string, WgslStructInfo>): { size: number; alignment: number } | undefined {
+function arrayLayout(type: string, knownStructs: Map<string, WgslStructInfo>): WgslTypeLayout | undefined {
   if (!type.startsWith("array<") || !type.endsWith(">")) {
     return undefined;
   }
@@ -177,7 +189,11 @@ function arrayLayout(type: string, knownStructs: Map<string, WgslStructInfo>): {
   if (!element) {
     return undefined;
   }
-  return { alignment: element.alignment, size: alignUp(element.size, element.alignment) * Number(parts[1]) };
+  return {
+    alignment: element.alignment,
+    size: alignUp(element.size, element.alignment) * Number(parts[1]),
+    containsAtomic: element.containsAtomic,
+  };
 }
 
 /** Splits fields without treating generic type commas or attribute arguments as separators. */

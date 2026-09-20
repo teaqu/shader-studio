@@ -1915,6 +1915,24 @@ struct Particle {
     }));
   });
 
+  it.each(["u32", "i32"])("infers WGSL storage stride for a struct containing atomic<%s>", (type) => {
+    const graph = buildWgsl({
+      version: "1",
+      storage: { counter: { count: 1, elementType: "Counter" } },
+      passes: { Image: { inputs: {} } },
+    }, {
+      common: `struct Counter { value: atomic<${type}>, }`,
+    });
+
+    expect(graph.errors).toEqual([]);
+    expect(graph.storage).toContainEqual(expect.objectContaining({
+      name: "counter",
+      elementType: "Counter",
+      stride: 4,
+      containsAtomic: true,
+    }));
+  });
+
   it("warns when WGSL common code references custom storage, ignoring comments", () => {
     const config: ShaderConfig = {
       version: "1",

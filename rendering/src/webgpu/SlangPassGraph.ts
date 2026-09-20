@@ -353,7 +353,7 @@ function resolveStorage(
   warnings: string[],
   errors: string[],
   maxStorageBuffers: number,
-  parsedStructs: Map<string, { size: number; alignment: number }>,
+  parsedStructs: Map<string, { size: number; alignment: number; containsAtomic?: boolean }>,
 ): StorageBindingNode[] {
   const storage: StorageBindingNode[] = [];
   let totalBytes = 0;
@@ -394,6 +394,7 @@ function resolveStorage(
       binding: storage.length,
       elementType,
       builtin: isBuiltin,
+      containsAtomic: /^atomic\s*<\s*(?:i32|u32)\s*>$/.test(elementType) || parsedStructs.get(elementType)?.containsAtomic,
       count: declaration.count,
       stride,
     });

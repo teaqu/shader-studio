@@ -482,6 +482,29 @@ describe("WebGPUVariableCapturer", () => {
     ]);
   });
 
+  it("uses a writable capture binding for storage structs containing atomics", async () => {
+    const gpu = mockGpu();
+    const counter = {
+      ...storageB,
+      name: "counter",
+      binding: 0,
+      elementType: "Counter",
+      stride: 4,
+      containsAtomic: true,
+    };
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler, {
+      slangStorage: [counter],
+      slangStorageBuffers: new Map([[counter.name, {} as GPUBuffer]]),
+    });
+
+    expect(await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4)).toBe(1);
+    expect(gpu.createBindGroupLayout.mock.calls[0][0].entries[1]).toEqual({
+      binding: 1,
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: "storage" },
+    });
+  });
+
   it("skips safely when capture storage is absent and recovers when it appears", async () => {
     const gpu = mockGpu();
     const storageBuffers = new Map<string, GPUBuffer>();

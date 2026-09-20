@@ -381,6 +381,26 @@ describe("SlangPassPipeline", () => {
     });
   });
 
+  it("uses a writable fragment binding for storage structs containing atomics", async () => {
+    const device = fakeDevice();
+    const pass = new SlangPassPipeline(device, "bgra8unorm", {
+      name: "Image",
+      width: 320,
+      height: 180,
+      output: "canvas",
+      channels: [],
+      storage: [{ ...storageA, name: "counter", elementType: "Counter", containsAtomic: true }],
+    });
+
+    await pass.rebuild("// wgsl");
+
+    expect(device.createBindGroupLayout.mock.calls[0][0].entries.at(-1)).toEqual({
+      binding: 1,
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: "storage" },
+    });
+  });
+
   it("uses each storage node binding instead of its descriptor-array index", async () => {
     const device = fakeDevice();
     const pass = new SlangPassPipeline(device, "bgra8unorm", {

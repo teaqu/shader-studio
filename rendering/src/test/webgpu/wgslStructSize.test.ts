@@ -49,6 +49,30 @@ struct HalfData {
     expect(layouts.get("HalfData")).toMatchObject({ size: 24, alignment: 8 });
   });
 
+  it("recognises signed and unsigned atomic storage layouts", () => {
+    const layouts = extractStructSizes(`
+struct Counters {
+  before: u32,
+  unsigned: atomic < u32 >,
+  signed: atomic<i32>,
+  values: array<atomic<u32>, 2>,
+  after: f32,
+}
+`);
+
+    expect(layouts.get("Counters")).toMatchObject({ size: 24, alignment: 4, containsAtomic: true });
+  });
+
+  it("rejects atomics with unsupported element types", () => {
+    const layouts = extractStructSizes(`
+struct InvalidAtomic {
+  value: atomic<f32>,
+}
+`);
+
+    expect(layouts.get("InvalidAtomic")).toBeUndefined();
+  });
+
   it("handles indented and same-line structs, multiline attributes, and comments", () => {
     const layouts = extractStructSizes(`
 // struct Ignored { broken: NotAType, }

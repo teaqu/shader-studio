@@ -643,7 +643,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
       entries.push({
         binding: storageBaseBinding + node.binding,
         visibility: FRAGMENT,
-        buffer: { type: "read-only-storage" },
+        buffer: { type: node.containsAtomic ? "storage" : "read-only-storage" },
       });
     }
     entries.push({

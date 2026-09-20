@@ -314,6 +314,15 @@ describe("buildWgslStorageDeclarations", () => {
     expect(beforeCommon).toContain("@group(0) @binding(7) var<storage, read_write> c: array<vec3<i32>>;");
   });
 
+  it("uses read_write access for render storage whose custom type contains atomics", () => {
+    const storage = [{
+      ...storageNode("counter", 0, "Counter", false),
+      containsAtomic: true,
+    }];
+    const { afterCommon } = buildWgslStorageDeclarations(storage, 0, "render", 1);
+    expect(afterCommon).toContain("@group(0) @binding(1) var<storage, read_write> counter: array<Counter>;");
+  });
+
   it("preserves native f16 storage type spellings", () => {
     const storage = [
       storageNode("scalar", 0, "f16", true),
