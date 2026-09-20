@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveTextureBindings } from "../../util/TextureBindingResolver";
+import { resolveBufferSamplerSettings, resolveTextureBindings } from "../../util/TextureBindingResolver";
 import { assignInputSlots } from "../../util/InputSlotAssigner";
 
 const defaultTexture = { id: "default" } as any;
@@ -91,6 +91,20 @@ describe("resolveTextureBindings", () => {
 
   it("binds the front buffer of the source pass", () => {
     expect(resolve({ iChannel0: { type: "buffer", source: "Trails" } })[0]).toEqual({ id: "trails" });
+  });
+
+  it("resolves buffer sampler defaults and keeps non-buffer slots clear", () => {
+    const inputs = {
+      state: { type: "buffer" as const, source: "Trails", filter: "nearest" as const, wrap: "repeat" as const },
+      image: { type: "texture" as const, path: "noise.png" },
+      legacy: { type: "buffer" as const, source: "Trails" },
+    };
+    expect(resolveBufferSamplerSettings(inputs, assignInputSlots(inputs))).toEqual([
+      { filter: "nearest", wrap: "repeat" },
+      null,
+      { filter: "linear", wrap: "clamp" },
+      null,
+    ]);
   });
 
   it("binds the front buffer for a pass reading its own output", () => {

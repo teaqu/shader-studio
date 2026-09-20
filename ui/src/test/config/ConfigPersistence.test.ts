@@ -45,6 +45,26 @@ describe('stripResolvedPath', () => {
     expect(clean.passes.Image.resolution).toEqual({ scale: 2, aspectRatio: '16:9' });
   });
 
+  it('preserves requested buffer sampling settings through JSON serialization', () => {
+    const config: ShaderConfig = {
+      version: '1.0',
+      passes: {
+        Image: {
+          inputs: {
+            state: { type: 'buffer', source: 'Simulation', filter: 'nearest', wrap: 'repeat' },
+          },
+        },
+        Simulation: { path: 'simulation.wgsl' },
+      },
+    };
+
+    const { text, clean } = stripResolvedPath(config);
+    expect(JSON.parse(text)).toEqual(clean);
+    expect(clean.passes.Image.inputs?.state).toEqual({
+      type: 'buffer', source: 'Simulation', filter: 'nearest', wrap: 'repeat',
+    });
+  });
+
   it('produces 2-space indented JSON text', () => {
     const config: ShaderConfig = { version: '1.0', passes: { Image: { inputs: {} } } };
     const { text } = stripResolvedPath(config);

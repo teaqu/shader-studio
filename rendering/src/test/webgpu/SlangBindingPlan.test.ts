@@ -37,11 +37,14 @@ describe("Slang binding plan", () => {
       { kind: "buffer", slot: 0, key: "a", source: "Buffer", readFrom: "previous-frame" },
       { kind: "buffer", slot: 3, key: "b", source: "Buffer", readFrom: "previous-frame", layer: 0 },
       { kind: "buffer", slot: 4, key: "c", source: "Buffer", readFrom: "current-frame" },
-      { kind: "buffer", slot: 5, key: "d", source: "Buffer", readFrom: "previous-frame", layer: 1 },
+      { kind: "buffer", slot: 5, key: "d", source: "Buffer", readFrom: "previous-frame", layer: 1, filter: "nearest", wrap: "repeat" },
     ]));
     expect(plan.textures).toHaveLength(3);
-    expect(plan.samplers).toHaveLength(1);
+    expect(plan.samplers).toHaveLength(2);
     expect(plan.channels[1].textureBinding).toBe(plan.channels[0].textureBinding);
+    expect(getSlangSamplerSettings({
+      kind: "buffer", slot: 5, key: "d", source: "Buffer", readFrom: "previous-frame", filter: "nearest", wrap: "repeat",
+    })).toEqual({ filter: "nearest", wrap: "repeat" });
   });
   it("keeps upload variants separate while sharing one texture with different wrap", () => {
     const plan = buildSlangBindingPlan(getSlangChannels([

@@ -151,7 +151,14 @@ export class BufferConfig {
       if (this.config.vertex !== undefined) {
         errors.push('common pass cannot define vertex');
       }
+      if ('outputFormat' in this.config && this.config.outputFormat !== undefined) {
+        errors.push('common pass cannot define outputFormat');
+      }
     } else {
+      if ('outputFormat' in this.config && this.config.outputFormat !== undefined &&
+          !['auto', 'rgba16float', 'rgba32float'].includes(this.config.outputFormat)) {
+        errors.push(`${this.bufferName} pass outputFormat must be auto, rgba16float, or rgba32float`);
+      }
       if (!isValidGeometry(this.config.geometry)) {
         errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
       }
@@ -201,11 +208,17 @@ export class BufferConfig {
   private static readonly GLSL_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
   private validateBufferInput(input: any): boolean {
-    return typeof input.source === 'string' &&
-           input.source.length > 0 &&
-           BufferConfig.GLSL_IDENTIFIER.test(input.source) &&
-           input.source !== 'Image' &&
-           input.source !== 'common';
+    if (typeof input.source !== 'string' ||
+        input.source.length === 0 ||
+        !BufferConfig.GLSL_IDENTIFIER.test(input.source) ||
+        input.source === 'Image' ||
+        input.source === 'common') {
+      return false;
+    }
+    if (input.filter !== undefined && !['linear', 'nearest'].includes(input.filter)) {
+      return false;
+    }
+    return input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap);
   }
 
   private validateTextureInput(input: any): boolean {

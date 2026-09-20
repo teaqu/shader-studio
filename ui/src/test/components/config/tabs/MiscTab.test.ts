@@ -41,6 +41,46 @@ describe('MiscTab', () => {
   });
 
   describe('Selection', () => {
+    it('shows linear/clamp defaults and emits buffer sampling changes', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: { type: 'buffer', source: 'BufferA' } as ConfigInput,
+      };
+      render(MiscTab, props);
+
+      const filter = document.body.querySelector('#buffer-filter') as HTMLSelectElement;
+      const wrap = document.body.querySelector('#buffer-wrap') as HTMLSelectElement;
+      expect(filter.value).toBe('linear');
+      expect(wrap.value).toBe('clamp');
+
+      await fireEvent.change(filter, { target: { value: 'nearest' } });
+      await fireEvent.change(wrap, { target: { value: 'repeat' } });
+
+      expect(props.onSelect).toHaveBeenNthCalledWith(1, {
+        type: 'buffer', source: 'BufferA', filter: 'nearest',
+      });
+      expect(props.onSelect).toHaveBeenNthCalledWith(2, {
+        type: 'buffer', source: 'BufferA', wrap: 'repeat',
+      });
+    });
+
+    it('preserves sampling and layer when changing buffer source', async () => {
+      const props = {
+        ...defaultProps(),
+        tempInput: {
+          type: 'buffer', source: 'BufferA', layer: 2, filter: 'nearest', wrap: 'repeat',
+        } as ConfigInput,
+      };
+      const { container } = render(MiscTab, props);
+      const label = Array.from(container.querySelectorAll('.misc-card-label'))
+        .find(el => el.textContent === 'BufferB');
+      await fireEvent.click(label!.closest('button')!);
+
+      expect(props.onSelect).toHaveBeenCalledWith({
+        type: 'buffer', source: 'BufferB', layer: 2, filter: 'nearest', wrap: 'repeat',
+      });
+    });
+
     it('should highlight selected buffer card', () => {
       const props = {
         ...defaultProps(),

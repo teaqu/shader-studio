@@ -606,6 +606,10 @@ describe("wrapWgslImageSource golden module", () => {
       fn sampleCubeGrad(texture: texture_cube<f32>, sampling: sampler, dir: vec3f, dx: vec3f, dy: vec3f) -> vec4<f32> {
         return textureSampleGrad(texture, sampling, dir, dx, dy);
       }
+      fn load2D(texture: texture_2d<f32>, pixel: vec2i) -> vec4f {
+        let size = textureDimensions(texture, 0);
+        return textureLoad(texture, vec2i(pixel.x, i32(size.y) - 1 - pixel.y), 0);
+      }
       @group(0) @binding(1) var iChannel0Texture: texture_2d<f32>;
       @group(0) @binding(3) var iChannel1Texture: texture_2d<f32>;
       @group(0) @binding(5) var iChannel2Texture: texture_cube<f32>;

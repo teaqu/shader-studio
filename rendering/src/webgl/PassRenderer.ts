@@ -6,10 +6,11 @@ import type { KeyboardManager } from "../input/KeyboardManager";
 import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
 import { bindTextures } from "../util/TextureBinder";
-import { resolveTextureBindings } from "../util/TextureBindingResolver";
+import { resolveBufferSamplerSettings, resolveTextureBindings } from "../util/TextureBindingResolver";
 import type { WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
+import { WebGLSamplerCache } from "./WebGLSamplerCache";
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
@@ -18,6 +19,7 @@ export class PassRenderer {
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
   private gl: WebGL2RenderingContext | null = null;
+  private samplerCache: WebGLSamplerCache | null = null;
   private readonly meshCamera = new OrbitCamera();
 
   constructor(
@@ -34,6 +36,7 @@ export class PassRenderer {
     this.renderer = renderer;
     this.keyboardManager = keyboardManager;
     this.gl = canvas.getContext("webgl2");
+    this.samplerCache = this.gl ? new WebGLSamplerCache(this.gl) : null;
   }
 
   public clearCanvas(): void {
@@ -48,6 +51,8 @@ export class PassRenderer {
 
   public dispose(): void {
     this.meshCamera.detach();
+    this.samplerCache?.dispose();
+    this.samplerCache = null;
   }
 
   public renderPass(
@@ -103,7 +108,12 @@ export class PassRenderer {
     }
 
     if (this.gl) {
-      bindTextures(this.gl, textureBindings);
+      const samplerSettings = resolveBufferSamplerSettings(passConfig.inputs, slotAssignments);
+      bindTextures(
+        this.gl,
+        textureBindings,
+        samplerSettings.map(settings => settings ? this.samplerCache?.get(settings) ?? null : null),
+      );
     }
     // Bind iChannel{N} for all slots
     for (let i = 0; i < textureBindings.length; i++) {

@@ -166,7 +166,7 @@ describe("buildSlangPassGraph", () => {
       passes: {
         Image: {
           inputs: {
-            iChannel0: { type: "buffer", source: "BufferA" },
+            iChannel0: { type: "buffer", source: "BufferA", filter: "nearest", wrap: "repeat" },
           },
         },
         BufferA: {
@@ -202,7 +202,7 @@ describe("buildSlangPassGraph", () => {
       height: 180,
     });
     expect(graph.passes[1].channels).toEqual([
-      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame" },
+      { kind: "buffer", slot: 0, key: "iChannel0", source: "BufferA", readFrom: "current-frame", filter: "nearest", wrap: "repeat" },
     ]);
   });
 

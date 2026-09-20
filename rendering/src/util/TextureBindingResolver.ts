@@ -3,6 +3,7 @@ import type { Buffers } from "../models";
 import type { ResourceManager } from "../resources/ResourceManager";
 import type { PiTexture } from "../types/piRenderer";
 import type { SlotAssignment } from "./InputSlotAssigner";
+import type { BufferSamplerSettings } from "../webgl/WebGLSamplerCache";
 
 /** Live key state to refresh the keyboard texture from before binding it. */
 export interface KeyboardTextureState {
@@ -75,4 +76,24 @@ export function resolveTextureBindings({
   }
 
   return textureBindings;
+}
+
+/** Resolve only buffer samplers; other input kinds retain their texture-owned settings. */
+export function resolveBufferSamplerSettings(
+  inputs: Readonly<Record<string, ConfigInput>>,
+  slotAssignments: readonly SlotAssignment[],
+): Array<BufferSamplerSettings | null> {
+  const settings: Array<BufferSamplerSettings | null> = new Array(
+    Math.max(4, slotAssignments.length),
+  ).fill(null);
+  for (const { slot, key } of slotAssignments) {
+    const input = inputs[key];
+    if (input?.type === "buffer") {
+      settings[slot] = {
+        filter: input.filter ?? "linear",
+        wrap: input.wrap ?? "clamp",
+      };
+    }
+  }
+  return settings;
 }

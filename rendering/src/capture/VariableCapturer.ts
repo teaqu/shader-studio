@@ -6,6 +6,8 @@ import type { SlotAssignment } from '../util/InputSlotAssigner';
 import type { ConfigInput, DebugInstrumentationPlan } from '@shader-studio/types';
 import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
+import { resolveBufferSamplerSettings } from '../util/TextureBindingResolver';
+import { WebGLSamplerCache } from '../webgl/WebGLSamplerCache';
 import type { StorageBindingNode } from '../types/PassGraph';
 import { CaptureErrorLog, type CaptureError } from "./CaptureErrorLog";
 
@@ -148,6 +150,8 @@ export class VariableCapturer implements IVariableCapturer {
   private customUniformDeclarations = '';
   private customUniforms: CaptureCustomUniform[] = [];
   private inputBindings: (PiTexture | null)[] = [];
+  private inputSamplers: (WebGLSampler | null)[] = [];
+  private readonly samplerCache: WebGLSamplerCache;
   private compileContext: CaptureCompileContext = {};
   private readonly errors = new CaptureErrorLog();
   private fboTextures = new WeakMap<WebGLFramebuffer, WebGLTexture>();
@@ -159,6 +163,7 @@ export class VariableCapturer implements IVariableCapturer {
     private resolveInputBindings?: (inputConfig: Record<string, ConfigInput>) => (PiTexture | null)[],
   ) {
     this.compileContext = compileContext;
+    this.samplerCache = new WebGLSamplerCache(gl);
     this.initQuad();
     // Enable float texture rendering
     this.gl.getExtension('EXT_color_buffer_float');
@@ -199,6 +204,10 @@ export class VariableCapturer implements IVariableCapturer {
 
   setInputBindings(inputConfig: Record<string, ConfigInput>): void {
     this.inputBindings = this.resolveInputBindings?.(inputConfig) ?? [];
+    this.inputSamplers = resolveBufferSamplerSettings(
+      inputConfig,
+      this.compileContext.slotAssignments ?? [],
+    ).map(settings => settings ? this.samplerCache.get(settings) : null);
   }
 
   clearLastError(): void {
@@ -532,6 +541,7 @@ export class VariableCapturer implements IVariableCapturer {
       this.gl.deleteBuffer(this.quadBuffer);
       this.quadBuffer = null;
     }
+    this.samplerCache.dispose();
   }
 
   private async getOrCompileShader(code: string, requestId?: number, varName?: string): Promise<PiShader | null> {
@@ -682,7 +692,7 @@ export class VariableCapturer implements IVariableCapturer {
     gl.useProgram(program);
 
     if (this.inputBindings.length > 0) {
-      bindTextures(gl, this.inputBindings);
+      bindTextures(gl, this.inputBindings, this.inputSamplers);
       for (let i = 0; i < this.inputBindings.length; i++) {
         const loc = gl.getUniformLocation(program, `iChannel${i}`);
         if (loc !== null) {

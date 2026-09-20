@@ -211,6 +211,26 @@ describe('ChannelConfigModal', () => {
         source: 'BufferB'
       });
     });
+
+    it('loads and auto-saves buffer sampling settings', async () => {
+      const bufferInput = {
+        type: 'buffer', source: 'BufferA', filter: 'nearest', wrap: 'repeat',
+      } as ConfigInput;
+      render(ChannelConfigModal, {
+        ...defaultProps(),
+        channelInput: bufferInput,
+      });
+
+      const filter = screen.getByLabelText('Filter:') as HTMLSelectElement;
+      const wrap = screen.getByLabelText('Wrap:') as HTMLSelectElement;
+      expect(filter.value).toBe('nearest');
+      expect(wrap.value).toBe('repeat');
+
+      await fireEvent.change(filter, { target: { value: 'linear' } });
+      expect(mockOnSave).toHaveBeenCalledWith('iChannel0', {
+        type: 'buffer', source: 'BufferA', filter: 'linear', wrap: 'repeat',
+      });
+    });
   });
 
   describe('Texture Configuration Auto-Save', () => {

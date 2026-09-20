@@ -5,6 +5,7 @@ import {
   GLSL_STABLE_NAMES,
   glslSamplerType,
   resolveGlslInputBindings,
+  buildGlslNamedChannelDeclarations,
 } from "./GlslShaderEnvironment";
 import { GLSL_STABLE_DECLARATION_LINES as sharedDeclarationLines } from "./shader-environment/BuiltinUniforms";
 
@@ -97,5 +98,12 @@ describe("GLSL shader environment", () => {
     expect(glslSamplerType("2D")).toBe("sampler2D");
     expect(glslSamplerType("Cube")).toBe("samplerCube");
     expect(glslSamplerType("3D")).toBe("sampler3D");
+  });
+
+  it("generates mip-zero integer load2D overloads for raw and named 2D channels", () => {
+    const source = buildGlslNamedChannelDeclarations(resolveGlslInputBindings({ state: { type: "buffer" } }));
+    expect(source).toContain("vec4 load2D(sampler2D textureHandle, ivec2 pixel)");
+    expect(source).toContain("texelFetch(textureHandle, pixel, 0)");
+    expect(source).toContain("vec4 load2D(ShaderStudioChannel2D channel, ivec2 pixel)");
   });
 });

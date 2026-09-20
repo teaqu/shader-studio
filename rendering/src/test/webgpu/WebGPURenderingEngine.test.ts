@@ -1039,6 +1039,31 @@ describe("WebGPURenderingEngine", () => {
     ]);
   });
 
+  it("threads the negotiated rgba32float format into render buffer pipelines", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+    const { device } = stubEngineInternals(engine);
+    (engine as any).bufferTextureFormat = "rgba32float";
+    const code = "float4 mainImage(float2 c) { return float4(1e-8, 2049, 0, 1); }";
+
+    const result = await engine.compileShaderPipeline(code, {
+      version: "1",
+      passes: {
+        BufferA: { path: "buffer-a.slang", inputs: {} },
+        Image: { inputs: { state: { type: "buffer", source: "BufferA", filter: "nearest" } } },
+      },
+    }, "/image.slang", { BufferA: code });
+
+    expect(result?.success).toBe(true);
+    const bufferTextures = device.createTexture.mock.calls
+      .map(([descriptor]) => descriptor)
+      .filter(descriptor => descriptor.size.width === 320 && descriptor.size.height === 180);
+    expect(bufferTextures).toHaveLength(2);
+    expect(bufferTextures.every(descriptor => descriptor.format === "rgba32float")).toBe(true);
+    expect(device.createRenderPipeline).toHaveBeenCalledWith(expect.objectContaining({
+      fragment: expect.objectContaining({ targets: [{ format: "rgba32float" }] }),
+    }));
+  });
+
   it("returns a failure without creating any pipelines when the pass graph has errors", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const device = {
@@ -4424,6 +4449,45 @@ describe("WebGPURenderingEngine", () => {
       [{ slot: 0, textureView: { label: "bufferA-current" } }],
       expect.any(Map),
     );
+  });
+
+  it("attaches the requested sampler to a non-default buffer input", () => {
+    const engine = new WebGPURenderingEngine(assets);
+    stubDeviceAndContext(engine);
+    const device = (engine as unknown as { device: GPUDevice }).device;
+    const sampler = { label: "nearest-repeat" } as unknown as GPUSampler;
+    vi.mocked(device.createSampler).mockReturnValue(sampler);
+
+    const bufferPipeline = renderablePipeline({
+      getCurrentOutputView: () => ({ label: "bufferA-current" }),
+    });
+    const imagePipeline = renderablePipeline();
+    (engine as any).passGraph = [
+      { name: "BufferA", width: 320, height: 180, output: "texture", channels: [] },
+      {
+        name: "Image", width: 320, height: 180, output: "canvas",
+        channels: [{
+          kind: "buffer", slot: 0, key: "state", source: "BufferA",
+          readFrom: "current-frame", filter: "nearest", wrap: "repeat",
+        }],
+      },
+    ];
+    (engine as any).passPipelines = new Map([
+      ["BufferA", bufferPipeline],
+      ["Image", imagePipeline],
+    ]);
+
+    engine.render(1000);
+
+    expect(device.createSampler).toHaveBeenCalledWith({
+      magFilter: "nearest",
+      minFilter: "nearest",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+    });
+    expect(imagePipeline.rebuildBindGroup).toHaveBeenCalledWith([
+      { slot: 0, textureView: { label: "bufferA-current" }, sampler },
+    ], expect.any(Map));
   });
 
   it("rebuilds a channel fragment pass with both resolved channels and installed storage", () => {

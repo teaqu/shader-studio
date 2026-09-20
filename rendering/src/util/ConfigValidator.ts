@@ -80,6 +80,9 @@ export class ConfigValidator {
   }
 
   private static validateImagePass(pass: any, errors: string[]): void {
+    if (pass.outputFormat !== undefined) {
+      errors.push("Image pass cannot define outputFormat");
+    }
     if (!isValidGeometry(pass.geometry)) {
       errors.push(`Image pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
     }
@@ -93,6 +96,9 @@ export class ConfigValidator {
     // path can be empty or missing (buffer not yet configured) — just skip validation
     if (pass.path !== undefined && typeof pass.path !== 'string') {
       errors.push(`${passName} pass path must be a string`);
+    }
+    if (pass.outputFormat !== undefined && !['auto', 'rgba16float', 'rgba32float'].includes(pass.outputFormat)) {
+      errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
 
     if (!isValidGeometry(pass.geometry)) {
@@ -175,11 +181,17 @@ export class ConfigValidator {
   }
 
   private static validateBufferInput(input: any): boolean {
-    return typeof input.source === 'string' &&
-           input.source.length > 0 &&
-           this.GLSL_IDENTIFIER.test(input.source) &&
-           input.source !== 'Image' &&
-           input.source !== 'common';
+    if (typeof input.source !== 'string' ||
+        input.source.length === 0 ||
+        !this.GLSL_IDENTIFIER.test(input.source) ||
+        input.source === 'Image' ||
+        input.source === 'common') {
+      return false;
+    }
+    if (input.filter !== undefined && !['linear', 'nearest'].includes(input.filter)) {
+      return false;
+    }
+    return input.wrap === undefined || ['repeat', 'clamp'].includes(input.wrap);
   }
 
   private static validateTextureInput(input: any): boolean {

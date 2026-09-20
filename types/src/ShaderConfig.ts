@@ -3,6 +3,10 @@ export interface BufferConfigInput {
     source: string;
     /** Layer of a multi-layer compute output to sample (default 0). */
     layer?: number;
+    /** Sampling filter (default linear). */
+    filter?: "linear" | "nearest";
+    /** Addressing mode (default clamp). */
+    wrap?: "repeat" | "clamp";
 }
 
 export interface TextureConfigInput {
@@ -50,6 +54,7 @@ export interface AudioConfigInput {
 export type ConfigInput = BufferConfigInput | TextureConfigInput | VideoConfigInput | CubemapConfigInput | KeyboardConfigInput | AudioConfigInput;
 
 export type AspectRatioMode = '16:9' | '4:3' | '1:1' | 'fill' | 'auto';
+export type BufferOutputFormat = 'auto' | 'rgba16float' | 'rgba32float';
 
 interface BaseImageResolutionSettings {
     scale?: number; // 0.25, 0.5, 1, 2, 4 (default: 1)
@@ -101,6 +106,7 @@ export interface BufferPass {
   resolution?: BufferResolution;
   geometry?: GeometryConfig;
   vertex?: string;
+  outputFormat?: BufferOutputFormat;
 }
 
 export interface CommonPass {
@@ -132,6 +138,7 @@ export interface ComputePass {
     inputs?: Record<string, ConfigInput>;
     resolution?: BufferResolution;
     outputLayers?: number;
+    outputFormat?: BufferOutputFormat;
     dispatch?: ComputeDispatch;
     dispatchCount?: number;
     dispatchOnce?: boolean;
