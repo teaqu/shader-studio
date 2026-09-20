@@ -498,7 +498,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const buffersAfterReset = createdStorageBuffers(device);
     expect(buffersAfterReset).toHaveLength(2);
     expect(buffersAfterReset[1].descriptor).toEqual(firstBuffer.descriptor);
-    expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
+    expect(installedStorageBuffers(engine).get("a")).toBe(firstBuffer);
+    expect(firstBuffer.destroy).not.toHaveBeenCalled();
     expect(device.queue.writeBuffer).not.toHaveBeenCalledWith(
       buffersAfterReset[1],
       0,
@@ -507,7 +508,60 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
     expect(createdStorageBuffers(device)).toHaveLength(2);
+    expect(installedStorageBuffers(engine).get("a")).toBe(buffersAfterReset[1]);
+    expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
     expect(buffersAfterReset[1].destroy).not.toHaveBeenCalled();
+  });
+
+  it("replaces an older pending reset without publishing either candidate early", async () => {
+    const { engine, device } = engineHarness();
+    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    const installed = createdStorageBuffers(device)[0];
+
+    engine.resetTime();
+    const firstReset = createdStorageBuffers(device)[1];
+    engine.resetTime();
+    const secondReset = createdStorageBuffers(device)[2];
+
+    expect(installedStorageBuffers(engine).get("a")).toBe(installed);
+    expect(installed.destroy).not.toHaveBeenCalled();
+    expect(firstReset.destroy).toHaveBeenCalledTimes(1);
+    expect(secondReset.destroy).not.toHaveBeenCalled();
+
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+
+    expect(installedStorageBuffers(engine).get("a")).toBe(secondReset);
+    expect(installed.destroy).toHaveBeenCalledTimes(1);
+    expect(secondReset.destroy).not.toHaveBeenCalled();
+  });
+
+  it("retains prepared reset storage across a failed compilation", async () => {
+    const { engine, device, compiler } = engineHarness();
+    const config = storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } });
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/image.slang");
+    const installed = createdStorageBuffers(device)[0];
+    engine.resetTime();
+    const resetBuffer = createdStorageBuffers(device)[1];
+    compiler.compile.mockResolvedValueOnce({ success: false, errors: ["compile failed"] });
+
+    const failed = await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(1); }",
+      config,
+      "/image.slang",
+    );
+
+    expect(failed?.success).toBe(false);
+    expect(installedStorageBuffers(engine).get("a")).toBe(installed);
+    expect(resetBuffer.destroy).not.toHaveBeenCalled();
+
+    await engine.compileShaderPipeline(
+      "float4 mainImage(float2 c) { return float4(2); }",
+      config,
+      "/image.slang",
+    );
+    expect(installedStorageBuffers(engine).get("a")).toBe(resetBuffer);
+    expect(installed.destroy).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the installed reset state when a later storage allocation fails", async () => {
@@ -647,6 +701,19 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     const [resetA, resetB] = createdStorageBuffers(device).slice(-2);
     expect(installedStorageBuffers(engine)).toEqual(new Map([
+      ["a", installedA as unknown as GPUBuffer],
+      ["b", installedB as unknown as GPUBuffer],
+    ]));
+    expect(installedA.destroy).not.toHaveBeenCalled();
+    expect(installedB.destroy).not.toHaveBeenCalled();
+    expect(resetState.dispatchOnceRan).toEqual(new Set(["ComputeOnce"]));
+
+    await engine.compileShaderPipeline(IMAGE_SOURCE, storageConfig({
+      a: { count: 4, stride: 16, elementType: "float4" },
+      b: { count: 8, stride: 4, elementType: "uint" },
+    }), "/image.slang");
+
+    expect(installedStorageBuffers(engine)).toEqual(new Map([
       ["a", resetA as unknown as GPUBuffer],
       ["b", resetB as unknown as GPUBuffer],
     ]));
@@ -669,8 +736,20 @@ describe("WebGPURenderingEngine storage buffers", () => {
     engine.render(1000);
 
     engine.resetTime();
-    const resetBuffer = installedStorageBuffers(engine).get("a")!;
+    const resetBuffer = createdStorageBuffers(device).at(-1) as unknown as GPUBuffer;
     engine.render(1016);
+
+    expect(installedStorageBuffers(engine).get("a")).toBe(firstBuffer);
+    expect((firstBuffer as unknown as FakeBuffer).destroy).not.toHaveBeenCalled();
+    const interveningEntries = device.createBindGroup.mock.calls.at(-1)![0].entries;
+    expect(interveningEntries).toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+
+    await engine.compileShaderPipeline(
+      IMAGE_SOURCE,
+      storageConfig({ a: { count: 4, stride: 16, elementType: "float4" } }),
+      "/image.slang",
+    );
+    engine.render(1032);
 
     expect(resetBuffer).not.toBe(firstBuffer);
     expect((firstBuffer as unknown as FakeBuffer).destroy).toHaveBeenCalledTimes(1);
@@ -692,6 +771,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(firstBuffer.destroy).toHaveBeenCalledTimes(1);
     engine.resetTime();
     expect(createdStorageBuffers(device)).toHaveLength(3);
+    expect(createdStorageBuffers(device)[1].destroy).not.toHaveBeenCalled();
+    await engine.compileShaderPipeline(IMAGE_SOURCE, config, "/second.slang");
     expect(createdStorageBuffers(device)[1].destroy).toHaveBeenCalledTimes(1);
   });
 
@@ -714,8 +795,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
 
     engine.resetTime();
     const resetBuffer = createdStorageBuffers(device)[1];
-    expect(installedA.destroy).toHaveBeenCalledTimes(1);
-    expect(installedStorageBuffers(engine).get("a")).toBe(resetBuffer);
+    expect(installedA.destroy).not.toHaveBeenCalled();
+    expect(installedStorageBuffers(engine).get("a")).toBe(installedA);
     expect(resetBuffer.destroy).not.toHaveBeenCalled();
 
     resolvePending({ success: true, wgsl: "// pending" });
@@ -726,7 +807,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
       errors: ["Superseded by a newer compile"],
       superseded: true,
     });
-    expect(installedStorageBuffers(engine).get("a")).toBe(resetBuffer);
+    expect(installedStorageBuffers(engine).get("a")).toBe(installedA);
     expect(resetBuffer.destroy).not.toHaveBeenCalled();
 
     const reused = await engine.compileShaderPipeline(
@@ -737,6 +818,7 @@ describe("WebGPURenderingEngine storage buffers", () => {
     expect(reused?.success).toBe(true);
     expect(createdStorageBuffers(device)).toHaveLength(2);
     expect(installedStorageBuffers(engine).get("a")).toBe(resetBuffer);
+    expect(installedA.destroy).toHaveBeenCalledTimes(1);
     expect(resetBuffer.destroy).not.toHaveBeenCalled();
   });
 
@@ -771,11 +853,11 @@ describe("WebGPURenderingEngine storage buffers", () => {
     const resetShared = createdStorageBuffers(device)[3];
     const resetChanged = createdStorageBuffers(device)[4];
     expect(stagedChanged.destroy).toHaveBeenCalledTimes(1);
-    expect(installedShared.destroy).toHaveBeenCalledTimes(1);
-    expect(installedChanged.destroy).toHaveBeenCalledTimes(1);
+    expect(installedShared.destroy).not.toHaveBeenCalled();
+    expect(installedChanged.destroy).not.toHaveBeenCalled();
     expect(installedStorageBuffers(engine)).toEqual(new Map([
-      ["shared", resetShared],
-      ["changed", resetChanged],
+      ["shared", installedShared],
+      ["changed", installedChanged],
     ]));
 
     resolvePipelineInfo({ messages: [] });
@@ -797,6 +879,8 @@ describe("WebGPURenderingEngine storage buffers", () => {
       ["shared", resetShared],
       ["changed", resetChanged],
     ]));
+    expect(installedShared.destroy).toHaveBeenCalledTimes(1);
+    expect(installedChanged.destroy).toHaveBeenCalledTimes(1);
   });
 
   it("does not mutate existing storage when pass-graph validation fails", async () => {

@@ -1,7 +1,7 @@
 import type { ShaderCompiler, ChannelSamplerType } from "./ShaderCompiler";
 import type { ResourceManager } from "../resources/ResourceManager";
 import { ShaderErrorFormatter } from "../util/ShaderErrorFormatter";
-import type { Pass, CompilationResult, ShaderConfig, BufferPass, ImagePass } from "../models";
+import type { Pass, CompilationResult, ShaderConfig, BufferPass, ImagePass, Buffers } from "../models";
 import { VERTEX_PASS_PREFIX } from "@shader-studio/types";
 import type { PiRenderer, PiShader, PiTexture } from "../types/piRenderer";
 import type { BufferManager } from "./BufferManager";
@@ -27,17 +27,13 @@ export class ShaderPipeline {
   private passShaders: Record<string, PiShader> = {};
   private customUniformManager: CustomUniformManager | null = null;
   private disposed = false;
-  // Which resources to reload when the next compiled pipeline is applied.
-  // Deferred to the apply so cleanup never runs mid-recompile (black flash).
-  // - "none":           reuse everything — the hot path for plain code recompiles.
-  // - "all":            destroy and reload every resource (textures, cubemaps,
-  //                     keyboard, videos, audio) and buffers. Set by
-  //                     flagReloadOnNextApply() for structural config changes.
-  // - "allExceptMedia": like "all" but video/audio elements survive so playback
-  //                     continues. Set by resetTime() — the Reset button wipes
-  //                     buffers and the clock without stopping media.
-  // Neither reload scope touches the clock here; only resetTime() resets it.
-  private resourceReloadScope: "none" | "all" | "allExceptMedia" = "none";
+  // Structural reloads remain independent from user resets. Both defer resource
+  // publication until a compiled pipeline is ready, but only a reset replaces
+  // feedback and resets the clock.
+  private resourceReloadScope: "none" | "all" = "none";
+  private compileGeneration = 0;
+  private resetGeneration = 0;
+  private pendingResetGeneration: number | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -47,6 +43,7 @@ export class ShaderPipeline {
     bufferManager: BufferManager,
     timeManager: TimeManager,
     private readonly renderLimits: WebGLRenderLimits | null = null,
+    private readonly onResetApplied?: () => void,
   ) {
     this.canvas = canvas;
     this.shaderCompiler = shaderCompiler;
@@ -93,19 +90,29 @@ export class ShaderPipeline {
     if (this.disposed) {
       return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
     }
+    const generation = ++this.compileGeneration;
+    const resetGeneration = this.pendingResetGeneration;
     const pathChanged = this.shaderPath !== "" && this.shaderPath !== path;
     const nextPasses = this.buildPasses(code, config, buffers);
     const compilation = await this.compileShaders(nextPasses);
 
-    if (this.disposed) {
+    if (
+      this.disposed ||
+      generation !== this.compileGeneration ||
+      (resetGeneration !== null && resetGeneration !== this.pendingResetGeneration)
+    ) {
       if (compilation.passShaders) {
         this.cleanupPartialShaders(compilation.passShaders);
       }
-      return { success: false, errors: ["Shader pipeline disposed"], superseded: true };
+      return {
+        success: false,
+        errors: [this.disposed ? "Shader pipeline disposed" : "Superseded by a newer compile or reset"],
+        superseded: true,
+      };
     }
 
     if (!compilation.success) {
-      if (pathChanged) {
+      if (pathChanged && resetGeneration === null) {
         this.applyFailedCompilation(path, nextPasses);
       }
       return compilation;
@@ -119,12 +126,21 @@ export class ShaderPipeline {
       };
     }
 
-    this.applyCompiledPipeline(
+    const applyError = this.applyCompiledPipeline(
       path,
       nextPasses.filter((pass) => pass.name === "common" || compilation.passShaders![pass.name]),
       compilation.passShaders,
       pathChanged,
+      resetGeneration,
     );
+    if (applyError) {
+      this.cleanupPartialShaders(compilation.passShaders);
+      return {
+        success: false,
+        errors: [applyError],
+        warnings: compilation.warnings?.length ? compilation.warnings : undefined,
+      };
+    }
 
     const compileWarnings = compilation.warnings || [];
     const resourceWarnings = await this.updateResources();
@@ -298,63 +314,83 @@ export class ShaderPipeline {
     nextPasses: Pass[],
     nextPassShaders: Record<string, PiShader>,
     pathChanged: boolean,
-  ): void {
-    this.currentShaderRenderID++;
-
-    if (pathChanged) {
-      this.cleanup();
-    } else if (this.resourceReloadScope !== "none") {
-      const reloadScope = this.resourceReloadScope;
-      this.resourceReloadScope = "none";
-      if (reloadScope === "allExceptMedia") {
-        this.resourceManager.cleanupAllExceptMedia();
-      } else {
-        this.resourceManager.cleanup();
-      }
-      this.cleanupShaders();
-      this.bufferManager.dispose();
-    } else {
-      this.cleanupShaders(this.passShaders);
-    }
-
-    // Allocate buffers synchronously from current state — no async window means no stale references.
+    resetGeneration: number | null,
+  ): string | null {
+    const appliesReset = resetGeneration !== null && resetGeneration === this.pendingResetGeneration;
+    const reloadsStructure = this.resourceReloadScope === "all";
     const currentPassBuffers = this.bufferManager.getPassBuffers();
-    const nextPassBuffers: Record<string, any> = {};
-    const replacedBuffers: Record<string, any> = {};
+    const nextPassBuffers: Buffers = {};
+    const allocatedPassBuffers: Buffers = {};
+    const forceFreshBuffers = appliesReset || reloadsStructure || pathChanged;
 
-    for (const pass of nextPasses) {
-      if (pass.name === "Image" || pass.name === "common") {
-        continue;
-      }
-      const size = resolveBufferPassSize(pass, this.canvas.width || 800, this.canvas.height || 600, this.renderLimits);
-      const requiresDepth = pass.geometry !== "fullscreen";
-      const current = currentPassBuffers[pass.name];
-      const matches = current
-        && current.front?.mTex0?.mXres === size.width
-        && current.front?.mTex0?.mYres === size.height
-        && (current.requiresDepth ?? false) === requiresDepth;
-      if (matches) {
-        nextPassBuffers[pass.name] = current;
-      } else {
-        nextPassBuffers[pass.name] = this.bufferManager.createPingPongBuffers(size.width, size.height, requiresDepth);
-        if (current) {
-          replacedBuffers[pass.name] = current;
+    try {
+      for (const pass of nextPasses) {
+        if (pass.name === "Image" || pass.name === "common") {
+          continue;
+        }
+        const size = resolveBufferPassSize(
+          pass,
+          this.canvas.width || 800,
+          this.canvas.height || 600,
+          this.renderLimits,
+        );
+        const requiresDepth = pass.geometry !== "fullscreen";
+        const current = currentPassBuffers[pass.name];
+        const matches = !forceFreshBuffers
+          && current
+          && current.front?.mTex0?.mXres === size.width
+          && current.front?.mTex0?.mYres === size.height
+          && (current.requiresDepth ?? false) === requiresDepth;
+        if (matches) {
+          nextPassBuffers[pass.name] = current;
+        } else {
+          const allocated = this.bufferManager.createPingPongBuffers(
+            size.width,
+            size.height,
+            requiresDepth,
+          );
+          nextPassBuffers[pass.name] = allocated;
+          allocatedPassBuffers[pass.name] = allocated;
         }
       }
+    } catch (error) {
+      this.bufferManager.cleanupBuffers(allocatedPassBuffers);
+      const message = error instanceof Error ? error.message : String(error);
+      return `Failed to allocate ${appliesReset ? "reset " : ""}buffers: ${message}`;
     }
 
-    // Clean up buffers for passes that no longer exist
-    const oldPassBuffers = { ...currentPassBuffers };
-    for (const name of Object.keys(nextPassBuffers)) {
-      delete oldPassBuffers[name];
+    const retiredPassBuffers: Buffers = {};
+    for (const [name, buffer] of Object.entries(currentPassBuffers)) {
+      if (nextPassBuffers[name] !== buffer) {
+        retiredPassBuffers[name] = buffer;
+      }
     }
-    this.bufferManager.cleanupBuffers(oldPassBuffers);
-    this.bufferManager.cleanupBuffers(replacedBuffers);
+
+    this.currentShaderRenderID++;
+    if (pathChanged) {
+      this.resourceManager.cleanup();
+    } else if (appliesReset) {
+      this.resourceManager.cleanupAllExceptMedia();
+    } else if (reloadsStructure) {
+      this.resourceManager.cleanup();
+    }
+    this.cleanupShaders(this.passShaders);
 
     this.shaderPath = path;
     this.passes = nextPasses;
     this.passShaders = nextPassShaders;
     this.bufferManager.setPassBuffers(nextPassBuffers);
+    this.bufferManager.cleanupBuffers(retiredPassBuffers);
+    this.resourceReloadScope = "none";
+
+    if (pathChanged || appliesReset) {
+      this.timeManager.cleanup();
+    }
+    if (appliesReset) {
+      this.pendingResetGeneration = null;
+      this.onResetApplied?.();
+    }
+    return null;
   }
 
   private applyFailedCompilation(
@@ -488,8 +524,10 @@ export class ShaderPipeline {
   }
 
   public resetTime(): void {
-    this.timeManager.cleanup();
-    this.resourceReloadScope = "allExceptMedia";
+    this.pendingResetGeneration = ++this.resetGeneration;
+    // Invalidate any compilation which captured an older reset request. The
+    // installed simulation remains untouched until a newer compile publishes.
+    this.compileGeneration++;
   }
 
   public flagReloadOnNextApply(): void {

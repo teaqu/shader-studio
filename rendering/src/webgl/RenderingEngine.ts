@@ -116,6 +116,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.bufferManager,
       this.timeManager,
       this.renderLimits,
+      () => this.frameRenderer.invalidatePausedUniforms(),
     );
 
     this.passRenderer = new PassRenderer(

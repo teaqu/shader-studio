@@ -90,7 +90,14 @@ interface PreparedStorageBuffers {
   keys: Map<string, string>;
   layouts: Map<string, StorageBindingNode>;
   stagedBuffers: GPUBuffer[];
+  borrowedResetBuffers: Set<GPUBuffer>;
   settled: boolean;
+}
+
+interface PendingReset {
+  generation: number;
+  storageBuffers: Map<string, GPUBuffer>;
+  storageKeys: Map<string, string>;
 }
 
 interface PendingPipelineCandidates {
@@ -262,6 +269,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private pendingStoragePreparations = new Set<PreparedStorageBuffers>();
   private pendingPipelineCandidates = new Set<PendingPipelineCandidates>();
   private resetStorageOnNextSync = false;
+  private resetGeneration = 0;
+  private pendingReset: PendingReset | null = null;
   private shaderPath = "";
   private installedResourceKey: string | null = null;
   private lastCompile: ShaderCompileSnapshot | null = null;
@@ -283,7 +292,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private reloadOnNextApply = false;
   private globalVolume = 1;
   private globalMuted = false;
-  private resetFeedbackOnNextApply = false;
 
   private pixelRegionCapturer: WebGPUPixelRegionCapturer | null = null;
   private capturePassName: string | null = null;
@@ -712,6 +720,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
     // Captured synchronously (before any await) so concurrent calls made in
     // the same tick still get distinct, call-order-correct generations.
     const generation = ++this.compileGeneration;
+    const resetGeneration = this.pendingReset?.generation ?? null;
+    const appliesReset = resetGeneration !== null;
     for (const prepared of [...this.pendingStoragePreparations]) {
       if (prepared.generation < generation) {
         this.discardPreparedStorage(prepared);
@@ -872,7 +882,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     let published = false;
     try {
       try {
-        preparedStorage = this.prepareStorageBuffers(graph.storage, generation, sessionChanged);
+        preparedStorage = this.prepareStorageBuffers(
+          graph.storage,
+          generation,
+          sessionChanged || appliesReset,
+          appliesReset ? this.pendingReset : null,
+        );
       } catch (error) {
         return this.failedCompilation(path, generation, {
           success: false,
@@ -998,7 +1013,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
           passModules,
         );
         const isCompute = pass.kind === "compute";
-        const existing = sessionChanged
+        const existing = sessionChanged || appliesReset
           ? undefined
           : isCompute
             ? this.computePipelines.get(pass.name)
@@ -1246,10 +1261,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
       if (candidateResourceManager) {
         try {
           candidateResourceManager?.setGlobalAudioState(this.globalVolume, this.globalMuted);
-          // A path switch resets shader time immediately after publication.
-          // Stage the media against that prospective time, not the retiring
-          // session's clock.
-          const shaderTime = sessionChanged && (
+          // A path switch or reset restarts shader time at publication. Stage
+          // media against that prospective time, not the retiring clock.
+          const shaderTime = (sessionChanged || appliesReset) && (
             this.passPipelines.size > 0 || this.computePipelines.size > 0
           )
             ? 0
@@ -1299,7 +1313,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       this.passKeys = nextKeys;
       this.computePipelines = nextComputePipelines;
       this.computeKeys = nextComputeKeys;
-      if (sessionChanged) {
+      if (sessionChanged || appliesReset) {
         this.dispatchOnceRan.clear();
       }
       this.hasSubmittedFrameForInstalledGeneration = false;
@@ -1317,18 +1331,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
         nextCustomUniformManager.updateValues(this.pendingCustomUniformValues);
       }
       this.customUniformManager = nextCustomUniformManager;
-      if (this.resetFeedbackOnNextApply) {
-        for (const pass of this.passGraph) {
-          if (pass.output !== "texture") {
-            continue;
-          }
-          if (pass.kind === "compute") {
-            this.computePipelines.get(pass.name)?.resetOutputTextures();
-          } else {
-            this.passPipelines.get(pass.name)?.resetOutputTextures();
-          }
-        }
-        this.resetFeedbackOnNextApply = false;
+      if (appliesReset) {
+        this.timeManager.cleanup();
+        this.pausedUniformInput = null;
+        this.pausedCustomUniformValues = null;
+        this.cameraManager.reset();
+        this.consumePendingReset(resetGeneration, preparedStorage, graph.warnings);
       }
       published = true;
 
@@ -1355,7 +1363,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       for (const [name, buffer] of retiredStorageBuffers) {
         this.retireAfterPublication(`storage buffer ${name}`, () => buffer.destroy(), graph.warnings);
       }
-      if (sessionChanged) {
+      if (sessionChanged && !appliesReset) {
         if (hadInstalledPipeline) {
           this.retireAfterPublication(
             "previous shader time state",
@@ -1546,6 +1554,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     storage: StorageBindingNode[],
     generation: number,
     forceFresh = false,
+    pendingReset: PendingReset | null = null,
   ): PreparedStorageBuffers {
     if (!this.device) {
       throw new Error("WebGPU device unavailable while allocating storage buffers");
@@ -1557,12 +1566,19 @@ export class WebGPURenderingEngine implements RenderingEngine {
     const nextKeys = new Map<string, string>();
     const nextLayouts = new Map<string, StorageBindingNode>();
     const stagedBuffers: GPUBuffer[] = [];
+    const borrowedResetBuffers = new Set<GPUBuffer>();
     try {
       for (const node of storage) {
         const key = WebGPURenderingEngine.storageCacheKey(node);
         const existing = this.storageBuffers.get(node.name);
+        const resetBuffer = pendingReset?.storageKeys.get(node.name) === key
+          ? pendingReset.storageBuffers.get(node.name)
+          : undefined;
         let buffer: GPUBuffer;
-        if (
+        if (forceFresh && resetBuffer) {
+          buffer = resetBuffer;
+          borrowedResetBuffers.add(buffer);
+        } else if (
           !forceFresh &&
           !this.resetStorageOnNextSync &&
           existing &&
@@ -1593,6 +1609,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       keys: nextKeys,
       layouts: nextLayouts,
       stagedBuffers,
+      borrowedResetBuffers,
       settled: false,
     };
     this.pendingStoragePreparations.add(prepared);
@@ -1631,6 +1648,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.resetStorageOnNextSync = false;
     prepared.settled = true;
     this.pendingStoragePreparations.delete(prepared);
+  }
+
+  private consumePendingReset(
+    generation: number,
+    prepared: PreparedStorageBuffers,
+    warnings: string[],
+  ): void {
+    const pendingReset = this.pendingReset;
+    if (!pendingReset || pendingReset.generation !== generation) {
+      return;
+    }
+    for (const [name, buffer] of pendingReset.storageBuffers) {
+      if (prepared.borrowedResetBuffers.has(buffer)) {
+        continue;
+      }
+      this.retireAfterPublication(`unused reset storage buffer ${name}`, () => buffer.destroy(), warnings);
+    }
+    pendingReset.storageBuffers.clear();
+    pendingReset.storageKeys.clear();
+    this.pendingReset = null;
   }
 
   private retireAfterPublication(
@@ -1774,9 +1811,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
   }
 
-  private prepareResetStorageBuffers(): Map<string, GPUBuffer> | null {
+  private prepareResetStorageBuffers(): Map<string, GPUBuffer> {
     if (!this.device || this.storageLayouts.size === 0) {
-      return null;
+      return new Map();
     }
     const STORAGE = globalThis.GPUBufferUsage?.STORAGE ?? 0x0080;
     const COPY_SRC = globalThis.GPUBufferUsage?.COPY_SRC ?? 0x0004;
@@ -1806,6 +1843,22 @@ export class WebGPURenderingEngine implements RenderingEngine {
     return nextBuffers;
   }
 
+  private discardPendingReset(pendingReset: PendingReset): void {
+    for (const buffer of pendingReset.storageBuffers.values()) {
+      try {
+        buffer.destroy();
+      } catch {
+        // A pending reset owns only unpublished storage. Keep releasing the
+        // remaining candidates if a driver-backed destroy fails.
+      }
+    }
+    pendingReset.storageBuffers.clear();
+    pendingReset.storageKeys.clear();
+    if (this.pendingReset === pendingReset) {
+      this.pendingReset = null;
+    }
+  }
+
   private failedCompilation(
     path: string,
     generation: number,
@@ -1815,7 +1868,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       return { success: false, errors: ["Superseded by a newer compile"], superseded: true };
     }
 
-    if (this.shaderPath !== "" && this.shaderPath !== path) {
+    if (!this.pendingReset && this.shaderPath !== "" && this.shaderPath !== path) {
       this.discardInstalledGeneration();
       this.stopRenderLoop();
       this.clearCanvas();
@@ -1844,7 +1897,6 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.currentConfig = null;
     this.shaderPath = "";
     this.customUniformManager = new CustomUniformManager();
-    this.resetFeedbackOnNextApply = false;
 
     for (const buffer of this.storageBuffers.values()) {
       try {
@@ -3221,13 +3273,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
 
   resetTime(): void {
-    // Allocate the complete replacement before invalidating any live reset or
-    // compile state. A failed allocation leaves the installed generation
-    // usable and makes resetTime safe to retry.
-    const resetStorageBuffers = this.prepareResetStorageBuffers();
-    this.timeManager.cleanup();
-    this.dispatchOnceRan.clear();
-    this.hasSubmittedFrameForInstalledGeneration = false;
+    // Allocate the complete storage replacement before invalidating any live
+    // compile state. Until a matching compilation publishes, the installed
+    // pipeline, feedback, storage, clock, and pause snapshot remain untouched.
+    const storageBuffers = this.prepareResetStorageBuffers();
+    const pendingReset: PendingReset = {
+      generation: ++this.resetGeneration,
+      storageBuffers,
+      storageKeys: new Map(this.storageKeys),
+    };
+    const previousReset = this.pendingReset;
+    this.pendingReset = pendingReset;
     this.compileGeneration++;
     for (const prepared of [...this.pendingStoragePreparations]) {
       this.discardPreparedStorage(prepared);
@@ -3235,20 +3291,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
     for (const candidates of [...this.pendingPipelineCandidates]) {
       this.discardPipelineCandidates(candidates);
     }
-    if (resetStorageBuffers) {
-      const retiredStorageBuffers = this.storageBuffers;
-      this.storageBuffers = resetStorageBuffers;
-      for (const buffer of retiredStorageBuffers.values()) {
-        try {
-          buffer.destroy();
-        } catch {
-          // Reset has already published the complete replacement. Retirement
-          // is best effort and must not invalidate the new reset generation.
-        }
-      }
+    if (previousReset) {
+      this.discardPendingReset(previousReset);
     }
-    this.cameraManager.reset();
-    this.resetFeedbackOnNextApply = true;
   }
 
   setInputEnabled(enabled: boolean): void {
@@ -3336,6 +3381,10 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
     for (const candidates of [...this.pendingPipelineCandidates]) {
       attempt(() => this.discardPipelineCandidates(candidates));
+    }
+    const pendingReset = this.pendingReset;
+    if (pendingReset) {
+      attempt(() => this.discardPendingReset(pendingReset));
     }
     for (const buffer of this.storageBuffers.values()) {
       attempt(() => buffer.destroy());

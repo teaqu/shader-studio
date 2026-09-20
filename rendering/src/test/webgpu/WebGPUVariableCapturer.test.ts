@@ -1078,7 +1078,7 @@ float4 mainImage(float2 fragCoord) {
     expect(context.slangStorage).toEqual([storageA]);
   });
 
-  it("binds reset-created storage through an already-created capture instance", async () => {
+  it("keeps capture on installed storage until reset publication, then binds the replacement", async () => {
     const { WebGPURenderingEngine } = await import("../../webgpu/WebGPURenderingEngine");
     const gpu = mockGpu();
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
@@ -1097,7 +1097,16 @@ float4 mainImage(float2 fragCoord) {
       .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
 
     engine.resetTime();
-    const resetBuffer = (engine as any).storageBuffers.get(storageA.name) as GPUBuffer;
+    const resetBuffer = (engine as any).pendingReset.storageBuffers.get(storageA.name) as GPUBuffer;
+    await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
+
+    expect(gpu.createBindGroup.mock.calls.at(-1)![0].entries)
+      .toContainEqual({ binding: 1, resource: { buffer: firstBuffer } });
+    expect((firstBuffer as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy)
+      .not.toHaveBeenCalled();
+
+    (engine as any).storageBuffers = new Map([[storageA.name, resetBuffer]]);
+    (firstBuffer as unknown as { destroy: () => void }).destroy();
     await capturer.issueCaptureGrid(captures.slice(0, 1), uniforms, 8, 4);
 
     expect(resetBuffer).not.toBe(firstBuffer);

@@ -414,6 +414,10 @@ export class ShaderPipeline {
       // engine's video-resume hold even with no shader to replay, and
       // nothing would ever release it.
       this.renderEngine.resetTime();
+      const resetBarrier = (globalThis as typeof globalThis & {
+        __shaderStudioResetCompileBarrier?: () => Promise<void>;
+      }).__shaderStudioResetCompileBarrier;
+      await resetBarrier?.();
       await onReset();
     } else {
       const errorMessage: ErrorMessage = {

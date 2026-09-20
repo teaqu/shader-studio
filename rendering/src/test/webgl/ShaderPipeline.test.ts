@@ -54,6 +54,14 @@ const createMockShader = () => ({
   mInfo: "",
 }) as unknown as PiShader;
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 describe("ShaderPipeline", () => {
   let shaderPipeline: ShaderPipeline;
   let mockCanvas: HTMLCanvasElement;
@@ -62,6 +70,7 @@ describe("ShaderPipeline", () => {
   let mockRenderer: ReturnType<typeof createMockRenderer>;
   let mockBufferManager: ReturnType<typeof createMockBufferManager>;
   let mockTimeManager: ReturnType<typeof createMockTimeManager>;
+  let mockResetApplied: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     mockCanvas = createMockCanvas();
@@ -70,14 +79,17 @@ describe("ShaderPipeline", () => {
     mockRenderer = createMockRenderer();
     mockBufferManager = createMockBufferManager();
     mockTimeManager = createMockTimeManager();
+    mockResetApplied = vi.fn();
 
     shaderPipeline = new ShaderPipeline(
       mockCanvas,
-            mockShaderCompiler as unknown as ShaderCompiler,
-            mockResourceManager as unknown as ResourceManager<PiTexture>,
-            mockRenderer as unknown as PiRenderer,
-            mockBufferManager as unknown as BufferManager,
-            mockTimeManager as unknown as TimeManager,
+      mockShaderCompiler as unknown as ShaderCompiler,
+      mockResourceManager as unknown as ResourceManager<PiTexture>,
+      mockRenderer as unknown as PiRenderer,
+      mockBufferManager as unknown as BufferManager,
+      mockTimeManager as unknown as TimeManager,
+      null,
+      mockResetApplied,
     );
 
     mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
@@ -144,6 +156,7 @@ describe("ShaderPipeline", () => {
       mockResourceManager.cleanup.mockClear();
       mockTimeManager.cleanup.mockClear();
       mockBufferManager.dispose.mockClear();
+      mockBufferManager.cleanupBuffers.mockClear();
 
       const secondShaderCode = "void mainImage() { gl_FragColor = vec4(0.5); }";
       const secondShaderPath = "shader2.glsl";
@@ -157,7 +170,7 @@ describe("ShaderPipeline", () => {
 
       expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
-      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.cleanupBuffers).toHaveBeenCalledTimes(1);
       expect(shaderPipeline.getShaderPath()).toBe(secondShaderPath);
     });
 
@@ -238,34 +251,132 @@ describe("ShaderPipeline", () => {
       expect(shaderPipeline.getShaderPath()).toBe(shaderPath);
     });
 
-    it("should reset the clock immediately when resetTime is called", async () => {
+    it("keeps the installed simulation running until the reset compilation applies", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       await shaderPipeline.compileShaderPipeline(shaderCode, null, "shader.glsl", {});
       mockTimeManager.cleanup.mockClear();
+      mockResourceManager.cleanupAllExceptMedia.mockClear();
+      const nextShader = createMockShader();
+      const pendingShader = deferred<PiShader>();
+      mockShaderCompiler.compileShaderAsync.mockReturnValueOnce(pendingShader.promise);
 
       shaderPipeline.resetTime();
+      const compilation = shaderPipeline.compileShaderPipeline(shaderCode, null, "shader.glsl", {});
+      await vi.waitFor(() => expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2));
 
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockResourceManager.cleanupAllExceptMedia).not.toHaveBeenCalled();
+      expect(mockResetApplied).not.toHaveBeenCalled();
+
+      pendingShader.resolve(nextShader);
+      await expect(compilation).resolves.toMatchObject({ success: true });
       expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockResourceManager.cleanupAllExceptMedia).toHaveBeenCalledTimes(1);
+      expect(shaderPipeline.getPassShader("Image")).toBe(nextShader);
+      expect(mockResetApplied).toHaveBeenCalledTimes(1);
     });
 
-    it("should clear render resources and buffers on recompile after resetTime without stopping media playback", async () => {
+    it("keeps a failed reset pending and applies it on the next successful compilation", async () => {
       const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
       const shaderPath = "shader.glsl";
 
       await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      const installedShader = shaderPipeline.getPassShader("Image");
       shaderPipeline.resetTime();
-
-      mockResourceManager.cleanup.mockClear();
       mockResourceManager.cleanupAllExceptMedia.mockClear();
       mockTimeManager.cleanup.mockClear();
-      mockBufferManager.dispose.mockClear();
+      mockBufferManager.cleanupBuffers.mockClear();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(null);
 
-      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      const failed = await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
 
-      expect(mockResourceManager.cleanupAllExceptMedia).toHaveBeenCalledTimes(1);
-      expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
-      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      expect(failed.success).toBe(false);
+      expect(shaderPipeline.getPassShader("Image")).toBe(installedShader);
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockResourceManager.cleanupAllExceptMedia).not.toHaveBeenCalled();
+      expect(mockResetApplied).not.toHaveBeenCalled();
+
+      const replacement = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(replacement);
+      await expect(shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {}))
+        .resolves.toMatchObject({ success: true });
+
+      expect(shaderPipeline.getPassShader("Image")).toBe(replacement);
+      expect(mockResourceManager.cleanupAllExceptMedia).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.cleanupBuffers).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not let an obsolete compilation consume a newer reset request", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const shaderPath = "shader.glsl";
+      await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      mockTimeManager.cleanup.mockClear();
+
+      const obsoleteShader = createMockShader();
+      const obsoletePending = deferred<PiShader>();
+      mockShaderCompiler.compileShaderAsync.mockReturnValueOnce(obsoletePending.promise);
+      shaderPipeline.resetTime();
+      const obsolete = shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
+      await vi.waitFor(() => expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(2));
+
+      shaderPipeline.resetTime();
+      obsoletePending.resolve(obsoleteShader);
+      await expect(obsolete).resolves.toMatchObject({ success: false, superseded: true });
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+
+      const latestShader = createMockShader();
+      mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(latestShader);
+      await expect(shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {}))
+        .resolves.toMatchObject({ success: true });
+
+      expect(shaderPipeline.getPassShader("Image")).toBe(latestShader);
+      expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(obsoleteShader);
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves the installed simulation and reset request intact when reset buffer allocation fails", async () => {
+      const shaderCode = "void mainImage() { gl_FragColor = vec4(1.0); }";
+      const config: ShaderConfig = {
+        version: "1",
+        passes: {
+          BufferA: { path: "buffer-a.glsl", inputs: {} },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        },
+      };
+      const buffers = { BufferA: shaderCode };
+      const installedBuffer = { front: {}, back: {}, requiresDepth: false };
+      let installedBuffers: Record<string, unknown> = {};
+      mockBufferManager.getPassBuffers.mockImplementation(() => installedBuffers);
+      mockBufferManager.setPassBuffers.mockImplementation((next) => {
+        installedBuffers = next;
+      });
+      mockBufferManager.createPingPongBuffers.mockReturnValueOnce(installedBuffer);
+      await shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", buffers);
+      const installedShaders = shaderPipeline.getPassShaders();
+      expect(installedBuffers).toEqual({ BufferA: installedBuffer });
+
+      shaderPipeline.resetTime();
+      mockTimeManager.cleanup.mockClear();
+      mockResourceManager.cleanupAllExceptMedia.mockClear();
+      mockBufferManager.createPingPongBuffers.mockImplementationOnce(() => {
+        throw new Error("reset allocation failed");
+      });
+
+      await expect(shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", buffers))
+        .resolves.toEqual({ success: false, errors: ["Failed to allocate reset buffers: reset allocation failed"] });
+
+      expect(shaderPipeline.getPassShaders()).toBe(installedShaders);
+      expect(installedBuffers).toEqual({ BufferA: installedBuffer });
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
+      expect(mockResourceManager.cleanupAllExceptMedia).not.toHaveBeenCalled();
+
+      const replacementBuffer = { front: {}, back: {}, requiresDepth: false };
+      mockBufferManager.createPingPongBuffers.mockReturnValueOnce(replacementBuffer);
+      await expect(shaderPipeline.compileShaderPipeline(shaderCode, config, "shader.glsl", buffers))
+        .resolves.toMatchObject({ success: true });
+      expect(installedBuffers).toEqual({ BufferA: replacementBuffer });
+      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
     });
 
     it("should clear resources and buffers (but not reset time) after flagReloadOnNextApply + recompile", async () => {
@@ -277,6 +388,7 @@ describe("ShaderPipeline", () => {
       mockResourceManager.cleanup.mockClear();
       mockTimeManager.cleanup.mockClear();
       mockBufferManager.dispose.mockClear();
+      mockBufferManager.cleanupBuffers.mockClear();
 
       shaderPipeline.flagReloadOnNextApply();
       expect(mockResourceManager.cleanup).not.toHaveBeenCalled();
@@ -284,7 +396,7 @@ describe("ShaderPipeline", () => {
 
       await shaderPipeline.compileShaderPipeline(shaderCode, null, shaderPath, {});
       expect(mockResourceManager.cleanup).toHaveBeenCalledTimes(1);
-      expect(mockBufferManager.dispose).toHaveBeenCalledTimes(1);
+      expect(mockBufferManager.cleanupBuffers).toHaveBeenCalledTimes(1);
       // Config-triggered cleanup must never reset the shader clock
       expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
@@ -2441,9 +2553,9 @@ describe("ShaderPipeline", () => {
   });
 
   describe("resetTime", () => {
-    it("should call timeManager.cleanup when resetTime is called", () => {
+    it("should defer timeManager cleanup until a reset compilation applies", () => {
       shaderPipeline.resetTime();
-      expect(mockTimeManager.cleanup).toHaveBeenCalledTimes(1);
+      expect(mockTimeManager.cleanup).not.toHaveBeenCalled();
     });
   });
 

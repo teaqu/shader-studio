@@ -270,6 +270,12 @@ export class FrameRenderer {
     this.gpuFrameTimeSource = source;
   }
 
+  /** Rebuild paused uniforms after an atomic reset publishes frame zero. */
+  public invalidatePausedUniforms(): void {
+    this.pausedUniforms = null;
+    this.pausedCustomUniforms = undefined;
+  }
+
   public render(time: number): void {
     if (!this.running) {
       return;
