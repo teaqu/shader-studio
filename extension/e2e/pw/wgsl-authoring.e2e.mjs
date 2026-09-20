@@ -60,7 +60,7 @@ async function waitForDiagnostic(vscodeFixture, uri, message, present = true) {
   return diagnostic;
 }
 
-test.describe('WGSL authoring in VS Code', () => {
+test.describe('WGSL authoring in VS Code @gpu', () => {
   test.beforeAll(async ({ vscode }) => {
     await vscode.evaluateInHost(async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();

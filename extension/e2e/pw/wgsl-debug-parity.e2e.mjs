@@ -144,7 +144,7 @@ async function expectWaveLinePreview(frame) {
   );
 }
 
-test.describe('WGSL debug parity in the VS Code webview', () => {
+test.describe('WGSL debug parity in the VS Code webview @gpu', () => {
   test('captures a visible value from a configured Common pass', async ({ vscode }) => {
     await showFileAtLine(vscode, imagePath, 1);
     await ensureShaderView(vscode);

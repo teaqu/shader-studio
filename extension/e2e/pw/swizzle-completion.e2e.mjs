@@ -49,7 +49,9 @@ test.describe('native vector swizzle completion', () => {
   });
 
   for (const scenario of scenarios) {
-    test(`${scenario.language} replaces a typed swizzle prefix and compiles the preview`, async ({ vscode }) => {
+    // Compiling the preview is part of the assertion, so the WebGPU languages
+    // belong on the GPU runner.
+    test(`${scenario.language} replaces a typed swizzle prefix and compiles the preview${scenario.extension === 'glsl' ? '' : ' @gpu'}`, async ({ vscode }) => {
       const stem = `swizzle-native-${scenario.extension}`;
       const shaderPath = join(workspacePath, `${stem}.${scenario.extension}`);
       const configPath = join(workspacePath, `${stem}.sha.json`);

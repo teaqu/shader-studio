@@ -63,7 +63,8 @@ for (const language of [
   { name: 'Slang', extension: 'slang', source: 'float4 mainImage(float2 coord) { return float4(1.0); }', vertex: 'void mainVertex' },
   { name: 'WGSL', extension: 'wgsl', source: 'fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }', vertex: 'ptr<function, vec3f>' },
 ]) {
-  test.describe(`${language.name} file creation in the VS Code config panel`, () => {
+  // Slang and WGSL need a WebGPU adapter to render what they create.
+  test.describe(`${language.name} file creation in the VS Code config panel${language.extension === 'glsl' ? '' : ' @gpu'}`, () => {
     const fixtureDir = join(workspacePath, 'wgsl-authoring');
     const shaderPath = join(fixtureDir, `generated-file-creation-${language.extension}.${language.extension}`);
     const configPath = shaderPath.replace(new RegExp(`\\.${language.extension}$`), '.sha.json');

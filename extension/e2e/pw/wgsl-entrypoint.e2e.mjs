@@ -6,7 +6,7 @@ import { expectCanvasPixels, revertFixtureEditors } from './editor-actions.mjs';
 const fixtureDir = join(workspacePath, `wgsl-entrypoint-${process.env.TEST_WORKER_INDEX ?? process.pid}`);
 test.use({ vscodeKey: 'wgsl-entrypoint' });
 
-test('opens a WGSL entry point with a return type before and after reloading VS Code', async ({ vscode }) => {
+test('opens a WGSL entry point with a return type before and after reloading VS Code @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir, { recursive: true });
   const path = join(fixtureDir, 'entry.wgsl');
   writeFileSync(path, 'fn mainImage(p: vec2f) -> vec4<f32> { return commonGreen(); }\n');

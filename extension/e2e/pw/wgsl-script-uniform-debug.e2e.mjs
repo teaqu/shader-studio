@@ -13,7 +13,7 @@ function variableRow(frame, name) {
 // A script feeds uniforms that a Common helper, a buffer pass and the Image
 // pass all read. Debugging Image compiles every pass again and captures through
 // its own shader, so both need the script's declarations.
-test('debugging a script-driven WGSL chain captures locals and lists no script uniforms', async ({ vscode }) => {
+test('debugging a script-driven WGSL chain captures locals and lists no script uniforms @gpu', async ({ vscode }) => {
   const shaderPath = join(workspacePath, 'script-uniform-chain', 'chain.wgsl');
   await vscode.evaluateInHost(async (api, path) => {
     const document = await api.workspace.openTextDocument(api.Uri.file(path));

@@ -67,7 +67,8 @@ async function saveReload(vscode, path, source, frame) {
 }
 
 for (const language of ['glsl', 'slang', 'wgsl']) {
-  test(`edits, saves and reloads ${language} named sampling in VS Code`, async ({ vscode }) => {
+  // Slang and WGSL need a WebGPU adapter to compile and show the preview.
+  test(`edits, saves and reloads ${language} named sampling in VS Code${language === 'glsl' ? '' : ' @gpu'}`, async ({ vscode }) => {
     const good = language === 'glsl'
       ? 'void mainImage(out vec4 c, in vec2 p) { c = albedo.loaded == 1 && albedo.size.x == 2. && albedo.time == 0. ? texture(albedo.sampler,vec2(0.25)) : vec4(1,0,0,1); }'
       : language === 'slang'
@@ -110,7 +111,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
   });
 }
 
-test('WGSL Common diagnostics retain authored ownership and line after editing and reopening', async ({ vscode }) => {
+test('WGSL Common diagnostics retain authored ownership and line after editing and reopening @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir(), { recursive: true });
   const path = join(fixtureDir(), 'attribution.wgsl');
   const common = join(fixtureDir(), 'attribution.common.wgsl');
@@ -163,7 +164,7 @@ test('WGSL Common diagnostics retain authored ownership and line after editing a
   }
 });
 
-test('WGSL compute recovers from implicit sampling through an editor correction, save and reload', async ({ vscode }) => {
+test('WGSL compute recovers from implicit sampling through an editor correction, save and reload @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir(), { recursive: true });
   const path = join(fixtureDir(), 'compute.wgsl');
   const update = join(fixtureDir(), 'update.wgsl');
@@ -212,7 +213,7 @@ test('WGSL compute recovers from implicit sampling through an editor correction,
 });
 
 for (const owner of ['Image', 'Common', 'vertex']) {
-  test(`WGSL hoisted directive diagnostics keep ${owner} source coordinates`, async ({ vscode }) => {
+  test(`WGSL hoisted directive diagnostics keep ${owner} source coordinates @gpu`, async ({ vscode }) => {
     mkdirSync(fixtureDir(), { recursive: true });
     const path = join(fixtureDir(), 'directive.wgsl');
     const common = join(fixtureDir(), 'directive.common.wgsl');

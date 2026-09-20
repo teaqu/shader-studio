@@ -51,7 +51,8 @@ function row(frame, name) {
   return frame.locator('.var-row').filter({ has: frame.locator('.var-name', { hasText: new RegExp(`^${name}$`) }) });
 }
 for (const language of ['glsl', 'slang', 'wgsl']) {
-  test(`${language} Common selection captures the authored value and follows an edit`, async ({ vscode }) => {
+  // Slang and WGSL drive the WebGPU pipeline, which the no-GPU runner lacks.
+  test(`${language} Common selection captures the authored value and follows an edit${language === 'glsl' ? '' : ' @gpu'}`, async ({ vscode }) => {
     mkdirSync(directory, { recursive: true });
     const root = join(directory, `image.${language}`);
     const common = join(directory, `common.${language}`);
@@ -96,7 +97,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
 }
 
 for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', false], ['wgsl', true]]) {
-  test(`${language} ${compute ? 'compute' : 'fragment'} debug rows read the live GPU storage value`, async ({ vscode }) => {
+  test(`${language} ${compute ? 'compute' : 'fragment'} debug rows read the live GPU storage value @gpu`, async ({ vscode }) => {
     mkdirSync(directory, { recursive: true });
     const root = join(directory, `storage.${language}`);
     const config = join(directory, 'storage.sha.json');
@@ -158,7 +159,7 @@ for (const [language, compute] of [['slang', false], ['slang', true], ['wgsl', f
 }
 
 for (const language of ['wgsl', 'slang']) {
-  test(`${language} keyword-prefix assignment captures the updated value`, async ({ vscode }) => {
+  test(`${language} keyword-prefix assignment captures the updated value @gpu`, async ({ vscode }) => {
     mkdirSync(directory, { recursive: true });
     const root = join(directory, `assignment.${language}`);
     const source = language === 'wgsl'
@@ -196,7 +197,7 @@ for (const language of ['wgsl', 'slang']) {
   });
 }
 
-test('Slang compute replay refuses subgroup results and recovers after an edit', async ({ vscode }) => {
+test('Slang compute replay refuses subgroup results and recovers after an edit @gpu', async ({ vscode }) => {
   mkdirSync(directory, { recursive: true });
   const root = join(directory, 'replay.slang');
   const compute = join(directory, 'replay.compute.slang');
@@ -235,7 +236,7 @@ test('Slang compute replay refuses subgroup results and recovers after an edit',
   }
 });
 
-test('WGSL helper capture resolves array struct fields and shadowing', async ({ vscode }) => {
+test('WGSL helper capture resolves array struct fields and shadowing @gpu', async ({ vscode }) => {
   mkdirSync(directory, { recursive: true });
   const root = join(directory, 'aggregate.wgsl');
   const source = 'struct Sample { value: f32, }\nfn helper(gain: f32) -> f32 {\n  let samples = array<Sample, 2>(Sample(0.125), Sample(gain));\n  var shade = 0.125;\n  if (gain > 0.0) {\n    let shade = samples[1].value;\n    return shade;\n  }\n  return shade;\n}\nfn mainImage(p: vec2f) -> vec4f { return vec4f(helper(0.375)); }';
@@ -263,7 +264,7 @@ test('WGSL helper capture resolves array struct fields and shadowing', async ({ 
   }
 });
 
-test('WGSL unmatched brace reports an error and recovers without freezing', async ({ vscode }) => {
+test('WGSL unmatched brace reports an error and recovers without freezing @gpu', async ({ vscode }) => {
   mkdirSync(directory, { recursive: true });
   const root = join(directory, 'recovery.wgsl');
   const source = 'fn mainImage(p: vec2f) -> vec4f {\n  let shade = 0.375;\n  return vec4f(shade,0,0,1);\n}';

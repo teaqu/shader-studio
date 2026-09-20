@@ -56,7 +56,7 @@ async function enableInspector(frame) {
   await expect(frame.locator('.variables-section')).toBeVisible();
 }
 
-test.describe('WGSL inference through the native VS Code editor', () => {
+test.describe('WGSL inference through the native VS Code editor @gpu', () => {
   test.beforeAll(async ({ vscode }) => {
     await vscode.evaluateInHost(async (vscode) => {
       await vscode.extensions.getExtension('teaqu.shader-studio')?.activate();
