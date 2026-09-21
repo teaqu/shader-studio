@@ -45,7 +45,9 @@ test.describe('WGSL authoring parity in VS Code', () => {
     await revertFixtureEditors(vscode, fixtureDir);
   });
 
-  test('shows service errors before compilation, yields each line to the renderer, and clears after typing a fix', async ({ vscode }) => {
+  // Waits on the renderer's own WGSL compile, which needs a WebGPU adapter:
+  // without one the instance is dropped and reports that as the only error.
+  test('shows service errors before compilation, yields each line to the renderer, and clears after typing a fix @gpu', async ({ vscode }) => {
     const uri = await showEditor(vscode, errorsPath);
     await expect.poll(() => errorDiagnostics(vscode, uri), { message: 'the WGSL service never reported the undefined identifier' })
       .toEqual([{ line: 2, message: "Undefined identifier 'mysteriousGain'.", source: 'shader-studio-wgsl-ls' }]);
