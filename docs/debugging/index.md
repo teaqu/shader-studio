@@ -40,7 +40,7 @@ The uniforms section is always visible at the bottom of the debug panel. It show
 |---------|-------------|
 | `iTime` | Elapsed time in seconds |
 | `iResolution` | Viewport dimensions |
-| `iMouse` | Mouse position (xy = current, zw = previous) |
+| `iMouse` | Mouse position (xy = position while dragging, zw = click position) |
 | `iFrame` | Frame counter |
 | `iTimeDelta` | Seconds since last frame |
 | `iFrameRate` | Current frames per second |

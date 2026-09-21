@@ -373,6 +373,7 @@ export class FrameRenderer {
     }
 
     this.keyboardManager.clearPressed();
+    this.mouseManager.endFrame();
 
     if (!isPaused) {
       this.timeManager.incrementFrame();

@@ -17,7 +17,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 | `iTimeDelta` | `float` | Time since last frame in seconds |
 | `iFrameRate` | `float` | Frames per second |
 | `iFrame` | `int` | Frame counter (starts at 0) |
-| `iMouse` | `vec4` | Mouse position: xy = current, zw = click position |
+| `iMouse` | `vec4` | xy = pointer position while a button is held, zw = click position; z > 0 while held, w > 0 only on the click frame |
 | `iResolution` | `vec3` | Canvas dimensions: xy = width/height, z = 1.0 |
 | `iChannelN` | sampler type follows the configured input | Input channel `N` (up to the configured channel limit) |
 | `iChannelResolution[N]` | `vec3` | Resolution of input channel `N` |

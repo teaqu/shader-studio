@@ -183,18 +183,15 @@ describe("MouseManager", () => {
       expect(mouse[1]).toBe(450); // 600 - 150
     });
 
-    it("should update xy when hovering without a button down", () => {
+    it("should not update xy when hovering without a button down (Shadertoy)", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
-      // Move without pressing
       canvas.dispatchEvent(
         new PointerEvent("pointermove", { clientX: 200, clientY: 150, pointerId: 1 }),
       );
 
-      const mouse = mouseManager.getMouse();
-      expect(mouse[0]).toBe(200);
-      expect(mouse[1]).toBe(450);
+      expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
     });
 
     it("should not update zw during pointermove (only on pointerdown)", () => {
@@ -217,7 +214,7 @@ describe("MouseManager", () => {
   });
 
   describe("pointerup", () => {
-    it("should negate zw on pointerup (Shadertoy convention)", () => {
+    it("should negate z on pointerup and w once the click frame has ended", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
@@ -227,18 +224,22 @@ describe("MouseManager", () => {
 
       canvas.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
 
-      const mouse = mouseManager.getMouse();
-      // z and w should be negated
-      expect(mouse[2]).toBe(-300);
-      expect(mouse[3]).toBe(-400); // -(600-200) = -400
+      // Released before any frame rendered: the click frame still signals w.
+      expect(Array.from(mouseManager.getMouse())).toEqual([300, 400, -300, 400]);
+
+      mouseManager.endFrame();
+      expect(Array.from(mouseManager.getMouse())).toEqual([300, 400, -300, -400]);
     });
 
-    it("should keep updating xy on pointermove after pointerup", () => {
+    it("should hold xy at the last drag position after pointerup", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
       canvas.dispatchEvent(
         new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 200, clientY: 200, pointerId: 1 }),
       );
       canvas.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
 
@@ -246,8 +247,8 @@ describe("MouseManager", () => {
         new PointerEvent("pointermove", { clientX: 500, clientY: 500, pointerId: 1 }),
       );
 
-      expect(mouseManager.getMouse()[0]).toBe(500);
-      expect(mouseManager.getMouse()[1]).toBe(100);
+      expect(mouseManager.getMouse()[0]).toBe(200);
+      expect(mouseManager.getMouse()[1]).toBe(400);
     });
 
     it("should handle multiple down/up cycles", () => {
@@ -307,6 +308,76 @@ describe("MouseManager", () => {
     });
   });
 
+  describe("click signal (iMouse.w)", () => {
+    it("keeps w positive only for the frame of the click while z stays positive", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
+      );
+      expect(Array.from(mouseManager.getMouse())).toEqual([100, 500, 100, 500]);
+
+      mouseManager.endFrame();
+      expect(Array.from(mouseManager.getMouse())).toEqual([100, 500, 100, -500]);
+
+      mouseManager.endFrame();
+      expect(Array.from(mouseManager.getMouse())).toEqual([100, 500, 100, -500]);
+    });
+
+    it("does not end the click signal when the mouse is only read", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
+      );
+      mouseManager.getMouse();
+      mouseManager.getMouse();
+
+      expect(mouseManager.getMouse()[3]).toBe(500);
+    });
+
+    it("signals w again on the next click", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
+      );
+      mouseManager.endFrame();
+      canvas.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 200, clientY: 200, pointerId: 2 }),
+      );
+
+      expect(Array.from(mouseManager.getMouse())).toEqual([200, 400, 200, 400]);
+    });
+
+    it("leaves the idle mouse unchanged at the end of a frame", () => {
+      mouseManager.endFrame();
+
+      expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
+    });
+  });
+
+  describe("buttons", () => {
+    it.each([
+      ["left", 0],
+      ["middle", 1],
+      ["right", 2],
+    ])("treats a %s-button press as a click, as Shadertoy does", (_name, button) => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100, button, pointerId: 1 }),
+      );
+
+      expect(Array.from(mouseManager.getMouse())).toEqual([100, 500, 100, 500]);
+    });
+  });
+
   describe("setEnabled", () => {
     it("should ignore pointer events while disabled", () => {
       const canvas = createMockCanvas(800, 600);
@@ -323,13 +394,14 @@ describe("MouseManager", () => {
       expect(Array.from(mouseManager.getMouse())).toEqual([0, 0, 0, 0]);
     });
 
-    it("should stop drag updates after being disabled", () => {
+    it("should stop drag updates after being disabled and report the button as up", () => {
       const canvas = createMockCanvas(800, 600);
       mouseManager.setupEventListeners(canvas);
 
       canvas.dispatchEvent(
         new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
       );
+      mouseManager.endFrame();
 
       mouseManager.setEnabled(false);
 
@@ -337,8 +409,23 @@ describe("MouseManager", () => {
         new PointerEvent("pointermove", { clientX: 400, clientY: 300, pointerId: 1 }),
       );
 
+      expect(Array.from(mouseManager.getMouse())).toEqual([100, 500, -100, -500]);
+    });
+
+    it("should not treat a later hover as a drag once re-enabled", () => {
+      const canvas = createMockCanvas(800, 600);
+      mouseManager.setupEventListeners(canvas);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 }),
+      );
+      mouseManager.setEnabled(false);
+      mouseManager.setEnabled(true);
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 400, clientY: 300, pointerId: 1 }),
+      );
+
       expect(mouseManager.getMouse()[0]).toBe(100);
-      expect(mouseManager.getMouse()[1]).toBe(500);
     });
   });
 });

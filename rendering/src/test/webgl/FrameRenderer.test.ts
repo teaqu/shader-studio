@@ -41,6 +41,7 @@ describe("FrameRenderer", () => {
 
     mockMouseManager = {
       getMouse: vi.fn(() => new Float32Array([0, 0, 0, 0])),
+      endFrame: vi.fn(),
     };
 
     mockCameraManager = {
@@ -2167,6 +2168,68 @@ describe("FrameRenderer", () => {
       expect(frameRenderer.getFrameTimeCount()).toBe(3999);
       expect(frameRenderer.getFrameTimeHistory()).toHaveLength(3600);
       expect(frameRenderer.getFrameTimeCount()).toBeGreaterThan(frameRenderer.getFrameTimeHistory().length);
+    });
+  });
+
+  describe("mouse click frame", () => {
+    // Shadertoy's iMouse.w is positive only on the frame of the click: the
+    // player clears its click signal once per rendered frame.
+    const configureImagePass = (): void => {
+      mockShaderPipeline.getPasses.mockReturnValue([
+        { name: "Image", shaderSrc: "image shader", inputs: {} },
+      ]);
+      mockShaderPipeline.getPassShaders.mockReturnValue({
+        Image: { mProgram: {}, mResult: true },
+      });
+    };
+
+    beforeEach(() => {
+      configureImagePass();
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+    });
+
+    it("ends the click frame once, after the frame's passes have read the mouse", () => {
+      frameRenderer.render(1000);
+
+      expect(mockMouseManager.endFrame).toHaveBeenCalledOnce();
+      expect(mockPassRenderer.renderPass.mock.invocationCallOrder[0])
+        .toBeLessThan(mockMouseManager.endFrame.mock.invocationCallOrder[0]);
+    });
+
+    it("hands the passes the click-frame mouse before it is cleared", () => {
+      const live = new Float32Array([100, 500, 100, 500]);
+      mockMouseManager.getMouse.mockReturnValue(live);
+      mockMouseManager.endFrame.mockImplementation(() => live.set([100, 500, 100, -500]));
+
+      frameRenderer.render(1000);
+
+      expect(Array.from(mockPassRenderer.renderPass.mock.calls[0][3].mouse)).toEqual([100, 500, 100, 500]);
+    });
+
+    it("ends the click frame on paused frames too, as keyboard presses are", () => {
+      mockTimeManager.isPaused.mockReturnValue(true);
+
+      frameRenderer.render(1000);
+
+      expect(mockMouseManager.endFrame).toHaveBeenCalledOnce();
+    });
+
+    it("keeps the click signal through frames skipped by the FPS limit or as duplicates", () => {
+      frameRenderer.setFPSLimit(30);
+      frameRenderer.render(1000);
+      frameRenderer.render(1010); // under the 30 FPS interval
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0);
+      frameRenderer.render(1040); // duplicate frame
+
+      expect(mockMouseManager.endFrame).toHaveBeenCalledOnce();
+    });
+
+    it("keeps the click signal through a forced capture render", () => {
+      frameRenderer.renderForCapture();
+
+      expect(mockMouseManager.endFrame).not.toHaveBeenCalled();
     });
   });
 });

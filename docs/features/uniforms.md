@@ -12,7 +12,7 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iTime` | `float` | `float` | `f32` | Elapsed time in seconds |
 | `iTimeDelta` | `float` | `float` | `f32` | Time since the previous frame |
 | `iFrameRate` | `float` | `float` | `f32` | Current frames per second |
-| `iMouse` | `vec4` | `float4` | `vec4f` | Mouse position in xy, click position in zw |
+| `iMouse` | `vec4` | `float4` | `vec4f` | As on Shadertoy: xy = pointer position while a button is held, zw = click position; z > 0 while held, w > 0 only on the click frame |
 | `iFrame` | `int` | `int` | `i32` | Frame counter starting at zero |
 | `iDate` | `vec4` | `float4` | `vec4f` | Year, month, day, seconds since midnight |
 | `iChannelTime` | `float[1024]` | — | — | Playback time per input channel |

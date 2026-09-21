@@ -2744,6 +2744,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
     if (!capture) {
       this.recordFrameTime(time);
       this.keyboardManager.clearPressed();
+      this.mouseManager.endFrame();
       if (!isPaused) {
         this.timeManager.incrementFrame();
       }

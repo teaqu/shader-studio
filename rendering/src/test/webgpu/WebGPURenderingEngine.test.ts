@@ -11,6 +11,7 @@ import { ResourceManager } from "../../resources/ResourceManager";
 import { WebGPUTextureBackend } from "../../webgpu/WebGPUTextureBackend";
 import { createShaderToyUniformLayout, SHADERTOY_UNIFORM_SIZE, UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
 import { ConfigValidator } from "../../util/ConfigValidator";
+import { MouseManager } from "../../input/MouseManager";
 
 const pixelRegionCapturerMock = vi.hoisted(() => ({ constructor: vi.fn() }));
 
@@ -625,6 +626,7 @@ describe("WebGPURenderingEngine", () => {
     const mouse = { value: [0, 0, 0, 0] as number[] };
     (engine as any).mouseManager = {
       getMouse: vi.fn(() => Float32Array.from(mouse.value)),
+      endFrame: vi.fn(),
       setupEventListeners: vi.fn(),
       setEnabled: vi.fn(),
     };
@@ -835,6 +837,66 @@ describe("WebGPURenderingEngine", () => {
 
       expect(resourceManager.resumeAllVideos).toHaveBeenCalledTimes(1);
       expect(resourceManager.resumeAllAudio).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("mouse click frame (WebGL parity)", () => {
+    // Shadertoy's iMouse.w is positive only on the frame of the click: the
+    // player clears its click signal once per rendered frame.
+    const iMouse = (uniforms: Float32Array) => Array.from(uniforms.slice(4, 8));
+
+    function clickableEngine() {
+      const setup = pausableEngine();
+      const canvas = document.createElement("canvas");
+      canvas.width = 800;
+      canvas.height = 600;
+      Object.assign(canvas, { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() });
+      vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue(
+        { left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) },
+      );
+      const mouseManager = new MouseManager();
+      mouseManager.setupEventListeners(canvas);
+      (setup.engine as any).mouseManager = mouseManager;
+      // jsdom has no PointerEvent; MouseManager only reads the MouseEvent fields.
+      const press = () => canvas.dispatchEvent(new MouseEvent("pointerdown", { clientX: 100, clientY: 100 }));
+      return { ...setup, press };
+    }
+
+    it("signals the click in iMouse.w for one frame while z stays positive", () => {
+      const { engine, press } = clickableEngine();
+
+      press();
+      engine.render(1000);
+      for (const uniforms of lastFrameUniformWrites(engine, 2)) {
+        expect(iMouse(uniforms)).toEqual([100, 500, 100, 500]);
+      }
+
+      engine.render(1016);
+      for (const uniforms of lastFrameUniformWrites(engine, 2)) {
+        expect(iMouse(uniforms)).toEqual([100, 500, 100, -500]);
+      }
+    });
+
+    it("ends the click frame once per rendered frame, including paused ones", () => {
+      const { engine } = pausableEngine();
+      const { endFrame } = (engine as any).mouseManager;
+
+      engine.render(1000);
+      engine.togglePause();
+      engine.render(1016);
+
+      expect(endFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the click signal through duplicate frames and capture renders", () => {
+      const { engine } = pausableEngine();
+      const { endFrame } = (engine as any).mouseManager;
+
+      engine.render(1000);
+      engine.render(1000); // duplicate frame (zero delta)
+      (engine as any).renderFrame(1016, true);
+
+      expect(endFrame).toHaveBeenCalledOnce();
     });
   });
 
