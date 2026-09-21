@@ -397,7 +397,7 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord
     await instance.changeDocument({ uri, languageId: "glsl", version: 2, text: '#include "missing.glsl"\nvoid mainImage( {' });
     const current = { ...revision, version: 2 };
     expect((await instance.diagnostics({ document: current })).map((item) => item.code))
-      .toEqual(expect.arrayContaining(["include-unsupported", "syntax"]));
+      .toEqual(expect.arrayContaining(["preprocess"]));
     expect(await instance.completion({ document: revision, position: { line: 0, character: 0 } })).toEqual([]);
 
     await instance.changeDocument({ uri, languageId: "glsl", version: 3, text: "vec3 color = vec3(1.0, .25, 0.0);" });
@@ -512,25 +512,21 @@ void mainImage(out vec4 color, in vec2 coord) {
   });
 
   describe("#include, which the preview does not resolve", () => {
-    it("reports each directive as unsupported and points at Common", async () => {
-      const instance = new GlslLanguageService();
-      await instance.syncEnvironment(environment());
-      const text = '#include "helpers.glsl"\n  #include <lighting>\nvoid mainImage(out vec4 c, vec2 p) { c = vec4(1.0); }';
-      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    it("reports #include as the parse error any undefined directive gets", async () => {
+      const report = async (directive: string) => {
+        const instance = new GlslLanguageService();
+        await instance.syncEnvironment(environment());
+        await instance.openDocument({ uri, languageId: "glsl", version: 1, text: `${directive}\nvoid mainImage(out vec4 c, vec2 p) { c = vec4(1.0); }` });
+        return (await instance.diagnostics({ document: revision }))
+          .map(({ code, range, severity }) => ({ code, line: range.start.line, severity }));
+      };
 
-      const unsupported = (await instance.diagnostics({ document: revision }))
-        .filter((diagnostic) => diagnostic.code === "include-unsupported");
-
-      // Both quote and angle-bracket forms, each on its own line.
-      expect(unsupported.map((diagnostic) => diagnostic.range.start.line)).toEqual([0, 1]);
-      expect(unsupported[0]).toEqual(expect.objectContaining({
-        severity: DiagnosticSeverity.Error,
-        source: "shader-studio-glsl-ls",
-        message: expect.stringContaining("Common"),
-      }));
-      // The directive gets one clear error, not a second cryptic parse error.
-      expect((await instance.diagnostics({ document: revision })).filter((diagnostic) => diagnostic.code === "syntax"))
-        .toEqual([]);
+      // No special treatment: the preprocessor rejects it exactly as it rejects
+      // a directive GLSL has never had, and so does the preview's compiler.
+      const include = await report('#include "helpers.glsl"');
+      expect(include).toEqual(await report("#notadirective helpers"));
+      expect(include).toContainEqual({ code: "preprocess", line: 0, severity: DiagnosticSeverity.Error });
+      expect(await report("#include <lighting>")).toEqual(include);
     });
 
     it("does not take symbols from files a host supplies for an #include", async () => {

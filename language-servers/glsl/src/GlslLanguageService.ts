@@ -103,7 +103,7 @@ export class GlslLanguageService implements LanguageService {
     this.files.replaceEnvironment(contextFiles);
     this.syncWorkspace(environment);
     this.includeAnalyses.set(environment.documentUri, contextFiles.map((file) => (
-      parseGlslDocument(file.uri, stripIncludeDirectives(file.text), environment.stage)
+      parseGlslDocument(file.uri, file.text, environment.stage)
     )));
     this.rebuild(environment.documentUri);
   }
@@ -160,7 +160,7 @@ export class GlslLanguageService implements LanguageService {
       ? state.analysis
       : parseGlslDocumentAtPosition(
         params.document.uri,
-        stripIncludeDirectives(state.document.text),
+        state.document.text,
         state.environment.stage,
         params.position,
       );
@@ -473,7 +473,6 @@ export class GlslLanguageService implements LanguageService {
     }));
     diagnostics.push(...unresolvedReferenceDiagnostics(state.analysis, state.environment, this.includeAnalyses));
     diagnostics.push(...unusedSymbolDiagnostics(state.analysis));
-    diagnostics.push(...unsupportedIncludeDiagnostics(state.document.text));
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
       severity: DiagnosticSeverity.Warning,
@@ -573,7 +572,7 @@ export class GlslLanguageService implements LanguageService {
     }
     const generated = buildGlslAuthoringPreamble(environment);
     this.generatedAnalyses.set(uri, parseGlslDocument(generated.uri, generated.text, environment.stage));
-    this.analyses.set(uri, parseGlslDocument(uri, stripIncludeDirectives(document.text), environment.stage));
+    this.analyses.set(uri, parseGlslDocument(uri, document.text, environment.stage));
   }
 
   private syncWorkspace(environment: ShaderAuthoringEnvironment): void {
@@ -591,11 +590,11 @@ export class GlslLanguageService implements LanguageService {
     for (const file of workspaceDocuments) {
       this.workspaceUris.add(file.uri);
       const text = this.store.getDocument(file.uri)?.text ?? file.text;
-      this.analyses.set(file.uri, parseGlslDocument(file.uri, stripIncludeDirectives(text), file.stage));
+      this.analyses.set(file.uri, parseGlslDocument(file.uri, text, file.stage));
       const common = file.commonUri === undefined ? undefined : workspaceDocuments
         .find((candidate) => candidate.uri === file.commonUri);
       this.includeAnalyses.set(file.uri, common
-        ? [parseGlslDocument(common.uri, stripIncludeDirectives(common.text), common.stage)]
+        ? [parseGlslDocument(common.uri, common.text, common.stage)]
         : []);
     }
   }
@@ -1138,30 +1137,6 @@ function memberHover(
   }
   const field = resolved.fields?.find((candidate) => candidate.name === member);
   return field ? markdownHover(`${field.type} ${member}`, `Field of \`${resolved.name}\`.`) : null;
-}
-
-function stripIncludeDirectives(source: string): string {
-  return source.replace(/^\s*#include\s+["<][^">]+[">].*$/gm, "");
-}
-
-/** One error per #include line: GLSL has no include directive, and the preview
- *  compiles without expanding one, so the shader would fail there. The line is
- *  stripped before parsing, so this replaces a cryptic parse error. */
-function unsupportedIncludeDiagnostics(source: string): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
-  source.split("\n").forEach((line, lineNumber) => {
-    if (!/^\s*#include\s+["<][^">]+[">]/.test(line)) {
-      return;
-    }
-    diagnostics.push({
-      range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: line.length } },
-      severity: DiagnosticSeverity.Error,
-      source: "shader-studio-glsl-ls",
-      code: "include-unsupported",
-      message: "GLSL has no #include, and the preview will not compile it. Move shared code into a Common pass.",
-    });
-  });
-  return diagnostics;
 }
 
 function zeroRange() {
