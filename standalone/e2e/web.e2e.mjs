@@ -197,10 +197,10 @@ test('captures WGSL variables while debugging', async ({ page }) => {
   }
   await expect(panel.locator('.variables-section')).toBeVisible();
 
-  await editor.locator('.view-line').filter({ hasText: 'let sky' }).click();
-  const sky = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^sky$/ }) });
-  await expect(sky).toBeVisible();
-  await expect.poll(async () => (await sky.locator('.vec-value').first().textContent() ?? '').trim())
+  await editor.locator('.view-line').filter({ hasText: 'let col' }).click();
+  const col = panel.locator('.var-row').filter({ has: page.locator('.var-name', { hasText: /^col$/ }) });
+  await expect(col).toBeVisible();
+  await expect.poll(async () => (await col.locator('.vec-value').first().textContent() ?? '').trim())
     .toMatch(/^\(-?\d/);
   await expect(panel.locator('.issue-button')).toHaveCount(0);
   expect(captureFailures).toEqual([]);
@@ -291,7 +291,7 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
   await expect.poll(async () => (await editor.boundingBox())?.width).toBeGreaterThan(editorBox?.width ?? 0);
 
   await page.getByTestId('shader-option-aurora-slang-slang').click();
-  await expect(editor.locator('.view-lines')).toContainText('float3 colour');
+  await expect(editor.locator('.view-lines')).toContainText('float3 col =');
   await expect.poll(() => [...languageWorkerRequests].some((url) => url.includes('/slangLanguageService.worker-'))).toBe(true);
 
   await page.getByTestId('shader-option-nebula-texture-glsl').click();
@@ -632,7 +632,7 @@ test('explicitly opens independent file editors and restores them after reload',
   await expect(desert.locator('.monaco-editor')).toBeVisible();
   await fileTab(/^aurora\.glsl$/).click();
   await expect(aurora.locator('.monaco-editor')).toBeVisible();
-  await expect(aurora).toContainText('sin(p.x * 3.0 + iTime)');
+  await expect(aurora).toContainText('uv.xyx + vec3(0, 2, 4)');
   await aurora.locator('.view-lines').click();
   await page.keyboard.press('Control+Home');
   await page.keyboard.type('// independent editor edit\n');
@@ -826,7 +826,7 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await page.getByTitle('Options', { exact: true }).click();
   await page.getByLabel('Open Files', { exact: true }).check();
   for (const [id, text] of [
-    ['aurora-glsl', 'sin(p.x * 3.0 + iTime)'],
+    ['aurora-glsl', 'uv.xyx + vec3(0, 2, 4)'],
     ['desert-cubemap-glsl', 'Drag in the preview'],
     ['nebula-texture-glsl', 'texture(iChannel0, uv)'],
   ]) {
@@ -855,7 +855,7 @@ test('explorer Open Files reuses one editor and only reopens it when checked', a
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(editorTab).toHaveCount(1);
   await expect(editor.locator('.monaco-editor')).toBeVisible();
-  await expect(editor.locator('.view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
+  await expect(editor.locator('.view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   await expect(page.getByTestId('file-editor')).toHaveCount(0);
 });
 
@@ -980,7 +980,7 @@ test('focused standalone file editor selects the preview and persists after relo
   await editor.locator('.view-lines').click();
   await expect(aurora).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.dv-tab').filter({ hasText: /^aurora\.glsl$/ }).first().click();
-  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
+  await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   await expect(page.getByTestId('web-editor').locator('.view-lines')).toContainText(/void\s+mainImage\(out\s+vec4\s+fragColor,\s+in\s+vec2\s+fragCoord\)/);
   await desert.click();
   await page.locator('.dv-tab').filter({ hasText: /^aurora\.glsl$/ }).last().click();
@@ -1099,7 +1099,7 @@ test('replacing the active editor preserves tab order after reload', async ({ pa
   await page.getByLabel('Open Files', { exact: true }).check();
   await page.getByTestId('shader-option-aurora-glsl').click();
   await expect(titles).toHaveText(['glow-trails.glsl', 'aurora.glsl', 'glow.buffer.glsl']);
-  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
+  await expect(page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.glsl"] .view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   await page.reload();
   // The main editor follows the restored preview; the file editors retain their slots.
   await expect(titles).toHaveText(['aurora.glsl', 'aurora.glsl', 'glow.buffer.glsl']);

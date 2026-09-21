@@ -76,6 +76,19 @@ describe('default workspace', () => {
     expect(files.some(({ path }) => path === '/shaders/aurora-wgsl.sha.json')).toBe(true);
   });
 
+  it.each([
+    ['/shaders/aurora.glsl', 'vec2 uv = fragCoord / iResolution.xy;', 'vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4));', 'fragColor = vec4(col, 1.0);'],
+    ['/shaders/aurora-slang.slang', 'float2 uv = fragCoord / iResolution.xy;', 'float3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + float3(0, 2, 4));', 'return float4(col, 1.0);'],
+    ['/shaders/aurora-wgsl.wgsl', 'let uv = coord / iResolution.xy;', 'let col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3f(0.0, 2.0, 4.0));', 'return vec4f(col, 1.0);'],
+  ])('seeds %s with the Shadertoy default gradient', (path, uv, colour, output) => {
+    const contents = createDefaultWorkspaceFiles().find((file) => file.path === path)?.contents ?? '';
+
+    expect(contents).toContain('// Normalized pixel coordinates (from 0 to 1)');
+    expect(contents).toContain(uv);
+    expect(contents).toContain(colour);
+    expect(contents).toContain(output);
+  });
+
   describe('the WGSL Particle Swarm compute sample', () => {
     const files = createDefaultWorkspaceFiles();
     const read = (path: string) => files.find((file) => file.path === path)?.contents ?? '';
@@ -84,7 +97,7 @@ describe('default workspace', () => {
     const passSources: Record<string, string> = {
       common: read('/shaders/particle-swarm/common.buffer.wgsl'),
       Seed: kernels,
-      Clear: kernels,
+      Fade: kernels,
       Advect: kernels,
     };
 
@@ -113,7 +126,7 @@ describe('default workspace', () => {
       expect(grid).not.toBeNull();
       expect(config.storage.density.count).toBe(Number(grid![1]) * Number(grid![2]));
       expect(config.storage.density.elementType).toBe('atomic<u32>');
-      expect(kernels).toContain('atomicAdd(&density[densityIndex(position)], 1u);');
+      expect(kernels).toContain('splatParticle(position);');
       expect(read('/shaders/particle-swarm.wgsl')).toContain('atomicLoad(&density[');
     });
 
@@ -133,14 +146,14 @@ describe('default workspace', () => {
         expect.objectContaining({ name: 'particles', elementType: 'vec4<f32>', count: 16384 }),
         expect.objectContaining({ name: 'density', elementType: 'atomic<u32>', containsAtomic: true }),
       ]));
-      // Seed scatters once, then Clear zeroes the grid before Advect tallies it.
+      // Seed scatters once, then Fade decays the grid before Advect splats into it.
       expect(graph.passes.map(({ name, kind }) => [name, kind])).toEqual([
-        ['Seed', 'compute'], ['Clear', 'compute'], ['Advect', 'compute'], ['Image', 'render'],
+        ['Seed', 'compute'], ['Fade', 'compute'], ['Advect', 'compute'], ['Image', 'render'],
       ]);
       expect(graph.passes.map(({ name, dispatch, dispatchOnce }) => [name, dispatch, dispatchOnce]))
         .toEqual([
           ['Seed', { mode: 'cover-storage', name: 'particles' }, true],
-          ['Clear', { mode: 'cover-storage', name: 'density' }, false],
+          ['Fade', { mode: 'cover-storage', name: 'density' }, false],
           ['Advect', { mode: 'cover-storage', name: 'particles' }, false],
           ['Image', undefined, false],
         ]);

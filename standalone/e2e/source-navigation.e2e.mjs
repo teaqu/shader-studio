@@ -130,7 +130,7 @@ test('navigating during an editor save preserves both shader files after reload'
   });
   await page.goto('/');
   const editor = page.getByTestId('web-editor');
-  await expect(editor.locator('.view-lines')).toContainText('sin(p.x * 3.0 + iTime)');
+  await expect(editor.locator('.view-lines')).toContainText('uv.xyx + vec3(0, 2, 4)');
   const before = await workspace(page);
   await editor.locator('.view-lines').click();
   await page.keyboard.press('ControlOrMeta+A');
