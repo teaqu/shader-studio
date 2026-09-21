@@ -338,8 +338,5 @@ function collectVirtualFiles(
     }
     return [...files.values()];
   }
-  // Only Slang resolves includes and imports. GLSL and WGSL have no include
-  // directive the preview expands, so the language services get no files to
-  // take symbols from; GLSL shares code through Common alone.
   return [];
 }
