@@ -98,6 +98,11 @@ test.describe('native vector swizzle completion', () => {
         }), { message: 'native completion provider never returned ranked swizzles', timeout: 30_000 })
           .toEqual(['x', 'y', 'z', 'w', 'xy']);
         await vscode.window.keyboard.press('Escape');
+        // The `.` left the shader invalid, and the preview recompiling it can take
+        // keyboard focus. triggerSuggest is a command and opens the widget anyway,
+        // but the prefix typed next would then go to the webview.
+        await focusNativeEditor(vscode, shaderPath,
+          scenario.source.lastIndexOf('literalColor') + 'literalColor.'.length);
         await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('editor.action.triggerSuggest'));
         await expect(widget, 'typing a dot should promptly open VS Code member suggestions').toBeVisible({ timeout: 30_000 });
         await vscode.window.keyboard.type('bgra', { delay: 80 });
