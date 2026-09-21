@@ -18,7 +18,10 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['monaco-editor'],
+    // The language-service worker is the first importer of the protocol types,
+    // so on a cold cache Vite only finds them once the worker loads, optimises
+    // them, and force-reloads the page, killing that worker before it answers.
+    include: ['monaco-editor', 'vscode-languageserver-protocol'],
   },
   build: {
     cssCodeSplit: false,

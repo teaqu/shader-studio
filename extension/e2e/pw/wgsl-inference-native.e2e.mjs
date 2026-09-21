@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { focusNativeEditor } from './editor-actions.mjs';
 
 const stem = 'wgsl-inference-native';
 const shaderPath = join(workspacePath, `${stem}.wgsl`);
@@ -80,7 +81,7 @@ test.describe('WGSL inference through the native VS Code editor @gpu', () => {
 
       // A direct expression is incomplete while the popup is open, so this
       // checks the same recovery/inference path a person gets while typing.
-      await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup'));
+      await focusNativeEditor(vscode, shaderPath, source.indexOf('normalize(uv)') + 'normalize(uv)'.length);
       await vscode.window.keyboard.type('.');
       await expect.poll(() => vscode.evaluateInHost(async (vscode) =>
         vscode.window.activeTextEditor?.document.getText() ?? '',
@@ -97,6 +98,10 @@ test.describe('WGSL inference through the native VS Code editor @gpu', () => {
         ) === 'yx');
       }), { message: 'native completion provider never inferred normalize(uv) as a vector', timeout: 30_000 }).toBe(true);
       await vscode.window.keyboard.press('Escape');
+      // The `.` above left the shader invalid, and the preview recompiling it can
+      // hold keyboard focus; the `y` below would then close the widget instead
+      // of filtering it. Take focus back before opening the suggestions.
+      await focusNativeEditor(vscode, shaderPath, source.indexOf('normalize(uv)') + 'normalize(uv).'.length);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('editor.action.triggerSuggest'));
       const widget = vscode.window.locator('.suggest-widget');
       await vscode.window.keyboard.type('y', { delay: 80 });

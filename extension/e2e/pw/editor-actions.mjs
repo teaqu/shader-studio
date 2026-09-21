@@ -86,3 +86,25 @@ export async function setParameterExpression(frame, name, value) {
   }, value);
   await expect(editor).toHaveText(value);
 }
+
+/**
+ * Gives the editor for `path` keyboard focus with the caret at `offset`.
+ *
+ * workbench.action.focusActiveEditorGroup does not take focus back from a
+ * preview webview, which a recompiling shader can hand focus to: keystrokes
+ * then land in the webview, or close the suggest widget. Re-showing the exact
+ * document does, and names it unambiguously where a click on a visible line
+ * could hit another editor showing similar text.
+ */
+export async function focusNativeEditor(vscode, path, offset) {
+  await vscode.evaluateInHost(async (vscode, target, at) => {
+    const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.fsPath === target)
+      ?? await vscode.workspace.openTextDocument(vscode.Uri.file(target));
+    const editor = await vscode.window.showTextDocument(document, { preserveFocus: false, preview: false });
+    const caret = document.positionAt(at);
+    editor.selection = new vscode.Selection(caret, caret);
+  }, path, offset);
+  await expect.poll(() => vscode.window.evaluate(() =>
+    Boolean(document.activeElement?.closest('.part.editor .monaco-editor'))),
+  { message: 'the editor never took keyboard focus' }).toBe(true);
+}

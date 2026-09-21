@@ -1,5 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { focusNativeEditor } from './editor-actions.mjs';
 
 /**
  * This deliberately drives VS Code's own suggest widget instead of calling
@@ -72,16 +73,11 @@ test.describe('native vector swizzle completion', () => {
           editor.revealRange(new vscode.Range(position, position));
         }, { shader: shaderPath, config: configPath, name: `${stem}.${scenario.extension}` }, scenario.source);
 
-        await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup'));
         const widget = vscode.window.locator('.suggest-widget');
-        // The focus command resolves before the editor takes keyboard focus, and
-        // a keystroke sent into that gap is dropped for good: the poll below can
-        // only watch for an edit that will now never arrive. Which element holds
-        // that focus differs by VS Code version (textarea, then native edit
-        // context), so this asks only that it lives in the editor part.
-        await expect.poll(() => vscode.window.evaluate(() =>
-          Boolean(document.activeElement?.closest('.part.editor'))),
-        { message: 'the editor never took keyboard focus' }).toBe(true);
+        // A keystroke sent before the editor holds focus is dropped for good,
+        // and the poll below would wait on an edit that can never arrive.
+        await focusNativeEditor(vscode, shaderPath,
+          scenario.source.lastIndexOf('literalColor') + 'literalColor'.length);
         await vscode.window.keyboard.type('.');
         await expect.poll(() => vscode.evaluateInHost(async (vscode) =>
           vscode.window.activeTextEditor?.document.getText() ?? '',
