@@ -213,8 +213,7 @@
       {
         "id": "glsl",
         "aliases": [
-          "GLSL",
-          "OpenGL Shading Language"
+          "GLSL"
         ],
         "extensions": [
           ".glsl",
@@ -241,8 +240,7 @@
       {
         "id": "wgsl",
         "aliases": [
-          "WGSL",
-          "WebGPU Shading Language"
+          "WGSL"
         ],
         "extensions": [
           ".wgsl"
