@@ -6,6 +6,7 @@
 - Breaking: Slang channels are now accessed directly. Replace `inputs.albedo.Sample(uv)` with `albedo.Sample(uv)` and `inputs.albedo.size` with `albedo.size`. The `.sha.json` `inputs` field is unchanged.
 - Breaking: remove `import shader_studio;` from Slang shaders. Built-in uniforms are available without an import.
 - Improved WGSL hover documentation for variables, functions, built-in uniforms, and attributes such as `@compute` and `@workgroup_size`.
+- `iMouse` now matches Shadertoy: `xy` follows the pointer only while a mouse button is held, `z` is positive while held, and `w` is positive only on the frame of the click.
 - Vector completion now lists components, contiguous runs such as `xy`, `yz`, and `zw`, and reversals such as `yx`, `zyx`, and `bgra` in GLSL, Slang, and WGSL. Any other valid selection, such as `xyx` or `xxxx`, is offered as soon as you type it.
 - WGSL hover, completion, and variable inspection now infer more valid expressions, including `bitcast`, integer bit operations, matrix transpose and scaling, and vector comparisons.
 - Fixed false warnings for valid WGSL storage types, including half-precision values, vectors, matrices, and integer atomics. Storage structs containing integer atomic fields now infer and bind their stride correctly.
