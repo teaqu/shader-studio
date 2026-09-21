@@ -377,24 +377,26 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("advances the environment when a configured Common dependency changes", () => {
+  test("advances the environment when a Slang Common include changes", () => {
+    // Slang is the language whose includes the preview resolves, so a file
+    // reached through Common is a real dependency of the pass.
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-common-dependency-"));
-    const bufferPath = path.join(directory, "buffer-a.glsl");
-    const commonPath = path.join(directory, "common.glsl");
+    const bufferPath = path.join(directory, "buffer-a.slang");
+    const commonPath = path.join(directory, "common.slang");
     const dependencyDirectory = path.join(directory, "lib");
-    const dependencyPath = path.join(dependencyDirectory, "math.glsl");
+    const dependencyPath = path.join(dependencyDirectory, "math.slang");
     try {
       fs.mkdirSync(dependencyDirectory);
-      fs.writeFileSync(bufferPath, "void mainImage(out vec4 color, vec2 coord) { color = vec4(sharedTone(coord.x)); }");
-      fs.writeFileSync(commonPath, '#include "lib/math.glsl"\nfloat sharedTone(float value) { return halfValue(value); }');
+      fs.writeFileSync(bufferPath, "float4 mainImage(float2 coord) { return float4(sharedTone(coord.x)); }");
+      fs.writeFileSync(commonPath, '#include "lib/math.slang"\nfloat sharedTone(float value) { return halfValue(value); }');
       fs.writeFileSync(dependencyPath, "float halfValue(float value) { return value * 0.5; }");
       fs.writeFileSync(path.join(directory, "project.sha.json"), JSON.stringify({
         version: "1.0",
-        passes: { Image: {}, common: { path: "common.glsl" }, BufferA: { path: "buffer-a.glsl" } },
+        passes: { Image: {}, common: { path: "common.slang" }, BufferA: { path: "buffer-a.slang" } },
       }));
       const document = {
         uri: vscode.Uri.file(bufferPath),
-        languageId: "glsl",
+        languageId: "slang",
         getText: () => fs.readFileSync(bufferPath, "utf8"),
       };
       const provider = new ShaderAuthoringEnvironmentProvider();
@@ -405,6 +407,29 @@ suite("VS Code language-service revisions", () => {
 
       assert.strictEqual(changed?.generation, (first?.generation ?? 0) + 1);
       assert.ok(changed?.virtualFiles.some((file) => file.text.includes("0.25")));
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("does not supply GLSL #include targets, which the preview cannot compile", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-glsl-include-"));
+    const shaderPath = path.join(directory, "image.glsl");
+    const includePath = path.join(directory, "math.glsl");
+    try {
+      fs.writeFileSync(shaderPath, '#include "math.glsl"\nvoid mainImage(out vec4 color, vec2 coord) { color = vec4(halfValue(coord.x)); }');
+      fs.writeFileSync(includePath, "float halfValue(float value) { return value * 0.5; }");
+      const document = {
+        uri: vscode.Uri.file(shaderPath),
+        languageId: "glsl",
+        getText: () => fs.readFileSync(shaderPath, "utf8"),
+      };
+
+      const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
+
+      // Supplying it would let the editor complete `halfValue` for a shader
+      // the preview then fails to compile.
+      assert.deepStrictEqual(environment?.virtualFiles, []);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

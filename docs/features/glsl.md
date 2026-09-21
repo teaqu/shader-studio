@@ -13,8 +13,6 @@ Named channel metadata and sampling examples are in [Channels](channels.md).
 - **Editing:** completion, hover, go to definition, references, highlights, and
   rename. Diagnostics report unresolved symbols and unused locals. See
   [Language Servers](language-servers.md) for editor instructions and rename scope.
-- **Includes:** completion and navigation work in available `#include` files. GLSL
-  has no module imports and no generics.
 - **Rendering:** single pass, multipass buffers, Common, vertex shaders,
   textures, cubemaps, audio/video inputs, keyboard input, model geometry and
   script custom uniforms. Compute passes and storage buffers are not available for GLSL.

@@ -338,25 +338,8 @@ function collectVirtualFiles(
     }
     return [...files.values()];
   }
-  const visit = (text: string, currentPath: string) => {
-    for (const match of text.matchAll(/^\s*#include\s+"([^"]+)"/gm)) {
-      if (!match[1]) {
-        continue;
-      }
-      const includePath = path.resolve(path.dirname(currentPath), match[1]);
-      if (files.has(includePath)) {
-        continue;
-      }
-      try {
-        const includeText = readSource(includePath);
-        if (includeText === null) {
-          continue;
-        }
-        files.set(includePath, { uri: vscode.Uri.file(includePath).toString(), text: includeText, version: 1 });
-        visit(includeText, includePath);
-      } catch { /* service diagnostics report missing files */ }
-    }
-  };
-  visit(source, ownerPath);
-  return [...files.values()];
+  // Only Slang resolves includes and imports. GLSL and WGSL have no include
+  // directive the preview expands, so the language services get no files to
+  // take symbols from; GLSL shares code through Common alone.
+  return [];
 }

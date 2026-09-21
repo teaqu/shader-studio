@@ -96,9 +96,10 @@ export class GlslLanguageService implements LanguageService {
     if (environment.languageId !== "glsl" || !this.store.syncEnvironment(environment)) {
       return;
     }
-    const contextFiles = environment.commonFile
-      ? [environment.commonFile, ...environment.virtualFiles]
-      : environment.virtualFiles;
+    // Common is the only file GLSL shares symbols through. The preview compiles
+    // GLSL without resolving #include, so the editor must not take symbols from
+    // files a host supplies for one: they would complete here and fail there.
+    const contextFiles = environment.commonFile ? [environment.commonFile] : [];
     this.files.replaceEnvironment(contextFiles);
     this.syncWorkspace(environment);
     this.includeAnalyses.set(environment.documentUri, contextFiles.map((file) => (
@@ -472,7 +473,7 @@ export class GlslLanguageService implements LanguageService {
     }));
     diagnostics.push(...unresolvedReferenceDiagnostics(state.analysis, state.environment, this.includeAnalyses));
     diagnostics.push(...unusedSymbolDiagnostics(state.analysis));
-    diagnostics.push(...includeDiagnostics(state.document.uri, state.document.text, this.files));
+    diagnostics.push(...unsupportedIncludeDiagnostics(state.document.text));
     diagnostics.push(...validateShaderAuthoringEnvironment(state.environment).map((issue) => ({
       range: zeroRange(),
       severity: DiagnosticSeverity.Warning,
@@ -1143,23 +1144,22 @@ function stripIncludeDirectives(source: string): string {
   return source.replace(/^\s*#include\s+["<][^">]+[">].*$/gm, "");
 }
 
-function includeDiagnostics(uri: string, source: string, files: VirtualFileSystem): Diagnostic[] {
+/** One error per #include line: GLSL has no include directive, and the preview
+ *  compiles without expanding one, so the shader would fail there. The line is
+ *  stripped before parsing, so this replaces a cryptic parse error. */
+function unsupportedIncludeDiagnostics(source: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const lines = source.split("\n");
-  lines.forEach((line, lineNumber) => {
-    const match = line.match(/^\s*#include\s+["<]([^">]+)[">]/);
-    if (!match?.[1]) {
+  source.split("\n").forEach((line, lineNumber) => {
+    if (!/^\s*#include\s+["<][^">]+[">]/.test(line)) {
       return;
     }
-    const resolved = files.resolve(uri, match[1]);
-    const range = { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: line.length } };
-    if (!resolved) {
-      diagnostics.push({ range, severity: DiagnosticSeverity.Error, source: "shader-studio-glsl-ls", code: "include-outside-roots", message: `Include escapes the shader workspace: ${match[1]}` });
-    } else if (!files.read(resolved)) {
-      diagnostics.push({ range, severity: DiagnosticSeverity.Error, source: "shader-studio-glsl-ls", code: "include-not-found", message: `Include not found: ${match[1]}` });
-    } else {
-      files.trackDependency(uri, resolved);
-    }
+    diagnostics.push({
+      range: { start: { line: lineNumber, character: 0 }, end: { line: lineNumber, character: line.length } },
+      severity: DiagnosticSeverity.Error,
+      source: "shader-studio-glsl-ls",
+      code: "include-unsupported",
+      message: "GLSL has no #include, and the preview will not compile it. Move shared code into a Common pass.",
+    });
   });
   return diagnostics;
 }

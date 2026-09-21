@@ -397,7 +397,7 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord
     await instance.changeDocument({ uri, languageId: "glsl", version: 2, text: '#include "missing.glsl"\nvoid mainImage( {' });
     const current = { ...revision, version: 2 };
     expect((await instance.diagnostics({ document: current })).map((item) => item.code))
-      .toEqual(expect.arrayContaining(["include-not-found", "syntax"]));
+      .toEqual(expect.arrayContaining(["include-unsupported", "syntax"]));
     expect(await instance.completion({ document: revision, position: { line: 0, character: 0 } })).toEqual([]);
 
     await instance.changeDocument({ uri, languageId: "glsl", version: 3, text: "vec3 color = vec3(1.0, .25, 0.0);" });
@@ -427,17 +427,17 @@ void mainImage(out vec4 color, in vec2 coord) { color = texture(iChannel0, coord
       .toEqual(["vec3(0.0, 0.5, 1.0)", "vec4(0.0, 0.5, 1.0, 1.0)"]);
   });
 
-  it("reports unresolved GLSL symbols while accepting authoring, include, and stage built-ins", async () => {
+  it("reports unresolved GLSL symbols while accepting authoring, Common, and stage built-ins", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({
       ...environment(),
-      virtualFiles: [{
+      commonFile: {
         uri: "file:///workspace/common.glsl",
         version: 1,
         text: "float includedValue(float value) { return value; }",
-      }],
+      },
     });
-    const text = `#include "common.glsl"
+    const text = `
 void mainImage(out vec4 color, in vec2 position) {
   color = texture(sky, position) + vec4(includedValue(tint.x + iResolution.x + gl_FragCoord.x + missingValue));
   color += vec4(missingFunction(position.x));
@@ -511,18 +511,60 @@ void mainImage(out vec4 color, in vec2 coord) {
     }));
   });
 
-  it("completes and navigates into environment-provided includes", async () => {
-    const instance = new GlslLanguageService();
-    await instance.syncEnvironment({
-      ...environment(),
-      virtualFiles: [{ uri: "file:///workspace/common.glsl", version: 1, text: "float twice(float value) { return value * 2.0; }" }],
+  describe("#include, which the preview does not resolve", () => {
+    it("reports each directive as unsupported and points at Common", async () => {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment(environment());
+      const text = '#include "helpers.glsl"\n  #include <lighting>\nvoid mainImage(out vec4 c, vec2 p) { c = vec4(1.0); }';
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+      const unsupported = (await instance.diagnostics({ document: revision }))
+        .filter((diagnostic) => diagnostic.code === "include-unsupported");
+
+      // Both quote and angle-bracket forms, each on its own line.
+      expect(unsupported.map((diagnostic) => diagnostic.range.start.line)).toEqual([0, 1]);
+      expect(unsupported[0]).toEqual(expect.objectContaining({
+        severity: DiagnosticSeverity.Error,
+        source: "shader-studio-glsl-ls",
+        message: expect.stringContaining("Common"),
+      }));
+      // The directive gets one clear error, not a second cryptic parse error.
+      expect((await instance.diagnostics({ document: revision })).filter((diagnostic) => diagnostic.code === "syntax"))
+        .toEqual([]);
     });
-    await instance.openDocument({ uri, languageId: "glsl", version: 1, text: '#include "common.glsl"\nvoid mainImage(out vec4 c, vec2 p) { c = vec4(twice(1.0)); }' });
-    const labels = (await instance.completion({ document: revision, position: { line: 1, character: 48 } })).map((item) => item.label);
-    expect(labels).toContain("twice");
-    expect((await instance.definition({ document: revision, position: { line: 1, character: 48 } }))[0]?.uri)
-      .toBe("file:///workspace/common.glsl");
-    expect(await instance.diagnostics({ document: revision })).not.toContainEqual(expect.objectContaining({ code: "include-not-found" }));
+
+    it("does not take symbols from files a host supplies for an #include", async () => {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({
+        ...environment(),
+        virtualFiles: [{ uri: "file:///workspace/helpers.glsl", version: 1, text: "float twice(float value) { return value * 2.0; }" }],
+      });
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text: '#include "helpers.glsl"\nvoid mainImage(out vec4 c, vec2 p) { c = vec4(twice(1.0)); }' });
+
+      // The preview cannot see helpers.glsl either, so the editor must not
+      // promise `twice`: it would compile clean here and fail in the preview.
+      expect((await instance.completion({ document: revision, position: { line: 1, character: 48 } })).map((item) => item.label))
+        .not.toContain("twice");
+      expect(await instance.definition({ document: revision, position: { line: 1, character: 48 } })).toEqual([]);
+      expect(await instance.diagnostics({ document: revision }))
+        .toContainEqual(expect.objectContaining({ code: "undefined-function", message: "Undefined function 'twice'." }));
+    });
+
+    it("still resolves Common helpers, the supported way to share code", async () => {
+      const instance = new GlslLanguageService();
+      await instance.syncEnvironment({
+        ...environment(),
+        commonFile: { uri: "file:///workspace/common.glsl", version: 1, text: "float twice(float value) { return value * 2.0; }" },
+      });
+      await instance.openDocument({ uri, languageId: "glsl", version: 1, text: "void mainImage(out vec4 c, vec2 p) { c = vec4(twice(1.0)); }" });
+
+      expect((await instance.completion({ document: revision, position: { line: 0, character: 48 } })).map((item) => item.label))
+        .toContain("twice");
+      expect((await instance.definition({ document: revision, position: { line: 0, character: 48 } }))[0]?.uri)
+        .toBe("file:///workspace/common.glsl");
+      expect(await instance.diagnostics({ document: revision }))
+        .not.toContainEqual(expect.objectContaining({ code: "undefined-function" }));
+    });
   });
 
   it("knows the macros the common file defines", async () => {

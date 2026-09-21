@@ -48,7 +48,7 @@ in the workspace. Formatting and workspace symbol search are unavailable.
 
 Use **Rename Symbol** (`F2`) to rename a function, parameter, variable, or struct
 field. Both VS Code and the standalone editor can update affected shader and Common
-files. GLSL `#include` files can participate too. All target files must be available
+files. All target files must be available
 and writable for the edits to be applied. This is separate from renaming a shader
 file in the explorer.
 
