@@ -303,9 +303,11 @@ export class StandaloneLayoutController {
         this.api.panels.map((panel) => [panel.api.group, panel.api.group.api.isVisible]),
       );
     }
-    if (!this.desktopVisibility.has(selected.api.group)) {
-      // A tool first opened from the phone shell is a deliberate workspace
-      // addition and should remain available when the desktop layout returns.
+    const selectedTool = panelId === 'debug' || panelId === 'config'
+      || panelId === 'performance' || panelId === 'recording';
+    if (selectedTool || !this.desktopVisibility.has(selected.api.group)) {
+      // Opening a tool from the phone shell is a deliberate workspace change,
+      // even when a restored copy of that group was hidden on desktop.
       this.desktopVisibility.set(selected.api.group, true);
     }
     this.mobilePanel = panelId;
