@@ -20,11 +20,22 @@
   import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
   interface Props { transport: WebTransport; pwa?: PwaController; }
+  const ALPHA_NOTICE_DISMISSED_KEY = 'shader-studio.alpha-notice-dismissed';
+
+  function shouldShowAlphaNotice(): boolean {
+    try {
+      return localStorage.getItem(ALPHA_NOTICE_DISMISSED_KEY) !== 'true';
+    } catch {
+      return true;
+    }
+  }
+
   let { transport, pwa }: Props = $props();
   const hostedPanels = new HostedPanels();
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
   let workspaceError = $state('');
+  let alphaNoticeVisible = $state(shouldShowAlphaNotice());
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
   let panelVisibility = $state({ explorer: true, editor: true, preview: true });
@@ -202,6 +213,15 @@
     workspaceMenuOpen = false;
   }
 
+  function dismissAlphaNotice() {
+    alphaNoticeVisible = false;
+    try {
+      localStorage.setItem(ALPHA_NOTICE_DISMISSED_KEY, 'true');
+    } catch {
+      // The notice can still be dismissed for this session when storage is blocked.
+    }
+  }
+
   function closeMenusOnOutsideClick(event: MouseEvent) {
     if (!(event.target as Element).closest('.toolbar-menu')) {
       viewMenuOpen = false;
@@ -277,10 +297,15 @@
     {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
   <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
-  <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
-    Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
-    Changes are saved only in this browser. Clearing browser data will delete them.
-  </aside>
+  {#if alphaNoticeVisible}
+    <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
+      <span>
+        Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
+        Changes are saved only in this browser. Clearing browser data will delete them.
+      </span>
+      <button class="dismiss-alpha-notice" aria-label="Dismiss alpha notice" title="Dismiss" onclick={dismissAlphaNotice}>×</button>
+    </aside>
+  {/if}
   {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
   {#if pwaStatus.offlinePreparation.state === 'error'}
     <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
@@ -316,7 +341,9 @@
   .dropdown-menu button { display: grid; grid-template-columns: 16px 1fr; gap: 4px; width: 100%; border: 0; text-align: left; white-space: nowrap; }
   .dropdown-menu button:not([role="menuitemcheckbox"]) { display: block; }
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
-  .alpha-notice { padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
+  .alpha-notice { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
+  .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+  .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
   .build-status { white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
   .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
@@ -332,5 +359,6 @@
     .build-status { position: absolute; top: calc(100% + 1px); right: max(8px, env(safe-area-inset-right)); z-index: 1; padding: 2px 6px; border-radius: 0 0 4px 4px; background: var(--vscode-sideBar-background); }
     .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
     .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+    :global(.standalone-app .menu-bar .collapse-config, .standalone-app .menu-bar .collapse-debug, .standalone-app .menu-bar .collapse-record) { display: none; }
   }
 </style>

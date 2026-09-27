@@ -138,6 +138,39 @@ describe('standalone App', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Preview' }).getAttribute('aria-checked')).toBe('true');
   });
 
+  it('dismisses the alpha notice and remembers that preference', async () => {
+    const first = render(App, { transport: createTransport() });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+    expect(localStorage.getItem('shader-studio.alpha-notice-dismissed')).toBe('true');
+
+    first.unmount();
+    render(App, { transport: createTransport() });
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+  });
+
+  it('starts with the alpha notice hidden when it was previously dismissed', () => {
+    localStorage.setItem('shader-studio.alpha-notice-dismissed', 'true');
+    render(App, { transport: createTransport() });
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+  });
+
+  it('allows an in-memory alpha notice dismissal when browser storage is blocked', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('blocked');
+      }),
+    });
+    render(App, { transport: createTransport() });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Dismiss alpha notice' }));
+    expect(screen.queryByTestId('web-alpha-warning')).toBeNull();
+  });
+
   it('toggles panels from View and groups workspace actions separately', async () => {
     render(App, { props: { transport: createTransport() } });
 

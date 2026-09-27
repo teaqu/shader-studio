@@ -153,7 +153,7 @@ export class StandaloneLayoutController {
   private layoutChangeDisposable: Disposable | null = null;
   private readonly panelRestorations = new Map<StandalonePanelId, PanelRestoration>();
   private readonly storage: LayoutStorage | null;
-  private desktopVisibility: Map<string, boolean> | null = null;
+  private desktopVisibility: Map<PanelGroup, boolean> | null = null;
   private mobilePanel: MobileDockviewPanelId | null = null;
 
   constructor(
@@ -300,13 +300,13 @@ export class StandaloneLayoutController {
     }
     if (!this.desktopVisibility) {
       this.desktopVisibility = new Map(
-        this.api.panels.map((panel) => [panel.id, panel.api.group.api.isVisible]),
+        this.api.panels.map((panel) => [panel.api.group, panel.api.group.api.isVisible]),
       );
-      for (const id of ['debug', 'config', 'performance', 'recording'] as const) {
-        if (!this.desktopVisibility.has(id)) {
-          this.desktopVisibility.set(id, false);
-        }
-      }
+    }
+    if (!this.desktopVisibility.has(selected.api.group)) {
+      // A tool first opened from the phone shell is a deliberate workspace
+      // addition and should remain available when the desktop layout returns.
+      this.desktopVisibility.set(selected.api.group, true);
     }
     this.mobilePanel = panelId;
     for (const panel of this.api.panels) {
@@ -320,8 +320,8 @@ export class StandaloneLayoutController {
     if (!this.desktopVisibility) {
       return;
     }
-    for (const [id, visible] of this.desktopVisibility) {
-      this.api.getPanel(id)?.api.group.api.setVisible(visible);
+    for (const [group, visible] of this.desktopVisibility) {
+      group.api.setVisible(visible);
     }
     this.desktopVisibility = null;
     this.mobilePanel = null;
