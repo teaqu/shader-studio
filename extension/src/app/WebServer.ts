@@ -7,6 +7,187 @@ import { ShaderStudioStatusBar } from "./ShaderStudioStatusBar";
 import { Messenger } from "./transport/Messenger";
 import { injectPortIntoHtml } from "@shader-studio/utils";
 
+/**
+ * Resolves a URL-encoded texture path only when it names a regular file below
+ * one of the roots explicitly trusted by the extension.  Real paths are used
+ * for both sides of the comparison so a symlink cannot escape a workspace.
+ */
+export function resolveSafeTexturePath(encodedPath: string, allowedRoots: readonly string[]): string | undefined {
+  return resolveAuthorizedTextureFile(encodedPath, allowedRoots)?.path;
+}
+
+/**
+ * Resolves a bundled UI asset beneath the canonical distribution root. The
+ * extension installation itself may be reached through a symlink (as it is in
+ * the installed-VSIX test host), so both sides of the containment check must
+ * use their real paths.
+ */
+export function resolveSafeUiAsset(requestPath: string, uiDistPath: string): string | undefined {
+  return resolveAuthorizedUiAsset(requestPath, uiDistPath)?.path;
+}
+
+export function getTextureCorsHeaders(origin: string | undefined, httpPort: number): Record<string, string> {
+  if (!origin) {
+    return { "Cross-Origin-Resource-Policy": "same-origin" };
+  }
+
+  try {
+    const parsedOrigin = new URL(origin);
+    const hasUnexpectedParts = parsedOrigin.username
+      || parsedOrigin.password
+      || (parsedOrigin.pathname !== "" && parsedOrigin.pathname !== "/")
+      || parsedOrigin.search
+      || parsedOrigin.hash;
+    const isServerLoopback = parsedOrigin.protocol === "http:"
+      && ["localhost", "127.0.0.1", "[::1]"].includes(parsedOrigin.hostname)
+      && parsedOrigin.port === String(httpPort);
+    const isVsCodeWebview = parsedOrigin.protocol === "vscode-webview:" && Boolean(parsedOrigin.hostname);
+    if (!hasUnexpectedParts && (isServerLoopback || isVsCodeWebview)) {
+      return {
+        "Access-Control-Allow-Origin": origin,
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        Vary: "Origin",
+      };
+    }
+  } catch {
+    // Invalid and untrusted origins receive no CORS permission.
+  }
+
+  return { "Cross-Origin-Resource-Policy": "same-origin" };
+}
+
+const shaderDocumentPattern = /\.(?:frag|vert|comp|glsl|slang|wgsl|sha\.json)$/i;
+
+export function collectTextureRoots(
+  workspaceFolders: readonly Pick<vscode.WorkspaceFolder, "uri">[] | undefined,
+  textDocuments: readonly Pick<vscode.TextDocument, "uri">[],
+): string[] {
+  const roots = new Set(workspaceFolders?.map((folder) => folder.uri.fsPath) ?? []);
+  for (const document of textDocuments) {
+    if (document.uri.scheme === "file" && shaderDocumentPattern.test(document.uri.fsPath)) {
+      roots.add(path.dirname(document.uri.fsPath));
+    }
+  }
+  return [...roots];
+}
+
+interface AuthorizedFile {
+  path: string;
+  identity: Pick<fs.Stats, "dev" | "ino">;
+}
+
+function resolveAuthorizedTextureFile(encodedPath: string, allowedRoots: readonly string[]): AuthorizedFile | undefined {
+  const decodedPath = decodePath(encodedPath);
+  if (!decodedPath || !path.isAbsolute(decodedPath)) {
+    return undefined;
+  }
+
+  try {
+    const resolvedPath = fs.realpathSync(decodedPath);
+    const allowed = allowedRoots
+      .map((root) => fs.realpathSync(root))
+      .some((root) => isWithinRoot(resolvedPath, root));
+    return allowed ? authorizeCanonicalFile(resolvedPath) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveAuthorizedUiAsset(requestPath: string, uiDistPath: string): AuthorizedFile | undefined {
+  const requestedAsset = requestPath === "/" ? "index.html" : requestPath.slice(1);
+  const decodedAsset = decodePath(requestedAsset);
+  if (!decodedAsset || path.isAbsolute(decodedAsset)) {
+    return undefined;
+  }
+
+  try {
+    const canonicalRoot = fs.realpathSync(uiDistPath);
+    const canonicalPath = fs.realpathSync(path.resolve(uiDistPath, `.${path.sep}${decodedAsset}`));
+    return isWithinRoot(canonicalPath, canonicalRoot) ? authorizeCanonicalFile(canonicalPath) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function authorizeCanonicalFile(canonicalPath: string): AuthorizedFile | undefined {
+  try {
+    const stats = fs.lstatSync(canonicalPath);
+    return stats.isFile() ? { path: canonicalPath, identity: stats } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodePath(encodedPath: string): string | undefined {
+  let decodedPath = encodedPath;
+  for (let index = 0; index < 4; index += 1) {
+    try {
+      const next = decodeURIComponent(decodedPath);
+      if (next === decodedPath) {
+        break;
+      }
+      decodedPath = next;
+    } catch {
+      // A percent sign in a valid filename becomes literal after its first
+      // decode; only the original request must itself be well-formed.
+      return index === 0 ? undefined : decodedPath;
+    }
+  }
+
+  if (decodedPath.split(/[\\/]+/).includes("..")) {
+    return undefined;
+  }
+  return decodedPath;
+}
+
+function isWithinRoot(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+export function parseRange(range: string, size: number): { start: number; end: number } | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!match || !size || (!match[1] && !match[2])) {
+    return undefined;
+  }
+
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+      return undefined;
+    }
+    return { start: Math.max(0, size - suffixLength), end: size - 1 };
+  }
+
+  const start = Number(match[1]);
+  const end = match[2] ? Number(match[2]) : size - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start) {
+    return undefined;
+  }
+  return { start, end: Math.min(end, size - 1) };
+}
+
+export function openRegularFile(
+  filePath: string,
+  expectedStats: Pick<fs.Stats, "dev" | "ino">,
+  callback: (error: NodeJS.ErrnoException | null, fd?: number, stats?: fs.Stats) => void,
+): void {
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  fs.open(filePath, fs.constants.O_RDONLY | noFollow, (openError, fd) => {
+    if (openError) {
+      callback(openError);
+      return;
+    }
+    fs.fstat(fd, (statError, stats) => {
+      if (statError || !stats.isFile() || stats.dev !== expectedStats.dev || stats.ino !== expectedStats.ino) {
+        fs.close(fd, () => callback(statError ?? Object.assign(new Error("Not a regular file"), { code: "EISDIR" })));
+        return;
+      }
+      callback(null, fd, stats);
+    });
+  });
+}
+
 export class WebServer {
   private logger!: Logger;
   private isServerRunning = false;
@@ -80,90 +261,106 @@ export class WebServer {
       : vscode.Uri.joinPath(this.context.extensionUri, "ui-dist").fsPath;
 
     this.httpServer = http.createServer((req, res) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
       if (req.method === "OPTIONS") {
-        res.writeHead(200);
+        const requestPath = this.getRequestPath(req.url);
+        const corsHeaders = requestPath.startsWith("/textures/")
+          ? getTextureCorsHeaders(req.headers.origin, httpPort)
+          : {};
+        res.writeHead(204, {
+          ...corsHeaders,
+          "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        });
         res.end();
         return;
       }
 
-      if (req.url?.startsWith("/textures/")) {
-        this.handleTextureRequest(req, res);
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.writeHead(405, { Allow: "GET, HEAD, OPTIONS" });
+        res.end();
         return;
       }
 
       const requestPath = this.getRequestPath(req.url);
-      let filePath = path.join(
-        uiDistPath,
-        requestPath === "/" ? "index.html" : requestPath,
-      );
+      if (requestPath.startsWith("/textures/")) {
+        this.handleTextureRequest(req, res);
+        return;
+      }
 
-      const resolvedPath = path.resolve(filePath);
-      const resolvedDistPath = path.resolve(uiDistPath);
-      if (!resolvedPath.startsWith(resolvedDistPath)) {
+      const authorizedFile = resolveAuthorizedUiAsset(requestPath, uiDistPath);
+      if (!authorizedFile) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
       }
 
-      fs.readFile(filePath, (err, data) => {
-        if (err) {
+      openRegularFile(authorizedFile.path, authorizedFile.identity, (openError, fd) => {
+        if (openError || fd === undefined) {
           res.writeHead(404);
           res.end("File not found");
           return;
         }
 
-        // Inject WebSocket port for index.html
-        if (path.basename(filePath) === "index.html") {
-          let htmlContent = data.toString();
-          htmlContent = injectPortIntoHtml(htmlContent, this.webSocketPort);
-          data = Buffer.from(htmlContent);
-        }
+        fs.readFile(fd, (err, data) => {
+          fs.close(fd, () => undefined);
+          if (err) {
+            res.writeHead(404);
+            res.end("File not found");
+            return;
+          }
 
-        const ext = path.extname(filePath);
-        let contentType = "text/html";
-        switch (ext) {
-          case ".js":
-            contentType = "application/javascript";
-            break;
-          case ".css":
-            contentType = "text/css";
-            break;
-          case ".json":
-            contentType = "application/json";
-            break;
-          case ".png":
-            contentType = "image/png";
-            break;
-          case ".jpg":
-          case ".jpeg":
-            contentType = "image/jpeg";
-            break;
-          case ".mp4":
-            contentType = "video/mp4";
-            break;
-          case ".ttf":
-            contentType = "font/ttf";
-            break;
-          case ".woff":
-            contentType = "font/woff";
-            break;
-          case ".woff2":
-            contentType = "font/woff2";
-            break;
-          case ".svg":
-            contentType = "image/svg+xml";
-            break;
-          case ".wasm":
-            contentType = "application/wasm";
-            break;
-        }
+          // Inject WebSocket port for index.html
+          if (path.basename(authorizedFile.path) === "index.html") {
+            let htmlContent = data.toString();
+            htmlContent = injectPortIntoHtml(htmlContent, this.webSocketPort);
+            data = Buffer.from(htmlContent);
+          }
 
-        res.writeHead(200, { "Content-Type": contentType });
-        res.end(data);
+          const ext = path.extname(authorizedFile.path);
+          let contentType = "text/html";
+          switch (ext) {
+            case ".js":
+              contentType = "application/javascript";
+              break;
+            case ".css":
+              contentType = "text/css";
+              break;
+            case ".json":
+              contentType = "application/json";
+              break;
+            case ".png":
+              contentType = "image/png";
+              break;
+            case ".jpg":
+            case ".jpeg":
+              contentType = "image/jpeg";
+              break;
+            case ".mp4":
+              contentType = "video/mp4";
+              break;
+            case ".ttf":
+              contentType = "font/ttf";
+              break;
+            case ".woff":
+              contentType = "font/woff";
+              break;
+            case ".woff2":
+              contentType = "font/woff2";
+              break;
+            case ".svg":
+              contentType = "image/svg+xml";
+              break;
+            case ".wasm":
+              contentType = "application/wasm";
+              break;
+          }
+
+          res.writeHead(200, { "Content-Type": contentType });
+          if (req.method === "HEAD") {
+            res.end();
+          } else {
+            res.end(data);
+          }
+        });
       });
     });
 
@@ -193,6 +390,11 @@ export class WebServer {
     res: http.ServerResponse,
   ): void {
     Logger.trace(`WebServer: Received request for: ${req.url}`);
+    for (const [name, value] of Object.entries(
+      getTextureCorsHeaders(req.headers.origin, this.getWebServerPort()),
+    )) {
+      res.setHeader(name, value);
+    }
     
     if (!req.url) {
       Logger.trace('WebServer: No URL in request');
@@ -201,111 +403,110 @@ export class WebServer {
       return;
     }
 
-    if (!req.url.startsWith("/textures/")) {
+    const requestPath = this.getRequestPath(req.url);
+    if (!requestPath.startsWith("/textures/")) {
       Logger.trace(`WebServer: Invalid texture URL: ${req.url}`);
       res.writeHead(400);
       res.end("Invalid texture URL");
       return;
     }
 
-    const encodedPath = req.url.replace("/textures/", "");
-    const texturePath = decodeURIComponent(encodedPath);
+    const encodedPath = requestPath.slice("/textures/".length);
+    const authorizedFile = resolveAuthorizedTextureFile(encodedPath, this.getTextureRoots());
+    const texturePath = authorizedFile?.path;
     
     Logger.trace(`WebServer: Encoded path: ${encodedPath}`);
     Logger.trace(`WebServer: Decoded path: ${texturePath}`);
 
-    if (!fs.existsSync(texturePath)) {
-      Logger.trace(`WebServer: File not found: ${texturePath}`);
-      res.writeHead(404);
-      res.end("Texture not found");
-      return;
-    }
-
-    const stats = fs.statSync(texturePath);
-    if (!stats.isFile()) {
-      Logger.trace(`WebServer: Not a file: ${texturePath}`);
+    if (!authorizedFile || !texturePath) {
+      Logger.trace("WebServer: Rejected texture path outside allowed workspace roots");
       res.writeHead(403);
       res.end("Invalid texture path");
       return;
     }
 
-    Logger.trace(`WebServer: Serving file: ${texturePath} (${stats.size} bytes)`);
-
-    // Handle range requests for video files
-    const range = req.headers.range;
-    if (range && this.isVideoFile(texturePath)) {
-      Logger.trace(`WebServer: Video range request: ${range}`);
-      this.handleVideoRangeRequest(req, res, texturePath, stats);
-      return;
-    }
-
-    fs.readFile(texturePath, (err, data) => {
-      if (err) {
-        this.logger.error(`Failed to read texture file ${texturePath}: ${err}`);
+    openRegularFile(texturePath, authorizedFile.identity, (openError, fd, stats) => {
+      if (openError || fd === undefined || !stats) {
         res.writeHead(404);
         res.end("Texture file not found");
         return;
       }
 
-      const ext = path.extname(texturePath).toLowerCase();
-      let contentType = "image/png";
-      switch (ext) {
-        case ".jpg":
-        case ".jpeg":
-          contentType = "image/jpeg";
-          break;
-        case ".png":
-          contentType = "image/png";
-          break;
-        case ".svg":
-          contentType = "image/svg+xml";
-          break;
-        case ".gif":
-          contentType = "image/gif";
-          break;
-        case ".bmp":
-          contentType = "image/bmp";
-          break;
-        case ".webm":
-          contentType = "video/webm";
-          break;
-        case ".mp4":
-          contentType = "video/mp4";
-          break;
-        case ".mov":
-          contentType = "video/quicktime";
-          break;
-        case ".avi":
-          contentType = "video/x-msvideo";
-          break;
-        default:
-          contentType = "application/octet-stream";
+      Logger.trace(`WebServer: Serving file: ${texturePath} (${stats.size} bytes)`);
+
+      if (req.headers.range) {
+        this.handleRangeRequest(req, res, texturePath, fd, stats);
+        return;
       }
 
-      res.writeHead(200, {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=3600",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Range",
-        "Accept-Ranges": "bytes",
-        "Cross-Origin-Resource-Policy": "cross-origin",
-        "Cross-Origin-Embedder-Policy": "unsafe-none",
-        "Cross-Origin-Opener-Policy": "cross-origin",
+      fs.readFile(fd, (err, data) => {
+        fs.close(fd, () => undefined);
+        if (err) {
+          this.logger.error(`Failed to read texture file ${texturePath}: ${err}`);
+          res.writeHead(404);
+          res.end("Texture file not found");
+          return;
+        }
+
+        const ext = path.extname(texturePath).toLowerCase();
+        let contentType = "image/png";
+        switch (ext) {
+          case ".jpg":
+          case ".jpeg":
+            contentType = "image/jpeg";
+            break;
+          case ".png":
+            contentType = "image/png";
+            break;
+          case ".svg":
+            contentType = "image/svg+xml";
+            break;
+          case ".gif":
+            contentType = "image/gif";
+            break;
+          case ".bmp":
+            contentType = "image/bmp";
+            break;
+          case ".webm":
+            contentType = "video/webm";
+            break;
+          case ".mp4":
+            contentType = "video/mp4";
+            break;
+          case ".mov":
+            contentType = "video/quicktime";
+            break;
+          case ".avi":
+            contentType = "video/x-msvideo";
+            break;
+          default:
+            contentType = "application/octet-stream";
+        }
+
+        res.writeHead(200, {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=3600",
+          "Accept-Ranges": "bytes",
+          ...getTextureCorsHeaders(req.headers.origin, this.getWebServerPort()),
+        });
+        if (req.method === "HEAD") {
+          res.end();
+        } else {
+          res.end(data);
+        }
       });
-      res.end(data);
     });
   }
 
-  private isVideoFile(filePath: string): boolean {
-    const ext = path.extname(filePath).toLowerCase();
-    return ['.webm', '.mp4', '.mov', '.avi'].includes(ext);
+  private getTextureRoots(): readonly string[] {
+    return collectTextureRoots(vscode.workspace.workspaceFolders, vscode.workspace.textDocuments);
   }
 
-  private handleVideoRangeRequest(
+  private handleRangeRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     filePath: string,
+    fd: number,
     stats: fs.Stats
   ): void {
     const range = req.headers.range;
@@ -314,13 +515,18 @@ export class WebServer {
     if (!range) {
       Logger.trace('WebServer: No range header, sending entire file');
       // No range header, send entire file
-      fs.createReadStream(filePath).pipe(res);
+      fs.createReadStream(filePath, { fd, autoClose: true }).pipe(res);
       return;
     }
 
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+    const parsedRange = parseRange(range, stats.size);
+    if (!parsedRange) {
+      fs.close(fd, () => undefined);
+      res.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+      res.end();
+      return;
+    }
+    const { start, end } = parsedRange;
     const chunksize = (end - start) + 1;
 
     Logger.trace(`WebServer: Range ${start}-${end}/${stats.size} (${chunksize} bytes)`);
@@ -330,18 +536,19 @@ export class WebServer {
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
       'Content-Type': this.getContentType(filePath),
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Range',
-      'Cross-Origin-Resource-Policy': 'cross-origin',
-      'Cross-Origin-Embedder-Policy': 'unsafe-none',
-      'Cross-Origin-Opener-Policy': 'cross-origin',
+      ...getTextureCorsHeaders(req.headers.origin, this.getWebServerPort()),
     });
 
     Logger.trace(`WebServer: 206 response bytes ${start}-${end}/${stats.size}, `
       + `${chunksize} bytes, ${this.getContentType(filePath)}`);
 
-    const stream = fs.createReadStream(filePath, { start, end });
+    if (req.method === "HEAD") {
+      fs.close(fd, () => undefined);
+      res.end();
+      return;
+    }
+
+    const stream = fs.createReadStream(filePath, { fd, autoClose: true, start, end });
     stream.on('error', (error) => {
       console.error(`WebServer: Stream error: ${error}`);
       res.end();
