@@ -303,9 +303,8 @@ test.describe('Shader language servers in VS Code', () => {
   });
 
   test('sees the macros the common file defines', async ({ vscode }) => {
-    // Every document is preprocessed on its own, so a #define in the common
-    // file used to leave no symbol behind: a shader built on common macros -
-    // the usual way these files are written - lit up as undefined identifiers.
+    // Every document is preprocessed on its own, so a #define in the configured
+    // Common pass used to leave no symbol behind and lit up as undefined.
     const document = await openDiagnosticDocument(vscode, join(fixturePath, 'image.glsl'));
 
     const undefinedIdentifiers = document.diagnostics
@@ -334,7 +333,7 @@ test.describe('Shader language servers in VS Code', () => {
     expect(result.rename[0].edits.map((item) => item.line).sort((a, b) => a - b)).toEqual([8, 9]);
     expect(result.rename[0].edits.every((item) => item.newText === 'screenUv')).toBeTruthy();
 
-    // `twice` is declared in the included common.glsl. Cross-file rename
+    // `twice` is declared in the configured Common pass. Cross-file rename
     // (3c498bfb) edits the declaration there and the call here in one edit.
     expect(result.includedRename.map((item) => ({ file: item.path.split('/').pop(), edits: item.edits }))
       .sort((left, right) => left.file.localeCompare(right.file))).toEqual([

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { waitForAnimationFrames } from './observable-state.mjs';
 
 // iMouse follows Shadertoy: xy only tracks the pointer while a button is
 // held, z is positive while held, and w is positive only on the click frame.
@@ -42,14 +43,18 @@ for (const language of ['glsl', 'wgsl']) {
     // Hovering without a button must not move iMouse.xy.
     await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
     await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 5 });
-    await page.waitForTimeout(250);
-    expect(await centrePixel(canvas)).toEqual([0, 0, 0]);
+    for (let frame = 0; frame < 12; frame += 1) {
+      await waitForAnimationFrames(page);
+      expect(await centrePixel(canvas)).toEqual([0, 0, 0]);
+    }
 
     // Held: xy and z are set, but w only signalled the click frame.
     await page.mouse.down();
     await expect.poll(() => centrePixel(canvas)).toEqual([255, 255, 0]);
-    await page.waitForTimeout(250);
-    expect(await centrePixel(canvas)).toEqual([255, 255, 0]);
+    for (let frame = 0; frame < 12; frame += 1) {
+      await waitForAnimationFrames(page);
+      expect(await centrePixel(canvas)).toEqual([255, 255, 0]);
+    }
 
     // Released: z goes negative and xy stays at the last drag position.
     await page.mouse.up();

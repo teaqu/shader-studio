@@ -8,6 +8,7 @@ import type { ShaderDebugState } from "../types/ShaderDebugState";
 import type { Transport } from "../transport/MessageTransport";
 import { persistConfig } from "../config/ConfigPersistence";
 import { getSyncWithConfigPreference, saveSyncWithConfigPreference } from "../stores/resolutionSyncStore";
+import { DEFAULT_ASPECT_RATIO_MODE } from "../stores/aspectRatioStore";
 import {
   buildRuntimeConfig,
   createDefaultConfig,
@@ -488,7 +489,7 @@ export class ResolutionSessionController {
   ): void {
     if (!settings) {
       this.deps.resolutionStore.setSessionSettings({ scale: 1 });
-      this.deps.aspectRatioStore.setSessionMode("auto");
+      this.deps.aspectRatioStore.setSessionMode(DEFAULT_ASPECT_RATIO_MODE);
       return;
     }
 
@@ -499,7 +500,9 @@ export class ResolutionSessionController {
     }
 
     this.deps.resolutionStore.setSessionSettings(settings);
-    this.deps.aspectRatioStore.setSessionMode(settings?.aspectRatio ?? this._state.imageAspectOverride ?? "auto");
+    this.deps.aspectRatioStore.setSessionMode(
+      settings?.aspectRatio ?? this._state.imageAspectOverride ?? DEFAULT_ASPECT_RATIO_MODE,
+    );
   }
 
   private applyBufferPreviewState(resolution?: { width?: number; height?: number; scale?: number }): void {
