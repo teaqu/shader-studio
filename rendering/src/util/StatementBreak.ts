@@ -1,3 +1,5 @@
+import { stripLineComment } from "./ShaderText";
+
 /**
  * A capture is the shader truncated at the inspected line, so it only compiles
  * when everything above that line does. Finding where the source stops being
@@ -118,7 +120,7 @@ export function firstUnterminatedStatementLine(code: string): number | null {
 /** The next line with code on it, stripped of comments and indentation. */
 function nextCode(lines: string[], index: number): string {
   for (let next = index + 1; next < lines.length; next += 1) {
-    const text = lines[next].replace(/\/\/.*$/, "").trim();
+    const text = stripLineComment(lines[next]).trim();
     if (text.length > 0) {
       return text;
     }
@@ -182,23 +184,136 @@ export function enclosingFunctionRange(code: string, line: number): { start: num
   return found ? { start: found.start + 1, end: found.end + 1 } : null;
 }
 
-/** `type name(...)` in GLSL and Slang. */
-const C_SIGNATURE = /^\s*(\w[\w<>, ]*?)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
-/** WGSL `fn name(...) -> @attr type`; the return type is absent for no value. */
-const WGSL_SIGNATURE = /^\s*(?:@\w+(?:\([^)]*\))?\s*)*fn\s+\w+\s*\([^;]*\)\s*(?:->\s*(?:@\w+(?:\([^)]*\))?\s*)*([^{]*?))?\s*\{?\s*$/;
-
 /** The return type a signature line declares, or null when it is not one. */
 function signatureReturnType(text: string): string | null {
-  const wgsl = text.match(WGSL_SIGNATURE);
-  if (wgsl) {
-    return wgsl[1]?.trim() || "void";
+  const signature = text.trim();
+  const wgsl = wgslSignatureReturnType(signature);
+  if (wgsl !== null) {
+    return wgsl;
   }
-  return text.match(C_SIGNATURE)?.[1]?.trim() ?? null;
+  const open = signature.indexOf("(");
+  if (open === -1) {
+    return null;
+  }
+  const close = consumeBalanced(signature, open);
+  if (close === -1 || !onlyOptionalBrace(signature, close)) {
+    return null;
+  }
+  const header = signature.slice(0, open).trimEnd();
+  let nameStart = header.length;
+  while (nameStart > 0 && isIdentifierPart(header[nameStart - 1]!)) {
+    nameStart--;
+  }
+  const returnType = header.slice(0, nameStart).trim();
+  return nameStart < header.length && returnType ? returnType : null;
+}
+
+function wgslSignatureReturnType(signature: string): string | null {
+  let index = skipAttributes(signature, 0);
+  if (!startsWord(signature, index, "fn")) {
+    return null;
+  }
+  index = skipWhitespace(signature, index + 2);
+  index = consumeIdentifier(signature, index);
+  if (index === -1) {
+    return null;
+  }
+  index = skipWhitespace(signature, index);
+  if (signature[index] !== "(") {
+    return null;
+  }
+  index = consumeBalanced(signature, index);
+  if (index === -1) {
+    return null;
+  }
+  index = skipWhitespace(signature, index);
+  if (!signature.startsWith("->", index)) {
+    return onlyOptionalBrace(signature, index) ? "void" : null;
+  }
+  index = skipAttributes(signature, skipWhitespace(signature, index + 2));
+  const brace = signature.indexOf("{", index);
+  const returnType = signature.slice(index, brace === -1 ? signature.length : brace).trim();
+  if (!returnType || (brace !== -1 && signature.slice(brace + 1).trim() !== "")) {
+    return null;
+  }
+  return returnType;
+}
+
+function skipAttributes(text: string, start: number): number {
+  let index = skipWhitespace(text, start);
+  while (text[index] === "@") {
+    index = consumeIdentifier(text, index + 1);
+    if (index === -1) {
+      return text.length;
+    }
+    index = skipWhitespace(text, index);
+    if (text[index] === "(") {
+      index = consumeBalanced(text, index);
+      if (index === -1) {
+        return text.length;
+      }
+    }
+    index = skipWhitespace(text, index);
+  }
+  return index;
+}
+
+function consumeBalanced(text: string, open: number): number {
+  let depth = 1;
+  for (let index = open + 1; index < text.length; index++) {
+    if (text[index] === ";") {
+      return -1;
+    }
+    if (text[index] === "(") {
+      depth++;
+    } else if (text[index] === ")" && --depth === 0) {
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+function consumeIdentifier(text: string, start: number): number {
+  if (!isIdentifierStart(text[start])) {
+    return -1;
+  }
+  let index = start + 1;
+  while (index < text.length && isIdentifierPart(text[index]!)) {
+    index++;
+  }
+  return index;
+}
+
+function startsWord(text: string, start: number, word: string): boolean {
+  return text.startsWith(word, start) && !isIdentifierPart(text[start + word.length] ?? "");
+}
+
+function onlyOptionalBrace(text: string, start: number): boolean {
+  const remainder = text.slice(start).trim();
+  return remainder === "" || remainder === "{";
+}
+
+function skipWhitespace(text: string, start: number): number {
+  let index = start;
+  while (index < text.length && /\s/.test(text[index]!)) {
+    index++;
+  }
+  return index;
+}
+
+function isIdentifierStart(character: string | undefined): boolean {
+  return character !== undefined && (character === "_"
+    || (character >= "a" && character <= "z")
+    || (character >= "A" && character <= "Z"));
+}
+
+function isIdentifierPart(character: string): boolean {
+  return isIdentifierStart(character) || (character >= "0" && character <= "9");
 }
 
 function enclosingFunction(lines: string[], line: number): { start: number; end: number; returnType: string } | null {
   for (let index = 0; index < lines.length; index += 1) {
-    const returnType = signatureReturnType(lines[index].replace(/\/\/.*$/, ""));
+    const returnType = signatureReturnType(stripLineComment(lines[index]));
     if (returnType === null) {
       continue;
     }
@@ -214,7 +329,7 @@ function blockEnd(lines: string[], start: number): number {
   let depth = 0;
   let opened = false;
   for (let index = start; index < lines.length; index += 1) {
-    for (const character of lines[index].replace(/\/\/.*$/, "")) {
+    for (const character of stripLineComment(lines[index])) {
       if (character === "{") {
         depth += 1;
         opened = true;
@@ -258,7 +373,7 @@ export function truncateFunctionBodyAt(code: string, line: number): string | nul
 
   let depth = 0;
   for (const text of lines.slice(enclosing.start, zeroBased)) {
-    for (const character of text.replace(/\/\/.*$/, "")) {
+    for (const character of stripLineComment(text)) {
       if (character === "{") {
         depth += 1;
       }

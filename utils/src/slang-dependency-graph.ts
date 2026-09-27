@@ -66,9 +66,7 @@ export function collectSlangDependencies(
 }
 
 function findSlangImports(source: string): SlangImport[] {
-  const withoutComments = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
+  const withoutComments = stripComments(source);
   const imports: SlangImport[] = [];
   for (const match of withoutComments.matchAll(IMPORT_PATTERN)) {
     const quotedPath = match[1];
@@ -150,7 +148,6 @@ export function resolveSlangIncludes(
   return { source: resolved_source, includedPaths };
 }
 
-const IMPORT_PATTERN_HOST = /^[ \t]*import[ \t]+((?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)|"[^"]+")[ \t]*;?[ \t]*$/gm;
 const MODULE_DECL_PATTERN = /^[ \t]*module\s+[A-Za-z_]\w*\s*;[ \t]*[\r\n]*/m;
 const IMPLEMENTING_DECL_PATTERN = /^[ \t]*implementing\s+[A-Za-z_]\w*\s*;[ \t]*[\r\n]*/m;
 
@@ -179,7 +176,11 @@ function resolveNested(
   readSource: (filePath: string) => string | null,
   visited: Set<string>,
 ): string {
-  return source.replace(IMPORT_PATTERN_HOST, (match: string, importPath: string) => {
+  return replaceSourceLines(source, (match) => {
+    const importPath = importPathFromLine(match);
+    if (importPath === null) {
+      return match;
+    }
     // Strip quotes for string form: "path/to/file.slang" → path/to/file.slang
     const cleanPath = importPath.startsWith('"')
       ? importPath.slice(1, -1)
@@ -205,4 +206,72 @@ function resolveNested(
 
     return inlined;
   });
+}
+
+function importPathFromLine(line: string): string | null {
+  let text = line.trim();
+  if (!text.startsWith("import") || (text[6] !== " " && text[6] !== "\t")) {
+    return null;
+  }
+  text = text.slice(7).trim();
+  if (text.endsWith(";")) {
+    text = text.slice(0, -1).trimEnd();
+  }
+  if (text.startsWith('"')) {
+    return text.length > 2 && text.endsWith('"') && !text.slice(1, -1).includes('"')
+      ? text
+      : null;
+  }
+  if (!text || !isIdentifierPath(text)) {
+    return null;
+  }
+  return text;
+}
+
+function isIdentifierPath(value: string): boolean {
+  return value.split(".").every((part) => /^[A-Za-z_]\w*$/.test(part));
+}
+
+function replaceSourceLines(source: string, replace: (line: string) => string): string {
+  let output = "";
+  let start = 0;
+  while (start < source.length) {
+    const newline = source.indexOf("\n", start);
+    const end = newline === -1 ? source.length : newline;
+    output += replace(source.slice(start, end));
+    if (newline === -1) {
+      return output;
+    }
+    output += "\n";
+    start = newline + 1;
+  }
+  return output;
+}
+
+function stripComments(source: string): string {
+  let output = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith("//", index)) {
+      const newline = source.indexOf("\n", index + 2);
+      if (newline === -1) {
+        break;
+      }
+      output += "\n";
+      index = newline + 1;
+      continue;
+    }
+    if (source.startsWith("/*", index)) {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) {
+        output += source.slice(index);
+        break;
+      }
+      index = end + 2;
+      continue;
+    }
+    output += source[index];
+    index++;
+  }
+  return output;
 }

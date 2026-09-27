@@ -147,10 +147,12 @@ function structFields(
 
 /** Element type of an indexed value: array elements, vector components, or matrix columns. */
 function indexedTypeName(typeName: string): string | undefined {
-  const array = /^(.+?)((?:\[\d*\])+)$/.exec(typeName);
-  if (array?.[1] && array[2]) {
-    const dimensions = array[2].match(/\[\d*\]/g) ?? [];
-    return dimensions.length > 1 ? `${array[1]}${dimensions.slice(1).join("")}` : array[1];
+  const firstDimension = typeName.indexOf("[");
+  if (firstDimension > 0 && isArraySuffix(typeName, firstDimension)) {
+    const nextDimension = typeName.indexOf("[", firstDimension + 1);
+    return nextDimension === -1
+      ? typeName.slice(0, firstDimension)
+      : `${typeName.slice(0, firstDimension)}${typeName.slice(nextDimension)}`;
   }
   const vector = vectorType(typeName);
   if (vector) {
@@ -158,4 +160,20 @@ function indexedTypeName(typeName: string): string | undefined {
   }
   const matrix = matrixType(typeName);
   return matrix ? vectorTypeName(matrix.componentType, matrix.rows) : undefined;
+}
+
+function isArraySuffix(typeName: string, start: number): boolean {
+  let index = start;
+  while (index < typeName.length) {
+    if (typeName[index++] !== "[") {
+      return false;
+    }
+    while (index < typeName.length && typeName[index] >= "0" && typeName[index] <= "9") {
+      index++;
+    }
+    if (typeName[index++] !== "]") {
+      return false;
+    }
+  }
+  return true;
 }

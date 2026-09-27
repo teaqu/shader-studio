@@ -22,4 +22,11 @@ describe('authored Slang declarations shared by renderer and language service', 
     const source = '// albedo\nstruct Data { float albedo; }; float inputs; void f() { float albedo; }';
     expect(findSlangAuthoredDeclarations(source).map(item => item.name)).toEqual(['Data', 'inputs', 'f']);
   });
+  it('blanks adversarial unterminated comments without backtracking or inventing declarations', () => {
+    const source = `float visible; /*${'a/*'.repeat(100_000)} float hidden;`;
+
+    expect(findSlangAuthoredDeclarations(source)).toEqual([
+      { name: 'visible', offset: source.indexOf('visible') },
+    ]);
+  });
 });

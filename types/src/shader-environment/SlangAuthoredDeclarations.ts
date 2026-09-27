@@ -64,9 +64,7 @@ function isIdentifier(token: SlangLexeme | undefined): token is SlangLexeme {
 
 export function findSlangAuthoredDeclarations(source: string): SlangAuthoredDeclaration[] {
   const declarations = new Set<SlangLexeme>();
-  const withoutComments = source
-    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\r\n]/g, " "))
-    .replace(/\/\/.*$/gm, "");
+  const withoutComments = blankComments(source);
   for (const match of withoutComments.matchAll(/^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)/gm)) {
     declarations.add({ value: match[1]!, offset: match.index! + match[0].lastIndexOf(match[1]!), lineStart: true });
   }
@@ -103,6 +101,34 @@ export function findSlangAuthoredDeclarations(source: string): SlangAuthoredDecl
     }
   }
   return [...new Map([...declarations].map(token => [token.offset, { name: token.value, offset: token.offset }])).values()];
+}
+
+function blankComments(source: string): string {
+  const output = [...source];
+  let index = 0;
+  while (index < source.length) {
+    let stop = index;
+    if (source.startsWith("//", index)) {
+      const newline = source.indexOf("\n", index + 2);
+      stop = newline === -1 ? source.length : newline;
+    } else if (source.startsWith("/*", index)) {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) {
+        break;
+      }
+      stop = end + 2;
+    }
+    if (stop > index) {
+      for (; index < stop; index++) {
+        if (source[index] !== "\r" && source[index] !== "\n") {
+          output[index] = " ";
+        }
+      }
+      continue;
+    }
+    index++;
+  }
+  return output.join("");
 }
 
 function addSlangDeclarationStatement(statement: readonly SlangLexeme[], declarations: Set<SlangLexeme>): void {

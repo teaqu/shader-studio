@@ -4,6 +4,7 @@ import {
   type GlslScope,
   type GlslSymbol,
 } from '@shader-studio/glsl-analysis';
+import { parenthesizedContents, stripLineComment } from './textScan';
 
 export interface FunctionInfo {
   name: string | null;
@@ -528,7 +529,7 @@ export class GlslParser {
     const signature = /^\s*(\w+)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
 
     for (let index = 0; index < lines.length; index += 1) {
-      const match = lines[index].replace(/\/\/.*$/, '').match(signature);
+      const match = stripLineComment(lines[index]).match(signature);
       if (!match) {
         continue;
       }
@@ -554,7 +555,7 @@ export class GlslParser {
     let opened = false;
 
     for (let index = start; index < lines.length; index += 1) {
-      for (const character of lines[index].replace(/\/\/.*$/, '')) {
+      for (const character of stripLineComment(lines[index])) {
         if (character === '{') {
           depth += 1;
           opened = true;
@@ -865,12 +866,12 @@ export class GlslParser {
   private static parseFunctionParametersLegacy(lines: string[], startLine: number): VarInfo[] {
     const parameters: VarInfo[] = [];
     const signature = GlslParser.getFullFunctionSignature(lines, startLine);
-    const paramsMatch = signature.match(/\(([^)]*)\)/);
-    if (!paramsMatch || !paramsMatch[1].trim()) {
+    const params = parenthesizedContents(signature);
+    if (!params?.trim()) {
       return parameters;
     }
 
-    for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
+    for (const pair of params.split(',').map(p => p.trim())) {
       const tokens = GlslParser.tokenize(pair);
       const declaration = GlslParser.parseDeclarationTokens(tokens);
       if (declaration) {

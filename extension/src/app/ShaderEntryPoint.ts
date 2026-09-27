@@ -10,13 +10,6 @@
  */
 
 /**
- * `mainImage(...)` followed by a body - Slang's trailing semantic (`: SV_Target`)
- * and WGSL's return type (`-> vec4<f32>`) included. Parameter lists hold neither braces nor statements, so a call or a
- * forward declaration, which ends in `;`, cannot match.
- */
-const MAIN_IMAGE_DEFINITION = /\bmainImage\s*\([^;{}()]*\)\s*(?::\s*[A-Za-z_]\w*\s*|->\s*(?:@\w+(?:\([^;{}]*\))?\s*)*[A-Za-z_]\w*(?:\s*<[^;{}]*>)?\s*)?\{/;
-
-/**
  * Comments and string literals, blanked out so what is left is code. Blanked
  * rather than deleted: removing them would join the tokens either side into
  * one, which is how a commented-out definition becomes a real-looking match.
@@ -69,5 +62,122 @@ export function stripCommentsAndStrings(code: string): string {
 
 /** True when the source defines the `mainImage` entry point, in GLSL, Slang, or WGSL. */
 export function definesMainImage(code: string): boolean {
-  return MAIN_IMAGE_DEFINITION.test(stripCommentsAndStrings(code));
+  const source = stripCommentsAndStrings(code);
+  let searchFrom = 0;
+  while (searchFrom < source.length) {
+    const nameStart = source.indexOf("mainImage", searchFrom);
+    if (nameStart === -1) {
+      return false;
+    }
+    const before = source[nameStart - 1];
+    const after = source[nameStart + "mainImage".length];
+    if ((!before || !isIdentifierPart(before)) && (!after || !isIdentifierPart(after))) {
+      const bodyStart = mainImageBodyStart(source, nameStart + "mainImage".length);
+      if (bodyStart !== -1) {
+        return true;
+      }
+    }
+    searchFrom = nameStart + "mainImage".length;
+  }
+  return false;
+}
+
+function mainImageBodyStart(source: string, start: number): number {
+  let index = skipWhitespace(source, start);
+  if (source[index] !== "(") {
+    return -1;
+  }
+  index = consumeDelimited(source, index, "(", ")");
+  if (index === -1) {
+    return -1;
+  }
+  index = skipWhitespace(source, index);
+
+  if (source[index] === ":") {
+    index = skipWhitespace(source, index + 1);
+    index = consumeIdentifier(source, index);
+    if (index === -1) {
+      return -1;
+    }
+    index = skipWhitespace(source, index);
+  } else if (source.startsWith("->", index)) {
+    index = skipWhitespace(source, index + 2);
+    while (source[index] === "@") {
+      index = consumeIdentifier(source, index + 1);
+      if (index === -1) {
+        return -1;
+      }
+      index = skipWhitespace(source, index);
+      if (source[index] === "(") {
+        index = consumeDelimited(source, index, "(", ")");
+        if (index === -1) {
+          return -1;
+        }
+        index = skipWhitespace(source, index);
+      }
+    }
+    index = consumeIdentifier(source, index);
+    if (index === -1) {
+      return -1;
+    }
+    index = skipWhitespace(source, index);
+    if (source[index] === "<") {
+      index = consumeDelimited(source, index, "<", ">");
+      if (index === -1) {
+        return -1;
+      }
+      index = skipWhitespace(source, index);
+    }
+  }
+
+  return source[index] === "{" ? index : -1;
+}
+
+function consumeDelimited(source: string, start: number, open: string, close: string): number {
+  if (source[start] !== open) {
+    return -1;
+  }
+  let depth = 1;
+  for (let index = start + 1; index < source.length; index++) {
+    const character = source[index]!;
+    if (character === ";" || character === "{") {
+      return -1;
+    }
+    if (character === open) {
+      depth++;
+    } else if (character === close && --depth === 0) {
+      return index + 1;
+    }
+  }
+  return -1;
+}
+
+function consumeIdentifier(source: string, start: number): number {
+  if (!isIdentifierStart(source[start])) {
+    return -1;
+  }
+  let index = start + 1;
+  while (isIdentifierPart(source[index])) {
+    index++;
+  }
+  return index;
+}
+
+function skipWhitespace(source: string, start: number): number {
+  let index = start;
+  while (index < source.length && source.charCodeAt(index) <= 32) {
+    index++;
+  }
+  return index;
+}
+
+function isIdentifierStart(character: string | undefined): boolean {
+  return character !== undefined && (character === "_"
+    || (character >= "a" && character <= "z")
+    || (character >= "A" && character <= "Z"));
+}
+
+function isIdentifierPart(character: string | undefined): boolean {
+  return isIdentifierStart(character)
+    || (character !== undefined && character >= "0" && character <= "9");
 }
