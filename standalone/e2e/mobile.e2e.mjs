@@ -50,3 +50,16 @@ test('touch input survives cancellation and remains usable after orientation cha
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(canvas).toBeVisible();
 });
+
+test('small desktop windows keep mobile navigation in a bottom row', async ({ page }) => {
+  await page.setViewportSize({ width: 724, height: 900 });
+  await page.goto('/');
+
+  const navigation = page.getByRole('navigation', { name: 'Workspace panels' });
+  await expect(navigation).toBeVisible();
+  const box = await navigation.boundingBox();
+
+  expect(box).not.toBeNull();
+  expect(box.width).toBeGreaterThan(700);
+  expect(box.height).toBeLessThan(80);
+});
