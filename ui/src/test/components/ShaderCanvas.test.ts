@@ -180,6 +180,19 @@ describe('ShaderCanvas Component', () => {
   });
 
   describe('Click vs Drag Detection', () => {
+    it('cancels a pending touch inspection when the gesture is interrupted', async () => {
+      const onCanvasClick = vi.fn();
+      const { container } = render(ShaderCanvas, { props: { ...defaultProps, onCanvasClick, isInspectorActive: true } });
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+
+      await fireEvent.pointerDown(canvas, { clientX: 100, clientY: 100, pointerId: 2 });
+      await fireEvent.pointerCancel(canvasContainer, { pointerId: 2 });
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+
+      expect(onCanvasClick).not.toHaveBeenCalled();
+    });
+
     it('should trigger onCanvasClick when clicking without dragging', async () => {
       const onCanvasClick = vi.fn();
       const { container } = render(ShaderCanvas, {

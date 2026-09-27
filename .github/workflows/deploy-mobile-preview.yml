@@ -1,0 +1,63 @@
+name: Deploy Mobile Preview
+
+on:
+  push:
+    branches: [mobile]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  VITE_BUILD_ID: ${{ github.sha }}
+  VITE_PREVIEW_CHANNEL: mobile
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: mobile-preview
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # The fork has a different Pages origin from the production application.
+    # This guard prevents the workflow from publishing if the branch is later
+    # copied into the canonical repository before the epic exit gate.
+    if: github.repository == 'teaqu/shader-studio-dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout mobile branch
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build identifiable mobile preview
+        run: npm run build:standalone
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload mobile preview
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: standalone/dist
+
+  deploy:
+    if: github.repository == 'teaqu/shader-studio-dev'
+    environment:
+      name: mobile-preview
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy isolated preview
+        id: deployment
+        uses: actions/deploy-pages@v4

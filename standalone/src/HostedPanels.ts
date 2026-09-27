@@ -55,12 +55,20 @@ export class HostedPanels implements PanelHost {
   private readonly renderers = new Map<HostedPanelId, HostedPanelRenderer>();
   private suppressClose = 0;
   private resetDefaultLayout: () => void = () => {};
+  private lastSelectedTool: HostedPanelId = 'config';
+  private activePanelListener: DockviewIDisposable | null = null;
 
   connect(api: DockviewApi, resetDefaultLayout: () => void = () => {}): void {
     this.removeListener?.dispose();
+    this.activePanelListener?.dispose();
     this.api = api;
     this.resetDefaultLayout = resetDefaultLayout;
     this.removeListener = api.onDidRemovePanel((panel) => this.panelRemoved(panel.id));
+    this.activePanelListener = api.onDidActivePanelChange?.((panel) => {
+      if (panel && isHostedPanelId(panel.id)) {
+        this.lastSelectedTool = panel.id;
+      }
+    }) ?? null;
   }
 
   createRenderer(id: HostedPanelId): IContentRenderer {
@@ -126,6 +134,23 @@ export class HostedPanels implements PanelHost {
     }
   }
 
+  /** Opens a tool without coupling phone navigation to Dockview's layout. */
+  showTool(id: HostedPanelId): HostedPanelId {
+    this.lastSelectedTool = id;
+    this.setVisible(id, true);
+    this.api?.getPanel(id)?.api.setActive();
+    return id;
+  }
+
+  /** Restores the most recent tool when the phone Tools destination is selected. */
+  showLastSelectedTool(): HostedPanelId {
+    return this.showTool(this.lastSelectedTool);
+  }
+
+  getLastSelectedTool(): HostedPanelId {
+    return this.lastSelectedTool;
+  }
+
   resetLayout(run: () => void = this.resetDefaultLayout): void {
     this.suppressClose++;
     try {
@@ -139,6 +164,8 @@ export class HostedPanels implements PanelHost {
   dispose(): void {
     this.removeListener?.dispose();
     this.removeListener = null;
+    this.activePanelListener?.dispose();
+    this.activePanelListener = null;
     this.api = null;
     for (const renderer of this.renderers.values()) {
       renderer.detach();

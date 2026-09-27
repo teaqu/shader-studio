@@ -16,6 +16,7 @@ vi.mock('@shader-studio/ui', async () => {
 
 import App from '../App.svelte';
 import type { WebTransport } from '../WebTransport';
+import type { PwaController, PwaStatus } from '../pwa';
 import {
   selectEditor, getSelectedEditor, requestEditor, getRequestedEditor, getNewShaderVisible,
   getRequestedPanel,
@@ -29,6 +30,12 @@ type TestTransport = WebTransport & {
   postMessage: ReturnType<typeof vi.fn>;
   getShaderExplorerHostApi: ReturnType<typeof vi.fn>;
   clearWorkspace: ReturnType<typeof vi.fn>;
+  flush: ReturnType<typeof vi.fn>;
+  exportWorkspaceBackup: ReturnType<typeof vi.fn>;
+  importWorkspaceBackup: ReturnType<typeof vi.fn>;
+  onPersistenceStatus: ReturnType<typeof vi.fn>;
+  getStorageStatus: ReturnType<typeof vi.fn>;
+  requestPersistentStorage: ReturnType<typeof vi.fn>;
 };
 
 function createTransport(): TestTransport {
@@ -36,7 +43,32 @@ function createTransport(): TestTransport {
     postMessage: vi.fn(),
     getShaderExplorerHostApi: vi.fn(() => ({ getShaders: vi.fn() })),
     clearWorkspace: vi.fn().mockResolvedValue(undefined),
+    flush: vi.fn().mockResolvedValue(undefined),
+    exportWorkspaceBackup: vi.fn().mockResolvedValue('{"workspace":true}'),
+    importWorkspaceBackup: vi.fn().mockResolvedValue(undefined),
+    onPersistenceStatus: vi.fn((listener) => {
+      listener({ state: 'saved' });
+      return vi.fn();
+    }),
+    getStorageStatus: vi.fn().mockResolvedValue({ backend: 'indexeddb', persisted: false, persistSupported: true }),
+    requestPersistentStorage: vi.fn().mockResolvedValue({ backend: 'indexeddb', persisted: true, persistSupported: true }),
   } as unknown as TestTransport;
+}
+
+function createPwa(status: Partial<PwaStatus> = {}): PwaController & { applyUpdate: ReturnType<typeof vi.fn> } {
+  return {
+    start: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn((listener: (value: PwaStatus) => void) => {
+      listener({ supported: true, online: true, updateAvailable: false, buildId: 'abc123', offlinePreparation: { state: 'idle' }, ...status });
+      return vi.fn();
+    }),
+    applyUpdate: vi.fn().mockResolvedValue(undefined),
+    checkForUpdate: vi.fn().mockResolvedValue(undefined),
+    prepareOffline: vi.fn().mockResolvedValue(undefined),
+    retryOfflinePreparation: vi.fn().mockResolvedValue(undefined),
+    cancelOfflinePreparation: vi.fn(),
+    dispose: vi.fn(),
+  };
 }
 
 function createStorage(): Storage {
@@ -61,6 +93,8 @@ describe('standalone App', () => {
     layoutStub.togglePanel.mockReset();
     layoutStub.isPanelVisible.mockReset().mockReturnValue(true);
     layoutStub.resetLayout.mockReset();
+    layoutStub.isMobileLayout.mockReset().mockReturnValue(false);
+    layoutStub.selectMobilePanel.mockReset();
     resetShellState();
     setViewerSession(null);
     vi.stubGlobal('localStorage', createStorage());
@@ -123,6 +157,75 @@ describe('standalone App', () => {
     expect(layoutStub.resetLayout).toHaveBeenCalledOnce();
   });
 
+  it('surfaces durable save, connectivity, build, and update state', async () => {
+    const transport = createTransport();
+    transport.onPersistenceStatus.mockImplementation((listener) => {
+      listener({ state: 'error', error: new Error('quota') });
+      return vi.fn();
+    });
+    const pwa = createPwa({ online: false, updateAvailable: true, buildId: 'mobile-42' });
+    render(App, { props: { transport, pwa } });
+
+    expect(screen.getByText('Offline · Save failed').getAttribute('title')).toBe('Build mobile-42');
+    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+    expect(transport.flush).toHaveBeenCalledOnce();
+    expect(pwa.applyUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('reports session-only storage and exposes explicit offline preparation', async () => {
+    const transport = createTransport();
+    transport.getStorageStatus.mockResolvedValue({ backend: 'session', persisted: false, persistSupported: false });
+    const pwa = createPwa();
+    render(App, { props: { transport, pwa } });
+
+    await waitFor(() => expect(screen.getByText('Online · Session-only')).toBeTruthy());
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Prepare Offline Compilers' }));
+    expect(pwa.prepareOffline).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('requests eviction protection only from a user action', async () => {
+    const transport = createTransport();
+    render(App, { props: { transport } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    const protect = await screen.findByRole('button', { name: 'Protect local storage' });
+    expect(transport.requestPersistentStorage).not.toHaveBeenCalled();
+    await fireEvent.click(protect);
+    expect(transport.requestPersistentStorage).toHaveBeenCalledOnce();
+  });
+
+  it('exports a portable workspace backup from the Workspace menu', async () => {
+    const transport = createTransport();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:backup'), revokeObjectURL: vi.fn() });
+    render(App, { props: { transport } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+
+    expect(transport.exportWorkspaceBackup).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+  });
+
+  it('validates a selected backup through the transport and reports import failure without reloading', async () => {
+    const transport = createTransport();
+    transport.importWorkspaceBackup.mockRejectedValueOnce(new Error('Backup format or version is not supported.'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { container } = render(App, { props: { transport } });
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [{ text: vi.fn().mockResolvedValue('{"format":"wrong"}') }],
+    });
+
+    await fireEvent.change(input);
+
+    await waitFor(() => expect(transport.importWorkspaceBackup).toHaveBeenCalledWith('{"format":"wrong"}', { replace: true }));
+    expect(screen.getByRole('alert').textContent).toContain('Backup format or version is not supported.');
+  });
+
   it('reacts to a requested panel command and consumes it', async () => {
     render(App, { props: { transport: createTransport() } });
 
@@ -133,6 +236,21 @@ describe('standalone App', () => {
     layoutStub.showPanel.mockClear();
     await tick();
     expect(layoutStub.showPanel).not.toHaveBeenCalled();
+  });
+
+  it('routes host navigation through the one-panel mobile shell', async () => {
+    layoutStub.isMobileLayout.mockReturnValue(true);
+    render(App, { props: { transport: createTransport() } });
+
+    requestPanel('explorer');
+    await tick();
+    expect(layoutStub.selectMobilePanel).toHaveBeenCalledWith('explorer');
+    expect(layoutStub.showPanel).not.toHaveBeenCalled();
+
+    requestEditor('/shaders/mobile.glsl');
+    await tick();
+    expect(layoutStub.openEditor).toHaveBeenCalledWith('/shaders/mobile.glsl');
+    expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
   });
 
   it('creates a shader when requested by the explorer and closes it after submission or cancellation', async () => {

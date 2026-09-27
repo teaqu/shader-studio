@@ -113,6 +113,51 @@ describe('workspaceRecordWrites', () => {
 });
 
 describe('VirtualWorkspace', () => {
+  it('publishes save state changes and recovers from a failed background save', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, []);
+    const states: string[] = [];
+    const unsubscribe = workspace.onPersistenceStatus(status => states.push(status.state));
+    const save = store.save.bind(store);
+    store.save = async () => {
+      throw new Error('disk full');
+    };
+    workspace.writeText('/shaders/main.glsl', 'first');
+    await expect(workspace.flush()).rejects.toThrow('disk full');
+    expect(workspace.persistenceStatus).toMatchObject({ state: 'error', error: expect.any(Error) });
+    store.save = save;
+    workspace.writeText('/shaders/main.glsl', 'recovered');
+    await workspace.flush();
+    expect(workspace.persistenceStatus).toEqual({ state: 'saved' });
+    expect(states).toEqual(expect.arrayContaining(['saved', 'saving', 'error']));
+    unsubscribe();
+  });
+
+  it('exports the current snapshot and imports only after explicit replacement confirmation', async () => {
+    const source = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    source.writeText('/shaders/exported.glsl', 'exported');
+    const backup = source.exportBackup();
+    const target = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+
+    await expect(target.importBackup(backup)).rejects.toThrow('contains files');
+    expect(target.list()).toEqual(seedFiles);
+    await target.importBackup(backup, { replace: true });
+    expect(target.list()).toEqual([expect.objectContaining({ path: '/shaders/exported.glsl', contents: 'exported' })]);
+  });
+
+  it('does not alter memory or storage when backup validation or persistence fails', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    await expect(workspace.importBackup('{bad', { replace: true })).rejects.toThrow('valid JSON');
+    expect(workspace.list()).toEqual(seedFiles);
+    store.save = async () => {
+      throw new Error('disk full');
+    };
+    const backup = JSON.stringify({ format: 'shader-studio-workspace', version: 1, files: [] });
+    await expect(workspace.importBackup(backup, { replace: true })).rejects.toThrow('disk full');
+    expect(workspace.list()).toEqual(seedFiles);
+  });
+
   it('coalesces queued saves so a typing burst writes once more, not once each', async () => {
     // Every save carries a complete snapshot, so a queued-but-unstarted write
     // is superseded by the next one. Without coalescing, N keystrokes queue N

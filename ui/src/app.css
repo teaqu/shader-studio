@@ -1799,3 +1799,47 @@ canvas {
   padding: 8px 16px;
   background: var(--vscode-editor-background);
 }
+
+/* The standalone shell owns panel switching on phones. These rules keep the
+ * shared controls usable there without changing desktop sizing or docking. */
+@media (max-width: 767px) {
+  body:has(.standalone-app),
+  body:has(.standalone-app) #app,
+  .standalone-app { min-height: 100dvh; }
+
+  body:has(.standalone-app) {
+    min-width: 320px;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .standalone-app button,
+  .standalone-app input,
+  .standalone-app select,
+  .standalone-app textarea { font-size: max(16px, 1em); }
+
+  .standalone-app button,
+  .standalone-app .dropdown-item,
+  .standalone-app .add-tab-btn,
+  .standalone-app .tab-close {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .standalone-app input,
+  .standalone-app select,
+  .standalone-app textarea { max-width: 100%; }
+
+  .standalone-app .menu-bar {
+    gap: 0.4rem;
+    padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
+  }
+
+  .standalone-app .dropdown-content {
+    max-width: min( calc(100vw - 16px), 360px);
+    max-height: min(60dvh, 420px);
+    overflow: auto;
+  }
+
+  .standalone-app .tab-content { padding: 8px; }
+}

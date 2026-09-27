@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onDestroy, setContext } from 'svelte';
+  import { onDestroy, onMount, setContext } from 'svelte';
   import { PANEL_HOST_CONTEXT } from '@shader-studio/ui/lib/layout/PanelHost';
   import { HostedPanels } from './HostedPanels';
   import { ShaderStudioApp, getViewerSession } from '@shader-studio/ui';
@@ -9,16 +9,18 @@
   import StandaloneLayout from './StandaloneLayout.svelte';
   import EditorPane from './EditorPane.svelte';
   import NewShaderModal from './NewShaderModal.svelte';
-  import type { WebTransport } from './WebTransport';
+  import type { WebTransport, WorkspaceStorageStatus } from './WebTransport';
   import {
     getSelectedEditor, selectEditor, getRequestedEditor, requestEditor, getNewShaderVisible, getRequestedPanel, requestPanel,
     resetShellState, setNewShaderVisible,
   } from './state/shellState.svelte';
   import { clearStandaloneWorkspace } from './clearWorkspace';
   import type { ShaderLanguageId } from '@shader-studio/types';
+  import type { PwaController, PwaStatus } from './pwa';
+  import type { WorkspacePersistenceStatus } from './VirtualWorkspace';
 
-  interface Props { transport: WebTransport; }
-  let { transport }: Props = $props();
+  interface Props { transport: WebTransport; pwa?: PwaController; }
+  let { transport, pwa }: Props = $props();
   const hostedPanels = new HostedPanels();
   setContext(PANEL_HOST_CONTEXT, hostedPanels);
   let layout = $state<StandaloneLayout>();
@@ -26,13 +28,44 @@
   let viewMenuOpen = $state(false);
   let workspaceMenuOpen = $state(false);
   let panelVisibility = $state({ explorer: true, editor: true, preview: true });
+  let persistenceStatus = $state<WorkspacePersistenceStatus>({ state: 'saving' });
+  let pwaStatus = $state<PwaStatus>({
+    supported: false,
+    online: navigator.onLine,
+    updateAvailable: false,
+    buildId: null,
+    offlinePreparation: { state: 'idle' },
+  });
+  let storageStatus = $state<WorkspaceStorageStatus | null>(null);
+  let workspaceFileInput: HTMLInputElement;
   const session = $derived(getViewerSession());
   const explorerApi = transport.getShaderExplorerHostApi();
+
+  onMount(() => {
+    void transport.getStorageStatus?.().then((status) => {
+      storageStatus = status;
+    });
+    const stopPersistence = transport.onPersistenceStatus?.((status) => {
+      persistenceStatus = status;
+    }) ?? (() => {});
+    const stopPwa = pwa?.subscribe((status) => {
+      pwaStatus = status;
+    }) ?? (() => {});
+    return () => {
+      stopPersistence();
+      stopPwa();
+      pwa?.dispose();
+    };
+  });
 
   $effect(() => {
     const panel = getRequestedPanel();
     if (panel && layout) {
-      layout.showPanel(panel);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel(panel);
+      } else {
+        layout.showPanel(panel);
+      }
       requestPanel(null);
     }
   });
@@ -40,7 +73,11 @@
   $effect(() => {
     const path = getRequestedEditor();
     if (path && layout) {
-      layout.openEditor(path); requestEditor(null);
+      layout.openEditor(path);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel('editor');
+      }
+      requestEditor(null);
     }
   });
 
@@ -48,6 +85,9 @@
     const path = getSelectedEditor();
     if (path && layout) {
       layout.selectEditor(path);
+      if (layout.isMobileLayout()) {
+        layout.selectMobilePanel('editor');
+      }
       selectEditor(null);
     }
   });
@@ -65,6 +105,73 @@
     } catch {
       workspaceError = 'Could not clear the workspace. Please try again.';
     }
+  }
+
+  async function exportWorkspace() {
+    workspaceMenuOpen = false;
+    workspaceError = '';
+    try {
+      const contents = await transport.exportWorkspaceBackup();
+      const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'shader-studio-workspace.json';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      workspaceError = 'Could not export the workspace. Your current work was not changed.';
+    }
+  }
+
+  async function importWorkspace(event: Event) {
+    workspaceMenuOpen = false;
+    workspaceError = '';
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !window.confirm('Replace this browser workspace with the selected backup?')) {
+      return;
+    }
+    try {
+      await transport.importWorkspaceBackup(await file.text(), { replace: true });
+      window.location.reload();
+    } catch (error) {
+      workspaceError = error instanceof Error
+        ? `Could not import workspace: ${error.message}`
+        : 'Could not import the workspace. Your current work was not changed.';
+    }
+  }
+
+  async function applyUpdate() {
+    workspaceError = '';
+    try {
+      await transport.flush();
+      await pwa?.applyUpdate();
+    } catch {
+      workspaceError = 'Could not save pending work, so the update was not applied.';
+    }
+  }
+
+  async function requestPersistentStorage() {
+    storageStatus = await transport.requestPersistentStorage();
+  }
+
+  async function prepareOffline() {
+    if (pwaStatus.offlinePreparation.state === 'error' || pwaStatus.offlinePreparation.state === 'cancelled') {
+      await pwa?.retryOfflinePreparation();
+    } else {
+      await pwa?.prepareOffline();
+    }
+  }
+
+  function saveStatusLabel(): string {
+    if (storageStatus?.backend === 'session') {
+      return 'Session-only';
+    }
+    if (persistenceStatus.state === 'error') {
+      return 'Save failed';
+    }
+    return persistenceStatus.state === 'saving' ? 'Saving…' : 'Saved';
   }
 
   function toggleViewMenu() {
@@ -141,18 +248,43 @@
       {#if workspaceMenuOpen}
         <div class="dropdown-menu" role="menu" aria-label="Workspace">
           <button onclick={resetLayout}>Reset workspace layout</button>
+          <button onclick={exportWorkspace}>Export Workspace Backup</button>
+          <button onclick={() => workspaceFileInput.click()}>Import Workspace Backup…</button>
+          {#if storageStatus?.backend === 'indexeddb' && storageStatus.persistSupported && !storageStatus.persisted}
+            <button onclick={requestPersistentStorage}>Protect local storage</button>
+          {/if}
+          {#if pwaStatus.supported}
+            <button onclick={() => pwa?.checkForUpdate()}>Check for Updates</button>
+            {#if pwaStatus.offlinePreparation.state === 'preparing'}
+              <button onclick={() => pwa?.cancelOfflinePreparation()}>
+                Cancel Offline Preparation ({pwaStatus.offlinePreparation.completed}/{pwaStatus.offlinePreparation.total})
+              </button>
+            {:else if pwaStatus.offlinePreparation.state !== 'ready'}
+              <button onclick={prepareOffline}>
+                {pwaStatus.offlinePreparation.state === 'idle' ? 'Prepare Offline Compilers' : 'Retry Offline Preparation'}
+              </button>
+            {/if}
+          {/if}
           <button class="danger-action" onclick={clearWorkspace}>Clear Workspace</button>
         </div>
       {/if}
     </div>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <span class="build-status" title={pwaStatus.buildId ? `Build ${pwaStatus.buildId}` : 'Development build'}>
+      {pwaStatus.online ? 'Online' : 'Offline'} · {saveStatusLabel()}{pwaStatus.offlinePreparation.state === 'ready' ? ' · Ready offline' : ''}
+    </span>
+    {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
+  <input class="visually-hidden" bind:this={workspaceFileInput} type="file" accept="application/json,.json" onchange={importWorkspace} />
   <aside class="alpha-notice" data-testid="web-alpha-warning" role="note">
     Standalone mode is in <strong>alpha</strong> and is buggy and missing features compared to the VS Code extension.
     Changes are saved only in this browser. Clearing browser data will delete them.
   </aside>
   {#if workspaceError}<p role="alert">{workspaceError}</p>{/if}
+  {#if pwaStatus.offlinePreparation.state === 'error'}
+    <p class="shell-status-error" role="alert">Offline preparation failed: {pwaStatus.offlinePreparation.message}</p>
+  {/if}
   <StandaloneLayout bind:this={layout} {hostedPanels} {transport}>
     {#snippet explorer()}
       <ShaderExplorer hostApi={explorerApi} compact={true} selectedShaderPath={session?.selectedShaderPath ?? ''} />
@@ -186,4 +318,19 @@
   .dropdown-menu .danger-action { color: var(--vscode-errorForeground, #f48771); }
   .alpha-notice { padding: 3px 10px; font-size: 11px; text-align: center; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
+  .build-status { white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
+  .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
+  .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  @media (max-width: 767px) {
+    .standalone-app { height: 100dvh; }
+    .standalone-toolbar { min-height: 44px; padding: max(4px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 4px max(8px, env(safe-area-inset-left)); }
+    .standalone-toolbar > strong { flex: 1; }
+    .standalone-toolbar > a { display: none; }
+    .standalone-toolbar button { min-height: 44px; }
+    .workspace-menu { padding-left: 0; border-left: 0; }
+    .build-status { position: absolute; top: calc(100% + 1px); right: max(8px, env(safe-area-inset-right)); z-index: 1; padding: 2px 6px; border-radius: 0 0 4px 4px; background: var(--vscode-sideBar-background); }
+    .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
+    .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
+  }
 </style>

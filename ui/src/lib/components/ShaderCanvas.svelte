@@ -131,6 +131,10 @@
     mouseDownPosition = null;
   }
 
+  function handlePointerCancel() {
+    mouseDownPosition = null;
+  }
+
   $effect(() => {
     if (glCanvas) {
       setupInputHandling();
@@ -152,13 +156,19 @@
   bind:this={containerEl}
   onkeydown={(e) => e.key === 'Enter' && onCanvasClick(e as unknown as MouseEvent)}
   onpointerdown={handleMouseDown}
+  onpointercancel={handlePointerCancel}
   onclick={handleClick}
 >
   <canvas
     bind:this={glCanvas}
     style:cursor={isInspectorActive ? 'crosshair' : undefined}
-    onpointerdown={handleMouseDown}
-    onmousedown={handleMouseDown}
+    onmousedown={(event) => {
+      // Legacy browsers and jsdom do not expose PointerEvent. Modern browsers
+      // take the pointerdown path above, avoiding duplicate gesture starts.
+      if (typeof PointerEvent === 'undefined') {
+        handleMouseDown(event);
+      }
+    }}
   ></canvas>
   <PixelCanvasMarker {glCanvas} container={containerEl} />
 </div>
@@ -175,5 +185,6 @@
   canvas {
     image-rendering: pixelated;
     image-rendering: -webkit-optimize-contrast;
+    touch-action: none;
   }
 </style>

@@ -1,6 +1,7 @@
 export const STANDALONE_LAYOUT_STORAGE_KEY = 'shader-studio.standalone-layout.v1';
 
 export type StandalonePanelId = 'explorer' | 'editor' | 'preview';
+export type MobileDockviewPanelId = StandalonePanelId | 'debug' | 'config' | 'performance' | 'recording';
 
 interface Disposable {
   dispose(): void;
@@ -152,6 +153,8 @@ export class StandaloneLayoutController {
   private layoutChangeDisposable: Disposable | null = null;
   private readonly panelRestorations = new Map<StandalonePanelId, PanelRestoration>();
   private readonly storage: LayoutStorage | null;
+  private desktopVisibility: Map<string, boolean> | null = null;
+  private mobilePanel: MobileDockviewPanelId | null = null;
 
   constructor(
     private readonly api: StandaloneDockviewApi,
@@ -280,6 +283,54 @@ export class StandaloneLayoutController {
     this.createDefaultLayout();
   }
 
+  /**
+   * Shows a single existing panel group for the phone shell. This only toggles
+   * Dockview group visibility, so the Svelte snippets and editor models remain
+   * mounted. Visibility is restored when returning to desktop.
+   */
+  showMobilePanel(panelId: StandalonePanelId): void {
+    this.showMobileDockviewPanel(panelId);
+  }
+
+  /** Shows exactly one existing Dockview group for the phone shell. */
+  showMobileDockviewPanel(panelId: MobileDockviewPanelId): void {
+    const selected = this.api.getPanel(panelId);
+    if (!selected) {
+      return;
+    }
+    if (!this.desktopVisibility) {
+      this.desktopVisibility = new Map(
+        this.api.panels.map((panel) => [panel.id, panel.api.group.api.isVisible]),
+      );
+      for (const id of ['debug', 'config', 'performance', 'recording'] as const) {
+        if (!this.desktopVisibility.has(id)) {
+          this.desktopVisibility.set(id, false);
+        }
+      }
+    }
+    this.mobilePanel = panelId;
+    for (const panel of this.api.panels) {
+      panel.api.group.api.setVisible(panel.api.group === selected.api.group);
+    }
+    selected.api.group.api.setVisible(true);
+    selected.api.setActive();
+  }
+
+  restoreDesktopPanels(): void {
+    if (!this.desktopVisibility) {
+      return;
+    }
+    for (const [id, visible] of this.desktopVisibility) {
+      this.api.getPanel(id)?.api.group.api.setVisible(visible);
+    }
+    this.desktopVisibility = null;
+    this.mobilePanel = null;
+  }
+
+  getMobilePanel(): MobileDockviewPanelId | null {
+    return this.mobilePanel;
+  }
+
   private createDefaultLayout(): void {
     this.addPanel('preview');
     this.addPanel('explorer');
@@ -348,6 +399,9 @@ export class StandaloneLayoutController {
   }
 
   private persistLayout(): void {
+    if (this.desktopVisibility) {
+      return;
+    }
     this.writeLayout(this.api.toJSON());
   }
 

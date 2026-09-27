@@ -3,6 +3,7 @@ import { render } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import StandaloneLayout from '../StandaloneLayout.svelte';
 import { createDockview } from 'dockview-core';
+import { resetMobileShellState } from '../state/mobileShellState.svelte';
 
 let renderers: { element: HTMLElement; dispose(): void; init(parameters: { api: { id: string } }): void }[] = [];
 let willDrop: ((event: { getData(): { viewId: string } | undefined; preventDefault(): void }) => void) | null = null;
@@ -48,7 +49,7 @@ function source(name: string) {
 
 describe('StandaloneLayout', () => {
   beforeEach(() => {
-    renderers = []; willDrop = null;
+    renderers = []; willDrop = null; resetMobileShellState();
   });
 
   it('keeps each snippet mounted once across reset and returns it on unmount', async () => {
@@ -75,5 +76,26 @@ describe('StandaloneLayout', () => {
     const accept = { getData: () => ({ viewId: 'standalone-dock' }), preventDefault: vi.fn() };
     willDrop?.(accept);
     expect(accept.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('renders phone destinations and exposes the selection API without changing the desktop layout', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    const result = render(StandaloneLayout, { props: { explorer: source('explorer'), editor: source('editor'), preview: source('preview') } });
+    await tick();
+
+    expect(result.getByRole('navigation', { name: 'Workspace panels' })).toBeTruthy();
+    result.component.selectMobilePanel('editor');
+    expect(result.component.getSelectedMobilePanel()).toBe('editor');
+    expect(result.component.isMobileLayout()).toBe(true);
+    expect(vi.mocked(createDockview).mock.results.at(-1)!.value.clear).not.toHaveBeenCalled();
+    result.component.selectMobilePanel('tools');
+    await tick();
+    expect(result.getByRole('navigation', { name: 'Tools' })).toBeTruthy();
+    expect(result.getByRole('button', { name: 'Config' }).getAttribute('aria-current')).toBe('page');
+    vi.unstubAllGlobals();
   });
 });

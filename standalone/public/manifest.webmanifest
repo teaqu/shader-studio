@@ -1,0 +1,13 @@
+{
+  "name": "Shader Studio",
+  "short_name": "Shader Studio",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1e1e1e",
+  "description": "Edit and preview shaders in your browser.",
+  "icons": [
+    { "src": "./shader-studio-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
