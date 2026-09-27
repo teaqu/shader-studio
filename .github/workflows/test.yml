@@ -9,10 +9,6 @@ on:
       - "**.md"
       - "mkdocs.yml"
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**.md"
-      - "mkdocs.yml"
   workflow_dispatch:
 
 permissions:
