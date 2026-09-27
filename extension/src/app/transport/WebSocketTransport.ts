@@ -13,6 +13,7 @@ import { Logger } from "../services/Logger";
 export class WebSocketTransport implements MessageTransport {
   private wsServer: WebSocketServer;
   private wsClients: Set<WebSocket> = new Set();
+  private allowedBrowserOrigins = new Set<string>();
   private messageHandler?: (message: any) => void;
 
   constructor(
@@ -24,7 +25,7 @@ export class WebSocketTransport implements MessageTransport {
     onReady?: (actualPort: number) => void,
     private configChangeClassifier: ConfigChangeClassifier = new ConfigChangeClassifier(),
   ) {
-    this.wsServer = new WebSocketServer({ port, perMessageDeflate: true });
+    this.wsServer = this.createServer(port);
 
     this.wsServer.on("listening", () => {
       const actual = (this.wsServer.address() as { port: number }).port;
@@ -36,7 +37,7 @@ export class WebSocketTransport implements MessageTransport {
       if (error.code === 'EADDRINUSE') {
         Logger.trace(`WebSocket port ${port} in use, falling back to dynamic port`);
         this.wsServer.close();
-        this.wsServer = new WebSocketServer({ port: 0, perMessageDeflate: true });
+        this.wsServer = this.createServer(0);
         this.wsServer.on("listening", () => {
           const actual = (this.wsServer.address() as { port: number }).port;
           Logger.debug(`WebSocket server (fallback) listening on port ${actual}`);
@@ -52,6 +53,29 @@ export class WebSocketTransport implements MessageTransport {
     });
 
     this.attachConnectionHandler();
+  }
+
+  private createServer(port: number): WebSocketServer {
+    return new WebSocketServer({
+      host: '127.0.0.1',
+      port,
+      perMessageDeflate: true,
+      // Browser WebSockets are not covered by CORS. Validate the page that
+      // initiated the handshake before it can receive source or send commands.
+      verifyClient: ({ origin }, done) => {
+        done(origin !== undefined && this.allowedBrowserOrigins.has(origin), 403);
+      },
+    });
+  }
+
+  public setAllowedWebServerPort(port: number | undefined): void {
+    this.allowedBrowserOrigins.clear();
+    if (port === undefined) {
+      return;
+    }
+
+    this.allowedBrowserOrigins.add(`http://localhost:${port}`);
+    this.allowedBrowserOrigins.add(`http://127.0.0.1:${port}`);
   }
 
   private attachConnectionHandler(): void {
