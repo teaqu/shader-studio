@@ -292,6 +292,20 @@ describe('StandaloneLayoutController', () => {
     expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
   });
 
+  it('keeps an existing hidden tool group visible after it is opened on mobile', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    api.addPanel({ id: 'config' });
+    api.getPanel('config')?.api.group.api.setVisible(false);
+    controller.showMobilePanel('preview');
+
+    controller.showMobileDockviewPanel('config');
+    controller.restoreDesktopPanels();
+
+    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(true);
+    expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+
   it('restores a newly opened mobile tool group once when it contains several tabs', () => {
     const controller = new StandaloneLayoutController(api, storage);
     controller.initialize();
