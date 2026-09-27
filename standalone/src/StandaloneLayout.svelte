@@ -266,7 +266,7 @@
   .mobile-tools-navigation { display: none; }
 
   @media (max-width: 767px) {
-    .standalone-layout { position: relative; padding-bottom: env(safe-area-inset-bottom); }
+    .standalone-layout { position: relative; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
     .standalone-dockview { min-height: 0; }
     .mobile-panel-navigation {
       display: grid;
