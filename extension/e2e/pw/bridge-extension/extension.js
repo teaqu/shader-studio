@@ -102,8 +102,8 @@ function createBridgeServer({ vscode, token, invoke = invokeVscode }) {
         writeJson(res, 400, { ok: false, error: error.message });
         return;
       }
-      // VS Code serialises enormous bundled stacks; a prefix is enough.
-      writeJson(res, 200, { ok: false, error: String(error?.stack ?? error).slice(0, 600) });
+      const message = error instanceof Error ? error.message : 'Bridge invocation failed';
+      writeJson(res, 200, { ok: false, error: message.slice(0, 600) });
     }
   });
 }

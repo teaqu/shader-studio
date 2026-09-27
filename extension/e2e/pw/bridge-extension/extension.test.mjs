@@ -79,6 +79,27 @@ test('bridge rejects a structurally invalid payload before evaluating it', async
   });
 });
 
+test('bridge returns invocation errors without exposing stack traces', async () => {
+  const server = bridge.createBridgeServer({
+    vscode: {},
+    token: 't'.repeat(64),
+    invoke: () => {
+      throw new Error('test invocation failed');
+    },
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await request(server.address().port, {
+      token: 't'.repeat(64),
+      body: JSON.stringify({ source: '() => true' }),
+    });
+    const payload = await response.json();
+    assert.deepEqual(payload, { ok: false, error: 'test invocation failed' });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('bridge removes its own port publication when it shuts down', async () => {
   let portFile;
   await withBridge(async (bridge) => {
