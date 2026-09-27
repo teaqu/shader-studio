@@ -282,8 +282,8 @@
             {:else if pwaStatus.offlinePreparation.state !== 'ready'}
               <button onclick={prepareOffline}>
                 {pwaStatus.offlinePreparation.state === 'idle'
-                  ? 'Download compilers for offline use (23 MB)'
-                  : 'Retry offline compiler download (23 MB)'}
+                  ? 'Download compilers for offline use'
+                  : 'Retry offline compiler download'}
               </button>
             {/if}
           {/if}
