@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'path';
 import { shaderStudioAliases } from '../vite.aliases.mjs';
@@ -9,6 +9,7 @@ export default defineConfig({
     name: 'standalone',
     environment: 'jsdom',
     globals: true,
+    exclude: [...configDefaults.exclude, '**/e2e/**/*.test.mjs'],
   },
   resolve: {
     // Svelte 5 ships separate server/client builds; without the browser

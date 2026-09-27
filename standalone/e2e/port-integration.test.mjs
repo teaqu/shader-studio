@@ -5,6 +5,7 @@ import test from 'node:test';
 const config = readFileSync(new URL('./playwright.config.mjs', import.meta.url), 'utf8');
 const namedChannels = readFileSync(new URL('./named-channels.e2e.mjs', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../../.github/workflows/verify.yml', import.meta.url), 'utf8');
+const vitestConfig = readFileSync(new URL('../vitest.config.ts', import.meta.url), 'utf8');
 
 test('standalone servers and asset URLs use the configured endpoints', () => {
   assert.match(config, /baseURL: productionOrigin/);
@@ -22,4 +23,8 @@ test('public CI assigns isolated standalone ports before browser tests', () => {
   assert.match(workflow, /STANDALONE_E2E_PORT=.*GITHUB_ENV/);
   assert.match(workflow, /STANDALONE_E2E_DEV_PORT=.*GITHUB_ENV/);
   assert.ok(workflow.indexOf('Configure isolated standalone E2E ports') < workflow.indexOf('Run all standalone browser projects'));
+});
+
+test('Node helper tests stay outside the jsdom Vitest project', () => {
+  assert.match(vitestConfig, /\*\*\/e2e\/\*\*\/\*\.test\.mjs/);
 });
