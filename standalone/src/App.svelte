@@ -185,6 +185,20 @@
     return persistenceStatus.state === 'saving' ? 'Saving…' : 'Saved';
   }
 
+  function saveStatusIcon(): string {
+    if (storageStatus?.backend === 'session') {
+      return 'codicon-warning';
+    }
+    if (persistenceStatus.state === 'error') {
+      return 'codicon-error';
+    }
+    return persistenceStatus.state === 'saving' ? 'codicon-sync' : 'codicon-check';
+  }
+
+  function workspaceStatusLabel(): string {
+    return `${pwaStatus.online ? 'Online' : 'Offline'} · ${saveStatusLabel()}${pwaStatus.offlinePreparation.state === 'ready' ? ' · Ready offline' : ''}`;
+  }
+
   function toggleViewMenu() {
     viewMenuOpen = !viewMenuOpen;
     workspaceMenuOpen = false;
@@ -293,8 +307,17 @@
     </div>
     <a class="toolbar-right" href="https://teaqu.github.io/shader-studio/docs/" target="_blank" rel="noopener noreferrer">Documentation</a>
     <a href="https://github.com/teaqu/shader-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
-    <span class="build-status" title={pwaStatus.buildId ? `Build ${pwaStatus.buildId}` : 'Development build'}>
-      {pwaStatus.online ? 'Online' : 'Offline'} · {saveStatusLabel()}{pwaStatus.offlinePreparation.state === 'ready' ? ' · Ready offline' : ''}
+    <span
+      class="build-status"
+      role="status"
+      aria-label={workspaceStatusLabel()}
+      title={`${workspaceStatusLabel()} · ${pwaStatus.buildId ? `Build ${pwaStatus.buildId}` : 'Development build'}`}
+    >
+      <i class="codicon {pwaStatus.online ? 'codicon-cloud' : 'codicon-debug-disconnect'}" aria-hidden="true"></i>
+      <i class="codicon {saveStatusIcon()}" class:spinning={persistenceStatus.state === 'saving'} aria-hidden="true"></i>
+      {#if pwaStatus.offlinePreparation.state === 'ready'}
+        <i class="codicon codicon-package" aria-hidden="true"></i>
+      {/if}
     </span>
     {#if pwaStatus.updateAvailable}<button class="update-action" onclick={applyUpdate}>Update ready</button>{/if}
   </header>
@@ -347,7 +370,9 @@
   .dismiss-alpha-notice { flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; color: inherit; background: transparent; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
   .dismiss-alpha-notice:hover { background: var(--vscode-list-hoverBackground); }
   .panel-content { height: 100%; width: 100%; min-height: 0; min-width: 0; }
-  .build-status { white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 11px; }
+  .build-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: 16px; }
+  .build-status .spinning { animation: status-spin 1s linear infinite; }
+  @keyframes status-spin { to { transform: rotate(360deg); } }
   .standalone-toolbar .update-action { border: 1px solid var(--vscode-focusBorder); }
   .visually-hidden { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
@@ -358,7 +383,6 @@
     .standalone-toolbar > a { display: none; }
     .standalone-toolbar button { min-height: 44px; }
     .workspace-menu { padding-left: 0; border-left: 0; }
-    .build-status { position: absolute; top: calc(100% + 1px); right: max(8px, env(safe-area-inset-right)); z-index: 1; padding: 2px 6px; border-radius: 0 0 4px 4px; background: var(--vscode-sideBar-background); }
     .dropdown-menu { position: fixed; top: max(54px, calc(env(safe-area-inset-top) + 50px)); right: 8px; left: 8px; max-height: calc(100dvh - 120px); overflow: auto; }
     .alpha-notice { padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); }
     :global(.standalone-app .menu-bar .collapse-config, .standalone-app .menu-bar .collapse-debug, .standalone-app .menu-bar .collapse-record) { display: none; }
