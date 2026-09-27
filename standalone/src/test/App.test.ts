@@ -213,7 +213,7 @@ describe('standalone App', () => {
 
     await waitFor(() => expect(screen.getByText('Online · Session-only')).toBeTruthy());
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'Download compilers for offline use (23 MB)' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Download compilers for offline use' }));
     expect(pwa.prepareOffline).toHaveBeenCalledOnce();
     await fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
     expect(pwa.checkForUpdate).toHaveBeenCalledOnce();
