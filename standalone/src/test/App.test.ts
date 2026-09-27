@@ -131,6 +131,10 @@ describe('standalone App', () => {
     expect(github.getAttribute('href')).toBe('https://github.com/teaqu/shader-studio');
     expect(github.getAttribute('target')).toBe('_blank');
     expect(github.getAttribute('rel')).toBe('noopener noreferrer');
+    const status = await screen.findByRole('status', { name: 'Online · Saved' });
+    expect(status.textContent?.trim()).toBe('');
+    expect(status.querySelector('.codicon-cloud')).toBeTruthy();
+    expect(status.querySelector('.codicon-check')).toBeTruthy();
 
     await fireEvent.click(screen.getByRole('button', { name: 'View' }));
     expect(screen.getByRole('menuitemcheckbox', { name: 'Shader Explorer' }).getAttribute('aria-checked')).toBe('true');
@@ -199,7 +203,10 @@ describe('standalone App', () => {
     const pwa = createPwa({ online: false, updateAvailable: true, buildId: 'mobile-42' });
     render(App, { props: { transport, pwa } });
 
-    expect(screen.getByText('Offline · Save failed').getAttribute('title')).toBe('Build mobile-42');
+    const status = screen.getByRole('status', { name: 'Offline · Save failed' });
+    expect(status.getAttribute('title')).toBe('Offline · Save failed · Build mobile-42');
+    expect(status.querySelector('.codicon-debug-disconnect')).toBeTruthy();
+    expect(status.querySelector('.codicon-error')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
     expect(transport.flush).toHaveBeenCalledOnce();
     expect(pwa.applyUpdate).toHaveBeenCalledOnce();
@@ -211,7 +218,9 @@ describe('standalone App', () => {
     const pwa = createPwa();
     render(App, { props: { transport, pwa } });
 
-    await waitFor(() => expect(screen.getByText('Online · Session-only')).toBeTruthy());
+    const status = await waitFor(() => screen.getByRole('status', { name: 'Online · Session-only' }));
+    expect(status.querySelector('.codicon-cloud')).toBeTruthy();
+    expect(status.querySelector('.codicon-warning')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Download compilers for offline use' }));
     expect(pwa.prepareOffline).toHaveBeenCalledOnce();
