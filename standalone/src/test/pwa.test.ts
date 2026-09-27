@@ -8,7 +8,8 @@ function environment() {
   const listeners = new Map<string, EventListener>();
   const workerListeners = new Map<string, EventListener>();
   const waiting = { postMessage: vi.fn() } as unknown as ServiceWorker;
-  const active = { postMessage: vi.fn() } as unknown as ServiceWorker;
+  const activePostMessage = vi.fn();
+  const active = { postMessage: activePostMessage } as unknown as ServiceWorker;
   const registration = {
     waiting,
     active,
@@ -19,6 +20,8 @@ function environment() {
   return {
     registration,
     active,
+    activePostMessage,
+    listeners,
     workerListeners,
     reload: vi.fn(),
     environment: {
@@ -51,6 +54,49 @@ describe('PWA controller', () => {
     expect((setup.registration.waiting as ServiceWorker).postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
     await controller.checkForUpdate();
     expect(setup.registration.update).toHaveBeenCalledOnce();
+  });
+
+  it('reloads for a service-worker activation only after the user applies the update', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+
+    await controller.applyUpdate();
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+    expect(setup.environment.reload).toHaveBeenCalledOnce();
+  });
+
+  it('restores offline readiness from the active service worker after a refresh', async () => {
+    const setup = environment();
+    let statusPort: MessagePort | undefined;
+    let resolveBuildIdentity: ((buildId: string) => void) | undefined;
+    setup.environment.fetchBuildIdentity = vi.fn(() => new Promise<string>((resolve) => {
+      resolveBuildIdentity = resolve;
+    }));
+    setup.environment.createMessageChannel = () => {
+      const channel = new MessageChannel();
+      statusPort = channel.port1;
+      return channel;
+    };
+    const controller = createPwaController(setup.environment);
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    const start = controller.start();
+
+    await vi.waitFor(() => {
+      expect(setup.active.postMessage).toHaveBeenCalledWith(
+        { type: 'GET_OFFLINE_STATUS' },
+        expect.any(Array),
+      );
+    });
+    statusPort?.onmessage?.({ data: { type: 'offline-status', ready: true } } as MessageEvent);
+    resolveBuildIdentity?.('build-123');
+    await start;
+    expect(states.at(-1)).toMatchObject({ offlinePreparation: { state: 'ready' } });
   });
 
   it('does nothing in browsers without service worker support', async () => {
@@ -88,7 +134,9 @@ describe('PWA controller', () => {
     expect(setup.active.postMessage).toHaveBeenCalledWith({ type: 'CANCEL_PREPARE_OFFLINE' });
     port?.onmessage?.({ data: { type: 'cancelled' } } as MessageEvent);
     await controller.retryOfflinePreparation();
-    expect(setup.active.postMessage).toHaveBeenCalledTimes(3);
+    expect(setup.active.postMessage).toHaveBeenCalledWith({ type: 'PREPARE_OFFLINE' }, expect.any(Array));
+    expect(setup.active.postMessage).toHaveBeenCalledWith({ type: 'CANCEL_PREPARE_OFFLINE' });
+    expect(setup.activePostMessage.mock.calls.filter(([message]) => message.type === 'PREPARE_OFFLINE')).toHaveLength(2);
   });
 });
 
@@ -109,6 +157,8 @@ describe('generated service worker', () => {
     expect(source).toContain('"assets/app.js"');
     expect(source).toContain('"assets/slang.wasm"');
     expect(source).toContain("event.data?.type === 'SKIP_WAITING'");
+    expect(source).toContain("event.data?.type === 'GET_OFFLINE_STATUS'");
+    expect(source).toContain("cache.match(asset, { ignoreVary: true })");
     expect(source).toContain("event.data?.type !== 'PREPARE_OFFLINE'");
     expect(source).toContain("event.data?.type === 'CANCEL_PREPARE_OFFLINE'");
     expect(source).toContain("caches.match(event.request, { ignoreVary: true })");

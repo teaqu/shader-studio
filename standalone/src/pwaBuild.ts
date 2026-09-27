@@ -51,11 +51,25 @@ const installRequired = async () => {
     }
   }
 };
+const isOfflineReady = async () => {
+  const cache = await caches.open(CACHE);
+  for (const asset of OPTIONAL) {
+    if (!await cache.match(asset, { ignoreVary: true })) {
+      return false;
+    }
+  }
+  return true;
+};
 self.addEventListener('install', (event) => event.waitUntil(installRequired()));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith(CHANNEL_PREFIX) && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') { self.skipWaiting(); return; }
   if (event.data?.type === 'CANCEL_PREPARE_OFFLINE') { if (preparation) preparation.cancelled = true; return; }
+  if (event.data?.type === 'GET_OFFLINE_STATUS') {
+    const port = event.ports[0];
+    event.waitUntil(isOfflineReady().then((ready) => message(port, { type: 'offline-status', ready })));
+    return;
+  }
   if (event.data?.type !== 'PREPARE_OFFLINE') return;
   const port = event.ports[0];
   preparation = { cancelled: false };

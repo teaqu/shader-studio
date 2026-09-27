@@ -19,3 +19,26 @@ test('installs the cached standalone shell and reloads it offline', async ({ pag
   await expect(page.locator('#app')).toBeVisible();
   await context.setOffline(false);
 });
+
+test('keeps offline compiler readiness after a refresh', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.filter((name) => name.startsWith('shader-studio-')).map((name) => caches.delete(name)));
+  });
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => navigator.serviceWorker.ready.then(() => navigator.serviceWorker.controller !== null)))
+    .toBe(true);
+
+  await page.getByRole('button', { name: 'Workspace' }).click();
+  await page.getByRole('button', { name: 'Download compilers for offline use' }).click();
+  const buildStatus = page.getByRole('status');
+  await expect(buildStatus).toHaveAttribute('aria-label', /Ready offline/);
+
+  await page.reload();
+  await expect(buildStatus).toHaveAttribute('aria-label', /Ready offline/);
+  await page.getByRole('button', { name: 'Workspace' }).click();
+  await expect(page.getByRole('button', { name: 'Download compilers for offline use' })).toHaveCount(0);
+});
