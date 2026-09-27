@@ -3,12 +3,13 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'path';
 import { shaderStudioAliasEntries } from '../vite.aliases.mjs';
 import { slangAssetManifestPlugin } from '../ui/viteSlangAssetManifest';
+import { pwaBuildPlugin } from './src/pwaBuild';
 
 // The standalone web shell. It owns the app entry and composes the viewer
 // (`@shader-studio/ui`) with the explorer, supplying both with the browser-only
 // capabilities they cannot provide for themselves.
 export default defineConfig({
-  plugins: [svelte(), slangAssetManifestPlugin()],
+  plugins: [svelte(), slangAssetManifestPlugin(), pwaBuildPlugin()],
   base: './',
   resolve: {
     alias: [

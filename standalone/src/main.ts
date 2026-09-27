@@ -10,6 +10,7 @@ import '@vscode/codicons/dist/codicon.css';
 import App from './App.svelte';
 import { WebTransport } from './WebTransport';
 import { installSlangAssetMetadata } from './slangAssets';
+import { createPwaController } from './pwa';
 
 function defaultAssets(): WorkspaceFileInfo[] {
   return [
@@ -28,6 +29,7 @@ function defaultAssets(): WorkspaceFileInfo[] {
 
 installSlangAssetMetadata();
 const transport = new WebTransport();
+const pwa = createPwaController();
 configureHost({
   createTransport: () => transport,
   defaultAssets: defaultAssets(),
@@ -36,7 +38,8 @@ configureHost({
 
 const app = mount(App, {
   target: document.getElementById('app')!,
-  props: { transport },
+  props: { transport, pwa },
 });
+void pwa.start();
 
 export default app;

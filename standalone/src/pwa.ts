@@ -1,0 +1,198 @@
+/** Browser-facing PWA lifecycle API. The shell owns presentation; this module
+ * owns the deliberately small, testable service-worker contract. */
+export interface PwaStatus {
+  supported: boolean;
+  online: boolean;
+  updateAvailable: boolean;
+  buildId: string | null;
+  offlinePreparation: OfflinePreparationStatus;
+}
+
+export type OfflinePreparationStatus =
+  | { state: 'idle' }
+  | { state: 'preparing'; completed: number; total: number }
+  | { state: 'ready' }
+  | { state: 'cancelled' }
+  | { state: 'error'; message: string };
+
+export interface PwaController {
+  start(): Promise<void>;
+  subscribe(listener: (status: PwaStatus) => void): () => void;
+  applyUpdate(): Promise<void>;
+  checkForUpdate(): Promise<void>;
+  prepareOffline(): Promise<void>;
+  retryOfflinePreparation(): Promise<void>;
+  cancelOfflinePreparation(): void;
+  dispose(): void;
+}
+
+interface ServiceWorkerContainerLike {
+  register(scriptURL: string, options?: RegistrationOptions): Promise<ServiceWorkerRegistration>;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+}
+
+export interface PwaEnvironment {
+  serviceWorker?: ServiceWorkerContainerLike;
+  online: () => boolean;
+  addEventListener(type: 'online' | 'offline', listener: EventListener): void;
+  removeEventListener(type: 'online' | 'offline', listener: EventListener): void;
+  fetchBuildIdentity?: () => Promise<string | null>;
+  reload(): void;
+  baseUrl: string;
+  createMessageChannel(): MessageChannel;
+}
+
+function defaultEnvironment(): PwaEnvironment {
+  return {
+    serviceWorker: navigator.serviceWorker,
+    online: () => navigator.onLine,
+    addEventListener: window.addEventListener.bind(window),
+    removeEventListener: window.removeEventListener.bind(window),
+    fetchBuildIdentity: async () => {
+      try {
+        const response = await fetch(new URL('app-build.json', document.baseURI), { cache: 'no-store' });
+        if (!response.ok) {
+          return null;
+        }
+        const payload: unknown = await response.json();
+        return typeof (payload as { buildId?: unknown }).buildId === 'string'
+          ? (payload as { buildId: string }).buildId : null;
+      } catch {
+        return null;
+      }
+    },
+    reload: () => window.location.reload(),
+    baseUrl: document.baseURI,
+    createMessageChannel: () => new MessageChannel(),
+  };
+}
+
+export function createPwaController(environment: PwaEnvironment = defaultEnvironment()): PwaController {
+  let registration: ServiceWorkerRegistration | undefined;
+  let disposed = false;
+  const listeners = new Set<(status: PwaStatus) => void>();
+  let status: PwaStatus = {
+    supported: !!environment.serviceWorker,
+    online: environment.online(),
+    updateAvailable: false,
+    buildId: null,
+    offlinePreparation: { state: 'idle' },
+  };
+
+  const emit = () => listeners.forEach((listener) => listener({ ...status }));
+  const onConnectivity = () => {
+    status = { ...status, online: environment.online() };
+    emit();
+  };
+  const onControllerChange = () => {
+    if (status.updateAvailable) {
+      environment.reload();
+    }
+  };
+  const inspect = () => {
+    if (registration?.waiting) {
+      status = { ...status, updateAvailable: true };
+      emit();
+    }
+  };
+  let preparationPort: MessagePort | undefined;
+
+  const prepareOffline = async (): Promise<void> => {
+    if (!registration?.active || preparationPort) {
+      return;
+    }
+    const channel = environment.createMessageChannel();
+    preparationPort = channel.port1;
+    status = { ...status, offlinePreparation: { state: 'preparing', completed: 0, total: 0 } };
+    emit();
+    channel.port1.onmessage = (event: MessageEvent<{ type?: unknown; completed?: unknown; total?: unknown; message?: unknown }>) => {
+      const payload = event.data;
+      if (payload.type === 'progress' && typeof payload.completed === 'number' && typeof payload.total === 'number') {
+        status = { ...status, offlinePreparation: { state: 'preparing', completed: payload.completed, total: payload.total } };
+        emit();
+        return;
+      } else if (payload.type === 'complete') {
+        status = { ...status, offlinePreparation: { state: 'ready' } };
+      } else if (payload.type === 'cancelled') {
+        status = { ...status, offlinePreparation: { state: 'cancelled' } };
+      } else if (payload.type === 'error') {
+        status = { ...status, offlinePreparation: { state: 'error', message: typeof payload.message === 'string' ? payload.message : 'Could not prepare offline compilers.' } };
+      } else {
+        return;
+      }
+      preparationPort?.close();
+      preparationPort = undefined;
+      emit();
+    };
+    channel.port1.start();
+    registration.active.postMessage({ type: 'PREPARE_OFFLINE' }, [channel.port2]);
+  };
+
+  return {
+    async start(): Promise<void> {
+      if (disposed || !environment.serviceWorker) {
+        return;
+      }
+      environment.addEventListener('online', onConnectivity);
+      environment.addEventListener('offline', onConnectivity);
+      environment.serviceWorker.addEventListener('controllerchange', onControllerChange);
+      try {
+        registration = await environment.serviceWorker.register(new URL('sw.js', environment.baseUrl).toString());
+      } catch {
+        // A development server need not expose the production worker. Keep the
+        // standalone editor usable rather than making its mount fail.
+        status = { ...status, supported: false };
+        emit();
+        return;
+      }
+      registration.addEventListener('updatefound', () => {
+        const installing = registration?.installing;
+        installing?.addEventListener('statechange', () => {
+          if (installing.state === 'installed') {
+            inspect();
+          }
+        });
+      });
+      inspect();
+      status = { ...status, buildId: await environment.fetchBuildIdentity?.() ?? null };
+      emit();
+    },
+    subscribe(listener): () => void {
+      listeners.add(listener);
+      listener({ ...status });
+      return () => listeners.delete(listener);
+    },
+    async applyUpdate(): Promise<void> {
+      if (!registration?.waiting) {
+        return;
+      }
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    },
+    async checkForUpdate(): Promise<void> {
+      await registration?.update();
+      status = { ...status, buildId: await environment.fetchBuildIdentity?.() ?? status.buildId };
+      inspect();
+      emit();
+    },
+    prepareOffline,
+    async retryOfflinePreparation(): Promise<void> {
+      await prepareOffline();
+    },
+    cancelOfflinePreparation(): void {
+      if (!preparationPort) {
+        return;
+      }
+      registration?.active?.postMessage({ type: 'CANCEL_PREPARE_OFFLINE' });
+    },
+    dispose(): void {
+      disposed = true;
+      environment.removeEventListener('online', onConnectivity);
+      environment.removeEventListener('offline', onConnectivity);
+      environment.serviceWorker?.removeEventListener('controllerchange', onControllerChange);
+      preparationPort?.close();
+      preparationPort = undefined;
+      listeners.clear();
+    },
+  };
+}

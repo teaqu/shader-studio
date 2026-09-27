@@ -243,6 +243,55 @@ describe('StandaloneLayoutController', () => {
     expect(api.addPanel).toHaveBeenCalledTimes(3);
   });
 
+  it('switches phone destinations without remounting panels or persisting the temporary visibility', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    const preview = api.getPanel('preview');
+    const editor = api.getPanel('editor');
+
+    controller.showMobilePanel('editor');
+    expect(controller.getMobilePanel()).toBe('editor');
+    expect(preview?.api.group.api.setVisible).toHaveBeenCalledWith(false);
+    expect(editor?.api.group.api.setVisible).toHaveBeenCalledWith(true);
+    expect(api.addPanel).toHaveBeenCalledTimes(3);
+    api.emitLayoutChange();
+    expect(storage.setItem).not.toHaveBeenCalled();
+
+    controller.restoreDesktopPanels();
+    expect(controller.getMobilePanel()).toBeNull();
+    expect(preview?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('shows only the requested tool group in phone mode and restores every desktop group', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    api.addPanel({ id: 'config' });
+    api.addPanel({ id: 'debug' });
+    const preview = api.getPanel('preview');
+    const config = api.getPanel('config');
+
+    controller.showMobileDockviewPanel('config');
+
+    expect(preview?.api.group.api.isVisible).toBe(false);
+    expect(config?.api.group.api.isVisible).toBe(true);
+    expect(controller.getMobilePanel()).toBe('config');
+    controller.restoreDesktopPanels();
+    expect(preview?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('does not leak a tool first opened on mobile into the desktop layout', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    controller.showMobilePanel('preview');
+    api.addPanel({ id: 'config' });
+
+    controller.showMobileDockviewPanel('config');
+    controller.restoreDesktopPanels();
+
+    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(false);
+    expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+
   it('restores a grouped panel to its previous tab group and index', () => {
     const controller = new StandaloneLayoutController(api, storage);
     controller.initialize();

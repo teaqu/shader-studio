@@ -58,6 +58,7 @@
   import type { AspectRatioMode, ShaderConfig, ShaderLanguageId, SlangSourceModule } from "@shader-studio/types";
   import { SHADER_LANGUAGES, isShaderLanguageId } from "@shader-studio/types";
   import { resolutionStore } from "../stores/resolutionStore";
+  import { PageRenderLifecycle } from "../rendering/PageRenderLifecycle";
   import { aspectRatioStore } from "../stores/aspectRatioStore";
   import { ResolutionSessionController } from "../resolution/ResolutionSessionController.svelte";
   import { FileProfileAdapter } from "../profiles/FileProfileAdapter";
@@ -408,6 +409,8 @@
   onMount(() => {
     setEditorOverlayLayoutSlot(layoutSlot);
 
+    const pageRenderLifecycle = new PageRenderLifecycle(document, () => initialized ? renderingEngine : null);
+
     const unsubConfig = configPanelStore.subscribe((state) => {
       void state;
     });
@@ -415,6 +418,7 @@
       void state;
     });
     return () => {
+      pageRenderLifecycle.dispose();
       unsubConfig();
       unsubPerf();
     };
