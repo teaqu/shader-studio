@@ -526,11 +526,20 @@ export class GlslParser {
   /** Function bodies located by brace matching, for sources that do not parse. */
   private static findFunctionRangesByBraces(lines: string[]): ParsedFunctionInfo[] {
     const functions: ParsedFunctionInfo[] = [];
-    const signature = /^\s*(\w+)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
 
     for (let index = 0; index < lines.length; index += 1) {
-      const match = stripLineComment(lines[index]).match(signature);
-      if (!match) {
+      const line = stripLineComment(lines[index]);
+      const open = line.indexOf("(");
+      const close = line.lastIndexOf(")");
+      if (open < 0 || close <= open || line.includes(";")) {
+        continue;
+      }
+      const suffix = line.slice(close + 1).trim();
+      if (suffix !== "" && suffix !== "{") {
+        continue;
+      }
+      const words = line.slice(0, open).trim().split(/\s+/);
+      if (words.length !== 2 || !words.every((word) => /^\w+$/.test(word))) {
         continue;
       }
       const end = GlslParser.findFunctionBlockEnd(lines, index);
@@ -538,10 +547,10 @@ export class GlslParser {
         continue;
       }
       functions.push({
-        name: match[2],
+        name: words[1],
         start: index,
         end,
-        returnType: GLSL_TYPES.has(match[1]) ? match[1] : null,
+        returnType: GLSL_TYPES.has(words[0]) ? words[0] : null,
       });
       index = end;
     }
