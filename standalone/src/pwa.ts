@@ -71,6 +71,7 @@ function defaultEnvironment(): PwaEnvironment {
 export function createPwaController(environment: PwaEnvironment = defaultEnvironment()): PwaController {
   let registration: ServiceWorkerRegistration | undefined;
   let disposed = false;
+  let applyingUpdate = false;
   const listeners = new Set<(status: PwaStatus) => void>();
   let status: PwaStatus = {
     supported: !!environment.serviceWorker,
@@ -86,7 +87,7 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
     emit();
   };
   const onControllerChange = () => {
-    if (status.updateAvailable) {
+    if (applyingUpdate) {
       environment.reload();
     }
   };
@@ -97,6 +98,30 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
     }
   };
   let preparationPort: MessagePort | undefined;
+  let offlineStatusPort: MessagePort | undefined;
+
+  const inspectOfflinePreparation = (): void => {
+    if (!registration?.active) {
+      return;
+    }
+    offlineStatusPort?.close();
+    const channel = environment.createMessageChannel();
+    offlineStatusPort = channel.port1;
+    channel.port1.onmessage = (event: MessageEvent<{ type?: unknown; ready?: unknown }>) => {
+      const payload = event.data;
+      if (payload.type !== 'offline-status' || typeof payload.ready !== 'boolean') {
+        return;
+      }
+      if (payload.ready) {
+        status = { ...status, offlinePreparation: { state: 'ready' } };
+        emit();
+      }
+      offlineStatusPort?.close();
+      offlineStatusPort = undefined;
+    };
+    channel.port1.start();
+    registration.active.postMessage({ type: 'GET_OFFLINE_STATUS' }, [channel.port2]);
+  };
 
   const prepareOffline = async (): Promise<void> => {
     if (!registration?.active || preparationPort) {
@@ -155,7 +180,9 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
         });
       });
       inspect();
-      status = { ...status, buildId: await environment.fetchBuildIdentity?.() ?? null };
+      inspectOfflinePreparation();
+      const buildId = await environment.fetchBuildIdentity?.() ?? null;
+      status = { ...status, buildId };
       emit();
     },
     subscribe(listener): () => void {
@@ -167,11 +194,13 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
       if (!registration?.waiting) {
         return;
       }
+      applyingUpdate = true;
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
     },
     async checkForUpdate(): Promise<void> {
       await registration?.update();
-      status = { ...status, buildId: await environment.fetchBuildIdentity?.() ?? status.buildId };
+      const buildId = await environment.fetchBuildIdentity?.() ?? status.buildId;
+      status = { ...status, buildId };
       inspect();
       emit();
     },
@@ -192,6 +221,8 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
       environment.serviceWorker?.removeEventListener('controllerchange', onControllerChange);
       preparationPort?.close();
       preparationPort = undefined;
+      offlineStatusPort?.close();
+      offlineStatusPort = undefined;
       listeners.clear();
     },
   };

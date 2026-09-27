@@ -63,6 +63,39 @@ test('touch input survives cancellation and remains usable after orientation cha
   await expect(canvas).toBeVisible();
 });
 
+test('mobile Export tabs stay inside their bar and video recording downloads', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.goto('/');
+  const workspaceNav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await workspaceNav.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Export' }).click();
+
+  const tabBar = page.locator('.recording-panel > .tab-navigation');
+  const tabBarBox = await tabBar.boundingBox();
+  const tabBoxes = await tabBar.locator('.tab-button').evaluateAll((buttons) => buttons.map((button) => {
+    const box = button.getBoundingClientRect();
+    return { top: box.top, right: box.right, bottom: box.bottom, left: box.left };
+  }));
+  expect(tabBarBox).not.toBeNull();
+  for (const box of tabBoxes) {
+    expect(box.top).toBeGreaterThanOrEqual(tabBarBox.y);
+    expect(box.left).toBeGreaterThanOrEqual(tabBarBox.x);
+    expect(box.right).toBeLessThanOrEqual(tabBarBox.x + tabBarBox.width);
+    expect(box.bottom).toBeLessThanOrEqual(tabBarBox.y + tabBarBox.height);
+  }
+
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+  await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Record', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^shader-.*\.webm$/);
+  expect(await download.failure()).toBeNull();
+  expect(pageErrors).toEqual([]);
+});
+
 test('small desktop windows keep mobile navigation in a bottom row', async ({ page }) => {
   await page.setViewportSize({ width: 724, height: 900 });
   await page.goto('/');

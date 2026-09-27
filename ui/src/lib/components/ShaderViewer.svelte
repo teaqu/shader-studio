@@ -32,6 +32,7 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { recordingPanelStore } from "../stores/recordingPanelStore";
   import RecordingPanel from "./recording/RecordingPanel.svelte";
+  import { isUsableCanvasSize, retainUsableCanvasSize } from "../util/canvasSize";
   import {
     getEditorOverlayVisible,
     getOverlayActiveFile,
@@ -593,13 +594,14 @@
   }
 
   function handleCanvasSizeChange(data: { width: number; height: number }) {
-    canvasWidth = Math.round(data.width);
-    canvasHeight = Math.round(data.height);
+    const retained = retainUsableCanvasSize({ width: canvasWidth, height: canvasHeight }, data);
+    canvasWidth = retained.width;
+    canvasHeight = retained.height;
   }
 
   function handleCanvasResize(data: { width: number; height: number }) {
     handleCanvasSizeChange(data);
-    if (!initialized) {
+    if (!initialized || !isUsableCanvasSize(data)) {
       return;
     }
     renderingEngine.handleCanvasResize(data.width, data.height);
