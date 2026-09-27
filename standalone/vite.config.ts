@@ -24,6 +24,11 @@ export default defineConfig({
     // them, and force-reloads the page, killing that worker before it answers.
     include: ['monaco-editor', 'vscode-languageserver-protocol'],
   },
+  preview: {
+    // Tailscale Serve gives local device previews trusted HTTPS without
+    // exposing the development server to the public internet.
+    allowedHosts: ['.ts.net'],
+  },
   build: {
     cssCodeSplit: false,
   },

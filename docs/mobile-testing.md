@@ -1,6 +1,20 @@
 # Mobile Device Acceptance
 
-Use the isolated mobile preview at `https://teaqu.github.io/shader-studio-dev/`. Confirm the build identifier in the header matches the `mobile` branch commit before recording results. The preview uses its own origin, service-worker channel, caches, local storage, and IndexedDB; it cannot replace production app data.
+Use a production build through Tailscale Serve for private, trusted HTTPS without exposing the preview publicly. On the Mac, start the preview from the `mobile` branch:
+
+```sh
+npm run preview:mobile
+```
+
+The existing private Tailscale route forwards HTTPS port 9443 to the preview server. If it needs to be recreated, run:
+
+```sh
+tailscale serve --https=9443 --bg 4173
+```
+
+Open `https://calums-mac-mini.tail182f21.ts.net:9443/` on a phone or tablet connected to the same tailnet. Stop the preview with Ctrl-C; remove only this route with `tailscale serve --https=9443 off`.
+
+Confirm the build identifier in the header before recording results. The preview uses its own HTTPS origin, service-worker caches, local storage, and IndexedDB; it cannot replace production app data.
 
 Record the device model, OS version, browser version, installed/Home Screen mode, build identifier, and result for every run. HTTPS is required for installation and reliable service-worker testing; LAN HTTP is not equivalent.
 

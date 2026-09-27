@@ -29,6 +29,7 @@
     "compile:extension": "npm run build:extension:code",
     "dev:standalone": "npm run dev -w @shader-studio/standalone",
     "build:standalone": "npm run build:types && npm run build -w @shader-studio/standalone",
+    "preview:mobile": "npm run build:standalone && npm run preview -w @shader-studio/standalone -- --host 127.0.0.1 --port 4173",
     "dev:web": "npm run dev:standalone",
     "build:web": "npm run build:standalone",
     "dev:ui": "npm run dev -w ui",
