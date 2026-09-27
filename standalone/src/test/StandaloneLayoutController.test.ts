@@ -279,7 +279,7 @@ describe('StandaloneLayoutController', () => {
     expect(preview?.api.group.api.isVisible).toBe(true);
   });
 
-  it('does not leak a tool first opened on mobile into the desktop layout', () => {
+  it('keeps a tool first opened on mobile visible in the restored desktop layout', () => {
     const controller = new StandaloneLayoutController(api, storage);
     controller.initialize();
     controller.showMobilePanel('preview');
@@ -288,8 +288,24 @@ describe('StandaloneLayoutController', () => {
     controller.showMobileDockviewPanel('config');
     controller.restoreDesktopPanels();
 
-    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(false);
+    expect(api.getPanel('config')?.api.group.api.isVisible).toBe(true);
     expect(api.getPanel('preview')?.api.group.api.isVisible).toBe(true);
+  });
+
+  it('restores a newly opened mobile tool group once when it contains several tabs', () => {
+    const controller = new StandaloneLayoutController(api, storage);
+    controller.initialize();
+    controller.showMobilePanel('preview');
+    api.addPanel({ id: 'config' });
+    api.addPanel({ id: 'debug', position: { referencePanel: 'config', direction: 'within' } });
+
+    controller.showMobileDockviewPanel('debug');
+    const toolGroup = api.getPanel('config')!.api.group;
+    vi.mocked(toolGroup.api.setVisible).mockClear();
+    controller.restoreDesktopPanels();
+
+    expect(toolGroup.api.isVisible).toBe(true);
+    expect(toolGroup.api.setVisible).toHaveBeenCalledOnce();
   });
 
   it('restores a grouped panel to its previous tab group and index', () => {

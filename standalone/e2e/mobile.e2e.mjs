@@ -34,9 +34,12 @@ test('phone shell preserves the selected shader across Explorer, Preview, Editor
     await expect(tools.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator(panel)).toBeVisible();
   }
+  await expect(page.locator('.standalone-dockview .dv-tabs-and-actions-container:visible')).toHaveCount(0);
 
   await page.setViewportSize({ width: 780, height: 390 });
   await expect(workspaceNav).toBeHidden();
+  await expect(page.locator('.recording-panel')).toBeVisible();
+  await expect(page.locator('.standalone-dockview .dv-tabs-and-actions-container:visible')).not.toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 780 });
   await expect(workspaceNav).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -71,4 +74,12 @@ test('small desktop windows keep mobile navigation in a bottom row', async ({ pa
   expect(box).not.toBeNull();
   expect(box.width).toBeGreaterThan(700);
   expect(box.height).toBeLessThan(80);
+  await expect(page.locator('.menu-bar .collapse-config')).toBeHidden();
+  await expect(page.locator('.menu-bar .collapse-debug')).toBeHidden();
+  await expect(page.locator('.menu-bar .collapse-record')).toBeHidden();
+
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await expect(page.locator('.menu-bar .collapse-config')).toBeVisible();
+  await expect(page.locator('.menu-bar .collapse-debug')).toBeVisible();
+  await expect(page.locator('.menu-bar .collapse-record')).toBeVisible();
 });
