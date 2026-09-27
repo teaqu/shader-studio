@@ -220,12 +220,13 @@ suite('WebServer Test Suite', () => {
       });
     });
 
-    test('rejects a replacement regular file when no-follow is unavailable', async () => {
-      const replacement = path.join(fixtureRoot, 'identity.png');
-      fs.writeFileSync(replacement, 'safe');
-      const expectedStats = fs.statSync(replacement);
-      fs.unlinkSync(replacement);
+    test('rejects a regular file whose descriptor has a different identity', async () => {
+      const original = path.join(fixtureRoot, 'identity.png');
+      const replacement = path.join(fixtureRoot, 'replacement.png');
+      fs.writeFileSync(original, 'safe');
       fs.writeFileSync(replacement, 'replacement');
+      // Keep both files alive so filesystems cannot reuse the original inode.
+      const expectedStats = fs.statSync(original);
 
       await new Promise<void>((resolve, reject) => {
         openRegularFile(replacement, expectedStats, (error, fd) => {
