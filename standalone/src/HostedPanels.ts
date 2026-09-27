@@ -80,7 +80,7 @@ export class HostedPanels implements PanelHost {
     this.renderers.get(id)?.attach(definition);
     if (this.api?.getPanel(id)) {
       this.visible.add(id);
-      definition.onRestore?.();
+      definition.onShow?.();
     }
 
     return () => {
@@ -115,7 +115,7 @@ export class HostedPanels implements PanelHost {
     for (const [id, definition] of this.definitions) {
       if (this.api?.getPanel(id)) {
         this.visible.add(id);
-        definition.onRestore?.();
+        definition.onShow?.();
       }
     }
     for (const id of this.visible) {
@@ -137,6 +137,7 @@ export class HostedPanels implements PanelHost {
   /** Opens a tool without coupling phone navigation to Dockview's layout. */
   showTool(id: HostedPanelId): HostedPanelId {
     this.lastSelectedTool = id;
+    this.definitions.get(id)?.onShow?.();
     this.setVisible(id, true);
     this.api?.getPanel(id)?.api.setActive();
     return id;

@@ -23,9 +23,16 @@ test('phone shell preserves the selected shader across Explorer, Preview, Editor
   await workspaceNav.getByRole('button', { name: 'Tools' }).click();
   const tools = page.getByRole('navigation', { name: 'Tools' });
   await expect(tools).toBeVisible();
-  for (const name of ['Config', 'Debug', 'Frame Times', 'Export']) {
+  const toolPanels = [
+    ['Config', '.config-panel'],
+    ['Debug', '.debug-panel'],
+    ['Frame Times', '.performance-panel'],
+    ['Export', '.recording-panel'],
+  ];
+  for (const [name, panel] of toolPanels) {
     await tools.getByRole('button', { name }).click();
     await expect(tools.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator(panel)).toBeVisible();
   }
 
   await page.setViewportSize({ width: 780, height: 390 });
@@ -39,7 +46,9 @@ test('touch input survives cancellation and remains usable after orientation cha
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
   await nav.getByRole('button', { name: 'Explorer' }).click();
-  await page.getByTestId('shader-option-aurora-glsl').click();
+  // Selection navigates away from Explorer immediately, detaching the card
+  // before Playwright's multi-step pointer action can finish.
+  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
   await nav.getByRole('button', { name: 'Preview' }).click();
   const canvas = page.getByTestId('web-preview').locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
   await expect(canvas).toBeVisible();

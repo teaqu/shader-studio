@@ -69,12 +69,12 @@ describe('HostedPanels', () => {
 
   it('restores registered panels already present in a saved Dockview layout', () => {
     dock.addExisting('debug');
-    const onRestore = vi.fn();
+    const onShow = vi.fn();
 
-    host.register('debug', { mount: vi.fn(), onClose: vi.fn(), onRestore });
+    host.register('debug', { mount: vi.fn(), onClose: vi.fn(), onShow });
     host.restoreVisiblePanels();
 
-    expect(onRestore).toHaveBeenCalledTimes(2);
+    expect(onShow).toHaveBeenCalledTimes(2);
     expect(dock.addPanel).not.toHaveBeenCalled();
   });
 
@@ -161,12 +161,26 @@ describe('HostedPanels', () => {
   });
 
   it('opens a requested tool and remembers it for the mobile Tools destination', () => {
+    const onShow = vi.fn();
+    host.register('performance', { mount: vi.fn(), onClose: vi.fn(), onShow });
+
     host.showTool('performance');
     expect(dock.addPanel).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'performance' }));
     expect(host.getLastSelectedTool()).toBe('performance');
+    expect(onShow).toHaveBeenCalledOnce();
 
     host.showLastSelectedTool();
     expect(dock.panels.get('performance')?.api.setActive).toHaveBeenCalledTimes(2);
+    expect(onShow).toHaveBeenCalledTimes(2);
+  });
+
+  it('synchronizes a tool selected before its viewer definition registers', () => {
+    const onShow = vi.fn();
+
+    host.showTool('config');
+    host.register('config', { mount: vi.fn(), onClose: vi.fn(), onShow });
+
+    expect(onShow).toHaveBeenCalledOnce();
   });
 
   it('tracks a tool selected from an existing Dockview tab for the phone Tools destination', () => {
