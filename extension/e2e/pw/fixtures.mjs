@@ -1,11 +1,13 @@
 import { test as base, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
+import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-validation');
@@ -91,6 +93,7 @@ export const test = base.extend({
     const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
     const extensionsDir = join(userDataDir, 'extensions');
     const portFile = join(userDataDir, 'bridge-port');
+    const bridgeToken = randomBytes(32).toString('base64url');
 
     // Seed the profile before launch. Applying these through the configuration
     // API afterwards makes VS Code prompt that a setting changed and needs a
@@ -138,7 +141,11 @@ export const test = base.extend({
     }
     const app = await electron.launch({
       executablePath: vscodeBinary(),
-      env: cleanEnv({ SHADER_STUDIO_PW_PORT_FILE: portFile, SHADER_STUDIO_E2E_WORKSPACE: workspacePath }),
+      env: cleanEnv({
+        SHADER_STUDIO_PW_PORT_FILE: portFile,
+        SHADER_STUDIO_PW_BRIDGE_TOKEN: bridgeToken,
+        SHADER_STUDIO_E2E_WORKSPACE: workspacePath,
+      }),
       args,
       timeout: 120_000,
     });
@@ -155,27 +162,19 @@ export const test = base.extend({
       }, { width, height });
     }
 
-    const port = Number(await waitFor(
-      () => (existsSync(portFile) ? readFileSync(portFile, 'utf8').trim() : null),
+    await waitFor(
+      () => {
+        if (!existsSync(portFile)) {
+          return null;
+        }
+        try {
+          return readBridgePort(portFile);
+        } catch {
+          return null;
+        }
+      },
       { timeout: 60_000, message: 'extension-host bridge never reported a port' },
-    ));
-
-    // The extension host restarts during startup, taking the bridge server with
-    // it and leaving a stale port behind, so the port is re-read per call.
-    const currentPort = () => Number(readFileSync(portFile, 'utf8').trim());
-
-    const callHost = async (fn, ...args) => {
-      const response = await fetch(`http://127.0.0.1:${currentPort()}/`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ source: fn.toString(), args }),
-      });
-      const result = await response.json();
-      if (!result.ok) {
-        throw new Error(`extension host: ${result.error}`);
-      }
-      return result.value;
-    };
+    );
 
     /**
      * Run a function inside the extension host with the real `vscode` module.
@@ -183,21 +182,12 @@ export const test = base.extend({
      * "Canceled"; that is a readiness signal rather than a real failure, so
      * retry briefly instead of failing the whole file in beforeAll.
      */
-    const evaluateInHost = async (fn, ...args) => {
-      const deadline = Date.now() + 60_000;
-      for (;;) {
-        try {
-          return await callHost(fn, ...args);
-        } catch (error) {
-          const detail = String(error?.message ?? error) + String(error?.cause?.code ?? '');
-          const transient = /Canceled|ECONNREFUSED|ECONNRESET|fetch failed/i.test(detail);
-          if (!transient || Date.now() >= deadline) {
-            throw error;
-          }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      }
-    };
+    const evaluateInHost = (fn, ...args) => evaluateBridgeCall({
+      portFile,
+      token: bridgeToken,
+      source: fn.toString(),
+      args,
+    });
 
     // Do not let the first real call be the one that races activation.
     await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);

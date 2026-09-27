@@ -168,13 +168,17 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("provides a WGSL authoring environment without virtual files", async () => {
+  test("provides a WGSL authoring environment without virtual files", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-wgsl-ls-"));
     const rootPath = path.join(directory, "image.wgsl");
     const source = "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }";
     try {
       fs.writeFileSync(rootPath, source);
-      const document = await vscode.workspace.openTextDocument(rootPath);
+      const document = {
+        uri: vscode.Uri.file(rootPath),
+        languageId: "wgsl",
+        getText: () => source,
+      };
 
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
