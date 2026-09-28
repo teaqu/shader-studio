@@ -22,8 +22,8 @@ const {
     mockWebGLEngine,
     mockWebGPUEngine,
     mockSlangAssets,
-    MockWebGLRenderingEngine: vi.fn(() => mockWebGLEngine),
-    MockWebGPURenderingEngine: vi.fn((_assets: SlangAssetUrls) => mockWebGPUEngine),
+    MockWebGLRenderingEngine: vi.fn(function MockWebGLRenderingEngine() { return mockWebGLEngine; }),
+    MockWebGPURenderingEngine: vi.fn(function MockWebGPURenderingEngine(_assets: SlangAssetUrls) { return mockWebGPUEngine; }),
     mockGetSlangAssetUrls: vi.fn(() => mockSlangAssets),
   };
 });
@@ -45,8 +45,8 @@ import { createEngineForLanguage } from './engineFactory';
 describe('createEngineForLanguage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    MockWebGLRenderingEngine.mockImplementation(() => mockWebGLEngine);
-    MockWebGPURenderingEngine.mockImplementation(() => mockWebGPUEngine);
+    MockWebGLRenderingEngine.mockImplementation(function MockWebGLRenderingEngine() { return mockWebGLEngine; });
+    MockWebGPURenderingEngine.mockImplementation(function MockWebGPURenderingEngine() { return mockWebGPUEngine; });
     mockGetSlangAssetUrls.mockImplementation(() => mockSlangAssets);
   });
 
@@ -83,7 +83,7 @@ describe('createEngineForLanguage', () => {
 
   it('propagates WebGL constructor errors without constructing WebGPU', () => {
     const constructorError = new Error('WebGL construction failed');
-    MockWebGLRenderingEngine.mockImplementationOnce(() => {
+    MockWebGLRenderingEngine.mockImplementationOnce(function MockWebGLRenderingEngine() {
       throw constructorError;
     });
 
@@ -95,7 +95,7 @@ describe('createEngineForLanguage', () => {
 
   it('propagates WebGPU constructor errors without falling back to WebGL', () => {
     const constructorError = new Error('WebGPU construction failed');
-    MockWebGPURenderingEngine.mockImplementationOnce(() => {
+    MockWebGPURenderingEngine.mockImplementationOnce(function MockWebGPURenderingEngine() {
       throw constructorError;
     });
 
