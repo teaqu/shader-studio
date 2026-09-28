@@ -5,8 +5,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    pool: 'vmThreads',
-    poolOptions: { vmThreads: { maxThreads: 4 } },
+    // Rendering suites replace browser globals and mock the same engine
+    // modules. Run each file in a fork and avoid overlapping suites.
+    pool: 'forks',
+    maxWorkers: 1,
+    fileParallelism: false,
     exclude: [...configDefaults.exclude, 'src/test/e2e/**', '**/*.e2e.test.*'],
     coverage: {
       exclude: [

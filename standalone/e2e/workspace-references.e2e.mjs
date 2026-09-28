@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { workspace } from './language-service-fixtures.mjs';
+import { waitForLanguageService, workspace } from './language-service-fixtures.mjs';
 
 for (const { language, extension, pass, helper } of [
   { language: 'GLSL', extension: 'glsl', pass: 'void mainImage(out vec4 color, in vec2 coord) { color = vec4(tone(coord.x)); }', helper: 'float tone(float value) { return value * 0.5; }' },
@@ -19,6 +19,7 @@ for (const { language, extension, pass, helper } of [
     await page.goto('/');
     await page.getByTestId(`shader-option-${name}-${extension}`).click();
     const editor = page.getByTestId('web-editor');
+    await waitForLanguageService(editor);
     await editor.locator('.view-line').getByText('tone', { exact: true }).dblclick();
     await page.keyboard.press('Home');
     for (let column = 0; column < pass.indexOf('tone') + 1; column++) {

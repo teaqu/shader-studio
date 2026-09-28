@@ -7,6 +7,7 @@ test.use({ vscodeKey: 'inspector-pointer' });
 const shaderPath = join(workspacePath, 'inspector-pointer.slang');
 const isRed = ([r, g, b]) => r > 200 && g < 60 && b < 60;
 const isGreen = ([r, g, b]) => g > 200 && r < 60 && b < 60;
+const thumbnailSampleWidth = (row) => row.locator('.thumb').evaluate((canvas) => canvas.width);
 
 const pointerTarget = (frame) => frame.evaluate(() => {
   const element = [...document.querySelectorAll(':hover')].at(-1);
@@ -93,10 +94,13 @@ test.describe('hidden line tooltip leaves inspector interactive @gpu', () => {
     await vscode.window.mouse.click(point.x, point.y);
     await testInfo.attach('after-size-click', { body: await vscode.window.screenshot(), contentType: 'image/png' });
     await expect(button, `mouse hit ${JSON.stringify(await pointerTarget(frame))}`).toHaveClass(/active/);
+    const row = frame.getByRole('group', { name: 'Preview previewColor', exact: true });
+    await expect.poll(() => thumbnailSampleWidth(row)).toBeGreaterThanOrEqual(128);
     // Restore the compact thumbnails before the next gesture's geometry is measured.
     const compact = frame.locator('.variables-section').getByRole('button', { name: '32', exact: true });
     await compact.click();
     await expect(compact).toHaveClass(/active/);
+    await expect.poll(() => thumbnailSampleWidth(row)).toBeLessThan(64);
   });
 
   test('hovering a captured variable under the hidden tooltip shows its full canvas preview', async ({ vscode }, testInfo) => {

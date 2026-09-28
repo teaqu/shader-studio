@@ -11,13 +11,13 @@ export interface AspectRatioState {
 
 const STORAGE_KEY = 'shader-studio-aspect-ratio';
 const VALID_MODES: AspectRatioMode[] = ['16:9', '4:3', '1:1', 'fill', 'auto'];
-const DEFAULT_MODE: AspectRatioMode = 'auto';
+export const DEFAULT_ASPECT_RATIO_MODE: AspectRatioMode = '16:9';
 const SESSION_SOURCE: AspectRatioSource = 'session';
 const CONFIG_SOURCE: AspectRatioSource = 'config';
 
 function loadStoredMode(): AspectRatioMode {
   if (typeof window === 'undefined') {
-    return DEFAULT_MODE;
+    return DEFAULT_ASPECT_RATIO_MODE;
   }
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
@@ -30,7 +30,7 @@ function loadStoredMode(): AspectRatioMode {
       console.warn('Failed to parse stored aspect ratio setting');
     }
   }
-  return DEFAULT_MODE;
+  return DEFAULT_ASPECT_RATIO_MODE;
 }
 
 const createAspectRatioStore = () => {
@@ -80,16 +80,16 @@ const createAspectRatioStore = () => {
       }
     },
     setSessionMode: (mode?: AspectRatioMode) => {
-      const nextMode = mode && VALID_MODES.includes(mode) ? mode : DEFAULT_MODE;
+      const nextMode = mode && VALID_MODES.includes(mode) ? mode : DEFAULT_ASPECT_RATIO_MODE;
       if (currentMode === nextMode && currentSource === SESSION_SOURCE) {
         return;
       }
       commit(nextMode, SESSION_SOURCE);
     },
     reset: () => {
-      commit(DEFAULT_MODE, SESSION_SOURCE);
+      commit(DEFAULT_ASPECT_RATIO_MODE, SESSION_SOURCE);
       if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: DEFAULT_MODE }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode: DEFAULT_ASPECT_RATIO_MODE }));
       }
     }
   };

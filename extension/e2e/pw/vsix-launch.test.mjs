@@ -6,6 +6,7 @@ import {
   productionVsixInstallArgs,
   productionVsixInstallEnv,
   productionVsixLaunchArgs,
+  cloneProductionVsixSeed,
   installProductionVsix,
 } from './vsix-launch.mjs';
 
@@ -105,4 +106,31 @@ test('production VSIX install reports a failed VS Code CLI invocation', () => {
     resolveCliArgs: () => ['/mock/code'],
     runCommand: () => ({ status: 1, stderr: 'invalid extension archive', stdout: '' }),
   }), /VSIX installation failed \(1\): invalid extension archive/);
+});
+
+test('production VSIX seed cloning copies an immutable installed extension into a fresh profile', () => {
+  const calls = [];
+  cloneProductionVsixSeed({
+    seedExtensionsDir: '/tmp/shader-studio-seed/extensions',
+    extensionsDir: '/tmp/shader-studio-profile/extensions',
+    copy: (...args) => calls.push(args),
+    exists: () => true,
+  });
+  assert.deepEqual(calls, [[
+    '/tmp/shader-studio-seed/extensions',
+    '/tmp/shader-studio-profile/extensions',
+    { recursive: true, force: false, errorOnExist: true },
+  ]]);
+});
+
+test('production VSIX seed cloning rejects a missing seed and propagates copy errors', () => {
+  assert.throws(() => cloneProductionVsixSeed({
+    seedExtensionsDir: '/missing/seed', extensionsDir: '/tmp/worker/extensions', exists: () => false,
+  }), /seed does not exist/);
+  assert.throws(() => cloneProductionVsixSeed({
+    seedExtensionsDir: '/tmp/seed', extensionsDir: '/tmp/worker/extensions', exists: () => true,
+    copy: () => {
+      throw new Error('copy failed');
+    },
+  }), /copy failed/);
 });
