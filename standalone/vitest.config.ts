@@ -9,6 +9,9 @@ export default defineConfig({
     name: 'standalone',
     environment: 'jsdom',
     globals: true,
+    // E2E helper contracts use node:test so they can run without loading the
+    // browser application. Keep them in the root harness, not Vitest's jsdom
+    // project, while Playwright specs remain `*.e2e.mjs`.
     exclude: [...configDefaults.exclude, '**/e2e/**/*.test.mjs'],
   },
   resolve: {

@@ -8,8 +8,6 @@ export function registerScriptContextTests(language) {
 
   const shaderPath = join(workspacePath, `script-context${suffix}.${language}`);
 
-  test.use({ vscodeKey: `script-context${suffix}` });
-
   /**
  * Uniform scripts run in the extension host, which has no shader of its own.
  * It used to invent the context it hands them: a wall clock for `iTime`, a
@@ -21,6 +19,11 @@ export function registerScriptContextTests(language) {
  * channel per agreement. White is agreement; any disagreement is visible.
  */
   test.describe(`the context a uniform script is given ${language} ${language === 'glsl' ? '' : '@gpu'}`, () => {
+    test.afterEach(async ({ vscode }) => {
+      await vscode.evaluateInHost(async (vscode) => {
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      });
+    });
     const centre = centrePixel;
 
     const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -4,6 +4,8 @@ import * as vscode from 'vscode';
 import { ErrorMessage, WarningMessage } from '@shader-studio/types';
 import { ErrorHandler } from '../../app/ErrorHandler';
 
+const realOnDidChangeTextDocument = vscode.workspace.onDidChangeTextDocument;
+
 function stubDocument(uri: vscode.Uri, lines: string[], languageId = 'slang'): vscode.TextDocument {
   return {
     languageId,
@@ -70,21 +72,14 @@ suite('ErrorHandler Test Suite', () => {
       }
     } as any;
 
-    Object.defineProperty(vscode.window, 'activeTextEditor', {
-      value: mockEditor,
-      writable: true
-    });
+    sandbox.stub(vscode.window, 'activeTextEditor').value(mockEditor);
 
     textDocumentChangeListener = undefined;
     const onDidChangeTextDocumentStub = ((listener: (event: vscode.TextDocumentChangeEvent) => void) => {
       textDocumentChangeListener = listener;
       return { dispose: () => { } };
     }) as typeof vscode.workspace.onDidChangeTextDocument;
-    Object.defineProperty(vscode.workspace, 'onDidChangeTextDocument', {
-      value: onDidChangeTextDocumentStub,
-      configurable: true,
-      writable: true,
-    });
+    sandbox.stub(vscode.workspace, 'onDidChangeTextDocument').value(onDidChangeTextDocumentStub);
 
     errorHandler = new ErrorHandler(mockOutputChannel, mockDiagnosticCollection);
   });
@@ -92,6 +87,10 @@ suite('ErrorHandler Test Suite', () => {
   teardown(() => {
     errorHandler.dispose();
     sandbox.restore();
+  });
+
+  suiteTeardown(() => {
+    assert.strictEqual(vscode.workspace.onDidChangeTextDocument, realOnDidChangeTextDocument);
   });
 
   // Keep only meaningful behavioral tests

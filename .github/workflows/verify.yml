@@ -100,8 +100,11 @@ jobs:
       - name: Run UI type check
         run: npm run check -w ui
 
-      - name: Run host harness unit tests
-        run: node --test extension/e2e/pw/*.test.mjs
+      - name: Run CI helper contract tests
+        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs
+
+      - name: Run Open VSX publishing-script regression tests
+        run: bash .github/scripts/test-publish-open-vsx.sh
 
       - name: Run extension tests
         run: xvfb-run -a npm test -w extension
@@ -218,6 +221,13 @@ jobs:
       # The connected-browser spec needs Chromium with a real WebGPU adapter.
       - name: Install Playwright browser
         run: npx playwright install chromium
+
+      # This rig covers extension-host-only corpus contracts (workspace @/
+      # resolution, scripts, model geometry and Slang imports). It needs the
+      # source workspace rather than the packaged extension, so retain it next
+      # to the installed-VSIX pass instead of conflating the two hosts.
+      - name: Run extension-host corpus E2E tests
+        run: npm run test:e2e:vscode:corpus -w extension
 
       # These selections are complementary: every spec runs once, using the
       # same archive that a release publishes. No development build is loaded.

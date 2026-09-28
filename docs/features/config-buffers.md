@@ -41,7 +41,7 @@ The Image tab has no file path — it always corresponds to your main shader fil
 | Setting | Options | Description |
 |---------|---------|-------------|
 | **Scale** | 0.25×, 0.5×, 1×, 2×, 4× | Relative to the panel size |
-| **Aspect ratio** | 16:9, 4:3, 1:1, Fill, Auto | Constrains the canvas shape. Auto uses your screen's aspect ratio. |
+| **Aspect ratio** | 16:9, 4:3, 1:1, Fill, Screen | Constrains the canvas shape. Screen uses your screen's aspect ratio. |
 | **Custom dimensions** | e.g. `1920 × 1080` | Base width and height in pixels |
 
 The Image pass can also have input channels. GLSL and Slang access them by the

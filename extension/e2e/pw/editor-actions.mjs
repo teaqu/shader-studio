@@ -108,3 +108,20 @@ export async function focusNativeEditor(vscode, path, offset) {
     Boolean(document.activeElement?.closest('.part.editor .monaco-editor'))),
   { message: 'the editor never took keyboard focus' }).toBe(true);
 }
+
+/**
+ * Close the active native editor through the workbench UI.
+ *
+ * The host `workbench.action.closeActiveEditor` command can remain queued while
+ * the WGSL language service settles after a completion/save, while a keyboard
+ * shortcut can be consumed by a late webview-focus update. Clicking the close
+ * action on the named active tab avoids both focus paths; the poll then verifies
+ * the host observed the close.
+ */
+export async function closeNativeEditor(vscode, path) {
+  const name = path.split(/[\\/]/).at(-1);
+  await vscode.window.locator('.tab.active').filter({ hasText: name }).locator('.codicon-close').click();
+  await expect.poll(() => vscode.evaluateInHost((vscode, target) =>
+    vscode.window.activeTextEditor?.document.uri.fsPath !== target, path),
+  { message: `native editor did not close: ${path}` }).toBe(true);
+}

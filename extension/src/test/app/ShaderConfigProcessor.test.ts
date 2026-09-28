@@ -41,6 +41,24 @@ suite('ShaderConfigProcessor Test Suite', () => {
   });
 
   suite('config parse failures', () => {
+    test('does not treat an extensionless shader buffer as its own config', () => {
+      const shaderPath = 'Untitled-1';
+      const shaderDocument = {
+        uri: { fsPath: shaderPath },
+        getText: sandbox.stub().returns(
+          'void mainImage(out vec4 color, in vec2 p) { color = vec4(badName); }',
+        ),
+      };
+      sandbox.stub(vscode.workspace, 'textDocuments').value([shaderDocument]);
+
+      const config = configProcessor.loadAndProcessConfig(shaderPath, {});
+
+      assert.strictEqual(config, null);
+      assert.strictEqual(configProcessor.getConfigError(shaderPath), undefined);
+      sinon.assert.notCalled(shaderDocument.getText);
+      sinon.assert.notCalled(mockErrorHandler.handleError);
+    });
+
     test('remembers the parse failure for the shader whose config is broken', () => {
       fsExistsSyncStub.returns(true);
       const fs = require('fs');
