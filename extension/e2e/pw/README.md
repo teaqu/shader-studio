@@ -4,6 +4,15 @@ The VS Code webview end-to-end tests, on Playwright's Electron support.
 
     npm run test:e2e:vscode:run -w extension
 
+For per-session timing, set `SHADER_STUDIO_E2E_TIMINGS_FILE` to a writable
+`.jsonl` path. Each record includes the worker key, phase and duration in
+milliseconds. The phases distinguish VS Code cache lookup, optional VSIX seed
+installation, profile preparation, Electron launch, workbench and bridge
+readiness, extension-host readiness, test execution and teardown. Playwright's
+JSON reporter provides per-case durations. Measure whole-command time and peak
+process-tree memory separately. CI job timestamps are needed for runner
+queueing and dependency waits.
+
 ## Why Playwright
 
 It replaced a WebdriverIO suite that ran through `wdio-vscode-service`, which
@@ -28,10 +37,11 @@ per step.
   Playwright's spec transform. After changing a host callback, run
   `node extension/e2e/pw/generate-host-functions.mjs` from the repository root.
   The bridge tests check that this generated file matches the specs.
-- Each spec file sets its own `vscodeKey`. Changing a worker-scoped option makes
-  Playwright start a fresh worker and a fresh VS Code, so files cannot inherit
-  each other's window state - without it the language-server toggles left by one
-  spec broke another.
+- Most spec files set their own `vscodeKey`. Changing a worker-scoped option
+  makes Playwright start a fresh worker and a fresh VS Code, so files cannot
+  inherit each other's window state - without it the language-server toggles
+  left by one spec broke another. A few language variants share one key inside
+  a spec after explicitly closing their editors and preview between cases.
 - Two workers, so spec files run in parallel while tests inside a file stay
   serial. Measured locally: 1 worker 23.0s, 2 workers 14.7s, 4 workers 15.6s -
   with only four spec files the extra windows buy nothing. Parallel windows

@@ -1727,6 +1727,9 @@ module.exports = Object.freeze({
     },
   "d9f7b48ee0dc2d757a67fb78d8a75491b9f925ee1de96758442b40680b09f182": (vscode, directory) => vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.fsPath.startsWith(directory + '/')).map(document => document.uri.fsPath),
   "da90153aafb51e15b0ca390151bd0670918277ea2f4c53a37f410c9934b36c14": async (vscode, path) => (await vscode.workspace.openTextDocument(vscode.Uri.file(path))).uri.toString(),
+  "ddaef6aa5627eb34d7dae85e083edabeba170f19037784828a3ceb0d2ffddce3": async (vscode) => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  },
   "df55410b495af0934f07ba6cd3c60964b6565fe89093b6d20c9be027ad14a58b": async (vscode, targetPath) => (
     vscode.workspace.textDocuments.find((document) => document.uri.fsPath === targetPath)?.getText() ?? ''
   ),
@@ -1776,6 +1779,9 @@ module.exports = Object.freeze({
         );
       },
   "e632cb3a60d6d4d862aa1e92d9b3122cf0819181aa89ad93d99c496bb45964d4": async (vscode) => vscode.commands.executeCommand('editor.action.triggerSuggest'),
+  "e7070fa00405b5ec9ed9d7df7d60e49c84239900a31db36a50ce75cab7cdb822": async vscode => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  },
   "e7d94fbb5977c35f43cb33949055ed39e39422f04d7e4b06d54b0d49c9cba2b5": async (vscode, targetPath, line) => {
         const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
         const editor = await vscode.window.showTextDocument(document, {

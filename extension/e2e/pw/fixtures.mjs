@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
+import { recordE2ePhase } from './e2e-timing.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-validation');
@@ -90,6 +91,8 @@ export const test = base.extend({
   // exactly as they did under the previous runner, and a fresh window per test
   // would both break that and make the suite far slower.
   vscode: [async ({ vscodeKey, productionVsixPath }, use) => {
+    const fixtureStartedAt = performance.now();
+    const profileStartedAt = performance.now();
     const userDataDir = mkdtempSync(join(tmpdir(), `ss-pw-${vscodeKey}-`));
     const extensionsDir = join(userDataDir, 'extensions');
     const portFile = join(userDataDir, 'bridge-port');
@@ -144,6 +147,8 @@ export const test = base.extend({
         workspacePath,
       ];
     }
+    recordE2ePhase('profile-setup', profileStartedAt, { vscodeKey });
+    const launchStartedAt = performance.now();
     const app = await electron.launch({
       executablePath: vscodeBinary(),
       env: cleanEnv({
@@ -154,9 +159,12 @@ export const test = base.extend({
       args,
       timeout: 120_000,
     });
+    recordE2ePhase('electron-launch', launchStartedAt, { vscodeKey });
 
+    const workbenchStartedAt = performance.now();
     const window = await app.firstWindow({ timeout: 60_000 });
     await window.waitForSelector('.monaco-workbench', { timeout: 60_000 });
+    recordE2ePhase('workbench-ready', workbenchStartedAt, { vscodeKey });
     // Opt-in only: specs must work at whatever width the host opens with, and
     // this exists to reproduce a narrow workbench (SHADER_STUDIO_E2E_WINDOW=900x700),
     // where the preview toolbar collapses controls into its options menu.
@@ -167,6 +175,7 @@ export const test = base.extend({
       }, { width, height });
     }
 
+    const bridgeStartedAt = performance.now();
     await waitFor(
       () => {
         if (!existsSync(portFile)) {
@@ -180,6 +189,7 @@ export const test = base.extend({
       },
       { timeout: 60_000, message: 'extension-host bridge never reported a port' },
     );
+    recordE2ePhase('bridge-ready', bridgeStartedAt, { vscodeKey });
 
     /**
      * Run a function inside the extension host with the real `vscode` module.
@@ -195,6 +205,7 @@ export const test = base.extend({
     });
 
     // Do not let the first real call be the one that races activation.
+    const hostStartedAt = performance.now();
     await evaluateInHost(async (vscode) => vscode.workspace.name ?? null);
     // The empty, per-worker extensions directory admits only these explicit
     // development extensions. Keeping extensions enabled avoids VS Code's
@@ -210,14 +221,19 @@ export const test = base.extend({
     if (JSON.stringify(nonBuiltinExtensionIds) !== JSON.stringify(expectedNonBuiltinExtensionIds)) {
       throw new Error(`unexpected non-builtin extensions: ${nonBuiltinExtensionIds.join(', ')}`);
     }
+    recordE2ePhase('host-ready', hostStartedAt, { vscodeKey });
+    recordE2ePhase('fixture-setup', fixtureStartedAt, { vscodeKey });
 
     const shaderFrame = async (timeout = 90_000) => waitFor(
       () => findShownAppFrame(window.frames()),
       { timeout, message: 'no frame hosting the Shader Studio app appeared' },
     );
 
+    const testStartedAt = performance.now();
     await use({ app, window, evaluateInHost, shaderFrame, workspacePath, extensionsDir });
+    recordE2ePhase('test-execution', testStartedAt, { vscodeKey });
 
+    const teardownStartedAt = performance.now();
     // A wedged extension host can leave close() pending, which surfaces as a
     // worker teardown timeout and hides whatever actually failed.
     await Promise.race([
@@ -227,6 +243,7 @@ export const test = base.extend({
     try {
       rmSync(userDataDir, { recursive: true, force: true });
     } catch { /* best effort */ }
+    recordE2ePhase('fixture-teardown', teardownStartedAt, { vscodeKey });
   }, { scope: 'worker' }],
 });
 
