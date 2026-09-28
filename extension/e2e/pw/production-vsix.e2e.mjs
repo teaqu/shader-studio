@@ -3,15 +3,18 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expectCanvasPixels } from './editor-actions.mjs';
 
-const vsixPath = process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX;
+// CI tests the artifact supplied by the packaging job. Keep the legacy
+// production-specific spelling for callers that need to override it, but do
+// not silently skip the smoke when the standard installed-VSIX variable exists.
+const vsixPath = process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? process.env.SHADER_STUDIO_E2E_VSIX;
 const fixtureDir = join(workspacePath, `production-vsix-${process.pid}`);
 const shaderPath = join(fixtureDir, 'green.wgsl');
 const configPath = join(fixtureDir, 'green.sha.json');
 
 test.use({ vscodeKey: 'production-vsix', productionVsixPath: vsixPath ?? null });
-test.skip(!vsixPath, 'Set SHADER_STUDIO_E2E_PRODUCTION_VSIX to run the packaged-extension smoke test.');
+test.skip(!vsixPath, 'Set SHADER_STUDIO_E2E_VSIX to run the packaged-extension smoke test.');
 
-test('uses the installed production extension to render a WGSL shader', async ({ vscode }) => {
+test('uses the installed production extension to render a WGSL shader @gpu', async ({ vscode }) => {
   mkdirSync(fixtureDir, { recursive: true });
   writeFileSync(shaderPath, [
     'fn mainImage(coord: vec2f) -> vec4f {',

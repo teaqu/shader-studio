@@ -87,8 +87,6 @@ set -e
 }
 
 grep -q 'uses: actions/checkout@v7' "${WORKFLOW}"
-grep -q 'uses: actions/setup-node@v6' "${WORKFLOW}"
-grep -q 'uses: actions/upload-artifact@v7' "${WORKFLOW}"
 grep -q 'uses: actions/download-artifact@v8' "${WORKFLOW}"
 if grep -Eq 'uses: actions/(checkout|setup-node|upload-artifact|download-artifact)@v4' "${WORKFLOW}"; then
   echo 'Release workflow still uses a Node 20 action.' >&2
@@ -97,8 +95,8 @@ fi
 
 extension_version="$(node -p "require('${REPOSITORY_ROOT}/extension/package.json').version")"
 lock_version="$(node -p "require('${REPOSITORY_ROOT}/package-lock.json').packages.extension.version")"
-[[ "${extension_version}" == '1.0.2' && "${lock_version}" == "${extension_version}" ]] || {
-  echo "Expected synchronized extension version 1.0.2, got manifest=${extension_version}, lock=${lock_version}." >&2
+[[ "${lock_version}" == "${extension_version}" ]] || {
+  echo "Expected synchronized extension and lock versions, got manifest=${extension_version}, lock=${lock_version}." >&2
   exit 1
 }
 

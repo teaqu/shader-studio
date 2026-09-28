@@ -12,10 +12,10 @@ describe('aspectRatioStore', () => {
     return mod.aspectRatioStore;
   }
 
-  it('should have default mode auto and savedToConfig false', async () => {
+  it('should have default mode 16:9 and session source', async () => {
     const store = await importStore();
     const state = get(store);
-    expect(state.mode).toBe('auto');
+    expect(state.mode).toBe('16:9');
     expect(state.source).toBe('session');
   });
 
@@ -23,6 +23,12 @@ describe('aspectRatioStore', () => {
     localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify({ mode: '4:3' }));
     const store = await importStore();
     expect(get(store).mode).toBe('4:3');
+  });
+
+  it('should preserve a stored auto mode', async () => {
+    localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify({ mode: 'auto' }));
+    const store = await importStore();
+    expect(get(store).mode).toBe('auto');
   });
 
   it('setMode should update and persist to localStorage', async () => {
@@ -114,7 +120,7 @@ describe('aspectRatioStore', () => {
 
     store.setFromConfig(undefined);
     expect(callCount).toBe(1);
-    expect(get(store).mode).toBe('auto');
+    expect(get(store).mode).toBe('16:9');
     expect(get(store).source).toBe('session');
     unsub();
   });
@@ -165,7 +171,7 @@ describe('aspectRatioStore', () => {
     localStorage.setItem('shader-studio-aspect-ratio', 'not-json!!!');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const store = await importStore();
-    expect(get(store).mode).toBe('auto');
+    expect(get(store).mode).toBe('16:9');
     expect(warnSpy).toHaveBeenCalledWith('Failed to parse stored aspect ratio setting');
     warnSpy.mockRestore();
   });
@@ -173,16 +179,16 @@ describe('aspectRatioStore', () => {
   it('should ignore stored value with invalid mode', async () => {
     localStorage.setItem('shader-studio-aspect-ratio', JSON.stringify({ mode: 'invalid' }));
     const store = await importStore();
-    expect(get(store).mode).toBe('auto');
+    expect(get(store).mode).toBe('16:9');
   });
 
   // --- reset ---
 
-  it('reset should restore default auto', async () => {
+  it('reset should restore default 16:9', async () => {
     const store = await importStore();
     store.setMode('fill');
     store.reset();
-    expect(get(store).mode).toBe('auto');
+    expect(get(store).mode).toBe('16:9');
   });
 
   it('reset should persist default to localStorage', async () => {
@@ -190,7 +196,7 @@ describe('aspectRatioStore', () => {
     store.setMode('4:3');
     store.reset();
     const stored = JSON.parse(localStorage.getItem('shader-studio-aspect-ratio')!);
-    expect(stored.mode).toBe('auto');
+    expect(stored.mode).toBe('16:9');
   });
 
   it('reset should set savedToConfig to false', async () => {

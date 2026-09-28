@@ -1,13 +1,20 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import createSlangModule from "../../../../ui/src/slang/slang-wasm.js";
 import type { ShaderAuthoringEnvironment } from "@shader-studio/types";
 import { SlangLanguageService } from "../SlangLanguageService";
+import type { SlangLanguageServerModule } from "../slangLanguageServerTypes";
+
+let module: SlangLanguageServerModule;
+
+beforeAll(async () => {
+  module = await createSlangModule({
+    wasmBinary: readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url)),
+  });
+}, 20_000);
 
 describe("SlangLanguageService with bundled WASM", () => {
   it("offers sampling members for a configured input", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///channel.slang";
     const environment: ShaderAuthoringEnvironment = {
@@ -42,8 +49,6 @@ describe("SlangLanguageService with bundled WASM", () => {
   }, 20_000);
 
   it("leads with types at a statement start and offers no symbol after one", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///types.slang";
     const environment: ShaderAuthoringEnvironment = {
@@ -84,8 +89,6 @@ describe("SlangLanguageService with bundled WASM", () => {
   }, 30_000);
 
   it("uses the official browser language server for completion and diagnostics", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///image.slang";
     const environment: ShaderAuthoringEnvironment = {
@@ -141,8 +144,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
   }, 20_000);
 
   it("resolves a relative include supplied as a virtual file", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///workspace/image.slang";
     const source = [
@@ -178,8 +179,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
   }, 20_000);
 
   it("resolves a dotted import whose file declares only its basename", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///workspace/foundation.slang";
     const source = [
@@ -215,8 +214,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
   }, 20_000);
 
   it("recognizes the Shader Studio compute repetition index", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///workspace/substep.slang";
     const source = [
@@ -254,8 +251,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
   }, 20_000);
 
   it("compiles a configured buffer against implicit Shader Studio Common", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///workspace/buffer-a.slang";
     const source = "float4 mainImage(float2 p) { return float4(sharedTone(p.x)); }";
@@ -291,8 +286,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
   }, 20_000);
 
   it("narrows completions to vector components after a member selector", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///image.slang";
     const environment: ShaderAuthoringEnvironment = {
@@ -329,8 +322,6 @@ float4 mainImage(float2 p) { return float4(normalize(tint), exerciseEasyIntrinsi
     }
   }, 20_000);
   it("offers locals and parameters the official server omits", async () => {
-    const wasmBinary = readFileSync(new URL("../../../../ui/src/slang/slang-wasm.wasm", import.meta.url));
-    const module = await createSlangModule({ wasmBinary });
     const service = new SlangLanguageService(module);
     const uri = "file:///locals.slang";
     const environment: ShaderAuthoringEnvironment = {
