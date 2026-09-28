@@ -15,8 +15,6 @@ export function registerScriptPauseTests(language) {
   const label = language === 'wgsl' ? 'WGSL' : 'Slang';
   const shaderPath = join(workspacePath, `script-pause-${language}.${language}`);
 
-  test.use({ vscodeKey: `script-pause-${language}` });
-
   test.describe(`a paused ${label} shader driven by a uniform script @gpu`, () => {
     const redAtCentre = async (frame) => {
       try {

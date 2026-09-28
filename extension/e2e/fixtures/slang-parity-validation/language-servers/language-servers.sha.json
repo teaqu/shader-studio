@@ -25,6 +25,9 @@
       "type": "compute",
       "path": "./compute.slang",
       "entryPoint": "computeMain"
+    },
+    "common": {
+      "path": "./common.glsl"
     }
   }
 }

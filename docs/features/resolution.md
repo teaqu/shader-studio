@@ -27,7 +27,7 @@ Use this when you want to temporarily test a different size — for example, dro
 
 - **Scale presets** — Quick multipliers: 0.25x, 0.5x, 1x, 2x, 4x. Scale is applied on top of everything else.
 - **Custom resolution** — Type an exact width and height in pixels. When set, this overrides scale and aspect ratio.
-- **Aspect ratio** — 16:9, 4:3, 1:1 (square), Fill (use all available space), or Auto (match your screen).
+- **Aspect ratio** — 16:9, 4:3, 1:1 (square), Fill (use all available space), or Screen (match your screen).
 - **Black background** — Fill the area around the shader with black instead of the editor background.
 - **Zoom** — Magnify the preview visually without changing the actual render size (0.1x to 3.0x).
 
