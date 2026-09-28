@@ -3,6 +3,7 @@ import { render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import EditorOverlay from '../../lib/components/ShaderEditor.svelte';
 import type { Transport } from '../../lib/transport/MessageTransport';
+import type { ShaderAuthoringEnvironment } from '@shader-studio/types';
 
 vi.mock('@shader-studio/monaco', async () => ({
   // The scoped token-colour helpers are pure and stay real.
@@ -241,6 +242,94 @@ describe('EditorOverlay', () => {
   });
 
   describe('language service environment', () => {
+    it('reports readiness only after the current model finishes language-service sync', async () => {
+      const { container, rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: '/before.slang' } });
+      const controllers = await import('@shader-studio/monaco');
+      const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
+      const finishSyncs: Array<() => void> = [];
+      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => { finishSyncs.push(resolve); }));
+
+      await rerender({ shaderPath: '/after.slang', shaderCode: 'float4 mainImage() { return 1; }' });
+      await tick();
+      const wrapper = container.querySelector('.editor-wrapper');
+      expect(wrapper).toHaveAttribute('data-language-service-status', 'pending');
+
+      for (const finishSync of finishSyncs) finishSync();
+      await Promise.resolve();
+      await tick();
+      expect(wrapper).toHaveAttribute('data-language-service-status', 'ready');
+    });
+
+    it('waits for workspace documents before reporting language-service readiness', async () => {
+      const { container, rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: '/before.slang' } });
+      const controllers = await import('@shader-studio/monaco');
+      const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
+      const finishSyncs: Array<() => void> = [];
+      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => { finishSyncs.push(resolve); }));
+      const getWorkspaceDocuments = vi.fn().mockResolvedValue([]);
+
+      await rerender({ shaderPath: '/after.slang', shaderCode: 'float4 mainImage() { return 1; }', transport: { ...mockTransport, getWorkspaceDocuments } });
+      await tick();
+      expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'pending');
+      expect(getWorkspaceDocuments).not.toHaveBeenCalled();
+
+      finishSyncs.shift()?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await tick();
+      expect(getWorkspaceDocuments).toHaveBeenCalledWith('slang');
+      expect(controller.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceDocuments: [] }));
+      expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'pending');
+
+      for (const finishSync of finishSyncs) finishSync();
+      await Promise.resolve();
+      await tick();
+      expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'ready');
+    });
+
+    it('ignores readiness from an editor model that has been replaced', async () => {
+      const { container, rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: '/before.slang' } });
+      const controllers = await import('@shader-studio/monaco');
+      const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
+      const finishByUri = new Map<string, () => void>();
+      controller.syncEnvironment.mockImplementation((environment: ShaderAuthoringEnvironment) => new Promise<void>(resolve => {
+        finishByUri.set(environment.documentUri, resolve);
+      }));
+
+      await rerender({ shaderPath: '/first.slang', shaderCode: 'first' });
+      await tick();
+      await rerender({ shaderPath: '/second.slang', shaderCode: 'second' });
+      await tick();
+
+      finishByUri.get('file:///first.slang')?.();
+      await Promise.resolve();
+      await tick();
+      expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'pending');
+
+      finishByUri.get('file:///second.slang')?.();
+      await Promise.resolve();
+      await tick();
+      expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'ready');
+    });
+
+    it('reports a language-service initialization failure', async () => {
+      const { container, rerender } = render(EditorOverlay, { props: { ...defaultProps, shaderPath: '/before.slang' } });
+      const controllers = await import('@shader-studio/monaco');
+      const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        controller.syncEnvironment.mockRejectedValueOnce(new Error('worker failed'));
+        await rerender({ shaderPath: '/after.slang', shaderCode: 'float4 mainImage() { return 1; }' });
+        await Promise.resolve();
+        await tick();
+
+        expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'error');
+        expect(consoleError).toHaveBeenCalledWith('Shader Studio language service failed to initialize', expect.any(Error));
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
     it.each(['glsl', 'slang', 'wgsl'])('syncs the newly attached %s model after navigation', async language => {
       const monaco = await import('monaco-editor');
       const { mockEditor } = createMockEditorWithCallbacks();

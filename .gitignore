@@ -29,6 +29,7 @@ coverage/
 !rendering/src/test/fixtures/shader-corpus/.vscode/**
 .history/
 .github/*
+!.github/CODEOWNERS
 !.github/workflows/
 !.github/workflows/docs.yml
 !.github/workflows/release-extension.yml
