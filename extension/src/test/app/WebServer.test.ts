@@ -157,6 +157,21 @@ suite('WebServer Test Suite', () => {
       );
     });
 
+    test('does not pass the requested texture path directly to filesystem APIs', () => {
+      const requestedPath = `${fixtureRoot}${path.sep}${path.sep}texture.png`;
+      const realFs = require('fs');
+      const realpathSync = sandbox.spy(realFs.realpathSync);
+      const { resolveSafeTexturePath: resolveTexturePath } = proxyquire('../../app/WebServer', {
+        fs: Object.assign(Object.create(realFs), { realpathSync }),
+      });
+
+      assert.strictEqual(
+        resolveTexturePath(encodeURIComponent(requestedPath), [fixtureRoot]),
+        fs.realpathSync(path.join(fixtureRoot, 'texture.png')),
+      );
+      assert.ok(!realpathSync.calledWith(requestedPath));
+    });
+
     for (const unsafePath of [
       () => '../secret.png',
       () => '%2e%2e%2fsecret.png',

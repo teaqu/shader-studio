@@ -82,40 +82,89 @@ function resolveAuthorizedTextureFile(encodedPath: string, allowedRoots: readonl
     return undefined;
   }
 
-  try {
-    const resolvedPath = fs.realpathSync(decodedPath);
-    const allowed = allowedRoots
-      .map((root) => fs.realpathSync(root))
-      .some((root) => isWithinRoot(resolvedPath, root));
-    return allowed ? authorizeCanonicalFile(resolvedPath) : undefined;
-  } catch {
-    return undefined;
+  for (const root of allowedRoots) {
+    const requestedRelativePath = path.relative(root, decodedPath);
+    if (!isSafeRelativePath(requestedRelativePath)) {
+      continue;
+    }
+
+    const authorizedFile = findRegularFileBelowRoot(root, requestedRelativePath);
+    if (authorizedFile) {
+      return authorizedFile;
+    }
   }
+
+  return undefined;
 }
 
 function resolveAuthorizedUiAsset(requestPath: string, uiDistPath: string): AuthorizedFile | undefined {
   const requestedAsset = requestPath === "/" ? "index.html" : requestPath.slice(1);
   const decodedAsset = decodePath(requestedAsset);
-  if (!decodedAsset || path.isAbsolute(decodedAsset)) {
+  if (!decodedAsset || !isSafeRelativePath(decodedAsset)) {
     return undefined;
   }
 
+  return findRegularFileBelowRoot(uiDistPath, decodedAsset);
+}
+
+/**
+ * Finds a requested file by walking a trusted root. Request data is used only
+ * for comparison, so filesystem operations never receive a path derived from
+ * the HTTP request. Canonical paths keep symlink targets inside the root.
+ */
+function findRegularFileBelowRoot(root: string, requestedRelativePath: string): AuthorizedFile | undefined {
   try {
-    const canonicalRoot = fs.realpathSync(uiDistPath);
-    const canonicalPath = fs.realpathSync(path.resolve(uiDistPath, `.${path.sep}${decodedAsset}`));
-    return isWithinRoot(canonicalPath, canonicalRoot) ? authorizeCanonicalFile(canonicalPath) : undefined;
+    const canonicalRoot = fs.realpathSync(root);
+    const expectedParts = path.normalize(requestedRelativePath).split(path.sep);
+    return findRegularFileInDirectory(canonicalRoot, canonicalRoot, expectedParts, 0, new Set());
   } catch {
     return undefined;
   }
 }
 
-function authorizeCanonicalFile(canonicalPath: string): AuthorizedFile | undefined {
-  try {
-    const stats = fs.lstatSync(canonicalPath);
-    return stats.isFile() ? { path: canonicalPath, identity: stats } : undefined;
-  } catch {
+function findRegularFileInDirectory(
+  canonicalRoot: string,
+  directory: string,
+  expectedParts: readonly string[],
+  partIndex: number,
+  ancestors: ReadonlySet<string>,
+): AuthorizedFile | undefined {
+  const canonicalDirectory = fs.realpathSync(directory);
+  if (!isWithinRoot(canonicalDirectory, canonicalRoot) || ancestors.has(canonicalDirectory)) {
     return undefined;
   }
+
+  const nextAncestors = new Set(ancestors).add(canonicalDirectory);
+  for (const entry of fs.readdirSync(canonicalDirectory, { withFileTypes: true })) {
+    if (entry.name !== expectedParts[partIndex]) {
+      continue;
+    }
+
+    const candidatePath = path.join(canonicalDirectory, entry.name);
+    const canonicalPath = fs.realpathSync(candidatePath);
+    if (!isWithinRoot(canonicalPath, canonicalRoot)) {
+      continue;
+    }
+
+    const stats = fs.lstatSync(canonicalPath);
+    if (partIndex === expectedParts.length - 1 && stats.isFile()) {
+      return { path: canonicalPath, identity: stats };
+    }
+    if (partIndex < expectedParts.length - 1 && stats.isDirectory()) {
+      const authorizedFile = findRegularFileInDirectory(
+        canonicalRoot,
+        canonicalPath,
+        expectedParts,
+        partIndex + 1,
+        nextAncestors,
+      );
+      if (authorizedFile) {
+        return authorizedFile;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function decodePath(encodedPath: string): string | undefined {
@@ -143,6 +192,10 @@ function decodePath(encodedPath: string): string | undefined {
 function isWithinRoot(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function isSafeRelativePath(candidate: string): boolean {
+  return candidate !== "" && !path.isAbsolute(candidate) && !candidate.split(/[\\/]+/).includes("..");
 }
 
 export function parseRange(range: string, size: number): { start: number; end: number } | undefined {
