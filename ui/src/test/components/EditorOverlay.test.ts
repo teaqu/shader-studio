@@ -655,7 +655,7 @@ describe('EditorOverlay', () => {
     });
 
     it('should initialize the GLSL and Slang Monaco tokenizers once', async () => {
-      const monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
+      const monaco = await import('monaco-editor/editor/editor.api.js');
       const { setupMonacoGlsl, setupMonacoSlang, setupMonacoWgsl } = await import('@shader-studio/monaco');
 
       render(EditorOverlay, { props: defaultProps });
