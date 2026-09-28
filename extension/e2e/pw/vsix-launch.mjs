@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
@@ -57,6 +57,20 @@ export function installProductionVsix({
   if (result.status !== 0) {
     throw new Error(`VSIX installation failed (${result.status}): ${result.stderr || result.stdout}`);
   }
+}
+
+/**
+ * Give each worker an independent extension directory without repeating the
+ * VS Code CLI install. The source is a job-local seed produced from the exact
+ * archive under test; `errorOnExist` makes accidental profile sharing fail.
+ */
+export function cloneProductionVsixSeed({ seedExtensionsDir, extensionsDir, copy = cpSync, exists = existsSync }) {
+  const seed = requiredPath(seedExtensionsDir, 'seedExtensionsDir');
+  const target = requiredPath(extensionsDir, 'extensionsDir');
+  if (!exists(seed)) {
+    throw new Error(`Production VSIX seed does not exist: ${seed}`);
+  }
+  copy(seed, target, { recursive: true, force: false, errorOnExist: true });
 }
 
 /** Build launch arguments for a production VSIX with only the test bridge in development mode. */

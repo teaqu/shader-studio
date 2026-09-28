@@ -34,6 +34,25 @@ suite("VS Code language-service revisions", () => {
     environmentGeneration: 7,
   };
 
+  teardown(async function() {
+    // Reverting dirty documents drives VS Code editor commands, which can
+    // exceed Mocha's default two-second hook budget on a hosted runner.
+    this.timeout(20_000);
+    // Tests in this suite create dirty file-backed and untitled documents.
+    // Leaving either open lets the next controller eagerly analyse stale
+    // buffers in start(), which can bury the document under test behind old
+    // diagnostics work and hand a reused Untitled-N URI the wrong config.
+    for (const openDocument of [...vscode.workspace.textDocuments]) {
+      if (!openDocument.isDirty) {
+        continue;
+      }
+      await vscode.window.showTextDocument(openDocument, { preview: false, preserveFocus: false });
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    }
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    clearLoadedShaderProjectSnapshots();
+  });
+
   test("accepts only the exact document and environment revision", () => {
     assert.strictEqual(isCurrentRevision(document, 7, revision), true);
     assert.strictEqual(isCurrentRevision({ ...document, version: 5 }, 7, revision), false);
@@ -147,14 +166,15 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("opens imported Slang modules as virtual authoring files", async () => {
+  test("opens imported Slang modules as virtual authoring files", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-slang-ls-"));
     const rootPath = path.join(directory, "image.slang");
     const modulePath = path.join(directory, "palette.slang");
+    const source = "import palette;\nfloat4 mainImage() { return float4(paletteColor(), 1); }";
     try {
-      fs.writeFileSync(rootPath, "import palette;\nfloat4 mainImage() { return float4(paletteColor(), 1); }");
+      fs.writeFileSync(rootPath, source);
       fs.writeFileSync(modulePath, "module palette;\npublic float3 paletteColor() { return float3(1, 0, 0); }");
-      const document = await vscode.workspace.openTextDocument(rootPath);
+      const document = { uri: vscode.Uri.file(rootPath), languageId: "slang", getText: () => source };
 
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 
@@ -168,13 +188,13 @@ suite("VS Code language-service revisions", () => {
     }
   });
 
-  test("provides a WGSL authoring environment without virtual files", async () => {
+  test("provides a WGSL authoring environment without virtual files", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "shader-studio-wgsl-ls-"));
     const rootPath = path.join(directory, "image.wgsl");
     const source = "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }";
     try {
       fs.writeFileSync(rootPath, source);
-      const document = await vscode.workspace.openTextDocument(rootPath);
+      const document = { uri: vscode.Uri.file(rootPath), languageId: "wgsl", getText: () => source };
 
       const environment = new ShaderAuthoringEnvironmentProvider().environmentFor(document);
 

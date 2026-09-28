@@ -6,10 +6,12 @@ const yaml = require('js-yaml') as { load(source: string): unknown };
 
 interface Step {
   id?: string;
+  if?: string;
   uses?: string;
   run?: string;
   env?: Record<string, string>;
   with?: Record<string, string | boolean>;
+  'working-directory'?: string;
 }
 
 interface Job {
@@ -33,17 +35,18 @@ suite('Packaged extension CI gates', () => {
   const verify = workflow('verify.yml');
   const regular = workflow('test.yml');
 
-  test('uses the same packaged verification for regular CI and releases without a development-host E2E run', () => {
+  test('uses the same packaged verification for regular CI and releases with the source-host corpus gate', () => {
     assert.strictEqual(regular.jobs.verify.uses, './.github/workflows/verify.yml');
     assert.strictEqual(release.jobs.verify.uses, regular.jobs.verify.uses);
     const commands = Object.values(verify.jobs).flatMap(job => job.steps ?? []).map(step => step.run ?? '');
-    assert.ok(!commands.some(command => command.includes('test:e2e:vscode')));
+    assert.strictEqual(commands.filter(command => command.includes('test:e2e:vscode:corpus')).length, 1);
     assert.strictEqual(commands.filter(command => command.includes('test:e2e:vsix')).length, 2);
     assert.strictEqual(commands.filter(command => command.includes('vsce package')).length, 1);
     assert.ok(commands.includes('npm test'));
     assert.ok(commands.includes('npm run test:e2e -w rendering'));
     assert.ok(commands.includes('npm run test:e2e -w ui'));
     assert.ok(commands.includes('npm run test:e2e -w @shader-studio/standalone'));
+    assert.ok(commands.includes('bash .github/scripts/test-publish-open-vsx.sh'));
   });
 
   test('runs every standalone browser project and retains failure artifacts', () => {

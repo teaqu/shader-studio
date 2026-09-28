@@ -1376,7 +1376,7 @@ describe('ShaderViewer', () => {
     expect(res.source).toBe('session');
 
     const ar = get(aspectRatioStore);
-    expect(ar.mode).toBe('auto');
+    expect(ar.mode).toBe('16:9');
     expect(ar.source).toBe('session');
   });
 

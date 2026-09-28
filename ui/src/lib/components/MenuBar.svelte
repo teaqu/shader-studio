@@ -769,7 +769,7 @@
           <button class="resolution-option menu-title" class:active={currentAspectRatio === "4:3"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("4:3")}>4:3</button>
           <button class="resolution-option menu-title" class:active={currentAspectRatio === "1:1"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("1:1")}>1:1</button>
           <button class="resolution-option menu-title" class:active={currentAspectRatio === "fill"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("fill")}>Fill</button>
-          <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("auto")}>Auto</button>
+          <button class="resolution-option menu-title" class:active={currentAspectRatio === "auto"} disabled={hasCustom} onclick={() => handleAspectRatioSelect("auto")}>Screen</button>
         </div>
       </div>
     {:else}
