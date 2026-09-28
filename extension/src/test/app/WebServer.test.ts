@@ -573,12 +573,37 @@ suite('WebServer Test Suite', () => {
 
       const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
         'fs': {
+          constants: { O_RDONLY: 0, O_NOFOLLOW: 0 },
           readFile: sandbox.stub().callsFake((_filePath: string, callback: Function) => {
             callback(null, Buffer.from('file content'));
           }),
           existsSync: sandbox.stub().returns(true),
           statSync: sandbox.stub().returns({ isFile: () => true, size: 12 }),
-          lstatSync: sandbox.stub().returns({ isFile: () => true, dev: 1, ino: 1 }),
+          lstatSync: sandbox.stub().callsFake((filePath: string) => ({
+            isFile: () => !filePath.endsWith('/assets'),
+            isDirectory: () => filePath.endsWith('/assets'),
+            dev: 1,
+            ino: 1,
+          })),
+          readdirSync: sandbox.stub().callsFake((directory: string) => {
+            if (directory.endsWith('/assets')) {
+              return [{ name: 'codicon.ttf' }, { name: 'nebula-motion.mp4' }];
+            }
+            return [
+              { name: 'assets' },
+              { name: 'codicon.ttf' },
+              { name: 'font.woff' },
+              { name: 'font.woff2' },
+              { name: 'icon.svg' },
+              { name: 'module.wasm' },
+              { name: 'app.js' },
+              { name: 'style.css' },
+              { name: 'data.json' },
+              { name: 'image.png' },
+              { name: 'photo.jpg' },
+              { name: 'file.xyz' },
+            ];
+          }),
           realpathSync: sandbox.stub().callsFake((filePath: string) => filePath),
           realpath: sandbox.stub().callsFake((filePath: string, callback: Function) => callback(null, filePath)),
           open: sandbox.stub().callsFake((_filePath: string, _flags: number, callback: Function) => callback(null, 1)),
@@ -676,11 +701,13 @@ suite('WebServer Test Suite', () => {
 
       const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
         'fs': {
+          constants: { O_RDONLY: 0, O_NOFOLLOW: 0 },
           readFile: sandbox.stub().callsFake((filePath, callback) => {
             callback(null, Buffer.from('<html><head></head><body></body></html>'));
           }),
           existsSync: sandbox.stub().returns(true),
           lstatSync: sandbox.stub().returns({ isFile: () => true, dev: 1, ino: 1 }),
+          readdirSync: sandbox.stub().returns([{ name: 'index.html' }]),
           realpathSync: sandbox.stub().callsFake((filePath: string) => filePath),
           realpath: sandbox.stub().callsFake((filePath: string, callback: Function) => callback(null, filePath)),
           open: sandbox.stub().callsFake((_filePath: string, _flags: number, callback: Function) => callback(null, 1)),
