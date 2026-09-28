@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installProductionVsix } from './vsix-launch.mjs';
+import { recordE2ePhase } from './e2e-timing.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -15,16 +16,20 @@ const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..
  * cold checkout. Downloading once here keeps workers to a fast path lookup.
  */
 export default async function globalSetup() {
+  const setupStartedAt = performance.now();
   const version = process.env.SHADER_STUDIO_E2E_VSCODE_VERSION ?? '1.109.5';
+  const vscodeStartedAt = performance.now();
   const executable = await downloadAndUnzipVSCode({
     version,
     cachePath: join(extensionPath, '.vscode-test'),
   });
+  recordE2ePhase('vscode-cache', vscodeStartedAt);
   process.env.SHADER_STUDIO_PW_VSCODE_BIN = executable;
 
   const vsixPath = process.env.SHADER_STUDIO_E2E_PRODUCTION_VSIX ?? process.env.SHADER_STUDIO_E2E_VSIX;
   let seedProfile;
   if (vsixPath) {
+    const seedStartedAt = performance.now();
     seedProfile = mkdtempSync(join(tmpdir(), 'ss-vsix-seed-'));
     const seedExtensionsDir = join(seedProfile, 'extensions');
     installProductionVsix({
@@ -34,10 +39,14 @@ export default async function globalSetup() {
       extensionsDir: seedExtensionsDir,
     });
     process.env.SHADER_STUDIO_E2E_VSIX_SEED = seedExtensionsDir;
+    recordE2ePhase('vsix-seed', seedStartedAt);
   }
+  recordE2ePhase('global-setup', setupStartedAt);
   return () => {
+    const teardownStartedAt = performance.now();
     if (seedProfile) {
       rmSync(seedProfile, { recursive: true, force: true });
     }
+    recordE2ePhase('global-teardown', teardownStartedAt);
   };
 }
