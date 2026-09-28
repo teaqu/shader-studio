@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertProductionVsixLaunchArgs, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
+import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProductionVsix, productionVsixLaunchArgs } from './vsix-launch.mjs';
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
 
@@ -105,12 +105,17 @@ export const test = base.extend({
     const bridgeExtensionPath = join(extensionPath, 'e2e', 'pw', 'bridge-extension');
     let args;
     if (productionVsixPath) {
-      installProductionVsix({
-        vscodeBinary: vscodeBinary(),
-        vsixPath: productionVsixPath,
-        userDataDir,
-        extensionsDir,
-      });
+      const seedExtensionsDir = process.env.SHADER_STUDIO_E2E_VSIX_SEED;
+      if (seedExtensionsDir) {
+        cloneProductionVsixSeed({ seedExtensionsDir, extensionsDir });
+      } else {
+        installProductionVsix({
+          vscodeBinary: vscodeBinary(),
+          vsixPath: productionVsixPath,
+          userDataDir,
+          extensionsDir,
+        });
+      }
       args = productionVsixLaunchArgs({ userDataDir, extensionsDir, bridgeExtensionPath, workspacePath });
       assertProductionVsixLaunchArgs(args, bridgeExtensionPath);
     } else {
