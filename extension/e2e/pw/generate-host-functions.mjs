@@ -2,11 +2,35 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import ts from 'typescript';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const output = join(root, 'bridge-extension', 'host-functions.js');
 const functions = new Map();
+const require = createRequire(import.meta.url);
+const playwrightRoot = dirname(require.resolve('playwright/package.json'));
+const { babelTransform } = require(join(playwrightRoot, 'lib', 'transform', 'babelBundle.js'));
+
+function registerCallbacks(filename, source) {
+  const file = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  function visit(node) {
+    if (ts.isCallExpression(node) && (
+      (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'evaluateInHost')
+      || (ts.isIdentifier(node.expression) && node.expression.text === 'evaluateInHost')
+    )) {
+      const callback = node.arguments[0];
+      if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
+        throw new Error(`evaluateInHost requires a literal function: ${filename}`);
+      }
+      const text = callback.getText(file);
+      const id = createHash('sha256').update(text).digest('hex');
+      functions.set(id, text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+}
 
 function visitDirectory(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -21,23 +45,11 @@ function visitDirectory(directory) {
       continue;
     }
     const source = readFileSync(filename, 'utf8');
-    const file = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-    function visit(node) {
-      if (ts.isCallExpression(node) && (
-        (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'evaluateInHost')
-        || (ts.isIdentifier(node.expression) && node.expression.text === 'evaluateInHost')
-      )) {
-        const callback = node.arguments[0];
-        if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
-          throw new Error(`evaluateInHost requires a literal function: ${filename}`);
-        }
-        const text = callback.getText(file);
-        const id = createHash('sha256').update(text).digest('hex');
-        functions.set(id, text);
-      }
-      ts.forEachChild(node, visit);
-    }
-    visit(file);
+    registerCallbacks(filename, source);
+    // Playwright transpiles spec modules before execution, changing callback
+    // formatting. Register those static forms alongside the originals.
+    const transformed = babelTransform(source, resolve(filename), false, [], []).code;
+    registerCallbacks(filename, transformed);
   }
 }
 

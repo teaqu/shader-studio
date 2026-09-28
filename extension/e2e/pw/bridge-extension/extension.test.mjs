@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import bridge from './extension.js';
 import hostFunctions from './host-functions.js';
 
@@ -119,6 +121,28 @@ test('static callback registry matches the browser specs and Node function sourc
   for (const [registeredId, registeredCallback] of Object.entries(hostFunctions)) {
     assert.equal(createHash('sha256').update(registeredCallback.toString()).digest('hex'), registeredId);
   }
+});
+
+test('registry includes callbacks after Playwright transforms browser specs', () => {
+  const require = createRequire(import.meta.url);
+  const playwrightRoot = join(require.resolve('playwright/package.json'), '..');
+  const { babelTransform } = require(join(playwrightRoot, 'lib', 'transform', 'babelBundle.js'));
+  const filename = new URL('../common-storage-debug.e2e.mjs', import.meta.url).pathname;
+  const transformed = babelTransform(readFileSync(filename, 'utf8'), filename, false, [], []).code;
+  const file = ts.createSourceFile(filename, transformed, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  let callback;
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'evaluateInHost'
+      && ts.isArrowFunction(node.arguments[0]) && node.arguments[0].parameters.length === 4) {
+      callback = node.arguments[0].getText(file);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  assert.ok(callback);
+  const id = createHash('sha256').update(callback).digest('hex');
+  assert.equal(typeof hostFunctions[id], 'function');
 });
 
 test('bridge returns invocation errors without exposing stack traces', async () => {
