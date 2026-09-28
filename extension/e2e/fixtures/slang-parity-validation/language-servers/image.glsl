@@ -1,4 +1,4 @@
-#include "common.glsl"
+// The configured Common pass supplies `twice` and the shared macros.
 
 float shade(float value) {
     return twice(value) * 0.5;

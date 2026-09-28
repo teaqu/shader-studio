@@ -6,6 +6,8 @@ import {
   readWorkspaceFiles,
   removeWorkspacePaths,
 } from './workspace-store.mjs';
+import { expectStableFor } from './observable-state.mjs';
+import { waitForLanguageService } from './language-service-fixtures.mjs';
 
 for (const pendingSave of [false, true]) {
   test(`buffer shaders are hidden by default and the explorer option survives reload (pending saves: ${pendingSave})`, async ({ page }) => {
@@ -309,8 +311,7 @@ test('runs a persistent virtual shader workspace in web mode', async ({ page }) 
   await page.mouse.down();
   await page.mouse.move(canvasBox.x + canvasBox.width * 0.8, canvasBox.y + canvasBox.height * 0.35);
   await page.mouse.up();
-  await page.waitForTimeout(100);
-  expect((await previewCanvas.screenshot()).equals(cubemapBeforeDrag)).toBe(false);
+  await expect.poll(async () => (await previewCanvas.screenshot()).equals(cubemapBeforeDrag)).toBe(false);
   for (const asset of [
     'assets/nebula-texture.png',
     'assets/desert-cubemap-cross.png',
@@ -600,9 +601,9 @@ test('selecting shaders leaves their modification times unchanged after reload',
     await card.click();
     await expect(card).toHaveAttribute('aria-pressed', 'true');
     await expect(editor.locator('.view-lines')).toContainText(text);
-    // Observe beyond the editor's 500ms persistence debounce.
-    await page.waitForTimeout(750);
-    expect(await readShaders()).toEqual(before);
+    // Sample through the persistence debounce: selecting a shader must not
+    // enqueue a write on any fresh browser frame.
+    await expectStableFor(page, async () => expect(await readShaders()).toEqual(before));
   }
   await page.reload();
   await expect(page.getByTestId('shader-option-desert-cubemap-glsl')).toHaveAttribute('aria-pressed', 'true');
@@ -740,6 +741,7 @@ for (const separate of [false, true]) {
         await page.getByRole('button', { name: 'Open in separate editor', exact: true }).click();
       }
       const editor = separate ? page.getByTestId('file-editor') : page.getByTestId('web-editor');
+      await waitForLanguageService(editor);
       await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
       await page.keyboard.press('ControlOrMeta+A');
       await page.keyboard.insertText(language === 'glsl'
@@ -1301,9 +1303,9 @@ test('opens the config file of the selected shader from the preview menu', async
   const configEditor = page.locator('[data-testid="file-editor"][data-path="/shaders/aurora.sha.json"]');
   await expect(configEditor.locator('.monaco-editor')).toBeVisible();
   await expect(configEditor.locator('.view-lines')).toContainText('passes');
-  // JSON is not shader source: the GLSL language service must not mark it up.
-  await page.waitForTimeout(750);
-  await expect(configEditor.locator('.squiggly-error')).toHaveCount(0);
+  // JSON is not shader source: it must stay clear across the language-service
+  // settling window rather than merely being clear at an arbitrary instant.
+  await expectStableFor(page, () => expect(configEditor.locator('.squiggly-error')).toHaveCount(0));
   await expect(configEditor.locator('.mtk1').first()).toBeVisible();
   await page.reload();
   await expect(configEditor.locator('.monaco-editor')).toBeVisible();
@@ -1383,8 +1385,7 @@ test('manual compile mode holds edits back until the compile button is pressed',
   await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
   await editor.locator('.inputarea').press('ControlOrMeta+A');
   await page.keyboard.insertText('this is not a shader');
-  await page.waitForTimeout(750);
-  await expect(status).not.toHaveClass(/error/);
+  await expectStableFor(page, () => expect(status).not.toHaveClass(/error/));
 
   await preview.getByLabel('Compile shader').click();
   await expect(status).toHaveClass(/error/);
@@ -1405,7 +1406,7 @@ test('switching from manual back to hot keeps held-back editor changes', async (
   await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
   await editor.locator('.inputarea').press('ControlOrMeta+A');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.3); } // e2e held-back edit');
-  await page.waitForTimeout(750);
+  await expectStableFor(page, () => expect(status).not.toHaveClass(/error/));
 
   await preview.getByLabel('Open options menu').click();
   await page.getByLabel('Set hot compile mode').click();

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { VariableCaptureBuilder, GlslParser } from '@shader-studio/debug';
 import {
