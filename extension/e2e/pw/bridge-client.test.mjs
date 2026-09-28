@@ -9,7 +9,7 @@ test('waits for a replacement bridge publication during extension-host restart',
   const value = await evaluateBridgeCall({
     portFile: 'bridge-port',
     token: 'test-token',
-    source: '() => true',
+    id: 'a'.repeat(64),
     args: [],
     timeout: 100,
     interval: 0,
@@ -40,7 +40,7 @@ test('re-reads the bridge publication after a stale port refuses the connection'
   const value = await evaluateBridgeCall({
     portFile: 'bridge-port',
     token: 'test-token',
-    source: '() => true',
+    id: 'a'.repeat(64),
     args: [],
     timeout: 100,
     interval: 0,
@@ -63,7 +63,7 @@ test('does not retry extension-host evaluation failures', async () => {
   await assert.rejects(() => evaluateBridgeCall({
     portFile: 'bridge-port',
     token: 'test-token',
-    source: '() => true',
+    id: 'a'.repeat(64),
     args: [],
     timeout: 100,
     interval: 0,

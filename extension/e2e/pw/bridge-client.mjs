@@ -18,7 +18,7 @@ function isTransientBridgeError(error) {
 export async function evaluateBridgeCall({
   portFile,
   token,
-  source,
+  id,
   args,
   timeout = 60_000,
   interval = 500,
@@ -35,7 +35,7 @@ export async function evaluateBridgeCall({
       const response = await fetchImpl(`http://127.0.0.1:${port}/`, {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ source, args }),
+        body: JSON.stringify({ id, args }),
       });
       const result = await response.json();
       if (!result.ok) {

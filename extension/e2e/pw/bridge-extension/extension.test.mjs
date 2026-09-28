@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import bridge from './extension.js';
+import hostFunctions from './host-functions.js';
+
+const knownId = Object.keys(hostFunctions)[0];
 
 async function request(port, { token, body, headers = {} } = {}) {
   return fetch(`http://127.0.0.1:${port}/`, {
@@ -25,8 +30,8 @@ async function withBridge(run) {
     vscode: { marker: 'vscode' },
     token,
     portFile,
-    invoke: async (_vscode, source, args) => {
-      calls.push({ source, args });
+    invoke: async (_vscode, id, args) => {
+      calls.push({ id, args });
       return 'ok';
     },
   });
@@ -42,7 +47,7 @@ async function withBridge(run) {
 
 test('bridge rejects requests without its per-run authorization token', async () => {
   await withBridge(async ({ calls, port }) => {
-    const response = await request(port, { body: JSON.stringify({ source: '() => true' }) });
+    const response = await request(port, { body: JSON.stringify({ id: knownId }) });
 
     assert.equal(response.status, 401);
     assert.equal(calls.length, 0);
@@ -53,7 +58,7 @@ test('bridge rejects an incorrect authorization token', async () => {
   await withBridge(async ({ calls, port }) => {
     const response = await request(port, {
       token: 'x'.repeat(64),
-      body: JSON.stringify({ source: '() => true' }),
+      body: JSON.stringify({ id: knownId }),
     });
 
     assert.equal(response.status, 401);
@@ -72,11 +77,48 @@ test('bridge rejects malformed payloads before evaluating them', async () => {
 
 test('bridge rejects a structurally invalid payload before evaluating it', async () => {
   await withBridge(async ({ calls, port, token }) => {
-    const response = await request(port, { token, body: JSON.stringify({ source: '() => true', args: {} }) });
+    const response = await request(port, { token, body: JSON.stringify({ id: knownId, args: {} }) });
 
     assert.equal(response.status, 400);
     assert.equal(calls.length, 0);
   });
+});
+
+test('bridge never accepts executable source from an authenticated caller', async () => {
+  await withBridge(async ({ calls, port, token }) => {
+    const response = await request(port, {
+      token,
+      body: JSON.stringify({ source: '() => process.exit()', args: [] }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(calls.length, 0);
+  });
+});
+
+test('bridge rejects unknown callback ids before invoking VS Code', async () => {
+  await withBridge(async ({ calls, port, token }) => {
+    const response = await request(port, { token, body: JSON.stringify({ id: 'f'.repeat(64), args: [] }) });
+    assert.equal(response.status, 400);
+    assert.equal(calls.length, 0);
+  });
+});
+
+test('bridge invokes a registered callback id with its arguments', async () => {
+  await withBridge(async ({ calls, port, token }) => {
+    const response = await request(port, { token, body: JSON.stringify({ id: knownId, args: ['value'] }) });
+    assert.deepEqual(await response.json(), { ok: true, value: 'ok' });
+    assert.deepEqual(calls, [{ id: knownId, args: ['value'] }]);
+  });
+});
+
+test('static callback registry matches the browser specs and Node function source', () => {
+  execFileSync(process.execPath, [new URL('../generate-host-functions.mjs', import.meta.url).pathname, '--check']);
+  const callback = async (vscode) => vscode.workspace.name ?? null;
+  const id = createHash('sha256').update(callback.toString()).digest('hex');
+  assert.equal(typeof hostFunctions[id], 'function');
+  for (const [registeredId, registeredCallback] of Object.entries(hostFunctions)) {
+    assert.equal(createHash('sha256').update(registeredCallback.toString()).digest('hex'), registeredId);
+  }
 });
 
 test('bridge returns invocation errors without exposing stack traces', async () => {
@@ -91,7 +133,7 @@ test('bridge returns invocation errors without exposing stack traces', async () 
   try {
     const response = await request(server.address().port, {
       token: 't'.repeat(64),
-      body: JSON.stringify({ source: '() => true' }),
+      body: JSON.stringify({ id: knownId }),
     });
     const payload = await response.json();
     assert.deepEqual(payload, { ok: false, error: 'test invocation failed' });

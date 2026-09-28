@@ -1,7 +1,7 @@
 /**
  * Test-only bridge for the Playwright E2E suite.
  *
- * Serves a loopback endpoint that evaluates a function against the real `vscode`
+ * Serves a loopback endpoint that calls a reviewed, static function against the real `vscode`
  * module, which is how the specs open documents, move the cursor and run
  * commands - the job `browser.executeWorkbench` did under WebdriverIO.
  *
@@ -13,6 +13,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const hostFunctions = require('./host-functions.js');
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MINIMUM_TOKEN_BYTES = 32;
@@ -59,19 +60,16 @@ function validateRequest(body) {
     throw new BadRequestError('bridge request body must be valid JSON');
   }
   if (!request || typeof request !== 'object' || Array.isArray(request)
-    || typeof request.source !== 'string' || !Array.isArray(request.args ?? [])) {
-    throw new BadRequestError('bridge request must contain a function source and argument array');
+    || typeof request.id !== 'string' || !/^[a-f0-9]{64}$/.test(request.id)
+    || !Array.isArray(request.args ?? []) || Object.hasOwn(request, 'source')) {
+    throw new BadRequestError('bridge request must contain a known function id and argument array');
   }
-  return { source: request.source, args: request.args ?? [] };
+  return { id: request.id, args: request.args ?? [] };
 }
 
-function invokeVscode(vscode, source, args) {
-  // The bridge is only loaded from extension/e2e/pw (excluded from VSIXes), is
-  // bound to loopback, and requires a 256-bit token generated per Playwright
-  // worker. `source` deliberately remains dynamic so E2E specs can drive the
-  // real VS Code API; validate/authenticate the request before this operation.
-  // lgtm[js/code-injection]
-  const fn = new Function(`return (${source})`)();
+function invokeVscode(vscode, id, args) {
+  const fn = Object.hasOwn(hostFunctions, id) ? hostFunctions[id] : undefined;
+  if (!fn) throw new BadRequestError('unknown host function');
   return fn(vscode, ...args);
 }
 
@@ -94,8 +92,9 @@ function createBridgeServer({ vscode, token, invoke = invokeVscode }) {
       return;
     }
     try {
-      const { source, args } = validateRequest(await readBody(req));
-      const value = await invoke(vscode, source, args);
+      const { id, args } = validateRequest(await readBody(req));
+      if (!Object.hasOwn(hostFunctions, id)) throw new BadRequestError('unknown host function');
+      const value = await invoke(vscode, id, args);
       writeJson(res, 200, { ok: true, value: value === undefined ? null : value });
     } catch (error) {
       if (error instanceof BadRequestError) {
