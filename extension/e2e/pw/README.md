@@ -9,9 +9,9 @@ For per-session timing, set `SHADER_STUDIO_E2E_TIMINGS_FILE` to a writable
 milliseconds. The phases distinguish VS Code cache lookup, optional VSIX seed
 installation, profile preparation, Electron launch, workbench and bridge
 readiness, extension-host readiness, test execution and teardown. Playwright's
-JSON reporter provides per-case durations; `scripts/ci-observe.mjs` provides
-whole-command time and peak process-tree memory. CI job timestamps are needed
-separately for runner queueing and dependency waits.
+JSON reporter provides per-case durations. Measure whole-command time and peak
+process-tree memory separately. CI job timestamps are needed for runner
+queueing and dependency waits.
 
 ## Why Playwright
 
