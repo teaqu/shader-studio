@@ -101,6 +101,18 @@ describe('AspectRatioCalculator', () => {
       expect(result.visualWidth).toBe(800);
       expect(result.visualHeight).toBe(600);
     });
+
+    it('should calculate auto mode from the screen aspect ratio', () => {
+      Object.defineProperty(window.screen, 'width', { value: 1024, configurable: true });
+      Object.defineProperty(window.screen, 'height', { value: 768, configurable: true });
+      container = createMockContainer(800, 800);
+      const calc = new AspectRatioCalculator(container);
+
+      const result = calc.calculate('auto', 1, 1);
+
+      expect(result.visualWidth).toBe(800);
+      expect(result.visualHeight).toBe(600);
+    });
   });
 
   describe('resolution scale', () => {

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { workspace } from './language-service-fixtures.mjs';
+import { waitForLanguageService, workspace } from './language-service-fixtures.mjs';
 
 const wideFixtures = [
   {
@@ -43,6 +43,7 @@ async function openShader(page, fixture) {
   await page.getByTestId(`shader-option-${basename}-${fixture.extension}`).click();
   const editor = page.getByTestId('web-editor');
   await expect(editor.locator('.view-lines')).toBeVisible();
+  await waitForLanguageService(editor);
   return { basename, editor };
 }
 

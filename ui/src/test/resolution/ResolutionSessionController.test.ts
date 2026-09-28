@@ -718,7 +718,7 @@ describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig
     expect(lastCall?.passes.Image.resolution).toBeUndefined();
   });
 
-  it('sets aspect ratio to auto when resetting and config has no aspect ratio', () => {
+  it('sets aspect ratio to 16:9 when resetting and config has no aspect ratio', () => {
     const deps = makeDeps();
     const ctrl = new ResolutionSessionController(deps);
     ctrl.setSyncWithConfig(false);
@@ -727,7 +727,7 @@ describe('ResolutionSessionController — resetCurrentTarget with syncWithConfig
     vi.mocked(deps.aspectRatioStore.setSessionMode).mockClear();
     ctrl.resetCurrentTarget();
 
-    expect(deps.aspectRatioStore.setSessionMode).toHaveBeenLastCalledWith('auto');
+    expect(deps.aspectRatioStore.setSessionMode).toHaveBeenLastCalledWith('16:9');
   });
 
   it('resets buffer override to current config resolution when config has one', () => {

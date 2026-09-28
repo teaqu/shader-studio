@@ -80,11 +80,16 @@ function helpers(vscode, settingKey) {
   }
 
   async function hoverTextForToken(text, expected) {
-    await app().locator('body').press('Escape').catch(() => { /* nothing focused */ });
     const { span, position } = await tokenTarget(text);
-    await span.hover({ position, timeout: 30_000 });
     const hover = app().locator('.editor-overlay .monaco-hover-content').first();
-    await expect.poll(async () => (await hover.count()) ? hover.innerText() : '', {
+    await expect.poll(async () => {
+      // Monaco can mount before its lazy language worker has registered the
+      // hover provider. Re-enter the token while waiting so readiness gets a
+      // fresh hover request instead of polling the result of the early miss.
+      await app().locator('body').press('Escape').catch(() => { /* nothing focused */ });
+      await span.hover({ position, timeout: 30_000 });
+      return (await hover.count()) ? hover.innerText() : '';
+    }, {
       message: `Monaco hover for ${text} did not contain ${expected}`,
       timeout: 30_000,
     }).toMatch(expected);

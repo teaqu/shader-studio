@@ -14,7 +14,7 @@ export default defineConfig({
     // Svelte rune modules re-imported after vi.resetModules() must be transformed
     // in a fresh process; vmThreads can return Svelte's raw rune stubs instead.
     pool: 'forks',
-    poolOptions: { forks: { maxForks: 4 } },
+    maxWorkers: 4,
     coverage: {
       exclude: [
         'vendor/**',

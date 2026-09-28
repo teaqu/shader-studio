@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { workspace } from './language-service-fixtures.mjs';
+import { waitForAnimationFrames } from './observable-state.mjs';
 
 test('canvas click moves keyboard focus out of the editor', async ({ page }) => {
   const shaderName = 'canvas-focus.glsl';
@@ -36,7 +37,7 @@ test('canvas click moves keyboard focus out of the editor', async ({ page }) => 
 
   const textBefore = await editor.locator('.view-lines').innerText();
   await page.keyboard.type('z');
-  await page.waitForTimeout(300);
+  await waitForAnimationFrames(page, 12);
   expect(await editor.locator('.view-lines').innerText()).toBe(textBefore);
 
   // Focus returns to the editor when it is clicked again.

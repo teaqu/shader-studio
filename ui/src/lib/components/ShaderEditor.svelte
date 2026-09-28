@@ -119,6 +119,7 @@
   let popupContainer: HTMLDivElement | null = null;
   let renamePopupKeyCleanup: (() => void) | null = null;
   let editorReady = $state(false);
+  let languageServiceStatus = $state<"pending" | "ready" | "error">("pending");
   let editorModelUri = $state("");
   const renameFeedback = $derived(getRenameFeedback(editorModelUri));
   let recompileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -776,6 +777,7 @@
       releaseOverlayTokenColors();
     }
     editorReady = false;
+    languageServiceStatus = "pending";
     lastSentCode = null;
   }
 
@@ -803,6 +805,7 @@
     const passName = activePassName;
     if (!controller || !model?.uri || !isShaderLanguageId(language)
       || (shaderPath && modelUri !== monaco.Uri.file(shaderPath).toString())) {
+      languageServiceStatus = "pending";
       return;
     }
     const commonFile = commonAuthoringFile(
@@ -825,14 +828,22 @@
         : [],
     };
     let cancelled = false;
-    void controller.syncEnvironment(environment);
-    if (transport.getWorkspaceDocuments) {
-      void transport.getWorkspaceDocuments(language).then(workspaceDocuments => {
-        if (!cancelled) {
-          void controller.syncEnvironment({ ...environment, workspaceDocuments });
-        }
-      });
-    }
+    languageServiceStatus = "pending";
+    void (async () => {
+      await controller.syncEnvironment(environment);
+      if (cancelled) return;
+      if (transport.getWorkspaceDocuments) {
+        const workspaceDocuments = await transport.getWorkspaceDocuments(language);
+        if (cancelled) return;
+        await controller.syncEnvironment({ ...environment, workspaceDocuments });
+      }
+      if (!cancelled) languageServiceStatus = "ready";
+    })().catch((error: unknown) => {
+      if (!cancelled) {
+        languageServiceStatus = "error";
+        console.error("Shader Studio language service failed to initialize", error);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -1077,7 +1088,7 @@
 </script>
 
 {#if isVisible}
-  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
+  <div class="editor-wrapper" class:ready={editorReady} class:pane={displayMode === "pane"} data-language-service-status={languageServiceStatus} style={`bottom: ${bottomInset}px; --editor-top-inset: ${topInset}px; --editor-bottom-inset: ${bottomInset}px;`}>
     {#if renameFeedback}<div class="rename-feedback" role="status">{renameFeedback}</div>{/if}
     <div
       class="editor-overlay"

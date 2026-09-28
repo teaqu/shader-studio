@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BufferPathResolver } from '../../lib/util/BufferPathResolver';
 import type { RenderingEngine } from '../../../../rendering/src/types/RenderingEngine';
