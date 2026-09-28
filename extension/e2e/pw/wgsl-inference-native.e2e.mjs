@@ -1,6 +1,6 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
-import { focusNativeEditor } from './editor-actions.mjs';
+import { closeNativeEditor, focusNativeEditor } from './editor-actions.mjs';
 
 const stem = 'wgsl-inference-native';
 const shaderPath = join(workspacePath, `${stem}.wgsl`);
@@ -119,7 +119,7 @@ test.describe('WGSL inference through the native VS Code editor @gpu', () => {
 
       // Close and reopen the real document before asking the language service
       // for native hover UI, so this is not accidentally reading unsaved state.
-      await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('workbench.action.closeActiveEditor'));
+      await closeNativeEditor(vscode, shaderPath);
       await showAt(vscode, shaderPath, 2, 6);
       await vscode.evaluateInHost(async (vscode) => vscode.commands.executeCommand('editor.action.showHover'));
       const hover = vscode.window.locator('.monaco-hover-content').filter({ visible: true }).first();

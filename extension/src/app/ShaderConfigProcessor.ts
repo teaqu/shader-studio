@@ -37,6 +37,14 @@ export class ShaderConfigProcessor {
   ): ShaderConfig | null {
     const configPath = ShaderConfigProcessor.getConfigPath(shaderPath);
 
+    // Untitled shader documents have no source extension, so deriving a
+    // companion config leaves the path unchanged. Never mistake the shader
+    // buffer itself for JSON and publish a spurious config parse error.
+    if (configPath === shaderPath) {
+      this.configErrors.delete(configPath);
+      return null;
+    }
+
     const configDocument = vscode.workspace.textDocuments.find(
       doc => doc.uri.fsPath === configPath,
     );
