@@ -43,7 +43,7 @@ function createMockResCtrl() {
     },
     resetCurrentTarget: () => {
       resolutionStore.reset();
-      aspectRatioStore.setMode('auto');
+      aspectRatioStore.reset();
     },
     setBufferResolutionMode: vi.fn(),
     setBufferFixedResolution: vi.fn(),
@@ -618,7 +618,17 @@ describe('MenuBar Component', () => {
       expect(screen.getByRole('button', { name: '4:3' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '1:1' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Fill' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Auto' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Screen' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Auto' })).not.toBeInTheDocument();
+    });
+
+    it('should keep using the auto mode when Screen is selected', async () => {
+      renderMenuBar();
+      await fireEvent.click(screen.getByLabelText('Change resolution settings'));
+
+      await fireEvent.click(screen.getByRole('button', { name: 'Screen' }));
+
+      expect(mockResCtrl.setAspectRatio).toHaveBeenCalledWith('auto');
     });
 
     it('should highlight active scale', async () => {
@@ -694,7 +704,7 @@ describe('MenuBar Component', () => {
       expect(state.source).toBe('session');
     });
 
-    it('should reset aspect ratio to fill when resolution reset is clicked', async () => {
+    it('should reset aspect ratio to 16:9 when resolution reset is clicked', async () => {
       aspectRatioStore.setMode('4:3');
 
       renderMenuBar({ props: { ...defaultProps } });
@@ -707,7 +717,7 @@ describe('MenuBar Component', () => {
 
       const { get } = await import('svelte/store');
       const state = get(aspectRatioStore);
-      expect(state.mode).toBe('auto');
+      expect(state.mode).toBe('16:9');
     });
   });
 

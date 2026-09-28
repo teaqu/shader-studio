@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { SlangDebugEngine } from '@shader-studio/debug';
 import { firstUnterminatedStatementLine, truncateFunctionBodyAt } from '@shader-studio/rendering';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { revertFixtureEditors } from './editor-actions.mjs';
+import { closeNativeEditor, revertFixtureEditors } from './editor-actions.mjs';
 
 function fakeVscode(documents, { rejectCommand = false } = {}) {
   const shown = [];
@@ -49,6 +49,44 @@ test('revertFixtureEditors surfaces a failed fixture revert', async () => {
   });
 
   await assert.rejects(() => revertFixtureEditors(vscode, '/fixtures/worker-0'), /revert failed/);
+});
+
+test('closeNativeEditor clicks the named active tab without depending on browser or host-command focus', async () => {
+  let activePath = '/fixtures/inference.wgsl';
+  const locators = [];
+  const vscode = {
+    window: {
+      keyboard: {
+        press: async () => assert.fail('browser keybindings must not be used to close the native editor'),
+      },
+      locator: selector => {
+        locators.push(selector);
+        return {
+          filter: ({ hasText }) => {
+            assert.equal(hasText, 'inference.wgsl');
+            return {
+              locator: childSelector => {
+                locators.push(childSelector);
+                return { click: async () => {
+                  activePath = undefined;
+                } };
+              },
+            };
+          },
+        };
+      },
+    },
+    evaluateInHost: async (callback, target) => callback({
+      window: { activeTextEditor: activePath ? { document: { uri: { fsPath: activePath } } } : undefined },
+      commands: {
+        executeCommand: () => assert.fail('host close commands must not be used'),
+      },
+    }, target),
+  };
+
+  await closeNativeEditor(vscode, activePath);
+
+  assert.deepEqual(locators, ['.tab.active', '.codicon-close']);
 });
 
 

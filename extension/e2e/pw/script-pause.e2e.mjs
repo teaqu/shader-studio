@@ -1,9 +1,15 @@
 import { test, expect, workspacePath } from './fixtures.mjs';
 import { join } from 'node:path';
+import { registerScriptPauseTests } from './script-pause-webgpu-cases.mjs';
 
 const shaderPath = join(workspacePath, 'script-pause.glsl');
 
 test.use({ vscodeKey: 'script-pause' });
+test.afterEach(async ({ vscode }) => {
+  await vscode.evaluateInHost(async (vscode) => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  });
+});
 
 /**
  * Uniform scripts run in the extension host, on their own clock. Pausing the
@@ -65,3 +71,6 @@ test.describe('a paused shader driven by a uniform script', () => {
     }).toBe(true);
   });
 });
+
+registerScriptPauseTests('slang');
+registerScriptPauseTests('wgsl');
