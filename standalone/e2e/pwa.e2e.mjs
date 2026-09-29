@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.use({ serviceWorkers: 'allow' });
+
 test('installs the cached standalone shell and reloads it offline', async ({ page, context }) => {
   await page.goto('/');
   await expect(page.locator('#app')).toBeVisible();
