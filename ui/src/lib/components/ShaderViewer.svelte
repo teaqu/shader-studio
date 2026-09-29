@@ -32,6 +32,9 @@
   import { performancePanelStore } from "../stores/performancePanelStore";
   import { recordingPanelStore } from "../stores/recordingPanelStore";
   import RecordingPanel from "./recording/RecordingPanel.svelte";
+  import { buildRenderCaptureShaderInfo } from "../recording/captureSnapshot";
+  import { CaptureSaveChannel, shaderMessageEndsLiveRecording } from "../recording/captureSaveChannel";
+  import type { RecordingConfig, ScreenshotConfig } from "../recording/types";
   import {
     getEditorOverlayVisible,
     getOverlayActiveFile,
@@ -216,6 +219,7 @@
   // Recording
   let isRecording = $state(false);
   let recordingManager: RecordingManager;
+  let captureSaveChannel: CaptureSaveChannel | null = null;
 
   // Config panel state
   let currentConfig = $state<ShaderConfig | null>(null);
@@ -598,7 +602,17 @@
     if (!initialized) {
       return;
     }
+    const liveCanvas = renderingEngine.getCanvas?.();
+    const previousWidth = liveCanvas?.width;
+    const previousHeight = liveCanvas?.height;
     renderingEngine.handleCanvasResize(data.width, data.height);
+    // Layout passes report sizes even when nothing changed; a Live recording
+    // has a fixed output size, so only a real pixel-size change ends it.
+    if (liveCanvas && (liveCanvas.width !== previousWidth || liveCanvas.height !== previousHeight)) {
+      recordingManager?.abortLiveRecording(
+        'Live recording stopped because the preview resolution changed',
+      );
+    }
     // Resolution is script context; report it without waiting for the sample.
     scriptRuntimeReporter?.sync();
   }
@@ -785,21 +799,6 @@
     recordingPanelStore.setVisible(false);
   }
 
-  // Track current time for RecordingPanel (only runs RAF when panel is visible)
-  let recordingCurrentTime = $state(0);
-  $effect(() => {
-    if (!$recordingPanelStore.isVisible) {
-      return;
-    }
-    let rafId: number;
-    function tick() {
-      recordingCurrentTime = timeManager?.getCurrentTime(performance.now()) ?? 0;
-      rafId = requestAnimationFrame(tick);
-    }
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  });
-
   $effect(() => {
     if (initialized && renderingEngine) {
       renderingEngine.setInputEnabled(!editorOverlayVisible);
@@ -851,14 +850,14 @@
     transport.postMessage({ type: 'forkShader', payload: { shaderPath } });
   }
 
-  function handleScreenshot(config: { format: "png" | "jpeg"; time?: number; width: number; height: number }) {
+  function handleScreenshot(config: ScreenshotConfig) {
     if (!initialized) {
       return;
     }
     recordingManager.screenshot(config);
   }
 
-  function handleRecord(config: any) {
+  function handleRecord(config: RecordingConfig) {
     if (!initialized) {
       return;
     }
@@ -867,6 +866,10 @@
 
   function handleCancelRecording() {
     recordingManager.cancel();
+  }
+
+  function handleStopLiveRecording() {
+    recordingManager.stopLiveRecording();
   }
 
   function handleExtensionCommand(command: string) {
@@ -1173,6 +1176,11 @@
   async function handleMessage(event: MessageEvent): Promise<void> {
     const { type } = event.data;
 
+    if (type === 'saveFileResult') {
+      captureSaveChannel?.handleResult(event.data.payload);
+      return;
+    }
+
     if (type === 'error') {
       const payload = event.data.payload;
       errors = Array.isArray(payload) ? payload : [payload];
@@ -1216,6 +1224,13 @@
       const messageTarget = pipeline.getShaderMessageTarget(event.data);
       if (!messageTarget) {
         return;
+      }
+      // Hot reloads of the same shader keep recording the same canvas; only a
+      // switch to a different main shader ends a Live recording.
+      if (shaderMessageEndsLiveRecording(messageTarget.kind, event.data.path, shaderPath, shaderPathsEqual)) {
+        recordingManager?.abortLiveRecording(
+          'Live recording stopped because a different shader was opened',
+        );
       }
 
       // Only a main shader can select the renderer backend. Configured pass
@@ -1348,26 +1363,42 @@
         },
       );
 
+      captureSaveChannel = new CaptureSaveChannel((payload) => {
+        transport.postMessage({ type: "saveFile", payload });
+      });
       recordingManager = new RecordingManager(
         () => {
           const lastEvent = pipeline.getLastEvent();
-          return {
+          return buildRenderCaptureShaderInfo({
             code: currentShaderCode,
             config: currentConfig,
             path: shaderPath,
             buffers: lastEvent?.data?.buffers ?? {},
             language: engineLanguage,
-          };
+            scriptContextOmitted: lastEvent?.data?.scriptContextOmitted,
+            customUniformDeclarations: lastEvent?.data?.customUniformDeclarations,
+            customUniformInfo: lastEvent?.data?.customUniformInfo,
+            slangModules: engineLanguage === 'slang' ? slangModules : undefined,
+            slangSourcePath: engineLanguage === 'glsl' ? undefined : shaderPath || undefined,
+            slangSourcePaths: engineLanguage === 'glsl' ? undefined : bufferPathMap,
+          }, renderingEngine);
         },
-        (blob, defaultName, filters) => {
-          blob.arrayBuffer().then((buf) => {
-            const base64 = btoa(new Uint8Array(buf).reduce((d, b) => d + String.fromCharCode(b), ""));
-            transport.postMessage({ type: "saveFile", payload: { data: base64, defaultName, filters } });
-          });
+        async (blob, defaultName, filters) => {
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const chunkSize = 32_768;
+          let binary = '';
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+          }
+          if (!captureSaveChannel) {
+            throw new Error('The viewer closed before the capture was saved');
+          }
+          return captureSaveChannel.save(btoa(binary), defaultName, filters);
         },
         (rec) => {
           isRecording = rec;
         },
+        () => renderingEngine,
       );
 
       pixelInspectorManager = new PixelInspectorManager(setInspectorState);
@@ -1577,6 +1608,8 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
+    captureSaveChannel?.dispose();
+    captureSaveChannel = null;
     scriptRuntimeReporter?.dispose();
     scriptRuntimeReporter = null;
     setViewerSession(null);
@@ -1705,10 +1738,11 @@
       <RecordingPanel
         {canvasWidth}
         {canvasHeight}
-        currentTime={recordingCurrentTime}
+        displayFrameRate={Math.max(1, Math.round(currentFPS || 60))}
         onScreenshot={handleScreenshot}
         onRecord={handleRecord}
         onCancel={handleCancelRecording}
+        onStopLive={handleStopLiveRecording}
       />
     {/if}
   </div>

@@ -33,9 +33,11 @@ const mockEncode = vi.fn();
 const mockFlush = vi.fn(() => Promise.resolve());
 const mockClose = vi.fn();
 let capturedOutput: (chunk: any, meta: any) => void;
+let capturedError: (error: DOMException) => void;
 
 (globalThis as any).VideoEncoder = vi.fn(function (init: any) {
   capturedOutput = init.output;
+  capturedError = init.error;
   return {
     configure: vi.fn(),
     encode: mockEncode,
@@ -48,7 +50,7 @@ let capturedOutput: (chunk: any, meta: any) => void;
   return { timestamp: opts.timestamp, close: vi.fn() };
 });
 
-import { VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
+import { automaticVideoBitrate, VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
 import { Muxer as WebMMuxer } from 'webm-muxer';
 import { Muxer as MP4Muxer } from 'mp4-muxer';
 
@@ -58,6 +60,20 @@ describe('VideoEncoderWrapper', () => {
   });
 
   describe('constructor', () => {
+    it('scales automatic bitrate with resolution, frame rate, and codec efficiency', () => {
+      expect(automaticVideoBitrate({ width: 1280, height: 720, fps: 30, format: 'mp4' }))
+        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }));
+      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }))
+        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 60, format: 'mp4' }));
+      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'webm' }))
+        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }));
+    });
+
+    it('keeps automatic bitrate within practical browser limits', () => {
+      expect(automaticVideoBitrate({ width: 16, height: 16, fps: 1, format: 'webm' })).toBe(1_000_000);
+      expect(automaticVideoBitrate({ width: 7680, height: 4320, fps: 120, format: 'mp4' })).toBe(80_000_000);
+    });
+
     it('should create WebM muxer for webm format', () => {
       new VideoEncoderWrapper({ width: 1280, height: 720, fps: 30, format: 'webm' });
       expect(WebMMuxer).toHaveBeenCalledWith(
@@ -133,11 +149,11 @@ describe('VideoEncoderWrapper', () => {
       });
     });
 
-    it('should use default bitrate of 5Mbps', () => {
+    it('should use an automatic bitrate by default', () => {
       new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
       const configureCall = (globalThis as any).VideoEncoder.mock.results[0].value.configure;
       expect(configureCall).toHaveBeenCalledWith(
-        expect.objectContaining({ bitrate: 5_000_000 }),
+        expect.objectContaining({ bitrate: automaticVideoBitrate({ width: 800, height: 600, fps: 30, format: 'webm' }) }),
       );
     });
 
@@ -242,6 +258,13 @@ describe('VideoEncoderWrapper', () => {
       const wrapper = new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
       await wrapper.flush();
       expect(mockFlush).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces asynchronous encoder failures', async () => {
+      const wrapper = new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
+      capturedError(new DOMException('Hardware encoder failed'));
+
+      await expect(wrapper.flush()).rejects.toThrow('Hardware encoder failed');
     });
   });
 

@@ -1,16 +1,27 @@
 import type { RenderingEngine } from "../../../../rendering/src/types/RenderingEngine";
-import { GifEncoderWrapper } from "./GifEncoder";
-import { VideoEncoderWrapper } from "./VideoEncoder";
+import { assertGifMemoryBudget, GifEncoderWrapper } from "./GifEncoder";
+import { automaticVideoBitrate, VideoEncoderWrapper } from "./VideoEncoder";
 import { recordingStore } from "../stores/recordingStore";
 import { createEngineForLanguage } from "../engineFactory";
-import type { ScreenshotConfig, RecordingConfig, ShaderInfo } from "./types";
+import {
+  createRenderCaptureSnapshot,
+  type RenderCaptureSnapshot,
+  type ScreenshotConfig,
+  type RecordingConfig,
+  type ShaderInfo,
+} from "./types";
+import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
 
 export class ShaderRecorder {
+  private static readonly SCREENSHOT_HISTORY_FPS = 60;
   private cancelled = false;
   private offscreenEngine: RenderingEngine | null = null;
   private activeGifEncoder: GifEncoderWrapper | null = null;
+  private activeMediaRecorder: MediaRecorder | null = null;
+  private liveStream: MediaStream | null = null;
+  private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
 
   private createOffscreenEngine(width: number, height: number, language: ShaderInfo["language"]): { canvas: HTMLCanvasElement; engine: RenderingEngine } {
     const canvas = document.createElement("canvas");
@@ -36,29 +47,225 @@ export class ShaderRecorder {
     recordingStore.setPreviewCanvas(null);
   }
 
+  private encodeImageData(image: ImageData, format: ScreenshotConfig["format"]): Promise<Blob> {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Failed to create an image encoder for the captured frame");
+    }
+    context.putImageData(image, 0, 0);
+    const type = format === "jpeg" ? "image/jpeg" : "image/png";
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to encode the captured frame"));
+        }
+      }, type, format === "jpeg" ? 0.95 : undefined);
+    });
+  }
+
+  async captureLiveScreenshot(
+    config: ScreenshotConfig,
+    engine: RenderingEngine,
+  ): Promise<Blob> {
+    const image = await engine.captureCurrentFrame();
+    return this.encodeImageData(image, config.format);
+  }
+
+  recordLive(config: RecordingConfig, engine: RenderingEngine): Promise<Blob> {
+    if (config.format === "gif") {
+      return Promise.reject(new Error("Live GIF recording is not supported"));
+    }
+    if (this.activeMediaRecorder) {
+      return Promise.reject(new Error("A Live recording is already active"));
+    }
+    const canvas = engine.getCanvas();
+    if (!canvas || typeof canvas.captureStream !== "function") {
+      return Promise.reject(new Error("Live video capture is not supported by this host"));
+    }
+    if (typeof MediaRecorder === "undefined") {
+      return Promise.reject(new Error("Live video recording is not supported by this host"));
+    }
+
+    const candidates = config.format === "mp4"
+      ? ["video/mp4;codecs=avc1.42E01E", "video/mp4"]
+      : ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+    const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    if (!mimeType) {
+      return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
+    }
+
+    this.cancelled = false;
+    const stream = canvas.captureStream(config.fps);
+    let mediaRecorder: MediaRecorder;
+    try {
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: automaticVideoBitrate({
+          width: canvas.width,
+          height: canvas.height,
+          fps: config.fps,
+          format: config.format,
+        }),
+      });
+    } catch (error) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      return Promise.reject(error);
+    }
+    this.activeMediaRecorder = mediaRecorder;
+    this.liveStream = stream;
+    recordingStore.startLiveRecording(config.format);
+
+    return new Promise<Blob>((resolve, reject) => {
+      const chunks: Blob[] = [];
+      this.rejectLiveRecording = reject;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      mediaRecorder.onerror = () => {
+        this.cleanupLiveRecording();
+        reject(new Error("Live video encoding failed"));
+      };
+      mediaRecorder.onstop = () => {
+        const cancelled = this.cancelled;
+        this.cleanupLiveRecording();
+        if (cancelled) {
+          reject(new Error("Recording cancelled"));
+        } else {
+          resolve(new Blob(chunks, { type: mediaRecorder.mimeType || mimeType }));
+        }
+      };
+      try {
+        mediaRecorder.start(1000);
+      } catch (error) {
+        this.cleanupLiveRecording();
+        reject(error);
+      }
+    });
+  }
+
+  stopLiveRecording(): void {
+    if (this.activeMediaRecorder?.state === "recording") {
+      recordingStore.setFinalizing();
+      this.activeMediaRecorder.stop();
+    }
+  }
+
+  private cleanupLiveRecording(): void {
+    for (const track of this.liveStream?.getTracks() ?? []) {
+      track.stop();
+    }
+    this.liveStream = null;
+    this.activeMediaRecorder = null;
+    this.rejectLiveRecording = null;
+  }
+
+  private async initializeCaptureEngine(
+    engine: RenderingEngine,
+    snapshot: RenderCaptureSnapshot,
+  ): Promise<void> {
+    const args: Parameters<RenderingEngine["compileShaderPipeline"]> = [
+      snapshot.code,
+      snapshot.config,
+      snapshot.path,
+      snapshot.buffers,
+    ];
+    if (
+      snapshot.customUniformDeclarations !== undefined
+      || snapshot.customUniformInfo.length > 0
+      || snapshot.slangModules !== undefined
+      || snapshot.slangSourcePath !== undefined
+      || snapshot.slangSourcePaths !== undefined
+    ) {
+      args.push(snapshot.customUniformDeclarations, snapshot.customUniformInfo);
+    }
+    if (
+      snapshot.slangModules !== undefined
+      || snapshot.slangSourcePath !== undefined
+      || snapshot.slangSourcePaths !== undefined
+    ) {
+      args.push(snapshot.slangModules);
+    }
+    if (snapshot.slangSourcePath !== undefined || snapshot.slangSourcePaths !== undefined) {
+      args.push(snapshot.slangSourcePath);
+    }
+    if (snapshot.slangSourcePaths !== undefined) {
+      args.push(snapshot.slangSourcePaths);
+    }
+
+    const result = await engine.compileShaderPipeline(...args);
+    if (result && !result.success) {
+      throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
+    }
+    engine.setCustomUniformValues(snapshot.customUniformValues);
+  }
+
+  private async renderStep(
+    engine: RenderingEngine,
+    tm: ReturnType<RenderingEngine["getTimeManager"]>,
+    step: RenderFrameStep,
+  ): Promise<void> {
+    tm.setTime(step.time);
+    tm.setFrame(step.frame);
+    tm.setDeltaTime(step.delta);
+    await engine.renderForCapture();
+  }
+
+  private async prepareTimeline(
+    engine: RenderingEngine,
+    tm: ReturnType<RenderingEngine["getTimeManager"]>,
+    timeline: RenderTimeline,
+  ): Promise<void> {
+    for (let index = 0; index < timeline.preparationCount; index++) {
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
+      await this.renderStep(engine, tm, timeline.preparationStep(index));
+      recordingStore.updatePreparation(index + 1, timeline.preparationCount);
+      if (this.cancelled) {
+        throw new Error("Recording cancelled");
+      }
+      if (index % 4 === 3) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  }
+
   async captureScreenshot(
     config: ScreenshotConfig,
     shaderInfo: ShaderInfo,
   ): Promise<Blob> {
-    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, shaderInfo.language);
+    this.cancelled = false;
+    const snapshot = createRenderCaptureSnapshot(shaderInfo);
+    const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, snapshot.language);
 
     try {
-      const result = await engine.compileShaderPipeline(
-        shaderInfo.code,
-        shaderInfo.config,
-        shaderInfo.path,
-        shaderInfo.buffers,
-      );
-      if (result && !result.success) {
-        throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
-      }
+      await this.initializeCaptureEngine(engine, snapshot);
 
       const tm = engine.getTimeManager();
       const time = config.time ?? 0;
-      tm.setTime(time);
-      tm.setFrame(0);
-      tm.setDeltaTime(0);
-      engine.renderForCapture();
+      const timeline = createRenderTimeline(time, ShaderRecorder.SCREENSHOT_HISTORY_FPS);
+      if (timeline.preparationCount > 0) {
+        recordingStore.setPreviewCanvas(canvas);
+        recordingStore.startPreparing(config.format, 1, timeline.preparationCount);
+      }
+      await this.prepareTimeline(engine, tm, timeline);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startRecording(config.format, 1);
+      }
+      await this.renderStep(engine, tm, timeline.outputStep(0));
+      if (timeline.preparationCount > 0) {
+        recordingStore.updateProgress(1, 1);
+        recordingStore.setFinalizing();
+      }
 
       const type = config.format === "jpeg" ? "image/jpeg" : "image/png";
       return new Promise<Blob>((resolve, reject) => {
@@ -76,6 +283,7 @@ export class ShaderRecorder {
       });
     } finally {
       this.disposeOffscreen(canvas, engine);
+      recordingStore.reset();
     }
   }
 
@@ -84,6 +292,7 @@ export class ShaderRecorder {
     shaderInfo: ShaderInfo,
   ): Promise<Blob> {
     this.cancelled = false;
+    const snapshot = createRenderCaptureSnapshot(shaderInfo);
 
     // H.264 (MP4) requires even dimensions
     let width = config.width;
@@ -93,34 +302,39 @@ export class ShaderRecorder {
       height = height % 2 === 0 ? height : height + 1;
     }
 
-    const { canvas, engine } = this.createOffscreenEngine(width, height, shaderInfo.language);
+    const { canvas, engine } = this.createOffscreenEngine(width, height, snapshot.language);
     this.offscreenEngine = engine;
 
     try {
-      const result = await engine.compileShaderPipeline(
-        shaderInfo.code,
-        shaderInfo.config,
-        shaderInfo.path,
-        shaderInfo.buffers,
-      );
-      if (result && !result.success) {
-        throw new Error(`Shader compilation failed: ${result.errors?.join(", ")}`);
-      }
+      await this.initializeCaptureEngine(engine, snapshot);
 
       recordingStore.setPreviewCanvas(canvas);
 
       const tm = engine.getTimeManager();
       const totalFrames = Math.ceil(config.duration * config.fps);
-      const dt = 1 / config.fps;
+      if (config.format === "gif") {
+        assertGifMemoryBudget(width, height, totalFrames);
+      } else {
+        await VideoEncoderWrapper.assertSupported({ width, height, fps: config.fps, format: config.format });
+      }
+      const timeline = createRenderTimeline(config.startTime, config.fps);
 
-      recordingStore.startRecording(config.format, totalFrames);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startPreparing(config.format, totalFrames, timeline.preparationCount);
+      } else {
+        recordingStore.startRecording(config.format, totalFrames);
+      }
+      await this.prepareTimeline(engine, tm, timeline);
+      if (timeline.preparationCount > 0) {
+        recordingStore.startRecording(config.format, totalFrames);
+      }
 
       let blob: Blob;
 
       if (config.format === "gif") {
-        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, dt, width, height);
+        blob = await this.recordGif(canvas, engine, tm, config, totalFrames, width, height, timeline);
       } else {
-        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, dt, width, height);
+        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline);
       }
 
       return blob;
@@ -137,6 +351,12 @@ export class ShaderRecorder {
       this.activeGifEncoder.cancel();
       this.activeGifEncoder = null;
     }
+    if (this.activeMediaRecorder?.state === "recording") {
+      this.activeMediaRecorder.stop();
+    } else if (this.rejectLiveRecording) {
+      this.rejectLiveRecording(new Error("Recording cancelled"));
+      this.cleanupLiveRecording();
+    }
   }
 
   private async recordGif(
@@ -145,16 +365,18 @@ export class ShaderRecorder {
     tm: ReturnType<RenderingEngine["getTimeManager"]>,
     config: RecordingConfig,
     totalFrames: number,
-    dt: number,
     width: number,
     height: number,
+    timeline: RenderTimeline,
   ): Promise<Blob> {
     const encoder = new GifEncoderWrapper({
       width,
       height,
       fps: config.fps,
       quality: config.quality ?? 100,
-      repeat: config.loopCount ?? 0,
+      repeat: config.loopCount === 0 || config.loopCount === undefined
+        ? undefined
+        : Math.max(0, config.loopCount),
     });
     this.activeGifEncoder = encoder;
 
@@ -163,11 +385,7 @@ export class ShaderRecorder {
         throw new Error("Recording cancelled");
       }
 
-      const time = config.startTime + i * dt;
-      tm.setTime(time);
-      tm.setFrame(i);
-      tm.setDeltaTime(dt);
-      renderingEngine.renderForCapture();
+      await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
 
       const imageData = this.captureGifFrame(canvas, width, height);
       encoder.addFrame(imageData);
@@ -223,9 +441,9 @@ export class ShaderRecorder {
     tm: ReturnType<RenderingEngine["getTimeManager"]>,
     config: RecordingConfig,
     totalFrames: number,
-    dt: number,
     width: number,
     height: number,
+    timeline: RenderTimeline,
   ): Promise<Blob> {
     const encoder = new VideoEncoderWrapper({
       width,
@@ -238,31 +456,32 @@ export class ShaderRecorder {
     // instead of building up a massive backlog for finish().
     const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
 
-    for (let i = 0; i < totalFrames; i++) {
-      if (this.cancelled) {
-        throw new Error("Recording cancelled");
+    try {
+      for (let i = 0; i < totalFrames; i++) {
+        if (this.cancelled) {
+          throw new Error("Recording cancelled");
+        }
+
+        await this.renderStep(renderingEngine, tm, timeline.outputStep(i));
+
+        const timestampUs = Math.round((i / config.fps) * 1_000_000);
+        encoder.addFrame(canvas, timestampUs);
+
+        recordingStore.updateProgress(i + 1, totalFrames);
+
+        // Flush encoder periodically to keep queue short and UI responsive
+        if (i % flushInterval === flushInterval - 1) {
+          await encoder.flush();
+        }
       }
 
-      const time = config.startTime + i * dt;
-      tm.setTime(time);
-      tm.setFrame(i);
-      tm.setDeltaTime(dt);
-      renderingEngine.renderForCapture();
+      recordingStore.setFinalizing();
+      await new Promise((r) => setTimeout(r, 0));
 
-      const timestampUs = Math.round((i / config.fps) * 1_000_000);
-      encoder.addFrame(canvas, timestampUs);
-
-      recordingStore.updateProgress(i + 1, totalFrames);
-
-      // Flush encoder periodically to keep queue short and UI responsive
-      if (i % flushInterval === flushInterval - 1) {
-        await encoder.flush();
-      }
+      return await encoder.finish();
+    } finally {
+      // finish() closes on success; this releases the encoder on cancel/error.
+      encoder.close();
     }
-
-    recordingStore.setFinalizing();
-    await new Promise((r) => setTimeout(r, 0));
-
-    return encoder.finish();
   }
 }

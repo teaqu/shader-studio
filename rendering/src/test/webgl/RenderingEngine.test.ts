@@ -1033,6 +1033,53 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("captureCurrentFrame", () => {
+    it("reads the displayed frame through the frame renderer and returns top-to-bottom RGBA pixels", async () => {
+      vi.stubGlobal("ImageData", class {
+        constructor(
+          public data: Uint8ClampedArray,
+          public width: number,
+          public height: number,
+        ) {}
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const bottomRow = [1, 2, 3, 4, 5, 6, 7, 8];
+      const topRow = [9, 10, 11, 12, 13, 14, 15, 16];
+      const gl = {
+        RGBA: 0x1908,
+        UNSIGNED_BYTE: 0x1401,
+        readPixels: vi.fn((
+          _x: number,
+          _y: number,
+          _width: number,
+          _height: number,
+          _format: number,
+          _type: number,
+          pixels: Uint8Array,
+        ) => pixels.set([...bottomRow, ...topRow])),
+      };
+      Object.defineProperty(renderingEngine, "glCanvas", { value: canvas, configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: gl, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => Promise.resolve(read()));
+
+      const image = await renderingEngine.captureCurrentFrame();
+
+      expect(mockFrameRenderer.readNextDisplayedFrame).toHaveBeenCalledOnce();
+      expect(gl.readPixels).toHaveBeenCalledOnce();
+      expect(Array.from(image.data)).toEqual([...topRow, ...bottomRow]);
+      expect(image.width).toBe(2);
+      expect(image.height).toBe(2);
+    });
+
+    it("rejects before WebGL is initialized", async () => {
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow(
+        "Cannot capture the current frame before WebGL is initialized",
+      );
+    });
+  });
+
   describe("pixel region capture", () => {
     it("returns safe fallbacks before initialization", () => {
       expect(renderingEngine.requestPixelRegion(1, 20, 30)).toBe(false);

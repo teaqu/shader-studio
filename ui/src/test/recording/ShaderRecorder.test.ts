@@ -16,6 +16,9 @@ if (typeof globalThis.ImageData === 'undefined') {
 
 // Mock recordingStore
 const mockStartRecording = vi.fn();
+const mockStartPreparing = vi.fn();
+const mockUpdatePreparation = vi.fn();
+const mockStartLiveRecording = vi.fn();
 const mockUpdateProgress = vi.fn();
 const mockSetFinalizing = vi.fn();
 const mockReset = vi.fn();
@@ -24,6 +27,9 @@ const mockSetPreviewCanvas = vi.fn();
 vi.mock('../../lib/stores/recordingStore', () => ({
   recordingStore: {
     startRecording: (...args: any[]) => mockStartRecording(...args),
+    startPreparing: (...args: any[]) => mockStartPreparing(...args),
+    updatePreparation: (...args: any[]) => mockUpdatePreparation(...args),
+    startLiveRecording: (...args: any[]) => mockStartLiveRecording(...args),
     updateProgress: (...args: any[]) => mockUpdateProgress(...args),
     setFinalizing: () => mockSetFinalizing(),
     reset: () => mockReset(),
@@ -37,6 +43,7 @@ const mockGifFinish = vi.fn(() => Promise.resolve(new Uint8Array([71, 73, 70])))
 const mockGifCancel = vi.fn();
 
 vi.mock('../../lib/recording/GifEncoder', () => ({
+  assertGifMemoryBudget: vi.fn(),
   GifEncoderWrapper: vi.fn(function () {
     return ({
       addFrame: mockGifAddFrame,
@@ -51,20 +58,28 @@ const mockVideoAddFrame = vi.fn();
 const mockVideoFlush = vi.fn(() => Promise.resolve());
 const mockVideoFinish = vi.fn(() => Promise.resolve(new Blob(['video'], { type: 'video/webm' })));
 
+const { mockVideoAssertSupported, mockVideoClose } = vi.hoisted(() => ({
+  mockVideoAssertSupported: vi.fn(() => Promise.resolve()),
+  mockVideoClose: vi.fn(),
+}));
+
 vi.mock('../../lib/recording/VideoEncoder', () => ({
-  VideoEncoderWrapper: vi.fn(function () {
+  automaticVideoBitrate: vi.fn(() => 5_000_000),
+  VideoEncoderWrapper: Object.assign(vi.fn(function () {
     return ({
       addFrame: mockVideoAddFrame,
       flush: mockVideoFlush,
       finish: mockVideoFinish,
+      close: mockVideoClose,
     });
-  }),
+  }), { assertSupported: mockVideoAssertSupported }),
 }));
 
 // Mock RenderingEngine
 const mockInitialize = vi.fn();
 const mockHandleCanvasResize = vi.fn();
 const mockCompileShaderPipeline = vi.fn(() => Promise.resolve({ success: true }));
+const mockSetCustomUniformValues = vi.fn();
 const mockRenderForCapture = vi.fn();
 const mockDispose = vi.fn();
 const mockSetTime = vi.fn();
@@ -78,6 +93,7 @@ const mockGetTimeManager = vi.fn(() => ({
 const mockWebGPUInitialize = vi.fn();
 const mockWebGPUHandleCanvasResize = vi.fn();
 const mockWebGPUCompileShaderPipeline = vi.fn(() => Promise.resolve({ success: true }));
+const mockWebGPUSetCustomUniformValues = vi.fn();
 const mockWebGPURenderForCapture = vi.fn();
 const mockWebGPUDispose = vi.fn();
 const mockGetSlangAssetUrls = vi.fn(() => ({ scriptUrl: '/mock/slang-wasm.js', wasmUrl: '/mock/slang-wasm.wasm' }));
@@ -88,6 +104,7 @@ vi.mock('../../../../rendering/src/webgl/RenderingEngine', () => ({
       initialize: mockInitialize,
       handleCanvasResize: mockHandleCanvasResize,
       compileShaderPipeline: mockCompileShaderPipeline,
+      setCustomUniformValues: mockSetCustomUniformValues,
       renderForCapture: mockRenderForCapture,
       dispose: mockDispose,
       getTimeManager: mockGetTimeManager,
@@ -101,6 +118,7 @@ vi.mock('../../../../rendering/src/webgpu/WebGPURenderingEngine', () => ({
       initialize: mockWebGPUInitialize,
       handleCanvasResize: mockWebGPUHandleCanvasResize,
       compileShaderPipeline: mockWebGPUCompileShaderPipeline,
+      setCustomUniformValues: mockWebGPUSetCustomUniformValues,
       renderForCapture: mockWebGPURenderForCapture,
       dispose: mockWebGPUDispose,
       getTimeManager: mockGetTimeManager,
@@ -131,6 +149,52 @@ const slangShaderInfo: ShaderInfo = {
   language: 'slang',
 };
 
+const shaderInfoWithCaptureContext: ShaderInfo = {
+  ...shaderInfo,
+  config: { version: '1', passes: { Image: { resolution: { scale: 1 } } } },
+  buffers: { BufferA: 'void mainImage(out vec4 o, in vec2 uv) { o = vec4(0.0); }' },
+  customUniformDeclarations: 'uniform float uGain;\nuniform bool uEnabled;',
+  customUniformInfo: [
+    { name: 'uGain', type: 'float' },
+    { name: 'uEnabled', type: 'bool' },
+  ],
+  customUniformValues: [
+    { name: 'uGain', type: 'float', value: 0 },
+    { name: 'uEnabled', type: 'bool', value: false },
+  ],
+};
+
+const slangShaderInfoWithCaptureContext: ShaderInfo = {
+  ...slangShaderInfo,
+  slangModules: [{
+    moduleName: 'palette',
+    path: '/test/palette.slang',
+    source: 'export float3 color() { return float3(1, 0, 0); }',
+    ownerPass: 'Image',
+  }],
+  slangSourcePath: '/test/shader.slang',
+  slangSourcePaths: {
+    Image: '/test/shader.slang',
+    BufferA: '/test/buffer-a.slang',
+  },
+  customUniformDeclarations: 'float uGain;',
+  customUniformInfo: [{ name: 'uGain', type: 'float' }],
+  customUniformValues: [{ name: 'uGain', type: 'float', value: [0.25, 0.5] }],
+};
+
+const wgslShaderInfoWithCaptureContext: ShaderInfo = {
+  code: '@fragment fn mainImage() -> @location(0) vec4f { return vec4f(uGain); }',
+  config: null,
+  path: '/test/shader.wgsl',
+  buffers: {},
+  language: 'wgsl',
+  slangSourcePath: '/test/shader.wgsl',
+  slangSourcePaths: { Image: '/test/shader.wgsl' },
+  customUniformDeclarations: 'var<private> uGain: f32;',
+  customUniformInfo: [{ name: 'uGain', type: 'float' }],
+  customUniformValues: [{ name: 'uGain', type: 'float', value: 0.5 }],
+};
+
 describe('ShaderRecorder', () => {
   let recorder: ShaderRecorder;
 
@@ -146,6 +210,7 @@ describe('ShaderRecorder', () => {
       remove: vi.fn(),
       getContext: vi.fn(() => ({
         readPixels: vi.fn(),
+        putImageData: vi.fn(),
         RGBA: 0x1908,
         UNSIGNED_BYTE: 0x1401,
       })),
@@ -161,6 +226,24 @@ describe('ShaderRecorder', () => {
   });
 
   describe('captureScreenshot', () => {
+    it('captures Live pixels through the owning engine without compiling or advancing simulation', async () => {
+      const image = new ImageData(new Uint8ClampedArray([1, 2, 3, 255]), 1, 1);
+      const liveEngine = {
+        captureCurrentFrame: vi.fn().mockResolvedValue(image),
+      } as unknown as import('../../../../rendering/src/types/RenderingEngine').RenderingEngine;
+
+      const blob = await recorder.captureLiveScreenshot(
+        { mode: 'live', format: 'png', width: 800, height: 600 },
+        liveEngine,
+      );
+
+      expect(liveEngine.captureCurrentFrame).toHaveBeenCalledTimes(1);
+      expect(mockCompileShaderPipeline).not.toHaveBeenCalled();
+      expect(mockRenderForCapture).not.toHaveBeenCalled();
+      expect(mockSetTime).not.toHaveBeenCalled();
+      expect(blob).toBeInstanceOf(Blob);
+    });
+
     it('should create offscreen engine at requested resolution', async () => {
       const config: ScreenshotConfig = { format: 'png', width: 1920, height: 1080 };
       await recorder.captureScreenshot(config, shaderInfo);
@@ -179,6 +262,40 @@ describe('ShaderRecorder', () => {
         shaderInfo.path,
         shaderInfo.buffers,
       );
+      expect(mockSetCustomUniformValues).toHaveBeenCalledWith([]);
+    });
+
+    it('compiles and initializes a frozen custom-uniform snapshot before the screenshot frame', async () => {
+      const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
+      const pendingCompile = Promise.withResolvers<{ success: true }>();
+      mockCompileShaderPipeline.mockReturnValueOnce(pendingCompile.promise);
+      const captureInfo = structuredClone(shaderInfoWithCaptureContext);
+
+      const capture = recorder.captureScreenshot(config, captureInfo);
+      captureInfo.config!.passes.Image.resolution!.scale = 2;
+      captureInfo.buffers.BufferA = 'changed';
+      captureInfo.customUniformInfo![0].name = 'changed';
+      captureInfo.customUniformValues![0].value = 1;
+      pendingCompile.resolve({ success: true });
+      await capture;
+
+      expect(mockCompileShaderPipeline).toHaveBeenCalledWith(
+        shaderInfo.code,
+        { version: '1', passes: { Image: { resolution: { scale: 1 } } } },
+        shaderInfo.path,
+        { BufferA: 'void mainImage(out vec4 o, in vec2 uv) { o = vec4(0.0); }' },
+        'uniform float uGain;\nuniform bool uEnabled;',
+        [
+          { name: 'uGain', type: 'float' },
+          { name: 'uEnabled', type: 'bool' },
+        ],
+      );
+      expect(mockSetCustomUniformValues).toHaveBeenCalledWith([
+        { name: 'uGain', type: 'float', value: 0 },
+        { name: 'uEnabled', type: 'bool', value: false },
+      ]);
+      expect(mockSetCustomUniformValues.mock.invocationCallOrder[0])
+        .toBeLessThan(mockRenderForCapture.mock.invocationCallOrder[0]);
     });
 
     it('should use a WebGPU offscreen engine for Slang screenshots', async () => {
@@ -199,12 +316,89 @@ describe('ShaderRecorder', () => {
       expect(mockWebGPURenderForCapture).toHaveBeenCalled();
     });
 
+    it('passes frozen Slang module and per-pass source context to WebGPU capture', async () => {
+      const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
+
+      await recorder.captureScreenshot(config, slangShaderInfoWithCaptureContext);
+
+      expect(mockWebGPUCompileShaderPipeline).toHaveBeenCalledWith(
+        slangShaderInfo.code,
+        slangShaderInfo.config,
+        slangShaderInfo.path,
+        slangShaderInfo.buffers,
+        'float uGain;',
+        [{ name: 'uGain', type: 'float' }],
+        [{
+          moduleName: 'palette',
+          path: '/test/palette.slang',
+          source: 'export float3 color() { return float3(1, 0, 0); }',
+          ownerPass: 'Image',
+        }],
+        '/test/shader.slang',
+        {
+          Image: '/test/shader.slang',
+          BufferA: '/test/buffer-a.slang',
+        },
+      );
+      expect(mockWebGPUSetCustomUniformValues).toHaveBeenCalledWith([
+        { name: 'uGain', type: 'float', value: [0.25, 0.5] },
+      ]);
+    });
+
+    it('passes WGSL source paths and custom uniforms to WebGPU capture', async () => {
+      const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
+
+      await recorder.captureScreenshot(config, wgslShaderInfoWithCaptureContext);
+
+      expect(mockWebGPUCompileShaderPipeline).toHaveBeenCalledWith(
+        wgslShaderInfoWithCaptureContext.code,
+        null,
+        '/test/shader.wgsl',
+        {},
+        'var<private> uGain: f32;',
+        [{ name: 'uGain', type: 'float' }],
+        undefined,
+        '/test/shader.wgsl',
+        { Image: '/test/shader.wgsl' },
+      );
+      expect(mockWebGPUSetCustomUniformValues).toHaveBeenCalledWith([
+        { name: 'uGain', type: 'float', value: 0.5 },
+      ]);
+    });
+
     it('should render at specified time', async () => {
       const config: ScreenshotConfig = { format: 'png', width: 800, height: 600, time: 5.0 };
-      await recorder.captureScreenshot(config, shaderInfo);
+      const capture = recorder.captureScreenshot(config, shaderInfo);
+      await vi.runAllTimersAsync();
+      await capture;
 
       expect(mockSetTime).toHaveBeenCalledWith(5.0);
       expect(mockRenderForCapture).toHaveBeenCalled();
+    });
+
+    it('prepares preceding screenshot frames at 60 fps without duplicating the target frame', async () => {
+      const steps: Array<{ time: number; frame: number; delta: number }> = [];
+      mockRenderForCapture.mockImplementation(() => {
+        steps.push({
+          time: mockSetTime.mock.calls.at(-1)![0],
+          frame: mockSetFrame.mock.calls.at(-1)![0],
+          delta: mockSetDeltaTime.mock.calls.at(-1)![0],
+        });
+      });
+
+      await recorder.captureScreenshot(
+        { format: 'png', width: 800, height: 600, time: 0.025 },
+        shaderInfo,
+      );
+
+      expect(steps).toHaveLength(3);
+      expect(steps[0]).toEqual({ time: 0, frame: 0, delta: 0 });
+      expect(steps[1].time).toBeCloseTo(1 / 60);
+      expect(steps[1].frame).toBe(1);
+      expect(steps[1].delta).toBeCloseTo(1 / 60);
+      expect(steps[2].time).toBe(0.025);
+      expect(steps[2].frame).toBe(2);
+      expect(steps[2].delta).toBeCloseTo(0.025 - (1 / 60));
     });
 
     it('should default to time 0 when no time specified', async () => {
@@ -227,6 +421,8 @@ describe('ShaderRecorder', () => {
       const config: ScreenshotConfig = { format: 'png', width: 800, height: 600 };
 
       await expect(recorder.captureScreenshot(config, shaderInfo)).rejects.toThrow('Shader compilation failed');
+      expect(mockSetCustomUniformValues).not.toHaveBeenCalled();
+      expect(mockRenderForCapture).not.toHaveBeenCalled();
       expect(mockDispose).toHaveBeenCalled();
     });
 
@@ -247,8 +443,8 @@ describe('ShaderRecorder', () => {
       height: 600,
     };
 
-    async function rec(config: RecordingConfig) {
-      const p = recorder.record(config, shaderInfo);
+    async function rec(config: RecordingConfig, info = shaderInfo) {
+      const p = recorder.record(config, info);
       await vi.runAllTimersAsync();
       return p;
     }
@@ -259,6 +455,20 @@ describe('ShaderRecorder', () => {
       expect(mockInitialize).toHaveBeenCalledWith(expect.anything(), true);
       expect(mockCompileShaderPipeline).toHaveBeenCalled();
     });
+
+    it.each(['webm', 'gif'] as const)(
+      'applies custom-uniform values before the first %s frame',
+      async (format) => {
+        await rec({ ...baseConfig, format }, shaderInfoWithCaptureContext);
+
+        expect(mockSetCustomUniformValues).toHaveBeenCalledWith([
+          { name: 'uGain', type: 'float', value: 0 },
+          { name: 'uEnabled', type: 'bool', value: false },
+        ]);
+        expect(mockSetCustomUniformValues.mock.invocationCallOrder[0])
+          .toBeLessThan(mockRenderForCapture.mock.invocationCallOrder[0]);
+      },
+    );
 
     it('should set preview canvas for live preview', async () => {
       await rec(baseConfig);
@@ -315,6 +525,16 @@ describe('ShaderRecorder', () => {
       expect(VideoEncoderWrapper).not.toHaveBeenCalled();
     });
 
+    it('omits the gifski repeat option for infinite looping', async () => {
+      await rec({ ...baseConfig, format: 'gif', loopCount: 0 });
+      expect(GifEncoderWrapper).toHaveBeenCalledWith(expect.objectContaining({ repeat: undefined }));
+    });
+
+    it('passes repeat zero to gifski for a GIF that plays once', async () => {
+      await rec({ ...baseConfig, format: 'gif', loopCount: -1 });
+      expect(GifEncoderWrapper).toHaveBeenCalledWith(expect.objectContaining({ repeat: 0 }));
+    });
+
     it('should use a WebGPU offscreen engine for Slang videos', async () => {
       const p = recorder.record(baseConfig, slangShaderInfo);
       await vi.runAllTimersAsync();
@@ -333,6 +553,38 @@ describe('ShaderRecorder', () => {
       expect(mockWebGPUDispose).toHaveBeenCalled();
     });
 
+    it.each(['webm', 'gif'] as const)(
+      'passes the complete Slang snapshot to %s recording',
+      async (format) => {
+        const p = recorder.record({ ...baseConfig, format }, slangShaderInfoWithCaptureContext);
+        await vi.runAllTimersAsync();
+        await p;
+
+        expect(mockWebGPUCompileShaderPipeline).toHaveBeenCalledWith(
+          slangShaderInfo.code,
+          slangShaderInfo.config,
+          slangShaderInfo.path,
+          slangShaderInfo.buffers,
+          'float uGain;',
+          [{ name: 'uGain', type: 'float' }],
+          [{
+            moduleName: 'palette',
+            path: '/test/palette.slang',
+            source: 'export float3 color() { return float3(1, 0, 0); }',
+            ownerPass: 'Image',
+          }],
+          '/test/shader.slang',
+          {
+            Image: '/test/shader.slang',
+            BufferA: '/test/buffer-a.slang',
+          },
+        );
+        expect(mockWebGPUSetCustomUniformValues).toHaveBeenCalledWith([
+          { name: 'uGain', type: 'float', value: [0.25, 0.5] },
+        ]);
+      },
+    );
+
     it('should render correct number of frames', async () => {
       await rec({ ...baseConfig, duration: 1, fps: 10 });
 
@@ -345,6 +597,67 @@ describe('ShaderRecorder', () => {
 
       // 1 frame: time = 5.0 + 0 * 0.1 = 5.0
       expect(mockSetTime).toHaveBeenCalledWith(5.0);
+    });
+
+    it.each(['webm', 'gif'] as const)(
+      'warms feedback before an off-grid %s start and keeps frame numbering continuous',
+      async (format) => {
+        const steps: Array<{ time: number; frame: number; delta: number }> = [];
+        mockRenderForCapture.mockImplementation(() => {
+          steps.push({
+            time: mockSetTime.mock.calls.at(-1)![0],
+            frame: mockSetFrame.mock.calls.at(-1)![0],
+            delta: mockSetDeltaTime.mock.calls.at(-1)![0],
+          });
+        });
+
+        await rec({
+          ...baseConfig,
+          format,
+          startTime: 0.25,
+          duration: 0.2,
+          fps: 10,
+        });
+
+        expect(steps).toHaveLength(5);
+        expect(steps.slice(0, 3)).toEqual([
+          { time: 0, frame: 0, delta: 0 },
+          { time: 0.1, frame: 1, delta: 0.1 },
+          { time: 0.2, frame: 2, delta: 0.1 },
+        ]);
+        expect(mockStartPreparing).toHaveBeenCalledWith(format, 2, 3);
+        expect(mockUpdatePreparation).toHaveBeenLastCalledWith(3, 3);
+        expect(mockStartPreparing.mock.invocationCallOrder[0])
+          .toBeLessThan(mockStartRecording.mock.invocationCallOrder[0]);
+        expect(steps[3].time).toBe(0.25);
+        expect(steps[3].frame).toBe(3);
+        expect(steps[3].delta).toBeCloseTo(0.05);
+        expect(steps[4]).toEqual({ time: 0.35, frame: 4, delta: 0.1 });
+
+        if (format === 'webm') {
+          expect(mockVideoAddFrame).toHaveBeenCalledTimes(2);
+          expect(mockVideoAddFrame.mock.calls.map((call) => call[1])).toEqual([0, 100_000]);
+        } else {
+          expect(mockGifAddFrame).toHaveBeenCalledTimes(2);
+        }
+      },
+    );
+
+    it('cancels during preparation before creating encoded output', async () => {
+      mockRenderForCapture.mockImplementationOnce(() => recorder.cancel());
+      const promise = recorder.record({
+        ...baseConfig,
+        startTime: 1,
+        duration: 0.2,
+        fps: 10,
+      }, shaderInfo);
+      promise.catch(() => {});
+      await vi.runAllTimersAsync();
+
+      await expect(promise).rejects.toThrow('Recording cancelled');
+      expect(mockVideoAddFrame).not.toHaveBeenCalled();
+      expect(mockVideoFinish).not.toHaveBeenCalled();
+      expect(mockDispose).toHaveBeenCalled();
     });
 
     it('should update progress during recording', async () => {
@@ -387,6 +700,88 @@ describe('ShaderRecorder', () => {
     it('should return a Blob', async () => {
       const blob = await rec(baseConfig);
       expect(blob).toBeInstanceOf(Blob);
+    });
+  });
+
+  describe('Live video', () => {
+    function installMediaRecorder() {
+      const tracks = [{ stop: vi.fn() }];
+      const stream = { getTracks: () => tracks } as unknown as MediaStream;
+      const instances: Array<{
+        start: ReturnType<typeof vi.fn>;
+        stop: ReturnType<typeof vi.fn>;
+        state: RecordingState;
+        ondataavailable: ((event: BlobEvent) => void) | null;
+        onstop: (() => void) | null;
+        onerror: ((event: Event) => void) | null;
+      }> = [];
+      class MockMediaRecorder {
+        static isTypeSupported = vi.fn((type: string) => type === 'video/webm;codecs=vp9');
+        state: RecordingState = 'inactive';
+        mimeType = 'video/webm;codecs=vp9';
+        ondataavailable: ((event: BlobEvent) => void) | null = null;
+        onstop: (() => void) | null = null;
+        onerror: ((event: Event) => void) | null = null;
+        start = vi.fn(() => {
+          this.state = 'recording';
+        });
+        stop = vi.fn(() => {
+          this.state = 'inactive';
+          this.ondataavailable?.({ data: new Blob(['video']) } as BlobEvent);
+          this.onstop?.();
+        });
+        constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+          instances.push(this);
+        }
+      }
+      vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+      return { tracks, stream, instances, MockMediaRecorder };
+    }
+
+    it('records the existing canvas without compiling or rendering another engine', async () => {
+      const { tracks, stream, instances, MockMediaRecorder } = installMediaRecorder();
+      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
+      const liveEngine = { getCanvas: () => canvas } as any;
+
+      const recording = (recorder as any).recordLive({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      }, liveEngine) as Promise<Blob>;
+
+      expect(canvas.captureStream).toHaveBeenCalledWith(30);
+      expect(MockMediaRecorder.isTypeSupported).toHaveBeenCalled();
+      expect(mockCompileShaderPipeline).not.toHaveBeenCalled();
+      expect(mockRenderForCapture).not.toHaveBeenCalled();
+      (recorder as any).stopLiveRecording();
+      const blob = await recording;
+
+      expect(blob.type).toBe('video/webm;codecs=vp9');
+      expect(instances[0].stop).toHaveBeenCalledTimes(1);
+      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects unsupported Live formats without opening a stream', async () => {
+      const { stream, MockMediaRecorder } = installMediaRecorder();
+      MockMediaRecorder.isTypeSupported.mockReturnValue(false);
+      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
+
+      await expect((recorder as any).recordLive({
+        mode: 'live', format: 'mp4', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      }, { getCanvas: () => canvas })).rejects.toThrow('not supported');
+      expect(canvas.captureStream).not.toHaveBeenCalled();
+    });
+
+    it('discards a Live recording and releases every track', async () => {
+      const { tracks, stream } = installMediaRecorder();
+      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
+      const recording = (recorder as any).recordLive({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      }, { getCanvas: () => canvas }) as Promise<Blob>;
+      recording.catch(() => {});
+
+      recorder.cancel();
+
+      await expect(recording).rejects.toThrow('Recording cancelled');
+      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -442,6 +837,51 @@ describe('ShaderRecorder', () => {
   });
 
   describe('cancel', () => {
+    it('rejects an unsupported video configuration before rendering any frame', async () => {
+      mockVideoAssertSupported.mockRejectedValueOnce(new Error('MP4 export at 800×600, 30 fps is not supported by this host'));
+      const config: RecordingConfig = {
+        format: 'mp4',
+        duration: 1,
+        startTime: 5,
+        fps: 30,
+        width: 800,
+        height: 600,
+      };
+
+      const p = recorder.record(config, shaderInfo);
+      p.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(p).rejects.toThrow('not supported by this host');
+      expect(mockRenderForCapture).not.toHaveBeenCalled();
+      expect(VideoEncoderWrapper).not.toHaveBeenCalled();
+    });
+
+    it('closes the video encoder when rendering is cancelled or fails', async () => {
+      let frames = 0;
+      mockRenderForCapture.mockImplementation(() => {
+        frames++;
+        if (frames === 2) {
+          recorder.cancel();
+        }
+      });
+      const cancelled = recorder.record({ format: 'webm', duration: 1, startTime: 0, fps: 30, width: 64, height: 64 }, shaderInfo);
+      cancelled.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(cancelled).rejects.toThrow('Recording cancelled');
+      expect(mockVideoClose).toHaveBeenCalledTimes(1);
+
+      mockVideoClose.mockClear();
+      mockRenderForCapture.mockImplementation(() => {});
+      mockVideoAddFrame.mockImplementationOnce(() => {
+        throw new Error('Video encoding failed');
+      });
+      const failed = recorder.record({ format: 'webm', duration: 1, startTime: 0, fps: 30, width: 64, height: 64 }, shaderInfo);
+      failed.catch(() => {});
+      await vi.runAllTimersAsync();
+      await expect(failed).rejects.toThrow('Video encoding failed');
+      expect(mockVideoClose).toHaveBeenCalledTimes(1);
+    });
+
     it('should stop recording when cancel is called', async () => {
       // We need to test cancellation mid-recording
       // Set up a long recording that we'll cancel during

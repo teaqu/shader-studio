@@ -2,15 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import '@testing-library/jest-dom';
 import VideoTab from '../../../lib/components/recording/VideoTab.svelte';
+import { resetCapturePreferences } from '../../../lib/state/capturePreferences.svelte';
 
 describe('VideoTab', () => {
   let defaultProps: any;
 
+  async function selectRenderMode() {
+    await fireEvent.click(screen.getByRole('button', { name: 'Render' }));
+  }
+
   beforeEach(() => {
+    resetCapturePreferences();
     defaultProps = {
       canvasWidth: 800,
       canvasHeight: 600,
       currentTime: 5.5,
+      displayFrameRate: 75,
       onRecord: vi.fn(),
     };
   });
@@ -28,8 +35,16 @@ describe('VideoTab', () => {
     expect(mp4Button).toHaveClass('active');
   });
 
-  it('should render Duration presets (2pi, 5s, 10s, 30s, 60s, custom)', () => {
+  it('defaults to live mode and hides render-only controls', () => {
+    render(VideoTab, { props: defaultProps });
+    expect(screen.getByRole('button', { name: 'Live' })).toHaveClass('active');
+    expect(screen.queryByText('Duration')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resolution')).not.toBeInTheDocument();
+  });
+
+  it('should render Duration presets (2pi, 5s, 10s, 30s, 60s, custom)', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     expect(screen.getByText('Duration')).toBeInTheDocument();
     // 2pi is rendered as the pi character entity
     expect(screen.getByText('2\u03c0')).toBeInTheDocument();
@@ -39,16 +54,19 @@ describe('VideoTab', () => {
     expect(screen.getByText('60s')).toBeInTheDocument();
   });
 
-  it('5s should be active by default', () => {
+  it('5s should be active by default', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const fiveSecBtn = screen.getByText('5s');
     expect(fiveSecBtn).toHaveClass('active');
   });
 
-  it('should render Start Time section', () => {
+  it('should render Start Time section', async () => {
     render(VideoTab, { props: defaultProps });
-    expect(screen.getByText('Start Time')).toBeInTheDocument();
-    expect(screen.getByText('5.5s')).toBeInTheDocument();
+    await selectRenderMode();
+    expect(screen.getByText('Start recording at:')).toBeInTheDocument();
+    expect(screen.getByText('Renders preceding frames before recording begins.')).toBeInTheDocument();
+    expect(screen.queryByText('5.5s')).not.toBeInTheDocument();
     // Zero button
     expect(screen.getByText('0')).toBeInTheDocument();
   });
@@ -61,14 +79,14 @@ describe('VideoTab', () => {
     expect(screen.getByText('60')).toBeInTheDocument();
   });
 
-  it('30fps should be active by default', () => {
+  it('screen frame rate should be active by default', () => {
     render(VideoTab, { props: defaultProps });
-    const fps30Btn = screen.getByText('30');
-    expect(fps30Btn).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Screen (75)' })).toHaveClass('active');
   });
 
-  it('should render Resolution presets', () => {
+  it('should render Resolution presets', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     expect(screen.getByText('Resolution')).toBeInTheDocument();
     expect(screen.getByText('800\u00d7600')).toBeInTheDocument();
     expect(screen.getByText('720p')).toBeInTheDocument();
@@ -78,26 +96,48 @@ describe('VideoTab', () => {
 
   it('should render Record button', () => {
     render(VideoTab, { props: defaultProps });
-    expect(screen.getByText('Record')).toBeInTheDocument();
+    expect(screen.getByText('Start recording')).toBeInTheDocument();
   });
 
-  it('should call onRecord with mp4 format by default', async () => {
+  it('should start a live MP4 recording by default', async () => {
     render(VideoTab, { props: defaultProps });
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Start recording'));
 
     expect(defaultProps.onRecord).toHaveBeenCalledTimes(1);
     const call = defaultProps.onRecord.mock.calls[0][0];
+    expect(call.mode).toBe('live');
     expect(call.format).toBe('mp4');
-    expect(call.duration).toBe(5);
-    expect(call.fps).toBe(30);
+    expect(call.fps).toBe(75);
     expect(call.width).toBe(800);
     expect(call.height).toBe(600);
+  });
+
+  it('snaps the measured Screen rate to a standard rate for Render exports only', async () => {
+    render(VideoTab, { props: { ...defaultProps, displayFrameRate: 23 } });
+    expect(screen.getByRole('button', { name: 'Screen (23)' })).toHaveClass('active');
+
+    await selectRenderMode();
+    expect(screen.getByRole('button', { name: 'Screen (24)' })).toHaveClass('active');
+    await fireEvent.click(screen.getByText('Render video'));
+
+    expect(defaultProps.onRecord.mock.calls[0][0]).toMatchObject({ mode: 'render', fps: 24 });
+  });
+
+  it('should call onRecord with render settings in render mode', async () => {
+    render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
+    await fireEvent.click(screen.getByText('Render video'));
+
+    const call = defaultProps.onRecord.mock.calls[0][0];
+    expect(call.mode).toBe('render');
+    expect(call.duration).toBe(5);
+    expect(call.startTime).toBe(0);
   });
 
   it('should call onRecord with webm format when selected', async () => {
     render(VideoTab, { props: defaultProps });
     await fireEvent.click(screen.getByText('WebM'));
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Start recording'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.format).toBe('webm');
@@ -106,7 +146,7 @@ describe('VideoTab', () => {
   it('should call onRecord with correct fps when 60 selected', async () => {
     render(VideoTab, { props: defaultProps });
     await fireEvent.click(screen.getByText('60'));
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Start recording'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.fps).toBe(60);
@@ -114,8 +154,9 @@ describe('VideoTab', () => {
 
   it('should call onRecord with correct duration when 10s selected', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('10s'));
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.duration).toBe(10);
@@ -123,16 +164,18 @@ describe('VideoTab', () => {
 
   it('should call onRecord with 1080p resolution when selected', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('1080p'));
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.width).toBe(1920);
     expect(call.height).toBe(1080);
   });
 
-  it('should show custom start time input', () => {
+  it('should show custom start time input', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     // The custom start time input has placeholder "s" and step "0.1"
     const startTimeInputs = container.querySelectorAll('input[step="0.1"]');
     expect(startTimeInputs.length).toBeGreaterThanOrEqual(1);
@@ -140,6 +183,7 @@ describe('VideoTab', () => {
 
   it('custom start time input should activate custom mode on focus', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const startTimeInput = container.querySelector('input[step="0.1"]') as HTMLInputElement;
     expect(startTimeInput).not.toBeNull();
 
@@ -152,11 +196,12 @@ describe('VideoTab', () => {
 
   it('should call onRecord with custom start time', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     const startTimeInput = container.querySelector('input[step="0.1"]') as HTMLInputElement;
 
     await fireEvent.focus(startTimeInput);
     await fireEvent.input(startTimeInput, { target: { value: '3.5' } });
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.startTime).toBe(3.5);
@@ -164,21 +209,12 @@ describe('VideoTab', () => {
 
   it('should call onRecord with zero start time when zero mode selected', async () => {
     render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     await fireEvent.click(screen.getByText('0'));
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.startTime).toBe(0);
-  });
-
-  it('should call onRecord with current time when current mode selected', async () => {
-    render(VideoTab, { props: defaultProps });
-    // currentTime is 5.5, the button shows "5.5s"
-    await fireEvent.click(screen.getByText('5.5s'));
-    await fireEvent.click(screen.getByText('Record'));
-
-    const call = defaultProps.onRecord.mock.calls[0][0];
-    expect(call.startTime).toBe(5.5);
   });
 
   it('custom fps input should work', async () => {
@@ -187,7 +223,7 @@ describe('VideoTab', () => {
     expect(fpsInput).not.toBeNull();
 
     await fireEvent.input(fpsInput, { target: { value: '45' } });
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Start recording'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.fps).toBe(45);
@@ -195,6 +231,7 @@ describe('VideoTab', () => {
 
   it('should call onRecord with custom resolution when custom preset selected', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     // Find the custom resolution width and height inputs
     const resInputs = container.querySelectorAll('.recording-custom-res-input') as NodeListOf<HTMLInputElement>;
     expect(resInputs.length).toBe(2);
@@ -206,7 +243,7 @@ describe('VideoTab', () => {
     await fireEvent.focus(widthInput);
     await fireEvent.input(widthInput, { target: { value: '1600' } });
     await fireEvent.input(heightInput, { target: { value: '900' } });
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.width).toBe(1600);
@@ -215,13 +252,14 @@ describe('VideoTab', () => {
 
   it('custom duration input should work', async () => {
     const { container } = render(VideoTab, { props: defaultProps });
+    await selectRenderMode();
     // The duration custom input has class recording-duration-input and is in the Duration section
     // It's the first recording-duration-input (the start time one has step="0.1")
     const durationInput = container.querySelector('input[step="0.5"]') as HTMLInputElement;
     expect(durationInput).not.toBeNull();
 
     await fireEvent.input(durationInput, { target: { value: '15' } });
-    await fireEvent.click(screen.getByText('Record'));
+    await fireEvent.click(screen.getByText('Render video'));
 
     const call = defaultProps.onRecord.mock.calls[0][0];
     expect(call.duration).toBe(15);

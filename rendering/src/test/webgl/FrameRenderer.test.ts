@@ -291,6 +291,81 @@ describe("FrameRenderer", () => {
     });
   });
 
+  describe("Live screenshot of the displayed frame", () => {
+    const singleImagePass = () => {
+      const pass = { name: "Image", inputs: {} } as any;
+      mockShaderPipeline.getPasses = vi.fn(() => [pass]);
+      mockShaderPipeline.getPassShader = vi.fn(() => ({ mProgram: {} }));
+      mockShaderPipeline.getPassShaders = vi.fn(() => ({ Image: { mProgram: {} } }));
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("redraws a paused frame with the frozen uniforms, not values that changed underneath it", async () => {
+      singleImagePass();
+      let value = 1;
+      frameRenderer.setCustomUniformManager({
+        hasUniforms: () => true,
+        getValues: () => [{ name: "uFast", type: "float", value }],
+      } as any);
+      frameRenderer.setRunning(true);
+      frameRenderer.render(0);
+      mockTimeManager.isPaused = vi.fn(() => true);
+      frameRenderer.render(16);
+      const pausedUniforms = mockPassRenderer.renderPass.mock.calls.at(-1)[3];
+
+      value = 99;
+      mockMouseManager.getMouse = vi.fn(() => new Float32Array([50, 60, 1, 1]));
+      const read = vi.fn(() => "pixels");
+      await expect(frameRenderer.readNextDisplayedFrame(read)).resolves.toBe("pixels");
+
+      const capture = mockPassRenderer.renderPass.mock.calls.at(-1);
+      expect(capture[3]).toEqual(pausedUniforms);
+      expect(capture[4]).toEqual([{ name: "uFast", type: "float", value: 1 }]);
+      expect(capture[5]).toBe(true);
+      expect(read).toHaveBeenCalledOnce();
+    });
+
+    it("reads the next loop frame right after its Image pass instead of drawing an extra one", async () => {
+      singleImagePass();
+      const events: string[] = [];
+      mockPassRenderer.renderPass.mockImplementation(() => events.push("image"));
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(3);
+      frameRenderer.setRunning(true);
+
+      const read = vi.fn(() => {
+        events.push("read");
+        return "displayed";
+      });
+      const pending = frameRenderer.readNextDisplayedFrame(read);
+      expect(read).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+
+      frameRenderer.render(1000);
+      await expect(pending).resolves.toBe("displayed");
+      frameRenderer.render(1016);
+
+      expect(events).toEqual(["image", "read", "image"]);
+    });
+
+    it("falls back to redrawing Image when no loop frame arrives in time", async () => {
+      vi.useFakeTimers();
+      singleImagePass();
+      frameRenderer.setRunning(true);
+      const read = vi.fn(() => "redrawn");
+
+      const pending = frameRenderer.readNextDisplayedFrame(read, 50);
+      await vi.advanceTimersByTimeAsync(50);
+
+      await expect(pending).resolves.toBe("redrawn");
+      expect(mockPassRenderer.renderPass).toHaveBeenCalledOnce();
+      expect(read).toHaveBeenCalledOnce();
+    });
+  });
+
   describe("running state", () => {
     it("should track running state correctly", () => {
       expect(frameRenderer.isRunning()).toBe(false);

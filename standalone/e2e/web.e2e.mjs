@@ -1121,10 +1121,16 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
       await page.getByRole('button', { name: format, exact: true }).click();
     }
     if (!screenshot) {
+      if (format !== 'GIF') {
+        await page.getByRole('button', { name: 'Render', exact: true }).click();
+      }
       await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
     }
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: screenshot ? 'Capture' : 'Record', exact: true }).click();
+    await page.getByRole('button', {
+      name: screenshot ? 'Capture screenshot' : format === 'GIF' ? 'Record' : 'Render video',
+      exact: true,
+    }).click();
     const download = await downloadPromise;
     const extension = format === 'JPEG' ? 'jpg' : format.toLowerCase();
     expect(download.suggestedFilename()).toMatch(new RegExp(`^shader-.*\\.${extension}$`));
@@ -1154,6 +1160,34 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
     expect(pageErrors).toEqual([]);
   });
 }
+
+test('records the live preview to WebM and remembers capture settings after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+  await page.getByRole('button', { name: '60', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop & save', exact: true })).toBeVisible();
+  await page.waitForTimeout(500);
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^shader-.*\.webm$/);
+  expect(await download.failure()).toBeNull();
+
+  await page.reload();
+  const videoTab = page.getByRole('button', { name: 'Video', exact: true });
+  if (!await videoTab.isVisible()) {
+    await page.getByLabel('Toggle export panel').click();
+  }
+  await videoTab.click();
+  await expect(page.getByRole('button', { name: 'Live', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'WebM', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: '60', exact: true })).toHaveClass(/active/);
+});
 
 
 test('standalone defaults to Aurora GLSL and preserves a later selection on reload', async ({ page }) => {

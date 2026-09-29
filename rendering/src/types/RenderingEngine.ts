@@ -86,6 +86,10 @@ export interface RenderingEngine {
   setCustomUniformValues(values: { name: string; type: string; value: number | number[] | boolean }[]): void;
   updateCustomUniformValues(changed: { name: string; type: string; value: number | number[] | boolean }[]): void;
   renderForCapture(): void;
+  /** Custom uniform values of the displayed frame: frozen values while paused. */
+  getDisplayedCustomUniforms(): { name: string; type: string; value: number | number[] | boolean }[];
+  /** Read the currently displayed Image pass without advancing time or feedback state. */
+  captureCurrentFrame(): Promise<ImageData>;
   getCanvas(): HTMLCanvasElement | null;
   dispose(): void;
 }

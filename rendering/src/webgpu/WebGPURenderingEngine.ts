@@ -304,6 +304,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
   private currentConfig: ShaderConfig | null = null;
   private running = false;
   private rafId: number | null = null;
+  /**
+   * Live screenshot requests waiting for the next frame the render loop draws.
+   * Each copies that exact frame instead of drawing an extra one.
+   */
+  private pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void> = [];
   private fpsLimit = 0;
   private lastRenderedAt: number | null = null;
   private frameTimeBuffer: number[] = new Array(3600);
@@ -2467,7 +2472,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.renderFrame(time, false);
   }
 
-  private renderFrame(time: number, capture: boolean, imageOnly = false): void {
+  private renderFrame(
+    time: number,
+    capture: boolean,
+    imageOnly = false,
+    captureCanvas?: (encoder: GPUCommandEncoder, texture: GPUTexture) => void,
+  ): void {
     if (!this.device || !this.context) {
       return;
     }
@@ -2719,6 +2729,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
     }
 
     if (canvasTexture && this.canvas) {
+      captureCanvas?.(encoder, canvasTexture);
+      if (!capture && this.pendingScreenshotCopies.length > 0) {
+        const captures = this.pendingScreenshotCopies;
+        this.pendingScreenshotCopies = [];
+        for (const copy of captures) {
+          copy(encoder, canvasTexture);
+        }
+      }
       this.pixelRegionCapturer?.encodeAfterRender(encoder, canvasTexture, this.canvas.width, this.canvas.height);
     }
     this.device.queue.submit([encoder.finish()]);
@@ -3640,6 +3658,88 @@ export class WebGPURenderingEngine implements RenderingEngine {
     this.renderFrame(performance.now(), true);
   }
 
+  async captureCurrentFrame(): Promise<ImageData> {
+    if (!this.device || !this.context || !this.canvas) {
+      throw new Error("Cannot capture the current frame before WebGPU is initialized");
+    }
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    if (width < 1 || height < 1) {
+      throw new Error("Cannot capture an empty WebGPU canvas");
+    }
+    const bytesPerPixel = 4;
+    const bytesPerRow = Math.ceil((width * bytesPerPixel) / 256) * 256;
+    const MAP_READ = globalThis.GPUBufferUsage?.MAP_READ ?? 0x0001;
+    const COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x0008;
+    const READ = globalThis.GPUMapMode?.READ ?? 0x0001;
+    const buffer = this.device.createBuffer({
+      size: bytesPerRow * height,
+      usage: MAP_READ | COPY_DST,
+    });
+    let copied = false;
+    const copy = (encoder: GPUCommandEncoder, texture: GPUTexture) => {
+      if (copied || texture.width !== width || texture.height !== height) {
+        return;
+      }
+      encoder.copyTextureToBuffer(
+        { texture },
+        { buffer, bytesPerRow, rowsPerImage: height },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+      copied = true;
+    };
+    // Paused inputs are frozen in renderFrame, so a redraw reproduces the
+    // picture on screen. While running, copy the next frame the render loop
+    // draws, so the saved time/mouse/script values are the ones shown.
+    const redraw = () => this.renderFrame(this.now(), true, true, copy);
+    try {
+      if (this.running && !this.timeManager.isPaused()) {
+        await new Promise<void>((resolve) => {
+          const hook = (encoder: GPUCommandEncoder, texture: GPUTexture) => {
+            clearTimeout(timer);
+            copy(encoder, texture);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            this.pendingScreenshotCopies = this.pendingScreenshotCopies.filter((candidate) => candidate !== hook);
+            redraw();
+            resolve();
+          }, 1000);
+          this.pendingScreenshotCopies.push(hook);
+        });
+      } else {
+        redraw();
+      }
+      if (!copied) {
+        throw new Error("The WebGPU shader did not produce a canvas frame");
+      }
+      await buffer.mapAsync(READ);
+      const source = new Uint8Array(buffer.getMappedRange());
+      const rgba = new Uint8ClampedArray(width * height * bytesPerPixel);
+      const bgra = this.format === "bgra8unorm" || this.format === "bgra8unorm-srgb";
+      for (let row = 0; row < height; row += 1) {
+        const sourceRow = row * bytesPerRow;
+        const destinationRow = row * width * bytesPerPixel;
+        for (let column = 0; column < width; column += 1) {
+          const src = sourceRow + column * bytesPerPixel;
+          const dst = destinationRow + column * bytesPerPixel;
+          rgba[dst] = bgra ? source[src + 2] : source[src];
+          rgba[dst + 1] = source[src + 1];
+          rgba[dst + 2] = bgra ? source[src] : source[src + 2];
+          rgba[dst + 3] = source[src + 3];
+        }
+      }
+      return new ImageData(rgba, width, height);
+    } finally {
+      try {
+        buffer.unmap();
+      } catch {
+        // A failed map may leave the buffer unmapped already.
+      }
+      buffer.destroy();
+    }
+  }
+
   // ---- Audio/video ----
 
   async resumeAudioContext(): Promise<void> {
@@ -3708,6 +3808,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
   }
   getCurrentCustomUniforms(): CaptureCustomUniform[] {
     return this.visibleCustomUniformManager().getCurrentValues();
+  }
+
+  getDisplayedCustomUniforms(): CaptureCustomUniform[] {
+    if (this.timeManager.isPaused() && this.pausedCustomUniformValues) {
+      return this.pausedCustomUniformValues.map((uniform) => ({
+        ...uniform,
+        value: Array.isArray(uniform.value) ? [...uniform.value] : uniform.value,
+      }));
+    }
+    return this.getCurrentCustomUniforms();
   }
 
   /**

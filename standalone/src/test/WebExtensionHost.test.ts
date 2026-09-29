@@ -797,6 +797,19 @@ describe('standalone export downloads', () => {
     expect(receive).toHaveBeenCalledWith({ type: 'saveFileResult', payload: { success: false, error: expect.any(String) } });
   });
 
+  it('echoes the save requestId so the viewer can match the result', async () => {
+    const host = await createHost();
+    const receive = vi.fn();
+    host.onViewerMessage(receive);
+    await host.handleViewerMessage({ type: 'saveFile', payload: {
+      data: btoa('x'), defaultName: 'shader.png', filters: {}, requestId: 'capture-save-7',
+    } });
+    expect(receive).toHaveBeenCalledWith({
+      type: 'saveFileResult',
+      payload: { success: true, requestId: 'capture-save-7' },
+    });
+  });
+
   it('reports download errors and still cleans up', async () => {
     const host = await createHost();
     const receive = vi.fn();

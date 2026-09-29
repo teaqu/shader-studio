@@ -701,7 +701,28 @@ suite('FileDialogHandler Test Suite', () => {
       const msg = respondFn.firstCall.args[0];
       assert.strictEqual(msg.type, 'saveFileResult');
       assert.strictEqual(msg.payload.success, false);
+      assert.strictEqual(msg.payload.cancelled, true);
       assert.strictEqual(msg.payload.error, 'Cancelled');
+    });
+
+    test('echoes the viewer requestId on every save result', async () => {
+      const fs = require('fs');
+      sandbox.stub(fs, 'writeFileSync');
+      const dialog = sandbox.stub(vscode.window, 'showSaveDialog');
+      dialog.onFirstCall().resolves(vscode.Uri.file('/test/output.png'));
+      dialog.onSecondCall().resolves(undefined);
+
+      await handler.handleSaveFile(
+        { data: '', defaultName: 'output.png', filters: {}, requestId: 'capture-save-1' },
+        respondFn,
+      );
+      await handler.handleSaveFile(
+        { data: '', defaultName: 'output.png', filters: {}, requestId: 'capture-save-2' },
+        respondFn,
+      );
+
+      assert.strictEqual(respondFn.firstCall.args[0].payload.requestId, 'capture-save-1');
+      assert.strictEqual(respondFn.secondCall.args[0].payload.requestId, 'capture-save-2');
     });
 
     test('responds with error result when writeFileSync throws', async () => {

@@ -16,16 +16,51 @@ describe('recordingStore', () => {
   it('should have correct initial state', () => {
     const state = getState();
     expect(state).toEqual({
+      phase: 'idle',
       isRecording: false,
+      isLive: false,
+      isPreparing: false,
       isFinalizing: false,
       finalizingStartTime: 0,
       progress: 0,
       currentFrame: 0,
       totalFrames: 0,
+      preparationFrame: 0,
+      preparationFrames: 0,
       format: null,
       error: null,
       previewCanvas: null,
     });
+  });
+
+  describe('preparation', () => {
+    it('tracks preparation separately from output progress', () => {
+      recordingStore.startPreparing('mp4', 50, 20);
+      recordingStore.updatePreparation(10, 20);
+      let state = getState();
+      expect(state.phase).toBe('preparing');
+      expect(state.isPreparing).toBe(true);
+      expect(state.preparationFrame).toBe(10);
+      expect(state.preparationFrames).toBe(20);
+      expect(state.currentFrame).toBe(0);
+
+      recordingStore.startRecording('mp4', 50);
+      state = getState();
+      expect(state.phase).toBe('rendering');
+      expect(state.isPreparing).toBe(false);
+      expect(state.progress).toBe(0);
+      expect(state.currentFrame).toBe(0);
+      expect(state.preparationFrame).toBe(10);
+    });
+  });
+
+  it('tracks a Live recording without output frame progress', () => {
+    recordingStore.startLiveRecording('webm');
+    const state = getState();
+    expect(state.phase).toBe('recording');
+    expect(state.isRecording).toBe(true);
+    expect(state.isLive).toBe(true);
+    expect(state.totalFrames).toBe(0);
   });
 
   describe('startRecording', () => {
@@ -34,6 +69,7 @@ describe('recordingStore', () => {
       const state = getState();
       expect(state.isRecording).toBe(true);
       expect(state.isFinalizing).toBe(false);
+      expect(state.phase).toBe('rendering');
       expect(state.format).toBe('webm');
       expect(state.totalFrames).toBe(300);
       expect(state.progress).toBe(0);
@@ -106,6 +142,21 @@ describe('recordingStore', () => {
       recordingStore.startRecording('webm', 100);
       recordingStore.setFinalizing();
       expect(getState().isFinalizing).toBe(true);
+      expect(getState().phase).toBe('finalizing');
+    });
+  });
+
+  describe('setSaving', () => {
+    it('moves into a non-cancellable saving phase', () => {
+      recordingStore.setSaving('png');
+      const state = get(recordingStore);
+
+      expect(state.phase).toBe('saving');
+      expect(state.isRecording).toBe(true);
+      expect(state.isLive).toBe(false);
+      expect(state.isPreparing).toBe(false);
+      expect(state.isFinalizing).toBe(false);
+      expect(state.format).toBe('png');
     });
   });
 
@@ -117,6 +168,7 @@ describe('recordingStore', () => {
       expect(state.error).toBe('Encoding failed');
       expect(state.isRecording).toBe(false);
       expect(state.isFinalizing).toBe(false);
+      expect(state.phase).toBe('error');
     });
 
     it('should clear finalizing state on error', () => {
@@ -126,6 +178,7 @@ describe('recordingStore', () => {
       const state = getState();
       expect(state.isFinalizing).toBe(false);
       expect(state.isRecording).toBe(false);
+      expect(state.phase).toBe('error');
     });
   });
 
@@ -155,6 +208,7 @@ describe('recordingStore', () => {
       recordingStore.reset();
       const state = getState();
       expect(state.isRecording).toBe(false);
+      expect(state.phase).toBe('idle');
       expect(state.isFinalizing).toBe(false);
       expect(state.progress).toBe(0);
       expect(state.currentFrame).toBe(0);

@@ -104,6 +104,117 @@ describe("WebGPURenderingEngine", () => {
     pixelRegionCapturerMock.constructor.mockClear();
   });
 
+  it("captures the current canvas with aligned BGRA readback converted to RGBA", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const mapped = new Uint8Array(256 * 2);
+    mapped.set([1, 2, 3, 4, 5, 6, 7, 8], 0);
+    mapped.set([9, 10, 11, 12, 13, 14, 15, 16], 256);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => mapped.buffer),
+      unmap: vi.fn(),
+      destroy: vi.fn(),
+    };
+    const copyTextureToBuffer = vi.fn();
+    const device = { createBuffer: vi.fn(() => buffer) };
+    const texture = { width: 2, height: 2 } as GPUTexture;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device,
+      context: {},
+      canvas: { width: 2, height: 2 },
+      format: "bgra8unorm",
+    });
+    const internals = engine as unknown as {
+      renderFrame: (
+        time: number,
+        capture: boolean,
+        imageOnly: boolean,
+        captureCanvas: (encoder: GPUCommandEncoder, texture: GPUTexture) => void,
+      ) => void;
+    };
+    internals.renderFrame = vi.fn((_time, capture, imageOnly, captureCanvas) => {
+      expect(capture).toBe(true);
+      expect(imageOnly).toBe(true);
+      captureCanvas({ copyTextureToBuffer } as unknown as GPUCommandEncoder, texture);
+    });
+
+    const image = await engine.captureCurrentFrame();
+
+    expect(copyTextureToBuffer).toHaveBeenCalledWith(
+      { texture },
+      { buffer, bytesPerRow: 256, rowsPerImage: 2 },
+      { width: 2, height: 2, depthOrArrayLayers: 1 },
+    );
+    expect(Array.from(image.data)).toEqual([
+      3, 2, 1, 4, 7, 6, 5, 8,
+      11, 10, 9, 12, 15, 14, 13, 16,
+    ]);
+    expect(buffer.unmap).toHaveBeenCalledOnce();
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("copies the next frame the render loop draws while running instead of redrawing at a later time", async () => {
+    vi.stubGlobal("ImageData", class {
+      constructor(
+        public data: Uint8ClampedArray,
+        public width: number,
+        public height: number,
+      ) {}
+    });
+    const engine = new WebGPURenderingEngine(assets);
+    const mapped = new Uint8Array(256);
+    mapped.set([1, 2, 3, 4], 0);
+    const buffer = {
+      mapAsync: vi.fn().mockResolvedValue(undefined),
+      getMappedRange: vi.fn(() => mapped.buffer),
+      unmap: vi.fn(),
+      destroy: vi.fn(),
+    };
+    const copyTextureToBuffer = vi.fn();
+    const texture = { width: 1, height: 1 } as GPUTexture;
+    Object.assign(engine as unknown as Record<string, unknown>, {
+      device: { createBuffer: vi.fn(() => buffer) },
+      context: {},
+      canvas: { width: 1, height: 1 },
+      format: "rgba8unorm",
+      running: true,
+    });
+    const internals = engine as unknown as {
+      renderFrame: ReturnType<typeof vi.fn>;
+      pendingScreenshotCopies: Array<(encoder: GPUCommandEncoder, texture: GPUTexture) => void>;
+    };
+    internals.renderFrame = vi.fn();
+
+    const pending = engine.captureCurrentFrame();
+    expect(internals.pendingScreenshotCopies).toHaveLength(1);
+
+    // What renderFrame does for the next RAF frame before submitting it.
+    const captures = internals.pendingScreenshotCopies;
+    internals.pendingScreenshotCopies = [];
+    captures.forEach((copy) => copy({ copyTextureToBuffer } as unknown as GPUCommandEncoder, texture));
+    const image = await pending;
+
+    expect(internals.renderFrame).not.toHaveBeenCalled();
+    expect(copyTextureToBuffer).toHaveBeenCalledOnce();
+    expect(Array.from(image.data)).toEqual([1, 2, 3, 4]);
+    expect(buffer.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("rejects current-frame capture before WebGPU is initialized", async () => {
+    const engine = new WebGPURenderingEngine(assets);
+
+    await expect(engine.captureCurrentFrame()).rejects.toThrow(
+      "Cannot capture the current frame before WebGPU is initialized",
+    );
+  });
+
   it("compiles a structured Slang debug plan through the normal image/module pipeline", async () => {
     const engine = new WebGPURenderingEngine(assets);
     const compile = vi.spyOn(engine, "compileShaderPipeline").mockResolvedValue({ success: true });

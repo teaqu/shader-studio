@@ -9,25 +9,27 @@
   interface Props {
     canvasWidth: number;
     canvasHeight: number;
-    currentTime: number;
+    displayFrameRate: number;
     onScreenshot: OnScreenshot;
     onRecord: OnRecord;
     onCancel: () => void;
+    onStopLive: () => void;
   }
 
   let {
     canvasWidth,
     canvasHeight,
-    currentTime,
+    displayFrameRate,
     onScreenshot,
     onRecord,
     onCancel,
+    onStopLive,
   }: Props = $props();
 
   let recordingTab: "screenshot" | "video" | "gif" = $state("screenshot");
 
   // Recording store subscription
-  let recordingState: RecordingState = $state({ isRecording: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, format: null, error: null, previewCanvas: null });
+  let recordingState: RecordingState = $state({ phase: "idle", isRecording: false, isLive: false, isPreparing: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, preparationFrame: 0, preparationFrames: 0, format: null, error: null, previewCanvas: null });
   const unsubRecording = recordingStore.subscribe((s) => {
     recordingState = s;
   });
@@ -36,6 +38,9 @@
   // Elapsed time ticker for finalization
   let finalizingElapsed = $state(0);
   let finalizingTimer: ReturnType<typeof setInterval> | null = null;
+  let liveElapsed = $state(0);
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
+  let liveStartedAt = 0;
   $effect(() => {
     const isFinalizing = recordingState.isFinalizing;
     const startTime = recordingState.finalizingStartTime;
@@ -51,10 +56,28 @@
     }
   });
 
+  $effect(() => {
+    const isLiveRecording = recordingState.isRecording && recordingState.isLive && !recordingState.isFinalizing;
+    if (isLiveRecording && !liveTimer) {
+      liveElapsed = 0;
+      liveStartedAt = performance.now();
+      liveTimer = setInterval(() => {
+        liveElapsed = Math.floor((performance.now() - liveStartedAt) / 1000);
+      }, 250);
+    } else if (!isLiveRecording && liveTimer) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+      liveElapsed = 0;
+    }
+  });
+
   onDestroy(() => {
     unsubRecording();
     if (finalizingTimer) {
       clearInterval(finalizingTimer);
+    }
+    if (liveTimer) {
+      clearInterval(liveTimer);
     }
   });
 
@@ -91,10 +114,17 @@
     <button class="tab-button" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}><span class="tab-label">GIF</span></button>
   </div>
 
+  {#if recordingState.error}
+    <div class="recording-error" role="alert">
+      <span>{recordingState.error}</span>
+      <button class="recording-error-dismiss" onclick={() => recordingStore.reset()}>Dismiss</button>
+    </div>
+  {/if}
+
   {#if recordingState.isRecording}
     <div class="recording-tab-content">
       <div class="recording-tab-inner">
-        {#if recordingState.previewCanvas}
+        {#if recordingState.previewCanvas && !recordingState.isLive}
           <div class="recording-preview">
             <canvas
               class="recording-preview-canvas"
@@ -107,29 +137,52 @@
         <div class="recording-progress-section">
           <div class="recording-progress-header">
             <span class="recording-dot-inline"></span>
-            {#if recordingState.isFinalizing}
+            {#if recordingState.phase === "saving"}
+              Saving {recordingState.format?.toUpperCase()}...
+            {:else if recordingState.isPreparing}
+              Preparing simulation
+            {:else if recordingState.isFinalizing}
               Encoding {recordingState.format?.toUpperCase()} ({recordingState.totalFrames} frames)...
             {:else}
               Recording {recordingState.format?.toUpperCase()}
             {/if}
           </div>
           <div class="recording-progress-bar">
-            {#if recordingState.isFinalizing}
+            {#if recordingState.isLive || recordingState.isFinalizing || recordingState.phase === "saving"}
               <div class="recording-progress-fill recording-progress-indeterminate"></div>
             {:else}
               <div class="recording-progress-fill" style="width: {recordingPercent}%"></div>
             {/if}
           </div>
-          {#if recordingState.isFinalizing}
+          {#if recordingState.phase === "saving"}
+            <div class="recording-info-text">Waiting for the host to finish saving</div>
+          {:else if recordingState.isPreparing}
+            <div class="recording-info-text">
+              {recordingState.preparationFrame} / {recordingState.preparationFrames} preceding frames ({recordingPercent}%)
+            </div>
+          {:else if recordingState.isFinalizing}
             <div class="recording-info-text">
               {finalizingElapsed}s elapsed
+            </div>
+          {:else if recordingState.isLive}
+            <div class="recording-info-text">
+              {liveElapsed}s elapsed
             </div>
           {:else}
             <div class="recording-info-text">
               {recordingState.currentFrame} / {recordingState.totalFrames} frames ({recordingPercent}%)
             </div>
           {/if}
-          <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+          {#if recordingState.phase !== "saving"}
+            {#if recordingState.isLive && !recordingState.isFinalizing}
+              <div class="recording-live-actions">
+                <button class="recording-cancel-btn" onclick={onCancel}>Discard</button>
+                <button class="export-action-btn" onclick={onStopLive}>Stop &amp; save</button>
+              </div>
+            {:else}
+              <button class="recording-cancel-btn" onclick={onCancel}>Cancel</button>
+            {/if}
+          {/if}
         </div>
       </div>
     </div>
@@ -137,11 +190,11 @@
     <div class="recording-tab-content">
       <div class="recording-tab-inner">
         {#if recordingTab === "screenshot"}
-          <ScreenshotTab {canvasWidth} {canvasHeight} {currentTime} {onScreenshot} />
+          <ScreenshotTab {canvasWidth} {canvasHeight} {onScreenshot} />
         {:else if recordingTab === "video"}
-          <VideoTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+          <VideoTab {canvasWidth} {canvasHeight} {displayFrameRate} {onRecord} />
         {:else if recordingTab === "gif"}
-          <GifTab {canvasWidth} {canvasHeight} {currentTime} {onRecord} />
+          <GifTab {canvasWidth} {canvasHeight} {onRecord} />
         {/if}
       </div>
     </div>
@@ -161,6 +214,26 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .recording-error {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 12px 0;
+    padding: 8px;
+    border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+    color: var(--vscode-errorForeground, #f48771);
+    font-size: 11px;
+  }
+
+  .recording-error-dismiss {
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: underline;
   }
 
   .recording-tab-inner {

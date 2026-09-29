@@ -1,38 +1,57 @@
 <script lang="ts">
+  import { untrack } from "svelte";
+  import {
+    getGifCapturePreferences,
+    updateGifCapturePreferences,
+  } from "../../state/capturePreferences.svelte";
+
   interface Props {
     canvasWidth: number;
     canvasHeight: number;
-    currentTime: number;
-    onRecord: (config: { format: "gif"; duration: number; startTime: number; fps: number; width: number; height: number; maxColors?: number; loopCount?: number; quality?: number }) => void;
+    onRecord: (config: { format: "gif"; duration: number; startTime: number; fps: number; width: number; height: number; loopCount?: number; quality?: number }) => void;
   }
 
   let {
     canvasWidth,
     canvasHeight,
-    currentTime,
     onRecord,
   }: Props = $props();
 
-  let gifDuration = $state(3);
-  let gifStartMode: "current" | "zero" | "custom" = $state("current");
-  let gifCustomStartTime = $state("");
-  let gifFps = $state(15);
-  let gifCustomFps = $state("");
-  let gifResPreset: "current" | "480p" | "720p" | "1080p" | "custom" = $state("current");
-  let customResW = $state("");
-  let customResH = $state("");
-  let gifMaxColors = $state(256);
-  let gifCustomColors = $state("");
-  let gifLoopCount = $state(-1);
-  let gifQuality = $state(100);
-  let gifCustomQuality = $state("");
+  const saved = getGifCapturePreferences();
+  let gifDuration = $state(saved.duration);
+  let gifStartMode: "zero" | "custom" = $state(saved.startMode);
+  let gifCustomStartTime = $state(saved.customStartTime);
+  let gifFps = $state(saved.fps);
+  let gifCustomFps = $state(saved.customFps);
+  let gifResPreset: "current" | "480p" | "720p" | "1080p" | "custom" = $state(saved.resolution);
+  let customResW = $state(saved.customWidth);
+  let customResH = $state(saved.customHeight);
+  let gifLoopCount = $state(saved.loopCount);
+  let gifQuality = $state(saved.quality);
+  let gifCustomQuality = $state(saved.customQuality);
+
+  $effect(() => {
+    const next = {
+      duration: gifDuration,
+      startMode: gifStartMode,
+      customStartTime: gifCustomStartTime,
+      fps: gifFps,
+      customFps: gifCustomFps,
+      resolution: gifResPreset,
+      customWidth: customResW,
+      customHeight: customResH,
+      loopCount: gifLoopCount,
+      quality: gifQuality,
+      customQuality: gifCustomQuality,
+    };
+    untrack(() => updateGifCapturePreferences(next));
+  });
 
   let activeGifFps = $derived(gifCustomFps ? (parseInt(gifCustomFps) || gifFps) : gifFps);
   let activeGifQuality = $derived(gifCustomQuality ? Math.max(1, Math.min(100, parseInt(gifCustomQuality) || gifQuality)) : gifQuality);
-  let activeGifColors = $derived(gifCustomColors ? Math.max(2, Math.min(256, parseInt(gifCustomColors) || gifMaxColors)) : gifMaxColors);
   let gifFrames = $derived(Math.ceil(gifDuration * activeGifFps));
   let gifResolution = $derived(getResolution(gifResPreset));
-  let gifEstimatedKB = $derived(Math.round((gifFrames * gifResolution.w * gifResolution.h * 0.3 * (activeGifQuality / 100) * (activeGifColors / 256)) / 1024));
+  let gifEstimatedKB = $derived(Math.round((gifFrames * gifResolution.w * gifResolution.h * 0.3 * (activeGifQuality / 100)) / 1024));
 
   function getResolution(preset: typeof gifResPreset): { w: number; h: number } {
     switch (preset) {
@@ -50,7 +69,6 @@
 
   function getStartTime(mode: typeof gifStartMode): number {
     switch (mode) {
-      case "current": return currentTime;
       case "zero": return 0;
       case "custom": return parseFloat(gifCustomStartTime) || 0;
     }
@@ -66,11 +84,6 @@
     gifCustomQuality = "";
   }
 
-  function selectGifColors(c: number) {
-    gifMaxColors = c;
-    gifCustomColors = "";
-  }
-
   function handleGifRecord() {
     const res = getResolution(gifResPreset);
     onRecord({
@@ -80,7 +93,6 @@
       fps: activeGifFps,
       width: res.w,
       height: res.h,
-      maxColors: activeGifColors,
       loopCount: gifLoopCount,
       quality: activeGifQuality,
     });
@@ -100,14 +112,14 @@
   </div>
 </div>
 <div class="resolution-section">
-  <h4>Start Time</h4>
+  <h4>Start recording at:</h4>
   <div class="scale-buttons">
-    <button class="resolution-option" class:active={gifStartMode === "current"} onclick={() => (gifStartMode = "current")}>{currentTime.toFixed(1)}s</button>
     <button class="resolution-option" class:active={gifStartMode === "zero"} onclick={() => (gifStartMode = "zero")}>0</button>
     <div class="recording-custom-fps" class:active={gifStartMode === "custom"}>
       <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomStartTime} placeholder="s" step="0.1" min="0" onfocus={() => (gifStartMode = "custom")} />
     </div>
   </div>
+  <p class="recording-info-text">Renders preceding frames before recording begins.</p>
 </div>
 <div class="resolution-section">
   <h4>Frame Rate</h4>
@@ -136,26 +148,10 @@
   </div>
 </div>
 <div class="resolution-section">
-  <h4>Colors</h4>
-  <div class="scale-buttons">
-    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 32} onclick={() => selectGifColors(32)}>32</button>
-    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 64} onclick={() => selectGifColors(64)}>64</button>
-    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 128} onclick={() => selectGifColors(128)}>128</button>
-    <button class="resolution-option" class:active={!gifCustomColors && gifMaxColors === 256} onclick={() => selectGifColors(256)}>256</button>
-    <div class="recording-custom-fps" class:active={!!gifCustomColors}>
-      <input type="number" class="recording-custom-fps-input recording-duration-input" bind:value={gifCustomColors} placeholder="2-256" min="2" max="256" step="1" onchange={() => {
-        if (gifCustomColors) {
-          const v = Math.max(2, Math.min(256, parseInt(gifCustomColors) || 256)); gifCustomColors = String(v); 
-        } 
-      }} />
-    </div>
-  </div>
-</div>
-<div class="resolution-section">
   <h4>Loop</h4>
   <div class="scale-buttons">
-    <button class="resolution-option" class:active={gifLoopCount === -1} onclick={() => (gifLoopCount = -1)}>Infinite</button>
-    <button class="resolution-option" class:active={gifLoopCount === 0} onclick={() => (gifLoopCount = 0)}>Once</button>
+    <button class="resolution-option" class:active={gifLoopCount === 0} onclick={() => (gifLoopCount = 0)}>Infinite</button>
+    <button class="resolution-option" class:active={gifLoopCount === -1} onclick={() => (gifLoopCount = -1)}>Once</button>
   </div>
 </div>
 <div class="resolution-section">
