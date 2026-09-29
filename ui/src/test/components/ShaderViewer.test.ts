@@ -4,6 +4,7 @@ import { configureHost, resetHost } from '../../lib/state/hostState.svelte';
 import { tick } from 'svelte';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ShaderViewer from '../../lib/components/ShaderViewer.svelte';
+import { PixelInspectorManager } from '../../lib/PixelInspectorManager';
 import shaderViewerSource from '../../lib/components/ShaderViewer.svelte?raw';
 import type { Transport } from '../../lib/transport/MessageTransport';
 import { configPanelStore } from '../../lib/stores/configPanelStore';
@@ -5505,6 +5506,49 @@ describe('ShaderViewer', () => {
         await tick();
         expect(canvasContainer).toBeTruthy();
       }
+    });
+  });
+
+  describe('touch pixel pinning', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const tapCanvas = async (container: HTMLElement, pointerType: string) => {
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      const down = new MouseEvent('pointerdown', { bubbles: true, clientX: 40, clientY: 30 });
+      Object.defineProperty(down, 'pointerType', { value: pointerType });
+      await fireEvent(canvas, down);
+      await fireEvent.click(canvas, { clientX: 40, clientY: 30 });
+      await tick();
+    };
+
+    it('pins the tapped point for touch instead of toggling the hover lock', async () => {
+      const touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
+      const click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
+      await tick();
+      await tick();
+
+      await tapCanvas(container, 'touch');
+
+      expect(touchTap).toHaveBeenCalledWith(40, 30);
+      expect(click).not.toHaveBeenCalled();
+    });
+
+    it.each(['mouse', 'pen'])('keeps the hover lock toggle for %s clicks', async (pointerType) => {
+      const touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
+      const click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
+      const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
+      await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
+      await tick();
+      await tick();
+
+      await tapCanvas(container, pointerType);
+
+      expect(click).toHaveBeenCalledOnce();
+      expect(touchTap).not.toHaveBeenCalled();
     });
   });
 

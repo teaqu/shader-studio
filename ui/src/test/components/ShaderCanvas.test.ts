@@ -13,6 +13,14 @@ global.ResizeObserver = vi.fn().mockImplementation(function () {
   });
 });
 
+
+/** jsdom has no PointerEvent, so build one from MouseEvent with the fields the canvas reads. */
+function pointerEvent(type: string, init: MouseEventInit & { pointerType: string }): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+  Object.defineProperty(event, 'pointerType', { value: init.pointerType });
+  return event;
+}
+
 describe('ShaderCanvas Component', () => {
   const defaultProps = {
     zoomLevel: 1.0,
@@ -191,6 +199,42 @@ describe('ShaderCanvas Component', () => {
       await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
 
       expect(onCanvasClick).not.toHaveBeenCalled();
+    });
+
+    it.each(['touch', 'pen', 'mouse'])('reports a %s tap with the pointer type that started it', async (pointerType) => {
+      const onCanvasClick = vi.fn();
+      const { container } = render(ShaderCanvas, { props: { ...defaultProps, onCanvasClick, isInspectorActive: true } });
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+
+      await fireEvent(canvas, pointerEvent('pointerdown', { clientX: 100, clientY: 100, pointerType }));
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+
+      expect(onCanvasClick).toHaveBeenCalledWith(expect.objectContaining({ clientX: 100 }), pointerType);
+    });
+
+    it('does not carry a previous touch into a later mouse click', async () => {
+      const onCanvasClick = vi.fn();
+      const { container } = render(ShaderCanvas, { props: { ...defaultProps, onCanvasClick, isInspectorActive: true } });
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+      const canvas = container.querySelector('canvas') as HTMLCanvasElement;
+
+      await fireEvent(canvas, pointerEvent('pointerdown', { clientX: 100, clientY: 100, pointerType: 'touch' }));
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+      await fireEvent(canvas, pointerEvent('pointerdown', { clientX: 100, clientY: 100, pointerType: 'mouse' }));
+      await fireEvent.click(canvasContainer, { clientX: 100, clientY: 100 });
+
+      expect(onCanvasClick.mock.calls.map(([, type]) => type)).toEqual(['touch', 'mouse']);
+    });
+
+    it('reports keyboard activation without a pointer type', async () => {
+      const onCanvasClick = vi.fn();
+      const { container } = render(ShaderCanvas, { props: { ...defaultProps, onCanvasClick, isInspectorActive: true } });
+      const canvasContainer = container.querySelector('.canvas-container') as HTMLElement;
+
+      await fireEvent.keyDown(canvasContainer, { key: 'Enter' });
+
+      expect(onCanvasClick).toHaveBeenCalledWith(expect.anything(), undefined);
     });
 
     it('should trigger onCanvasClick when clicking without dragging', async () => {
