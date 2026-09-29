@@ -800,7 +800,10 @@
   $effect(() => {
     const state = sharedSelection;
     const currentEditor = editorReady ? editor : null;
-    if (!state || state.source === selectionSource || !currentEditor) {
+    // shaderPath changes before the model swaps; wait for the matching model
+    // rather than moving the previous document's cursor.
+    const showingShader = Boolean(shaderPath) && editorModelUri === monaco.Uri.file(shaderPath).toString();
+    if (!state || state.source === selectionSource || !currentEditor || !showingShader) {
       return;
     }
     const current = currentEditor.getSelection();
@@ -813,10 +816,14 @@
     }
     applyingSharedSelection = true;
     currentEditor.setSelection(next);
-    currentEditor.revealPositionInCenterIfOutsideViewport?.({
-      lineNumber: next.endLineNumber,
-      column: next.endColumn,
-    });
+    // A hidden editor (an inactive tab or phone panel) keeps a stale, tiny
+    // layout, so revealing would scroll its top away before it is shown.
+    if ((currentEditor.getContainerDomNode?.().clientHeight ?? 0) > 0) {
+      currentEditor.revealPositionInCenterIfOutsideViewport?.({
+        lineNumber: next.endLineNumber,
+        column: next.endColumn,
+      });
+    }
     applyingSharedSelection = false;
   });
 
