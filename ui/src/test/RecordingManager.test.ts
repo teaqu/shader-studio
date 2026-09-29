@@ -11,6 +11,7 @@ const {
   mockCancel,
   mockSetSaving,
   mockSetError,
+  mockSetNotice,
   mockReset,
 } = vi.hoisted(() => ({
   mockSubscribe: vi.fn((cb: any) => {
@@ -25,6 +26,7 @@ const {
   mockCancel: vi.fn(),
   mockSetSaving: vi.fn(),
   mockSetError: vi.fn(),
+  mockSetNotice: vi.fn(),
   mockReset: vi.fn(),
 }));
 
@@ -36,6 +38,7 @@ vi.mock('../lib/stores/recordingStore', () => ({
     setFinalizing: vi.fn(),
     setSaving: mockSetSaving,
     setError: mockSetError,
+    setNotice: mockSetNotice,
     setPreviewCanvas: vi.fn(),
     reset: mockReset,
   },
@@ -293,18 +296,42 @@ describe('RecordingManager', () => {
   });
 
   describe('Live lifecycle', () => {
-    it('aborts a Live recording with a user-visible reason when its canvas changes', async () => {
-      mockRecordLive.mockRejectedValueOnce(new Error('Recording cancelled'));
+    it('stops and saves a Live recording the app has to end, then explains why', async () => {
+      let finishRecording!: (blob: Blob) => void;
+      mockRecordLive.mockImplementationOnce(() => new Promise<Blob>((resolve) => {
+        finishRecording = resolve;
+      }));
+      mockStopLiveRecording.mockImplementationOnce(() => finishRecording(new Blob(['kept'], { type: 'video/webm' })));
       const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => ({}) as any);
       (liveManager as any)._isLive = true;
       const recording = liveManager.record({
         mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
       });
-      liveManager.abortLiveRecording('Live recording stopped because the canvas changed');
+      liveManager.endLiveRecording('Live recording stopped because a different shader was opened.');
       await recording;
 
-      expect(mockCancel).toHaveBeenCalled();
-      expect(mockSetError).toHaveBeenCalledWith('Live recording stopped because the canvas changed');
+      expect(mockStopLiveRecording).toHaveBeenCalledOnce();
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(sendFile).toHaveBeenCalledOnce();
+      expect(mockSetNotice).toHaveBeenCalledWith('Live recording stopped because a different shader was opened.');
+      expect(mockSetError).not.toHaveBeenCalled();
+    });
+
+    it('still discards when the user chooses Discard', async () => {
+      mockRecordLive.mockRejectedValueOnce(new Error('Recording cancelled'));
+      const liveManager = new RecordingManager(getContext, sendFile, onStateChanged, () => ({}) as any);
+      await liveManager.record({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      });
+
+      expect(sendFile).not.toHaveBeenCalled();
+      expect(mockReset).toHaveBeenCalled();
+      expect(mockSetNotice).not.toHaveBeenCalled();
+    });
+
+    it('ignores endLiveRecording when no Live recording is running', () => {
+      manager.endLiveRecording('ignored');
+      expect(mockStopLiveRecording).not.toHaveBeenCalled();
     });
   });
 

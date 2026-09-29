@@ -29,7 +29,7 @@
   let recordingTab: "screenshot" | "video" | "gif" = $state("screenshot");
 
   // Recording store subscription
-  let recordingState: RecordingState = $state({ phase: "idle", isRecording: false, isLive: false, isPreparing: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, preparationFrame: 0, preparationFrames: 0, format: null, error: null, previewCanvas: null });
+  let recordingState: RecordingState = $state({ phase: "idle", isRecording: false, isLive: false, isPreparing: false, isFinalizing: false, finalizingStartTime: 0, progress: 0, currentFrame: 0, totalFrames: 0, preparationFrame: 0, preparationFrames: 0, format: null, error: null, notice: null, previewCanvas: null });
   const unsubRecording = recordingStore.subscribe((s) => {
     recordingState = s;
   });
@@ -113,6 +113,13 @@
     <button class="tab-button" class:active={recordingTab === "video"} onclick={() => (recordingTab = "video")} disabled={recordingState.isRecording}><span class="tab-label">Video</span></button>
     <button class="tab-button" class:active={recordingTab === "gif"} onclick={() => (recordingTab = "gif")} disabled={recordingState.isRecording}><span class="tab-label">GIF</span></button>
   </div>
+
+  {#if recordingState.notice}
+    <div class="recording-notice" role="status">
+      <span>{recordingState.notice}</span>
+      <button class="recording-error-dismiss" onclick={() => recordingStore.reset()}>Dismiss</button>
+    </div>
+  {/if}
 
   {#if recordingState.error}
     <div class="recording-error" role="alert">
@@ -214,6 +221,18 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .recording-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 12px 0;
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-inputValidation-infoBorder, #007acc);
+    border-radius: 3px;
+    font-size: 12px;
   }
 
   .recording-error {

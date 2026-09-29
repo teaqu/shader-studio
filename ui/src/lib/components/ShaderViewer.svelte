@@ -34,6 +34,8 @@
   import RecordingPanel from "./recording/RecordingPanel.svelte";
   import { buildRenderCaptureShaderInfo } from "../recording/captureSnapshot";
   import { CaptureSaveChannel, shaderMessageEndsLiveRecording } from "../recording/captureSaveChannel";
+  import { LiveCanvasSizeHold } from "../recording/liveCanvasSizeHold";
+  import { recordingStore } from "../stores/recordingStore";
   import type { RecordingConfig, ScreenshotConfig } from "../recording/types";
   import {
     getEditorOverlayVisible,
@@ -602,20 +604,21 @@
     if (!initialized) {
       return;
     }
-    const liveCanvas = renderingEngine.getCanvas?.();
-    const previousWidth = liveCanvas?.width;
-    const previousHeight = liveCanvas?.height;
-    renderingEngine.handleCanvasResize(data.width, data.height);
-    // Layout passes report sizes even when nothing changed; a Live recording
-    // has a fixed output size, so only a real pixel-size change ends it.
-    if (liveCanvas && (liveCanvas.width !== previousWidth || liveCanvas.height !== previousHeight)) {
-      recordingManager?.abortLiveRecording(
-        'Live recording stopped because the preview resolution changed',
-      );
-    }
+    // A Live recording keeps its output size: the resize is held until the
+    // recording ends and the canvas is scaled to the new layout meanwhile.
+    liveCanvasSizeHold.resize(data.width, data.height, recordingManager?.isLiveRecording ?? false);
+  }
+
+  const liveCanvasSizeHold = new LiveCanvasSizeHold((width, height) => {
+    renderingEngine.handleCanvasResize(width, height);
     // Resolution is script context; report it without waiting for the sample.
     scriptRuntimeReporter?.sync();
-  }
+  });
+  const unsubscribeLiveCanvasSizeHold = recordingStore.subscribe((state) => {
+    if (!state.isLive) {
+      liveCanvasSizeHold.release();
+    }
+  });
 
   function handleCanvasClick() {
     pixelInspectorManager?.handleCanvasClick();
@@ -1228,8 +1231,8 @@
       // Hot reloads of the same shader keep recording the same canvas; only a
       // switch to a different main shader ends a Live recording.
       if (shaderMessageEndsLiveRecording(messageTarget.kind, event.data.path, shaderPath, shaderPathsEqual)) {
-        recordingManager?.abortLiveRecording(
-          'Live recording stopped because a different shader was opened',
+        recordingManager?.endLiveRecording(
+          'Live recording stopped because a different shader was opened.',
         );
       }
 
@@ -1608,6 +1611,7 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
+    unsubscribeLiveCanvasSizeHold();
     captureSaveChannel?.dispose();
     captureSaveChannel = null;
     scriptRuntimeReporter?.dispose();

@@ -29,6 +29,7 @@ describe('recordingStore', () => {
       preparationFrames: 0,
       format: null,
       error: null,
+      notice: null,
       previewCanvas: null,
     });
   });
@@ -157,6 +158,23 @@ describe('recordingStore', () => {
       expect(state.isPreparing).toBe(false);
       expect(state.isFinalizing).toBe(false);
       expect(state.format).toBe('png');
+    });
+  });
+
+  describe('setNotice', () => {
+    it('ends the capture with an informational notice that a new capture clears', () => {
+      recordingStore.startLiveRecording('webm');
+      recordingStore.setNotice('Live recording stopped because a different shader was opened.');
+      expect(getState()).toMatchObject({
+        phase: 'idle',
+        isRecording: false,
+        isLive: false,
+        error: null,
+        notice: 'Live recording stopped because a different shader was opened.',
+      });
+
+      recordingStore.startLiveRecording('mp4');
+      expect(getState().notice).toBeNull();
     });
   });
 

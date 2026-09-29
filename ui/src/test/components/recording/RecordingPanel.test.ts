@@ -20,6 +20,7 @@ const makeDefaultState = () => ({
   preparationFrames: 0,
   format: null as string | null,
   error: null as string | null,
+  notice: null as string | null,
   previewCanvas: null as HTMLCanvasElement | null,
 });
 
@@ -254,6 +255,15 @@ describe('RecordingPanel', () => {
     expect(screen.getByText('Saving PNG...')).toBeInTheDocument();
     expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
     expect(screen.queryByText('Discard')).not.toBeInTheDocument();
+  });
+
+  it('shows an informational notice separately from errors', () => {
+    getMockStore().set({ ...makeDefaultState(), notice: 'Live recording stopped because a different shader was opened.' });
+
+    render(RecordingPanel, { props: defaultProps });
+
+    expect(screen.getByRole('status')).toHaveTextContent('different shader was opened');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows capture failures in the panel', () => {

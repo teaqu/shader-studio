@@ -17,6 +17,8 @@ export interface RecordingState {
   preparationFrames: number;
   format: CaptureFormat | null;
   error: string | null;
+  /** Informational message after a capture finished, e.g. why a Live recording stopped. */
+  notice: string | null;
   previewCanvas: HTMLCanvasElement | null;
 }
 
@@ -34,6 +36,7 @@ const initial: RecordingState = {
   preparationFrames: 0,
   format: null,
   error: null,
+  notice: null,
   previewCanvas: null,
 };
 
@@ -57,6 +60,7 @@ function createRecordingStore() {
         preparationFrames,
         format,
         error: null,
+        notice: null,
       }));
     },
     updatePreparation(currentFrame: number, totalFrames: number) {
@@ -82,6 +86,7 @@ function createRecordingStore() {
         preparationFrames: 0,
         format,
         error: null,
+        notice: null,
       }));
     },
     startRecording(format: CaptureFormat, totalFrames: number) {
@@ -97,6 +102,7 @@ function createRecordingStore() {
         totalFrames,
         format,
         error: null,
+        notice: null,
       }));
     },
     updateProgress(currentFrame: number, totalFrames: number) {
@@ -126,6 +132,7 @@ function createRecordingStore() {
         isFinalizing: false,
         format,
         error: null,
+        notice: null,
       }));
     },
     setError(error: string) {
@@ -138,6 +145,9 @@ function createRecordingStore() {
         isPreparing: false,
         isFinalizing: false,
       }));
+    },
+    setNotice(notice: string) {
+      set({ ...initial, notice });
     },
     setPreviewCanvas(canvas: HTMLCanvasElement | null) {
       update((s) => ({ ...s, previewCanvas: canvas }));

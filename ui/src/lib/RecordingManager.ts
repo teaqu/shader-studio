@@ -22,7 +22,7 @@ export class RecordingManager {
   private unsubRecording: (() => void) | null = null;
   private _isRecording = false;
   private _isLive = false;
-  private liveAbortMessage: string | null = null;
+  private liveStopNotice: string | null = null;
   private onStateChanged: ((isRecording: boolean) => void) | null = null;
 
   constructor(
@@ -77,19 +77,21 @@ export class RecordingManager {
       const label = config.format === "gif" ? "GIF" : config.format === "mp4" ? "MP4 Video" : "WebM Video";
       recordingStore.setSaving(config.format);
       await this.sendFile(blob, defaultName, { [label]: [ext] });
-      recordingStore.reset();
+      const notice = this.liveStopNotice;
+      if (notice) {
+        recordingStore.setNotice(notice);
+      } else {
+        recordingStore.reset();
+      }
     } catch (err) {
       if ((err as Error).message !== "Recording cancelled") {
         console.error("Recording failed:", err);
         recordingStore.setError(this.errorMessage(err));
       } else {
-        if (this.liveAbortMessage) {
-          recordingStore.setError(this.liveAbortMessage);
-        } else {
-          recordingStore.reset();
-        }
-        this.liveAbortMessage = null;
+        recordingStore.reset();
       }
+    } finally {
+      this.liveStopNotice = null;
     }
   }
 
@@ -101,12 +103,17 @@ export class RecordingManager {
     this.recorder.stopLiveRecording();
   }
 
-  abortLiveRecording(message: string): void {
+  /**
+   * End a Live recording the app can't continue (e.g. a different shader was
+   * opened). What was recorded is kept and saved, and `notice` tells the user
+   * why it stopped. Discarding is only ever the user's choice.
+   */
+  endLiveRecording(notice: string): void {
     if (!this._isLive) {
       return;
     }
-    this.liveAbortMessage = message;
-    this.recorder.cancel();
+    this.liveStopNotice = notice;
+    this.recorder.stopLiveRecording();
   }
 
   private requireLiveEngine(): RenderingEngine {
@@ -122,7 +129,7 @@ export class RecordingManager {
   }
 
   dispose(): void {
-    this.liveAbortMessage = null;
+    this.liveStopNotice = null;
     this.recorder.cancel();
     recordingStore.reset();
     if (this.unsubRecording) {

@@ -44,10 +44,11 @@ clip at a chosen time, duration, and resolution.
 Video bitrate is selected automatically from the output resolution, frame rate,
 and codec. Render mode shows separate preparation, rendering, encoding, and
 saving phases. Click **Cancel** to abort a Render recording. During a Live
-recording, choose **Discard** or **Stop & save**. Editing the shader keeps
-recording the same canvas; opening a different shader or changing the preview's
-pixel resolution stops a Live recording because its output size or source is no
-longer stable.
+recording, choose **Discard** or **Stop & save**. A Live recording keeps a fixed
+output size: if the preview is resized while recording, the preview is scaled
+until recording ends and then takes the new size. Editing the shader keeps
+recording. Opening a different shader stops the recording and saves what was
+recorded up to that point.
 
 ![Video options](../assets/images/recording-video.png)
 
