@@ -163,10 +163,14 @@ export function createPwaController(environment: PwaEnvironment = defaultEnviron
       environment.addEventListener('offline', onConnectivity);
       environment.serviceWorker.addEventListener('controllerchange', onControllerChange);
       try {
-        registration = await environment.serviceWorker.register(new URL('sw.js', environment.baseUrl).toString());
+        registration = await environment.serviceWorker.register(new URL('sw.js', environment.baseUrl).toString()) ?? undefined;
       } catch {
         // A development server need not expose the production worker. Keep the
         // standalone editor usable rather than making its mount fail.
+        registration = undefined;
+      }
+      // Automation that blocks service workers resolves register() with nothing.
+      if (!registration) {
         status = { ...status, supported: false };
         emit();
         return;
