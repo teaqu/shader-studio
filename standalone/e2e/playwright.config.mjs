@@ -17,6 +17,10 @@ export default defineConfig({
   ],
   use: {
     baseURL: 'http://127.0.0.1:4174',
+    // The app registers its offline service worker on every load. Playwright
+    // does not apply page.route stubs to requests the worker makes, so specs
+    // that stub resources run without it; pwa.e2e.mjs opts back in.
+    serviceWorkers: 'block',
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
