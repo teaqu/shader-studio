@@ -38,4 +38,25 @@ describe("LiveCanvasSizeHold", () => {
 
     expect(apply.mock.calls).toEqual([[640, 480]]);
   });
+
+  it("releases itself when the watched Live recording ends, and stops watching on dispose", () => {
+    const apply = vi.fn();
+    let notify: (live: boolean) => void = () => {};
+    const unsubscribe = vi.fn();
+    const hold = new LiveCanvasSizeHold(apply, (listener) => {
+      notify = listener;
+      return unsubscribe;
+    });
+
+    hold.resize(1280, 720, true);
+    notify(true);
+    expect(apply).not.toHaveBeenCalled();
+    notify(false);
+    expect(apply).toHaveBeenCalledWith(1280, 720);
+
+    hold.resize(800, 600, true);
+    hold.dispose();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(hold.isHolding).toBe(false);
+  });
 });

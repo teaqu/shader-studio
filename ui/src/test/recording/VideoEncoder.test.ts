@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock muxer libraries
 const mockWebMAddVideoChunk = vi.fn();
@@ -50,7 +50,13 @@ let capturedError: (error: DOMException) => void;
   return { timestamp: opts.timestamp, close: vi.fn() };
 });
 
-import { automaticVideoBitrate, VideoEncoderWrapper } from '../../lib/recording/VideoEncoder';
+import {
+  automaticVideoBitrate,
+  MAX_VIDEO_BITRATE,
+  MIN_VIDEO_BITRATE,
+  videoEncoderConfig,
+  VideoEncoderWrapper,
+} from '../../lib/recording/VideoEncoder';
 import { Muxer as WebMMuxer } from 'webm-muxer';
 import { Muxer as MP4Muxer } from 'mp4-muxer';
 
@@ -60,18 +66,25 @@ describe('VideoEncoderWrapper', () => {
   });
 
   describe('constructor', () => {
-    it('scales automatic bitrate with resolution, frame rate, and codec efficiency', () => {
-      expect(automaticVideoBitrate({ width: 1280, height: 720, fps: 30, format: 'mp4' }))
-        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }));
-      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }))
-        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 60, format: 'mp4' }));
-      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'webm' }))
-        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30, format: 'mp4' }));
+    it('sets the automatic bitrate ceiling at 3 bits per pixel for every codec', () => {
+      expect(automaticVideoBitrate({ width: 640, height: 360, fps: 30 })).toBe(20_736_000);
+      expect(automaticVideoBitrate({ width: 1280, height: 720, fps: 30 }))
+        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30 }));
+      expect(automaticVideoBitrate({ width: 1920, height: 1080, fps: 30 }))
+        .toBeLessThan(automaticVideoBitrate({ width: 1920, height: 1080, fps: 60 }));
     });
 
-    it('keeps automatic bitrate within practical browser limits', () => {
-      expect(automaticVideoBitrate({ width: 16, height: 16, fps: 1, format: 'webm' })).toBe(1_000_000);
-      expect(automaticVideoBitrate({ width: 7680, height: 4320, fps: 120, format: 'mp4' })).toBe(80_000_000);
+    it('keeps the automatic bitrate between its floor and cap', () => {
+      expect(automaticVideoBitrate({ width: 16, height: 16, fps: 1 })).toBe(MIN_VIDEO_BITRATE);
+      expect(automaticVideoBitrate({ width: 7680, height: 4320, fps: 120 })).toBe(MAX_VIDEO_BITRATE);
+    });
+
+    it('encodes in variable-bitrate mode so the ceiling is only spent when needed', () => {
+      expect(videoEncoderConfig({ width: 640, height: 360, fps: 30, format: 'webm' })).toMatchObject({
+        codec: 'vp8',
+        bitrate: 20_736_000,
+        bitrateMode: 'variable',
+      });
     });
 
     it('should create WebM muxer for webm format', () => {
@@ -153,7 +166,7 @@ describe('VideoEncoderWrapper', () => {
       new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
       const configureCall = (globalThis as any).VideoEncoder.mock.results[0].value.configure;
       expect(configureCall).toHaveBeenCalledWith(
-        expect.objectContaining({ bitrate: automaticVideoBitrate({ width: 800, height: 600, fps: 30, format: 'webm' }) }),
+        expect.objectContaining({ bitrate: automaticVideoBitrate({ width: 800, height: 600, fps: 30 }) }),
       );
     });
 
@@ -303,6 +316,51 @@ describe('VideoEncoderWrapper', () => {
       expect(mockMP4Finalize).toHaveBeenCalled();
       expect(blob).toBeInstanceOf(Blob);
       expect(blob.type).toBe('video/mp4');
+    });
+  });
+
+  describe('supportedBitrate', () => {
+    const options = { width: 1920, height: 1080, fps: 60, format: 'mp4' as const };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the global VideoEncoder is a test mock
+    const encoderGlobal = () => (globalThis as any).VideoEncoder;
+
+    afterEach(() => {
+      delete encoderGlobal().isConfigSupported;
+    });
+
+    it('uses the automatic ceiling when the host accepts it', async () => {
+      encoderGlobal().isConfigSupported = vi.fn(async () => ({ supported: true }));
+      await expect(VideoEncoderWrapper.supportedBitrate(options)).resolves.toBe(automaticVideoBitrate(options));
+    });
+
+    it('halves the bitrate until the host accepts the configuration', async () => {
+      const ceiling = automaticVideoBitrate(options);
+      encoderGlobal().isConfigSupported = vi.fn(async (config: VideoEncoderConfig) => ({
+        supported: (config.bitrate ?? 0) <= ceiling / 4,
+      }));
+      await expect(VideoEncoderWrapper.supportedBitrate(options)).resolves.toBe(Math.floor(Math.floor(ceiling / 2) / 2));
+      expect(encoderGlobal().isConfigSupported).toHaveBeenCalledTimes(3);
+    });
+
+    it('treats a throwing support check as unsupported and rejects when nothing fits', async () => {
+      encoderGlobal().isConfigSupported = vi.fn(async () => {
+        throw new TypeError('invalid config');
+      });
+      await expect(VideoEncoderWrapper.supportedBitrate(options)).rejects.toThrow(
+        'MP4 export at 1920×1080, 60 fps is not supported by this host',
+      );
+    });
+
+    it('rejects when WebCodecs is unavailable', async () => {
+      const saved = encoderGlobal();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- removing the test mock global
+      delete (globalThis as any).VideoEncoder;
+      try {
+        await expect(VideoEncoderWrapper.supportedBitrate(options)).rejects.toThrow('WebCodecs unavailable');
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- restoring the test mock global
+        (globalThis as any).VideoEncoder = saved;
+      }
     });
   });
 });

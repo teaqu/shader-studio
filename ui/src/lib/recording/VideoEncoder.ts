@@ -9,10 +9,25 @@ export interface VideoEncoderOptions {
   format: "webm" | "mp4";
 }
 
-export function automaticVideoBitrate(options: VideoEncoderOptions): number {
-  const bitsPerPixel = options.format === "webm" ? 0.1 : 0.14;
-  const calculated = Math.round(options.width * options.height * options.fps * bitsPerPixel);
-  return Math.max(1_000_000, Math.min(80_000_000, calculated));
+/**
+ * Automatic video bitrate: a ceiling, not a fixed rate. The encoders run in
+ * variable-bitrate mode and spend only what the content needs, so the ceiling
+ * is set for the hardest shaders.
+ *
+ * Measured with decoded VP8 output (#39): ray-spheres, whose fine pattern
+ * changes every frame, needs about 3 bits per pixel to reach ~32 dB luma
+ * (0.1 bpp gave 18-19 dB, visibly blocky), while a smooth gradient shader
+ * stays near 1.1 Mbps at 640x360 whether the ceiling is 1 or 6 bpp.
+ * Colour detail is additionally limited by 4:2:0 chroma, which no bitrate
+ * can recover.
+ */
+export const VIDEO_BITS_PER_PIXEL_CEILING = 3;
+export const MIN_VIDEO_BITRATE = 2_000_000;
+export const MAX_VIDEO_BITRATE = 250_000_000;
+
+export function automaticVideoBitrate(options: Pick<VideoEncoderOptions, "width" | "height" | "fps">): number {
+  const calculated = Math.round(options.width * options.height * options.fps * VIDEO_BITS_PER_PIXEL_CEILING);
+  return Math.max(MIN_VIDEO_BITRATE, Math.min(MAX_VIDEO_BITRATE, calculated));
 }
 
 export function videoEncoderConfig(options: VideoEncoderOptions): VideoEncoderConfig {
@@ -33,6 +48,7 @@ export function videoEncoderConfig(options: VideoEncoderOptions): VideoEncoderCo
     height: options.height,
     bitrate: options.bitrate ?? automaticVideoBitrate(options),
     framerate: options.fps,
+    bitrateMode: "variable",
   };
 }
 
@@ -82,25 +98,31 @@ export class VideoEncoderWrapper {
   }
 
   /**
-   * Reject before any rendering when this host can't encode the requested
-   * codec/size/bitrate, instead of failing after preparation.
+   * The bitrate to encode with: the automatic ceiling, halved until this host
+   * accepts the configuration (hardware encoders and codec levels can cap it).
+   * Rejects before any rendering when nothing down to the minimum is supported.
    */
-  static async assertSupported(options: VideoEncoderOptions): Promise<void> {
+  static async supportedBitrate(options: VideoEncoderOptions): Promise<number> {
     if (typeof globalThis.VideoEncoder === "undefined") {
       throw new Error("Video export is not supported by this host (WebCodecs unavailable)");
     }
-    const config = videoEncoderConfig(options);
-    let supported = false;
-    try {
-      supported = (await globalThis.VideoEncoder.isConfigSupported(config)).supported === true;
-    } catch {
-      supported = false;
+    for (
+      let bitrate = options.bitrate ?? automaticVideoBitrate(options);
+      bitrate >= MIN_VIDEO_BITRATE;
+      bitrate = Math.floor(bitrate / 2)
+    ) {
+      try {
+        const result = await globalThis.VideoEncoder.isConfigSupported(videoEncoderConfig({ ...options, bitrate }));
+        if (result.supported === true) {
+          return bitrate;
+        }
+      } catch {
+        // An invalid configuration for this host; try a lower bitrate.
+      }
     }
-    if (!supported) {
-      throw new Error(
-        `${options.format.toUpperCase()} export at ${options.width}×${options.height}, ${options.fps} fps is not supported by this host`,
-      );
-    }
+    throw new Error(
+      `${options.format.toUpperCase()} export at ${options.width}×${options.height}, ${options.fps} fps is not supported by this host`,
+    );
   }
 
   addFrame(canvas: HTMLCanvasElement, timestampUs: number): void {

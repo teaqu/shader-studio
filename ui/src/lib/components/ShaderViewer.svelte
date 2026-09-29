@@ -609,16 +609,14 @@
     liveCanvasSizeHold.resize(data.width, data.height, recordingManager?.isLiveRecording ?? false);
   }
 
-  const liveCanvasSizeHold = new LiveCanvasSizeHold((width, height) => {
-    renderingEngine.handleCanvasResize(width, height);
-    // Resolution is script context; report it without waiting for the sample.
-    scriptRuntimeReporter?.sync();
-  });
-  const unsubscribeLiveCanvasSizeHold = recordingStore.subscribe((state) => {
-    if (!state.isLive) {
-      liveCanvasSizeHold.release();
-    }
-  });
+  const liveCanvasSizeHold = new LiveCanvasSizeHold(
+    (width, height) => {
+      renderingEngine.handleCanvasResize(width, height);
+      // Resolution is script context; report it without waiting for the sample.
+      scriptRuntimeReporter?.sync();
+    },
+    (listener) => recordingStore.subscribe((state) => listener(state.isLive)),
+  );
 
   function handleCanvasClick() {
     pixelInspectorManager?.handleCanvasClick();
@@ -1611,7 +1609,7 @@
   const mountRecording = createMountFn(() => recordingEl);
 
   onDestroy(() => {
-    unsubscribeLiveCanvasSizeHold();
+    liveCanvasSizeHold.dispose();
     captureSaveChannel?.dispose();
     captureSaveChannel = null;
     scriptRuntimeReporter?.dispose();

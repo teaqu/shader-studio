@@ -179,6 +179,7 @@ describe("renderInputLimitations", () => {
           Image: { inputs: { iChannel0: { type: "audio", path: "a.mp3" }, iChannel1: { type: "keyboard" } } },
           BufferA: { path: "a.glsl", inputs: { iChannel0: { type: "video", path: "v.mp4" } } },
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial config keeps the fixture focused on inputs
       } as any,
     });
 

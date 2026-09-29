@@ -45,8 +45,12 @@ Live recording uses the browser's MediaRecorder, so the formats offered depend
 on the host: a format it can't record is disabled, and a saved choice it can't
 record falls back to one it can, with a note in the panel. MP4 needs even
 dimensions; an odd custom size is rounded up and the panel tells you the saved
-size. Video bitrate is selected automatically from the output resolution, frame rate,
-and codec. Render mode shows separate preparation, rendering, encoding, and
+size. Video quality is automatic. The encoder uses variable bitrate with a
+high ceiling (3 bits per pixel), so detailed, fast-changing shaders keep their
+detail while simple shaders stay small, because the encoder only spends what the
+content needs. Video stores colour at half resolution (4:2:0), so single-pixel
+coloured detail softens in any video file; use a PNG screenshot when
+exact colour per pixel matters. Render mode shows separate preparation, rendering, encoding, and
 saving phases. Click **Cancel** to abort a Render recording. During a Live
 recording, choose **Discard** or **Stop & save**. A Live recording keeps a fixed
 output size: if the preview is resized while recording, the preview is scaled

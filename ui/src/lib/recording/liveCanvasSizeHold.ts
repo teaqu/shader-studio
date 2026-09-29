@@ -6,8 +6,29 @@
  */
 export class LiveCanvasSizeHold {
   private held: { width: number; height: number } | null = null;
+  private unsubscribe: (() => void) | null;
 
-  constructor(private apply: (width: number, height: number) => void) {}
+  /**
+   * @param apply resizes the live engine.
+   * @param watchLive subscribes to "is a Live recording running"; the hold
+   *   releases itself whenever that becomes false.
+   */
+  constructor(
+    private apply: (width: number, height: number) => void,
+    watchLive?: (listener: (live: boolean) => void) => () => void,
+  ) {
+    this.unsubscribe = watchLive?.((live) => {
+      if (!live) {
+        this.release();
+      }
+    }) ?? null;
+  }
+
+  dispose(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.held = null;
+  }
 
   /** Apply now, or hold the size while a Live recording is running. */
   resize(width: number, height: number, liveRecording: boolean): void {

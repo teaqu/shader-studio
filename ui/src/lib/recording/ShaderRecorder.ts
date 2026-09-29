@@ -121,7 +121,6 @@ export class ShaderRecorder {
           width: canvas.width,
           height: canvas.height,
           fps: config.fps,
-          format: config.format,
         }),
       });
     } catch (error) {
@@ -332,10 +331,11 @@ export class ShaderRecorder {
 
       const tm = engine.getTimeManager();
       const totalFrames = Math.ceil(config.duration * config.fps);
+      let videoBitrate: number | undefined;
       if (config.format === "gif") {
         assertGifMemoryBudget(width, height, totalFrames);
       } else {
-        await VideoEncoderWrapper.assertSupported({ width, height, fps: config.fps, format: config.format });
+        videoBitrate = await VideoEncoderWrapper.supportedBitrate({ width, height, fps: config.fps, format: config.format });
       }
       const timeline = createRenderTimeline(config.startTime, config.fps);
 
@@ -354,7 +354,7 @@ export class ShaderRecorder {
       if (config.format === "gif") {
         blob = await this.recordGif(canvas, engine, tm, config, totalFrames, width, height, timeline);
       } else {
-        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline);
+        blob = await this.recordVideo(canvas, engine, tm, config, totalFrames, width, height, timeline, videoBitrate);
       }
 
       return blob;
@@ -464,11 +464,13 @@ export class ShaderRecorder {
     width: number,
     height: number,
     timeline: RenderTimeline,
+    bitrate?: number,
   ): Promise<Blob> {
     const encoder = new VideoEncoderWrapper({
       width,
       height,
       fps: config.fps,
+      bitrate,
       format: config.format as "webm" | "mp4",
     });
 

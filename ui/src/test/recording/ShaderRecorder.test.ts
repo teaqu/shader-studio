@@ -58,8 +58,8 @@ const mockVideoAddFrame = vi.fn();
 const mockVideoFlush = vi.fn(() => Promise.resolve());
 const mockVideoFinish = vi.fn(() => Promise.resolve(new Blob(['video'], { type: 'video/webm' })));
 
-const { mockVideoAssertSupported, mockVideoClose } = vi.hoisted(() => ({
-  mockVideoAssertSupported: vi.fn(() => Promise.resolve()),
+const { mockVideoSupportedBitrate, mockVideoClose } = vi.hoisted(() => ({
+  mockVideoSupportedBitrate: vi.fn(() => Promise.resolve(12_000_000)),
   mockVideoClose: vi.fn(),
 }));
 
@@ -72,7 +72,7 @@ vi.mock('../../lib/recording/VideoEncoder', () => ({
       finish: mockVideoFinish,
       close: mockVideoClose,
     });
-  }), { assertSupported: mockVideoAssertSupported }),
+  }), { supportedBitrate: mockVideoSupportedBitrate }),
 }));
 
 // Mock RenderingEngine
@@ -852,8 +852,16 @@ describe('ShaderRecorder', () => {
   });
 
   describe('cancel', () => {
+    it('encodes at the bitrate the host accepted', async () => {
+      const p = recorder.record({ format: 'webm', duration: 0.1, startTime: 0, fps: 10, width: 64, height: 64 }, shaderInfo);
+      await vi.runAllTimersAsync();
+      await p;
+      expect(mockVideoSupportedBitrate).toHaveBeenCalledWith({ width: 64, height: 64, fps: 10, format: 'webm' });
+      expect(VideoEncoderWrapper).toHaveBeenCalledWith(expect.objectContaining({ bitrate: 12_000_000 }));
+    });
+
     it('rejects an unsupported video configuration before rendering any frame', async () => {
-      mockVideoAssertSupported.mockRejectedValueOnce(new Error('MP4 export at 800×600, 30 fps is not supported by this host'));
+      mockVideoSupportedBitrate.mockRejectedValueOnce(new Error('MP4 export at 800×600, 30 fps is not supported by this host'));
       const config: RecordingConfig = {
         format: 'mp4',
         duration: 1,
