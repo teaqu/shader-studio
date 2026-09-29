@@ -11,6 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:e2e": "playwright test -c e2e/playwright.config.mjs",
+    "icons": "node scripts/generate-pwa-icons.mjs",
     "predev": "npm run prebuild -w shader-studio-ui",
     "prebuild": "npm run prebuild -w shader-studio-ui"
   },

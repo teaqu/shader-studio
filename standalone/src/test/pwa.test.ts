@@ -4,6 +4,37 @@ import path from 'node:path';
 import { createPwaController } from '../pwa';
 import { isOptionalCompilerAsset, serviceWorkerSource } from '../pwaBuild';
 
+interface ManifestIcon {
+  src: string;
+  sizes: string;
+  type: string;
+  purpose: string;
+}
+
+const standaloneRoot = path.resolve(__dirname, '..', '..');
+const PNG_COLOR_TYPE_RGB = 2;
+
+function readManifest(): { icons: ManifestIcon[] } & Record<string, unknown> {
+  return JSON.parse(readFileSync(path.join(standaloneRoot, 'public/manifest.webmanifest'), 'utf8'));
+}
+
+/** Reads the IHDR chunk, which every PNG must begin with. */
+function pngHeader(src: string): Buffer {
+  const bytes = readFileSync(path.join(standaloneRoot, 'public', src));
+  expect(bytes.subarray(1, 4).toString('ascii')).toBe('PNG');
+  expect(bytes.subarray(12, 16).toString('ascii')).toBe('IHDR');
+  return bytes;
+}
+
+function pngSize(src: string): { width: number; height: number } {
+  const bytes = pngHeader(src);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+function pngColorType(src: string): number {
+  return pngHeader(src)[25];
+}
+
 function environment() {
   const listeners = new Map<string, EventListener>();
   const workerListeners = new Map<string, EventListener>();
@@ -166,14 +197,40 @@ describe('generated service worker', () => {
   });
 
   it('declares installable standalone metadata with the shipped icon', () => {
-    const root = path.resolve(__dirname, '..', '..');
-    const html = readFileSync(path.join(root, 'index.html'), 'utf8');
-    const manifest = JSON.parse(readFileSync(path.join(root, 'public/manifest.webmanifest'), 'utf8'));
+    const html = readFileSync(path.join(standaloneRoot, 'index.html'), 'utf8');
+    const manifest = readManifest();
     expect(html).toContain('rel="manifest"');
     expect(html).toContain('apple-mobile-web-app-capable');
     expect(manifest).toMatchObject({ display: 'standalone', start_url: './', scope: './' });
     expect(manifest.icons).toEqual(expect.arrayContaining([
-      expect.objectContaining({ src: './shader-studio-icon.svg', purpose: 'any maskable' }),
+      expect.objectContaining({ src: './shader-studio-icon.svg', purpose: 'any' }),
     ]));
+  });
+
+  it('keeps the edge-to-edge SVG out of maskable use, where launchers would crop it', () => {
+    const svg = readManifest().icons.find((icon) => icon.src.endsWith('.svg'));
+    expect(svg?.purpose.split(' ')).not.toContain('maskable');
+  });
+
+  it.each([
+    ['./icons/icon-192.png', 192, 'any'],
+    ['./icons/icon-512.png', 512, 'any'],
+    ['./icons/icon-maskable-512.png', 512, 'maskable'],
+  ])('ships the %s raster install icon at its declared size', (src, size, purpose) => {
+    const icon = readManifest().icons.find((entry) => entry.src === src);
+    expect(icon).toEqual({ src, sizes: `${size}x${size}`, type: 'image/png', purpose });
+    expect(pngSize(src)).toEqual({ width: size, height: size });
+  });
+
+  it('gives the maskable icon an opaque background so the launcher mask has no transparent corners', () => {
+    expect(pngColorType('./icons/icon-maskable-512.png')).toBe(PNG_COLOR_TYPE_RGB);
+  });
+
+  it('links an opaque 180px Home Screen icon for iOS instead of the SVG, which iOS ignores', () => {
+    const html = readFileSync(path.join(standaloneRoot, 'index.html'), 'utf8');
+    const appleTouchIcon = html.match(/<link rel="apple-touch-icon"[^>]*href="([^"]+)"/)?.[1];
+    expect(appleTouchIcon).toBe('./icons/apple-touch-icon.png');
+    expect(pngSize(appleTouchIcon!)).toEqual({ width: 180, height: 180 });
+    expect(pngColorType(appleTouchIcon!)).toBe(PNG_COLOR_TYPE_RGB);
   });
 });
