@@ -1,18 +1,18 @@
 # Mobile Device Acceptance
 
-Use a production build through Tailscale Serve for private, trusted HTTPS without exposing the preview publicly. On the Mac, start the preview from the `mobile` branch:
+Use a production build through Tailscale Serve for private, trusted HTTPS without exposing the preview publicly. On the machine serving the preview, start it from the `mobile` branch:
 
 ```sh
 npm run preview:mobile
 ```
 
-The existing private Tailscale route forwards HTTPS port 9443 to the preview server. If it needs to be recreated, run:
+Route HTTPS port 9443 on your tailnet to the preview server:
 
 ```sh
 tailscale serve --https=9443 --bg 4173
 ```
 
-Open `https://calums-mac-mini.tail182f21.ts.net:9443/` on a phone or tablet connected to the same tailnet. Stop the preview with Ctrl-C; remove only this route with `tailscale serve --https=9443 off`.
+Open `https://<machine>.<tailnet>.ts.net:9443/` on a phone or tablet connected to the same tailnet, substituting the serving machine's MagicDNS name (`tailscale status` lists it). Stop the preview with Ctrl-C; remove only this route with `tailscale serve --https=9443 off`.
 
 Confirm the build identifier in the header before recording results. The preview uses its own HTTPS origin, service-worker caches, local storage, and IndexedDB; it cannot replace production app data.
 
