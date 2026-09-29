@@ -114,6 +114,17 @@ describe('PWA controller', () => {
     expect(states.at(-1)).toMatchObject({ supported: false });
   });
 
+  it('treats a registration that resolves without a worker registration as unsupported', async () => {
+    // Automation that blocks service workers resolves register() with nothing.
+    const setup = environment();
+    setup.environment.serviceWorker.register.mockResolvedValueOnce(undefined as unknown as ServiceWorkerRegistration);
+    const controller = createPwaController(setup.environment);
+    const states: unknown[] = [];
+    controller.subscribe((state) => states.push(state));
+    await expect(controller.start()).resolves.toBeUndefined();
+    expect(states.at(-1)).toMatchObject({ supported: false });
+  });
+
   it('reports compiler preparation progress and supports cancellation and retry', async () => {
     const setup = environment();
     let port: MessagePort | undefined;
