@@ -609,7 +609,11 @@
     scriptRuntimeReporter?.sync();
   }
 
-  function handleCanvasClick() {
+  function handleCanvasClick(event: MouseEvent, pointerType?: string) {
+    if (pointerType === 'touch') {
+      pixelInspectorManager?.handleTouchTap(event.clientX, event.clientY);
+      return;
+    }
     pixelInspectorManager?.handleCanvasClick();
   }
 

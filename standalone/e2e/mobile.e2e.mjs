@@ -116,3 +116,49 @@ test('small desktop windows keep mobile navigation in a bottom row', async ({ pa
   await expect(page.locator('.menu-bar .collapse-debug')).toBeVisible();
   await expect(page.locator('.menu-bar .collapse-record')).toBeVisible();
 });
+
+test('a finger tap pins the pixel inspector, a second tap moves it, and tapping the pin clears it', async ({ page }) => {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  const preview = page.getByTestId('web-preview');
+  const canvas = preview.locator('.canvas-container > canvas:not(.pixel-canvas-marker)');
+  await expect(canvas).toBeVisible();
+  // Narrow menu bars move the debug toggle into the options menu.
+  await preview.getByLabel('Open options menu', { exact: true }).click();
+  await page.getByLabel('Toggle debug mode', { exact: true }).locator('visible=true').click();
+
+  const fragCoordAt = (fx, fy) => canvas.evaluate((element, [fx, fy]) => {
+    const rect = element.getBoundingClientRect();
+    const x = Math.floor(fx * element.width);
+    const y = Math.floor(fy * element.height);
+    return { client: { x: rect.left + (x + 0.5) * rect.width / element.width, y: rect.top + (y + 0.5) * rect.height / element.height }, text: `${x.toFixed(1)}, ${(element.height - y).toFixed(1)}` };
+  }, [fx, fy]);
+  const inspectorShows = async (text) => {
+    await nav.getByRole('button', { name: 'Tools' }).click();
+    await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Debug' }).click();
+    const section = page.locator('.pixel-inspector-section');
+    if (text === null) {
+      await expect(section.locator('canvas')).toHaveClass(/empty/);
+      await expect(section.locator('canvas')).not.toHaveClass(/locked/);
+    } else {
+      await expect(section.locator('canvas')).toHaveClass(/locked/);
+      await expect(section.locator('.info-label:text-is("fragCoord") + .info-val')).toHaveText(text);
+    }
+    await nav.getByRole('button', { name: 'Preview' }).click();
+    await expect(canvas).toBeVisible();
+  };
+
+  const first = await fragCoordAt(0.25, 0.25);
+  await page.touchscreen.tap(first.client.x, first.client.y);
+  await inspectorShows(first.text);
+
+  const second = await fragCoordAt(0.75, 0.6);
+  await page.touchscreen.tap(second.client.x, second.client.y);
+  await inspectorShows(second.text);
+
+  await page.touchscreen.tap(second.client.x, second.client.y);
+  await inspectorShows(null);
+});
