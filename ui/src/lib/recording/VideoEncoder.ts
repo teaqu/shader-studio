@@ -110,10 +110,14 @@ export class VideoEncoderWrapper {
       timestamp: timestampUs,
       duration: Math.round(1_000_000 / this.fps),
     });
-    this.encoder.encode(frame, {
-      keyFrame: this.frameCount % (this.fps * 2) === 0,
-    });
-    frame.close();
+    try {
+      this.encoder.encode(frame, {
+        keyFrame: this.frameCount % (this.fps * 2) === 0,
+      });
+    } finally {
+      // Release the GPU-backed frame even when encode() throws.
+      frame.close();
+    }
     this.frameCount++;
   }
 

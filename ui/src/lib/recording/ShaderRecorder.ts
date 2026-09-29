@@ -11,6 +11,8 @@ import {
   type ShaderInfo,
 } from "./types";
 import { createRenderTimeline, type RenderFrameStep, type RenderTimeline } from "./renderTimeline";
+import { liveVideoMimeType } from "./liveVideoFormats";
+import { describeRenderInputLimitations, renderInputLimitations } from "./captureSnapshot";
 
 export type { ScreenshotConfig, RecordingConfig, ShaderInfo };
 
@@ -22,6 +24,17 @@ export class ShaderRecorder {
   private activeMediaRecorder: MediaRecorder | null = null;
   private liveStream: MediaStream | null = null;
   private rejectLiveRecording: ((reason?: unknown) => void) | null = null;
+  private outputNotice: string | null = null;
+
+  /**
+   * Something the user should know about the last saved output, e.g. that
+   * MP4 dimensions were rounded to even numbers. Cleared once read.
+   */
+  consumeOutputNotice(): string | null {
+    const notice = this.outputNotice;
+    this.outputNotice = null;
+    return notice;
+  }
 
   private createOffscreenEngine(width: number, height: number, language: ShaderInfo["language"]): { canvas: HTMLCanvasElement; engine: RenderingEngine } {
     const canvas = document.createElement("canvas");
@@ -72,11 +85,13 @@ export class ShaderRecorder {
     config: ScreenshotConfig,
     engine: RenderingEngine,
   ): Promise<Blob> {
+    this.outputNotice = null;
     const image = await engine.captureCurrentFrame();
     return this.encodeImageData(image, config.format);
   }
 
   recordLive(config: RecordingConfig, engine: RenderingEngine): Promise<Blob> {
+    this.outputNotice = null;
     if (config.format === "gif") {
       return Promise.reject(new Error("Live GIF recording is not supported"));
     }
@@ -91,10 +106,7 @@ export class ShaderRecorder {
       return Promise.reject(new Error("Live video recording is not supported by this host"));
     }
 
-    const candidates = config.format === "mp4"
-      ? ["video/mp4;codecs=avc1.42E01E", "video/mp4"]
-      : ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
-    const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    const mimeType = liveVideoMimeType(config.format);
     if (!mimeType) {
       return Promise.reject(new Error(`${config.format.toUpperCase()} Live recording is not supported by this host`));
     }
@@ -245,6 +257,7 @@ export class ShaderRecorder {
   ): Promise<Blob> {
     this.cancelled = false;
     const snapshot = createRenderCaptureSnapshot(shaderInfo);
+    this.outputNotice = describeRenderInputLimitations(renderInputLimitations(snapshot));
     const { canvas, engine } = this.createOffscreenEngine(config.width, config.height, snapshot.language);
 
     try {
@@ -301,6 +314,13 @@ export class ShaderRecorder {
       width = width % 2 === 0 ? width : width + 1;
       height = height % 2 === 0 ? height : height + 1;
     }
+    const notices = [
+      width !== config.width || height !== config.height
+        ? `Saved at ${width} × ${height}: MP4 needs even dimensions, so ${config.width} × ${config.height} was rounded up.`
+        : null,
+      describeRenderInputLimitations(renderInputLimitations(snapshot)),
+    ].filter((notice): notice is string => notice !== null);
+    this.outputNotice = notices.length > 0 ? notices.join(" ") : null;
 
     const { canvas, engine } = this.createOffscreenEngine(width, height, snapshot.language);
     this.offscreenEngine = engine;
@@ -453,7 +473,8 @@ export class ShaderRecorder {
     });
 
     // Flush every N frames so encoding runs in parallel with rendering
-    // instead of building up a massive backlog for finish().
+    // instead of building up a massive backlog for finish(). Each flush is
+    // awaited, so at most flushInterval frames are ever queued.
     const flushInterval = Math.max(4, Math.ceil(config.fps / 2));
 
     try {

@@ -251,6 +251,20 @@ describe('VideoEncoderWrapper', () => {
 
       expect(mockFrameClose).toHaveBeenCalledTimes(1);
     });
+
+    it('closes the VideoFrame even when encode throws', () => {
+      const mockFrameClose = vi.fn();
+      (globalThis as any).VideoFrame = vi.fn(function () {
+        return ({ timestamp: 0, close: mockFrameClose });
+      });
+      mockEncode.mockImplementationOnce(() => {
+        throw new Error('InvalidStateError: encoder closed');
+      });
+
+      const wrapper = new VideoEncoderWrapper({ width: 800, height: 600, fps: 30, format: 'webm' });
+      expect(() => wrapper.addFrame(document.createElement('canvas'), 0)).toThrow('encoder closed');
+      expect(mockFrameClose).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('flush', () => {

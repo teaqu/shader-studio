@@ -12,6 +12,7 @@ const {
   mockSetSaving,
   mockSetError,
   mockSetNotice,
+  mockConsumeOutputNotice,
   mockReset,
 } = vi.hoisted(() => ({
   mockSubscribe: vi.fn((cb: any) => {
@@ -27,6 +28,7 @@ const {
   mockSetSaving: vi.fn(),
   mockSetError: vi.fn(),
   mockSetNotice: vi.fn(),
+  mockConsumeOutputNotice: vi.fn((): string | null => null),
   mockReset: vi.fn(),
 }));
 
@@ -53,6 +55,7 @@ vi.mock('../lib/recording/ShaderRecorder', () => ({
       stopLiveRecording: mockStopLiveRecording,
       record: mockRecord,
       cancel: mockCancel,
+      consumeOutputNotice: mockConsumeOutputNotice,
     });
   }),
 }));
@@ -285,6 +288,17 @@ describe('RecordingManager', () => {
 
       expect(mockReset).toHaveBeenCalled();
       expect(mockSetError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('output notices', () => {
+    it('shows the recorder notice after a successful save', async () => {
+      mockConsumeOutputNotice.mockReturnValueOnce('Saved at 802 × 602: MP4 needs even dimensions, so 801 × 601 was rounded up.');
+      await manager.record({ format: 'mp4', duration: 1, startTime: 0, fps: 30, width: 801, height: 601 });
+
+      expect(sendFile).toHaveBeenCalledOnce();
+      expect(mockSetNotice).toHaveBeenCalledWith(expect.stringContaining('802 × 602'));
+      expect(mockReset).not.toHaveBeenCalled();
     });
   });
 

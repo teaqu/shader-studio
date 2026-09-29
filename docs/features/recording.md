@@ -36,12 +36,16 @@ clip at a chosen time, duration, and resolution.
 |--------|-------------|
 | **Format** | MP4 or WebM |
 | **Mode** | Live preview recording, or a separate Render recording |
-| **Start time** | Shader time to begin from in Render mode |
+| **Start recording at** | Shader time for Render mode: `0` or a time you enter. Preceding frames are rendered first. |
 | **Duration** | Render presets: 2π (≈6.3s), 5s, 10s, 30s, 60s, or custom |
-| **FPS** | 24, 30, 60, or custom |
+| **FPS** | Screen, 24, 30, 60, or custom. In Render mode, Screen rounds to 24, 30, 60 or 120 fps |
 | **Resolution** | Current, 720p, 1080p, 4K, or custom in Render mode |
 
-Video bitrate is selected automatically from the output resolution, frame rate,
+Live recording uses the browser's MediaRecorder, so the formats offered depend
+on the host: a format it can't record is disabled, and a saved choice it can't
+record falls back to one it can, with a note in the panel. MP4 needs even
+dimensions; an odd custom size is rounded up and the panel tells you the saved
+size. Video bitrate is selected automatically from the output resolution, frame rate,
 and codec. Render mode shows separate preparation, rendering, encoding, and
 saving phases. Click **Cancel** to abort a Render recording. During a Live
 recording, choose **Discard** or **Stop & save**. A Live recording keeps a fixed
@@ -58,7 +62,7 @@ Record an animated GIF.
 
 | Option | Description |
 |--------|-------------|
-| **Start time** | Shader time to begin from |
+| **Start recording at** | Shader time: `0` or a time you enter. Preceding frames are rendered first. |
 | **Duration** | Presets or custom |
 | **FPS** | 10, 15, 24, 30, or custom |
 | **Loop** | Infinite or play once |
@@ -83,6 +87,22 @@ Later editor or script updates do not change a capture already in progress.
 Each output remembers its own settings across reloads. Encoding, browser
 capability, memory, and save failures are shown in the Recording panel. Saving
 remains visible until the host confirms completion.
+
+## Limitations
+
+- **Live video is silent.** It records the canvas only; shader audio inputs
+  are not mixed into the file.
+- **Render doesn't replay live input.** Custom and script uniforms are a
+  snapshot taken when the export starts and stay constant for the whole
+  export. `iMouse` stays at its idle value, keyboard input is idle, and audio
+  or video inputs play on the wall clock rather than the export timeline. The
+  panel names the inputs your shader uses when this applies. Use **Live** to
+  capture interaction.
+- **Render preparation cost.** A Render start time is reached by rendering
+  every preceding frame from time `0` (at 60 fps for screenshots, at the
+  export frame rate for video and GIF). Start times are limited to 3600 s.
+- **Live recording smoothness** depends on how fast the shader renders; a
+  shader that stutters in the preview records the same stutter.
 
 ## Next
 

@@ -13,6 +13,7 @@ describe('VideoTab', () => {
 
   beforeEach(() => {
     resetCapturePreferences();
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: vi.fn(() => true) });
     defaultProps = {
       canvasWidth: 800,
       canvasHeight: 600,
@@ -121,6 +122,28 @@ describe('VideoTab', () => {
     await fireEvent.click(screen.getByText('Render video'));
 
     expect(defaultProps.onRecord.mock.calls[0][0]).toMatchObject({ mode: 'render', fps: 24 });
+  });
+
+  it('falls back visibly when the saved format cannot be recorded Live on this host', async () => {
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: vi.fn((type: string) => type.startsWith('video/webm')) });
+    render(VideoTab, { props: defaultProps });
+
+    expect(screen.getByRole('button', { name: 'MP4' })).toBeDisabled();
+    expect(screen.getByText(/MP4 Live recording isn't supported here, so this will record WebM/)).toBeInTheDocument();
+    await fireEvent.click(screen.getByText('Start recording'));
+    expect(defaultProps.onRecord.mock.calls[0][0]).toMatchObject({ mode: 'live', format: 'webm' });
+
+    await selectRenderMode();
+    expect(screen.getByRole('button', { name: 'MP4' })).not.toBeDisabled();
+    expect(screen.queryByText(/isn't supported here/)).not.toBeInTheDocument();
+  });
+
+  it('disables Live recording when the host has no MediaRecorder', async () => {
+    vi.stubGlobal('MediaRecorder', undefined);
+    render(VideoTab, { props: defaultProps });
+
+    expect(screen.getByText('Start recording')).toBeDisabled();
+    expect(screen.getByText(/Live video recording isn't supported here/)).toBeInTheDocument();
   });
 
   it('should call onRecord with render settings in render mode', async () => {

@@ -16,6 +16,44 @@ describe("capture preferences", () => {
     });
   });
 
+  it("replaces invalid, non-finite and out-of-range stored values with defaults", async () => {
+    values.set("shader-studio-capture-preferences", JSON.stringify({
+      version: 2,
+      screenshot: { format: "bmp", mode: "Offscreen", resolution: "8k", customWidth: 1920 },
+      video: { format: "mp4", duration: 1e9, fps: 12.5, resolution: "720p", customFps: "x".repeat(100) },
+      gif: { duration: -3, fps: null, loopCount: 2.5, quality: 0, customQuality: "75" },
+    }));
+
+    const preferences = await import("../../lib/state/capturePreferences.svelte");
+
+    expect(preferences.getScreenshotCapturePreferences()).toMatchObject({
+      format: "png",
+      mode: "render",
+      resolution: "current",
+      customWidth: "",
+    });
+    expect(preferences.getVideoCapturePreferences()).toMatchObject({
+      format: "mp4",
+      duration: 5,
+      fps: 0,
+      resolution: "720p",
+      customFps: "",
+    });
+    expect(preferences.getGifCapturePreferences()).toMatchObject({
+      duration: 3,
+      fps: 15,
+      loopCount: 0,
+      quality: 100,
+      customQuality: "75",
+    });
+  });
+
+  it("recovers from stored data that isn't an object", async () => {
+    values.set("shader-studio-capture-preferences", JSON.stringify([1, 2, 3]));
+    const preferences = await import("../../lib/state/capturePreferences.svelte");
+    expect(preferences.getVideoCapturePreferences().format).toBe("mp4");
+  });
+
   it("treats a saved 'current' start mode as 0 and keeps a custom start time", async () => {
     values.set("shader-studio-capture-preferences", JSON.stringify({
       version: 2,

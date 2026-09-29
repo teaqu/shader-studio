@@ -58,10 +58,17 @@ export class RecordingManager {
       const defaultName = buildCaptureFilename(shaderContext.path, ext, capturedAt);
       recordingStore.setSaving(config.format);
       await this.sendFile(blob, defaultName, { [config.format.toUpperCase()]: [ext] });
-      recordingStore.reset();
+      const notice = this.recorder.consumeOutputNotice?.() ?? null;
+      if (notice) {
+        recordingStore.setNotice(notice);
+      } else {
+        recordingStore.reset();
+      }
     } catch (err) {
       console.error("Screenshot failed:", err);
       recordingStore.setError(this.errorMessage(err));
+    } finally {
+      this.recorder.consumeOutputNotice?.();
     }
   }
 
@@ -77,7 +84,7 @@ export class RecordingManager {
       const label = config.format === "gif" ? "GIF" : config.format === "mp4" ? "MP4 Video" : "WebM Video";
       recordingStore.setSaving(config.format);
       await this.sendFile(blob, defaultName, { [label]: [ext] });
-      const notice = this.liveStopNotice;
+      const notice = this.liveStopNotice ?? this.recorder.consumeOutputNotice?.() ?? null;
       if (notice) {
         recordingStore.setNotice(notice);
       } else {
@@ -92,6 +99,8 @@ export class RecordingManager {
       }
     } finally {
       this.liveStopNotice = null;
+      // Never carry a notice from one capture over to the next.
+      this.recorder.consumeOutputNotice?.();
     }
   }
 

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildRenderCaptureShaderInfo } from "../../lib/recording/captureSnapshot";
+import {
+  buildRenderCaptureShaderInfo,
+  describeRenderInputLimitations,
+  renderInputLimitations,
+} from "../../lib/recording/captureSnapshot";
 import { createRenderCaptureSnapshot } from "../../lib/recording/types";
 
 const source = {
@@ -156,5 +160,38 @@ describe("createRenderCaptureSnapshot", () => {
 
     expect(info.customUniformValues).toEqual([{ name: "cached", type: "float", value: 7 }]);
     expect(engine.getCurrentCustomUniforms).not.toHaveBeenCalled();
+  });
+});
+
+describe("renderInputLimitations", () => {
+  it("reports nothing for a shader without live inputs", () => {
+    expect(renderInputLimitations({ code: "void mainImage(out vec4 c, vec2 p) {}", buffers: {}, config: null })).toEqual([]);
+    expect(describeRenderInputLimitations([])).toBeNull();
+  });
+
+  it("finds iMouse in the main shader or any buffer, and keyboard/audio/video channels", () => {
+    const kinds = renderInputLimitations({
+      code: "void mainImage(out vec4 c, vec2 p) { c = texture(iChannel0, p); }",
+      buffers: { BufferA: "float m = iMouse.x;" },
+      config: {
+        version: "1.0",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "audio", path: "a.mp3" }, iChannel1: { type: "keyboard" } } },
+          BufferA: { path: "a.glsl", inputs: { iChannel0: { type: "video", path: "v.mp4" } } },
+        },
+      } as any,
+    });
+
+    expect(kinds).toEqual(["mouse", "keyboard", "audio", "video"]);
+    expect(describeRenderInputLimitations(kinds)).toBe(
+      "Render doesn't replay live input: iMouse stays at its idle value; keyboard, audio and video inputs aren't replayed on the export timeline. Use Live to capture interaction.",
+    );
+  });
+
+  it("doesn't mistake identifiers that only contain iMouse", () => {
+    expect(renderInputLimitations({ code: "float myiMouseX = 1.0;", buffers: {}, config: null })).toEqual([]);
+    expect(describeRenderInputLimitations(["audio"])).toBe(
+      "Render doesn't replay live input: audio input isn't replayed on the export timeline. Use Live to capture interaction.",
+    );
   });
 });

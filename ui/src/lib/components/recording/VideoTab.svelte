@@ -4,6 +4,7 @@
     getVideoCapturePreferences,
     updateVideoCapturePreferences,
   } from "../../state/capturePreferences.svelte";
+  import { supportedLiveVideoFormats } from "../../recording/liveVideoFormats";
 
   interface Props {
     canvasWidth: number;
@@ -56,6 +57,19 @@
       Math.abs(rate - measured) < Math.abs(best - measured) ? rate : best);
   }
   let screenFrameRate = $derived(captureMode === "render" ? standardFrameRate(displayFrameRate) : displayFrameRate);
+  // Probe once: MediaRecorder support is fixed for the host. A saved format the
+  // host can't record Live falls back visibly without overwriting the saved
+  // preference, which Render (WebCodecs) may still support.
+  const liveFormats = supportedLiveVideoFormats();
+  const liveUnavailable = liveFormats.length === 0;
+  let liveFallbackFormat = $derived(
+    captureMode === "live" && !liveUnavailable && !liveFormats.includes(videoFormat) ? liveFormats[0] : null,
+  );
+  let effectiveFormat = $derived(liveFallbackFormat ?? videoFormat);
+  function formatLabel(format: "webm" | "mp4"): string {
+    return format === "mp4" ? "MP4" : "WebM";
+  }
+
   let activeVideoFps = $derived(videoCustomFps
     ? (parseInt(videoCustomFps) || screenFrameRate)
     : videoFps === 0 ? screenFrameRate : videoFps);
@@ -90,7 +104,7 @@
     const res = getResolution(videoResPreset);
     onRecord({
       mode: captureMode,
-      format: videoFormat,
+      format: effectiveFormat,
       duration: videoDuration,
       startTime: captureMode === "render" ? getStartTime(videoStartMode) : 0,
       fps: activeVideoFps,
@@ -103,9 +117,22 @@
 <div class="resolution-section">
   <h4>Format</h4>
   <div class="scale-buttons">
-    <button class="resolution-option" class:active={videoFormat === "mp4"} onclick={() => (videoFormat = "mp4")}>MP4</button>
-    <button class="resolution-option" class:active={videoFormat === "webm"} onclick={() => (videoFormat = "webm")}>WebM</button>
+    {#each ["mp4", "webm"] as const as format (format)}
+      {@const liveBlocked = captureMode === "live" && !liveFormats.includes(format)}
+      <button
+        class="resolution-option"
+        class:active={effectiveFormat === format}
+        disabled={liveBlocked}
+        title={liveBlocked ? `${formatLabel(format)} Live recording isn't supported here` : undefined}
+        onclick={() => (videoFormat = format)}
+      >{formatLabel(format)}</button>
+    {/each}
   </div>
+  {#if liveFallbackFormat}
+    <p class="recording-info-text" role="status">
+      {formatLabel(videoFormat)} Live recording isn't supported here, so this will record {formatLabel(liveFallbackFormat)}.
+    </p>
+  {/if}
 </div>
 <div class="resolution-section">
   <h4>Mode</h4>
@@ -171,6 +198,13 @@
 {/if}
 <div class="resolution-section">
   <div class="scale-buttons">
-    <button class="export-action-btn" onclick={handleVideoRecord}>{captureMode === "live" ? "Start recording" : "Render video"}</button>
+    <button
+      class="export-action-btn"
+      disabled={captureMode === "live" && liveUnavailable}
+      onclick={handleVideoRecord}
+    >{captureMode === "live" ? "Start recording" : "Render video"}</button>
   </div>
+  {#if captureMode === "live" && liveUnavailable}
+    <p class="recording-info-text" role="status">Live video recording isn't supported here. Use Render instead.</p>
+  {/if}
 </div>

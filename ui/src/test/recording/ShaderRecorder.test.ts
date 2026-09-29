@@ -489,6 +489,21 @@ describe('ShaderRecorder', () => {
       expect(mockHandleCanvasResize).toHaveBeenCalledWith(802, 602);
     });
 
+    it('reports the saved size when MP4 dimensions are rounded to even numbers', async () => {
+      const odd = recorder.record({ format: 'mp4', duration: 0.1, startTime: 0, fps: 10, width: 801, height: 601 }, shaderInfo);
+      await vi.runAllTimersAsync();
+      await odd;
+      expect(recorder.consumeOutputNotice()).toBe(
+        'Saved at 802 × 602: MP4 needs even dimensions, so 801 × 601 was rounded up.',
+      );
+      expect(recorder.consumeOutputNotice()).toBeNull();
+
+      const even = recorder.record({ format: 'mp4', duration: 0.1, startTime: 0, fps: 10, width: 800, height: 600 }, shaderInfo);
+      await vi.runAllTimersAsync();
+      await even;
+      expect(recorder.consumeOutputNotice()).toBeNull();
+    });
+
     it('should not round dimensions for WebM', async () => {
       await rec({ ...baseConfig, format: 'webm', width: 801, height: 601 });
 
