@@ -5510,8 +5510,18 @@ describe('ShaderViewer', () => {
   });
 
   describe('touch pixel pinning', () => {
+    // Restore only these spies: restoreAllMocks would also reset this file's module mocks.
+    let touchTap: ReturnType<typeof vi.spyOn>;
+    let click: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
+      click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
+    });
+
     afterEach(() => {
-      vi.restoreAllMocks();
+      touchTap.mockRestore();
+      click.mockRestore();
     });
 
     const tapCanvas = async (container: HTMLElement, pointerType: string) => {
@@ -5524,8 +5534,6 @@ describe('ShaderViewer', () => {
     };
 
     it('pins the tapped point for touch instead of toggling the hover lock', async () => {
-      const touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
-      const click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
       await tick();
@@ -5538,8 +5546,6 @@ describe('ShaderViewer', () => {
     });
 
     it.each(['mouse', 'pen'])('keeps the hover lock toggle for %s clicks', async (pointerType) => {
-      const touchTap = vi.spyOn(PixelInspectorManager.prototype, 'handleTouchTap');
-      const click = vi.spyOn(PixelInspectorManager.prototype, 'handleCanvasClick');
       const { container } = render(ShaderViewer, { onInitialized: vi.fn() });
       await vi.waitFor(() => expect(container.querySelector('canvas')).toBeTruthy());
       await tick();
