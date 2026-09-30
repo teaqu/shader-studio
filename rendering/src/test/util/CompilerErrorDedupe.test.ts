@@ -16,6 +16,13 @@ describe("dedupeCompilerErrors", () => {
       .toEqual(["Image: error[E30015]: undefined identifier 'stepp'"]);
   });
 
+  it("scans adversarial diagnostic headings and locations without backtracking", () => {
+    const repeated = "error[".repeat(100_000);
+    const input = `${repeated}\n  --> ${" ".repeat(100_000)}not-a-location`;
+
+    expect(dedupeCompilerErrors([input])).toEqual([input]);
+  });
+
   it("collapses one shared-module error reported by every pass", () => {
     const errors = ["Image", "BufferA", "BufferB"].map((pass) => `${pass}: ${commonBlock}`);
 

@@ -132,3 +132,11 @@ fn tint(color: vec4<f32>) -> vec4<f32> {
     expect(truncateFunctionBodyAt(`struct Params {\n    gain: f32,\nd\n};`, 3)).toBeNull();
   });
 });
+
+describe("adversarial WGSL signatures", () => {
+  it("rejects repeated malformed attributes without regex backtracking", () => {
+    const source = `${"@location(".repeat(100_000)}\nfn valid() {}`;
+
+    expect(enclosingFunctionRange(source, 1)).toBeNull();
+  });
+});

@@ -307,7 +307,65 @@ export interface ScopedTokenCssOptions {
   minRelativeLuminance: number;
 }
 
-const TOKEN_RULE_PATTERN = /\.mtk(\d+)\s*\{\s*color:\s*([^;}]+)[;\s]*\}/g;
+interface TokenColorRule {
+  index: string;
+  color: string;
+}
+
+function tokenColorRules(colorsCss: string): TokenColorRule[] {
+  const rules: TokenColorRule[] = [];
+  let searchFrom = 0;
+  while (searchFrom < colorsCss.length) {
+    const start = colorsCss.indexOf(".mtk", searchFrom);
+    if (start === -1) {
+      break;
+    }
+    let index = start + 4;
+    const digitsStart = index;
+    while (colorsCss[index] >= "0" && colorsCss[index] <= "9") {
+      index++;
+    }
+    const tokenIndex = colorsCss.slice(digitsStart, index);
+    index = skipCssWhitespace(colorsCss, index);
+    if (!tokenIndex || colorsCss[index++] !== "{") {
+      searchFrom = start + 4;
+      continue;
+    }
+    index = skipCssWhitespace(colorsCss, index);
+    if (!colorsCss.startsWith("color:", index)) {
+      searchFrom = start + 4;
+      continue;
+    }
+    index = skipCssWhitespace(colorsCss, index + "color:".length);
+    const colorStart = index;
+    while (index < colorsCss.length && colorsCss[index] !== ";" && colorsCss[index] !== "}") {
+      index++;
+    }
+    const color = colorsCss.slice(colorStart, index).trim();
+    while (index < colorsCss.length && (colorsCss[index] === ";" || isCssWhitespace(colorsCss[index]!))) {
+      index++;
+    }
+    if (color && colorsCss[index] === "}") {
+      rules.push({ index: tokenIndex, color });
+      searchFrom = index + 1;
+    } else {
+      searchFrom = start + 4;
+    }
+  }
+  return rules;
+}
+
+function skipCssWhitespace(text: string, start: number): number {
+  let index = start;
+  while (index < text.length && isCssWhitespace(text[index]!)) {
+    index++;
+  }
+  return index;
+}
+
+function isCssWhitespace(character: string): boolean {
+  return character === " " || character === "\t" || character === "\r" || character === "\n";
+}
 
 /**
  * How many distinct `.mtkN` colour rules Monaco's stylesheet exposes.
@@ -318,9 +376,7 @@ const TOKEN_RULE_PATTERN = /\.mtk(\d+)\s*\{\s*color:\s*([^;}]+)[;\s]*\}/g;
  * need to tell those apart count the rules first.
  */
 export function countTokenColorRules(colorsCss: string): number {
-  return new Set(
-    [...colorsCss.matchAll(TOKEN_RULE_PATTERN)].map((match) => match[1]),
-  ).size;
+  return new Set(tokenColorRules(colorsCss).map((rule) => rule.index)).size;
 }
 
 /**
@@ -331,13 +387,13 @@ export function countTokenColorRules(colorsCss: string): number {
 export function buildScopedTokenCss(colorsCss: string, options: ScopedTokenCssOptions): string {
   const rules: string[] = [];
   const seen = new Set<string>();
-  for (const match of colorsCss.matchAll(TOKEN_RULE_PATTERN)) {
-    const index = match[1];
+  for (const rule of tokenColorRules(colorsCss)) {
+    const { index } = rule;
     if (seen.has(index)) {
       continue;
     }
     seen.add(index);
-    const source = normalizeColor(match[2]);
+    const source = normalizeColor(rule.color);
     const mapped = options.translation.get(source)
       ?? (relativeLuminance(source) >= options.minRelativeLuminance ? null : options.fallbackColor);
     if (mapped && mapped !== source) {

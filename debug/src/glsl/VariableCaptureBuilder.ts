@@ -2,6 +2,7 @@ import { GlslParser } from './GlslParser';
 import { CodeGenerator } from './CodeGenerator';
 import { ShaderDebugger } from './ShaderDebugger';
 import type { CaptureVarInfo } from './types';
+import { stripLineComment } from './textScan';
 
 // Types capturable by the variable inspector (mat2 fits in RGBA, mat3/mat4
 // excluded).
@@ -614,7 +615,7 @@ export class VariableCaptureBuilder {
     const openBlocks: Array<{ lineNumber: number }> = [];
     const closedBlocks: Array<{ lineNumber: number; endLine: number }> = [];
     for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
-      const line = lines[lineIndex].replace(/\/\/.*$/, '');
+      const line = stripLineComment(lines[lineIndex]);
       for (const char of line) {
         if (char === '{') {
           openBlocks.push({ lineNumber: lineIndex });
@@ -646,7 +647,7 @@ export class VariableCaptureBuilder {
 
   private static findFunctionBodyInsertionLine(lines: string[], functionStart: number): number {
     for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
-      if (lines[lineIndex].replace(/\/\/.*$/, '').includes('{')) {
+      if (stripLineComment(lines[lineIndex]).includes('{')) {
         return lineIndex + 1;
       }
     }
@@ -661,7 +662,7 @@ export class VariableCaptureBuilder {
   ): number {
     if (declarationLine === loopLine && new RegExp(`\\b${varName}\\b`).test(lines[loopLine] ?? '')) {
       for (let i = loopLine; i < lines.length; i++) {
-        if (lines[i].replace(/\/\/.*$/, '').includes('{')) {
+        if (stripLineComment(lines[i]).includes('{')) {
           return i;
         }
       }
@@ -693,7 +694,7 @@ export class VariableCaptureBuilder {
   ): number {
     let depth = 0;
     for (let i = functionStart; i <= truncationEnd; i++) {
-      const stripped = lines[i].replace(/\/\/.*$/, '');
+      const stripped = stripLineComment(lines[i]);
       for (const char of stripped) {
         if (char === '{') {
           depth++;
@@ -709,7 +710,7 @@ export class VariableCaptureBuilder {
     }
 
     for (let i = truncationEnd + 1; i < lines.length; i++) {
-      const stripped = lines[i].replace(/\/\/.*$/, '');
+      const stripped = stripLineComment(lines[i]);
       for (const char of stripped) {
         if (char === '{') {
           depth++;
@@ -808,7 +809,7 @@ export class VariableCaptureBuilder {
     for (let i = 0; i < lines.length; i++) {
       if (/void\s+mainImage\s*\(/.test(lines[i])) {
         for (let j = i; j < lines.length && j < i + 5; j++) {
-          if (lines[j].replace(/\/\/.*$/, '').includes('{')) {
+          if (stripLineComment(lines[j]).includes('{')) {
             lines.splice(
               j + 1,
               0,

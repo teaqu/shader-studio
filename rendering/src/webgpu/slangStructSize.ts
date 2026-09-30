@@ -1,3 +1,5 @@
+import { stripComments } from "../util/ShaderText";
+
 /**
  * Calculate Slang struct sizes from source code using WGSL layout rules.
  * This lets us auto-infer strides for custom types at graph-build time without
@@ -52,9 +54,7 @@ export function parseSlangStructs(sources: string[]): Map<string, { size: number
   const structs = new Map<string, { fields: Array<{ type: string; arrayCount?: number }> }>();
 
   for (const source of sources) {
-    const withoutComments = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/.*$/gm, "");
+    const withoutComments = stripComments(source);
     for (const match of withoutComments.matchAll(/struct\s+(\w+)\s*\{([^}]*)\}/g)) {
       const name = match[1]!;
       const body = match[2]!;

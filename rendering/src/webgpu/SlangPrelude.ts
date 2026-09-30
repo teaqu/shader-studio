@@ -1,5 +1,6 @@
 import { findSlangAuthoredDeclarations } from "@shader-studio/types";
 import { buildSlangBindingPlan, type SlangBindingChannel } from "./SlangBindingPlan";
+import { stripComments } from "../util/ShaderText";
 // Slang ShaderToy authoring convention for the WebGPU pipeline.
 //
 // A user `.slang` image shader defines:
@@ -386,7 +387,7 @@ export function getNativeComputeEntryPoint(source: string): { name: string; work
 }
 
 export function getNativeComputeEntryPoints(source: string): Array<{ name: string; workgroupSize: [number, number, number] }> {
-  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const withoutComments = stripComments(source);
   const entries: Array<{ name: string; workgroupSize: [number, number, number] }> = [];
   const pattern = /\[\s*shader\s*\(\s*["']compute["']\s*\)\s*\]\s*\[\s*numthreads\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*\]\s*void\s+([A-Za-z_]\w*)\s*\(/gi;
   for (const match of withoutComments.matchAll(pattern)) {
