@@ -31,12 +31,14 @@ const MESSAGE_RULES = [
     reason: 'AI co-author trailer',
   },
   {
-    pattern: /^.*(?<![a-z])generated (with|by)\b.*$/gim,
-    applies: line => AGENT.test(line),
+    // The tool must be what the text was generated with, not merely named
+    // on the same line, so prose describing these rules passes.
+    pattern: new RegExp(`^.*(?<![a-z])generated (with|by)\\s+[[(_*]*(${AGENTS})\\b.*$`, 'gim'),
+    applies: () => true,
     reason: 'AI generation footer',
   },
   {
-    pattern: /^.*🤖.*$/gm,
+    pattern: /^[\s_*>-]*🤖.*$/gm,
     applies: () => true,
     reason: 'AI generation marker',
   },
