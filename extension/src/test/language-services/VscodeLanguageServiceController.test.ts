@@ -13,6 +13,7 @@ import {
   documentSendKind,
   dynamicUniformNames,
   findUniformTokenRanges,
+  isCurrentDocumentRevision,
   isCurrentRevision,
   toCompletionItem,
 } from "../../language-services/VscodeLanguageServiceController";
@@ -58,6 +59,13 @@ suite("VS Code language-service revisions", () => {
     assert.strictEqual(isCurrentRevision({ ...document, version: 5 }, 7, revision), false);
     assert.strictEqual(isCurrentRevision(document, 8, revision), false);
     assert.strictEqual(isCurrentRevision({ ...document, uri: vscode.Uri.file("/workspace/other.glsl") }, 7, revision), false);
+  });
+
+  test("rejects a completed revision from a buffer whose untitled URI was reused", () => {
+    const replacement = { uri, version: 4 };
+
+    assert.strictEqual(isCurrentDocumentRevision(document, document, 7, revision), true);
+    assert.strictEqual(isCurrentDocumentRevision(document, replacement, 7, revision), false);
   });
 
   test("tells a service about a buffer that took over an open name", () => {

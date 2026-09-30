@@ -4,6 +4,7 @@ import {
   type GlslScope,
   type GlslSymbol,
 } from '@shader-studio/glsl-analysis';
+import { parenthesizedContents, stripLineComment } from './textScan';
 
 export interface FunctionInfo {
   name: string | null;
@@ -525,11 +526,20 @@ export class GlslParser {
   /** Function bodies located by brace matching, for sources that do not parse. */
   private static findFunctionRangesByBraces(lines: string[]): ParsedFunctionInfo[] {
     const functions: ParsedFunctionInfo[] = [];
-    const signature = /^\s*(\w+)\s+(\w+)\s*\([^;]*\)\s*\{?\s*$/;
 
     for (let index = 0; index < lines.length; index += 1) {
-      const match = lines[index].replace(/\/\/.*$/, '').match(signature);
-      if (!match) {
+      const line = stripLineComment(lines[index]);
+      const open = line.indexOf("(");
+      const close = line.lastIndexOf(")");
+      if (open < 0 || close <= open || line.includes(";")) {
+        continue;
+      }
+      const suffix = line.slice(close + 1).trim();
+      if (suffix !== "" && suffix !== "{") {
+        continue;
+      }
+      const words = line.slice(0, open).trim().split(/\s+/);
+      if (words.length !== 2 || !words.every((word) => /^\w+$/.test(word))) {
         continue;
       }
       const end = GlslParser.findFunctionBlockEnd(lines, index);
@@ -537,10 +547,10 @@ export class GlslParser {
         continue;
       }
       functions.push({
-        name: match[2],
+        name: words[1],
         start: index,
         end,
-        returnType: GLSL_TYPES.has(match[1]) ? match[1] : null,
+        returnType: GLSL_TYPES.has(words[0]) ? words[0] : null,
       });
       index = end;
     }
@@ -554,7 +564,7 @@ export class GlslParser {
     let opened = false;
 
     for (let index = start; index < lines.length; index += 1) {
-      for (const character of lines[index].replace(/\/\/.*$/, '')) {
+      for (const character of stripLineComment(lines[index])) {
         if (character === '{') {
           depth += 1;
           opened = true;
@@ -865,12 +875,12 @@ export class GlslParser {
   private static parseFunctionParametersLegacy(lines: string[], startLine: number): VarInfo[] {
     const parameters: VarInfo[] = [];
     const signature = GlslParser.getFullFunctionSignature(lines, startLine);
-    const paramsMatch = signature.match(/\(([^)]*)\)/);
-    if (!paramsMatch || !paramsMatch[1].trim()) {
+    const params = parenthesizedContents(signature);
+    if (!params?.trim()) {
       return parameters;
     }
 
-    for (const pair of paramsMatch[1].split(',').map(p => p.trim())) {
+    for (const pair of params.split(',').map(p => p.trim())) {
       const tokens = GlslParser.tokenize(pair);
       const declaration = GlslParser.parseDeclarationTokens(tokens);
       if (declaration) {

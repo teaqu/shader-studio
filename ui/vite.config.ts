@@ -1,14 +1,14 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { slangAssetManifestPlugin } from './viteSlangAssetManifest';
-import { shaderStudioAliases } from '../vite.aliases.mjs';
+import { shaderStudioAliasEntries } from '../vite.aliases.mjs';
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [svelte(), slangAssetManifestPlugin()],
   base: './', // Use relative paths for assets
   resolve: {
-    alias: { ...shaderStudioAliases },
+    alias: shaderStudioAliasEntries,
   },
   optimizeDeps: {
     include: ['monaco-editor'],

@@ -544,6 +544,24 @@ describe("MonacoLanguageServiceManager", () => {
     manager.dispose();
   });
 
+  it.each(['glsl', 'slang', 'wgsl'] as const)('waits for the first %s environment before resolving hover', async language => {
+    const fixture = monacoFixture(language);
+    const service = serviceFixture();
+    service.hover = vi.fn().mockResolvedValue({ contents: 'documented intrinsic' });
+    const manager = new MonacoLanguageServiceManager(fixture.monaco as never, {
+      glsl: async () => service, slang: async () => service, wgsl: async () => service,
+    });
+    const provider = fixture.languages.registerHoverProvider.mock.calls.find(call => call[0] === language)![1];
+
+    const pending = provider.provideHover(fixture.model, POSITION);
+    await Promise.resolve();
+    await manager.syncEnvironment({ ...ENVIRONMENT, documentUri: fixture.model.uri.toString(), languageId: language });
+
+    expect(await pending).toEqual(expect.objectContaining({ contents: [{ value: 'documented intrinsic' }] }));
+    expect(service.hover).toHaveBeenCalledTimes(1);
+    manager.dispose();
+  });
+
   for (const language of ['glsl', 'wgsl'] as const) {
     it.each(['owned', 'none', 'missing'] as const)(`keeps the ${language} file's %s Common context when another preview supplies its environment`, async context => {
       const fixture = monacoFixture(language);

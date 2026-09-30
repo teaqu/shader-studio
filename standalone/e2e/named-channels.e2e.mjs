@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { workspace } from './language-service-fixtures.mjs';
+import { standaloneE2eEndpoints } from './ports.mjs';
+
+const { productionOrigin } = standaloneE2eEndpoints();
 
 async function openProject(page, entries, name) {
   // Seed before boot: background workspace saves must not overwrite fixtures.
@@ -105,7 +108,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
         : 'fn mainImage(p: vec2f) -> vec4f { if (sky.loaded && sky.size.x == 1 && sky.time == 0) { return sampleCubeLevel(skyTexture,skySampler,vec3f(0,1,0),0); } return vec4f(1,0,0,1); }';
     await openProject(page, [
       [`cube.${language}`, image],
-      ['cube.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { sky: { type: 'cubemap', path: 'http://127.0.0.1:4174/channel-cube.png', filter: 'nearest' } } } } })],
+      ['cube.sha.json', JSON.stringify({ version: '1', passes: { Image: { inputs: { sky: { type: 'cubemap', path: `${productionOrigin}/channel-cube.png`, filter: 'nearest' } } } } })],
     ], `cube-${language}`);
     await expectGreen(page);
     await page.reload();

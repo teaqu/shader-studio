@@ -264,14 +264,31 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
    */
   private async send(service: LanguageService, document: vscode.TextDocument, language: ShaderLanguage): Promise<void> {
     const uri = document.uri.toString();
-    const kind = documentSendKind(this.opened[language].get(uri), document, document.version);
+    const previous = this.opened[language].get(uri);
+    const kind = documentSendKind(previous, document, document.version);
     if (kind === "none") {
       return;
     }
-    await (kind === "open"
-      ? service.openDocument(snapshot(document, language))
-      : service.changeDocument(snapshot(document, language)));
-    this.opened[language].set(uri, { document, version: document.version });
+    // Claim the URI before awaiting the service. A replacement untitled buffer
+    // can have the same URI and version as its predecessor; marking its
+    // identity now prevents delayed diagnostics or close work from the old
+    // lifetime being accepted while this open is in flight.
+    const sent = { document, version: document.version };
+    this.opened[language].set(uri, sent);
+    try {
+      await (kind === "open"
+        ? service.openDocument(snapshot(document, language))
+        : service.changeDocument(snapshot(document, language)));
+    } catch (error) {
+      if (this.opened[language].get(uri) === sent) {
+        if (previous) {
+          this.opened[language].set(uri, previous);
+        } else {
+          this.opened[language].delete(uri);
+        }
+      }
+      throw error;
+    }
   }
 
   private async change(document: vscode.TextDocument): Promise<void> {
@@ -315,7 +332,12 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     }
     this.opened[language].delete(uri);
     await (await this.services[language])?.closeDocument(uri);
-    this.diagnostics[language].delete(document.uri);
+    // A replacement buffer can claim the same untitled URI while the service
+    // is closing the previous lifetime. Do not clear diagnostics published by
+    // that replacement after the awaited close completes.
+    if (!this.opened[language].has(uri)) {
+      this.diagnostics[language].delete(document.uri);
+    }
   }
 
   private async request<T>(document: vscode.TextDocument, run: (service: LanguageService, revision: DocumentRevision) => Promise<T>, fallback: T): Promise<T> {
@@ -370,7 +392,8 @@ export class VscodeLanguageServiceController implements vscode.Disposable {
     const revision = { uri: document.uri.toString(), languageId: language, version: document.version, environmentGeneration: generation };
     const diagnostics = await service.diagnostics({ document: revision });
     const currentGeneration = this.environments.environmentFor(document)?.generation;
-    if (!isCurrentRevision(document, currentGeneration, revision)) {
+    const currentDocument = this.opened[language].get(revision.uri)?.document;
+    if (!isCurrentDocumentRevision(document, currentDocument, currentGeneration, revision)) {
       return;
     }
     this.diagnostics[language].set(document.uri, diagnostics.map((item) => {
@@ -543,6 +566,15 @@ export function isCurrentRevision(
   return document.uri.toString() === revision.uri
     && document.version === revision.version
     && environmentGeneration === revision.environmentGeneration;
+}
+
+export function isCurrentDocumentRevision<T extends Pick<vscode.TextDocument, "uri" | "version">>(
+  document: T,
+  currentDocument: T | undefined,
+  environmentGeneration: number | undefined,
+  revision: DocumentRevision,
+): boolean {
+  return currentDocument === document && isCurrentRevision(document, environmentGeneration, revision);
 }
 
 function enabled(language: ShaderLanguage): boolean {

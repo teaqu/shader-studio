@@ -3,10 +3,10 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 // The patch runs in Node during installation, before any browser bundle is built.
 // @ts-expect-error The installation script is plain JavaScript.
-import { patchWordHighlighter } from '../../scripts/patch-word-highlighter.mjs';
+import { patchWordHighlighter, resolveWordHighlighterPath } from '../../scripts/patch-word-highlighter.mjs';
 
 const require = createRequire(import.meta.url);
-const source = readFileSync(require.resolve('monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js'), 'utf8');
+const source = readFileSync(resolveWordHighlighterPath(require), 'utf8');
 
 describe('Monaco word-highlighter cancellation', () => {
   it.each([0, 1, 2])('handles the delayed highlight rejection at call site %s', async index => {
@@ -25,5 +25,22 @@ describe('Monaco word-highlighter cancellation', () => {
     const patched = patchWordHighlighter(source);
     expect(patchWordHighlighter(patched)).toBe(patched);
     expect(() => patchWordHighlighter('changed upstream implementation')).toThrow(/word.highlighter/i);
+  });
+  it('accepts Monaco implementations that already handle cancelled delays', () => {
+    const handled = `this.runDelayer.trigger(() => { this._onPositionChanged(e); }).catch(onUnexpectedError);
+this.runDelayer.trigger(() => { this._run(); }).catch(onUnexpectedError);
+this.runDelayer.trigger(() => { this._run(false, delay); }).catch(onUnexpectedError);`;
+    expect(patchWordHighlighter(handled)).toBe(handled);
+  });
+  it('tries both Monaco package layouts', () => {
+    const oldLayout = 'monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js';
+    const resolve = vi.fn((candidate: string) => {
+      if (candidate === oldLayout) {
+        return '/old/wordHighlighter.js';
+      }
+      throw Object.assign(new Error('missing'), { code: 'MODULE_NOT_FOUND' });
+    });
+    expect(resolveWordHighlighterPath({ resolve })).toBe('/old/wordHighlighter.js');
+    expect(resolve).toHaveBeenCalledTimes(2);
   });
 });
