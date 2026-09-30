@@ -18,14 +18,14 @@ concurrency:
 
 jobs:
   corpus:
-    name: WebGPU probe + canary, corpus x${{ matrix.runs }} (${{ matrix.shard }})
+    name: Real adapter - UI x3, rendering + corpus x${{ matrix.runs }} (${{ matrix.shard }})
     runs-on: macos-15
-    timeout-minutes: 120
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
         shard: [a, b]
-        runs: [6]
+        runs: [5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,28 +46,36 @@ jobs:
           body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
           echo "::notice title=shard ${{ matrix.shard }} WebGPU probe::$body"
 
-      - name: Corpus soak with canary
+      - name: GPU suites on the real adapter
         shell: bash
         run: |
           set +e
           mkdir -p soak-logs
-          node soak/canary.mjs soak-logs/canary.log > soak-logs/canary.out 2>&1 &
-          canary=$!
-          sleep 5
           fails=0; table=""
-          for i in $(seq 1 ${{ matrix.runs }}); do
-            log="soak-logs/corpus-$i.log"
-            start=$SECONDS
-            npm run test:e2e:corpus -w rendering > "$log" 2>&1
-            rc=$?
-            t=$(grep -c "Timed out waiting for canvas pixel readback" "$log")
-            table+="run $i exit $rc $((SECONDS-start))s readback-timeouts $t"$'\n'
-            node soak/annotate.mjs "$log" "shard ${{ matrix.shard }} corpus run $i" "$rc" soak-logs/canary.log
+          run_suite() {
+            local i="$1" ws="$2" script="$3"
+            local log="soak-logs/${ws}-${script//:/-}-${i}.log"
+            local start=$SECONDS
+            npm run "$script" -w "$ws" > "$log" 2>&1
+            local rc=$?
+            local t=$(grep -c "Timed out waiting for canvas pixel readback" "$log")
+            local g=$(grep -c "the harness did not request" "$log")
+            local adapter=$(grep -m1 -o "\[soak\] adapter.*" "$log" | sed 's/\[soak\] adapter //')
+            local tests=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -E "^\s+Tests\s" | tail -1 | tr -s ' ')
+            table+="$i $ws $script exit $rc $((SECONDS-start))s timeouts $t frame-guard $g |$tests | $adapter"$'\n'
+            # Annotation budget per step: notices for corpus runs, errors for failures.
+            if [ "$script" = "test:e2e:corpus" ]; then
+              node soak/annotate.mjs "$log" "shard ${{ matrix.shard }} $ws $script run $i" "$rc"
+            elif [ "$rc" -ne 0 ]; then
+              node soak/annotate.mjs "$log" "shard ${{ matrix.shard }} $ws $script run $i" "$rc" | grep '^::error'
+            fi
             [ "$rc" -ne 0 ] && fails=$((fails+1))
+          }
+          for i in 1 2 3; do run_suite "$i" ui test:e2e; done
+          for i in $(seq 1 ${{ matrix.runs }}); do
+            run_suite "$i" rendering test:e2e
+            run_suite "$i" rendering test:e2e:corpus
           done
-          kill "$canary"
-          canarySummary="$(grep -c '^spike' soak-logs/canary.log) spikes; $(tail -2 soak-logs/canary.log | tr '\n' ' ') $(tail -3 soak-logs/canary.out | tr '\n' ' ')"
-          body="$table"$'\n'"canary: $canarySummary"
-          body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
-          echo "::notice title=shard ${{ matrix.shard }} corpus table failed runs $fails::$body"
+          body="${table//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+          echo "::notice title=shard ${{ matrix.shard }} real-adapter table failed runs $fails::$body"
           [ "$fails" -eq 0 ]

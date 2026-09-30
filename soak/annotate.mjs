@@ -40,7 +40,8 @@ for (const line of lines) {
   if (line.includes('[soak] TIMEOUT')) timeouts.push(`${current}: ${line.trim()}`);
 }
 
-const out = [`exit=${rc} readbacks=${reads.length} soakTimeouts=${timeouts.length}`];
+const adapterLine = lines.find((l) => l.includes('[soak] adapter')) ?? 'adapter: not logged';
+const out = [`exit=${rc} readbacks=${reads.length} soakTimeouts=${timeouts.length}`, adapterLine.trim()];
 if (reads.length > 0) {
   const sorted = [...reads].map((r) => r.ms).sort((a, b) => a - b);
   const q = (p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))].toFixed(1);

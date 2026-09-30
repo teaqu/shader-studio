@@ -23,6 +23,18 @@ function textureBytes(descriptor: GPUTextureDescriptor): number {
 export function installGpuTrace(): void {
   if (installed || typeof GPUDevice === "undefined") return;
   installed = true;
+  // Record which adapter the suite really got: a headless-shell launch falls back to SwiftShader.
+  const requestAdapter = GPU.prototype.requestAdapter;
+  let reported = false;
+  GPU.prototype.requestAdapter = async function (options?: GPURequestAdapterOptions): Promise<GPUAdapter | null> {
+    const adapter = await requestAdapter.call(this, options);
+    if (adapter && !reported) {
+      reported = true;
+      const info = adapter.info;
+      console.log(`[soak] adapter vendor=${info.vendor} architecture=${info.architecture} fallback=${String((info as { isFallbackAdapter?: boolean }).isFallbackAdapter)}`);
+    }
+    return adapter;
+  };
   const createTexture = GPUDevice.prototype.createTexture;
   GPUDevice.prototype.createTexture = function (descriptor: GPUTextureDescriptor): GPUTexture {
     const texture = createTexture.call(this, descriptor);

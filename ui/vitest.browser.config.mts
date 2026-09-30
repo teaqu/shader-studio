@@ -75,7 +75,7 @@ export default defineConfig({
   test: {
     browser: {
       enabled: true,
-      provider: playwright({ launchOptions: { args: ["--enable-unsafe-webgpu"] } }),
+      provider: playwright({ launchOptions: { channel: "chromium", args: ["--enable-unsafe-webgpu"] } }),
       instances: [{ browser: "chromium" }],
     },
     include: ["src/test/e2e/**/*.e2e.test.ts"],
