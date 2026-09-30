@@ -8,8 +8,12 @@ export function resolveWordHighlighterPath(require) {
     'monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js'
   ];
   for (const candidate of candidates) {
-    try { return require.resolve(candidate); } catch (error) {
-      if (error.code !== 'MODULE_NOT_FOUND' && error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error;
+    try {
+      return require.resolve(candidate);
+    } catch (error) {
+      if (error.code !== 'MODULE_NOT_FOUND' && error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') {
+        throw error;
+      }
     }
   }
   throw new Error('Cannot locate Monaco word-highlighter implementation; review the cancellation patch.');
