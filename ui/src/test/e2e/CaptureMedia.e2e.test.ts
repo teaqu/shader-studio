@@ -13,29 +13,62 @@ const smooth = `void mainImage(out vec4 c, in vec2 f) {
   c = vec4(0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0, 2, 4)), 1.0);
 }`;
 
+type Language = "glsl" | "wgsl" | "slang";
+const LANGUAGES: Language[] = ["glsl", "wgsl", "slang"];
+
+function info(language: Language, code: string, extra: Partial<ShaderInfo> = {}): ShaderInfo {
+  return glslInfo(code, { language, path: `/fixture.${language}`, ...extra });
+}
+
+const COUNTER_SOURCES: Record<Language, { image: string; buffer: string }> = {
+  glsl: {
+    image: `void mainImage(out vec4 c, in vec2 f) { c = texelFetch(iChannel0, ivec2(0), 0); }`,
+    buffer: `void mainImage(out vec4 c, in vec2 f) {
+      vec4 previous = iFrame == 0 ? vec4(0.0) : texelFetch(iChannel0, ivec2(0), 0);
+      c = vec4(previous.r + 1.0 / 255.0, 0.0, 0.0, 1.0);
+    }`,
+  },
+  wgsl: {
+    image: `fn mainImage(coord: vec2f) -> vec4f { return iChannel0Sample(vec2f(0.5)); }`,
+    buffer: `fn mainImage(coord: vec2f) -> vec4f {
+      var previous = iChannel0Sample(vec2f(0.5));
+      if (iFrame == 0) { previous = vec4f(0.0); }
+      return vec4f(previous.r + 1.0 / 255.0, 0.0, 0.0, 1.0);
+    }`,
+  },
+  slang: {
+    image: `float4 mainImage(float2 fragCoord) { return iChannel0.Sample(float2(0.5, 0.5)); }`,
+    buffer: `float4 mainImage(float2 fragCoord) {
+      float4 previous = iFrame == 0 ? float4(0.0, 0.0, 0.0, 0.0) : iChannel0.Sample(float2(0.5, 0.5));
+      return float4(previous.r + 1.0 / 255.0, 0.0, 0.0, 1.0);
+    }`,
+  },
+};
+
 /** BufferA counts rendered frames through its own feedback; Image shows the count in red. */
-const frameCounter: ShaderInfo = glslInfo(
-  `void mainImage(out vec4 c, in vec2 f) { c = texelFetch(iChannel0, ivec2(0), 0); }`,
-  {
-    buffers: {
-      BufferA: `void mainImage(out vec4 c, in vec2 f) {
-        vec4 previous = iFrame == 0 ? vec4(0.0) : texelFetch(iChannel0, ivec2(0), 0);
-        c = vec4(previous.r + 1.0 / 255.0, 0.0, 0.0, 1.0);
-      }`,
-    },
+function frameCounter(language: Language): ShaderInfo {
+  const { image, buffer } = COUNTER_SOURCES[language];
+  return info(language, image, {
+    buffers: { BufferA: buffer },
     config: {
       version: "1",
       passes: {
-        BufferA: { path: "counter-a.glsl", inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: `counter-a.${language}`, inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
         Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
       },
     },
-  },
-);
+  });
+}
 
-function tinted(value: number[]): ShaderInfo {
+const TINT_SOURCES: Record<Language, string> = {
+  glsl: `void mainImage(out vec4 c, in vec2 f) { c = vec4(uTint, 1.0); }`,
+  wgsl: `fn mainImage(coord: vec2f) -> vec4f { return vec4f(uTint, 1.0); }`,
+  slang: `float4 mainImage(float2 fragCoord) { return float4(uTint, 1.0); }`,
+};
+
+function tinted(language: Language, value: number[]): ShaderInfo {
   // uTint is declared by the script context, not in source, as script uniforms are.
-  return glslInfo(`void mainImage(out vec4 c, in vec2 f) { c = vec4(uTint, 1.0); }`, {
+  return info(language, TINT_SOURCES[language], {
     customUniformDeclarations: "uniform vec3 uTint;",
     customUniformInfo: [{ name: "uTint", type: "vec3" }],
     customUniformValues: [{ name: "uTint", type: "vec3", value }],
@@ -87,12 +120,12 @@ describe("Render video quality (#39)", () => {
   }, 120_000);
 });
 
-describe("Render preparation keeps feedback history (#11)", () => {
+describe.each(LANGUAGES)("Render preparation keeps feedback history (#11) — %s", (language) => {
   it("renders every preceding frame before a screenshot", async () => {
     // 0.5 s at the 60 fps screenshot preparation rate is 30 frames, plus the captured one.
     const png = await new ShaderRecorder().captureScreenshot(
       { mode: "render", format: "png", width: 64, height: 64, time: 0.5 },
-      frameCounter,
+      frameCounter(language),
     );
     expect(centre(await blobToImageData(png))[0]).toBe(31);
   }, 60_000);
@@ -101,7 +134,7 @@ describe("Render preparation keeps feedback history (#11)", () => {
     const fps = 30;
     const blob = await new ShaderRecorder().record(
       { mode: "render", format: "webm", duration: 1, startTime: 0.5, fps, width: 64, height: 64 },
-      frameCounter,
+      frameCounter(language),
     );
     const decoded = await decodeVideoFrames(blob, [0.25 / fps, 10.25 / fps]);
 
@@ -115,11 +148,11 @@ describe("Render preparation keeps feedback history (#11)", () => {
   }, 60_000);
 });
 
-describe("Render uses the captured uniform snapshot (#35)", () => {
+describe.each(LANGUAGES)("Render uses the captured uniform snapshot (#35) — %s", (language) => {
   it("applies a script uniform declared outside the source to the saved image", async () => {
     const png = await new ShaderRecorder().captureScreenshot(
       { mode: "render", format: "png", width: 32, height: 32, time: 0 },
-      tinted([1, 0.5, 0]),
+      tinted(language, [1, 0.5, 0]),
     );
     const [r, g, b] = centre(await blobToImageData(png));
     expect(r).toBe(255);
@@ -131,7 +164,7 @@ describe("Render uses the captured uniform snapshot (#35)", () => {
   it("keeps an explicit zero value instead of treating it as missing", async () => {
     const png = await new ShaderRecorder().captureScreenshot(
       { mode: "render", format: "png", width: 32, height: 32, time: 0 },
-      tinted([0, 0, 0]),
+      tinted(language, [0, 0, 0]),
     );
     expect(centre(await blobToImageData(png))).toEqual([0, 0, 0]);
   }, 60_000);
@@ -139,7 +172,7 @@ describe("Render uses the captured uniform snapshot (#35)", () => {
   it("uses the same snapshot for saved video frames", async () => {
     const blob = await new ShaderRecorder().record(
       { mode: "render", format: "webm", duration: 0.5, startTime: 0, fps: 30, width: 64, height: 64 },
-      tinted([0, 1, 0]),
+      tinted(language, [0, 1, 0]),
     );
     const [r, g, b] = centre((await decodeVideoFrames(blob, [0.1])).frames[0]);
     expect(r).toBeLessThanOrEqual(8);
