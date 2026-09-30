@@ -167,6 +167,8 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
   await inspectorShows(null);
 });
 
+// Monaco picks shortcuts from the emulated Android user agent, so phone tests
+// press Control even on a macOS host, where ControlOrMeta would send Meta.
 async function openAuroraOnPhone(page) {
   await page.goto('/');
   const nav = page.getByRole('navigation', { name: 'Workspace panels' });
@@ -186,9 +188,11 @@ test('the phone Editor and the preview overlay edit one document with shared und
   const nav = await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
   await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
-  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await editor.locator('.inputarea').press('Control+A');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // phone edit');
   await expect(editor.locator('.view-lines')).toContainText('phone edit');
+  // Proves select-all replaced the shader rather than inserting into it.
+  await expect(editor.locator('.view-lines')).not.toContainText('iResolution');
 
   await nav.getByRole('button', { name: 'Preview' }).click();
   await page.getByLabel('Open options menu', { exact: true }).click();
@@ -203,13 +207,13 @@ test('the phone Editor and the preview overlay edit one document with shared und
   // Undo from the overlay reverts the edit made in the Editor panel.
   // The long line leaves Monaco scrolled sideways, so aim at the editor itself.
   await overlay.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
-  await overlay.locator('.inputarea').press('ControlOrMeta+Z');
+  await overlay.locator('.inputarea').press('Control+Z');
   await expect(overlay.locator('.view-lines')).not.toContainText('phone edit');
   await nav.getByRole('button', { name: 'Editor' }).click();
   await expect(editor.locator('.view-lines')).not.toContainText('phone edit');
 
   await editor.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
-  await editor.locator('.inputarea').press('ControlOrMeta+Shift+Z');
+  await editor.locator('.inputarea').press('Control+Shift+Z');
   await expect(editor.locator('.view-lines')).toContainText('phone edit');
   await persisted(page, 'phone edit');
 
@@ -223,8 +227,9 @@ test('a workspace backup exported on a phone restores the work after the workspa
   await openAuroraOnPhone(page);
   const editor = page.getByTestId('web-editor');
   await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
-  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await editor.locator('.inputarea').press('Control+A');
   await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); } // backed up');
+  await expect(editor.locator('.view-lines')).not.toContainText('iResolution');
   await persisted(page, 'backed up');
 
   await page.getByRole('button', { name: 'Workspace' }).click();
