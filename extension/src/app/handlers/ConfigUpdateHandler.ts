@@ -1,10 +1,10 @@
-import * as fs from "fs";
 import * as vscode from "vscode";
 import { ShaderProvider } from "../ShaderProvider";
 import { GlslFileTracker } from "../GlslFileTracker";
 import { Messenger } from "../transport/Messenger";
 import { Logger } from "../services/Logger";
 import { getConfigPathForShaderPath } from "../ShaderConfigPaths";
+import { writeFileAtomicSync } from "../services/AtomicFile";
 import { ConfigChangeClassifier, type ConfigChangeVerdict } from "../services/ConfigChangeClassifier";
 import type { ShaderConfig, ErrorMessage } from "@shader-studio/types";
 
@@ -45,7 +45,9 @@ export class ConfigUpdateHandler {
       }
 
       if (!appliedToDocument) {
-        fs.writeFileSync(configPath, payload.text, 'utf-8');
+        // Atomic: the extension's own config watcher and anything else reading
+        // the file must never catch it truncated mid-write.
+        writeFileAtomicSync(configPath, payload.text);
       }
 
       this.logger.info(`Config updated: ${configPath}`);

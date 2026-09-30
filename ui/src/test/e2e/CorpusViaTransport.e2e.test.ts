@@ -289,9 +289,7 @@ async function createRig(harness: ShaderCanvasHarness): Promise<PipelineRig> {
       return;
     }
     pendingFlag?.();
-    inFlight = pipeline.handleShaderMessage(
-      new MessageEvent("message", { data: message }),
-    );
+    inFlight = compileThroughPipeline(pipeline, harness, message);
   });
 
   return {
@@ -319,10 +317,23 @@ async function createRig(harness: ShaderCanvasHarness): Promise<PipelineRig> {
   };
 }
 
+/**
+ * Compiles through the real pipeline, then hands frame production back to the
+ * harness: the pipeline starts the engine's animation loop on success, and a
+ * free-running loop makes every frame-dependent readback depend on wall time.
+ */
+async function compileThroughPipeline(
+  pipeline: ShaderPipeline,
+  harness: ShaderCanvasHarness,
+  message: unknown,
+): Promise<CompilationResult | undefined> {
+  const result = await pipeline.handleShaderMessage(new MessageEvent("message", { data: message }));
+  harness.holdFrames();
+  return result;
+}
+
 async function send(rig: PipelineRig, message: ShaderSourceMessage) {
-  return rig.pipeline.handleShaderMessage(
-    new MessageEvent("message", { data: message }),
-  );
+  return compileThroughPipeline(rig.pipeline, rig.harness, message);
 }
 
 function projectNamed(name: string): Project {
@@ -346,6 +357,36 @@ describe("shader corpus through the UI transport layer", () => {
     for (const rig of rigs.values()) {
       rig.harness.dispose();
     }
+  });
+
+  // A successful compile starts the engine's own animation loop, exactly as it
+  // does in the app. Left running, it adds a wall-clock-dependent number of
+  // frames between the test's renders, so feedback fixtures read back a
+  // different accumulation on a slow runner (reset-feedback drifted from luma
+  // bucket 7 to 6 once seven or more frames had run).
+  it.each(["glsl", "slang", "wgsl"] as const)("only the test's own renders advance a feedback fixture (%s)", { timeout: 30_000 }, async (language) => {
+    const rig = rigs.get(language)!;
+    const name = language === "glsl"
+      ? "glsl/parity/reset-feedback/reset_glsl.glsl"
+      : `${language}/parity/reset-feedback/reset.${language}`;
+    rig.harness.resize(64, 64);
+    const result = await rig.open(`/${name}`);
+    expect(result?.success).toBe(true);
+
+    // Long enough for a live animation loop to run several frames.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(rig.harness.engine.getTimeManager().getFrame()).toBe(0);
+
+    let region: Awaited<ReturnType<ShaderCanvasHarness["renderAndReadRegion"]>> = new Uint8ClampedArray();
+    for (let render = 0; render < 3; render += 1) {
+      region = await rig.harness.renderAndReadRegion(0);
+    }
+    expect(rig.harness.engine.getTimeManager().getFrame()).toBe(3);
+    // Frame zero seeds green and each later frame blends 2.5% towards blue,
+    // so after exactly three frames the centre is still in luma bucket 7.
+    const center = ((region.length / 4) / 2 + Math.sqrt(region.length / 4) / 2) * 4;
+    const luma = 0.299 * region[center]! + 0.587 * region[center + 1]! + 0.114 * region[center + 2]!;
+    expect(Math.round(luma) >> 4).toBe(7);
   });
 
   it("compiles the whole corpus through the real pipeline", { timeout: 120_000 }, async () => {
