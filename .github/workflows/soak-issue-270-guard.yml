@@ -1,0 +1,37 @@
+name: Soak issue 270 (harness guard red/green)
+
+# Temporary: runs only the harness overlap test, to show it fails without the
+# guard and passes with it.
+on:
+  push:
+    branches:
+      - claude/issue-270-guard-check
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node ui/scripts/ensure-slang-wasm.mjs
+      - run: npx playwright install chromium
+      - run: npm run build:deps -w extension
+      - name: Harness overlap test
+        shell: bash
+        working-directory: rendering
+        run: |
+          set +e
+          npx vitest run --config vitest.browser.config.mts src/test/e2e/ShaderCanvasHarness.e2e.test.ts > harness.log 2>&1
+          rc=$?
+          body="$(sed 's/\x1b\[[0-9;]*m//g' harness.log | grep -E '✓|×|FAIL|Error|expected|Test Files|Tests ' | head -40)"
+          body="exit $rc"$'\n'"$body"; body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+          echo "::notice title=harness overlap test exit $rc::$body"
+          exit $rc
