@@ -44,6 +44,7 @@ function instrumentNextEditor(containerHeight: number) {
   let selection: Selection = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 };
   let emitSelection: ((event: { selection: Selection }) => void) | null = null;
   const appliedToModel: string[] = [];
+  const selectionSubscription = { dispose: vi.fn() };
   let editorInstance: { getModel(): { uri: { toString(): string } } | null } | null = null;
   const surface = {
     getSelection: vi.fn(() => selection),
@@ -58,7 +59,7 @@ function instrumentNextEditor(containerHeight: number) {
     revealPositionInCenterIfOutsideViewport: vi.fn(),
     onDidChangeCursorSelection: vi.fn((listener: typeof emitSelection) => {
       emitSelection = listener;
-      return { dispose: vi.fn() };
+      return selectionSubscription;
     }),
   };
   vi.mocked(monaco.editor.create).mockImplementationOnce((...args) => {
@@ -69,6 +70,7 @@ function instrumentNextEditor(containerHeight: number) {
   return {
     surface,
     appliedToModel,
+    selectionSubscription,
     userSelects: (next: Selection) => {
       selection = { ...next };
       emitSelection?.({ selection });
@@ -76,18 +78,25 @@ function instrumentNextEditor(containerHeight: number) {
   };
 }
 
-async function renderEditor(containerHeight: number) {
+async function renderEditor(containerHeight: number, shaderPath = '/shader.glsl') {
   const editor = instrumentNextEditor(containerHeight);
-  const props = { isVisible: true, shaderCode: 'line one\n  return n\n', shaderPath: '/shader.glsl', transport };
+  const props = { isVisible: true, shaderCode: 'line one\n  return n\n', shaderPath, transport };
   const { rerender } = render(ShaderEditor, { props });
   await tick();
   await tick();
   expect(editor.surface.onDidChangeCursorSelection).toHaveBeenCalled();
-  return { ...editor, showShader: async (shaderPath: string) => {
-    await rerender({ ...props, shaderPath, shaderCode: 'other one\n  return n\n' });
-    await tick();
-    await tick();
-  } };
+  return {
+    ...editor,
+    showShader: async (nextPath: string) => {
+      await rerender({ ...props, shaderPath: nextPath, shaderCode: 'other one\n  return n\n' });
+      await tick();
+      await tick();
+    },
+    hide: async () => {
+      await rerender({ ...props, isVisible: false });
+      await tick();
+    },
+  };
 }
 
 describe('ShaderEditor shared selection', () => {
@@ -173,5 +182,24 @@ describe('ShaderEditor shared selection', () => {
     await showShader('/next.glsl');
 
     expect(appliedToModel).toEqual([monaco.Uri.file('/next.glsl').toString()]);
+  });
+
+  it('stops listening to the cursor when the editor is torn down', async () => {
+    const { selectionSubscription, hide } = await renderEditor(300);
+
+    await hide();
+
+    expect(selectionSubscription.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('keeps an untitled editor out of selection sharing', async () => {
+    const { surface, userSelects } = await renderEditor(300, '');
+
+    userSelects(LINE_TWO);
+    setEditorSelection('', createEditorSelectionSource(), LINE_TWO);
+    await tick();
+
+    expect(getEditorSelection('')).toBeNull();
+    expect(surface.setSelection).not.toHaveBeenCalled();
   });
 });

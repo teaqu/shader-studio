@@ -40,4 +40,33 @@ describe('PageRenderLifecycle', () => {
     expect(() => listener?.()).not.toThrow();
     lifecycle.dispose();
   });
+
+  it('removes exactly the listener it added', () => {
+    const page = { visibilityState: 'visible' as DocumentVisibilityState, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    const lifecycle = new PageRenderLifecycle(page, () => null);
+
+    lifecycle.dispose();
+
+    expect(page.addEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    expect(page.removeEventListener.mock.calls[0][1]).toBe(page.addEventListener.mock.calls[0][1]);
+  });
+
+  it('looks up the engine at each change, so an engine created later is still paused', () => {
+    let listener: (() => void) | undefined;
+    const page = {
+      visibilityState: 'visible' as DocumentVisibilityState,
+      addEventListener: vi.fn((_name: string, next: EventListenerOrEventListenerObject) => {
+        listener = next as () => void;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    let engine: { startRenderLoop: () => void; stopRenderLoop: ReturnType<typeof vi.fn<() => void>> } | null = null;
+    new PageRenderLifecycle(page, () => engine);
+    engine = { startRenderLoop: vi.fn<() => void>(), stopRenderLoop: vi.fn<() => void>() };
+
+    page.visibilityState = 'hidden';
+    listener?.();
+
+    expect(engine.stopRenderLoop).toHaveBeenCalledOnce();
+  });
 });
