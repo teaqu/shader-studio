@@ -484,6 +484,18 @@
     100% { margin-left: 0%; }
   }
 
+  /* Touch: comfortable targets, and 16px inputs so phones don't zoom on focus. */
+  @media (pointer: coarse) {
+    .recording-panel :global(button),
+    .recording-panel :global(.recording-custom-res) {
+      min-height: 44px;
+    }
+    .recording-panel :global(input) {
+      min-height: 44px;
+      font-size: 16px;
+    }
+  }
+
   .recording-cancel-btn {
     margin-top: 8px;
     padding: 4px 16px;

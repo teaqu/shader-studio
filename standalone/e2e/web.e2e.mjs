@@ -1126,14 +1126,31 @@ for (const format of ['PNG', 'JPEG', 'WebM', 'MP4', 'GIF']) {
       }
       await page.locator('input[min="0.5"][step="0.5"]').fill('0.5');
     }
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', {
+    const action = page.getByRole('button', {
       name: screenshot ? 'Capture screenshot' : format === 'GIF' ? 'Record' : 'Render video',
       exact: true,
-    }).click();
+    });
+    if (format === 'MP4') {
+      // Open-source Chromium builds ship no H.264 encoder. Render MP4 must then
+      // refuse visibly before rendering instead of saving a broken file.
+      const encodesAvc = await page.evaluate(async () => (await VideoEncoder.isConfigSupported({
+        codec: 'avc1.42001f', width: 640, height: 360, bitrate: 2_000_000, framerate: 30,
+      })).supported === true);
+      if (!encodesAvc) {
+        await action.click();
+        const panelError = page.locator('.recording-panel [role="alert"]');
+        await expect(panelError).toContainText('MP4 export at');
+        await expect(panelError).toContainText('is not supported by this host');
+        expect(pageErrors).toEqual([]);
+        return;
+      }
+    }
+    const downloadPromise = page.waitForEvent('download');
+    await action.click();
     const download = await downloadPromise;
     const extension = format === 'JPEG' ? 'jpg' : format.toLowerCase();
-    expect(download.suggestedFilename()).toMatch(new RegExp(`^shader-.*\\.${extension}$`));
+    // Named after the shader and the capture time.
+    expect(download.suggestedFilename()).toMatch(new RegExp(`^aurora-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}-\\d{3}\\.${extension}$`));
     expect(await download.failure()).toBeNull();
     const stream = await download.createReadStream();
     const chunks = [];
@@ -1175,7 +1192,7 @@ test('records the live preview to WebM and remembers capture settings after relo
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^shader-.*\.webm$/);
+  expect(download.suggestedFilename()).toMatch(/^aurora-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.webm$/);
   expect(await download.failure()).toBeNull();
 
   await page.reload();
@@ -1189,6 +1206,36 @@ test('records the live preview to WebM and remembers capture settings after relo
   await expect(page.getByRole('button', { name: '60', exact: true })).toHaveClass(/active/);
 });
 
+
+test('keeps a Live recording at a fixed size through a preview resize and saves it', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const canvas = page.getByTestId('web-preview').locator('canvas').first();
+  const pixelSize = () => canvas.evaluate((element) => [element.width, element.height]);
+  await page.getByLabel('Toggle export panel').click();
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  const stopAndSave = page.getByRole('button', { name: 'Stop & save', exact: true });
+  await expect(stopAndSave).toBeVisible();
+  const recordingSize = await pixelSize();
+
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.waitForTimeout(500);
+  // The recording keeps going at its original output size.
+  await expect(stopAndSave).toBeVisible();
+  expect(await pixelSize()).toEqual(recordingSize);
+
+  const downloadPromise = page.waitForEvent('download');
+  await stopAndSave.click();
+  const download = await downloadPromise;
+  expect(await download.failure()).toBeNull();
+  await expect(page.locator('.recording-panel [role="alert"]')).toHaveCount(0);
+  // The held resize applies once recording ends.
+  await expect.poll(pixelSize).not.toEqual(recordingSize);
+});
 
 test('standalone defaults to Aurora GLSL and preserves a later selection on reload', async ({ page }) => {
   await page.goto('/');
