@@ -185,5 +185,28 @@ function isMissingMainImageRenderabilityError(errorText: string): boolean {
   return /(?:^|:\s*)missing mainImage function$/i.test(text)
     || /(?:^|:\s*)entry points? not found \(is [`'"]?mainImage[`'"]? defined\?\)$/i.test(text)
     || /(?:^|:\s*)the Slang workspace root has no mainImage or supported compute entry function\.$/i.test(text)
-    || /^(?:[^:\n]+:\s*)*(?:ERROR:\s*)?(?:\d+:\d+:\s*)?[`'"]?mainImage[`'"]?\s*:\s*no matching overloaded function found$/i.test(text);
+    || isMissingMainImageOverloadError(text);
+}
+
+function isMissingMainImageOverloadError(text: string): boolean {
+  const suffix = "no matching overloaded function found";
+  const lower = text.toLowerCase();
+  if (!lower.endsWith(suffix)) {
+    return false;
+  }
+  const separator = text.lastIndexOf(":", text.length - suffix.length);
+  if (separator === -1) {
+    return false;
+  }
+  const beforeSeparator = text.slice(0, separator).trimEnd();
+  let tokenStart = beforeSeparator.length;
+  while (tokenStart > 0) {
+    const previous = beforeSeparator[tokenStart - 1]!;
+    if (previous === ":" || /\s/.test(previous)) {
+      break;
+    }
+    tokenStart--;
+  }
+  const token = beforeSeparator.slice(tokenStart).replace(/^[`'"]|[`'"]$/g, "");
+  return token.toLowerCase() === "mainimage";
 }

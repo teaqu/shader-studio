@@ -1,5 +1,5 @@
 import type { Transport } from "../transport/MessageTransport";
-import type * as Monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import type * as Monaco from "monaco-editor/editor/editor.api.js";
 import { setupMonacoLanguageServices } from "@shader-studio/monaco";
 import { WorkerLanguageServiceProxy } from "@shader-studio/language-server-core";
 import glslLanguageServiceWorkerUrl from "./glslLanguageService.worker?worker&url";

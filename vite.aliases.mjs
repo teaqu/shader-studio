@@ -1,4 +1,5 @@
 import path from 'path';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -23,3 +24,32 @@ export const shaderStudioAliases = {
   '@shader-studio/types': path.resolve(root, 'types/src'),
   '@shader-studio/utils': path.resolve(root, 'utils/src'),
 };
+
+/**
+ * Monaco's `esm/vs` directory, found through the package's own exports map so
+ * it follows whichever copy the workspace installs.
+ */
+const monacoEsmRoot = path.dirname(path.dirname(
+  createRequire(import.meta.url).resolve('monaco-editor/editor/editor.api.js'),
+));
+
+/**
+ * Monaco 0.57 added an exports map rooting deep imports at `esm/vs/`, so the
+ * pre-0.57 `monaco-editor/esm/vs/...` paths that monaco-vim still imports no
+ * longer resolve. Vite then ships them as bare specifiers and the webview
+ * fails to load the app. Point them at the same files the app imports, so
+ * there is still only one Monaco instance.
+ */
+export const monacoLegacyEsmAlias = {
+  find: /^monaco-editor\/esm\/vs\/(.+?)(?:\.js)?$/,
+  replacement: `${monacoEsmRoot}/$1.js`,
+};
+
+/**
+ * Every shared alias in Vite's array form, which unlike the object form
+ * supports pattern matches. Builds that bundle the editor use this.
+ */
+export const shaderStudioAliasEntries = [
+  ...Object.entries(shaderStudioAliases).map(([find, replacement]) => ({ find, replacement })),
+  monacoLegacyEsmAlias,
+];

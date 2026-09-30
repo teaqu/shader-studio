@@ -1,5 +1,31 @@
 import { GlslParser } from './GlslParser';
 import type { FunctionInfo, VarInfo } from './GlslParser';
+import { parenthesizedContents, stripLineComment } from './textScan';
+
+const PARAMETER_MODIFIERS = new Set(['const', 'highp', 'mediump', 'lowp']);
+
+function parseParameter(parameter: string): { qualifier?: string; type: string; name: string } | null {
+  const words = parameter.trim().split(/\s+/);
+  let index = 0;
+  while (PARAMETER_MODIFIERS.has(words[index] ?? '')) {
+    index++;
+  }
+  const direction = words[index];
+  const qualifier = direction === 'in' || direction === 'out' || direction === 'inout'
+    ? words[index++]
+    : undefined;
+  while (PARAMETER_MODIFIERS.has(words[index] ?? '')) {
+    index++;
+  }
+  if (words.length - index !== 2) {
+    return null;
+  }
+  const type = words[index]!;
+  const name = words[index + 1]!;
+  return /^[A-Za-z_]\w*$/.test(type) && /^\w+$/.test(name)
+    ? { qualifier, type, name }
+    : null;
+}
 
 export class CodeGenerator {
   private static defaultParameterValue(type: string): string | null {
@@ -158,7 +184,7 @@ export class CodeGenerator {
     let braceDepth = 0;
 
     for (let i = functionStart; i < lines.length; i++) {
-      const stripped = lines[i].replace(/\/\/.*$/, '');
+      const stripped = stripLineComment(lines[i]);
       for (const char of stripped) {
         if (char === '{') {
           braceDepth++;
@@ -329,22 +355,20 @@ export class CodeGenerator {
     const args: string[] = [];
 
     const signature = GlslParser.getFullFunctionSignature(lines, functionInfo.start);
-    const paramsMatch = signature.match(/\(([^)]*)\)/s);
+    const params = parenthesizedContents(signature);
 
-    if (!paramsMatch || !paramsMatch[1].trim()) {
+    if (!params?.trim()) {
       return { args: '', setup: [] };
     }
 
     const v2 = 'vec2';
-    const paramsStr = paramsMatch[1];
-    const paramPairs = paramsStr.split(',').map(p => p.trim());
+    const paramPairs = params.split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
-      const match = pair.match(/^\s*(?:(?:const|highp|mediump|lowp)\s+)*(?:(in|out|inout)\s+)?(?:(?:const|highp|mediump|lowp)\s+)*([A-Za-z_]\w*)\s+(\w+)\s*$/);
+      const parameter = parseParameter(pair);
 
-      if (match) {
-        const qualifier = match[1];
-        const type = match[2];
+      if (parameter) {
+        const { qualifier, type } = parameter;
         const defaultValue = CodeGenerator.defaultParameterValue(type);
         const tempName = `_dbgArg${args.length}`;
         const needsTemp = qualifier === 'out' || qualifier === 'inout' || defaultValue === null;
@@ -929,7 +953,7 @@ export class CodeGenerator {
     let braceDepth = 0;
     let started = false;
     for (let i = start; i < lines.length; i++) {
-      const stripped = lines[i].replace(/\/\/.*$/, '');
+      const stripped = stripLineComment(lines[i]);
       for (const char of stripped) {
         if (char === '{') {
           braceDepth++;

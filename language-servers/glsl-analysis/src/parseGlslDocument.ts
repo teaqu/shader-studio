@@ -147,7 +147,7 @@ export function parseGlslDocument(
     // Keep normal source maps and macro indexing for these valid empty files.
     // Only complete comments are stripped; an unterminated comment still
     // reaches the parser and reports its real syntax error.
-    const activeSource = processedSource.replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, '').trim();
+    const activeSource = stripComments(processedSource).trim();
     if (activeSource.length > 0) {
       parsed = parse(processedSource, {
         includeLocation: true,
@@ -1805,6 +1805,34 @@ function clampCharacter(character: number, line: string | undefined): number {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripComments(source: string): string {
+  let output = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith("//", index)) {
+      const newline = source.indexOf("\n", index + 2);
+      if (newline === -1) {
+        break;
+      }
+      output += "\n";
+      index = newline + 1;
+      continue;
+    }
+    if (source.startsWith("/*", index)) {
+      const end = source.indexOf("*/", index + 2);
+      if (end === -1) {
+        output += source.slice(index);
+        break;
+      }
+      index = end + 2;
+      continue;
+    }
+    output += source[index];
+    index++;
+  }
+  return output;
 }
 
 function freezeRange(range: Range): Range {

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { jsonLanguageConfiguration, jsonLanguageDefinition } from '../json-language';
 
 describe('JSON Monarch language', () => {
-  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api.js');
+  let monaco: typeof import('monaco-editor/editor/editor.api.js');
 
   beforeAll(async () => {
     // jsdom ships no CSS.escape; Monaco's theme service needs one to build class names.
@@ -17,7 +17,7 @@ describe('JSON Monarch language', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })));
-    monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
+    monaco = await import('monaco-editor/editor/editor.api.js');
     const { setupMonacoJson } = await import('../setup');
     setupMonacoJson(monaco);
   }, 30_000);

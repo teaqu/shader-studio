@@ -13,7 +13,10 @@ export class WebSocketTransport implements Transport {
 
   constructor() {
     const port = this.getPort();
-    this.url = `ws://localhost:${port}`;
+    const hostname = typeof window !== 'undefined' && window.location?.hostname
+      ? window.location.hostname
+      : 'localhost';
+    this.url = `ws://${hostname}:${port}`;
     this.connect();
   }
 

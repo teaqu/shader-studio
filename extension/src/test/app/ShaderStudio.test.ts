@@ -1159,7 +1159,7 @@ suite('Shader Studio Test Suite', () => {
       const port = 51571;
       const blocker = net.createServer();
 
-      blocker.listen(port, () => {
+      blocker.listen(port, '127.0.0.1', () => {
         const setPortSpy = sandbox.spy(shaderStudio['webServer'], 'setWebSocketPort');
 
         shaderStudio['createWebSocketTransport'](port);
