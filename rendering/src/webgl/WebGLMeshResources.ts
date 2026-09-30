@@ -33,7 +33,9 @@ export class WebGLMeshResources {
 
   public async loadModel(key: string, url: string, meshName?: string): Promise<void> {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Unable to load GLB (${response.status}): ${url}`);
+    if (!response.ok) {
+      throw new Error(`Unable to load GLB (${response.status}): ${url}`);
+    }
     const previous = this.resources.get(key as MeshKind);
     const resource = this.uploadMesh(await loadGlbMesh(new Uint8Array(await response.arrayBuffer()), meshName));
     this.resources.set(key as MeshKind, resource);

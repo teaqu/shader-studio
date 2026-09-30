@@ -1148,9 +1148,15 @@ describe('ShaderExplorer - State Persistence', () => {
         };
 
         // Simulate state restoration
-        if (savedState.sortBy) sortBy = savedState.sortBy;
-        if (savedState.sortOrder) sortOrder = savedState.sortOrder;
-        if (savedState.pageSize) pageSize = savedState.pageSize;
+        if (savedState.sortBy) {
+            sortBy = savedState.sortBy;
+        }
+        if (savedState.sortOrder) {
+            sortOrder = savedState.sortOrder;
+        }
+        if (savedState.pageSize) {
+            pageSize = savedState.pageSize;
+        }
         if (savedState.cardSize && typeof savedState.cardSize === 'number') {
             cardSize = savedState.cardSize;
         }
@@ -1189,9 +1195,15 @@ describe('ShaderExplorer - State Persistence', () => {
         };
 
         // Simulate state restoration with partial state
-        if (savedState.sortBy) sortBy = savedState.sortBy;
-        if (savedState.sortOrder) sortOrder = savedState.sortOrder;
-        if (savedState.pageSize) pageSize = savedState.pageSize;
+        if (savedState.sortBy) {
+            sortBy = savedState.sortBy;
+        }
+        if (savedState.sortOrder) {
+            sortOrder = savedState.sortOrder;
+        }
+        if (savedState.pageSize) {
+            pageSize = savedState.pageSize;
+        }
         if (savedState.cardSize && typeof savedState.cardSize === 'number') {
             cardSize = savedState.cardSize;
         }
@@ -1218,7 +1230,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         const hoverCanvasWrapper = document.createElement('div');
 
         function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             isHovering = true;
         }
 
@@ -1233,7 +1247,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         const hoverCanvasWrapper = document.createElement('div');
 
         function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             hoverInitCount++;
             isHovering = true;
         }
@@ -1248,7 +1264,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         const hoverCanvasWrapper = null;
 
         function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             isHovering = true;
         }
 
@@ -1264,7 +1282,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         const height = 360;
 
         function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             
             isHovering = true;
             
@@ -1292,7 +1312,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         hoverCanvasWrapper.appendChild(hoverCanvas);
 
         function handleMouseLeave() {
-            if (!isHovering) return;
+            if (!isHovering) {
+                return;
+            }
             cleanupHoverRendering();
         }
 
@@ -1322,7 +1344,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         let cleanupCalled = false;
 
         function handleMouseLeave() {
-            if (!isHovering) return;
+            if (!isHovering) {
+                return;
+            }
             cleanupCalled = true;
         }
 
@@ -1337,14 +1361,18 @@ describe('ShaderPreview - Hover Functionality', () => {
         const hoverCanvasWrapper = document.createElement('div');
 
         function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             isHovering = true;
             hoverCanvas = document.createElement('canvas');
             hoverCanvasWrapper.appendChild(hoverCanvas);
         }
 
         function handleMouseLeave() {
-            if (!isHovering) return;
+            if (!isHovering) {
+                return;
+            }
             isHovering = false;
             if (hoverCanvas && hoverCanvas.parentNode) {
                 hoverCanvas.parentNode.removeChild(hoverCanvas);
@@ -1381,7 +1409,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         }
 
         async function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             
             if (!shaderCode) {
                 await loadShaderCode();
@@ -1408,7 +1438,9 @@ describe('ShaderPreview - Hover Functionality', () => {
         }
 
         async function handleMouseEnter() {
-            if (isHovering || !hoverCanvasWrapper) return;
+            if (isHovering || !hoverCanvasWrapper) {
+                return;
+            }
             
             if (!shaderCode) {
                 await loadShaderCode();

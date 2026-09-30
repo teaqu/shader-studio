@@ -19,5 +19,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const path = require.resolve('monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter.js');
   const source = readFileSync(path, 'utf8');
   const patched = patchWordHighlighter(source);
-  if (patched !== source) writeFileSync(path, patched);
+  if (patched !== source) {
+    writeFileSync(path, patched);
+  }
 }

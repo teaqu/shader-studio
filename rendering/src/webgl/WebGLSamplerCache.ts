@@ -12,10 +12,14 @@ export class WebGLSamplerCache {
   get({ filter, wrap }: BufferSamplerSettings): WebGLSampler | null {
     const key = `${filter}:${wrap}`;
     const cached = this.samplers.get(key);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const sampler = this.gl.createSampler();
-    if (!sampler) return null;
+    if (!sampler) {
+      return null;
+    }
     const glFilter = filter === "nearest" ? this.gl.NEAREST : this.gl.LINEAR;
     const glWrap = wrap === "repeat" ? this.gl.REPEAT : this.gl.CLAMP_TO_EDGE;
     this.gl.samplerParameteri(sampler, this.gl.TEXTURE_MAG_FILTER, glFilter);

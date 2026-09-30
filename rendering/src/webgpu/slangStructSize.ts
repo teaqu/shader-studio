@@ -61,7 +61,9 @@ export function parseSlangStructs(sources: string[]): Map<string, { size: number
       const fields: Array<{ type: string; arrayCount?: number }> = [];
       for (const line of body.split(";")) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed) {
+          continue;
+        }
         const fieldMatch = trimmed.match(/^\s*(\w+(?:\s*<\s*\w+\s*,\s*\d+\s*>)?(?:\s*\[(\d+)\])?)\s+(\w+)\s*$/);
         if (fieldMatch) {
           const type = fieldMatch[1]!.replace(/\s+/g, "");
@@ -79,7 +81,9 @@ export function parseSlangStructs(sources: string[]): Map<string, { size: number
   while (changed) {
     changed = false;
     for (const [name, info] of structs) {
-      if (sizes.has(name)) continue;
+      if (sizes.has(name)) {
+        continue;
+      }
       const result = computeStructLayout(info.fields, sizes);
       if (result) {
         sizes.set(name, result);
@@ -109,7 +113,9 @@ function computeStructLayout(
     if (!layout && known.has(resolvedType)) {
       layout = known.get(resolvedType)!;
     }
-    if (!layout) return null; // unresolved type
+    if (!layout) {
+      return null;
+    } // unresolved type
 
     offset = alignUp(offset, layout.alignment);
     offset += layout.size * count;

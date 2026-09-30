@@ -831,13 +831,19 @@
     languageServiceStatus = "pending";
     void (async () => {
       await controller.syncEnvironment(environment);
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       if (transport.getWorkspaceDocuments) {
         const workspaceDocuments = await transport.getWorkspaceDocuments(language);
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         await controller.syncEnvironment({ ...environment, workspaceDocuments });
       }
-      if (!cancelled) languageServiceStatus = "ready";
+      if (!cancelled) {
+        languageServiceStatus = "ready";
+      }
     })().catch((error: unknown) => {
       if (!cancelled) {
         languageServiceStatus = "error";

@@ -30,13 +30,17 @@
   }
 
   function updateBufferFilter(event: Event) {
-    if (tempInput?.type !== "buffer") return;
+    if (tempInput?.type !== "buffer") {
+      return;
+    }
     const filter = (event.currentTarget as HTMLSelectElement).value as "linear" | "nearest";
     onSelect({ ...tempInput, filter });
   }
 
   function updateBufferWrap(event: Event) {
-    if (tempInput?.type !== "buffer") return;
+    if (tempInput?.type !== "buffer") {
+      return;
+    }
     const wrap = (event.currentTarget as HTMLSelectElement).value as "repeat" | "clamp";
     onSelect({ ...tempInput, wrap });
   }

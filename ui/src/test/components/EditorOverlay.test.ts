@@ -247,14 +247,18 @@ describe('EditorOverlay', () => {
       const controllers = await import('@shader-studio/monaco');
       const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
       const finishSyncs: Array<() => void> = [];
-      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => { finishSyncs.push(resolve); }));
+      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => {
+        finishSyncs.push(resolve);
+      }));
 
       await rerender({ shaderPath: '/after.slang', shaderCode: 'float4 mainImage() { return 1; }' });
       await tick();
       const wrapper = container.querySelector('.editor-wrapper');
       expect(wrapper).toHaveAttribute('data-language-service-status', 'pending');
 
-      for (const finishSync of finishSyncs) finishSync();
+      for (const finishSync of finishSyncs) {
+        finishSync();
+      }
       await Promise.resolve();
       await tick();
       expect(wrapper).toHaveAttribute('data-language-service-status', 'ready');
@@ -265,7 +269,9 @@ describe('EditorOverlay', () => {
       const controllers = await import('@shader-studio/monaco');
       const controller = vi.mocked(controllers.setupMonacoLanguageServices).mock.results.at(-1)!.value;
       const finishSyncs: Array<() => void> = [];
-      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => { finishSyncs.push(resolve); }));
+      controller.syncEnvironment.mockImplementation(() => new Promise<void>(resolve => {
+        finishSyncs.push(resolve);
+      }));
       const getWorkspaceDocuments = vi.fn().mockResolvedValue([]);
 
       await rerender({ shaderPath: '/after.slang', shaderCode: 'float4 mainImage() { return 1; }', transport: { ...mockTransport, getWorkspaceDocuments } });
@@ -281,7 +287,9 @@ describe('EditorOverlay', () => {
       expect(controller.syncEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceDocuments: [] }));
       expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'pending');
 
-      for (const finishSync of finishSyncs) finishSync();
+      for (const finishSync of finishSyncs) {
+        finishSync();
+      }
       await Promise.resolve();
       await tick();
       expect(container.querySelector('.editor-wrapper')).toHaveAttribute('data-language-service-status', 'ready');

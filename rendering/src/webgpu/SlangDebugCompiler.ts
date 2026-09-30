@@ -10,7 +10,9 @@ export class SlangDebugCompiler {
 
   async compile(plan: DebugInstrumentationPlan): Promise<SlangDebugCompileResult> {
     const root = plan.files.find((file) => file.uri === plan.rootUri);
-    if (!root) return { success: false, diagnostics: [diagnostic(plan.selectedSourceUri, "The Slang debug plan root is missing.")] };
+    if (!root) {
+      return { success: false, diagnostics: [diagnostic(plan.selectedSourceUri, "The Slang debug plan root is missing.")] };
+    }
     const result = this.compiler.compileImagePass(root.source, {
       passName: root.ownerPass,
       sourcePath: root.path,
