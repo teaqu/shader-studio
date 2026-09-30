@@ -158,6 +158,107 @@ describe('VirtualWorkspace', () => {
     expect(workspace.list()).toEqual(seedFiles);
   });
 
+  it('imports into an empty workspace without asking for replacement', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), []);
+    const backup = JSON.stringify({ format: 'shader-studio-workspace', version: 1, files: seedFiles });
+
+    await workspace.importBackup(backup);
+
+    expect(workspace.list()).toEqual(seedFiles);
+  });
+
+  it('reports an error and keeps memory when the store silently drops an imported backup', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    const states: string[] = [];
+    workspace.onPersistenceStatus(status => states.push(status.state));
+    // A write that resolves but leaves the old records behind, as quota or
+    // eviction can on a phone.
+    store.save = async () => {};
+    const backup = JSON.stringify({
+      format: 'shader-studio-workspace', version: 1,
+      files: [{ path: '/shaders/imported.glsl', contents: 'imported', createdAt: 1, modifiedAt: 1 }],
+    });
+
+    await expect(workspace.importBackup(backup, { replace: true })).rejects.toThrow('did not persist the imported backup');
+
+    expect(workspace.list()).toEqual(seedFiles);
+    expect(workspace.persistenceStatus).toMatchObject({ state: 'error', error: expect.objectContaining({ message: expect.stringContaining('did not persist') }) });
+    expect(states.slice(-2)).toEqual(['saving', 'error']);
+  });
+
+  it('wraps a non-Error import failure so the status always carries an Error', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    store.save = () => Promise.reject('quota exceeded');
+    const backup = JSON.stringify({ format: 'shader-studio-workspace', version: 1, files: [] });
+
+    await expect(workspace.importBackup(backup, { replace: true })).rejects.toThrow('quota exceeded');
+
+    expect(workspace.persistenceStatus.error).toBeInstanceOf(Error);
+  });
+
+  it('recovers to saved after a failed import once a later edit persists', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    const save = store.save.bind(store);
+    store.save = async () => {
+      throw new Error('disk full');
+    };
+    await expect(workspace.importBackup(JSON.stringify({ format: 'shader-studio-workspace', version: 1, files: [] }), { replace: true }))
+      .rejects.toThrow('disk full');
+    store.save = save;
+
+    workspace.writeText('/shaders/first.glsl', 'after');
+    await workspace.flush();
+
+    expect(workspace.persistenceStatus).toEqual({ state: 'saved' });
+    expect((await VirtualWorkspace.open(store, [])).readText('/shaders/first.glsl')).toBe('after');
+  });
+
+  it('reports a failed clear and rethrows it', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    store.clear = async () => {
+      throw new Error('storage locked');
+    };
+
+    await expect(workspace.clear()).rejects.toThrow('storage locked');
+
+    expect(workspace.persistenceStatus).toMatchObject({ state: 'error', error: expect.objectContaining({ message: 'storage locked' }) });
+  });
+
+  it('wraps a non-Error clear failure', async () => {
+    const store = new MemoryWorkspaceStore();
+    const workspace = await VirtualWorkspace.open(store, seedFiles);
+    store.clear = () => Promise.reject('locked');
+
+    await expect(workspace.clear()).rejects.toThrow('locked');
+
+    expect(workspace.persistenceStatus.error).toBeInstanceOf(Error);
+  });
+
+  it('stops notifying a persistence listener after it detaches', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const states: string[] = [];
+    const detach = workspace.onPersistenceStatus(status => states.push(status.state));
+    expect(states).toEqual(['saved']);
+    detach();
+
+    workspace.writeText('/shaders/first.glsl', 'edited');
+    await workspace.flush();
+
+    expect(states).toEqual(['saved']);
+  });
+
+  it('hands out copies of the status so callers cannot mutate it', async () => {
+    const workspace = await VirtualWorkspace.open(new MemoryWorkspaceStore(), seedFiles);
+    const status = workspace.persistenceStatus;
+    status.state = 'error';
+
+    expect(workspace.persistenceStatus.state).toBe('saved');
+  });
+
   it('coalesces queued saves so a typing burst writes once more, not once each', async () => {
     // Every save carries a complete snapshot, so a queued-but-unstarted write
     // is superseded by the next one. Without coalescing, N keystrokes queue N
