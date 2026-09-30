@@ -426,6 +426,10 @@ module.exports = Object.freeze({
   "2f5f0269417db35f077bfbabb00a24e418167295c777fb6332794e6ed3333026": async (vscode) => {
       await vscode.commands.executeCommand('notifications.clearAll');
     },
+  "3141f04707c4d9f4df99f66fdf840a5367ed44f5789964559c6c84e372c3fec7": async (vscode, port) => {
+      await vscode.workspace.getConfiguration('shader-studio').update('webServerPort', port, vscode.ConfigurationTarget.Global);
+      await vscode.commands.executeCommand('shader-studio.startWebServer');
+    },
   "31458b8067b74e2dda8fc2fc8da01e9ec3272404da0576ec3c1cecbe52aa18a5": async (api, path) => {
         const document = await api.workspace.openTextDocument(api.Uri.file(path));
         await api.window.showTextDocument(document, {
@@ -777,6 +781,10 @@ module.exports = Object.freeze({
   "53f9b9ee9ebcf82b88e983eac71ae8642e5667eb7d958e0815db88455b0bcf23": async (vscode) => {
         await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       },
+  "542f71541316228ba880b12a950b66a6307c41dab6d271359e9fcaedaf385b05": async vscode => {
+      await vscode.commands.executeCommand('shader-studio.stopWebServer');
+      await vscode.commands.executeCommand('shader-studio.startWebServer');
+    },
   "5552a4d38803df0de1c20b0e448aa4a7cddc9ed2218a299577892050da54c081": async (vscode, targetPath, line) => {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(targetPath));
       const editor = await vscode.window.showTextDocument(document, {
@@ -1119,6 +1127,9 @@ module.exports = Object.freeze({
       await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
       return true;
     },
+  "814a82a87591db7e496a9d8d1b3444a9f63e4e98b9908e2c35a69b7646e6565c": async (vscode, port) => {
+      await vscode.workspace.getConfiguration('shader-studio').update('webServerPort', port, vscode.ConfigurationTarget.Global);
+    },
   "822685956d0c7392d5a8c543fbf4009efb42a299b6e100a909a30cbe4c674a6f": async (vscode, path, line) => {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
     const editor = await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
@@ -1242,6 +1253,11 @@ module.exports = Object.freeze({
   "965e32fc8ceab4808187bfbbb182f6a5adce3281e02ac328661b8c65c72c2a4e": (vscode, path) =>
       vscode.languages.getDiagnostics(vscode.Uri.file(path)).filter(d => d.severity === vscode.DiagnosticSeverity.Error)
         .map(d => ({ line: d.range.start.line, column: d.range.start.character })),
+  "96a8732af5cbd7c325801e90ff0f07356bc143b1a4aef8d86f9852fb6dd5cb9f": async (vscode, port) => {
+      await vscode.workspace.getConfiguration('shader-studio').update(
+        'webServerPort', port, vscode.ConfigurationTarget.Global,
+      );
+    },
   "989e495eaf284c6480523aaad48fd2331291517d2116a7b223af514d8026c7a1": async vscode => vscode.commands.executeCommand('editor.action.triggerSuggest'),
   "995fa1dfa7fdcd4e53414d659e0cf1344c336193060365925d055589829b7803": async (vscode, documentUri) => vscode.languages.getDiagnostics(vscode.Uri.parse(documentUri))
     .filter((item) => item.severity === vscode.DiagnosticSeverity.Error)
@@ -1485,6 +1501,10 @@ module.exports = Object.freeze({
       await vscode.window.showTextDocument(document, {
         preview: false
       });
+    },
+  "bac8baf0d7743015fc5e1c36ed865405d90a486f19780799241553a312f5fb2e": async vscode => {
+      await vscode.commands.executeCommand('shader-studio.stopWebServer');
+      await vscode.workspace.getConfiguration('shader-studio').update('webServerPort', undefined, vscode.ConfigurationTarget.Global);
     },
   "bcb038547effa9d9e46933285c5ee007e7bb2150dfb2f82810e0307cc841ba92": vscode => vscode.commands.executeCommand('notifications.clearAll'),
   "bdc0f758abedd6665a0da9bf2d5c7f26093eac2e391ba310d8eca9df0c7ed62b": async api => {
@@ -1811,6 +1831,12 @@ module.exports = Object.freeze({
   "eb390b6469bef1b39caf004ae3cace9e36712738115121016e3d97dfda034370": vscode => vscode.window.tabGroups.all
       .filter(group => group.tabs.some(tab => tab.label === 'Shader Studio'))
       .map(group => group.tabs.map(tab => tab.label)),
+  "eb4dbf739c36729f26d1f23823db87a8c20145721542309952453845d3fddb8a": async (vscode, port) => {
+      await vscode.workspace.getConfiguration('shader-studio').update(
+        'webServerPort', port, vscode.ConfigurationTarget.Global,
+      );
+      await vscode.commands.executeCommand('shader-studio.startWebServer');
+    },
   "ed659546f27ad4dbf919dde963b996633997152a0e51845e67a76cad5ab13372": async (vscode, paths) => {
           for (const path of paths) {
             const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
@@ -1870,6 +1896,12 @@ module.exports = Object.freeze({
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(new vscode.Range(position, position));
         },
+  "f2c9c99a19ebd72c516169e345d52980664c0e13a258c71e7408c5eb03eb03b6": async vscode => {
+      await vscode.commands.executeCommand('shader-studio.stopWebServer');
+      await vscode.workspace.getConfiguration('shader-studio').update(
+        'webServerPort', undefined, vscode.ConfigurationTarget.Global,
+      );
+    },
   "f33bfda2b241c68373be4f926e5f39662ccd148f6f6f1b44e00203c810551906": async (vscode, paths, source) => {
           await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({
             version: '1.0',
