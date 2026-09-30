@@ -1,0 +1,38 @@
+name: Soak issue 270 (extension mocha)
+
+# Temporary: separate branch so re-running this does not cancel the rendering soak.
+on:
+  push:
+    branches:
+      - claude/issue-270-soak-ext
+
+permissions:
+  contents: read
+
+jobs:
+  extension-tests:
+    name: Extension mocha suite (real VS Code) x2
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node ui/scripts/ensure-slang-wasm.mjs
+      - run: npm run build:deps -w extension
+      - name: Run extension tests
+        shell: bash
+        run: |
+          set +e
+          fails=0
+          for i in 1 2; do
+            xvfb-run -a npm test -w extension > "ext-$i.log" 2>&1
+            rc=$?
+            echo "run $i exit $rc, log lines $(wc -l < "ext-$i.log")"
+            node .github/soak/annotate.mjs "ext-$i.log" "extension mocha run $i" "$rc"
+            [ "$rc" -ne 0 ] && fails=$((fails+1))
+          done
+          [ "$fails" -eq 0 ]
