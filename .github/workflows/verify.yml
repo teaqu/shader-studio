@@ -101,7 +101,7 @@ jobs:
         run: npm run check -w ui
 
       - name: Run CI helper contract tests
-        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs
+        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs extension/e2e/pw/bridge-extension/*.test.mjs
 
       - name: Run Open VSX publishing-script regression tests
         run: bash .github/scripts/test-publish-open-vsx.sh

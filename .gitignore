@@ -30,6 +30,7 @@ coverage/
 .history/
 .github/*
 !.github/CODEOWNERS
+!.github/dependabot.yml
 !.github/workflows/
 !.github/workflows/docs.yml
 !.github/workflows/release-extension.yml
