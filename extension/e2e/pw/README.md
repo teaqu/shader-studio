@@ -42,10 +42,14 @@ per step.
   inherit each other's window state - without it the language-server toggles
   left by one spec broke another. A few language variants share one key inside
   a spec after explicitly closing their editors and preview between cases.
-- Two workers, so spec files run in parallel while tests inside a file stay
-  serial. Measured locally: 1 worker 23.0s, 2 workers 14.7s, 4 workers 15.6s -
-  with only four spec files the extra windows buy nothing. Parallel windows
+- Two workers, locally and on CI, so spec files run in parallel while tests
+  inside a file stay serial. On the ci-runner Mac two workers took the `@gpu`
+  selection from 245s to 133s and the rest from 168s to 95s. Parallel windows
   overlap, so the occluded-window flags below are what make this safe.
+- The dedup spec keeps its 24-input journey in the VS Code webview. Its
+  browser-connected journey uses the small `dedup-browser` fixture: 24 textures
+  in a second Chromium starved the other worker's capture loop on the hosted
+  macOS GPU, which is why CI once ran a single worker.
 - Only the dedup spec needs a Playwright browser. Everything else drives VS
   Code's own Electron through `_electron.launch()`; that spec additionally
   opens the browser-connected UI, so run `npx playwright install chromium`
