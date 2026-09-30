@@ -1,0 +1,35 @@
+name: Attribution
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: No AI tool attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Test the checker
+        run: node --test .githooks/check-attribution.test.mjs
+
+      # PR text reaches the script through the environment, never the shell.
+      - name: Check commits, branch, title and description
+        env:
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: >-
+          node .githooks/check-attribution.mjs
+          --range "$RANGE"
+          --branch "$BRANCH"
+          --text "PR title=$TITLE"
+          --text "PR description=$BODY"

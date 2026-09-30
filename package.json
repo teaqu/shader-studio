@@ -36,7 +36,8 @@
     "test": "vitest run",
     "clean": "rimraf extension/node_modules extension/dist extension/out ui/node_modules ui/dist types/node_modules types/dist",
     "watch:extension": "npm run watch -w extension",
-    "postinstall": "node monaco/scripts/patch-word-highlighter.mjs"
+    "postinstall": "node monaco/scripts/patch-word-highlighter.mjs",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "@tsconfig/svelte": "^5.0.4",
