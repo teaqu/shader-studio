@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createPwaController } from '../pwa';
+import { browserPwaEnvironment, createPwaController } from '../pwa';
 import { isOptionalCompilerAsset, serviceWorkerSource } from '../pwaBuild';
 
 interface ManifestIcon {
@@ -70,6 +70,11 @@ function environment() {
       createMessageChannel: () => new MessageChannel(),
     },
   };
+}
+
+/** Close any ports a test left open so Node can exit cleanly. */
+function dispose(controller: { dispose(): void }): void {
+  controller.dispose();
 }
 
 describe('PWA controller', () => {
@@ -179,6 +184,252 @@ describe('PWA controller', () => {
     expect(setup.active.postMessage).toHaveBeenCalledWith({ type: 'PREPARE_OFFLINE' }, expect.any(Array));
     expect(setup.active.postMessage).toHaveBeenCalledWith({ type: 'CANCEL_PREPARE_OFFLINE' });
     expect(setup.activePostMessage.mock.calls.filter(([message]) => message.type === 'PREPARE_OFFLINE')).toHaveLength(2);
+  });
+});
+
+describe('PWA controller lifecycle branches', () => {
+  it('follows connectivity changes', async () => {
+    const setup = environment();
+    let online = true;
+    setup.environment.online = () => online;
+    const controller = createPwaController(setup.environment);
+    const states: { online: boolean }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+
+    online = false;
+    setup.listeners.get('offline')?.(new Event('offline'));
+    online = true;
+    setup.listeners.get('online')?.(new Event('online'));
+
+    expect(states.map((state) => state.online).slice(-2)).toEqual([false, true]);
+  });
+
+  it('offers an update that finishes installing while the app is open', async () => {
+    const setup = environment();
+    (setup.registration as { waiting: ServiceWorker | null }).waiting = null;
+    const controller = createPwaController(setup.environment);
+    const states: { updateAvailable: boolean }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+    expect(states.at(-1)?.updateAvailable).toBe(false);
+
+    const stateListeners: EventListener[] = [];
+    const installing = { state: 'installing', addEventListener: (_type: string, listener: EventListener) => stateListeners.push(listener) };
+    (setup.registration as { installing: unknown }).installing = installing;
+    setup.workerListeners.get('updatefound')?.(new Event('updatefound'));
+    stateListeners.forEach((listener) => listener(new Event('statechange')));
+    expect(states.at(-1)?.updateAvailable).toBe(false);
+
+    installing.state = 'installed';
+    (setup.registration as { waiting: unknown }).waiting = { postMessage: vi.fn() };
+    stateListeners.forEach((listener) => listener(new Event('statechange')));
+
+    expect(states.at(-1)?.updateAvailable).toBe(true);
+  });
+
+  it('ignores an update search that finds nothing installing', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+
+    expect(() => setup.workerListeners.get('updatefound')?.(new Event('updatefound'))).not.toThrow();
+  });
+
+  it('does nothing when asked to apply an update that is not waiting', async () => {
+    const setup = environment();
+    (setup.registration as { waiting: ServiceWorker | null }).waiting = null;
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+
+    await controller.applyUpdate();
+    setup.listeners.get('controllerchange')?.(new Event('controllerchange'));
+
+    expect(setup.environment.reload).not.toHaveBeenCalled();
+  });
+
+  it('keeps the known build when a later identity check fails', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    const states: { buildId: string | null }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+    setup.environment.fetchBuildIdentity.mockResolvedValueOnce(null);
+
+    await controller.checkForUpdate();
+
+    expect(states.at(-1)?.buildId).toBe('build-123');
+  });
+
+  it('skips the offline status check and preparation until a worker is active', async () => {
+    const setup = environment();
+    (setup.registration as { active: ServiceWorker | null }).active = null;
+    const controller = createPwaController(setup.environment);
+    const states: { offlinePreparation: unknown }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+
+    await controller.prepareOffline();
+
+    expect(setup.activePostMessage).not.toHaveBeenCalled();
+    expect(states.at(-1)?.offlinePreparation).toEqual({ state: 'idle' });
+  });
+
+  it('leaves preparation idle when the worker says compilers are not ready, and ignores malformed status replies', async () => {
+    const setup = environment();
+    const ports: MessagePort[] = [];
+    setup.environment.createMessageChannel = () => {
+      const channel = new MessageChannel();
+      ports.push(channel.port1);
+      return channel;
+    };
+    const controller = createPwaController(setup.environment);
+    const states: { offlinePreparation: unknown }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+
+    ports[0].onmessage?.({ data: { type: 'offline-status', ready: 'yes' } } as MessageEvent);
+    ports[0].onmessage?.({ data: { type: 'progress', ready: true } } as MessageEvent);
+    ports[0].onmessage?.({ data: { type: 'offline-status', ready: false } } as MessageEvent);
+
+    expect(states.every((state) => (state.offlinePreparation as { state: string }).state === 'idle')).toBe(true);
+    dispose(controller);
+  });
+
+  it('starts only one preparation at a time', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    setup.activePostMessage.mockClear();
+
+    await controller.prepareOffline();
+    await controller.prepareOffline();
+
+    expect(setup.activePostMessage.mock.calls.filter(([message]) => message.type === 'PREPARE_OFFLINE')).toHaveLength(1);
+    dispose(controller);
+  });
+
+  it.each([
+    ['a worker error message', { type: 'error', message: 'Could not cache assets/slang.wasm' }, 'Could not cache assets/slang.wasm'],
+    ['a default when the worker gives none', { type: 'error' }, 'Could not prepare offline compilers.'],
+  ])('reports %s', async (_label, reply, message) => {
+    const setup = environment();
+    let port: MessagePort | undefined;
+    setup.environment.createMessageChannel = () => {
+      const channel = new MessageChannel();
+      port = channel.port1;
+      return channel;
+    };
+    const controller = createPwaController(setup.environment);
+    const states: { offlinePreparation: unknown }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+    await controller.prepareOffline();
+
+    port?.onmessage?.({ data: reply } as MessageEvent);
+
+    expect(states.at(-1)?.offlinePreparation).toEqual({ state: 'error', message });
+  });
+
+  it('ignores preparation replies it does not understand and keeps waiting', async () => {
+    const setup = environment();
+    let port: MessagePort | undefined;
+    setup.environment.createMessageChannel = () => {
+      const channel = new MessageChannel();
+      port = channel.port1;
+      return channel;
+    };
+    const controller = createPwaController(setup.environment);
+    const states: { offlinePreparation: unknown }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+    await controller.prepareOffline();
+    const count = states.length;
+
+    port?.onmessage?.({ data: { type: 'progress', completed: '1', total: 2 } } as MessageEvent);
+    port?.onmessage?.({ data: { type: 'unknown' } } as MessageEvent);
+    port?.onmessage?.({ data: { type: 'complete' } } as MessageEvent);
+
+    expect(states.length).toBe(count + 1);
+    expect(states.at(-1)?.offlinePreparation).toEqual({ state: 'ready' });
+  });
+
+  it('treats cancel with nothing in progress as a no-op', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    await controller.start();
+    setup.activePostMessage.mockClear();
+
+    controller.cancelOfflinePreparation();
+
+    expect(setup.activePostMessage).not.toHaveBeenCalled();
+  });
+
+  it('detaches listeners on dispose and does not start afterwards', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    const listener = vi.fn();
+    controller.subscribe(listener);
+    await controller.start();
+
+    controller.dispose();
+    listener.mockClear();
+    await controller.start();
+
+    expect(setup.environment.removeEventListener).toHaveBeenCalledWith('online', expect.any(Function));
+    expect(setup.environment.removeEventListener).toHaveBeenCalledWith('offline', expect.any(Function));
+    expect(setup.environment.serviceWorker.removeEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function));
+    expect(setup.environment.serviceWorker.register).toHaveBeenCalledOnce();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops notifying a subscriber after it unsubscribes', async () => {
+    const setup = environment();
+    const controller = createPwaController(setup.environment);
+    const listener = vi.fn();
+    const unsubscribe = controller.subscribe(listener);
+    unsubscribe();
+    listener.mockClear();
+
+    await controller.start();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('browser PWA environment', () => {
+  const buildIdentity = async (response: Response | Error) => {
+    const fetch = vi.fn(() => response instanceof Error ? Promise.reject(response) : Promise.resolve(response));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      return { id: await browserPwaEnvironment().fetchBuildIdentity?.(), fetch };
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it('reads the build id from app-build.json beside the app, bypassing the HTTP cache', async () => {
+    const { id, fetch } = await buildIdentity(new Response(JSON.stringify({ buildId: 'abc-123' })));
+
+    expect(id).toBe('abc-123');
+    expect(fetch).toHaveBeenCalledWith(new URL('app-build.json', document.baseURI), { cache: 'no-store' });
+  });
+
+  it.each([
+    ['a missing file', new Response('missing', { status: 404 })],
+    ['a non-string id', new Response(JSON.stringify({ buildId: 7 }))],
+    ['invalid JSON', new Response('{bad')],
+    ['a network failure', new TypeError('Failed to fetch')],
+  ])('treats %s as an unknown build', async (_label, response) => {
+    expect((await buildIdentity(response)).id).toBeNull();
+  });
+
+  it('reflects the browser connection and document location', () => {
+    const environment = browserPwaEnvironment();
+
+    expect(environment.online()).toBe(navigator.onLine);
+    expect(environment.baseUrl).toBe(document.baseURI);
+    expect(environment.createMessageChannel()).toBeInstanceOf(MessageChannel);
   });
 });
 

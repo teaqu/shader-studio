@@ -43,7 +43,8 @@ export interface PwaEnvironment {
   createMessageChannel(): MessageChannel;
 }
 
-function defaultEnvironment(): PwaEnvironment {
+/** The real browser wiring; exported so its fetch and parsing can be tested. */
+export function browserPwaEnvironment(): PwaEnvironment {
   return {
     serviceWorker: navigator.serviceWorker,
     online: () => navigator.onLine,
@@ -68,7 +69,7 @@ function defaultEnvironment(): PwaEnvironment {
   };
 }
 
-export function createPwaController(environment: PwaEnvironment = defaultEnvironment()): PwaController {
+export function createPwaController(environment: PwaEnvironment = browserPwaEnvironment()): PwaController {
   let registration: ServiceWorkerRegistration | undefined;
   let disposed = false;
   let applyingUpdate = false;
