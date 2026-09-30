@@ -88,6 +88,7 @@ function createStorage(): Storage {
 describe('standalone App', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    layoutStub.selectEditor.mockReset();
     layoutStub.openEditor.mockReset();
     layoutStub.showPanel.mockReset();
     layoutStub.togglePanel.mockReset();
@@ -293,6 +294,145 @@ describe('standalone App', () => {
     await tick();
     expect(layoutStub.openEditor).toHaveBeenCalledWith('/shaders/mobile.glsl');
     expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
+  });
+
+  it('switches to the Editor panel when a shader is selected on a phone', async () => {
+    layoutStub.isMobileLayout.mockReturnValue(true);
+    render(App, { props: { transport: createTransport() } });
+
+    selectEditor('/shaders/picked.glsl');
+    await tick();
+
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectMobilePanel).toHaveBeenLastCalledWith('editor');
+    expect(getSelectedEditor()).toBeNull();
+  });
+
+  it('keeps the desktop layout when a shader is selected on a wide screen', async () => {
+    render(App, { props: { transport: createTransport() } });
+
+    selectEditor('/shaders/picked.glsl');
+    await tick();
+
+    expect(layoutStub.selectEditor).toHaveBeenCalledWith('/shaders/picked.glsl');
+    expect(layoutStub.selectMobilePanel).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed export without downloading anything', async () => {
+    const transport = createTransport();
+    transport.exportWorkspaceBackup.mockRejectedValueOnce(new Error('read failed'));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(App, { props: { transport } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Export Workspace Backup' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not export the workspace. Your current work was not changed.');
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  function chooseBackup(container: HTMLElement, files: { text(): Promise<string> }[]) {
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { configurable: true, value: files });
+    return fireEvent.change(input);
+  }
+
+  it('does not import when the replacement is not confirmed', async () => {
+    const transport = createTransport();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, [{ text: vi.fn().mockResolvedValue('{}') }]);
+
+    expect(confirm).toHaveBeenCalledWith('Replace this browser workspace with the selected backup?');
+    expect(transport.importWorkspaceBackup).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for confirmation when no backup file was chosen', async () => {
+    const transport = createTransport();
+    const confirm = vi.spyOn(window, 'confirm');
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, []);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(transport.importWorkspaceBackup).not.toHaveBeenCalled();
+  });
+
+  it('shows a general message when an import fails without an error message', async () => {
+    const transport = createTransport();
+    transport.importWorkspaceBackup.mockRejectedValueOnce('nope');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { container } = render(App, { props: { transport } });
+
+    await chooseBackup(container, [{ text: vi.fn().mockResolvedValue('{}') }]);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not import the workspace. Your current work was not changed.');
+  });
+
+  it('does not apply an update when pending work cannot be saved first', async () => {
+    const transport = createTransport();
+    transport.flush.mockRejectedValueOnce(new Error('quota'));
+    const pwa = createPwa({ updateAvailable: true });
+    render(App, { props: { transport, pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Update ready' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not save pending work, so the update was not applied.');
+    expect(pwa.applyUpdate).not.toHaveBeenCalled();
+  });
+
+  it('shows download progress with a cancel action while compilers are downloading', async () => {
+    const pwa = createPwa({ offlinePreparation: { state: 'preparing', completed: 1, total: 3 } });
+    render(App, { props: { transport: createTransport(), pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel Offline Preparation (1/3)' }));
+
+    expect(pwa.cancelOfflinePreparation).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['a failed', { state: 'error', message: 'Could not cache assets/slang.wasm' }],
+    ['a cancelled', { state: 'cancelled' }],
+  ] as const)('offers a retry after %s compiler download', async (_label, offlinePreparation) => {
+    const pwa = createPwa({ offlinePreparation });
+    render(App, { props: { transport: createTransport(), pwa } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Retry offline compiler download' }));
+
+    expect(pwa.retryOfflinePreparation).toHaveBeenCalledOnce();
+    expect(pwa.prepareOffline).not.toHaveBeenCalled();
+  });
+
+  it('hides the compiler download once compilers are ready offline', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ offlinePreparation: { state: 'ready' } }) } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    expect(screen.queryByRole('button', { name: /offline/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check for Updates' })).toBeTruthy();
+  });
+
+  it('hides update and offline actions where service workers are unavailable', async () => {
+    render(App, { props: { transport: createTransport(), pwa: createPwa({ supported: false }) } });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    expect(screen.queryByRole('button', { name: 'Check for Updates' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /offline/i })).toBeNull();
+  });
+
+  it('closes open menus on Escape but not on other keys', async () => {
+    render(App, { props: { transport: createTransport() } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Workspace' }));
+
+    await fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByRole('menu', { name: 'Workspace' })).toBeTruthy();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu', { name: 'Workspace' })).toBeNull();
   });
 
   it('creates a shader when requested by the explorer and closes it after submission or cancellation', async () => {
