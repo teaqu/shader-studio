@@ -197,7 +197,12 @@ export class MonacoLanguageServiceManager {
     }));
     this.disposables.push(languages.registerHoverProvider(language, {
       provideHover: async (model, position) => {
-        const result = await this.request(model, (service, revision) => service.hover({ document: revision, position: toLspPosition(position) }), null);
+        const result = await this.request(
+          model,
+          (service, revision) => service.hover({ document: revision, position: toLspPosition(position) }),
+          null,
+          { waitForEnvironment: true },
+        );
         return result ? { contents: [{ value: hoverValue(result.contents) }], range: result.range ? toMonacoRange(this.monaco, result.range) : undefined } : null;
       },
     }));

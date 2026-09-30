@@ -1,9 +1,19 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { WebServer } from '../../app/WebServer';
+import {
+  WebServer,
+  collectTextureRoots,
+  getTextureCorsHeaders,
+  openRegularFile,
+  parseRange,
+  resolveSafeTexturePath,
+  resolveSafeUiAsset,
+} from '../../app/WebServer';
 import { EventEmitter } from 'stream';
 const proxyquire = require('proxyquire');
 
@@ -72,7 +82,8 @@ suite('WebServer Test Suite', () => {
 
       mockRequest = {
         url: '',
-        method: 'GET'
+        method: 'GET',
+        headers: {},
       } as any;
 
       mockResponse = {
@@ -91,37 +102,270 @@ suite('WebServer Test Suite', () => {
       assert.ok(mockResponse.end.calledWith('Bad Request'));
     });
 
-    test('handles non-existent texture file with 404 error', () => {
+    test('rejects texture files outside workspace roots', () => {
       const texturePath = 'C:\\nonexistent\\path\\texture.png';
       mockRequest.url = `/textures/${encodeURIComponent(texturePath)}`;
 
       (webServer as any).handleTextureRequest(mockRequest, mockResponse);
 
-      assert.ok(mockResponse.writeHead.calledWith(404));
-      assert.ok(mockResponse.end.calledWith('Texture not found'));
+      assert.ok(mockResponse.writeHead.calledWith(403));
+      assert.ok(mockResponse.end.calledWith('Invalid texture path'));
     });
 
-    test('properly decodes URL-encoded file paths', () => {
+    test('rejects URL-encoded paths outside workspace roots', () => {
       const texturePath = 'C:\\path\\with spaces\\texture.png';
       mockRequest.url = `/textures/${encodeURIComponent(texturePath)}`;
 
       (webServer as any).handleTextureRequest(mockRequest, mockResponse);
 
-      // Should attempt to check if file exists (which it won't in test environment)
-      assert.ok(mockResponse.writeHead.calledWith(404));
-      assert.ok(mockResponse.end.calledWith('Texture not found'));
+      assert.ok(mockResponse.writeHead.calledWith(403));
+      assert.ok(mockResponse.end.calledWith('Invalid texture path'));
     });
 
-    test('properly handles special characters in paths', () => {
+    test('rejects special-character paths outside workspace roots', () => {
       const texturePath = 'C:\\path\\with&special#chars\\texture.png';
       mockRequest.url = `/textures/${encodeURIComponent(texturePath)}`;
 
       (webServer as any).handleTextureRequest(mockRequest, mockResponse);
 
-      // Should attempt to check if file exists (which it won't in test environment)
-      assert.ok(mockResponse.writeHead.calledWith(404));
-      assert.ok(mockResponse.end.calledWith('Texture not found'));
+      assert.ok(mockResponse.writeHead.calledWith(403));
+      assert.ok(mockResponse.end.calledWith('Invalid texture path'));
     });
+  });
+
+  suite('Texture path authorization', () => {
+    let fixtureRoot!: string;
+    let outsideRoot!: string;
+
+    setup(() => {
+      fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'shader-studio-texture-root-'));
+      outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'shader-studio-texture-outside-'));
+      fs.writeFileSync(path.join(fixtureRoot, 'texture.png'), 'image');
+      fs.writeFileSync(path.join(outsideRoot, 'secret.png'), 'secret');
+      fs.symlinkSync(path.join(outsideRoot, 'secret.png'), path.join(fixtureRoot, 'escaped.png'));
+    });
+
+    teardown(() => {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+      fs.rmSync(outsideRoot, { recursive: true, force: true });
+    });
+
+    test('allows a real file beneath an allowed root', () => {
+      assert.strictEqual(
+        resolveSafeTexturePath(encodeURIComponent(path.join(fixtureRoot, 'texture.png')), [fixtureRoot]),
+        fs.realpathSync(path.join(fixtureRoot, 'texture.png')),
+      );
+    });
+
+    test('does not pass the requested texture path directly to filesystem APIs', () => {
+      const requestedPath = `${fixtureRoot}${path.sep}${path.sep}texture.png`;
+      const realFs = require('fs');
+      const realpathSync = sandbox.spy(realFs.realpathSync);
+      const { resolveSafeTexturePath: resolveTexturePath } = proxyquire('../../app/WebServer', {
+        fs: Object.assign(Object.create(realFs), { realpathSync }),
+      });
+
+      assert.strictEqual(
+        resolveTexturePath(encodeURIComponent(requestedPath), [fixtureRoot]),
+        fs.realpathSync(path.join(fixtureRoot, 'texture.png')),
+      );
+      assert.ok(!realpathSync.calledWith(requestedPath));
+    });
+
+    for (const unsafePath of [
+      () => '../secret.png',
+      () => '%2e%2e%2fsecret.png',
+      () => '%252e%252e%252fsecret.png',
+      () => path.join(outsideRoot, 'secret.png'),
+      () => 'not%a-valid-encoding',
+    ]) {
+      test('rejects an unsafe texture path', () => {
+        assert.strictEqual(resolveSafeTexturePath(unsafePath(), [fixtureRoot]), undefined);
+      });
+    }
+
+    test('rejects a symlink which escapes an allowed root', () => {
+      assert.strictEqual(
+        resolveSafeTexturePath(encodeURIComponent(path.join(fixtureRoot, 'escaped.png')), [fixtureRoot]),
+        undefined,
+      );
+    });
+
+    test('refuses a symlink swapped in after path validation', async () => {
+      const replacement = path.join(fixtureRoot, 'replacement.png');
+      fs.writeFileSync(replacement, 'safe');
+      const expectedStats = fs.statSync(replacement);
+      fs.unlinkSync(replacement);
+      fs.symlinkSync(path.join(outsideRoot, 'secret.png'), replacement);
+
+      await new Promise<void>((resolve, reject) => {
+        openRegularFile(replacement, expectedStats, (error, fd) => {
+          if (!error) {
+            if (fd !== undefined) {
+              fs.closeSync(fd);
+            }
+            reject(new Error('Expected O_NOFOLLOW to reject the replacement symlink'));
+            return;
+          }
+          resolve();
+        });
+      });
+    });
+
+    test('closes and rejects a file swapped through an intermediate directory', async () => {
+      const nestedRoot = path.join(fixtureRoot, 'nested');
+      const outsideNested = path.join(outsideRoot, 'nested');
+      fs.mkdirSync(nestedRoot);
+      fs.mkdirSync(outsideNested);
+      const requestedFile = path.join(nestedRoot, 'texture.png');
+      fs.writeFileSync(requestedFile, 'safe');
+      const expectedStats = fs.statSync(requestedFile);
+      fs.writeFileSync(path.join(outsideNested, 'texture.png'), 'outside');
+      fs.rmSync(nestedRoot, { recursive: true });
+      fs.symlinkSync(outsideNested, nestedRoot);
+
+      await new Promise<void>((resolve, reject) => {
+        openRegularFile(requestedFile, expectedStats, (error, fd) => {
+          if (!error || fd !== undefined) {
+            reject(new Error('Expected identity validation to reject the swapped directory'));
+            return;
+          }
+          resolve();
+        });
+      });
+    });
+
+    test('rejects a regular file whose descriptor has a different identity', async () => {
+      const original = path.join(fixtureRoot, 'identity.png');
+      const replacement = path.join(fixtureRoot, 'replacement.png');
+      fs.writeFileSync(original, 'safe');
+      fs.writeFileSync(replacement, 'replacement');
+      // Keep both files alive so filesystems cannot reuse the original inode.
+      const expectedStats = fs.statSync(original);
+
+      await new Promise<void>((resolve, reject) => {
+        openRegularFile(replacement, expectedStats, (error, fd) => {
+          if (!error || fd !== undefined) {
+            reject(new Error('Expected descriptor identity validation to reject the replacement file'));
+            return;
+          }
+          resolve();
+        });
+      });
+    });
+  });
+
+  suite('Texture roots', () => {
+    test('uses open shader and config directories when no workspace folder is open', () => {
+      const shaderDirectory = path.join(os.tmpdir(), 'loose-shader');
+      const roots = collectTextureRoots(undefined, [
+        { uri: vscode.Uri.file(path.join(shaderDirectory, 'demo.slang')) },
+        { uri: vscode.Uri.file(path.join(shaderDirectory, 'demo.sha.json')) },
+        { uri: vscode.Uri.file(path.join(os.tmpdir(), 'notes.txt')) },
+        { uri: vscode.Uri.parse('untitled:Untitled-1') },
+      ]);
+
+      assert.deepStrictEqual(roots, [shaderDirectory]);
+    });
+  });
+
+  suite('UI asset authorization', () => {
+    let fixtureRoot!: string;
+    let linkedRoot!: string;
+
+    setup(() => {
+      fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'shader-studio-ui-root-'));
+      linkedRoot = `${fixtureRoot}-link`;
+      fs.writeFileSync(path.join(fixtureRoot, 'index.html'), '<html></html>');
+      fs.symlinkSync(fixtureRoot, linkedRoot);
+    });
+
+    teardown(() => {
+      fs.unlinkSync(linkedRoot);
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    });
+
+    test('serves assets when the installed extension root is reached through a symlink', () => {
+      assert.strictEqual(resolveSafeUiAsset('/', linkedRoot), fs.realpathSync(path.join(fixtureRoot, 'index.html')));
+    });
+
+    test('rejects traversal outside the UI distribution root', () => {
+      assert.strictEqual(resolveSafeUiAsset('/../secret.txt', linkedRoot), undefined);
+    });
+  });
+
+  suite('Texture CORS', () => {
+    test('allows the standalone UI through equivalent loopback hostnames on the server port', () => {
+      assert.deepStrictEqual(getTextureCorsHeaders('http://127.0.0.1:38473', 38473), {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:38473',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        Vary: 'Origin',
+      });
+      assert.deepStrictEqual(getTextureCorsHeaders('http://localhost:38473', 38473), {
+        'Access-Control-Allow-Origin': 'http://localhost:38473',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        Vary: 'Origin',
+      });
+    });
+
+    test('allows VS Code webviews without restoring wildcard browser access', () => {
+      assert.deepStrictEqual(getTextureCorsHeaders('vscode-webview://shader-studio-view', 38473), {
+        'Access-Control-Allow-Origin': 'vscode-webview://shader-studio-view',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        Vary: 'Origin',
+      });
+      assert.deepStrictEqual(getTextureCorsHeaders('https://attacker.example', 38473), {
+        'Cross-Origin-Resource-Policy': 'same-origin',
+      });
+      assert.deepStrictEqual(getTextureCorsHeaders('http://localhost:9999', 38473), {
+        'Cross-Origin-Resource-Policy': 'same-origin',
+      });
+    });
+  });
+
+  suite('Byte ranges', () => {
+    test('rejects suffix ranges for empty files', () => {
+      assert.strictEqual(parseRange('bytes=-1', 0), undefined);
+    });
+
+    test('retains valid bounded and suffix ranges', () => {
+      assert.deepStrictEqual(parseRange('bytes=2-5', 10), { start: 2, end: 5 });
+      assert.deepStrictEqual(parseRange('bytes=-3', 10), { start: 7, end: 9 });
+    });
+
+    for (const method of ['GET', 'HEAD']) {
+      test(`returns 416 for an empty-file suffix range (${method})`, async () => {
+        webServer = new WebServer(mockContext);
+        const emptyFile = path.join(os.tmpdir(), `shader-studio-empty-${process.pid}-${method}`);
+        fs.writeFileSync(emptyFile, '');
+        const fd = fs.openSync(emptyFile, 'r');
+        const response = { writeHead: sandbox.stub(), end: sandbox.stub() } as any;
+
+        try {
+          (webServer as any).handleRangeRequest(
+            { headers: { range: 'bytes=-1' }, method },
+            response,
+            emptyFile,
+            fd,
+            { size: 0 },
+          );
+          await new Promise<void>((resolve) => setImmediate(resolve));
+
+          sinon.assert.calledWith(response.writeHead, 416, { 'Content-Range': 'bytes */0' });
+          sinon.assert.calledOnce(response.end);
+          assert.throws(() => fs.fstatSync(fd), (error: NodeJS.ErrnoException) => error.code === 'EBADF');
+        } finally {
+          try {
+            fs.closeSync(fd);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EBADF') {
+              throw error;
+            }
+          }
+          fs.rmSync(emptyFile, { force: true });
+        }
+      });
+    }
   });
 
   suite('Server Lifecycle', () => {
@@ -359,11 +603,42 @@ suite('WebServer Test Suite', () => {
 
       const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
         'fs': {
+          constants: { O_RDONLY: 0, O_NOFOLLOW: 0 },
           readFile: sandbox.stub().callsFake((_filePath: string, callback: Function) => {
             callback(null, Buffer.from('file content'));
           }),
           existsSync: sandbox.stub().returns(true),
-          statSync: sandbox.stub().returns({ isFile: () => true, size: 12 })
+          statSync: sandbox.stub().returns({ isFile: () => true, size: 12 }),
+          lstatSync: sandbox.stub().callsFake((filePath: string) => ({
+            isFile: () => !filePath.endsWith('/assets'),
+            isDirectory: () => filePath.endsWith('/assets'),
+            dev: 1,
+            ino: 1,
+          })),
+          readdirSync: sandbox.stub().callsFake((directory: string) => {
+            if (directory.endsWith('/assets')) {
+              return [{ name: 'codicon.ttf' }, { name: 'nebula-motion.mp4' }];
+            }
+            return [
+              { name: 'assets' },
+              { name: 'codicon.ttf' },
+              { name: 'font.woff' },
+              { name: 'font.woff2' },
+              { name: 'icon.svg' },
+              { name: 'module.wasm' },
+              { name: 'app.js' },
+              { name: 'style.css' },
+              { name: 'data.json' },
+              { name: 'image.png' },
+              { name: 'photo.jpg' },
+              { name: 'file.xyz' },
+            ];
+          }),
+          realpathSync: sandbox.stub().callsFake((filePath: string) => filePath),
+          realpath: sandbox.stub().callsFake((filePath: string, callback: Function) => callback(null, filePath)),
+          open: sandbox.stub().callsFake((_filePath: string, _flags: number, callback: Function) => callback(null, 1)),
+          fstat: sandbox.stub().callsFake((_fd: number, callback: Function) => callback(null, { isFile: () => true, size: 12, dev: 1, ino: 1 })),
+          close: sandbox.stub().callsFake((_fd: number, callback: Function) => callback())
         },
         'http': {
           createServer: sandbox.stub().callsFake((handler: any) => {
@@ -404,13 +679,6 @@ suite('WebServer Test Suite', () => {
     test('serves .woff2 with font/woff2 content type', () => {
       assert.strictEqual(requestFile('font.woff2'), 'font/woff2');
     });
-
-    for (const extension of ['svg', 'SVG']) {
-      test(`serves SVG texture requests (${extension}) with an image MIME type`, () => {
-        const url = `textures/${encodeURIComponent(`/fixtures/texture.${extension}`)}`;
-        assert.strictEqual(requestFile(url), 'image/svg+xml');
-      });
-    }
 
     test('serves .svg with image/svg+xml content type', () => {
       assert.strictEqual(requestFile('icon.svg'), 'image/svg+xml');
@@ -463,10 +731,18 @@ suite('WebServer Test Suite', () => {
 
       const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
         'fs': {
+          constants: { O_RDONLY: 0, O_NOFOLLOW: 0 },
           readFile: sandbox.stub().callsFake((filePath, callback) => {
             callback(null, Buffer.from('<html><head></head><body></body></html>'));
           }),
-          existsSync: sandbox.stub().returns(true)
+          existsSync: sandbox.stub().returns(true),
+          lstatSync: sandbox.stub().returns({ isFile: () => true, dev: 1, ino: 1 }),
+          readdirSync: sandbox.stub().returns([{ name: 'index.html' }]),
+          realpathSync: sandbox.stub().callsFake((filePath: string) => filePath),
+          realpath: sandbox.stub().callsFake((filePath: string, callback: Function) => callback(null, filePath)),
+          open: sandbox.stub().callsFake((_filePath: string, _flags: number, callback: Function) => callback(null, 1)),
+          fstat: sandbox.stub().callsFake((_fd: number, callback: Function) => callback(null, { isFile: () => true, size: 12, dev: 1, ino: 1 })),
+          close: sandbox.stub().callsFake((_fd: number, callback: Function) => callback())
         },
         'http': {
           createServer: sandbox.stub().callsFake((handler) => {
