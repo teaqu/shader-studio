@@ -66,7 +66,7 @@ import {
 import { shaderStudioBuiltinUniformNames } from '@shader-studio/types';
 
 describe('WGSL Monarch language', () => {
-  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api.js');
+  let monaco: typeof import('monaco-editor/editor/editor.api.js');
 
   beforeAll(async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -74,7 +74,7 @@ describe('WGSL Monarch language', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })));
-    monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
+    monaco = await import('monaco-editor/editor/editor.api.js');
     const { setupMonacoWgsl } = await import('../setup');
     setupMonacoWgsl(monaco);
   }, 30_000);
