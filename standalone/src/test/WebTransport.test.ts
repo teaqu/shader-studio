@@ -144,6 +144,61 @@ describe('WebTransport', () => {
     }, true)).resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: true });
   });
 
+  it('reports unknown eviction protection where the Storage API is missing', async () => {
+    await expect(inspectWorkspaceStorage('indexeddb', undefined, true))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: false });
+  });
+
+  it('reports unknown eviction protection when the browser can request it but not report it', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+
+    await expect(inspectWorkspaceStorage('indexeddb', { persist } as unknown as StorageManager, true))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: null, persistSupported: true });
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('only asks the browser for protection when the user requested it', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const persisted = vi.fn().mockResolvedValue(false);
+
+    await expect(inspectWorkspaceStorage('indexeddb', { persist, persisted }))
+      .resolves.toEqual({ backend: 'indexeddb', persisted: false, persistSupported: true });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('never requests protection for a session-only workspace, which has nothing to protect', async () => {
+    const persist = vi.fn().mockResolvedValue(true);
+    const persisted = vi.fn().mockResolvedValue(true);
+
+    await expect(inspectWorkspaceStorage('session', { persist, persisted }, true))
+      .resolves.toEqual({ backend: 'session', persisted: false, persistSupported: true });
+    expect(persist).not.toHaveBeenCalled();
+    expect(persisted).not.toHaveBeenCalled();
+  });
+
+  it('stops persistence updates when the transport is disposed before the workspace opens', async () => {
+    const transport = new WebTransport();
+    const listener = vi.fn();
+    transport.onPersistenceStatus(listener);
+
+    transport.dispose();
+    await transport.flush();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops persistence updates for a listener that detached before the workspace opened', async () => {
+    const transport = new WebTransport();
+    const listener = vi.fn();
+    const detach = transport.onPersistenceStatus(listener);
+
+    detach();
+    await transport.flush();
+
+    expect(listener).not.toHaveBeenCalled();
+    transport.dispose();
+  });
+
   it('delivers the seeded workspace shader to the viewer', async () => {
     const transport = new WebTransport();
     const handler = vi.fn();
