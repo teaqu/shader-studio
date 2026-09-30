@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readWorkspaceFiles } from './workspace-store.mjs';
 
 test('phone shell preserves the selected shader across Explorer, Preview, Editor, and Tools', async ({ page }) => {
   await page.goto('/');
@@ -130,11 +131,14 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
   await preview.getByLabel('Open options menu', { exact: true }).click();
   await page.getByLabel('Toggle debug mode', { exact: true }).locator('visible=true').click();
 
+  // Touch points are whole CSS pixels, so derive the expected canvas pixel
+  // from the rounded point with the inspector's own mapping.
   const fragCoordAt = (fx, fy) => canvas.evaluate((element, [fx, fy]) => {
     const rect = element.getBoundingClientRect();
-    const x = Math.floor(fx * element.width);
-    const y = Math.floor(fy * element.height);
-    return { client: { x: rect.left + (x + 0.5) * rect.width / element.width, y: rect.top + (y + 0.5) * rect.height / element.height }, text: `${x.toFixed(1)}, ${(element.height - y).toFixed(1)}` };
+    const client = { x: Math.round(rect.left + fx * rect.width), y: Math.round(rect.top + fy * rect.height) };
+    const x = Math.floor(((client.x - rect.left) / rect.width) * element.width);
+    const y = Math.floor(((client.y - rect.top) / rect.height) * element.height);
+    return { client, text: `${x.toFixed(1)}, ${(element.height - y).toFixed(1)}` };
   }, [fx, fy]);
   const inspectorShows = async (text) => {
     await nav.getByRole('button', { name: 'Tools' }).click();
@@ -161,4 +165,94 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
 
   await page.touchscreen.tap(second.client.x, second.client.y);
   await inspectorShows(null);
+});
+
+async function openAuroraOnPhone(page) {
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Workspace panels' });
+  await nav.getByRole('button', { name: 'Explorer' }).click();
+  // Selection moves the phone to the Editor at once, detaching the card.
+  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
+  await expect(nav.getByRole('button', { name: 'Editor' })).toHaveAttribute('aria-current', 'page');
+  return nav;
+}
+
+async function persisted(page, marker) {
+  await expect.poll(async () => (await readWorkspaceFiles(page))
+    .some((file) => file.path.endsWith('/aurora.glsl') && file.contents.includes(marker))).toBe(true);
+}
+
+test('the phone Editor and the preview overlay edit one document with shared undo, and the edit survives reload', async ({ page }) => {
+  const nav = await openAuroraOnPhone(page);
+  const editor = page.getByTestId('web-editor');
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.5); } // phone edit');
+  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+
+  await nav.getByRole('button', { name: 'Preview' }).click();
+  await page.getByLabel('Open options menu', { exact: true }).click();
+  await page.getByLabel('Open editor submenu').locator('visible=true').click();
+  await page.getByLabel('Enable editor overlay').locator('visible=true').click();
+  const overlay = page.locator('.editor-wrapper:not(.pane)');
+  await expect(overlay).toBeVisible();
+  await expect(overlay.locator('.view-lines')).toContainText('phone edit');
+  await page.getByLabel('Open options menu', { exact: true }).click();
+  await expect(page.getByLabel('Open editor submenu').locator('visible=true')).toHaveCount(0);
+
+  // Undo from the overlay reverts the edit made in the Editor panel.
+  // The long line leaves Monaco scrolled sideways, so aim at the editor itself.
+  await overlay.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
+  await overlay.locator('.inputarea').press('ControlOrMeta+Z');
+  await expect(overlay.locator('.view-lines')).not.toContainText('phone edit');
+  await nav.getByRole('button', { name: 'Editor' }).click();
+  await expect(editor.locator('.view-lines')).not.toContainText('phone edit');
+
+  await editor.locator('.monaco-editor').click({ position: { x: 120, y: 10 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+Shift+Z');
+  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+  await persisted(page, 'phone edit');
+
+  await page.reload();
+  await expect(page.getByTestId('shader-option-aurora-glsl')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Editor' }).click();
+  await expect(editor.locator('.view-lines')).toContainText('phone edit');
+});
+
+test('a workspace backup exported on a phone restores the work after the workspace is cleared', async ({ page }, testInfo) => {
+  await openAuroraOnPhone(page);
+  const editor = page.getByTestId('web-editor');
+  await editor.locator('.view-lines').click({ position: { x: 80, y: 20 } });
+  await editor.locator('.inputarea').press('ControlOrMeta+A');
+  await page.keyboard.insertText('void mainImage(out vec4 color, in vec2 coord) { color = vec4(0.25); } // backed up');
+  await persisted(page, 'backed up');
+
+  await page.getByRole('button', { name: 'Workspace' }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Workspace Backup' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('shader-studio-workspace.json');
+  const backupPath = testInfo.outputPath('workspace-backup.json');
+  await download.saveAs(backupPath);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Workspace' }).click();
+  await page.getByRole('button', { name: 'Clear Workspace' }).click();
+  await page.waitForLoadState('load');
+  await expect.poll(async () => (await readWorkspaceFiles(page))
+    .some((file) => file.contents.includes('backed up'))).toBe(false);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Workspace' }).click();
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import Workspace Backup…' }).click();
+  // A successful import reloads the app onto the restored workspace.
+  const reloaded = page.waitForEvent('load');
+  await (await chooserPromise).setFiles(backupPath);
+  await reloaded;
+  await persisted(page, 'backed up');
+
+  await page.getByRole('navigation', { name: 'Workspace panels' }).getByRole('button', { name: 'Explorer' }).click();
+  await page.getByTestId('shader-option-aurora-glsl').dispatchEvent('click');
+  await expect(editor.locator('.view-lines')).toContainText('backed up');
 });
