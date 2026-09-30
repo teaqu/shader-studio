@@ -14,10 +14,12 @@ export class WebServer {
   private statusBar: ShaderStudioStatusBar;
   private messenger: Messenger | null = null;
   private webSocketPort: number = 0;
+  private listeningPort: number | undefined;
 
   constructor(
     private context: vscode.ExtensionContext,
     private devMode: boolean = false,
+    private onListeningPortChange?: (port: number | undefined) => void,
   ) {
     this.logger = Logger.getInstance();
     this.statusBar = new ShaderStudioStatusBar(context);
@@ -167,11 +169,15 @@ export class WebServer {
       });
     });
 
-    this.httpServer.listen(httpPort, () => {
+    this.httpServer.listen(httpPort, '127.0.0.1', () => {
+      this.listeningPort = httpPort;
+      this.onListeningPortChange?.(httpPort);
       this.logger.info(`HTTP server listening on port ${httpPort}`);
     });
 
     this.httpServer.on("error", (error) => {
+      this.listeningPort = undefined;
+      this.onListeningPortChange?.(undefined);
       this.logger.error(`HTTP server error: ${error}`);
     });
   }
@@ -372,6 +378,8 @@ export class WebServer {
         this.httpServer = null;
       }
       this.isServerRunning = false;
+      this.listeningPort = undefined;
+      this.onListeningPortChange?.(undefined);
       this.statusBar.updateServerStatus(false);
       this.broadcastServerState();
       this.logger.info("WebSocket and HTTP servers stopped");
@@ -383,7 +391,7 @@ export class WebServer {
   }
 
   public getHttpUrl(): string {
-    const httpPort = this.getWebServerPort();
+    const httpPort = this.listeningPort ?? this.getWebServerPort();
     return `http://localhost:${httpPort}`;
   }
 

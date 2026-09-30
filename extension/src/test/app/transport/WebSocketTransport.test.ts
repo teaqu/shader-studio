@@ -595,7 +595,7 @@ suite('WebSocketTransport port binding', () => {
   test('onReady is called with a different port when preferred port is in use', (done) => {
     const port = 51561;
     const blocker = net.createServer();
-    blocker.listen(port, () => {
+    blocker.listen(port, '127.0.0.1', () => {
       const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
         transports.push(t);
         blocker.close(() => {
@@ -610,7 +610,7 @@ suite('WebSocketTransport port binding', () => {
   test('fallback port is a valid ephemeral port', (done) => {
     const port = 51562;
     const blocker = net.createServer();
-    blocker.listen(port, () => {
+    blocker.listen(port, '127.0.0.1', () => {
       const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
         transports.push(t);
         blocker.close(() => {
@@ -643,11 +643,12 @@ suite('WebSocketTransport port binding', () => {
     const { WebSocket } = require('ws');
     const port = 51564;
     const blocker = net.createServer();
-    blocker.listen(port, () => {
+    blocker.listen(port, '127.0.0.1', () => {
       const t = new WebSocketTransport(port, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
         transports.push(t);
+        t.setAllowedWebServerPort(3000);
         blocker.close(() => {
-          const ws = new WebSocket(`ws://localhost:${actualPort}`);
+          const ws = new WebSocket(`ws://127.0.0.1:${actualPort}`, { origin: 'http://localhost:3000' });
           ws.on('open', () => {
             assert.ok(t.hasActiveClients());
             ws.close();
@@ -655,6 +656,112 @@ suite('WebSocketTransport port binding', () => {
           });
           ws.on('error', (err: Error) => done(err));
         });
+      });
+    });
+  });
+
+  test('accepts a browser origin on the confirmed web server port', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const t = new WebSocketTransport(0, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
+        transports.push(t);
+        t.setAllowedWebServerPort(38473);
+
+        const allowed = new WebSocket(`ws://127.0.0.1:${actualPort}`, {
+          origin: 'http://127.0.0.1:38473',
+        });
+        allowed.on('open', () => {
+          allowed.close();
+          resolve();
+        });
+        allowed.on('error', reject);
+      });
+    });
+  });
+
+  test('keeps the confirmed web server port when configuration changes', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const t = new WebSocketTransport(0, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
+        transports.push(t);
+        t.setAllowedWebServerPort(38473);
+
+        const rejected = new WebSocket(`ws://127.0.0.1:${actualPort}`, {
+          origin: 'http://localhost:38474',
+        });
+        rejected.on('open', () => {
+          rejected.close();
+          reject(new Error('unconfirmed web server port connected'));
+        });
+        rejected.on('unexpected-response', (_request, response) => {
+          response.resume();
+          try {
+            assert.strictEqual(response.statusCode, 403);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+        rejected.on('error', reject);
+      });
+    });
+  });
+
+  test('rejects foreign and missing browser origins before adding a client', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const t = new WebSocketTransport(0, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
+        transports.push(t);
+        t.setAllowedWebServerPort(38473);
+        const origins = ['https://unrelated.example', undefined];
+        let rejectedCount = 0;
+
+        for (const origin of origins) {
+          const ws = new WebSocket(`ws://127.0.0.1:${actualPort}`, origin ? { origin } : undefined);
+          ws.on('open', () => {
+            ws.close();
+            reject(new Error(`${origin ?? 'missing origin'} connected`));
+          });
+          ws.on('unexpected-response', (_request, response) => {
+            response.resume();
+            try {
+              assert.strictEqual(response.statusCode, 403);
+              assert.strictEqual(t.hasActiveClients(), false);
+              rejectedCount++;
+              if (rejectedCount === origins.length) {
+                resolve();
+              }
+            } catch (error) {
+              reject(error);
+            }
+          });
+          ws.on('error', reject);
+        }
+      });
+    });
+  });
+
+  test('revokes browser origins when the web server stops', async () => {
+    await new Promise<void>((resolve, reject) => {
+      const t = new WebSocketTransport(0, mockShaderProvider, mockGlslFileTracker, mockContext, '/mock/extension', (actualPort) => {
+        transports.push(t);
+        t.setAllowedWebServerPort(38473);
+        t.setAllowedWebServerPort(undefined);
+
+        const ws = new WebSocket(`ws://127.0.0.1:${actualPort}`, {
+          origin: 'http://localhost:38473',
+        });
+        ws.on('open', () => {
+          ws.close();
+          reject(new Error('revoked web server origin connected'));
+        });
+        ws.on('unexpected-response', (_request, response) => {
+          response.resume();
+          try {
+            assert.strictEqual(response.statusCode, 403);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+        ws.on('error', reject);
       });
     });
   });

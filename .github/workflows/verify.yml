@@ -267,6 +267,11 @@ jobs:
       - name: Install test dependencies
         run: npm ci
 
+      # websocket-origin.e2e.mjs launches a separate Chromium browser to test
+      # the origin accepted by the installed extension's web server.
+      - name: Install Playwright browser
+        run: npx playwright install chromium
+
       - name: Download tested extension artifact
         uses: actions/download-artifact@v8
         with:

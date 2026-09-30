@@ -147,6 +147,36 @@ suite('WebServer Test Suite', () => {
 
       assert.strictEqual(webServer.isRunning(), false);
     });
+
+    test('reports the confirmed loopback port and revokes it when stopped', () => {
+      const mockHttpServer = new EventEmitter() as EventEmitter & {
+        listen: sinon.SinonStub;
+        close: sinon.SinonStub;
+      };
+      mockHttpServer.listen = sandbox.stub().callsFake((_port, _host, callback) => callback());
+      mockHttpServer.close = sandbox.stub();
+      const { WebServer: ProxiedWebServer } = proxyquire('../../app/WebServer', {
+        'http': { createServer: sandbox.stub().returns(mockHttpServer) },
+      });
+      const reportedPorts: Array<number | undefined> = [];
+      webServer = new ProxiedWebServer(
+        mockContext,
+        false,
+        (port: number | undefined) => reportedPorts.push(port),
+      );
+
+      webServer.startWebServer();
+
+      sinon.assert.calledWith(mockHttpServer.listen, 3000, '127.0.0.1');
+      assert.deepStrictEqual(reportedPorts, [3000]);
+
+      mockWorkspaceConfig.get.withArgs('webServerPort').returns(8080);
+      assert.strictEqual(webServer.getHttpUrl(), 'http://localhost:3000');
+
+      webServer.stopWebServer();
+      assert.deepStrictEqual(reportedPorts, [3000, undefined]);
+      assert.strictEqual(webServer.getHttpUrl(), 'http://localhost:8080');
+    });
   });
 
   suite('Development Mode', () => {
