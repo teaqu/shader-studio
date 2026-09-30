@@ -59,17 +59,26 @@ jobs:
             local g=$(grep -c "the harness did not request" "$log")
             local e=$(grep -c "did not encode canvas readback" "$log")
             echo "| $i | $ws $script | $rc | $((SECONDS-start)) | $t | $g | $e |" >> "$GITHUB_STEP_SUMMARY"
-            echo "::group::$ws $script run $i exit=$rc"
-            grep -E "Test Files|Tests |FAIL|✗|×|Timed out|did not request|did not encode|\[soak\] TIMEOUT" "$log" | head -60
-            echo "::endgroup::"
+            table+="$i | $ws $script | exit $rc | $((SECONDS-start))s | timeouts $t | frame-guard $g | not-encoded $e"$'\n'
+            # Annotations are capped per step: a notice for every corpus run,
+            # an error only for failing runs.
+            if [ "$script" = "test:e2e:corpus" ]; then
+              node .github/soak/annotate.mjs "$log" "shard ${{ matrix.shard }}: $ws $script run $i" "$rc"
+            elif [ "$rc" -ne 0 ]; then
+              node .github/soak/annotate.mjs "$log" "shard ${{ matrix.shard }}: $ws $script run $i" "$rc" | grep '^::error'
+            fi
             if [ "$rc" -ne 0 ]; then fails=$((fails+1)); fi
           }
+          table=""
           for i in 1 2 3; do run_suite "$i" ui test:e2e; done
           for i in $(seq 1 ${{ matrix.runs }}); do
             run_suite "$i" rendering test:e2e
             run_suite "$i" rendering test:e2e:corpus
           done
           echo "failed suite runs: $fails" | tee -a "$GITHUB_STEP_SUMMARY"
+          body="$(sysctl -n machdep.cpu.brand_string)"$'\n'"$(cat webgpu-probe.log)"$'\n\n'"$table"
+          body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+          echo "::notice title=shard ${{ matrix.shard }} probe and run table (failed runs: $fails)::$body"
           [ "$fails" -eq 0 ]
 
       - name: Upload logs
@@ -118,7 +127,7 @@ jobs:
         run: |
           set +e
           mkdir -p soak-logs
-          fails=0; json=0
+          fails=0; json=0; table=""
           run_vsix() {
             if [ "$RUNNER_OS" = "Linux" ]; then
               xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
@@ -134,10 +143,13 @@ jobs:
             j=$(grep -c "Unexpected end of JSON input" "$log")
             json=$((json+j))
             echo "| $i | $rc | $j |" >> "$GITHUB_STEP_SUMMARY"
-            echo "::group::run $i exit=$rc"; grep -E "passed|failed|skipped|✘|Error|JSON" "$log" | head -40; echo "::endgroup::"
+            passed=$(grep -Eo '[0-9]+ passed' "$log" | tail -1)
+            table+="run $i exit $rc json $j ${passed:-0 passed}"$'\n'
+            if [ "$rc" -ne 0 ]; then node .github/soak/annotate.mjs "$log" "polling-rate ${{ matrix.os }} run $i" "$rc" | grep '^::error'; fi
             [ "$rc" -ne 0 ] && fails=$((fails+1))
           done
           echo "failed runs: $fails, JSON errors: $json" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=polling-rate ${{ matrix.os }} (failed runs: $fails, JSON errors: $json)::${table//$'\n'/'%0A'}"
           [ "$fails" -eq 0 ] && [ "$json" -eq 0 ]
       - name: Upload logs
         if: always()
@@ -149,3 +161,29 @@ jobs:
             extension/.playwright/
           include-hidden-files: true
           retention-days: 7
+
+  extension-tests:
+    name: Extension mocha suite (real VS Code) x2
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node ui/scripts/ensure-slang-wasm.mjs
+      - run: npm run build:deps -w extension
+      - name: Run extension tests
+        shell: bash
+        run: |
+          set +e
+          fails=0
+          for i in 1 2; do
+            xvfb-run -a npm test -w extension > "ext-$i.log" 2>&1
+            rc=$?
+            node .github/soak/annotate.mjs "ext-$i.log" "extension mocha run $i" "$rc"
+            [ "$rc" -ne 0 ] && fails=$((fails+1))
+          done
+          [ "$fails" -eq 0 ]
