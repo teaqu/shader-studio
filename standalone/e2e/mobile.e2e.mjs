@@ -133,13 +133,24 @@ test('a finger tap pins the pixel inspector, a second tap moves it, and tapping 
 
   // Touch points are whole CSS pixels, so derive the expected canvas pixel
   // from the rounded point with the inspector's own mapping.
-  const fragCoordAt = (fx, fy) => canvas.evaluate((element, [fx, fy]) => {
+  // Returning to Preview re-lays the canvas out, so wait for it to stop moving
+  // before choosing a point; a stale rectangle picks the wrong pixel.
+  const settled = async () => {
+    let previous = null;
+    await expect.poll(async () => {
+      const box = JSON.stringify(await canvas.boundingBox());
+      const still = box === previous;
+      previous = box;
+      return still;
+    }, { intervals: [100] }).toBe(true);
+  };
+  const fragCoordAt = async (fx, fy) => (await settled(), canvas.evaluate((element, [fx, fy]) => {
     const rect = element.getBoundingClientRect();
     const client = { x: Math.round(rect.left + fx * rect.width), y: Math.round(rect.top + fy * rect.height) };
     const x = Math.floor(((client.x - rect.left) / rect.width) * element.width);
     const y = Math.floor(((client.y - rect.top) / rect.height) * element.height);
     return { client, text: `${x.toFixed(1)}, ${(element.height - y).toFixed(1)}` };
-  }, [fx, fy]);
+  }, [fx, fy]));
   const inspectorShows = async (text) => {
     await nav.getByRole('button', { name: 'Tools' }).click();
     await page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Debug' }).click();
@@ -242,8 +253,10 @@ test('a workspace backup exported on a phone restores the work after the workspa
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Workspace' }).click();
+  // Clearing reloads the app; reading storage mid-reload would race it.
+  const cleared = page.waitForEvent('load');
   await page.getByRole('button', { name: 'Clear Workspace' }).click();
-  await page.waitForLoadState('load');
+  await cleared;
   await expect.poll(async () => (await readWorkspaceFiles(page))
     .some((file) => file.contents.includes('backed up'))).toBe(false);
 
