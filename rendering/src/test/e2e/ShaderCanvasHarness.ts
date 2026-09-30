@@ -2,6 +2,9 @@ import type { ShaderConfig } from "@shader-studio/types";
 import type { RenderingEngine as RenderingEngineContract } from "../../types/RenderingEngine";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { gpuLiveSummary, installGpuTrace, timeQueueDrain } from "./soakGpuTrace";
+
+installGpuTrace();
 
 export const TEST_CANVAS_SIZE = 2;
 
@@ -124,14 +127,30 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
     }
     nextRenderTimestamp += 1000 / 60;
     const frameBefore = engine.getTimeManager().getFrame();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- soak-only diagnostic reaching the private device
+    const soakDevice = engine instanceof WebGPURenderingEngine ? (engine as any).device as GPUDevice | null : null;
+    const soakStart = performance.now();
     engine.render(nextRenderTimestamp);
+    const soakDrain = timeQueueDrain(soakDevice);
     // The copy is encoded inside render(). A request still queued afterwards
     // was skipped by that frame (nothing drew to the canvas), and since no
     // further frame is coming it would only surface as a readback timeout.
     if (readbackStage(engine, requestId) === "queued") {
       throw new Error(`${language} frame did not encode canvas readback request ${requestId}`);
     }
-    const result = await waitForPixelRegion(engine, requestId);
+    let result: Awaited<ReturnType<typeof waitForPixelRegion>>;
+    try {
+      result = await waitForPixelRegion(engine, requestId);
+    } catch (error) {
+      const drain = await Promise.race([soakDrain, new Promise<number>((r) => setTimeout(() => r(-3), 20_000))]);
+      console.log(`[soak] TIMEOUT ${language} req=${requestId} queueDrainMs=${drain.toFixed(0)} ${gpuLiveSummary()}`);
+      throw new Error(`${(error as Error).message} [soak queueDrainMs=${drain.toFixed(0)} ${gpuLiveSummary()}]`);
+    }
+    if (soakDevice) {
+      const readbackMs = performance.now() - soakStart;
+      const drain = await soakDrain;
+      console.log(`[soak] ${language} req=${requestId} readbackMs=${readbackMs.toFixed(1)} queueDrainMs=${drain.toFixed(1)} ${gpuLiveSummary()}`);
+    }
     // Output of feedback and iFrame-driven fixtures depends on the exact frame
     // count, so a frame this harness did not ask for must fail loudly rather
     // than shift a pixel assertion or signature.
