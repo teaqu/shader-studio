@@ -27,6 +27,8 @@ export interface PwaController {
 }
 
 interface ServiceWorkerContainerLike {
+  /** The worker serving this page; null on a first visit. */
+  readonly controller?: ServiceWorker | null;
   register(scriptURL: string, options?: RegistrationOptions): Promise<ServiceWorkerRegistration>;
   addEventListener(type: string, listener: EventListener): void;
   removeEventListener(type: string, listener: EventListener): void;
@@ -93,7 +95,9 @@ export function createPwaController(environment: PwaEnvironment = browserPwaEnvi
     }
   };
   const inspect = () => {
-    if (registration?.waiting) {
+    // A first install also passes through a waiting worker; it is only an
+    // update when an older worker already serves the page.
+    if (registration?.waiting && environment.serviceWorker?.controller) {
       status = { ...status, updateAvailable: true };
       emit();
     }

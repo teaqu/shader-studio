@@ -57,6 +57,8 @@ function environment() {
     reload: vi.fn(),
     environment: {
       serviceWorker: {
+        // A page that already runs under a worker; first installs clear this.
+        controller: {} as ServiceWorker | null,
         register: vi.fn().mockResolvedValue(registration),
         addEventListener: vi.fn((type: string, listener: EventListener) => listeners.set(type, listener)),
         removeEventListener: vi.fn(),
@@ -226,6 +228,39 @@ describe('PWA controller lifecycle branches', () => {
     stateListeners.forEach((listener) => listener(new Event('statechange')));
 
     expect(states.at(-1)?.updateAvailable).toBe(true);
+  });
+
+  it('does not offer the first worker ever installed as an update', async () => {
+    const setup = environment();
+    setup.environment.serviceWorker.controller = null;
+    (setup.registration as { waiting: ServiceWorker | null }).waiting = null;
+    const controller = createPwaController(setup.environment);
+    const states: { updateAvailable: boolean }[] = [];
+    controller.subscribe((state) => states.push(state));
+    await controller.start();
+
+    const stateListeners: EventListener[] = [];
+    const installing = { state: 'installed', addEventListener: (_type: string, listener: EventListener) => stateListeners.push(listener) };
+    (setup.registration as { installing: unknown }).installing = installing;
+    // A first install passes through 'installed' with itself as the waiting worker.
+    (setup.registration as { waiting: unknown }).waiting = installing;
+    setup.workerListeners.get('updatefound')?.(new Event('updatefound'));
+    stateListeners.forEach((listener) => listener(new Event('statechange')));
+
+    expect(states.every((state) => !state.updateAvailable)).toBe(true);
+  });
+
+  it('does not offer a waiting worker as an update when nothing controls the page yet', async () => {
+    const setup = environment();
+    setup.environment.serviceWorker.controller = null;
+    const controller = createPwaController(setup.environment);
+    const states: { updateAvailable: boolean }[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    await controller.start();
+    await controller.checkForUpdate();
+
+    expect(states.every((state) => !state.updateAvailable)).toBe(true);
   });
 
   it('ignores an update search that finds nothing installing', async () => {
