@@ -109,7 +109,32 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
     currentShaderTime = 0;
   }
 
+  // Vitest does not stop a test body that times out. One still reading back
+  // on this shared harness would collect the next test's result along with
+  // its own (collecting drains every completed readback), and that test would
+  // then time out with its request "not held". Overlap fails fast instead.
+  let readbackInFlight = false;
+
   async function renderAndReadRegion(
+    centerX: number,
+    centerY: number,
+    shaderTime: number,
+  ): Promise<ReturnType<RenderingEngineContract["collectPixelRegionResults"]>[number]> {
+    if (readbackInFlight) {
+      throw new Error(
+        `${language} harness already has a readback in flight; an earlier test that timed out `
+        + "may still be running on this shared harness",
+      );
+    }
+    readbackInFlight = true;
+    try {
+      return await readRegionOnce(centerX, centerY, shaderTime);
+    } finally {
+      readbackInFlight = false;
+    }
+  }
+
+  async function readRegionOnce(
     centerX: number,
     centerY: number,
     shaderTime: number,
