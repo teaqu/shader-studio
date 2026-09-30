@@ -1194,6 +1194,12 @@ test('records the live preview to WebM and remembers capture settings after relo
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^aurora-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}\.webm$/);
   expect(await download.failure()).toBeNull();
+  // A real recording, not an empty file: WebM starts with the EBML magic.
+  const recorded = [];
+  for await (const chunk of await download.createReadStream()) {
+    recorded.push(chunk);
+  }
+  expect([...Buffer.concat(recorded).subarray(0, 4)]).toEqual([26, 69, 223, 163]);
 
   await page.reload();
   const videoTab = page.getByRole('button', { name: 'Video', exact: true });
@@ -1206,6 +1212,40 @@ test('records the live preview to WebM and remembers capture settings after relo
   await expect(page.getByRole('button', { name: '60', exact: true })).toHaveClass(/active/);
 });
 
+
+test('Live capture of a preview that lost its WebGL context fails visibly instead of saving empty media', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('shader-option-aurora-glsl').click();
+  const canvas = page.getByTestId('web-preview').locator('canvas').first();
+  const lost = await canvas.evaluate((element) => {
+    const gl = element.getContext('webgl2');
+    // Extensions are unavailable once a context is lost, so only force it if needed.
+    if (!gl.isContextLost()) {
+      gl.getExtension('WEBGL_lose_context').loseContext();
+    }
+    return gl.isContextLost();
+  });
+  expect(lost).toBe(true);
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  await page.getByLabel('Toggle export panel').click();
+  const panelError = page.locator('.recording-panel [role="alert"]');
+
+  await page.getByRole('button', { name: 'Screenshot', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await page.getByRole('button', { name: 'Capture screenshot', exact: true }).click();
+  await expect(panelError).toContainText('WebGL context was lost');
+  await panelError.getByRole('button', { name: 'Dismiss' }).click();
+
+  await page.getByRole('button', { name: 'Video', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await page.getByRole('button', { name: 'WebM', exact: true }).click();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await page.waitForTimeout(1000);
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  await expect(panelError).toContainText('Live recording captured no frames');
+  expect(downloads).toBe(0);
+});
 
 test('keeps a Live recording at a fixed size through a preview resize and saves it', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -1232,6 +1272,11 @@ test('keeps a Live recording at a fixed size through a preview resize and saves 
   await stopAndSave.click();
   const download = await downloadPromise;
   expect(await download.failure()).toBeNull();
+  const recorded = [];
+  for await (const chunk of await download.createReadStream()) {
+    recorded.push(chunk);
+  }
+  expect([...Buffer.concat(recorded).subarray(0, 4)]).toEqual([26, 69, 223, 163]);
   await expect(page.locator('.recording-panel [role="alert"]')).toHaveCount(0);
   // The held resize applies once recording ends.
   await expect.poll(pixelSize).not.toEqual(recordingSize);

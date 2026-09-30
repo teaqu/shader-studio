@@ -1050,6 +1050,7 @@ describe("RenderingEngine", () => {
       const gl = {
         RGBA: 0x1908,
         UNSIGNED_BYTE: 0x1401,
+        isContextLost: () => false,
         readPixels: vi.fn((
           _x: number,
           _y: number,
@@ -1071,6 +1072,17 @@ describe("RenderingEngine", () => {
       expect(Array.from(image.data)).toEqual([...topRow, ...bottomRow]);
       expect(image.width).toBe(2);
       expect(image.height).toBe(2);
+    });
+
+    it("refuses to capture a preview whose WebGL context was lost", async () => {
+      const readPixels = vi.fn();
+      const canvas = document.createElement("canvas");
+      Object.defineProperty(renderingEngine, "glCanvas", { value: canvas, configurable: true });
+      Object.defineProperty(renderingEngine, "gl", { value: { isContextLost: () => true, readPixels }, configurable: true });
+      mockFrameRenderer.readNextDisplayedFrame = vi.fn((read: () => ImageData) => Promise.resolve(read()));
+
+      await expect(renderingEngine.captureCurrentFrame()).rejects.toThrow("WebGL context was lost");
+      expect(readPixels).not.toHaveBeenCalled();
     });
 
     it("rejects before WebGL is initialized", async () => {

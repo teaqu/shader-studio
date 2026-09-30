@@ -774,6 +774,27 @@ describe('ShaderRecorder', () => {
       expect(tracks[0].stop).toHaveBeenCalledTimes(1);
     });
 
+    it('fails visibly instead of saving an empty file when the canvas delivered no frames', async () => {
+      const { tracks, stream, instances } = installMediaRecorder();
+      const canvas = { width: 800, height: 600, captureStream: vi.fn(() => stream) } as any;
+      const recording = (recorder as any).recordLive({
+        mode: 'live', format: 'webm', duration: 5, startTime: 0, fps: 30, width: 800, height: 600,
+      }, { getCanvas: () => canvas }) as Promise<Blob>;
+      recording.catch(() => {});
+      // A canvas whose GPU context was lost never produces a frame; MediaRecorder
+      // then hands back a single empty chunk on stop.
+      instances[0].stop = vi.fn(() => {
+        instances[0].state = 'inactive';
+        instances[0].ondataavailable?.({ data: new Blob([]) } as BlobEvent);
+        instances[0].onstop?.();
+      });
+
+      (recorder as any).stopLiveRecording();
+
+      await expect(recording).rejects.toThrow('Live recording captured no frames');
+      expect(tracks[0].stop).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects unsupported Live formats without opening a stream', async () => {
       const { stream, MockMediaRecorder } = installMediaRecorder();
       MockMediaRecorder.isTypeSupported.mockReturnValue(false);

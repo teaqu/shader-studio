@@ -728,6 +728,10 @@ export class RenderingEngine implements RenderingEngineInterface {
     if (!this.glCanvas || !this.gl) {
       throw new Error("Cannot read the WebGL canvas after disposal");
     }
+    if (this.gl.isContextLost()) {
+      // A lost context reads back as transparent black; don't save that as the preview.
+      throw new Error("Cannot capture the preview: its WebGL context was lost. Reload the preview and try again.");
+    }
     const { width, height } = this.glCanvas;
     const source = new Uint8Array(width * height * 4);
     this.gl.readPixels(

@@ -150,6 +150,12 @@ export class ShaderRecorder {
         this.cleanupLiveRecording();
         if (cancelled) {
           reject(new Error("Recording cancelled"));
+        } else if (chunks.length === 0) {
+          // The canvas never produced a frame, e.g. because the preview lost
+          // its GPU context. Saving would write an empty, unplayable file.
+          reject(new Error(
+            "Live recording captured no frames from the preview. If the preview is blank, reload it and try again.",
+          ));
         } else {
           resolve(new Blob(chunks, { type: mediaRecorder.mimeType || mimeType }));
         }
