@@ -88,7 +88,11 @@ export class ShaderStudio {
       this.glslFileTracker,
       this.configChangeClassifier,
     );
-    this.webServer = new WebServer(context, this.isDevelopmentMode());
+    this.webServer = new WebServer(
+      context,
+      this.isDevelopmentMode(),
+      port => this.webSocketTransport?.setAllowedWebServerPort(port),
+    );
     this.webServer.setMessenger(this.messenger);
 
     // Register shader explorer
