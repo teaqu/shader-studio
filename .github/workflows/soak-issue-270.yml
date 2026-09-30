@@ -1,6 +1,8 @@
 name: Soak issue 270
 
-# Temporary, soak branch only: repeats the GPU suites whose flakes #270 fixes.
+# Temporary, soak branch only: repeats the shader fixture corpus, whose
+# readback timeouts #270 has not yet explained, with a separate-process GPU
+# canary to tell host-wide GPU stalls from work this engine queued.
 on:
   push:
     branches:
@@ -15,15 +17,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rendering:
-    name: WebGPU probe, UI transport x3, rendering + corpus x${{ matrix.runs }} (${{ matrix.shard }})
+  corpus:
+    name: WebGPU probe + canary, corpus x${{ matrix.runs }} (${{ matrix.shard }})
     runs-on: macos-15
-    timeout-minutes: 150
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         shard: [a, b]
-        runs: [5]
+        runs: [6]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,154 +38,36 @@ jobs:
       - run: npm run build:deps -w extension
 
       - name: WebGPU adapter and readback round-trip
-        run: node .github/soak/webgpu-probe.mjs 2>&1 | tee webgpu-probe.log
-        continue-on-error: true
-
-      - name: Soak suites
         shell: bash
         run: |
-          set +e
-          mkdir -p soak-logs
-          fails=0
-          echo "## Shard ${{ matrix.shard }} on $(sysctl -n machdep.cpu.brand_string)" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat webgpu-probe.log >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "| run | suite | exit | secs | readback timeouts | frame-guard | not-encoded |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          run_suite() {
-            local i="$1" ws="$2" script="$3"
-            local log="soak-logs/${ws}-${script//:/-}-${i}.log"
-            local start=$SECONDS
-            npm run "$script" -w "$ws" > "$log" 2>&1
-            local rc=$?
-            local t=$(grep -c "Timed out waiting for canvas pixel readback" "$log")
-            local g=$(grep -c "the harness did not request" "$log")
-            local e=$(grep -c "did not encode canvas readback" "$log")
-            echo "| $i | $ws $script | $rc | $((SECONDS-start)) | $t | $g | $e |" >> "$GITHUB_STEP_SUMMARY"
-            table+="$i | $ws $script | exit $rc | $((SECONDS-start))s | timeouts $t | frame-guard $g | not-encoded $e"$'\n'
-            # Annotations are capped per step: a notice for every corpus run,
-            # an error only for failing runs.
-            if [ "$script" = "test:e2e:corpus" ]; then
-              node .github/soak/annotate.mjs "$log" "shard ${{ matrix.shard }}: $ws $script run $i" "$rc"
-            elif [ "$rc" -ne 0 ]; then
-              node .github/soak/annotate.mjs "$log" "shard ${{ matrix.shard }}: $ws $script run $i" "$rc" | grep '^::error'
-            fi
-            if [ "$rc" -ne 0 ]; then fails=$((fails+1)); fi
-          }
-          table=""
-          for i in 1 2 3; do run_suite "$i" ui test:e2e; done
-          for i in $(seq 1 ${{ matrix.runs }}); do
-            run_suite "$i" rendering test:e2e
-            run_suite "$i" rendering test:e2e:corpus
-          done
-          echo "failed suite runs: $fails" | tee -a "$GITHUB_STEP_SUMMARY"
-          body="$(sysctl -n machdep.cpu.brand_string)"$'\n'"$(cat webgpu-probe.log)"$'\n\n'"$table"
+          node soak/webgpu-probe.mjs > webgpu-probe.log 2>&1
+          rc=$?
+          body="$(sysctl -n machdep.cpu.brand_string) probe exit $rc"$'\n'"$(cat webgpu-probe.log)"
           body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
-          echo "::notice title=shard ${{ matrix.shard }} probe and run table (failed runs: $fails)::$body"
-          [ "$fails" -eq 0 ]
+          echo "::notice title=shard ${{ matrix.shard }} WebGPU probe::$body"
 
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: soak-rendering-${{ matrix.shard }}
-          path: |
-            soak-logs/
-            webgpu-probe.log
-          retention-days: 7
-
-  polling-rate:
-    name: Installed-VSIX script-polling-rate x10 (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # macOS runs every language variant (Slang/WGSL are @gpu); Linux has
-          # no adapter, so it keeps the GLSL variant only, as verify.yml does.
-          - os: macos-15
-            invert: '(?!)'
-          - os: ubuntu-latest
-            invert: '@gpu'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run build:deps -w extension
-      - name: Package VSIX
-        working-directory: extension
-        run: npx --yes @vscode/vsce package --no-dependencies --out "$RUNNER_TEMP/ss.vsix"
-      - run: npx playwright install chromium
-      - name: Repeat script-polling-rate specs
+      - name: Corpus soak with canary
         shell: bash
-        env:
-          SHADER_STUDIO_E2E_VSIX: ${{ runner.temp }}/ss.vsix
-          SHADER_STUDIO_E2E_GREP: 'script-polling-rate|writes the chosen rate'
-          SHADER_STUDIO_E2E_GREP_INVERT: ${{ matrix.invert }}
-          SHADER_STUDIO_E2E_WINDOW: '1600x1000'
         run: |
           set +e
           mkdir -p soak-logs
-          fails=0; json=0; table=""
-          run_vsix() {
-            if [ "$RUNNER_OS" = "Linux" ]; then
-              xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
-            else
-              npm run test:e2e:vsix -w extension
-            fi
-          }
-          echo "| run | exit | JSON errors |" >> "$GITHUB_STEP_SUMMARY"; echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          for i in $(seq 1 10); do
-            log="soak-logs/polling-rate-$i.log"
-            run_vsix > "$log" 2>&1
+          node soak/canary.mjs soak-logs/canary.log > soak-logs/canary.out 2>&1 &
+          canary=$!
+          sleep 5
+          fails=0; table=""
+          for i in $(seq 1 ${{ matrix.runs }}); do
+            log="soak-logs/corpus-$i.log"
+            start=$SECONDS
+            npm run test:e2e:corpus -w rendering > "$log" 2>&1
             rc=$?
-            j=$(grep -c "Unexpected end of JSON input" "$log")
-            json=$((json+j))
-            echo "| $i | $rc | $j |" >> "$GITHUB_STEP_SUMMARY"
-            passed=$(grep -Eo '[0-9]+ passed' "$log" | tail -1)
-            table+="run $i exit $rc json $j ${passed:-0 passed}"$'\n'
-            if [ "$rc" -ne 0 ]; then node .github/soak/annotate.mjs "$log" "polling-rate ${{ matrix.os }} run $i" "$rc" | grep '^::error'; fi
+            t=$(grep -c "Timed out waiting for canvas pixel readback" "$log")
+            table+="run $i exit $rc $((SECONDS-start))s readback-timeouts $t"$'\n'
+            node soak/annotate.mjs "$log" "shard ${{ matrix.shard }} corpus run $i" "$rc" soak-logs/canary.log
             [ "$rc" -ne 0 ] && fails=$((fails+1))
           done
-          echo "failed runs: $fails, JSON errors: $json" | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "::notice title=polling-rate ${{ matrix.os }} (failed runs: $fails, JSON errors: $json)::${table//$'\n'/'%0A'}"
-          [ "$fails" -eq 0 ] && [ "$json" -eq 0 ]
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: soak-polling-rate-${{ matrix.os }}
-          path: |
-            soak-logs/
-            extension/.playwright/
-          include-hidden-files: true
-          retention-days: 7
-
-  extension-tests:
-    name: Extension mocha suite (real VS Code) x2
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: node ui/scripts/ensure-slang-wasm.mjs
-      - run: npm run build:deps -w extension
-      - name: Run extension tests
-        shell: bash
-        run: |
-          set +e
-          fails=0
-          for i in 1 2; do
-            xvfb-run -a npm test -w extension > "ext-$i.log" 2>&1
-            rc=$?
-            node .github/soak/annotate.mjs "ext-$i.log" "extension mocha run $i" "$rc"
-            [ "$rc" -ne 0 ] && fails=$((fails+1))
-          done
+          kill "$canary"
+          canarySummary="$(grep -c '^spike' soak-logs/canary.log) spikes; $(tail -2 soak-logs/canary.log | tr '\n' ' ') $(tail -3 soak-logs/canary.out | tr '\n' ' ')"
+          body="$table"$'\n'"canary: $canarySummary"
+          body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+          echo "::notice title=shard ${{ matrix.shard }} corpus table failed runs $fails::$body"
           [ "$fails" -eq 0 ]

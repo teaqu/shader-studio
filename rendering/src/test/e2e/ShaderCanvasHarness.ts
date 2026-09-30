@@ -2,6 +2,7 @@ import type { ShaderConfig } from "@shader-studio/types";
 import type { RenderingEngine as RenderingEngineContract } from "../../types/RenderingEngine";
 import { RenderingEngine } from "../../webgl/RenderingEngine";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
+import { expect as soakExpect } from "vitest";
 import { gpuLiveSummary, installGpuTrace, timeQueueDrain } from "./soakGpuTrace";
 
 installGpuTrace();
@@ -143,13 +144,13 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
       result = await waitForPixelRegion(engine, requestId);
     } catch (error) {
       const drain = await Promise.race([soakDrain, new Promise<number>((r) => setTimeout(() => r(-3), 20_000))]);
-      console.log(`[soak] TIMEOUT ${language} req=${requestId} queueDrainMs=${drain.toFixed(0)} ${gpuLiveSummary()}`);
+      console.log(`[soak] TIMEOUT t=${Date.now()} ${language} req=${requestId} queueDrainMs=${drain.toFixed(0)} ${gpuLiveSummary()} test=${soakExpect.getState().currentTestName ?? "?"}`);
       throw new Error(`${(error as Error).message} [soak queueDrainMs=${drain.toFixed(0)} ${gpuLiveSummary()}]`);
     }
     if (soakDevice) {
       const readbackMs = performance.now() - soakStart;
       const drain = await soakDrain;
-      console.log(`[soak] ${language} req=${requestId} readbackMs=${readbackMs.toFixed(1)} queueDrainMs=${drain.toFixed(1)} ${gpuLiveSummary()}`);
+      console.log(`[soak] t=${Date.now()} ${language} req=${requestId} readbackMs=${readbackMs.toFixed(1)} queueDrainMs=${drain.toFixed(1)} ${gpuLiveSummary()} test=${soakExpect.getState().currentTestName ?? "?"}`);
     }
     // Output of feedback and iFrame-driven fixtures depends on the exact frame
     // count, so a frame this harness did not ask for must fail loudly rather
