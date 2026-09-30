@@ -81,8 +81,8 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
   commits or pull requests. This repository is not an AI billboard.
   Enforced: `.githooks/commit-msg` (installed by `npm install` via
   `core.hooksPath`) rejects such commits locally, and the Attribution
-  workflow fails any PR whose commits, branch, title or description carry
-  them. Never bypass it with `--no-verify`.
+  workflow fails any PR whose commits or branch name carry them. Never
+  bypass it with `--no-verify`.
 - Treat `.gitignore` as authoritative. Never force-add an ignored file with
   `git add -f` (including generated artifacts and workflow planning/spec files)
   unless the user explicitly asks for that exact ignored file to be tracked.

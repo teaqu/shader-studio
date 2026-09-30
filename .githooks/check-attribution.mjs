@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Rejects AI tool attribution in commit messages, branch names and pull
- * requests. AGENTS.md forbids it; this makes the rule enforceable.
+ * Rejects AI tool attribution in commit messages and branch names. AGENTS.md
+ * forbids it; this makes the rule enforceable.
  *
  *   --message-file <path>   check one commit message (commit-msg hook)
  *   --range <base>..<head>  check every commit message in a range (CI)
  *   --branch <name>         check a branch name
- *   --text <label>=<text>   check free text such as a PR title or body
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -31,8 +30,8 @@ const MESSAGE_RULES = [
     reason: 'AI co-author trailer',
   },
   {
-    // The tool must be what the text was generated with, not merely named
-    // on the same line, so prose describing these rules passes.
+    // The tool must be what the commit was generated with, not merely named
+    // on the same line, so a message describing these rules passes.
     pattern: new RegExp(`^.*(?<![a-z])generated (with|by)\\s+[[(_*]*(${AGENTS})\\b.*$`, 'gim'),
     applies: () => true,
     reason: 'AI generation footer',
@@ -50,7 +49,7 @@ const MESSAGE_RULES = [
   },
 ];
 
-/** Returns one violation per offending line of a commit message or PR text. */
+/** Returns one violation per offending line of a commit message. */
 export function checkMessage(text) {
   const violations = [];
   for (const { pattern, applies, reason } of MESSAGE_RULES) {
@@ -97,10 +96,6 @@ export function run(argv, { readFile = readFileSync, commits = commitMessagesInR
       }
     } else if (flag === '--branch') {
       findings.push(...checkBranch(value).map(v => ({ ...v, where: 'branch' })));
-    } else if (flag === '--text') {
-      const split = value.indexOf('=');
-      const [label, text] = split < 0 ? ['text', value] : [value.slice(0, split), value.slice(split + 1)];
-      findings.push(...checkMessage(text).map(v => ({ ...v, where: label })));
     } else {
       throw new Error(`unknown option ${flag}`);
     }

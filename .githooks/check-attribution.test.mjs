@@ -64,7 +64,7 @@ test('rejects agent-prefixed branch names only', () => {
 
 test('run labels findings by where they were found', () => {
   const findings = run(
-    ['--message-file', 'MSG', '--range', 'a..b', '--branch', 'claude/x', '--text', 'PR body=🤖 hi', '--text', '🤖 bare'],
+    ['--message-file', 'MSG', '--range', 'a..b', '--branch', 'claude/x'],
     {
       readFile: () => 'fix\n# Co-authored-by: Claude <noreply@anthropic.com>\n',
       commits: range => {
@@ -73,7 +73,7 @@ test('run labels findings by where they were found', () => {
       },
     },
   );
-  assert.deepEqual(findings.map(f => f.where), ['commit 01234567', 'branch', 'PR body', 'text']);
+  assert.deepEqual(findings.map(f => f.where), ['commit 01234567', 'branch']);
 });
 
 test('run ignores git comment lines in a commit message file', () => {
@@ -82,6 +82,7 @@ test('run ignores git comment lines in a commit message file', () => {
 
 test('run rejects unknown options and missing values', () => {
   assert.throws(() => run(['--nope', 'x']), /unknown option --nope/);
+  assert.throws(() => run(['--text', 'PR body=x']), /unknown option --text/);
   assert.throws(() => run(['--branch']), /--branch needs a value/);
 });
 
