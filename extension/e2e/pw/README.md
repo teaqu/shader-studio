@@ -31,6 +31,12 @@ per step.
   bridge would vanish for good and the suite would talk to a dead port. As an
   extension it re-activates with the host and republishes its port, which took
   the parity spec from roughly half of runs failing to 6 for 6.
+- `evaluateInHost` identifies callbacks by their source hash. The bridge only
+  runs callbacks compiled into `bridge-extension/host-functions.js`; requests
+  cannot supply executable source. The registry includes the forms produced by
+  Playwright's spec transform. After changing a host callback, run
+  `node extension/e2e/pw/generate-host-functions.mjs` from the repository root.
+  The bridge tests check that this generated file matches the specs.
 - Most spec files set their own `vscodeKey`. Changing a worker-scoped option
   makes Playwright start a fresh worker and a fresh VS Code, so files cannot
   inherit each other's window state - without it the language-server toggles
