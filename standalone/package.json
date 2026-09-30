@@ -18,7 +18,7 @@
     "@shader-studio/types": "*",
     "@vscode/codicons": "^0.0.45",
     "dockview-core": "^5.0.0",
-    "monaco-editor": "^0.55.1",
+    "monaco-editor": "^0.57.0",
     "shader-explorer-ui": "*",
     "shader-studio-ui": "*",
     "svelte": "^5.28.1"
