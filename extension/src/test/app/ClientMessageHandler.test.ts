@@ -5,6 +5,7 @@ import * as sinon from 'sinon';
 import { ClientMessageHandler } from '../../app/ClientMessageHandler';
 import { WorkspaceFileScanner } from '../../app/WorkspaceFileScanner';
 import { Logger } from '../../app/services/Logger';
+import * as AtomicFile from '../../app/services/AtomicFile';
 
 suite('ClientMessageHandler Test Suite', () => {
   let handler: ClientMessageHandler;
@@ -78,8 +79,7 @@ suite('ClientMessageHandler Test Suite', () => {
 
   suite('updateConfig', () => {
     test('writes config file and triggers shader refresh', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
       mockShaderProvider.sendShaderFromPath = sandbox.stub();
 
       await handler.handle(
@@ -94,8 +94,7 @@ suite('ClientMessageHandler Test Suite', () => {
 
     test('skips shader refresh when skipRefresh is true', async () => {
       const clock = sandbox.useFakeTimers();
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync');
       mockShaderProvider.sendShaderFromPath = sandbox.stub();
 
       await handler.handle(
@@ -109,8 +108,7 @@ suite('ClientMessageHandler Test Suite', () => {
     });
 
     test('sends error to messenger when write fails', async () => {
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync').throws(new Error('Disk full'));
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync').throws(new Error('Disk full'));
       mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns({
         document: { uri: { fsPath: '/test/shader.glsl' } },
       });
