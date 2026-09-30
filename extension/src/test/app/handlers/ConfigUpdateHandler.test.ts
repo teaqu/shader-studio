@@ -5,6 +5,7 @@ import { ConfigUpdateHandler, computeMinimalReplace } from '../../../app/handler
 import { Logger } from '../../../app/services/Logger';
 import { ConfigChangeClassifier } from '../../../app/services/ConfigChangeClassifier';
 import { getConfigPathForShaderPath } from '../../../app/ShaderConfigPaths';
+import * as AtomicFile from '../../../app/services/AtomicFile';
 
 suite('ConfigUpdateHandler Test Suite', () => {
   let handler: ConfigUpdateHandler;
@@ -59,8 +60,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
   suite('handleConfigUpdate', () => {
     test('writes config file with the provided text', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -71,12 +71,10 @@ suite('ConfigUpdateHandler Test Suite', () => {
       assert.ok(writeStub.calledOnce);
       assert.strictEqual(writeStub.firstCall.args[0], '/test/shader.sha.json');
       assert.strictEqual(writeStub.firstCall.args[1], '{"version":1}');
-      assert.strictEqual(writeStub.firstCall.args[2], 'utf-8');
     });
 
     test('replaces .frag extension when deriving config path', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -89,8 +87,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
     });
 
     test('writes .slang shader updates to the companion .sha.json config file', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -104,8 +101,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
     test('triggers shader refresh after timeout when skipRefresh is not set', async () => {
       const clock = sandbox.useFakeTimers();
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -124,8 +120,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
     test('skips shader refresh when skipRefresh is true', async () => {
       const clock = sandbox.useFakeTimers();
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -167,8 +162,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
       test('muted-only change sends no shader update', async () => {
         const clock = sandbox.useFakeTimers();
-        const fs = require('fs');
-        sandbox.stub(fs, 'writeFileSync');
+        sandbox.stub(AtomicFile, 'writeFileAtomicSync');
         const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
         classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
 
@@ -197,8 +191,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
       test('formatting-only change sends nothing', async () => {
         const clock = sandbox.useFakeTimers();
-        const fs = require('fs');
-        sandbox.stub(fs, 'writeFileSync');
+        sandbox.stub(AtomicFile, 'writeFileAtomicSync');
         const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
         classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
 
@@ -218,8 +211,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
       test('structural change sends reload', async () => {
         const clock = sandbox.useFakeTimers();
-        const fs = require('fs');
-        sandbox.stub(fs, 'writeFileSync');
+        sandbox.stub(AtomicFile, 'writeFileAtomicSync');
         const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
         classifier.recordSentConfig(configPath, JSON.stringify(baseConfig));
 
@@ -250,8 +242,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
       test("no prior snapshot sends reload (mirrors watcher's first-change-no-snapshot case)", async () => {
         const clock = sandbox.useFakeTimers();
-        const fs = require('fs');
-        sandbox.stub(fs, 'writeFileSync');
+        sandbox.stub(AtomicFile, 'writeFileAtomicSync');
         const { handler: handlerWithClassifier } = makeHandlerWithClassifier();
         // No prior recordSentConfig call — classifier has never seen this config path.
 
@@ -273,8 +264,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
       test("classifier throw falls back to reload (mirrors watcher's throw fallback)", async () => {
         const clock = sandbox.useFakeTimers();
-        const fs = require('fs');
-        sandbox.stub(fs, 'writeFileSync');
+        sandbox.stub(AtomicFile, 'writeFileAtomicSync');
         const { handler: handlerWithClassifier, classifier } = makeHandlerWithClassifier();
         sandbox.stub(classifier, 'classifyChange').throws(new Error('boom'));
 
@@ -293,8 +283,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
     });
 
     test('falls back to active GLSL editor when shaderPath is not provided', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
       mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns({
         document: { uri: { fsPath: '/active/editor.glsl' } },
       });
@@ -309,8 +298,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
     });
 
     test('returns early when shaderPath is absent and no active editor', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
       mockGlslFileTracker.getActiveOrLastViewedGLSLEditor.returns(null);
 
       await handler.handleConfigUpdate({
@@ -321,9 +309,8 @@ suite('ConfigUpdateHandler Test Suite', () => {
       assert.ok(writeStub.notCalled);
     });
 
-    test('sends error message to messenger when writeFileSync throws', async () => {
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync').throws(new Error('Disk full'));
+    test('sends error message to messenger when the config write throws', async () => {
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync').throws(new Error('Disk full'));
 
       await handler.handleConfigUpdate({
         config: {} as any,
@@ -345,8 +332,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
         null,
         logger,
       );
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync').throws(new Error('IO error'));
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync').throws(new Error('IO error'));
 
       await assert.doesNotReject(
         handlerNoMessenger.handleConfigUpdate({
@@ -356,12 +342,43 @@ suite('ConfigUpdateHandler Test Suite', () => {
         }),
       );
     });
+
+    // A reader polling the config (a watcher reload, or the installed-VSIX
+    // polling-rate spec) failed with "Unexpected end of JSON input" when it
+    // landed between writeFileSync's truncate and its write.
+    test('never truncates the config in place, so a concurrent reader cannot see it empty', async () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'config-update-'));
+      try {
+        const shaderPath = path.join(directory, 'shader.glsl');
+        const configPath = getConfigPathForShaderPath(shaderPath);
+        fs.writeFileSync(configPath, '{"scriptMaxPollingFps":30}');
+        const writes = sandbox.spy(fs, 'writeFileSync');
+
+        await handler.handleConfigUpdate({
+          config: {} as any,
+          text: '{"scriptMaxPollingFps":60}',
+          shaderPath,
+          skipRefresh: true,
+        });
+
+        assert.ok(
+          writes.getCalls().every((call: sinon.SinonSpyCall) => call.args[0] !== configPath),
+          'the live config path was opened for truncation',
+        );
+        assert.strictEqual(fs.readFileSync(configPath, 'utf8'), '{"scriptMaxPollingFps":60}');
+        assert.deepStrictEqual(fs.readdirSync(directory).sort(), ['shader.sha.json']);
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
+    });
   });
 
   suite('handleConfigUpdate - WorkspaceEdit when document is open', () => {
-    test('applies WorkspaceEdit instead of writeFileSync when document is open', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+    test('applies WorkspaceEdit instead of writing the file when document is open', async () => {
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       const mockDocument = {
         uri: { fsPath: '/test/shader.sha.json' } as any,
@@ -383,8 +400,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
     });
 
     test('applies WorkspaceEdit to the companion config document for .slang shaders', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       const mockDocument = {
         uri: { fsPath: '/test/shader.sha.json' } as any,
@@ -406,8 +422,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
     });
 
     test('skips edit when buffer content already matches incoming text', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       const text = '{"version":1}';
       const mockDocument = {
@@ -429,9 +444,8 @@ suite('ConfigUpdateHandler Test Suite', () => {
       sinon.assert.notCalled(writeStub);
     });
 
-    test('falls back to writeFileSync when applyEdit returns false', async () => {
-      const fs = require('fs');
-      const writeStub = sandbox.stub(fs, 'writeFileSync');
+    test('falls back to writing the file when applyEdit returns false', async () => {
+      const writeStub = sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       const mockDocument = {
         uri: { fsPath: '/test/shader.sha.json' } as any,
@@ -453,8 +467,7 @@ suite('ConfigUpdateHandler Test Suite', () => {
 
     test('does NOT schedule a manual refresh when applyEdit succeeds', async () => {
       const clock = sandbox.useFakeTimers();
-      const fs = require('fs');
-      sandbox.stub(fs, 'writeFileSync');
+      sandbox.stub(AtomicFile, 'writeFileAtomicSync');
 
       const mockDocument = {
         uri: { fsPath: '/test/shader.sha.json' } as any,

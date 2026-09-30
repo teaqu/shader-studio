@@ -73,7 +73,34 @@ describe("WebGPURenderingEngine pixel regions", () => {
     const engine = new WebGPURenderingEngine({ scriptUrl: "s.js", wasmUrl: "s.wasm" });
     expect(engine.requestPixelRegion(1, 10, 20)).toBe(false);
     expect(engine.collectPixelRegionResults()).toEqual([]);
+    expect(engine.getPixelRegionRequestStage(1)).toBeNull();
     expect(() => engine.cancelPixelRegionRequests()).not.toThrow();
+  });
+
+  it("reports a request's readback stage across a real render", async () => {
+    const { engine, device } = engineWithCanvasPass();
+    const realCapturer = new WebGPUPixelRegionCapturer(device as unknown as GPUDevice, "rgba8unorm");
+    Object.assign(engine as unknown as Record<string, unknown>, { pixelRegionCapturer: realCapturer });
+
+    expect(engine.requestPixelRegion(1, 100, 80)).toBe(true);
+    expect(engine.getPixelRegionRequestStage(1)).toBe("queued");
+    engine.render(1000);
+    expect(engine.getPixelRegionRequestStage(1)).toBe("mapping");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(engine.getPixelRegionRequestStage(1)).toBe("completed");
+    engine.collectPixelRegionResults();
+    expect(engine.getPixelRegionRequestStage(1)).toBeNull();
+  });
+
+  it("leaves a request queued when the frame draws nothing to the canvas", () => {
+    const { engine, device } = engineWithCanvasPass();
+    const realCapturer = new WebGPUPixelRegionCapturer(device as unknown as GPUDevice, "rgba8unorm");
+    Object.assign(engine as unknown as Record<string, unknown>, { pixelRegionCapturer: realCapturer, passGraph: [] });
+
+    expect(engine.requestPixelRegion(1, 100, 80)).toBe(true);
+    engine.render(1000);
+    expect(engine.getPixelRegionRequestStage(1)).toBe("queued");
   });
 
   it("delegates requests, results, and cancellation to the region capturer", () => {
