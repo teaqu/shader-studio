@@ -32,7 +32,17 @@ jobs:
             xvfb-run -a npm test -w extension > "ext-$i.log" 2>&1
             rc=$?
             echo "run $i exit $rc, log lines $(wc -l < "ext-$i.log")"
-            node .github/soak/annotate.mjs "ext-$i.log" "extension mocha run $i" "$rc"
+            echo "::notice title=ext sentinel $i::exit $rc lines $(wc -l < "ext-$i.log")"
+            # Short, individually escaped annotations: the long ones did not appear.
+            n=0
+            while IFS= read -r line && [ $n -lt 6 ]; do
+              line="${line//'%'/'%25'}"
+              echo "::error title=ext run $i line $n::${line:0:1500}"
+              n=$((n+1))
+            done < <(sed 's/\x1b\[[0-9;]*m//g' "ext-$i.log" | grep -E "failing|^\s+[0-9]+\) |Error|rror:|expected|actual" | head -6)
+            tailtxt="$(sed 's/\x1b\[[0-9;]*m//g' "ext-$i.log" | grep -v '^npm error' | tail -40)"
+            tailtxt="${tailtxt//'%'/'%25'}"; tailtxt="${tailtxt//$'\r'/}"; tailtxt="${tailtxt//$'\n'/'%0A'}"
+            echo "::warning title=ext run $i tail::${tailtxt:0:6000}"
             [ "$rc" -ne 0 ] && fails=$((fails+1))
           done
           [ "$fails" -eq 0 ]
