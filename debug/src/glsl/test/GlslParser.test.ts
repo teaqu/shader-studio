@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { GlslParser } from "../GlslParser";
 
 describe("GlslParser", () => {
+  it("rejects a long malformed fallback signature without quadratic scanning", () => {
+    const parser = GlslParser as unknown as {
+      findFunctionRangesByBraces(lines: string[]): unknown[];
+    };
+    const start = performance.now();
+    expect(parser.findFunctionRangesByBraces([`void main()${" ".repeat(40_000)}x`])).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
   describe("findEnclosingFunction", () => {
     it("should find mainImage when cursor is inside it", () => {
       const lines = [

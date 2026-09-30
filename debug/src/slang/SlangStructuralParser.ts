@@ -618,7 +618,7 @@ function parseDirectStatementDeclarations(
     return [first];
   }
 
-  const baseTypeName = first.typeName.replace(/(?:\[[^\]]*\])+$/, "");
+  const baseTypeName = withoutArraySuffix(first.typeName);
   const declarations = [first];
   for (const segment of segments.slice(1)) {
     const equalsIndex = findTokenInRange(tokens, segment.start, segment.end, "=") ?? segment.end;
@@ -641,6 +641,18 @@ function parseDirectStatementDeclarations(
     ));
   }
   return declarations;
+}
+
+function withoutArraySuffix(typeName: string): string {
+  let end = typeName.length;
+  while (end > 0 && typeName[end - 1] === "]") {
+    const open = typeName.lastIndexOf("[", end - 1);
+    if (open === -1) {
+      break;
+    }
+    end = open;
+  }
+  return typeName.slice(0, end);
 }
 
 function appendForInitializerDeclarations(

@@ -321,6 +321,14 @@ suite('MessageHandler Test Suite', () => {
     sinon.assert.notCalled(mockOutputChannel.error as sinon.SinonStub);
   });
 
+  test('handles adversarial compiler error prefixes without catastrophic backtracking', function () {
+    this.timeout(500);
+    assert.doesNotThrow(() => messageHandler.handleMessage({
+      type: 'error',
+      payload: [`${' 9:'.repeat(42)}x`],
+    }));
+  });
+
   test('should still report genuine compilation errors alongside missing-mainImage errors', () => {
     const mockDocument = {
       uri: vscode.Uri.file('/test/helper.slang'),
