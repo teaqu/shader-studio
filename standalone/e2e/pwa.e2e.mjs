@@ -192,7 +192,9 @@ test('accepting a newer build keeps an edit made just before the update', async 
     await page.goto(`${builds.origin}/`);
     await controlledByWorker(page);
     const status = page.getByRole('status');
-    await expect(status).toHaveAttribute('title', /Build local-/);
+    await expect(status).toHaveAttribute('title', /Build \S+/);
+    const firstBuild = (await status.getAttribute('title')).match(/Build (\S+)/)[1];
+    expect(firstBuild).not.toBe('next-build');
     await expect(page.getByRole('button', { name: 'Update ready' })).toHaveCount(0);
     await page.getByTestId('shader-option-aurora-glsl').click();
 
