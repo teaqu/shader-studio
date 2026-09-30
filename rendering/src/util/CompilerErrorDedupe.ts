@@ -12,8 +12,6 @@
  * Both are dropped here, at the one point every consumer reads from.
  */
 
-const HEADING = /(?:^|\n)(?:([^:\n]+):[ \t]*)?(?:ERROR:|error(?:\[[^\]]+\])?:)/gi;
-const SLANG_LOCATION = /^\s*-->\s+(.+?):(\d+)(?::(\d+))?\s*$/m;
 /** glslang reports `ERROR: <shader>:<line>:` instead of a `-->` line. */
 const GLSL_LOCATION = /ERROR:\s*\d+:\d+:/;
 /** Slang's epilogue: true only of blocks that report no location of their own. */
@@ -44,6 +42,12 @@ export interface CompilerErrorBlock {
   location?: { path: string; line: number; column?: number };
 }
 
+interface SlangLocation {
+  path: string;
+  line: number;
+  column?: number;
+}
+
 /**
  * Splits compiler output into one entry per diagnostic, the same way the VS
  * Code diagnostics do, so a panel can show them as separate blocks instead of
@@ -53,16 +57,16 @@ export function splitCompilerErrorBlocks(errors: readonly string[] | undefined):
   return (errors ?? [])
     .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     .flatMap((entry) => parseErrorBlocks(entry).map(({ text, pass }) => {
-      const location = text.match(SLANG_LOCATION);
+      const location = slangLocation(text);
       return {
         text,
         ...(pass === undefined ? {} : { pass }),
         ...(location
           ? {
             location: {
-              path: location[1],
-              line: Number.parseInt(location[2], 10),
-              ...(location[3] === undefined ? {} : { column: Number.parseInt(location[3], 10) }),
+              path: location.path,
+              line: location.line,
+              ...(location.column === undefined ? {} : { column: location.column }),
             },
           }
           : {}),
@@ -77,12 +81,33 @@ const GLSL_REPORTED_LINE = /ERROR:\s*\d+:(\d+):/;
  * the authored source. Common, vertex and generated-code lines use other
  * prefixes or owners and never name a line of the pass being edited.
  */
-const WGSL_REPORTED_LINE = /(?:^|\n)\s*([^:\n]+):\s*WGSL\s+L(\d+):/g;
-
 function wgslReportedLines(entry: string): number[] {
-  return [...entry.matchAll(WGSL_REPORTED_LINE)]
-    .filter((match) => match[1]!.trim() !== "Common")
-    .map((match) => Number.parseInt(match[2]!, 10));
+  const reported: number[] = [];
+  for (const line of entry.split("\n")) {
+    const separator = line.indexOf(":");
+    if (separator === -1 || line.slice(0, separator).trim() === "Common") {
+      continue;
+    }
+    const detail = line.slice(separator + 1).trimStart();
+    if (!detail.startsWith("WGSL")) {
+      continue;
+    }
+    let index = 4;
+    while (detail[index] === " " || detail[index] === "\t") {
+      index++;
+    }
+    if (detail[index++] !== "L") {
+      continue;
+    }
+    const lineStart = index;
+    while (detail[index] >= "0" && detail[index] <= "9") {
+      index++;
+    }
+    if (index > lineStart && detail[index] === ":") {
+      reported.push(Number.parseInt(detail.slice(lineStart, index), 10));
+    }
+  }
+  return reported;
 }
 
 /**
@@ -170,19 +195,17 @@ function restorePassPrefix(survivors: ErrorBlock[], entryPass: string | undefine
  * Browser-compiler WGSL errors, already mapped onto user lines by the pass
  * pipelines (`<pass>: WGSL [internal: ]L<line>:<col> <message>`).
  */
-const WGSL_REPORTED = /^(?<passName>[^:\n]+): WGSL (?:internal: )?L(?<line>\d+):(?<column>\d+) (?<message>[\s\S]*)$/;
-
 function parseErrorBlocks(entry: string): ErrorBlock[] {
-  const headings = [...entry.matchAll(HEADING)];
+  const headings = errorHeadings(entry);
   if (headings.length === 0) {
     const text = entry.trim();
-    const wgsl = text.match(WGSL_REPORTED);
-    if (wgsl?.groups) {
+    const wgsl = parseWgslReported(text);
+    if (wgsl) {
       // The pass prefix rides on every entry; the same user error from two
       // passes is one diagnostic.
       return [{
         text,
-        key: `wgsl|${wgsl.groups.line}:${wgsl.groups.column}|${normalize(wgsl.groups.message)}`,
+        key: `wgsl|${wgsl.line}:${wgsl.column}|${normalize(wgsl.message)}`,
         located: true,
       }];
     }
@@ -190,18 +213,91 @@ function parseErrorBlocks(entry: string): ErrorBlock[] {
   }
 
   return headings.map((heading, index) => {
-    // The match starts at the preceding newline for every heading but the first.
-    const start = (heading.index ?? 0) + (heading[0].startsWith("\n") ? 1 : 0);
     const end = headings[index + 1]?.index ?? entry.length;
-    const text = entry.slice(start, end).trimEnd();
-    const pass = heading[1]?.trim();
+    const text = entry.slice(heading.index, end).trimEnd();
+    const { pass } = heading;
     return {
       text,
       pass,
       key: blockKey(text, pass),
-      located: SLANG_LOCATION.test(text) || GLSL_LOCATION.test(text),
+      located: slangLocation(text) !== null || GLSL_LOCATION.test(text),
     };
   });
+}
+
+interface ErrorHeading {
+  index: number;
+  pass?: string;
+}
+
+function errorHeadings(entry: string): ErrorHeading[] {
+  const headings: ErrorHeading[] = [];
+  let lineStart = 0;
+  while (lineStart < entry.length) {
+    const newline = entry.indexOf("\n", lineStart);
+    const lineEnd = newline === -1 ? entry.length : newline;
+    const line = entry.slice(lineStart, lineEnd);
+    const directMarker = errorMarkerEnd(line, 0);
+    if (directMarker !== -1) {
+      headings.push({ index: lineStart });
+    } else {
+      const separator = line.indexOf(":");
+      if (separator > 0) {
+        let markerStart = separator + 1;
+        while (line[markerStart] === " " || line[markerStart] === "\t") {
+          markerStart++;
+        }
+        if (errorMarkerEnd(line, markerStart) !== -1) {
+          headings.push({ index: lineStart, pass: line.slice(0, separator).trim() });
+        }
+      }
+    }
+    if (newline === -1) {
+      break;
+    }
+    lineStart = newline + 1;
+  }
+  return headings;
+}
+
+function errorMarkerEnd(line: string, start: number): number {
+  const lower = line.slice(start).toLowerCase();
+  if (lower.startsWith("error:")) {
+    return start + "error:".length;
+  }
+  if (!lower.startsWith("error[")) {
+    return -1;
+  }
+  const close = line.indexOf("]", start + "error[".length);
+  return close !== -1 && line[close + 1] === ":" ? close + 2 : -1;
+}
+
+function parseWgslReported(text: string): { line: number; column: number; message: string } | null {
+  const separator = text.indexOf(":");
+  if (separator <= 0) {
+    return null;
+  }
+  let detail = text.slice(separator + 1).trimStart();
+  if (!detail.startsWith("WGSL ")) {
+    return null;
+  }
+  detail = detail.slice(5);
+  if (detail.startsWith("internal: ")) {
+    detail = detail.slice("internal: ".length);
+  }
+  if (detail[0] !== "L") {
+    return null;
+  }
+  const lineEnd = detail.indexOf(":", 1);
+  if (lineEnd === -1) {
+    return null;
+  }
+  const columnEnd = detail.indexOf(" ", lineEnd + 1);
+  const line = Number.parseInt(detail.slice(1, lineEnd), 10);
+  const column = Number.parseInt(detail.slice(lineEnd + 1, columnEnd), 10);
+  return columnEnd !== -1 && Number.isFinite(line) && Number.isFinite(column)
+    ? { line, column, message: detail.slice(columnEnd + 1) }
+    : null;
 }
 
 /**
@@ -211,11 +307,39 @@ function parseErrorBlocks(entry: string): ErrorBlock[] {
  */
 function blockKey(text: string, pass: string | undefined): string {
   const withoutPass = pass ? text.replace(`${pass}:`, "").trimStart() : text;
-  const location = text.match(SLANG_LOCATION);
+  const location = slangLocation(text);
   if (location) {
-    return `located|${location[1]}:${location[2]}:${location[3] ?? ""}|${normalize(withoutPass)}`;
+    return `located|${location.path}:${location.line}:${location.column ?? ""}|${normalize(withoutPass)}`;
   }
   return `pass|${pass ?? ""}|${normalize(withoutPass)}`;
+}
+
+function slangLocation(text: string): SlangLocation | null {
+  for (const sourceLine of text.split("\n")) {
+    const line = sourceLine.trim();
+    if (!line.startsWith("-->")) {
+      continue;
+    }
+    const location = line.slice(3).trim();
+    const lastColon = location.lastIndexOf(":");
+    if (lastColon === -1) {
+      continue;
+    }
+    const lastNumber = Number.parseInt(location.slice(lastColon + 1), 10);
+    if (!Number.isFinite(lastNumber)) {
+      continue;
+    }
+    const beforeLast = location.slice(0, lastColon);
+    const previousColon = beforeLast.lastIndexOf(":");
+    if (previousColon !== -1) {
+      const maybeLine = Number.parseInt(beforeLast.slice(previousColon + 1), 10);
+      if (Number.isFinite(maybeLine)) {
+        return { path: beforeLast.slice(0, previousColon), line: maybeLine, column: lastNumber };
+      }
+    }
+    return { path: beforeLast, line: lastNumber };
+  }
+  return null;
 }
 
 function normalize(text: string): string {

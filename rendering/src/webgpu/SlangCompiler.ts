@@ -15,6 +15,7 @@ import {
   SLANG_ENTRY_FRAGMENT,
 } from "./SlangPrelude";
 import type { WgslVertexRange, WgslDirectiveRange } from "./wgslDiagnostics";
+import { stripComments } from "../util/ShaderText";
 
 export type SlangCompileResult =
   | { success: true; wgsl: string; sourceLineOffset?: number; sourceLineCount?: number; vertexRange?: WgslVertexRange; commonRange?: WgslVertexRange; directiveRanges?: WgslDirectiveRange[]; requiredFeatures?: string[] }
@@ -123,9 +124,7 @@ export class SlangCompiler {
         });
       // Name the module after the pass so Slang diagnostics cite the right
       // file (e.g. /buffera.slang) rather than always claiming /image.slang.
-      const sourceWithoutComments = resolvedSource
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/.*$/gm, "");
+      const sourceWithoutComments = stripComments(resolvedSource);
       const declaredModuleName = sourceWithoutComments.match(
         /^\s*module\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*;/m,
       )?.[1];
@@ -232,8 +231,6 @@ export class SlangCompiler {
   }
 }
 
-const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|"[^"]+")[ \t]*;?[ \t]*$/gm;
-
 /**
  * Strip import declarations from Slang source before passing it to the WASM
  * runtime. The WASM has no filesystem, so any form of `import` triggers
@@ -241,7 +238,25 @@ const IMPORT_STRIP_PATTERN = /^[ \t]*import[ \t]+(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w
  * linked via the composite.
  */
 function stripImports(source: string, preserveImports: boolean): string {
-  return source.replace(IMPORT_STRIP_PATTERN, (match: string) => preserveImports ? match : "");
+  if (preserveImports) {
+    return source;
+  }
+  return source.split("\n").map((line) => isSlangImportLine(line) ? "" : line).join("\n");
+}
+
+function isSlangImportLine(line: string): boolean {
+  let text = line.trim();
+  if (!text.startsWith("import") || (text[6] !== " " && text[6] !== "\t")) {
+    return false;
+  }
+  text = text.slice(7).trim();
+  if (text.endsWith(";")) {
+    text = text.slice(0, -1).trimEnd();
+  }
+  if (text.startsWith('"')) {
+    return text.length > 2 && text.endsWith('"') && !text.slice(1, -1).includes('"');
+  }
+  return text.split(".").every((part) => /^[A-Za-z_]\w*$/.test(part));
 }
 
 function errMessage(e: unknown): string {

@@ -101,6 +101,17 @@ describe('WebSocketTransport', () => {
 
       expect(webSocketSpy).toHaveBeenCalledWith(`ws://localhost:${testPort}`);
     });
+
+    it('should connect through the hostname that served the browser preview', () => {
+      vi.stubGlobal('window', {
+        shaderViewConfig: { port: 8080 },
+        location: { hostname: '127.0.0.1' },
+      });
+
+      const transport = new WebSocketTransport();
+
+      expect(webSocketSpy).toHaveBeenCalledWith('ws://127.0.0.1:8080');
+    });
   });
 
   describe('Connection Lifecycle', () => {

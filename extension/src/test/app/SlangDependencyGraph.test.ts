@@ -222,6 +222,16 @@ suite("resolveSlangImports", () => {
     assert.ok(result.includes("import missing.module"));
   });
 
+  test("parses an import with adversarial trailing whitespace without backtracking", function () {
+    this.timeout(500);
+    const files = {
+      [path.normalize("/shader/palette.slang")]: "public float3 paletteColor() { return 1; }",
+    };
+    const source = `import palette${"\t".repeat(100_000)};`;
+
+    assert.ok(resolveSlangImports(source, "/shader/image.slang", readSource(files)).includes("paletteColor"));
+  });
+
   test("recursively inlines transitive imports", () => {
     const files = {
       [path.normalize("/shader/lib/color.slang")]:

@@ -729,8 +729,33 @@ function updatePreprocessorConditionals(
 }
 
 function literalPreprocessorCondition(argument: string): boolean | undefined {
-  const match = argument.match(/^([01])(?:\s|\/\/.*|\/\*.*?\*\/)*$/);
-  return match ? match[1] === "1" : undefined;
+  const value = argument[0];
+  if (value !== "0" && value !== "1") {
+    return undefined;
+  }
+
+  let index = 1;
+  while (index < argument.length) {
+    const character = argument[index]!;
+    if (/\s/.test(character)) {
+      index++;
+      continue;
+    }
+    if (argument.startsWith("//", index)) {
+      return value === "1";
+    }
+    if (argument.startsWith("/*", index)) {
+      const commentEnd = argument.indexOf("*/", index + 2);
+      if (commentEnd === -1) {
+        return undefined;
+      }
+      index = commentEnd + 2;
+      continue;
+    }
+    return undefined;
+  }
+
+  return value === "1";
 }
 
 function isPreprocessorActive(stack: PreprocessorConditional[]): boolean {

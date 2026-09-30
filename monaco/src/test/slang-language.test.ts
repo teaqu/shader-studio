@@ -217,7 +217,7 @@ function dottedNumberCorpus(): string[] {
 }
 
 describe('Slang Monarch language', () => {
-  let monaco: typeof import('monaco-editor/esm/vs/editor/editor.api.js');
+  let monaco: typeof import('monaco-editor/editor/editor.api.js');
 
   it('provides the CSSOM CSS.escape API Monaco uses in jsdom', () => {
     expect(CSS.escape('0shader')).toBe('\\30 shader');
@@ -232,7 +232,7 @@ describe('Slang Monarch language', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     })));
-    monaco = await import('monaco-editor/esm/vs/editor/editor.api.js');
+    monaco = await import('monaco-editor/editor/editor.api.js');
     const { setupMonacoGlsl, setupMonacoSlang } = await import('../setup');
     setupMonacoGlsl(monaco);
     setupMonacoSlang(monaco);

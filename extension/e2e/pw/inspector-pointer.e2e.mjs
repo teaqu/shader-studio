@@ -113,7 +113,7 @@ test.describe('hidden line tooltip leaves inspector interactive @gpu', () => {
     expect(rowBox).not.toBeNull();
     expect(tooltipBox).not.toBeNull();
     expect(rowBox.x + 2).toBeLessThan(tooltipBox.x);
-    await vscode.window.mouse.move(rowBox.x + 2, rowBox.y + rowBox.height / 2);
+    await row.hover({ position: { x: 2, y: rowBox.height / 2 } });
     await expect.poll(async () => isGreen(await centrePixel(frame)), {
       message: 'the uncovered part of the same variable must show a green full preview',
     }).toBe(true);

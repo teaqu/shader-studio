@@ -104,7 +104,7 @@ jobs:
         run: npm run check -w ui
 
       - name: Run CI helper contract tests
-        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs
+        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs extension/e2e/pw/bridge-extension/*.test.mjs
 
       - name: Run Open VSX publishing-script regression tests
         run: bash .github/scripts/test-publish-open-vsx.sh
@@ -176,6 +176,12 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install chromium firefox
+
+      - name: Configure isolated standalone E2E ports
+        run: |
+          PORT_SEED=$((GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT * 7919))
+          echo "STANDALONE_E2E_PORT=$((20000 + PORT_SEED % 10000))" >> "${GITHUB_ENV}"
+          echo "STANDALONE_E2E_DEV_PORT=$((30000 + PORT_SEED % 10000))" >> "${GITHUB_ENV}"
 
       - name: Run all standalone browser projects
         id: standalone-e2e
@@ -269,6 +275,11 @@ jobs:
 
       - name: Install test dependencies
         run: npm ci
+
+      # websocket-origin.e2e.mjs launches a separate Chromium browser to test
+      # the origin accepted by the installed extension's web server.
+      - name: Install Playwright browser
+        run: npx playwright install chromium
 
       - name: Download tested extension artifact
         uses: actions/download-artifact@v8

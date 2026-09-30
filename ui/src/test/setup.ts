@@ -241,52 +241,52 @@ const monacoMock = {
 // Mock Monaco editor entrypoints — the static import in EditorOverlay.svelte would
 // crash jsdom because Monaco depends on browser APIs (canvas, workers, etc.)
 vi.mock('monaco-editor', () => monacoMock);
-vi.mock('monaco-editor/esm/vs/editor/editor.api.js', () => monacoMock);
-vi.mock('monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError', () => {
+vi.mock('monaco-editor/editor/editor.api.js', () => monacoMock);
+vi.mock('monaco-editor/editor/contrib/gotoError/browser/gotoError', () => {
   monacoContributionLoadState.gotoError += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution', () => {
+vi.mock('monaco-editor/editor/contrib/hover/browser/hoverContribution', () => {
   monacoContributionLoadState.hover += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController', () => {
+vi.mock('monaco-editor/editor/contrib/suggest/browser/suggestController', () => {
   monacoContributionLoadState.suggest += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints', () => {
+vi.mock('monaco-editor/editor/contrib/parameterHints/browser/parameterHints', () => {
   monacoContributionLoadState.parameterHints += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands', () => {
+vi.mock('monaco-editor/editor/contrib/gotoSymbol/browser/goToCommands', () => {
   monacoContributionLoadState.goToCommands += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition', () => {
+vi.mock('monaco-editor/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition', () => {
   monacoContributionLoadState.goToDefinitionAtPosition += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/standalone/browser/referenceSearch/standaloneReferenceSearch', () => {
+vi.mock('monaco-editor/editor/standalone/browser/referenceSearch/standaloneReferenceSearch', () => {
   monacoContributionLoadState.referenceSearch += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/rename/browser/rename', () => {
+vi.mock('monaco-editor/editor/contrib/rename/browser/rename', () => {
   monacoContributionLoadState.rename += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/colorPicker/browser/colorPickerContribution', () => {
+vi.mock('monaco-editor/editor/contrib/colorPicker/browser/colorPickerContribution', () => {
   monacoContributionLoadState.colorPicker += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/documentSymbols/browser/documentSymbols', () => {
+vi.mock('monaco-editor/editor/contrib/documentSymbols/browser/documentSymbols', () => {
   monacoContributionLoadState.documentSymbols += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess', () => {
+vi.mock('monaco-editor/editor/standalone/browser/quickAccess/standaloneGotoSymbolQuickAccess', () => {
   monacoContributionLoadState.gotoSymbolQuickAccess += 1;
   return {};
 });
-vi.mock('monaco-editor/esm/vs/editor/contrib/wordHighlighter/browser/wordHighlighter', () => {
+vi.mock('monaco-editor/editor/contrib/wordHighlighter/browser/wordHighlighter', () => {
   monacoContributionLoadState.wordHighlighter += 1;
   return {};
 });

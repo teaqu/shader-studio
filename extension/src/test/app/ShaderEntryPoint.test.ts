@@ -76,6 +76,13 @@ suite('ShaderEntryPoint', () => {
     test('says no about an empty file', () => {
       assert.strictEqual(definesMainImage(''), false);
     });
+
+    test('rejects adversarial WGSL return annotations without catastrophic backtracking', function () {
+      this.timeout(500);
+      const source = `fn mainImage() -> @a(${')@0('.repeat(28)}x`;
+
+      assert.strictEqual(definesMainImage(source), false);
+    });
   });
 
   suite('stripCommentsAndStrings', () => {

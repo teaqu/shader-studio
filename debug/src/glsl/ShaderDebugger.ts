@@ -2,6 +2,35 @@ import { GlslParser } from './GlslParser';
 import type { VarInfo } from './GlslParser';
 import { CodeGenerator } from './CodeGenerator';
 import type { DebugFunctionContext, DebugParameterInfo, DebugLoopInfo } from './types';
+import { parenthesizedContents, stripLineComment } from './textScan';
+
+function loopHeader(line: string): string | null {
+  const trimmed = stripLineComment(line).trim();
+  for (const keyword of ['for', 'while']) {
+    if (!trimmed.startsWith(keyword)) {
+      continue;
+    }
+    let open = keyword.length;
+    while (trimmed[open] === ' ' || trimmed[open] === '\t') {
+      open++;
+    }
+    if (trimmed[open] !== '(') {
+      continue;
+    }
+    let depth = 1;
+    for (let index = open + 1; index < trimmed.length; index++) {
+      if (trimmed[index] === '(') {
+        depth++;
+      } else if (trimmed[index] === ')' && --depth === 0) {
+        const remainder = trimmed.slice(index + 1).trim();
+        return remainder === '' || remainder === '{'
+          ? trimmed.slice(0, index + 1).trim()
+          : null;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Orchestrates shader modification for line-by-line debugging.
@@ -294,7 +323,7 @@ export class ShaderDebugger {
     }
 
     for (let i = functionInfo.start + 1; i < functionInfo.end; i++) {
-      const trimmed = lines[i]?.replace(/\/\/.*$/, '').trim() ?? '';
+      const trimmed = stripLineComment(lines[i] ?? '').trim();
       if (trimmed === '') {
         continue;
       }
@@ -306,7 +335,7 @@ export class ShaderDebugger {
 
   private static findLastMeaningfulBodyLine(lines: string[], functionInfo: { start: number; end: number }): number {
     for (let i = functionInfo.end - 1; i > functionInfo.start; i--) {
-      const trimmed = lines[i]?.replace(/\/\/.*$/, '').trim() ?? '';
+      const trimmed = stripLineComment(lines[i] ?? '').trim();
       if (trimmed === '' || trimmed === '{' || trimmed === '}') {
         continue;
       }
@@ -336,7 +365,7 @@ export class ShaderDebugger {
         continue;
       }
 
-      const stripped = (lines[candidate] || '').replace(/\/\/.*$/, '').trim();
+      const stripped = stripLineComment(lines[candidate] || '').trim();
       if (stripped === '' || stripped === '{' || stripped === '}') {
         continue;
       }
@@ -410,13 +439,13 @@ export class ShaderDebugger {
   private static extractParameters(lines: string[], startLine: number): DebugParameterInfo[] {
     const parameters: DebugParameterInfo[] = [];
     const funcLine = GlslParser.getFullFunctionSignature(lines, startLine);
-    const paramsMatch = funcLine.match(/\(([^)]*)\)/);
+    const params = parenthesizedContents(funcLine);
 
-    if (!paramsMatch || !paramsMatch[1].trim()) {
+    if (!params?.trim()) {
       return parameters;
     }
 
-    const paramPairs = paramsMatch[1].split(',').map(p => p.trim());
+    const paramPairs = params.split(',').map(p => p.trim());
 
     for (const pair of paramPairs) {
       const match = pair.match(/(?:(in|out|inout)\s+)?(vec[234]|float|int|bool|mat[234]|sampler2D)\s+(\w+)/);
@@ -521,7 +550,7 @@ export class ShaderDebugger {
     let funcEnd = lines.length - 1;
     let funcBodyStarted = false;
     for (let i = functionStart; i < lines.length; i++) {
-      const strippedFuncLine = lines[i].replace(/\/\/.*$/, '');
+      const strippedFuncLine = stripLineComment(lines[i]);
       for (const char of strippedFuncLine) {
         if (char === '{') {
           funcBraceDepth++; funcBodyStarted = true;
@@ -554,32 +583,30 @@ export class ShaderDebugger {
 
     for (let i = functionStart + 1; i <= funcEnd; i++) {
       const line = lines[i];
-      const forMatch = line.match(/^\s*(for\s*\(.+\))\s*\{?\s*$/);
-      const whileMatch = line.match(/^\s*(while\s*\(.+\))\s*\{?\s*$/);
-      const loopHeader = forMatch?.[1] || whileMatch?.[1];
+      const header = loopHeader(line);
 
-      if (loopHeader) {
+      if (header) {
         const currentLoopIndex = loopIndex++;
         // Check if brace is on the same line (strip comments first)
-        if (line.replace(/\/\/.*$/, '').includes('{')) {
+        if (stripLineComment(line).includes('{')) {
           braceDepth++;
           allLoops.push({
             loopIndex: currentLoopIndex,
             lineNumber: i,
             endLine: -1,
-            loopHeader,
+            loopHeader: header,
             openBraceDepth: braceDepth,
           });
           loopStack.push({ index: allLoops.length - 1, openBraceDepth: braceDepth });
         } else {
           // Brace expected on next line
-          pendingLoop = { loopIndex: currentLoopIndex, lineNumber: i, loopHeader };
+          pendingLoop = { loopIndex: currentLoopIndex, lineNumber: i, loopHeader: header };
         }
         continue;
       }
 
       // Process each character for brace tracking (strip // comments first)
-      const strippedLine = line.replace(/\/\/.*$/, '');
+      const strippedLine = stripLineComment(line);
       for (const char of strippedLine) {
         if (char === '{') {
           braceDepth++;
@@ -663,7 +690,7 @@ export class ShaderDebugger {
       // output line is inserted AFTER them, not inside.
       let depth = 0;
       for (let i = functionStart; i <= truncationEnd; i++) {
-        const stripped = lines[i].replace(/\/\/.*$/, '');
+        const stripped = stripLineComment(lines[i]);
         for (const char of stripped) {
           if (char === '{') {
             depth++;
@@ -676,7 +703,7 @@ export class ShaderDebugger {
       if (depth > 1) {
         // Scan forward until we return to depth 1 (function body level)
         for (let i = truncationEnd + 1; i < lines.length; i++) {
-          const stripped = lines[i].replace(/\/\/.*$/, '');
+          const stripped = stripLineComment(lines[i]);
           for (const char of stripped) {
             if (char === '{') {
               depth++;
@@ -746,7 +773,7 @@ export class ShaderDebugger {
     const openBlocks: Array<{ openLine: number }> = [];
     const blocks: Array<{ openLine: number; endLine: number }> = [];
     for (let lineIndex = functionStart; lineIndex <= truncationEnd; lineIndex++) {
-      for (const character of lines[lineIndex].replace(/\/\/.*$/, '')) {
+      for (const character of stripLineComment(lines[lineIndex])) {
         if (character === '{') {
           openBlocks.push({ openLine: lineIndex });
         }
@@ -768,7 +795,7 @@ export class ShaderDebugger {
 
     let headerLine = functionStart + 1;
     for (let lineIndex = functionStart; lineIndex < lines.length; lineIndex++) {
-      if (lines[lineIndex].replace(/\/\/.*$/, '').includes('{')) {
+      if (stripLineComment(lines[lineIndex]).includes('{')) {
         headerLine = lineIndex + 1;
         break;
       }

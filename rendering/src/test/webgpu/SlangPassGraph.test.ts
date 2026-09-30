@@ -1635,6 +1635,17 @@ float4 h = disjunctionElse[0].position;
     expect(graph.warnings).toEqual([]);
   });
 
+  it("rejects adversarial literal preprocessor conditions without catastrophic backtracking", () => {
+    const adversarialCondition = `0/*${"*//*".repeat(30)}x`;
+    const graph = build({ particles: { count: 2, elementType: "Particle" } }, `
+#if ${adversarialCondition}
+float4 inactive = particles[0].position;
+#endif
+`);
+
+    expect(graph.warnings).toEqual([]);
+  }, 500);
+
   it("reports total valid storage larger than 256 MiB", () => {
     const graph = build({ huge: { count: 268_435_457, elementType: "uint" } });
 
