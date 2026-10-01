@@ -1,2 +1,3 @@
 #!/bin/sh
-exec node "$(git rev-parse --show-toplevel)/.githooks/check-attribution.mjs" --message-file "$1"
+exec node "$(git rev-parse --show-toplevel)/.githooks/check-attribution.mjs" --message-file "$1" \
+  --identity "$(git var GIT_AUTHOR_IDENT)" --identity "$(git var GIT_COMMITTER_IDENT)"
