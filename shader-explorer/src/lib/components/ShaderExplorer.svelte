@@ -184,9 +184,15 @@
         shadersStore.set(shaders);
         
         if (message.savedState) {
-          if (message.savedState.sortBy) sortBy = message.savedState.sortBy;
-          if (message.savedState.sortOrder) sortOrder = message.savedState.sortOrder;
-          if (message.savedState.pageSize) pageSize = message.savedState.pageSize;
+          if (message.savedState.sortBy) {
+            sortBy = message.savedState.sortBy;
+          }
+          if (message.savedState.sortOrder) {
+            sortOrder = message.savedState.sortOrder;
+          }
+          if (message.savedState.pageSize) {
+            pageSize = message.savedState.pageSize;
+          }
           if (message.savedState.cardSize && typeof message.savedState.cardSize === 'number') {
             cardSize = message.savedState.cardSize;
           }

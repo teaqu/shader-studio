@@ -10,10 +10,14 @@ it('hides buffers by default and saves and restores the visibility option', asyn
   const hostApi = {
     onMessage(handler: (event: MessageEvent) => void) {
       receive = handler;
-      return () => { receive = undefined; };
+      return () => {
+        receive = undefined;
+      };
     },
     postMessage(message: { type: string; state?: Record<string, unknown> }) {
-      if (message.type === 'saveState') savedState = message.state ?? {};
+      if (message.type === 'saveState') {
+        savedState = message.state ?? {};
+      }
       if (message.type === 'requestShaders') {
         receive?.(new MessageEvent('message', { data: {
           type: 'shadersUpdate', savedState,
@@ -70,7 +74,9 @@ it('mentions WGSL in the empty-state message when no shaders are found', async (
   const hostApi = {
     onMessage(handler: (event: MessageEvent) => void) {
       receive = handler;
-      return () => { receive = undefined; };
+      return () => {
+        receive = undefined;
+      };
     },
     postMessage: vi.fn((message: { type: string }) => {
       if (message.type === 'requestShaders') {

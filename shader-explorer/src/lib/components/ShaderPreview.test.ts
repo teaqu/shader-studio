@@ -422,7 +422,9 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
         const shader = makeShader({ path: '/test/image.slang', name: 'image.slang' });
         const vscodeApi = {
             postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
-                if (msg.type !== 'requestShaderCode') return;
+                if (msg.type !== 'requestShaderCode') {
+                    return;
+                }
                 setTimeout(() => {
                     window.dispatchEvent(new MessageEvent('message', {
                         data: {
@@ -454,7 +456,9 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
     it('passes custom uniform declarations and type metadata to the selected engine', async () => {
         const vscodeApi = {
             postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
-                if (msg.type !== 'requestShaderCode') return;
+                if (msg.type !== 'requestShaderCode') {
+                    return;
+                }
                 setTimeout(() => {
                     window.dispatchEvent(new MessageEvent('message', {
                         data: {
@@ -492,7 +496,9 @@ describe('ShaderPreview - renderer selection and cleanup', () => {
         const shader = makeShader({ path: '/test/shader.slang', name: 'shader.slang' });
         const vscodeApi = {
             postMessage: vi.fn((msg: { type: string; path: string; requestId: number }) => {
-                if (msg.type !== 'requestShaderCode') return;
+                if (msg.type !== 'requestShaderCode') {
+                    return;
+                }
                 setTimeout(() => {
                     window.dispatchEvent(new MessageEvent('message', {
                         data: {

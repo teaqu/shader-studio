@@ -52,7 +52,9 @@ export function resolveGraphBufferFormats(
 ): void {
   const formats = new Map<string, ResolvedBufferFormat>();
   for (const pass of graph.passes) {
-    if (pass.output === "canvas") continue;
+    if (pass.output === "canvas") {
+      continue;
+    }
     try {
       pass.resolvedOutputFormat = resolveBufferFormat(pass.outputFormat, capabilities);
       formats.set(pass.name, pass.resolvedOutputFormat);
@@ -62,9 +64,13 @@ export function resolveGraphBufferFormats(
   }
   for (const pass of graph.passes) {
     for (const channel of pass.channels) {
-      if (channel.kind !== "buffer") continue;
+      if (channel.kind !== "buffer") {
+        continue;
+      }
       const format = formats.get(channel.source);
-      if (!format) continue;
+      if (!format) {
+        continue;
+      }
       const sampling = resolveBufferSampling(channel.filter ?? "linear", format, capabilities);
       channel.effectiveFilter = sampling.effective === "mipmap" ? "linear" : sampling.effective;
       channel.sampleType = sampling.sampleType;

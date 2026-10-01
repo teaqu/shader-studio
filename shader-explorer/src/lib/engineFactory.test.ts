@@ -22,8 +22,12 @@ const {
     mockWebGLEngine,
     mockWebGPUEngine,
     mockSlangAssets,
-    MockWebGLRenderingEngine: vi.fn(function MockWebGLRenderingEngine() { return mockWebGLEngine; }),
-    MockWebGPURenderingEngine: vi.fn(function MockWebGPURenderingEngine(_assets: SlangAssetUrls) { return mockWebGPUEngine; }),
+    MockWebGLRenderingEngine: vi.fn(function MockWebGLRenderingEngine() {
+      return mockWebGLEngine;
+    }),
+    MockWebGPURenderingEngine: vi.fn(function MockWebGPURenderingEngine(_assets: SlangAssetUrls) {
+      return mockWebGPUEngine;
+    }),
     mockGetSlangAssetUrls: vi.fn(() => mockSlangAssets),
   };
 });
@@ -45,8 +49,12 @@ import { createEngineForLanguage } from './engineFactory';
 describe('createEngineForLanguage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    MockWebGLRenderingEngine.mockImplementation(function MockWebGLRenderingEngine() { return mockWebGLEngine; });
-    MockWebGPURenderingEngine.mockImplementation(function MockWebGPURenderingEngine() { return mockWebGPUEngine; });
+    MockWebGLRenderingEngine.mockImplementation(function MockWebGLRenderingEngine() {
+      return mockWebGLEngine;
+    });
+    MockWebGPURenderingEngine.mockImplementation(function MockWebGPURenderingEngine() {
+      return mockWebGPUEngine;
+    });
     mockGetSlangAssetUrls.mockImplementation(() => mockSlangAssets);
   });
 

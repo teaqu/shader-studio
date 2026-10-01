@@ -113,7 +113,9 @@
       return;
     }
 
-    if (w === prevWidth && h === prevHeight) return;
+    if (w === prevWidth && h === prevHeight) {
+      return;
+    }
 
     prevWidth = w;
     prevHeight = h;
@@ -124,10 +126,14 @@
 
     resizeTimeout = window.setTimeout(async () => {
       resizeTimeout = null;
-      if (destroyed || generation !== resizeGeneration || !shaderCode) return;
+      if (destroyed || generation !== resizeGeneration || !shaderCode) {
+        return;
+      }
 
       await thumbnailRenderQueue.enqueue(queueId, async () => {
-        if (destroyed || generation !== resizeGeneration) return;
+        if (destroyed || generation !== resizeGeneration) {
+          return;
+        }
         await initializeRendering({
           keepPreviousImage: Boolean(capturedImage),
           isCurrent: () => generation === resizeGeneration,
@@ -190,12 +196,16 @@
     renderThumbnail?: boolean;
     isCurrent?: () => boolean;
   } = {}) {
-    if (!vscodeApi || !isCurrent()) return;
+    if (!vscodeApi || !isCurrent()) {
+      return;
+    }
 
     if (renderThumbnail && canvas) {
       await thumbnailRenderQueue.enqueue(queueId, async () => {
         await fetchShaderCode(isCurrent);
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
         await initializeRendering();
       });
       return;
@@ -205,7 +215,9 @@
   }
 
   async function fetchShaderCode(isCurrent: () => boolean = () => !destroyed) {
-    if (!vscodeApi || shaderCode || !isCurrent()) return;
+    if (!vscodeApi || shaderCode || !isCurrent()) {
+      return;
+    }
 
     const controller = new AbortController();
     pendingShaderRequests.add(controller);
@@ -217,7 +229,9 @@
         signal: controller.signal,
       });
 
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       if (response.scriptBundleError) {
         throw new Error(response.scriptBundleError);
@@ -255,7 +269,9 @@
       engine,
       targetCanvas,
       dispose: () => {
-        if (disposed) return;
+        if (disposed) {
+          return;
+        }
         disposed = true;
         cleanupRenderer(engine, targetCanvas);
       },
@@ -301,7 +317,9 @@
   }
 
   function cleanupRenderer(engine: RenderingEngine | null, targetCanvas: HTMLCanvasElement | null) {
-    if (!engine) return;
+    if (!engine) {
+      return;
+    }
 
     let language: ShaderLanguage | null = null;
     try {
@@ -327,7 +345,9 @@
       || !targetCanvas
       || targetCanvas === sharedGlslThumbnailCanvas
       || targetCanvas === sharedGlslHoverCanvas
-    ) return;
+    ) {
+      return;
+    }
 
     try {
       // Force WebGL context to be lost to free resources
@@ -347,7 +367,9 @@
     isCurrent?: () => boolean;
     retryLostContext?: boolean;
   } = {}) {
-    if (!shaderCode || !canvas || destroyed) return;
+    if (!shaderCode || !canvas || destroyed) {
+      return;
+    }
 
     const displayCanvas = canvas;
     const targetCanvas = shaderLanguage === 'glsl'
@@ -383,7 +405,9 @@
         },
       );
       if (!renderer || !isCurrent()) {
-        if (getRenderingOwnership() === ownershipSlot.current) renderingOwnership = null;
+        if (getRenderingOwnership() === ownershipSlot.current) {
+          renderingOwnership = null;
+        }
         return;
       }
 
@@ -412,7 +436,9 @@
       if (result?.success) {
         // Let next frame render to ensure it's fully initialized
         await new Promise((resolve) => setTimeout(resolve, 16));
-        if (!isCurrent() || getRenderingOwnership() !== ownership || ownership.isDisposed()) return;
+        if (!isCurrent() || getRenderingOwnership() !== ownership || ownership.isDisposed()) {
+          return;
+        }
         
         // Capture the rendered frame as an image
         try {
@@ -463,7 +489,9 @@
       if (getRenderingOwnership() === ownershipSlot.current) {
         renderingOwnership = null;
       }
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       console.error('Failed to initialize rendering:', err);
       if (!keepPreviousImage) {
@@ -475,7 +503,9 @@
   }
 
   async function handleMouseEnter() {
-    if (isHovering || !hoverCanvasWrapper || destroyed) return;
+    if (isHovering || !hoverCanvasWrapper || destroyed) {
+      return;
+    }
 
     isHovering = true;
     const generation = ++hoverGeneration;
@@ -488,7 +518,9 @@
     // Load shader code if not already loaded (e.g., when using cached thumbnail)
     if (!shaderCode) {
       await loadShaderCode({ renderThumbnail: false, isCurrent });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       // Wait for shader code to be loaded
       if (!shaderCode) {
@@ -533,7 +565,9 @@
       } = { current: null };
       let rendererError: unknown;
       await hoverRenderQueue.enqueue(hoverQueueId, async () => {
-        if (!isCurrent() || hoverCanvas !== targetCanvas) return;
+        if (!isCurrent() || hoverCanvas !== targetCanvas) {
+          return;
+        }
         try {
           rendererSlot.current = await createShaderRenderer(
             targetCanvas,
@@ -552,10 +586,14 @@
           rendererError = error;
         }
       });
-      if (rendererError) throw rendererError;
+      if (rendererError) {
+        throw rendererError;
+      }
       const renderer = rendererSlot.current;
       if (!renderer || !isCurrent() || hoverCanvas !== targetCanvas) {
-        if (getHoverOwnership() === ownershipSlot.current) hoverOwnership = null;
+        if (getHoverOwnership() === ownershipSlot.current) {
+          hoverOwnership = null;
+        }
         return;
       }
 
@@ -572,7 +610,9 @@
         cleanupHoverRendering();
       }
     } catch (err) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       console.error('Failed to initialize hover rendering:', err);
       cleanupHoverRendering();
@@ -580,7 +620,9 @@
   }
   
   function handleMouseLeave() {
-    if (!isHovering) return;
+    if (!isHovering) {
+      return;
+    }
     
     cleanupHoverRendering();
   }
