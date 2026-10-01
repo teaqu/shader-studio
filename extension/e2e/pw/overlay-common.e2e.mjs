@@ -58,28 +58,33 @@ test.describe('GLSL common symbols in the Monaco overlay', () => {
   });
 
   test('hovers a common macro with its definition', async () => {
-    const span = app().locator('.editor-overlay .view-line span span').filter({ hasText: 'TAU' }).first();
-    await span.waitFor({ state: 'visible', timeout: 30_000 });
-    const position = await span.evaluate((element, needle) => {
-      const node = Array.from(element.childNodes).find(
-        (candidate) => candidate.nodeType === Node.TEXT_NODE && candidate.textContent?.includes(needle),
-      );
-      const index = node ? (node.textContent ?? '').indexOf(needle) : -1;
-      if (index < 0) {
-        return null;
-      }
-      const range = document.createRange();
-      range.setStart(node, index);
-      range.setEnd(node, index + needle.length);
-      const token = range.getBoundingClientRect();
-      const box = element.getBoundingClientRect();
-      return { x: token.left - box.left + token.width / 2, y: token.top - box.top + token.height / 2 };
-    }, 'TAU');
-    expect(position, 'TAU was not found in the overlay').not.toBeNull();
-
-    await span.hover({ position, timeout: 30_000 });
     const hover = app().locator('.editor-overlay .monaco-hover-content').first();
-    await expect.poll(async () => (await hover.count()) ? hover.innerText() : '', {
+    await expect.poll(async () => {
+      // Monaco merges same-coloured tokens into one span and re-splits them
+      // when semantic colours arrive, so a position measured once can land on
+      // `uv` by the time the pointer moves. Measure and hover on every attempt.
+      const span = app().locator('.editor-overlay .view-line span span').filter({ hasText: 'TAU' }).first();
+      await span.waitFor({ state: 'visible', timeout: 30_000 });
+      const position = await span.evaluate((element, needle) => {
+        const node = Array.from(element.childNodes).find(
+          (candidate) => candidate.nodeType === Node.TEXT_NODE && candidate.textContent?.includes(needle),
+        );
+        const index = node ? (node.textContent ?? '').indexOf(needle) : -1;
+        if (index < 0) {
+          return null;
+        }
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + needle.length);
+        const token = range.getBoundingClientRect();
+        const box = element.getBoundingClientRect();
+        return { x: token.left - box.left + token.width / 2, y: token.top - box.top + token.height / 2 };
+      }, 'TAU');
+      expect(position, 'TAU was not found in the overlay').not.toBeNull();
+      await app().locator('body').press('Escape').catch(() => { /* nothing focused */ });
+      await span.hover({ position, timeout: 30_000 });
+      return (await hover.count()) ? hover.innerText() : '';
+    }, {
       message: 'the overlay hover never described the common macro',
       timeout: 30_000,
     }).toMatch(/#define TAU/);
