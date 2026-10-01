@@ -67,6 +67,7 @@ describe("FrameRenderer", () => {
 
     mockResourceManager = {
       updateAudioTextures: vi.fn(),
+      updateVideoTextures: vi.fn(),
       getAudioSampleRate: vi.fn(() => 44100),
       getAudioState: vi.fn(() => null),
       getVideoElement: vi.fn(() => undefined),
@@ -1550,6 +1551,47 @@ describe("FrameRenderer", () => {
       expect(passUniforms.channelTime[2]).toBe(0);
       expect(passUniforms.channelTime[3]).toBe(0);
       expect(passUniforms.channelLoaded[0]).toBe(1);
+    });
+  });
+
+  describe("updateVideoTextures", () => {
+    it("uploads video frames once per rendered frame", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.updateVideoTextures).toHaveBeenCalledTimes(1);
+    });
+
+    it("uploads nothing for a duplicate frame that is skipped", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(5);
+
+      frameRenderer.render(1000);
+
+      expect(mockResourceManager.updateVideoTextures).not.toHaveBeenCalled();
+    });
+
+    it("uploads video frames before the passes sample them", () => {
+      frameRenderer.setRunning(true);
+      vi.mocked(mockTimeManager.getDeltaTime).mockReturnValue(0.016667);
+      vi.mocked(mockTimeManager.getFrame).mockReturnValue(1);
+      const callOrder: string[] = [];
+      mockResourceManager.updateVideoTextures.mockImplementation(() => {
+        callOrder.push("updateVideoTextures");
+      });
+      mockResourceManager.getAudioSampleRate.mockImplementation(() => {
+        callOrder.push("getAudioSampleRate");
+        return 44100;
+      });
+
+      frameRenderer.render(1000);
+
+      expect(callOrder.indexOf("updateVideoTextures")).toBeGreaterThanOrEqual(0);
+      expect(callOrder.indexOf("updateVideoTextures")).toBeLessThan(callOrder.indexOf("getAudioSampleRate"));
     });
   });
 

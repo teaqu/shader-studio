@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ShaderConfig } from "@shader-studio/types";
 import {
   createShaderCanvasHarness,
@@ -142,6 +142,47 @@ function interactionPixels(key: Pixel, mouse: Pixel): Pixel[] {
   return [key, mouse, key, mouse];
 }
 
+
+/**
+ * Counts video frames handed to the GPU, at the browser API itself: WebGPU's
+ * copyExternalImageToTexture and WebGL's texImage2D / texSubImage2D, counting
+ * only calls whose source is a video element.
+ */
+function countVideoUploads(): { count: () => number; restore: () => void } {
+  let uploads = 0;
+  const isVideo = (value: unknown): boolean => value instanceof HTMLVideoElement
+    || (typeof value === "object" && value !== null
+      && (value as { source?: unknown }).source instanceof HTMLVideoElement);
+  const spies: Array<{ mockRestore: () => void }> = [];
+  const watch = (proto: object | undefined, method: string): void => {
+    if (!proto || typeof (proto as Record<string, unknown>)[method] !== "function") {
+      return;
+    }
+    const original = (proto as Record<string, (...args: unknown[]) => unknown>)[method];
+    spies.push(vi.spyOn(proto as Record<string, (...args: unknown[]) => unknown>, method)
+      .mockImplementation(function (this: unknown, ...args: unknown[]) {
+        if (args.some(isVideo)) {
+          uploads += 1;
+        }
+        return original.apply(this, args);
+      }));
+  };
+  const globals = globalThis as unknown as Record<string, { prototype: object } | undefined>;
+  watch(globals.GPUQueue?.prototype, "copyExternalImageToTexture");
+  for (const context of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+    watch(globals[context]?.prototype, "texImage2D");
+    watch(globals[context]?.prototype, "texSubImage2D");
+  }
+  return {
+    count: () => uploads,
+    restore: () => {
+      for (const spy of spies) {
+        spy.mockRestore();
+      }
+    },
+  };
+}
+
 describe.each(["glsl", "slang", "wgsl"] as const)("%s input and media progression", (language) => {
   it("propagates held, pressed, toggled, released, and pointer state", { timeout: 30_000 }, async () => {
     const harness = createShaderCanvasHarness(language);
@@ -209,6 +250,34 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s input and media progressio
       expect(advancedAudio!.currentTime).toBeGreaterThan(initialAudio!.currentTime + 0.05);
       expect(advancedRegion).not.toEqual(initialRegion);
     } finally {
+      harness.dispose();
+    }
+  });
+  it("uploads no video frames while nothing renders, and uploads again when a frame renders", { timeout: 30_000 }, async () => {
+    const harness = createShaderCanvasHarness(language);
+    harness.resize(64, 64);
+    const uploads = countVideoUploads();
+    try {
+      await harness.compile({ image: mediaPrograms[language], config: mediaConfig });
+      await harness.renderAndReadRegion();
+      const initialTime = harness.engine.getVideoState(videoPath)?.currentTime ?? 0;
+      harness.engine.controlVideo(videoPath, "play");
+      const idleFrom = uploads.count();
+
+      // The video plays on, but no frame is rendered: a paused or hidden
+      // preview must not keep handing video frames to the GPU.
+      await waitFor(
+        () => (harness.engine.getVideoState(videoPath)?.currentTime ?? 0) > initialTime + 0.3,
+        `${language} video did not advance`,
+      );
+      expect(uploads.count() - idleFrom, `${language} uploaded video frames with nothing rendering`).toBe(0);
+
+      await harness.renderAndReadRegion();
+      expect(uploads.count() - idleFrom, `${language} did not upload the new video frame for a rendered frame`)
+        .toBeGreaterThan(0);
+    } finally {
+      harness.engine.controlVideo(videoPath, "pause");
+      uploads.restore();
       harness.dispose();
     }
   });

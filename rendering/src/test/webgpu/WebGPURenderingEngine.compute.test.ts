@@ -736,6 +736,8 @@ describe("WebGPURenderingEngine compute compilation", () => {
       videoHeight: 45,
       readyState: 4,
       HAVE_CURRENT_DATA: 2,
+      currentTime: 0,
+      seeking: false,
       loop: false,
       playsInline: false,
       preload: "",
@@ -773,14 +775,13 @@ describe("WebGPURenderingEngine compute compilation", () => {
     const appendChildSpy = vi.spyOn(document.body, "appendChild").mockImplementation(
       (node) => node,
     );
-    let updateFrame: FrameRequestCallback | undefined;
-    const requestFrameSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation(
-      (callback) => {
-        updateFrame = callback;
-        return 7;
-      },
-    );
-    const cancelFrameSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    // Video frames are uploaded when the renderer asks: advancing playback
+    // and calling updateTextures() is what a rendered frame does.
+    const requestFrameSpy = vi.spyOn(window, "requestAnimationFrame");
+    const uploadNextFrame = (time: number) => {
+      (video as unknown as { currentTime: number }).currentTime = time;
+      manager.updateTextures();
+    };
     const manager = new VideoTextureManager(
       new WebGPUTextureBackend(testHarness.device as unknown as GPUDevice),
     );
@@ -804,7 +805,7 @@ describe("WebGPURenderingEngine compute compilation", () => {
       testHarness.engine.render(1000);
       video.videoWidth = 129;
       video.videoHeight = 65;
-      updateFrame?.(16);
+      uploadNextFrame(1);
       testHarness.engine.render(1016);
 
       const resizedHandle = manager.getVideoTexture(path)!;
@@ -844,18 +845,18 @@ describe("WebGPURenderingEngine compute compilation", () => {
       });
       video.videoWidth = 200;
       video.videoHeight = 100;
-      updateFrame?.(32);
+      uploadNextFrame(2);
 
       expect(manager.getVideoTexture(path)).toBeUndefined();
       expect(resizedTexture.destroy).toHaveBeenCalled();
       expect(detachedCandidate?.destroy).toHaveBeenCalledTimes(1);
-      expect(requestFrameSpy).toHaveBeenCalledTimes(2);
+      // The manager never schedules frames of its own.
+      expect(requestFrameSpy).not.toHaveBeenCalled();
     } finally {
       manager.cleanup();
       createElementSpy.mockRestore();
       appendChildSpy.mockRestore();
       requestFrameSpy.mockRestore();
-      cancelFrameSpy.mockRestore();
     }
   });
 

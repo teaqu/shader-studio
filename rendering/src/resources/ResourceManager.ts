@@ -158,6 +158,11 @@ export class ResourceManager<T> {
     this.audioTextureManager.updateTextures();
   }
 
+  /** Uploads video frames that have changed; called once per rendered frame. */
+  public updateVideoTextures(): void {
+    this.videoTextureManager.updateTextures();
+  }
+
   public getAudioSampleRate(): number {
     return this.audioTextureManager.getSampleRate();
   }
