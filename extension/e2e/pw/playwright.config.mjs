@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { workerCount } from './workers.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extensionPath = resolve(here, '..', '..');
@@ -13,10 +14,12 @@ export default defineConfig({
   // config (playwright.corpus.config.mjs, `test:e2e:vscode:corpus`).
   testIgnore: '**/corpus-extension-host.e2e.mjs',
   outputDir: join(extensionPath, '.playwright'),
-  // Two workers, locally and on CI. On the ci-runner Mac (Sept 2026, pinned
-  // VS Code 1.109.5) two workers took the @gpu selection from 245s to 133s and
-  // the rest from 168s to 95s. Each extra worker is a full VS Code with its own
-  // GPU context, so don't raise this without measuring on the hosted runners.
+  // Two workers by default, locally and on CI. On the ci-runner Mac (Sept 2026,
+  // pinned VS Code 1.109.5) two workers took the @gpu selection from 245s to
+  // 133s and the rest from 168s to 95s. Each extra worker is a full VS Code with
+  // its own GPU context, so don't raise this without measuring on the hosted
+  // runners. SHADER_STUDIO_E2E_WORKERS overrides it per job: the Linux job has
+  // no GPU to contend for and more memory than the macOS one.
   //
   // This only works because the launch disables occluded-window backgrounding:
   // parallel windows overlap, and Chromium marks occluded windows hidden, which
@@ -26,7 +29,7 @@ export default defineConfig({
   // 24 textures through a second Chromium on the real adapter, starving the
   // other window's capture loop on the hosted macOS GPU. That journey now uses
   // a small fixture; the 24-input budget stays in its webview journey.
-  workers: 2,
+  workers: workerCount(process.env.SHADER_STUDIO_E2E_WORKERS),
   // Tests within a file share one VS Code and build state across each other, so
   // they must stay serial; separate files parallelise across workers.
   fullyParallel: false,

@@ -44,8 +44,10 @@ per step.
   a spec after explicitly closing their editors and preview between cases.
 - Two workers, locally and on CI, so spec files run in parallel while tests
   inside a file stay serial. On the ci-runner Mac two workers took the `@gpu`
-  selection from 245s to 133s and the rest from 168s to 95s. Parallel windows
-  overlap, so the occluded-window flags below are what make this safe.
+  selection from 245s to 133s and the rest from 168s to 95s.
+  `SHADER_STUDIO_E2E_WORKERS` overrides the count; the GPU-free Linux CI job
+  sets 3. Parallel windows overlap, so the occluded-window flags below are
+  what make this safe.
 - On Linux each VS Code gets its own Xvfb display (`private-display.mjs`).
   Windows on one X display share one input focus, and a window starting up in
   one worker takes it from the other. Playwright emulates focus only for the

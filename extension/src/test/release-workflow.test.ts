@@ -60,9 +60,11 @@ suite('Packaged extension CI gates', () => {
   });
 
   test('runs complementary GPU and non-GPU selections against the exact same packaged artifact', () => {
-    for (const [name, runner, grep, invert] of [
-      ['vscode-e2e', 'macos-15', '@gpu', '(?!)'],
-      ['vscode-e2e-linux', 'ubuntu-latest', undefined, '@gpu'],
+    for (const [name, runner, grep, invert, workers] of [
+      // The macOS job shares one GPU between windows, so it keeps the config's
+      // default worker count; the GPU-free Linux job runs more.
+      ['vscode-e2e', 'macos-15', '@gpu', '(?!)', undefined],
+      ['vscode-e2e-linux', 'ubuntu-latest', undefined, '@gpu', '3'],
     ] as const) {
       const job = verify.jobs[name];
       assert.strictEqual(job['runs-on'], runner);
@@ -72,6 +74,7 @@ suite('Packaged extension CI gates', () => {
       assert.ok(run.run?.includes('npm run test:e2e:vsix'));
       assert.strictEqual(run.env?.SHADER_STUDIO_E2E_GREP, grep);
       assert.strictEqual(run.env?.SHADER_STUDIO_E2E_GREP_INVERT, invert);
+      assert.strictEqual(run.env?.SHADER_STUDIO_E2E_WORKERS, workers);
       assert.strictEqual(run.env?.SHADER_STUDIO_E2E_VSIX,
         '${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}');
       const download = job.steps?.find(step => step.uses?.startsWith('actions/download-artifact@'));

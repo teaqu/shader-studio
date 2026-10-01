@@ -294,6 +294,8 @@ jobs:
           SHADER_STUDIO_E2E_VSIX: ${{ github.workspace }}/${{ needs.package.outputs.vsix_path }}
           SHADER_STUDIO_E2E_GREP_INVERT: '@gpu'
           SHADER_STUDIO_E2E_WINDOW: '1600x1000'
+          # No GPU to share here, and 16 GB holds three VS Code windows.
+          SHADER_STUDIO_E2E_WORKERS: '3'
         # The virtual display has to be larger than the window it hosts.
         run: xvfb-run -a --server-args="-screen 0 1920x1080x24" npm run test:e2e:vsix -w extension
 
