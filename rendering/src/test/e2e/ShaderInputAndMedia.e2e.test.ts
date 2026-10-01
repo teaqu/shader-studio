@@ -169,6 +169,9 @@ function countVideoUploads(): { count: () => number; restore: () => void } {
   };
   const globals = globalThis as unknown as Record<string, { prototype: object } | undefined>;
   watch(globals.GPUQueue?.prototype, "copyExternalImageToTexture");
+  // The WebGPU backend draws video frames into a 2D canvas and copies that,
+  // so its uploads reach the GPU queue without the video element.
+  watch(globals.CanvasRenderingContext2D?.prototype, "drawImage");
   for (const context of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
     watch(globals[context]?.prototype, "texImage2D");
     watch(globals[context]?.prototype, "texSubImage2D");
