@@ -340,6 +340,19 @@ suite('WebServer Test Suite', () => {
         fs.writeFileSync(emptyFile, '');
         const fd = fs.openSync(emptyFile, 'r');
         const response = { writeHead: sandbox.stub(), end: sandbox.stub() } as any;
+        // fs.close completes on the libuv threadpool, so wait for its callback
+        // rather than a fixed number of event-loop turns.
+        // Stub the CommonJS module: the `import * as fs` namespace is read-only.
+        const nodeFs: typeof fs = require('fs');
+        const realClose = nodeFs.close;
+        const closed = new Promise<void>((resolve) => {
+          sandbox.stub(nodeFs, 'close').callsFake(((closeFd: number, callback: fs.NoParamCallback) => {
+            realClose(closeFd, (error) => {
+              callback(error);
+              resolve();
+            });
+          }) as typeof fs.close);
+        });
 
         try {
           (webServer as any).handleRangeRequest(
@@ -349,7 +362,7 @@ suite('WebServer Test Suite', () => {
             fd,
             { size: 0 },
           );
-          await new Promise<void>((resolve) => setImmediate(resolve));
+          await closed;
 
           sinon.assert.calledWith(response.writeHead, 416, { 'Content-Range': 'bytes */0' });
           sinon.assert.calledOnce(response.end);

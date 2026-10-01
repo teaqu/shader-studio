@@ -93,6 +93,11 @@ module.exports = Object.freeze({
             preserveFocus: false
           });
         },
+  "0a859d407c87b936cdfbb09e047a7a811c45561b0bdcf26501a269ea6fe770b3": async (vscode, path) => {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.One, preview: false });
+      await vscode.commands.executeCommand('shader-studio.view');
+    },
   "0b0c32243daae5c6fc679a36bc5440ff08051cb57d33dc606c4ba9e56e274ffc": async (vscode) => {
       const installed = vscode.extensions.getExtension('teaqu.shader-studio');
       if (!installed) {
@@ -130,6 +135,9 @@ module.exports = Object.freeze({
     const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(p));
     return folder ? folder.uri.fsPath : null;
   },
+  "113e857cf02b5fca5421fc4710ecbe3a8ad7c9a67bb31f1af4f0d7ddd088bdde": async vscode => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    },
   "11d9a86dd2e9e2a0cf830b80974c35f02eb4b301cb6b891f5d89afd63f0b9679": async (vscode) => {
       await vscode.workspace.getConfiguration('shader-studio').update(
         'languageServers.glsl.enabled', undefined, vscode.ConfigurationTarget.Global,
@@ -1819,6 +1827,14 @@ module.exports = Object.freeze({
       });
       await vscode.commands.executeCommand('shader-studio.view');
     },
+  "e9029173f360e8b0dc518aa91147d37d88580779b196328add855699268b97de": async (vscode, path) => {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
+      await vscode.window.showTextDocument(document, {
+        viewColumn: vscode.ViewColumn.One,
+        preview: false
+      });
+      await vscode.commands.executeCommand('shader-studio.view');
+    },
   "eb0e52607cb6770e373de6e0259cb9104325fc5d92b92c4481f9692e3efae802": async (vscode, target, at) => {
     const document = vscode.workspace.textDocuments.find(candidate => candidate.uri.fsPath === target) ?? (await vscode.workspace.openTextDocument(vscode.Uri.file(target)));
     const editor = await vscode.window.showTextDocument(document, {
@@ -1882,6 +1898,9 @@ module.exports = Object.freeze({
         new vscode.Position(1, 4),
       );
       return (completions?.items ?? []).map((item) => typeof item.label === 'string' ? item.label : item.label.label);
+    },
+  "f01fb73f5907ddcb1a7c2031be28e7db3342d0c9c0e4462626fc3885f69e9316": async (vscode) => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     },
   "f07eacf9027826a5295b503585d4767639faa5047fb83c2becee1a48b57c51fd": async (vscode, paths, source) => {
           await vscode.workspace.fs.writeFile(vscode.Uri.file(paths.config), Buffer.from(JSON.stringify({

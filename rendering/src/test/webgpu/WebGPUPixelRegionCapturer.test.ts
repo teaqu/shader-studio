@@ -358,4 +358,81 @@ describe("WebGPUPixelRegionCapturer", () => {
       expect(buffer.destroy).toHaveBeenCalledOnce();
     }
   });
+
+  describe("getRequestStage", () => {
+    it("follows a request from queued through encoded and mapping to completed, then forgets it once collected", async () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      expect(capturer.getRequestStage(1)).toBeNull();
+
+      capturer.queue(request(1));
+      expect(capturer.getRequestStage(1)).toBe("queued");
+      capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100);
+      expect(capturer.getRequestStage(1)).toBe("encoded");
+      capturer.beginMappings();
+      expect(capturer.getRequestStage(1)).toBe("mapping");
+      gpu.buffers[0].map.resolve();
+      await flush();
+      expect(capturer.getRequestStage(1)).toBe("completed");
+
+      capturer.collectResults();
+      expect(capturer.getRequestStage(1)).toBeNull();
+    });
+
+    it("reports an empty capture as completed without a slot", () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      capturer.queue(request(1, -500, -500));
+      capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100);
+      expect(capturer.getRequestStage(1)).toBe("completed");
+    });
+
+    it("stays queued when every slot is busy, so no frame can encode it", () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      for (let requestId = 1; requestId <= 3; requestId += 1) {
+        capturer.queue(request(requestId));
+        capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100);
+      }
+      capturer.queue(request(4));
+      expect(capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100)).toBe(false);
+      expect(capturer.getRequestStage(4)).toBe("queued");
+      expect(capturer.getRequestStage(3)).toBe("encoded");
+    });
+
+    it("returns a request to queued when its mapping fails, which needs another frame", async () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      capturer.queue(request(1));
+      capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100);
+      capturer.beginMappings();
+      gpu.buffers[0].map.reject(new Error("lost"));
+      await flush();
+      expect(capturer.getRequestStage(1)).toBe("queued");
+    });
+
+    it("forgets a request that a newer one superseded before any frame encoded it", () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      capturer.queue(request(1));
+      capturer.queue(request(2));
+      expect(capturer.getRequestStage(1)).toBeNull();
+      expect(capturer.getRequestStage(2)).toBe("queued");
+    });
+
+    it("holds nothing after cancellation or disposal", () => {
+      const gpu = mockGpu();
+      const capturer = new WebGPUPixelRegionCapturer(gpu.device, "rgba8unorm");
+      capturer.queue(request(1));
+      capturer.encodeAfterRender(gpu.encoder, {} as GPUTexture, 100, 100);
+      capturer.queue(request(2));
+      capturer.cancelPendingCaptures();
+      expect(capturer.getRequestStage(1)).toBeNull();
+      expect(capturer.getRequestStage(2)).toBeNull();
+
+      capturer.queue(request(3));
+      capturer.dispose();
+      expect(capturer.getRequestStage(3)).toBeNull();
+    });
+  });
 });

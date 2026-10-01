@@ -16,6 +16,13 @@ const MAP_READ_MODE = globalThis.GPUMapMode?.READ ?? 0x0001;
 
 type SlotState = "idle" | "encoded" | "mapping";
 
+/**
+ * Where a readback request currently is: waiting for a frame to encode it,
+ * copied in a submitted frame, waiting on the GPU to map it, or published and
+ * not yet collected.
+ */
+export type PixelRegionRequestStage = "queued" | "encoded" | "mapping" | "completed";
+
 interface Slot {
   state: SlotState;
   buffer: GPUBuffer | null;
@@ -134,6 +141,24 @@ export class WebGPUPixelRegionCapturer {
         this.failSlot(slot, operation, generation);
       }
     }
+  }
+
+  /**
+   * The stage of `requestId`, or null when this capturer does not hold it (it
+   * was never queued, was superseded or cancelled, or was already collected).
+   */
+  getRequestStage(requestId: number): PixelRegionRequestStage | null {
+    if (this.disposed) {
+      return null;
+    }
+    if (this.queuedRequest?.requestId === requestId) {
+      return "queued";
+    }
+    const slot = this.slots.find((candidate) => candidate.request?.requestId === requestId);
+    if (slot && slot.state !== "idle") {
+      return slot.state;
+    }
+    return this.completedResults.some((result) => result.requestId === requestId) ? "completed" : null;
   }
 
   collectResults(): PixelRegionResult[] {
