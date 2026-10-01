@@ -11,10 +11,20 @@ jobs:
     name: No AI tool attribution
     runs-on: ubuntu-latest
     steps:
+      # Run the checker as it is on the base branch, never the PR's copy: a
+      # branch cut before the checker existed has no copy at all, and a PR that
+      # edited it could otherwise pass its own check with a weakened version.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      # The PR's commits are only data to scan. refs/pull/N/head also exists for
+      # PRs from forks, whose branches are not in this repository.
+      - name: Fetch the PR's commits
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
 
       - name: Test the checker
         run: node --test .githooks/check-attribution.test.mjs
