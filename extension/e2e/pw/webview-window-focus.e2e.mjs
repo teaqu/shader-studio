@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { openConfigPanel } from './config-panel.mjs';
+import { revertFixtureEditors } from './editor-actions.mjs';
 import { openEditorOverlay } from './editor-overlay.mjs';
 import { hasXvfb, openWindowDisplay } from './private-display.mjs';
 
@@ -71,6 +72,9 @@ test.describe('the preview webview while another worker opens a window', () => {
   });
 
   test.afterAll(async ({ vscode }) => {
+    // The suggest case types into the shader; closing it dirty would block on
+    // a save prompt.
+    await revertFixtureEditors(vscode, fixtureDir);
     await vscode.evaluateInHost(async (vscode) => {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     }).catch(() => { /* the host may already be going away */ });
