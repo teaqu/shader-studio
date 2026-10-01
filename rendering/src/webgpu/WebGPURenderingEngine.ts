@@ -49,7 +49,7 @@ import { sharedSlangWgslCache } from "./SlangWgslCache";
 import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureBackend";
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
-import { WebGPUPixelRegionCapturer } from "./WebGPUPixelRegionCapturer";
+import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources } from "./WebGPUMeshResources";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
@@ -3498,6 +3498,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   collectPixelRegionResults(): PixelRegionResult[] {
     return this.pixelRegionCapturer?.collectResults() ?? [];
+  }
+
+  /** Diagnostic: where a pixel-region request is in the readback pipeline. */
+  getPixelRegionRequestStage(requestId: number): PixelRegionRequestStage | null {
+    return this.pixelRegionCapturer?.getRequestStage(requestId) ?? null;
   }
 
   cancelPixelRegionRequests(): void {

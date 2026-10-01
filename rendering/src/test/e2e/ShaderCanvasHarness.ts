@@ -25,6 +25,13 @@ export interface ShaderCanvasHarness {
   engine: RenderingEngineContract;
   resize(width: number, height: number): void;
   compile(program: ShaderProgram): Promise<void>;
+  /**
+   * Takes back frame production after something other than `compile()`
+   * installed a shader (e.g. the UI pipeline, which starts the engine's own
+   * animation loop on every successful compile, as the app needs). Stops that
+   * loop and pins the clock, so only this harness's renders advance frames.
+   */
+  holdFrames(): void;
   renderAndReadPixels(time?: number): Promise<Pixel[]>;
   renderAndReadRegion(time?: number): Promise<Uint8ClampedArray>;
   dispose(): void;
@@ -53,11 +60,19 @@ function createEngine(language: ShaderLanguage): RenderingEngineContract {
     : new WebGPURenderingEngine({ scriptUrl: slangScriptUrl, wasmUrl: slangWasmUrl });
 }
 
+/** WebGPU readback stage, for failures that must say whether a request was lost or slow. */
+function readbackStage(engine: RenderingEngineContract, requestId: number): string {
+  return engine instanceof WebGPURenderingEngine
+    ? engine.getPixelRegionRequestStage(requestId) ?? "not held"
+    : "not tracked";
+}
+
 async function waitForPixelRegion(
   engine: RenderingEngineContract,
   requestId: number,
 ): Promise<ReturnType<RenderingEngineContract["collectPixelRegionResults"]>[number]> {
-  const deadline = performance.now() + 5_000;
+  const startedAt = performance.now();
+  const deadline = startedAt + 5_000;
   while (performance.now() < deadline) {
     const result = engine.collectPixelRegionResults().find((candidate) => candidate.requestId === requestId);
     if (result) {
@@ -65,7 +80,16 @@ async function waitForPixelRegion(
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
-  throw new Error("Timed out waiting for canvas pixel readback");
+  // "mapping" means the GPU had not finished the frame (slow, not lost).
+  // "queued" here means the frame did encode the copy (renderAndReadRegion
+  // checks that first) but mapping it failed, so the capturer re-queued it
+  // for a next frame this harness never renders: lost, and no wait helps.
+  const stage = readbackStage(engine, requestId);
+  const meaning = stage === "queued" ? " (its mapping failed and it was re-queued for a frame that never came)" : "";
+  throw new Error(
+    `Timed out waiting for canvas pixel readback: request ${requestId} still `
+    + `${stage}${meaning} after ${Math.round(performance.now() - startedAt)}ms`,
+  );
 }
 
 export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanvasHarness {
@@ -75,7 +99,42 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
   let nextRenderTimestamp = performance.now();
   let currentShaderTime = 0;
 
+  function holdFrames(): void {
+    engine.stopRenderLoop();
+    const timeManager = engine.getTimeManager();
+    timeManager.cleanup();
+    timeManager.setSpeed(0);
+    timeManager.setTime(0);
+    nextRenderTimestamp = performance.now();
+    currentShaderTime = 0;
+  }
+
+  // Vitest does not stop a test body that times out. One still reading back
+  // on this shared harness would collect the next test's result along with
+  // its own (collecting drains every completed readback), and that test would
+  // then time out with its request "not held". Overlap fails fast instead.
+  let readbackInFlight = false;
+
   async function renderAndReadRegion(
+    centerX: number,
+    centerY: number,
+    shaderTime: number,
+  ): Promise<ReturnType<RenderingEngineContract["collectPixelRegionResults"]>[number]> {
+    if (readbackInFlight) {
+      throw new Error(
+        `${language} harness already has a readback in flight; an earlier test that timed out `
+        + "may still be running on this shared harness",
+      );
+    }
+    readbackInFlight = true;
+    try {
+      return await readRegionOnce(centerX, centerY, shaderTime);
+    } finally {
+      readbackInFlight = false;
+    }
+  }
+
+  async function readRegionOnce(
     centerX: number,
     centerY: number,
     shaderTime: number,
@@ -89,8 +148,26 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
       currentShaderTime = shaderTime;
     }
     nextRenderTimestamp += 1000 / 60;
+    const frameBefore = engine.getTimeManager().getFrame();
     engine.render(nextRenderTimestamp);
-    return waitForPixelRegion(engine, requestId);
+    // The copy is encoded inside render(). A request still queued afterwards
+    // was skipped by that frame (nothing drew to the canvas), and since no
+    // further frame is coming it would only surface as a readback timeout.
+    if (readbackStage(engine, requestId) === "queued") {
+      throw new Error(`${language} frame did not encode canvas readback request ${requestId}`);
+    }
+    const result = await waitForPixelRegion(engine, requestId);
+    // Output of feedback and iFrame-driven fixtures depends on the exact frame
+    // count, so a frame this harness did not ask for must fail loudly rather
+    // than shift a pixel assertion or signature.
+    const extraFrames = engine.getTimeManager().getFrame() - frameBefore - 1;
+    if (extraFrames > 0) {
+      throw new Error(
+        `${language} engine rendered ${extraFrames} frame(s) the harness did not request; `
+        + "call holdFrames() after installing a shader outside compile()",
+      );
+    }
+    return result;
   }
 
   return {
@@ -117,13 +194,9 @@ export function createShaderCanvasHarness(language: ShaderLanguage): ShaderCanva
       if (!result?.success) {
         throw new Error(`Shader compilation failed: ${result?.errors?.join("\n") ?? "no result"}`);
       }
-      const timeManager = engine.getTimeManager();
-      timeManager.cleanup();
-      timeManager.setSpeed(0);
-      timeManager.setTime(0);
-      nextRenderTimestamp = performance.now();
-      currentShaderTime = 0;
+      holdFrames();
     },
+    holdFrames,
     async renderAndReadPixels(shaderTime = 0): Promise<Pixel[]> {
       const result = await renderAndReadRegion(0, 0, shaderTime);
       const pixels: Pixel[] = [];

@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "inputs": {
+        "tex0": {
+          "type": "texture",
+          "path": "./red.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "alias": {
+          "type": "texture",
+          "path": "./red.svg",
+          "filter": "nearest",
+          "wrap": "clamp"
+        },
+        "computed": {
+          "type": "buffer",
+          "source": "Compute"
+        }
+      }
+    },
+    "Compute": {
+      "type": "compute",
+      "path": "./compute.slang",
+      "entryPoint": "fill",
+      "inputs": {
+        "key0": {
+          "type": "keyboard"
+        }
+      }
+    }
+  }
+}

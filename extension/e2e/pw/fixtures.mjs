@@ -9,6 +9,7 @@ import { assertProductionVsixLaunchArgs, cloneProductionVsixSeed, installProduct
 import { findShownAppFrame } from './shader-frame.mjs';
 import { evaluateBridgeCall, readBridgePort } from './bridge-client.mjs';
 import { recordE2ePhase } from './e2e-timing.mjs';
+import { openWindowDisplay } from './private-display.mjs';
 
 const extensionPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const defaultWorkspace = join(extensionPath, 'e2e', 'fixtures', 'slang-parity-validation');
@@ -35,7 +36,7 @@ const platformBinary = () => {
   return join(cache, `vscode-linux-${process.arch === 'arm64' ? 'arm64' : 'x64'}-${VSCODE_VERSION}`, 'code');
 };
 
-const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN ?? platformBinary();
+export const vscodeBinary = () => process.env.SHADER_STUDIO_PW_VSCODE_BIN ?? platformBinary();
 
 const USER_SETTINGS = {
   'security.workspace.trust.enabled': false,
@@ -54,7 +55,7 @@ const USER_SETTINGS = {
  * variables to its children. Inherited, the Electron binary boots as plain Node
  * and never opens a window, so the suite has to launch from a cleaned env.
  */
-function cleanEnv(extra) {
+export function cleanEnv(extra) {
   const base = Object.fromEntries(
     Object.entries(process.env).filter(([key]) =>
       key !== 'ELECTRON_RUN_AS_NODE' && !key.startsWith('VSCODE_')),
@@ -148,16 +149,23 @@ export const test = base.extend({
       ];
     }
     recordE2ePhase('profile-setup', profileStartedAt, { vscodeKey });
+    // Parallel windows on one X display take input focus from each other,
+    // which blurs the other window's preview webview mid-test.
+    const windowDisplay = await openWindowDisplay();
     const launchStartedAt = performance.now();
     const app = await electron.launch({
       executablePath: vscodeBinary(),
       env: cleanEnv({
+        ...windowDisplay.env,
         SHADER_STUDIO_PW_PORT_FILE: portFile,
         SHADER_STUDIO_PW_BRIDGE_TOKEN: bridgeToken,
         SHADER_STUDIO_E2E_WORKSPACE: workspacePath,
       }),
       args,
       timeout: 120_000,
+    }).catch(async (error) => {
+      await windowDisplay.close();
+      throw error;
     });
     recordE2ePhase('electron-launch', launchStartedAt, { vscodeKey });
 
@@ -240,6 +248,7 @@ export const test = base.extend({
       app.close(),
       new Promise((resolve) => setTimeout(resolve, 15_000)),
     ]).catch(() => { /* the process is going away regardless */ });
+    await windowDisplay.close();
     try {
       rmSync(userDataDir, { recursive: true, force: true });
     } catch { /* best effort */ }
