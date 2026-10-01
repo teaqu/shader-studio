@@ -46,6 +46,14 @@ per step.
   inside a file stay serial. On the ci-runner Mac two workers took the `@gpu`
   selection from 245s to 133s and the rest from 168s to 95s. Parallel windows
   overlap, so the occluded-window flags below are what make this safe.
+- On Linux each VS Code gets its own Xvfb display (`private-display.mjs`).
+  Windows on one X display share one input focus, and a window starting up in
+  one worker takes it from the other. Playwright emulates focus only for the
+  workbench's main frame, so the other window's preview webview blurs: the
+  config panel's `+ New` menu closes and Monaco cancels its suggest widget.
+  `webview-window-focus.e2e.mjs` pins this. Set
+  `SHADER_STUDIO_E2E_SHARED_DISPLAY=1` to run on the inherited display, e.g.
+  to watch the windows on a desktop.
 - The dedup spec keeps its 24-input journey in the VS Code webview. Its
   browser-connected journey uses the small `dedup-browser` fixture: 24 textures
   in a second Chromium starved the other worker's capture loop on the hosted
