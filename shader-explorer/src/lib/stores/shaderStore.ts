@@ -49,7 +49,9 @@ export class RenderQueue {
   private async processQueue() {
     while (this.activeCount < this.maxConcurrentRenders && this.queue.length > 0) {
       const item = this.queue.shift();
-      if (!item) break;
+      if (!item) {
+        break;
+      }
 
       this.activeCount++;
       const startedAt = performance.now();

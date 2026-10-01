@@ -18,6 +18,8 @@
     "language-servers/*"
   ],
   "scripts": {
+    "lint": "eslint . --quiet",
+    "lint:all": "eslint .",
     "build": "npm run compile",
     "compile": "npm run build:types && npm run build -w utils && turbo run build copy-to-extension --filter=shader-studio-ui --filter=shader-explorer-ui && turbo run build:code --filter=shader-studio",
     "build:types": "npm run build -w types",

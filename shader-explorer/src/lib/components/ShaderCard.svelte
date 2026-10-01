@@ -72,7 +72,9 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') closeMenu();
+    if (e.key === 'Escape') {
+      closeMenu();
+    }
   }
 
   function formatDateTime(ms: number): string {

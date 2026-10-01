@@ -113,7 +113,9 @@ describe('requestShaderCode', () => {
       target: window,
     });
     let resolved = false;
-    void result.then(() => { resolved = true; });
+    void result.then(() => {
+      resolved = true;
+    });
 
     window.dispatchEvent(new MessageEvent('message', {
       data: {

@@ -55,13 +55,14 @@ Package-level builds and type checks are still required when they are relevant v
 
 ## Linting
 
-ESLint is enforced. **Always run ESLint after making changes:**
+ESLint is enforced in CI across every package, including `.svelte` files. **Always run it after making changes:**
 
 ```sh
-npx eslint --fix
+npm run lint        # errors only; this is what CI runs and it must pass
+npm run lint:all    # also shows warnings (complexity, long functions, `any`, console)
 ```
 
-Do not commit code with lint errors.
+Do not commit code with lint errors. Use `npx eslint --fix <files you changed>` for autofixes, never on the whole repo: formatting rules (`indent`, `semi`) are warnings because some packages still use 4-space indentation, and a repo-wide `--fix` would reformat thousands of untouched lines. Don't introduce new warnings in code you touch.
 
 **Always run the full UI type check after making changes:**
 
@@ -98,6 +99,17 @@ Always prefer Svelte 5 conventions over Svelte 4. For example: runes over stores
 - Shared UI state lives in `ui/src/lib/state/` as `.svelte.ts` files exporting getter/setter functions over module-level `$state`. No writable stores, no `subscribe`.
 - **Effects belong in the class that owns the behavior**, not in the consumer. If a manager class needs to react to state changes, give it a `$effect.root()` in its constructor and clean up in `dispose()`. Don't push reactive glue into components that shouldn't need to know about it.
 - When a class needs reactive effects outside a component lifecycle, use `$effect.root()` — it creates a standalone reactive root. Store the returned cleanup and call it in `dispose()`.
+
+## Code Structure
+
+Large files grow one reasonable change at a time. Keep them from getting there:
+
+- Keep each module focused on one responsibility. Engines, managers and components orchestrate; the work lives in small, separately testable units they call.
+- **Before adding to a file over ~800 lines, extract a cohesive module instead of appending to it.** Prefer a new file next to the old one over another section in a long file.
+- ESLint's `max-lines` rule fails at 1,200 lines (blank lines and comments excluded). Never raise the limit, disable it inline, or add a file to `oversizedFileBaseline` in `eslint.config.mjs`. That list holds files that were already too large and may only shrink: remove an entry when its file is split below the limit.
+- If a change would push a file over the limit, first do the extraction as a separate, behaviour-preserving commit, then make the change.
+- Keep functions under ~150 lines and cyclomatic complexity under ~20 (both reported as lint warnings). Extract named helpers rather than nesting further.
+- Don't copy a block of logic into a second place; extract a shared helper, or explain in the PR why the copies need to stay separate.
 
 ## Experimental Flags
 

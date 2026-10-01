@@ -21,14 +21,24 @@ export class WebGPUMeshResources {
   }
   async loadModel(key: string, url: string, meshName?: string): Promise<void> {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Unable to load GLB (${response.status}): ${url}`);
+    if (!response.ok) {
+      throw new Error(`Unable to load GLB (${response.status}): ${url}`);
+    }
     const previous = this.resources.get(key as MeshKind);
     const resource = this.upload(await loadGlbMesh(new Uint8Array(await response.arrayBuffer()), meshName));
     this.resources.set(key as MeshKind, resource);
     previous?.vertexBuffer.destroy(); previous?.indexBuffer.destroy();
   }
-  getModel(key: string): WebGPUMeshResource | undefined { return this.resources.get(key as MeshKind); }
-  dispose(): void { for (const resource of this.resources.values()) { resource.vertexBuffer.destroy(); resource.indexBuffer.destroy(); } this.resources.clear(); }
+  getModel(key: string): WebGPUMeshResource | undefined {
+    return this.resources.get(key as MeshKind);
+  }
+  dispose(): void {
+    for (const resource of this.resources.values()) {
+      resource.vertexBuffer.destroy();
+      resource.indexBuffer.destroy();
+    }
+    this.resources.clear();
+  }
   private upload(mesh: PreviewMesh): WebGPUMeshResource {
     const data = new Float32Array((mesh.positions.length / 3) * 8);
     for (let index = 0; index < mesh.positions.length / 3; index += 1) {

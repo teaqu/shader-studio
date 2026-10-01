@@ -1,18 +1,52 @@
 import typescriptEslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import svelte from "eslint-plugin-svelte";
+
+// Files that already exceed the `max-lines` error limit. This list may only
+// shrink: remove an entry once its file has been split below the limit, and
+// never add new ones (split the file instead). Tracked by the code-quality
+// epic (split WebGPURenderingEngine, language services/parsers, MenuBar, and
+// the ShaderViewer session refactor).
+const oversizedFileBaseline = [
+  "debug/src/slang/SlangStructuralParser.ts",
+  "language-servers/glsl-analysis/src/parseGlslDocument.ts",
+  "language-servers/slang/src/SlangLanguageService.ts",
+  "language-servers/wgsl-analysis/src/parseWgslDocument.ts",
+  "language-servers/wgsl/src/WgslLanguageService.ts",
+  "rendering/src/webgpu/WebGPURenderingEngine.ts",
+  "ui/src/lib/components/MenuBar.svelte",
+  "ui/src/lib/components/ShaderViewer.svelte",
+];
+
+// Counted without blank lines and comments. AGENTS.md asks for a split well
+// before this, at around 800 lines.
+const MAX_LINES = 1200;
+
+const sharedRules = {
+  "brace-style": ["error", "1tbs", { allowSingleLine: false }],
+  curly: "error",
+  eqeqeq: "error",
+  "no-throw-literal": "error",
+  "max-lines": ["error", { max: MAX_LINES, skipBlankLines: true, skipComments: true }],
+  "max-lines-per-function": ["warn", { max: 150, skipBlankLines: true, skipComments: true }],
+  complexity: ["warn", 20],
+  "no-console": ["warn", { allow: ["warn", "error"] }],
+};
 
 const typescriptRules = {
-  "@typescript-eslint/naming-convention": ["warn", {
+  ...sharedRules,
+  "@typescript-eslint/naming-convention": ["error", {
     selector: "import",
     format: ["camelCase", "PascalCase"],
   }],
-  "brace-style": ["warn", "1tbs", { allowSingleLine: false }],
-  curly: "warn",
-  eqeqeq: "warn",
+  "@typescript-eslint/no-explicit-any": "warn",
+  // Formatting-only rules stay warnings: some packages (e.g. shader-explorer)
+  // use 4-space indentation, and a repo-wide reformat is a separate change.
   indent: ["warn", 2, { SwitchCase: 1 }],
-  "no-throw-literal": "warn",
   semi: "warn",
 };
+
+const tsFiles = ["**/*.ts", "**/*.mts"];
 
 export default [{
   ignores: [
@@ -21,25 +55,15 @@ export default [{
     "**/out/**",
     "**/coverage/**",
     "**/.vscode-test/**",
+    "**/*.d.ts",
+    "**/*.d.mts",
     "extension/ui-dist/**",
     "extension/shader-explorer-dist/**",
     "vendor/**",
     ".worktrees/**",
   ],
 }, {
-  files: [
-    "extension/**/*.ts",
-    "language-servers/**/*.ts",
-    "types/src/**/*.ts",
-    "standalone/src/**/*.ts",
-    "debug/src/**/*.ts",
-    "monaco/src/**/*.ts",
-    "**/e2e/**/*.mjs",
-    "debug/src/glsl/GlslParser.ts",
-    "debug/src/glsl/test/GlslParser.test.ts",
-    "debug/src/glsl/test/ShaderDebugger.extractContext.test.ts",
-    "rendering/src/webgpu/SlangPrelude.ts",
-  ],
+  files: tsFiles,
   plugins: {
     "@typescript-eslint": typescriptEslint,
   },
@@ -49,4 +73,53 @@ export default [{
     sourceType: "module",
   },
   rules: typescriptRules,
+}, {
+  files: ["**/*.mjs"],
+  languageOptions: {
+    ecmaVersion: 2022,
+    sourceType: "module",
+  },
+  rules: sharedRules,
+},
+...svelte.configs["flat/base"],
+{
+  files: ["**/*.svelte"],
+  plugins: {
+    "@typescript-eslint": typescriptEslint,
+  },
+  // flat/base already sets svelte-eslint-parser for .svelte files.
+  languageOptions: {
+    parserOptions: {
+      parser: tsParser,
+      ecmaVersion: 2022,
+      sourceType: "module",
+    },
+  },
+  rules: {
+    ...sharedRules,
+    "@typescript-eslint/no-explicit-any": "warn",
+  },
+}, {
+  // Tests, e2e harnesses and scripts are allowed long suites and console output.
+  files: [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/test/**",
+    "**/tests/**",
+    "**/e2e/**",
+    "**/scripts/**",
+    "tests/**",
+  ],
+  rules: {
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    complexity: "off",
+    "no-console": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+  },
+}, {
+  files: oversizedFileBaseline,
+  rules: {
+    "max-lines": "off",
+  },
 }];
