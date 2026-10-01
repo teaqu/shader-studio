@@ -19,6 +19,35 @@ permissions:
   contents: read
 
 jobs:
+  # Asks Turbo which E2E suites a pull request affects (see
+  # .github/scripts/select-e2e.mjs). Shadow mode: every suite still runs, and
+  # the step summary records what would have been selected.
+  select:
+    name: E2E selection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # A pull request checks out GitHub's merge commit; Turbo compares it
+      # with its first parent, the base it was merged onto.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Select E2E suites for the change
+        run: node .github/scripts/select-e2e.mjs
+
   package:
     name: Package
     runs-on: ubuntu-latest
@@ -104,7 +133,7 @@ jobs:
         run: npm run check -w ui
 
       - name: Run CI helper contract tests
-        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs extension/e2e/pw/bridge-extension/*.test.mjs
+        run: node --test standalone/e2e/*.test.mjs extension/e2e/pw/*.test.mjs extension/e2e/pw/bridge-extension/*.test.mjs .github/scripts/*.test.mjs
 
       - name: Run Open VSX publishing-script regression tests
         run: bash .github/scripts/test-publish-open-vsx.sh
@@ -306,3 +335,19 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+  # One verdict for the run, for branch protection: it fails if any job
+  # failed, was cancelled or was skipped. Once selection is enforced, the
+  # jobs it omits are passed in allowed-skips.
+  result:
+    name: Verification result
+    if: ${{ always() }}
+    needs: [select, package, test, rendering-e2e, standalone-e2e, vscode-e2e, vscode-e2e-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check every job verified the change
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}

@@ -4,23 +4,42 @@
     "package.json",
     "package-lock.json",
     "turbo.json",
-    "tsconfig.json"
+    "tsconfig.json",
+    "vitest.config.ts",
+    "vite.aliases.mjs",
+    "vite.aliases.d.mts",
+    "eslint.config.mjs",
+    ".github/workflows/**",
+    ".github/scripts/**"
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!dist/**",
         "!out/**",
         "!.turbo/**",
         "!coverage/**",
-        "!node_modules/.vite/**"
+        "!node_modules/.vite/**",
+        "!**/test/**",
+        "!**/tests/**",
+        "!**/e2e/**",
+        "!**/*.test.*",
+        "!**/*.spec.*",
+        "!**/vitest*.config.*"
       ],
-      "outputs": ["dist/**", "out/**"]
+      "outputs": [
+        "dist/**",
+        "out/**"
+      ]
     },
     "build:code": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!dist/**",
@@ -29,10 +48,39 @@
         "!coverage/**",
         "!node_modules/.vite/**"
       ],
-      "outputs": ["dist/extension.js", "out/**"]
+      "outputs": [
+        "dist/extension.js",
+        "out/**"
+      ]
     },
     "copy-to-extension": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
+      "cache": false
+    },
+    "test:e2e": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
+    },
+    "test:e2e:corpus": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
+    },
+    "test:e2e:vscode:corpus": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false
+    },
+    "test:e2e:vsix": {
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     }
   }
