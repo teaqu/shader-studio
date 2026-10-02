@@ -91,3 +91,41 @@ it('mentions WGSL in the empty-state message when no shaders are found', async (
   await findByText('No GLSL, Slang, or WGSL shaders found in the workspace.');
   unmount();
 });
+
+function pushingHost(initialShaders: Record<string, unknown>[]) {
+  let receive: ((event: MessageEvent) => void) | undefined;
+  return {
+    hostApi: {
+      onMessage(handler: (event: MessageEvent) => void) {
+        receive = handler;
+        return () => {
+          receive = undefined;
+        };
+      },
+      postMessage(message: { type: string }) {
+        if (message.type === 'requestShaders') {
+          receive?.(new MessageEvent('message', { data: { type: 'shadersUpdate', shaders: initialShaders } }));
+        }
+      },
+    },
+    push(shaders: Record<string, unknown>[]) {
+      receive?.(new MessageEvent('message', { data: { type: 'shadersUpdate', shaders } }));
+    },
+  };
+}
+
+const shaderEntry = (name: string, thumbnailVersion?: number) => ({
+  name, path: `/${name}`, relativePath: name, hasConfig: false, thumbnailVersion,
+});
+
+it('shows shaders the host pushes after a file is created', async () => {
+  const host = pushingHost([shaderEntry('ocean.glsl', 1)]);
+  const { findByTestId, getByText, unmount } = render(ShaderExplorer, { props: { hostApi: host.hostApi } });
+  await findByTestId('shader-option-ocean-glsl');
+
+  host.push([shaderEntry('ocean.glsl', 1), shaderEntry('forest.glsl', 5)]);
+
+  await findByTestId('shader-option-forest-glsl');
+  expect(getByText('2 shaders')).toBeTruthy();
+  unmount();
+});
