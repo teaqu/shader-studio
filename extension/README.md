@@ -29,6 +29,7 @@ See the [Quick Start guide](https://teaqu.github.io/shader-studio/docs/quick-sta
 |---------|-------------|
 | [Live Preview](https://teaqu.github.io/shader-studio/docs/quick-start/) | Edit GLSL, Slang, or WGSL and see the result instantly, in a panel, window, or browser |
 | [Buffers & Channels](https://teaqu.github.io/shader-studio/docs/features/config-buffers/) | Multi-pass pipelines with textures, video, audio, cubemaps, buffers, and keyboard input |
+| [Vertex Shaders & Geometry](https://teaqu.github.io/shader-studio/docs/features/vertex-shaders/) | Draw on planes, cubes, spheres, GLB models, or your own vertices as triangles, lines, or points, with per-pass blending, depth, and culling |
 | [Visual Debugging](https://teaqu.github.io/shader-studio/docs/debugging/) | Inspect what every line computes — pixel inspector, inline rendering, variable inspector |
 | [Time & Playback](https://teaqu.github.io/shader-studio/docs/features/time-controls/) | Scrub, loop, pause, and change playback speed |
 | [Recording](https://teaqu.github.io/shader-studio/docs/features/recording/) | Capture screenshots or record video and GIF directly from the preview |
@@ -65,6 +66,8 @@ A tab bar lets you add and switch between passes: `Image`, named buffer passes (
 - **Cubemaps** — cross-layout images bound as `samplerCube`
 - **Buffers** — the output of another pass, including self-reference for feedback loops
 - **Keyboard** — held, pressed, and toggle state per key
+
+Each render pass also picks its geometry (fullscreen, vertices, plane, cube, sphere, or a GLB model) with an optional vertex shader, and its blend, depth, and cull settings.
 
 The editor writes a `.sha.json` file next to your shader and keeps it in sync; you can also toggle to a raw JSON view if you prefer to edit it by hand.
 

@@ -1,44 +1,57 @@
 import {
+  BLEND_MODES,
+  CULL_MODES,
+  DEPTH_COMPARE_FUNCTIONS,
   GEOMETRY_TYPES,
-  MAX_FULLSCREEN_VERTEX_COUNT,
+  MAX_VERTEX_COUNT,
+  VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
   type GeometryConfig,
   type ShaderConfig,
 } from "@shader-studio/types";
 
-const VERTEX_FIELDS = ["vertexCount", "topology"] as const;
+const VERTEX_FIELDS = ["vertexCount", "topology", "space"] as const;
+const RENDER_SETTING_FIELDS = ["blend", "depth", "cull"] as const;
+const DEPTH_FLAGS = ["test", "write"] as const;
 
-function isGeometryObject(geometry: unknown): geometry is Record<string, unknown> {
-  return Boolean(geometry) && typeof geometry === "object" && !Array.isArray(geometry);
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+  return typeof value === "string" && values.includes(value as T);
 }
 
 /**
- * Field-specific errors for `vertexCount` and `topology`, which only fullscreen
- * geometry accepts. Reported separately so the message names the bad field.
+ * Field-specific errors for `vertexCount`, `topology` and `space`, which only
+ * vertices geometry accepts. Reported separately so the message names the bad field.
  */
 function validateGeometryVertexFields(geometry: unknown, passName: string, errors: string[]): void {
-  if (!isGeometryObject(geometry)) {
+  if (!isPlainObject(geometry)) {
     return;
   }
-  const { type, vertexCount, topology } = geometry;
-  if (type !== "fullscreen") {
+  const { type, vertexCount, topology, space } = geometry;
+  if (type !== "vertices") {
     // Unknown types already report the supported list.
-    if (typeof type !== "string" || !GEOMETRY_TYPES.includes(type as GeometryConfig["type"])) {
+    if (!isOneOf(GEOMETRY_TYPES, type)) {
       return;
     }
     for (const field of VERTEX_FIELDS) {
       if (geometry[field] !== undefined) {
-        errors.push(`${passName} pass geometry ${field} is only supported for fullscreen geometry, not ${type}`);
+        errors.push(`${passName} pass geometry ${field} is only supported for vertices geometry, not ${type}`);
       }
     }
     return;
   }
   if (vertexCount !== undefined &&
-    (typeof vertexCount !== "number" || !Number.isInteger(vertexCount) || vertexCount < 1 || vertexCount > MAX_FULLSCREEN_VERTEX_COUNT)) {
-    errors.push(`${passName} pass geometry vertexCount must be an integer from 1 to ${MAX_FULLSCREEN_VERTEX_COUNT}`);
+    (typeof vertexCount !== "number" || !Number.isInteger(vertexCount) || vertexCount < 1 || vertexCount > MAX_VERTEX_COUNT)) {
+    errors.push(`${passName} pass geometry vertexCount must be an integer from 1 to ${MAX_VERTEX_COUNT}`);
   }
-  if (topology !== undefined && !VERTEX_TOPOLOGIES.includes(topology as (typeof VERTEX_TOPOLOGIES)[number])) {
+  if (topology !== undefined && !isOneOf(VERTEX_TOPOLOGIES, topology)) {
     errors.push(`${passName} pass geometry topology must be one of: ${VERTEX_TOPOLOGIES.join(", ")}`);
+  }
+  if (space !== undefined && !isOneOf(VERTEX_SPACES, space)) {
+    errors.push(`${passName} pass geometry space must be one of: ${VERTEX_SPACES.join(", ")}`);
   }
 }
 
@@ -46,22 +59,19 @@ function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefi
   if (geometry === undefined) {
     return true;
   }
-  if (!geometry || typeof geometry !== "object" || Array.isArray(geometry)) {
+  if (!isPlainObject(geometry)) {
     return false;
   }
 
-  const type = (geometry as { type?: unknown }).type;
+  const type = geometry.type;
   if (type === "model") {
-    // vertexCount/topology are reported by validateGeometryVertexFields.
-    const { path, mesh, resolved_path, vertexCount: _vertexCount, topology: _topology, ...rest } = geometry as {
-      path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown; vertexCount?: unknown; topology?: unknown;
-    };
+    // Vertex fields are reported by validateGeometryVertexFields.
+    const { path, mesh, resolved_path, vertexCount: _vertexCount, topology: _topology, space: _space, ...rest } = geometry;
     return Object.keys(rest).length === 1 && typeof path === "string" && path.length > 0 &&
       (mesh === undefined || typeof mesh === "string") && (resolved_path === undefined || typeof resolved_path === "string");
   }
   const properties = Object.keys(geometry).filter((key) => !VERTEX_FIELDS.includes(key as (typeof VERTEX_FIELDS)[number]));
-  return properties.length === 1 && properties[0] === "type" &&
-    typeof type === "string" && GEOMETRY_TYPES.includes(type as GeometryConfig["type"]);
+  return properties.length === 1 && properties[0] === "type" && isOneOf(GEOMETRY_TYPES, type);
 }
 
 /**
@@ -74,6 +84,69 @@ export function validatePassGeometry(geometry: unknown, passName: string): strin
     errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
   }
   validateGeometryVertexFields(geometry, passName, errors);
+  return errors;
+}
+
+function validateDepth(depth: unknown, passName: string, errors: string[]): void {
+  if (!isPlainObject(depth)) {
+    errors.push(`${passName} pass depth must be an object with test, write and compare`);
+    return;
+  }
+  for (const key of Object.keys(depth)) {
+    if (key !== "compare" && !DEPTH_FLAGS.includes(key as (typeof DEPTH_FLAGS)[number])) {
+      errors.push(`${passName} pass depth ${key} is not a depth setting; use test, write or compare`);
+    }
+  }
+  for (const flag of DEPTH_FLAGS) {
+    if (depth[flag] !== undefined && typeof depth[flag] !== "boolean") {
+      errors.push(`${passName} pass depth ${flag} must be true or false`);
+    }
+  }
+  if (depth.compare !== undefined && !isOneOf(DEPTH_COMPARE_FUNCTIONS, depth.compare)) {
+    errors.push(`${passName} pass depth compare must be one of: ${DEPTH_COMPARE_FUNCTIONS.join(", ")}`);
+  }
+}
+
+/**
+ * Geometry plus blend/depth/cull errors for one pass. Compute and common
+ * passes reject the render settings; fullscreen geometry, including an
+ * omitted geometry, rejects depth and cull. Shared with the config panel.
+ */
+export function validatePassRenderSettings(pass: unknown, passName: string): string[] {
+  if (!isPlainObject(pass)) {
+    return [];
+  }
+  const errors: string[] = [];
+  if (passName !== "common") {
+    errors.push(...validatePassGeometry(pass.geometry, passName));
+  }
+  if (passName === "common" || pass.type === "compute") {
+    const kind = passName === "common" ? "common" : `${passName} compute`;
+    for (const field of RENDER_SETTING_FIELDS) {
+      if (pass[field] !== undefined) {
+        errors.push(`${kind} pass cannot define ${field}`);
+      }
+    }
+    return errors;
+  }
+  if (pass.blend !== undefined && !isOneOf(BLEND_MODES, pass.blend)) {
+    errors.push(`${passName} pass blend must be one of: ${BLEND_MODES.join(", ")}`);
+  }
+  if (pass.depth !== undefined) {
+    validateDepth(pass.depth, passName, errors);
+  }
+  if (pass.cull !== undefined && !isOneOf(CULL_MODES, pass.cull)) {
+    errors.push(`${passName} pass cull must be one of: ${CULL_MODES.join(", ")}`);
+  }
+  const geometryType = pass.geometry === undefined ? "fullscreen" : isPlainObject(pass.geometry) ? pass.geometry.type : undefined;
+  if (geometryType === "fullscreen") {
+    if (pass.depth !== undefined) {
+      errors.push(`${passName} pass depth is not supported for fullscreen geometry, which has no depth buffer`);
+    }
+    if (pass.cull !== undefined) {
+      errors.push(`${passName} pass cull is not supported for fullscreen geometry`);
+    }
+  }
   return errors;
 }
 
@@ -141,7 +214,7 @@ export class ConfigValidator {
     if (pass.outputFormat !== undefined) {
       errors.push("Image pass cannot define outputFormat");
     }
-    errors.push(...validatePassGeometry(pass.geometry, "Image"));
+    errors.push(...validatePassRenderSettings(pass, "Image"));
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, 'Image', errors);
@@ -157,7 +230,7 @@ export class ConfigValidator {
       errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
 
-    errors.push(...validatePassGeometry(pass.geometry, passName));
+    errors.push(...validatePassRenderSettings(pass, passName));
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);
@@ -177,6 +250,7 @@ export class ConfigValidator {
     if (pass.geometry !== undefined) {
       errors.push("common pass cannot define geometry");
     }
+    errors.push(...validatePassRenderSettings(pass, "common"));
   }
 
   private static channelLimit = 32;

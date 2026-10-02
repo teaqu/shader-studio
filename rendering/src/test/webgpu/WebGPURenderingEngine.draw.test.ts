@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GeometryConfig, ShaderConfig } from "@shader-studio/types";
+import type { GeometryConfig, RenderPassSettings, ShaderConfig } from "@shader-studio/types";
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
@@ -59,20 +59,25 @@ function engineHarness(language: "slang" | "wgsl") {
     drawIndexed: vi.fn(),
     end: vi.fn(),
   };
+  const beginRenderPass = vi.fn((_descriptor: GPURenderPassDescriptor) => renderPass);
   Object.assign(device, {
     createCommandEncoder: vi.fn(() => ({
-      beginRenderPass: vi.fn(() => renderPass),
+      beginRenderPass,
       finish: vi.fn(() => ({})),
     })),
   });
-  return { engine, device, renderPass };
+  return { engine, device, renderPass, beginRenderPass };
 }
 
-function config(geometry?: GeometryConfig): ShaderConfig {
+function config(geometry?: GeometryConfig, settings: RenderPassSettings = {}): ShaderConfig {
   return {
     version: "1",
-    passes: { Image: { inputs: {}, ...(geometry ? { geometry } : {}) } },
+    passes: { Image: { inputs: {}, ...(geometry ? { geometry } : {}), ...settings } },
   };
+}
+
+function pipelineDescriptors(device: ReturnType<typeof engineHarness>["device"]): GPURenderPipelineDescriptor[] {
+  return (device.createRenderPipeline.mock.calls as unknown as [GPURenderPipelineDescriptor][]).map(([descriptor]) => descriptor);
 }
 
 /** iVertexCount from every ShaderToy uniform block written this frame. */
@@ -136,88 +141,242 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     expect(renderPass.draw).not.toHaveBeenCalled();
   });
 
+  it("builds the fullscreen pipeline without depth, culling or blending", async () => {
+    const { engine, device, beginRenderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config(), imagePath);
+
+    engine.render(1000);
+
+    const [descriptor] = pipelineDescriptors(device);
+    expect(descriptor.depthStencil).toBeUndefined();
+    expect(descriptor.primitive).toEqual({ topology: "triangle-list" });
+    expect(descriptor.fragment!.targets).toEqual([{ format: "bgra8unorm" }]);
+    expect(beginRenderPass.mock.calls[0][0]).not.toHaveProperty("depthStencilAttachment");
+  });
+
   it.each(["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"] as const)(
-    "builds a %s pipeline and draws the configured vertexCount",
+    "builds a %s vertices pipeline with no vertex buffers and draws the configured vertexCount",
     async (topology) => {
       const { engine, device, renderPass } = engineHarness(language);
-      await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 12, topology }), imagePath);
+      await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 12, topology }), imagePath);
 
       engine.render(1000);
 
       expect(primitiveStates(device)).toEqual([{ topology }]);
+      expect(pipelineDescriptors(device)[0].vertex).not.toHaveProperty("buffers");
       expect(renderPass.draw).toHaveBeenCalledTimes(1);
       expect(renderPass.draw).toHaveBeenCalledWith(12);
       expect(renderPass.drawIndexed).not.toHaveBeenCalled();
+      expect(renderPass.setVertexBuffer).not.toHaveBeenCalled();
       expect(writtenVertexCounts(device)).toEqual([12]);
     },
   );
 
-  it("asks the compiler to wrap the fullscreen corner index only for configured draws", async () => {
-    const { engine } = engineHarness(language);
-    const compile = (engine as unknown as { compiler: { compile: ReturnType<typeof vi.fn> } }).compiler.compile;
-
-    await engine.compileShaderPipeline("// default", config(), imagePath);
-    await engine.compileShaderPipeline("// count", config({ type: "fullscreen", vertexCount: 6 }), imagePath);
-    await engine.compileShaderPipeline("// topology", config({ type: "fullscreen", topology: "point-list" }), imagePath);
-
-    const options = compile.mock.calls.map(([, compileOptions]) => compileOptions as Record<string, unknown>);
-    expect(options[0]).not.toHaveProperty("wrapFullscreenVertexIndex");
-    expect(options[1]).toMatchObject({ wrapFullscreenVertexIndex: true });
-    expect(options[2]).toMatchObject({ wrapFullscreenVertexIndex: true });
-  });
-
-  it("defaults to a 3-vertex triangle-list when only one field is configured", async () => {
-    const counted = engineHarness(language);
-    await counted.engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 2_147_483_647 }), imagePath);
-    counted.engine.render(1000);
-    expect(primitiveStates(counted.device)).toEqual([{ topology: "triangle-list" }]);
-    expect(counted.renderPass.draw).toHaveBeenCalledWith(2_147_483_647);
-
-    const pointed = engineHarness(language);
-    await pointed.engine.compileShaderPipeline("// image", config({ type: "fullscreen", topology: "point-list" }), imagePath);
-    pointed.engine.render(1000);
-    expect(primitiveStates(pointed.device)).toEqual([{ topology: "point-list" }]);
-    expect(pointed.renderPass.draw).toHaveBeenCalledWith(3);
-    expect(writtenVertexCounts(pointed.device)).toEqual([3]);
-  });
-
-  it("rebuilds the pipeline when topology changes on hot reload", async () => {
+  it("defaults a vertices pass to a 3-vertex triangle list in world space", async () => {
     const { engine, device, renderPass } = engineHarness(language);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 6, topology: "triangle-strip" }), imagePath);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 6, topology: "line-strip" }), imagePath);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices" }), imagePath);
 
     engine.render(1000);
 
-    expect(primitiveStates(device)).toEqual([{ topology: "triangle-strip" }, { topology: "line-strip" }]);
-    expect(renderPass.draw).toHaveBeenCalledWith(6);
+    expect(primitiveStates(device)).toEqual([{ topology: "triangle-list" }]);
+    expect(renderPass.draw).toHaveBeenCalledWith(3);
+    expect(writtenVertexCounts(device)).toEqual([3]);
+  });
+
+  it("draws the maximum vertexCount", async () => {
+    const { engine, renderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 2_147_483_647 }), imagePath);
+
+    engine.render(1000);
+
+    expect(renderPass.draw).toHaveBeenCalledWith(2_147_483_647);
+  });
+
+  it("asks the compiler for the vertices space and only for vertices geometry", async () => {
+    const { engine } = engineHarness(language);
+    const compile = (engine as unknown as { compiler: { compile: ReturnType<typeof vi.fn> } }).compiler.compile;
+
+    await engine.compileShaderPipeline("// fullscreen", config(), imagePath);
+    await engine.compileShaderPipeline("// world", config({ type: "vertices" }), imagePath);
+    await engine.compileShaderPipeline("// clip", config({ type: "vertices", space: "clip" }), imagePath);
+
+    const options = compile.mock.calls.map(([, compileOptions]) => compileOptions as Record<string, unknown>);
+    expect(options[0]).not.toHaveProperty("vertexSpace");
+    expect(options[0]).not.toHaveProperty("geometry");
+    expect(options[1]).toMatchObject({ geometry: "vertices", vertexSpace: "world" });
+    expect(options[2]).toMatchObject({ geometry: "vertices", vertexSpace: "clip" });
+  });
+
+  it("writes camera uniforms and attaches depth for world-space vertices", async () => {
+    const { engine, device, beginRenderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices" }), imagePath);
+
+    engine.render(1000);
+
+    const meshWrites = device.queue.writeBuffer.mock.calls.filter((call) => (call as unknown[])[2] instanceof Float32Array && ((call as unknown[])[2] as Float32Array).length === 64);
+    expect(meshWrites).toHaveLength(1);
+    expect(pipelineDescriptors(device)[0].depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" });
+    expect(beginRenderPass.mock.calls[0][0].depthStencilAttachment).toMatchObject({ depthLoadOp: "clear", depthClearValue: 1 });
+  });
+
+  it("skips camera uniforms but keeps a depth attachment, tested with always, for clip-space vertices", async () => {
+    const { engine, device, beginRenderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", space: "clip" }), imagePath);
+
+    engine.render(1000);
+
+    const meshWrites = device.queue.writeBuffer.mock.calls.filter((call) => (call as unknown[])[2] instanceof Float32Array && ((call as unknown[])[2] as Float32Array).length === 64);
+    expect(meshWrites).toHaveLength(0);
+    expect(pipelineDescriptors(device)[0].depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "always" });
+    expect(beginRenderPass.mock.calls[0][0]).toHaveProperty("depthStencilAttachment");
+  });
+
+  it.each([
+    ["alpha", { color: { operation: "add", srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" }, alpha: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" } }],
+    ["premultiplied", { color: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" }, alpha: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" } }],
+    ["additive", { color: { operation: "add", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "add", srcFactor: "one", dstFactor: "one" } }],
+  ] as const)("sets ColorTargetState.blend for %s on fullscreen and vertices", async (blend, state) => {
+    for (const geometry of [undefined, { type: "vertices" } as const]) {
+      const { engine, device } = engineHarness(language);
+      await engine.compileShaderPipeline("// image", config(geometry, { blend }), imagePath);
+
+      expect(pipelineDescriptors(device)[0].fragment!.targets).toEqual([{ format: "bgra8unorm", blend: state }]);
+    }
+  });
+
+  it.each([
+    ["never"], ["less"], ["equal"], ["less-equal"], ["greater"], ["not-equal"], ["greater-equal"], ["always"],
+  ] as const)("bakes depth compare %s and write off into the pipeline", async (compare) => {
+    const { engine, device } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "sphere" }, { depth: { compare, write: false } }), imagePath);
+
+    expect(pipelineDescriptors(device)[0].depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: false, depthCompare: compare });
+  });
+
+  it.each([
+    [{ compare: "greater" }, 0],
+    [{ compare: "greater-equal" }, 0],
+    [{ compare: "greater", test: false }, 1],
+    [{}, 1],
+  ] as const)("clears the depth attachment for %j to %d", async (depth, clearValue) => {
+    const { engine, beginRenderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices" }, { depth }), imagePath);
+
+    engine.render(1000);
+
+    expect(beginRenderPass.mock.calls[0][0].depthStencilAttachment).toMatchObject({ depthClearValue: clearValue });
+  });
+
+  it("tests with always when the depth test is off, keeping writes", async () => {
+    const { engine, device } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "cube" }, { depth: { test: false, compare: "greater" } }), imagePath);
+
+    expect(pipelineDescriptors(device)[0].depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "always" });
+  });
+
+  it.each(["back", "front"] as const)("culls %s faces with ccw front faces", async (cull) => {
+    for (const geometry of [{ type: "cube" } as const, { type: "vertices", space: "clip" } as const]) {
+      const { engine, device } = engineHarness(language);
+      await engine.compileShaderPipeline("// image", config(geometry, { cull }), imagePath);
+
+      expect(pipelineDescriptors(device)[0].primitive).toEqual({ topology: "triangle-list", cullMode: cull, frontFace: "ccw" });
+    }
+  });
+
+  it("omits cullMode for cull none", async () => {
+    const { engine, device } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "cube" }, { cull: "none" }), imagePath);
+
+    expect(pipelineDescriptors(device)[0].primitive).toEqual({ topology: "triangle-list" });
+  });
+
+  it.each([
+    ["topology", { type: "vertices", vertexCount: 6, topology: "triangle-strip" }, {}, { type: "vertices", vertexCount: 6, topology: "line-strip" }, {}],
+    ["space", { type: "vertices", vertexCount: 6 }, {}, { type: "vertices", vertexCount: 6, space: "clip" }, {}],
+    ["blend", { type: "vertices" }, {}, { type: "vertices" }, { blend: "additive" }],
+    ["fullscreen blend", undefined, { blend: "alpha" }, undefined, { blend: "premultiplied" }],
+    ["depth test", { type: "cube" }, {}, { type: "cube" }, { depth: { test: false } }],
+    ["depth write", { type: "vertices" }, {}, { type: "vertices" }, { depth: { write: false } }],
+    ["depth compare", { type: "vertices" }, { depth: { compare: "less" } }, { type: "vertices" }, { depth: { compare: "greater" } }],
+    ["cull", { type: "cube" }, { cull: "back" }, { type: "cube" }, { cull: "front" }],
+  ] as const)("rebuilds the pipeline when %s changes on hot reload", async (_field, firstGeometry, firstSettings, nextGeometry, nextSettings) => {
+    const meshResources = {
+      get: vi.fn(() => ({ vertexBuffer: {}, indexBuffer: {}, indexFormat: "uint16", indexCount: 36, vertexCount: 24 })),
+      getModel: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const { engine, device } = engineHarness(language);
+    (engine as unknown as { meshResources: unknown }).meshResources = meshResources;
+    await engine.compileShaderPipeline("// image", config(firstGeometry as GeometryConfig | undefined, firstSettings as RenderPassSettings), imagePath);
+    await engine.compileShaderPipeline("// image", config(nextGeometry as GeometryConfig | undefined, nextSettings as RenderPassSettings), imagePath);
+
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
   });
 
   it("reuses the pipeline when only vertexCount changes, drawing the new count", async () => {
     const { engine, device, renderPass } = engineHarness(language);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 6, topology: "line-list" }), imagePath);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 10, topology: "line-list" }), imagePath);
+    const settings = { blend: "additive", depth: { write: false }, cull: "back" } as const;
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 6, topology: "line-list" }, settings), imagePath);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 10, topology: "line-list" }, settings), imagePath);
 
     engine.render(1000);
 
-    expect(primitiveStates(device)).toEqual([{ topology: "line-list" }]);
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
     expect(renderPass.draw).toHaveBeenCalledWith(10);
     expect(writtenVertexCounts(device)).toEqual([10]);
   });
 
-  it("rebuilds when a pass gains or loses a draw config, since the wrapper source changes", async () => {
+  it("reuses the pipeline when a setting is spelled out at its default", async () => {
+    const { engine, device } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices" }), imagePath);
+    await engine.compileShaderPipeline("// image", config(
+      { type: "vertices", topology: "triangle-list", space: "world" },
+      { blend: "none", depth: { test: true, write: true, compare: "less" }, cull: "none" },
+    ), imagePath);
+
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuilds when a pass switches between fullscreen and vertices", async () => {
     const { engine, device } = engineHarness(language);
     await engine.compileShaderPipeline("// image", config(), imagePath);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 3 }), imagePath);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 3 }), imagePath);
     await engine.compileShaderPipeline("// image", config({ type: "fullscreen" }), imagePath);
 
     expect(device.createRenderPipeline).toHaveBeenCalledTimes(3);
   });
 
   it("reports the captured pass's iVertexCount in capture uniforms", async () => {
-    const { engine } = engineHarness(language);
-    await engine.compileShaderPipeline("// image", config({ type: "fullscreen", vertexCount: 12, topology: "point-list" }), imagePath);
+    const vertices = engineHarness(language);
+    await vertices.engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 12, topology: "point-list" }), imagePath);
+    expect(vertices.engine.getCaptureUniforms().vertexCount).toBe(12);
 
-    expect(engine.getCaptureUniforms().vertexCount).toBe(12);
+    const fullscreen = engineHarness(language);
+    await fullscreen.engine.compileShaderPipeline("// image", config(), imagePath);
+    expect(fullscreen.engine.getCaptureUniforms().vertexCount).toBe(3);
+  });
+
+  it.each([
+    [false, "rgba16float", true],
+    [true, "rgba32float", false],
+  ] as const)("renders a blended buffer into the right format when float32-blendable is %s", async (blendable, format, warns) => {
+    const { engine, device } = engineHarness(language);
+    Object.assign(device, { features: new Set(blendable ? ["float32-filterable", "float32-blendable"] : ["float32-filterable"]) });
+    const bufferConfig: ShaderConfig = {
+      version: "1",
+      passes: {
+        Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+        BufferA: { path: `a.${language}`, blend: "additive" },
+      },
+    };
+
+    const result = await engine.compileShaderPipeline("// image", bufferConfig, imagePath, { BufferA: "// buffer" });
+
+    const warning = "BufferA: renders into rgba16float because rgba32float blending is unavailable on this device";
+    expect(result.success).toBe(true);
+    expect((result.warnings ?? []).includes(warning)).toBe(warns);
+    const targets = pipelineDescriptors(device).map((descriptor) => descriptor.fragment!.targets![0]!.format);
+    expect(targets).toContain(format);
   });
 
   it("writes iVertexCount 3 for an unconfigured fullscreen pass", async () => {

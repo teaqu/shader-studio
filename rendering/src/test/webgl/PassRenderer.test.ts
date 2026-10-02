@@ -80,13 +80,36 @@ const createMockGl = () => ({
   REPEAT: 0x2901,
   CLAMP_TO_EDGE: 0x812f,
   DEPTH_TEST: 0x0b71,
+  BLEND: 0x0be2,
+  CULL_FACE: 0x0b44,
+  NEVER: 0x0200,
+  LESS: 0x0201,
+  EQUAL: 0x0202,
   LEQUAL: 0x0203,
+  GREATER: 0x0204,
+  NOTEQUAL: 0x0205,
+  GEQUAL: 0x0206,
+  ALWAYS: 0x0207,
+  ZERO: 0,
+  ONE: 1,
+  SRC_ALPHA: 0x0302,
+  ONE_MINUS_SRC_ALPHA: 0x0303,
+  FUNC_ADD: 0x8006,
+  FRONT: 0x0404,
+  BACK: 0x0405,
+  CCW: 0x0901,
   DEPTH_BUFFER_BIT: 0x0100,
   TRIANGLES: 0x0004,
   UNSIGNED_SHORT: 0x1403,
   enable: vi.fn(),
   disable: vi.fn(),
   depthFunc: vi.fn(),
+  depthMask: vi.fn(),
+  blendEquation: vi.fn(),
+  blendFunc: vi.fn(),
+  blendFuncSeparate: vi.fn(),
+  cullFace: vi.fn(),
+  frontFace: vi.fn(),
   clear: vi.fn(),
   bindVertexArray: vi.fn(),
   drawElements: vi.fn(),
@@ -135,24 +158,41 @@ describe("PassRenderer", () => {
   };
 
   describe("renderPass", () => {
-    it("draws mesh passes indexed and restores depth/VAO state", () => {
-      const meshResources = { get: vi.fn(() => ({ vao: {}, indexCount: 36 })) };
-      passRenderer = new PassRenderer(
-        mockCanvas,
-        mockResourceManager as any,
-        mockBufferManager as any,
-        mockRenderer,
-        mockKeyboardManager as any,
-        meshResources as any,
-      );
-      const passConfig: Pass = { geometry: "cube", name: "TestPass", shaderSrc: "", inputs: {} };
-
+    /** Order of every recorded GL/renderer call, for "state set before draw, restored after" checks. */
+    const order = (fn: unknown, call = 0) => (fn as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder[call];
+    const lastOrder = (fn: unknown) => {
+      const calls = (fn as { mock: { invocationCallOrder: number[] } }).mock.invocationCallOrder;
+      return calls[calls.length - 1];
+    };
+    const renderWithMeshes = (passConfig: Pass, meshResources: unknown = { get: vi.fn(() => ({ vao: {}, indexCount: 36, vertexCount: 24 })), getModel: vi.fn() }) => {
+      passRenderer = new PassRenderer(mockCanvas, mockResourceManager as any, mockBufferManager as any, mockRenderer, mockKeyboardManager as any, meshResources as any);
       passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+    };
+    const expectGlDefaultsRestoredAfter = (draw: unknown) => {
+      const after = lastOrder(draw);
+      expect(mockGl.disable).toHaveBeenCalledWith(mockGl.BLEND);
+      expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+      expect(mockGl.disable).toHaveBeenCalledWith(mockGl.CULL_FACE);
+      expect(mockGl.blendFunc).toHaveBeenLastCalledWith(mockGl.ONE, mockGl.ZERO);
+      expect(mockGl.depthFunc).toHaveBeenLastCalledWith(mockGl.LESS);
+      expect(mockGl.depthMask).toHaveBeenLastCalledWith(true);
+      expect(lastOrder(mockGl.disable)).toBeGreaterThan(after);
+      expect(lastOrder(mockGl.depthMask)).toBeGreaterThan(after);
+      expect(lastOrder(mockGl.blendFunc)).toBeGreaterThan(after);
+    };
+
+    it("draws mesh passes indexed with the default depth state and restores GL state", () => {
+      renderWithMeshes({ geometry: "cube", name: "TestPass", shaderSrc: "", inputs: {} });
 
       expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
       expect(mockRenderer.DrawPrimitive).not.toHaveBeenCalled();
       expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
-      expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LEQUAL);
+      // Default compare is less in both backends (WebGL used LEQUAL before blend/depth settings).
+      expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LESS);
+      expect(mockGl.depthFunc).not.toHaveBeenCalledWith(mockGl.LEQUAL);
+      expect(mockGl.depthMask).toHaveBeenCalledWith(true);
+      expect(mockGl.enable).not.toHaveBeenCalledWith(mockGl.BLEND);
+      expect(mockGl.enable).not.toHaveBeenCalledWith(mockGl.CULL_FACE);
       expect(mockRenderer.Clear).toHaveBeenCalledWith(
         mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer,
         [0, 0, 0, 1],
@@ -165,11 +205,24 @@ describe("PassRenderer", () => {
         true,
       );
       expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
+      expect(order(mockGl.enable)).toBeLessThan(order(mockGl.drawElements));
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
-      expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+      expectGlDefaultsRestoredAfter(mockGl.drawElements);
     });
 
-    it("draws fullscreen passes as one attributeless three-vertex triangle list", () => {
+    it("restores GL state and the VAO when a mesh draw throws", () => {
+      mockGl.drawElements.mockImplementation(() => {
+        throw new Error("lost context");
+      });
+
+      expect(() => renderWithMeshes({ geometry: "cube", name: "TestPass", shaderSrc: "", inputs: {}, blend: "additive", cull: "back" }))
+        .toThrow("lost context");
+
+      expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
+      expectGlDefaultsRestoredAfter(mockGl.drawElements);
+    });
+
+    it("draws fullscreen passes as one attributeless three-vertex triangle list without depth or culling", () => {
       const passConfig: Pass = { geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {} };
 
       passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
@@ -180,7 +233,25 @@ describe("PassRenderer", () => {
       expect(mockRenderer.GetAttribLocation).not.toHaveBeenCalled();
       expect(mockRenderer.Clear).not.toHaveBeenCalled();
       expect(mockGl.drawElements).not.toHaveBeenCalled();
+      expect(mockGl.enable).not.toHaveBeenCalled();
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 3);
+      expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
     });
+
+    it.each(["alpha", "premultiplied", "additive"] as const)(
+      "blends a fullscreen pass with %s after clearing to opaque black, then restores GL state",
+      (blend) => {
+        passRenderer.renderPass({ geometry: "fullscreen", name: "Glow", shaderSrc: "", inputs: {}, blend }, null, createMockShader(), defaultUniforms);
+
+        expect(mockGl.enable).toHaveBeenCalledWith(mockGl.BLEND);
+        expect(mockGl.enable).not.toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+        expect(mockGl.blendFuncSeparate).toHaveBeenCalledTimes(1);
+        expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+        expect(order(mockRenderer.Clear)).toBeLessThan(order(mockRenderer.DrawPrimitive));
+        expect(order(mockGl.blendFuncSeparate)).toBeLessThan(order(mockRenderer.DrawPrimitive));
+        expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
+      },
+    );
 
     it.each([
       ["triangle-list", "TRIANGLES"],
@@ -188,8 +259,8 @@ describe("PassRenderer", () => {
       ["line-list", "LINES"],
       ["line-strip", "LINE_STRIP"],
       ["point-list", "POINTS"],
-    ] as const)("draws a configured %s fullscreen pass as %s with its vertexCount", (topology, primitive) => {
-      const passConfig: Pass = { geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {}, vertexCount: 12, topology };
+    ] as const)("draws a %s vertices pass as %s with its vertexCount and no VAO", (topology, primitive) => {
+      const passConfig: Pass = { geometry: "vertices", name: "TestPass", shaderSrc: "", inputs: {}, vertexCount: 12, topology };
 
       passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
 
@@ -197,26 +268,128 @@ describe("PassRenderer", () => {
       expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE[primitive], 12, false, 1);
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 12);
       expect(mockGl.drawElements).not.toHaveBeenCalled();
+      expect(mockGl.bindVertexArray).not.toHaveBeenCalled();
     });
 
-    it("defaults topology to triangle-list and vertexCount to 3 when only one is configured", () => {
+    it("defaults a vertices pass to a 3-vertex triangle list and draws without mesh resources", () => {
+      passRenderer.renderPass({ geometry: "vertices", name: "Default", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
       passRenderer.renderPass(
-        { geometry: "fullscreen", name: "Count", shaderSrc: "", inputs: {}, vertexCount: 2_147_483_647 },
-        null, createMockShader(), defaultUniforms,
-      );
-      passRenderer.renderPass(
-        { geometry: "fullscreen", name: "Topology", shaderSrc: "", inputs: {}, topology: "point-list" },
+        { geometry: "vertices", name: "Max", shaderSrc: "", inputs: {}, vertexCount: 2_147_483_647 },
         null, createMockShader(), defaultUniforms,
       );
 
-      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(1, mockRenderer.PRIMTYPE.TRIANGLES, 2_147_483_647, false, 1);
-      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(2, mockRenderer.PRIMTYPE.POINTS, 3, false, 1);
-    });
-
-    it("binds iVertexCount to 3 for an unconfigured fullscreen pass", () => {
-      passRenderer.renderPass({ geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
-
+      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(1, mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(2, mockRenderer.PRIMTYPE.TRIANGLES, 2_147_483_647, false, 1);
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 3);
+    });
+
+    it("draws world-space vertices with the orbit camera, a cleared depth buffer and the default depth test", () => {
+      passRenderer.renderPass({ geometry: "vertices", name: "World", shaderSrc: "", inputs: {}, vertexCount: 6 }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith("_meshProjection", expect.any(Array), true);
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith("_meshView", expect.any(Array), true);
+      expect(mockRenderer.SetShaderConstant3FV).toHaveBeenCalledWith("iCameraPosition", expect.any(Array));
+      expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer, [0, 0, 0, 1], 1, 0);
+      expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+      expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LESS);
+      expect(order(mockRenderer.Clear)).toBeLessThan(order(mockRenderer.DrawPrimitive));
+      expect(order(mockGl.enable)).toBeLessThan(order(mockRenderer.DrawPrimitive));
+      expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
+    });
+
+    it("draws clip-space vertices without camera matrices and with the depth test off (ALWAYS) by default", () => {
+      passRenderer.renderPass({ geometry: "vertices", name: "Clip", shaderSrc: "", inputs: {}, space: "clip" }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstantMat4F).not.toHaveBeenCalled();
+      expect(mockRenderer.SetShaderConstant3FV).not.toHaveBeenCalledWith("iCameraPosition", expect.anything());
+      expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer, [0, 0, 0, 1], 1, 0);
+      expect(mockGl.depthFunc).toHaveBeenNthCalledWith(1, mockGl.ALWAYS);
+      expect(mockGl.depthMask).toHaveBeenNthCalledWith(1, true);
+      expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
+    });
+
+    it.each([
+      ["never", "NEVER"],
+      ["less", "LESS"],
+      ["equal", "EQUAL"],
+      ["less-equal", "LEQUAL"],
+      ["greater", "GREATER"],
+      ["not-equal", "NOTEQUAL"],
+      ["greater-equal", "GEQUAL"],
+      ["always", "ALWAYS"],
+    ] as const)("applies depth compare %s as %s with writes off", (compare, func) => {
+      renderWithMeshes({ geometry: "sphere", name: "S", shaderSrc: "", inputs: {}, depth: { compare, write: false } });
+
+      expect(mockGl.depthFunc).toHaveBeenNthCalledWith(1, mockGl[func]);
+      expect(mockGl.depthMask).toHaveBeenNthCalledWith(1, false);
+      expectGlDefaultsRestoredAfter(mockGl.drawElements);
+    });
+
+    it.each([
+      ["greater", 0],
+      ["greater-equal", 0],
+      ["less", 1],
+      ["less-equal", 1],
+    ] as const)("clears depth for compare %s to %d before drawing", (compare, clearDepth) => {
+      renderWithMeshes({ geometry: "cube", name: "C", shaderSrc: "", inputs: {}, depth: { compare } });
+      passRenderer.renderPass({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, depth: { compare } }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.Clear).toHaveBeenNthCalledWith(1, mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer, [0, 0, 0, 1], clearDepth, 0);
+      expect(mockRenderer.Clear).toHaveBeenNthCalledWith(2, mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer, [0, 0, 0, 1], clearDepth, 0);
+    });
+
+    it("tests with ALWAYS when the depth test is off so depth writes still match WebGPU", () => {
+      renderWithMeshes({ geometry: "cube", name: "C", shaderSrc: "", inputs: {}, depth: { test: false, compare: "greater" } });
+
+      expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+      expect(mockGl.depthFunc).toHaveBeenNthCalledWith(1, mockGl.ALWAYS);
+      expect(mockGl.depthMask).toHaveBeenNthCalledWith(1, true);
+    });
+
+    it("turns the clip-space depth test on when configured", () => {
+      passRenderer.renderPass(
+        { geometry: "vertices", name: "Clip", shaderSrc: "", inputs: {}, space: "clip", depth: { test: true } },
+        null, createMockShader(), defaultUniforms,
+      );
+
+      expect(mockGl.depthFunc).toHaveBeenNthCalledWith(1, mockGl.LESS);
+    });
+
+    it.each([
+      ["back", "BACK"],
+      ["front", "FRONT"],
+    ] as const)("culls %s faces with counter-clockwise front faces on meshes and vertices", (cull, face) => {
+      renderWithMeshes({ geometry: "cube", name: "C", shaderSrc: "", inputs: {}, cull });
+      passRenderer.renderPass({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, cull }, null, createMockShader(), defaultUniforms);
+
+      expect(mockGl.enable).toHaveBeenCalledWith(mockGl.CULL_FACE);
+      expect(mockGl.frontFace).toHaveBeenNthCalledWith(1, mockGl.CCW);
+      expect(mockGl.cullFace).toHaveBeenNthCalledWith(1, mockGl[face]);
+      expect(mockGl.cullFace).toHaveBeenNthCalledWith(3, mockGl[face]);
+      expect(order(mockGl.cullFace)).toBeLessThan(order(mockGl.drawElements));
+      expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
+    });
+
+    it("leaves culling disabled for cull none", () => {
+      renderWithMeshes({ geometry: "cube", name: "C", shaderSrc: "", inputs: {}, cull: "none" });
+
+      expect(mockGl.enable).not.toHaveBeenCalledWith(mockGl.CULL_FACE);
+      expect(mockGl.cullFace).toHaveBeenCalledTimes(1);
+      expect(order(mockGl.cullFace)).toBeGreaterThan(order(mockGl.drawElements));
+    });
+
+    it("does not leak one pass's blend, depth or cull into the next pass", () => {
+      passRenderer.renderPass(
+        { geometry: "vertices", name: "Particles", shaderSrc: "", inputs: {}, blend: "additive", depth: { write: false }, cull: "back" },
+        null, createMockShader(), defaultUniforms,
+      );
+      mockGl.enable.mockClear();
+      mockGl.blendFuncSeparate.mockClear();
+      passRenderer.renderPass({ geometry: "fullscreen", name: "Image", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+
+      expect(mockGl.enable).not.toHaveBeenCalled();
+      expect(mockGl.blendFuncSeparate).not.toHaveBeenCalled();
+      expect(mockGl.depthMask).toHaveBeenLastCalledWith(true);
     });
 
     it("binds iVertexCount to the mesh vertex count for built-in meshes and models", () => {
@@ -232,7 +405,10 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 24);
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 42);
       expect(passRenderer.getPassVertexCount({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} })).toBe(24);
-      expect(passRenderer.getPassVertexCount({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {}, vertexCount: 9 })).toBe(9);
+      expect(passRenderer.getPassVertexCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, vertexCount: 9 })).toBe(9);
+      expect(passRenderer.getPassVertexCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {} })).toBe(3);
+      expect(passRenderer.getPassVertexCount({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {} })).toBe(3);
+      expect(meshResources.get).not.toHaveBeenCalledWith("vertices");
     });
 
     it("binds iVertexCount to 0 and skips drawing while a mesh is unavailable", () => {
@@ -253,6 +429,16 @@ describe("PassRenderer", () => {
 
       expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 3);
+    });
+
+    it("draws vertices without touching GL state when no WebGL2 context is available", () => {
+      mockCanvas = { getContext: vi.fn().mockReturnValue(null) } as unknown as HTMLCanvasElement;
+      passRenderer = new PassRenderer(mockCanvas, mockResourceManager as any, mockBufferManager as any, mockRenderer, mockKeyboardManager as any);
+
+      passRenderer.renderPass({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, vertexCount: 4, topology: "line-strip", blend: "alpha" }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.LINE_STRIP, 4, false, 1);
+      expect(mockGl.enable).not.toHaveBeenCalled();
     });
 
     it("clears fullscreen passes with a vertex hook so uncovered pixels match WebGPU", () => {

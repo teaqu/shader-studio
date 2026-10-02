@@ -34,7 +34,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 |---------|------|-------------|
 | `iCameraPos` | `vec3` | Camera position in world space (moved with WASD/QE) |
 | `iCameraDir` | `vec3` | Camera look direction (controlled with mouse or IJKL) |
-| `iVertexCount` | `int` | Vertices the pass draws: the fullscreen `vertexCount` (default 3), or the mesh vertex count. See [Vertex Count and Topology](../features/vertex-shaders.md#vertex-count-and-topology) |
+| `iVertexCount` | `int` | Vertices the pass draws: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count. See [Vertices geometry](../features/vertex-shaders.md#vertices-geometry) |
 
 ## Supported Input Types
 

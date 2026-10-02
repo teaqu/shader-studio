@@ -11,7 +11,7 @@ A vertex shader is useful when you want to:
 - **Custom projections** — apply non-standard camera transforms per pass
 - **Raymarching** — use 3D geometry as a bounding volume, then raymarch in the fragment shader
 
-Fullscreen passes can also use vertex shaders for warping, custom projections, or screen-space effects without switching to 3D geometry.
+Fullscreen passes can also use vertex shaders for warping, custom projections, or screen-space effects without switching to 3D geometry. To draw your own shapes, lines or points, use [Vertices geometry](#vertices-geometry).
 
 ## Configuring a Vertex Shader
 
@@ -62,7 +62,8 @@ The meaning of the parameters depends on the geometry type:
 
 | Geometry | `vertexIndex` | `position` | `normal` | `uv` |
 |----------|---------------|-----------|----------|------|
-| **Fullscreen** | 0 to `iVertexCount - 1` (0, 1, 2 by default) | Clip-space triangle corner `vertexIndex % 3`, Z=0 | `(0, 0, 1)` | Corner × 0.5 + 0.5 |
+| **Fullscreen** | 0, 1, 2 | Clip-space triangle corner, Z=0 | `(0, 0, 1)` | Corner × 0.5 + 0.5 |
+| **Vertices** | 0 to `iVertexCount - 1` | `(0, 0, 0)`; you place every vertex | `(0, 0, 1)` | `(0, 0)` |
 | **Plane** | Mesh vertex index | XZ-plane object-space vertex | `(0, 1, 0)` | 0–1 grid UV |
 | **Cube** | Mesh vertex index | Unit-cube object-space vertex | Face normal | Face UV |
 | **Sphere** | Mesh vertex index | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
@@ -70,43 +71,82 @@ The meaning of the parameters depends on the geometry type:
 
 For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index. `iVertexCount` is the number of distinct mesh vertices, so `vertexIndex` runs from 0 to `iVertexCount - 1` here too.
 
-For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen. Assign `position` from `vertexIndex` to place the triangle yourself; pixels it no longer covers are cleared to opaque black. To draw more than three vertices, or lines and points, see [Vertex Count and Topology](#vertex-count-and-topology).
+For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass always draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen, and `iVertexCount` is 3. Assign `position` from `vertexIndex` to move the triangle yourself; pixels it no longer covers are cleared to opaque black. To draw your own shapes, lines or points, use [Vertices geometry](#vertices-geometry).
 
-## Vertex Count and Topology
+## Vertices Geometry
 
-A fullscreen pass can draw any number of vertices and join them as triangles, lines, or points. Set them on the pass geometry in `.sha.json`, or with the **Vertices** and **Topology** controls under **Geometry** in the config panel:
+**Vertices** geometry draws as many vertices as you ask for, with no mesh behind them: `mainVertex` decides where every vertex goes. Select **Vertices** in the **Geometry** dropdown, or set it in `.sha.json`:
 
 ```json
-"geometry": { "type": "fullscreen", "vertexCount": 6, "topology": "triangle-strip" }
+"geometry": { "type": "vertices", "vertexCount": 6, "topology": "triangle-strip", "space": "clip" }
 ```
 
 | Field | Values | Default |
 |-------|--------|---------|
 | `vertexCount` | Whole number from 1 to 2147483647 | `3` |
 | `topology` | `triangle-list`, `triangle-strip`, `line-list`, `line-strip`, `point-list` | `triangle-list` |
+| `space` | `world`, `clip` | `world` |
 
-`mainVertex` runs once per vertex with `vertexIndex` from 0 to `vertexCount - 1`; read the count in the shader as `iVertexCount`. Place the vertices in shader code, for example from an array or from maths over `vertexIndex`. Each vertex starts at the oversized-triangle corner `vertexIndex % 3`, so a hook that leaves some vertices untouched still keeps them on screen. Values outside the range, other topologies, and either field on plane, cube, sphere, or model geometry are config errors: those meshes are always drawn as indexed triangles.
+The config panel shows them as **Vertices**, **Topology** and **Space**. Switching the pass to another geometry and back restores them for the rest of the session; they are never written for other geometry.
 
-When neither field is set, the pass draws the default triangle exactly as before.
+`mainVertex` runs once per vertex with `vertexIndex` from 0 to `vertexCount - 1`; read the count in the shader as `iVertexCount`. Every vertex starts at `(0, 0, 0)` with normal `(0, 0, 1)` and uv `(0, 0)`, so a pass without a vertex shader draws nothing. Place the vertices in shader code, for example from an array or from maths over `vertexIndex`. `topology` says how consecutive vertices join up: every three vertices make a triangle (`triangle-list`), each new vertex makes a triangle with the two before it (`triangle-strip`), every two make a line (`line-list`), each new vertex continues one line (`line-strip`), or each vertex is a single point (`point-list`).
+
+Out-of-range counts, other topologies, and any of these fields on fullscreen, plane, cube, sphere, or model geometry are config errors.
+
+### World and clip space
+
+`space` says what the position you write means.
+
+- **`world`** (the default) treats your positions like the vertices of a plane or cube: points in the 3D scene. The orbit camera looks at them, so dragging the preview moves around your shape, and nearer surfaces hide farther ones. `mainImage` receives `uv * iResolution`, so whatever you write to `uv` comes through, and `iWorldPosition`, `iNormal` and `iCameraPosition` work as they do for meshes. Use it for 3D shapes, particle clouds and procedural meshes.
+- **`clip`** treats your positions as places on the screen: `(-1, -1)` is the bottom-left corner and `(1, 1)` the top-right, whatever the camera does. `mainImage` receives the real pixel coordinate, as in a fullscreen pass. Use it for HUDs, waveforms, graphs and 2D shapes that should stay put. Keep `z` between 0 and 1: WebGPU clips anything outside that range, and WebGL accepts it. Shapes are drawn in the order you emit them, later ones on top, because the depth test is off by default in clip space.
 
 ### Limitations
 
 - **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
-- **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each:
-
-    ```glsl
-    // vertexCount = particleCount * 6, topology = triangle-list
-    const vec2 corners[6] = vec2[6](vec2(-1, -1), vec2(1, -1), vec2(-1, 1), vec2(-1, 1), vec2(1, -1), vec2(1, 1));
-
-    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
-        int particle = vertexIndex / 6;
-        vec2 centre = vec2(sin(float(particle) * 1.7 + iTime), cos(float(particle) * 2.3)) * 0.8;
-        uv = corners[vertexIndex % 6] * 0.5 + 0.5;
-        position = vec3(centre + corners[vertexIndex % 6] * 0.02, 0.0);
-    }
-    ```
-
+- **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each; see [Additive particles](#additive-particles).
 - **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of the pass, including pixels no triangle, line, or point covers.
+
+## Render Settings
+
+Image and buffer passes have three more settings next to `geometry`, under **Rendering** in the config panel. Compute and Common passes do not accept them.
+
+```json
+"Image": {
+  "geometry": { "type": "vertices", "vertexCount": 6000 },
+  "blend": "additive",
+  "depth": { "test": true, "write": false, "compare": "less" },
+  "cull": "back"
+}
+```
+
+### Blend
+
+`blend` decides what happens when a pass draws over a pixel it already drew this frame. Each pass starts every frame cleared to opaque black, so blending only combines the pass's own shapes.
+
+| Value | Result | Use it for |
+|-------|--------|-----------|
+| `none` (default) | The new colour replaces the old one | Opaque shapes |
+| `alpha` | Mixed by the new colour's alpha: `new × a + old × (1 − a)` | Soft, see-through shapes |
+| `premultiplied` | `new + old × (1 − a)`, for colours already multiplied by alpha | Layered 2D drawing |
+| `additive` | The colours add up | Glows, sparks and light |
+
+`blend` works with every geometry, fullscreen included. A buffer pass renders into a 32-bit float texture by default; on a GPU that cannot blend 32-bit floats (no WebGPU `float32-blendable`, no WebGL `EXT_float_blend`), a blended buffer pass renders into 16-bit floats instead and the preview shows a warning.
+
+### Depth
+
+`depth` controls how nearer surfaces hide farther ones. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes have no depth buffer, so `depth` there is a config error.
+
+| Field | Values | Default |
+|-------|--------|---------|
+| `test` | `true`, `false` | `true`; `false` for vertices in clip space |
+| `write` | `true`, `false` | `true` |
+| `compare` | `never`, `less`, `equal`, `less-equal`, `greater`, `not-equal`, `greater-equal`, `always` | `less` |
+
+With `test` on, a fragment is drawn only if its depth passes `compare` against what is already there; `less` keeps the nearest surface. With `write` on, drawn fragments record their depth for later ones to test against. Turn `write` off for transparent or additive effects that should not hide each other. The depth buffer starts each frame at the far value, or at the near value for `greater` and `greater-equal` so those comparisons can pass.
+
+### Cull
+
+`cull` skips triangles facing one way: `none` (default) draws both sides, `back` skips triangles facing away from the camera, and `front` skips those facing it. A triangle faces the camera when its corners go counter-clockwise on screen, as on the built-in meshes and glTF models. Culling `back` saves work on closed shapes; culling `front` shows the inside of a cube. Lines and points are never culled, and `cull` on fullscreen geometry is a config error.
 
 ## Available Built-ins
 
@@ -125,7 +165,7 @@ All standard shader uniforms are available in the vertex shader:
 | `iSampleRate` | `float` | `float` | `f32` | Audio sample rate |
 | `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Camera forward direction |
-| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the fullscreen `vertexCount`, or the mesh vertex count |
+| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices `vertexCount`, 3 for fullscreen, or the mesh vertex count |
 
 === "GLSL"
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.
@@ -142,7 +182,7 @@ All standard shader uniforms are available in the vertex shader:
 
 ## Fragment Shader Access
 
-When using 3D geometry, the fragment shader receives per-pixel interpolated values from the vertex output:
+When using 3D geometry, including vertices in world space, the fragment shader receives per-pixel interpolated values from the vertex output:
 
 === "GLSL"
     The `mainImage` signature is unchanged, but the following globals are available:
@@ -199,9 +239,9 @@ A fullscreen vertex shader can place its three vertices from `vertexIndex`, for 
 
 `mainImage` shades only the pixels inside the triangle; the rest of the pass is cleared to black.
 
-### Fullscreen: a Hexagon
+### Vertices: a Clip-Space Hexagon
 
-Six points joined as a triangle strip make a hexagon. Set the pass geometry to `{ "type": "fullscreen", "vertexCount": 6, "topology": "triangle-strip" }`:
+Six points joined as a triangle strip make a hexagon that stays in the middle of the screen. Set the pass geometry to `{ "type": "vertices", "vertexCount": 6, "topology": "triangle-strip", "space": "clip" }`:
 
 === "GLSL"
     ```glsl
@@ -250,6 +290,132 @@ Use `iVertexCount` to spread vertices without hard-coding the count, for example
 
 ```glsl
 position = vec3(-0.75 + 1.5 * float(vertexIndex) / float(iVertexCount - 1), 0.0, 0.0);
+```
+
+### Vertices: a 3D Shape in World Space
+
+In world space the same idea builds 3D objects the camera can orbit. This draws a tetrahedron as 12 vertices (four triangles) with `{ "type": "vertices", "vertexCount": 12 }`, setting each face's normal so `mainImage` can light it with `iNormal`:
+
+=== "GLSL"
+    ```glsl
+    // tetrahedron.vert.glsl
+    const vec3 corners[4] = vec3[4](vec3(1, 1, 1), vec3(1, -1, -1), vec3(-1, 1, -1), vec3(-1, -1, 1));
+    const int faces[12] = int[12](0, 1, 2,  0, 3, 1,  0, 2, 3,  1, 3, 2);
+
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        int face = vertexIndex / 3;
+        vec3 a = corners[faces[face * 3]];
+        vec3 b = corners[faces[face * 3 + 1]];
+        vec3 c = corners[faces[face * 3 + 2]];
+        position = corners[faces[vertexIndex]] * 0.5;
+        normal = normalize(cross(b - a, c - a));
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // tetrahedron.vert.slang
+    static const float3 corners[4] = { float3(1, 1, 1), float3(1, -1, -1), float3(-1, 1, -1), float3(-1, -1, 1) };
+    static const uint faces[12] = { 0, 1, 2,  0, 3, 1,  0, 2, 3,  1, 3, 2 };
+
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        uint face = vertexIndex / 3u;
+        float3 a = corners[faces[face * 3u]];
+        float3 b = corners[faces[face * 3u + 1u]];
+        float3 c = corners[faces[face * 3u + 2u]];
+        position = corners[faces[vertexIndex]] * 0.5;
+        normal = normalize(cross(b - a, c - a));
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // tetrahedron.vert.wgsl
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        var corners = array<vec3f, 4>(vec3f(1, 1, 1), vec3f(1, -1, -1), vec3f(-1, 1, -1), vec3f(-1, -1, 1));
+        var faces = array<u32, 12>(0, 1, 2,  0, 3, 1,  0, 2, 3,  1, 3, 2);
+        let face = vertexIndex / 3u;
+        let a = corners[faces[face * 3u]];
+        let b = corners[faces[face * 3u + 1u]];
+        let c = corners[faces[face * 3u + 2u]];
+        *position = corners[faces[vertexIndex]] * 0.5;
+        *normal = normalize(cross(b - a, c - a));
+    }
+    ```
+
+```glsl
+// tetrahedron.glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    float light = max(dot(iNormal, normalize(vec3(0.5, 1.0, 0.3))), 0.0);
+    fragColor = vec4(vec3(0.2 + 0.8 * light), 1.0);
+}
+```
+
+Each face winds counter-clockwise seen from outside, so `"cull": "back"` skips the faces turned away from the camera.
+
+### Additive Particles
+
+Particles are quads built from 6 vertices each (vertex pulling). With additive blending, overlapping particles add up to a glow; with depth writes off, a particle in front never hides one behind it. This is 1000 particles in world space:
+
+```json
+"Image": {
+  "vertex": "particles.vert.glsl",
+  "geometry": { "type": "vertices", "vertexCount": 6000 },
+  "blend": "additive",
+  "depth": { "write": false }
+}
+```
+
+=== "GLSL"
+    ```glsl
+    // particles.vert.glsl
+    const vec2 corners[6] = vec2[6](vec2(-1, -1), vec2(1, -1), vec2(-1, 1), vec2(-1, 1), vec2(1, -1), vec2(1, 1));
+
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        float id = float(vertexIndex / 6);
+        vec2 corner = corners[vertexIndex % 6];
+        vec3 centre = vec3(sin(id * 1.7 + iTime), cos(id * 2.3 + iTime * 0.5), sin(id * 0.9)) * 0.8;
+        position = centre + vec3(corner * 0.03, 0.0);
+        uv = corner * 0.5 + 0.5;
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // particles.vert.slang
+    static const float2 corners[6] = { float2(-1, -1), float2(1, -1), float2(-1, 1), float2(-1, 1), float2(1, -1), float2(1, 1) };
+
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        float id = float(vertexIndex / 6u);
+        float2 corner = corners[vertexIndex % 6u];
+        float3 centre = float3(sin(id * 1.7 + iTime), cos(id * 2.3 + iTime * 0.5), sin(id * 0.9)) * 0.8;
+        position = centre + float3(corner * 0.03, 0.0);
+        uv = corner * 0.5 + 0.5;
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // particles.vert.wgsl
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        var corners = array<vec2f, 6>(vec2f(-1, -1), vec2f(1, -1), vec2f(-1, 1), vec2f(-1, 1), vec2f(1, -1), vec2f(1, 1));
+        let id = f32(vertexIndex / 6u);
+        let corner = corners[vertexIndex % 6u];
+        let centre = vec3f(sin(id * 1.7 + iTime), cos(id * 2.3 + iTime * 0.5), sin(id * 0.9)) * 0.8;
+        *position = centre + vec3f(corner * 0.03, 0.0);
+        *uv = corner * 0.5 + 0.5;
+    }
+    ```
+
+In world space `mainImage` receives `uv * iResolution`, so divide by `iResolution.xy` to get the particle's own 0–1 coordinate back and fade its edges:
+
+```glsl
+// particles.glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution.xy;
+    float glow = smoothstep(0.5, 0.0, length(uv - 0.5));
+    fragColor = vec4(vec3(1.0, 0.6, 0.2) * glow * 0.5, 1.0);
+}
 ```
 
 ### Displacing a Plane

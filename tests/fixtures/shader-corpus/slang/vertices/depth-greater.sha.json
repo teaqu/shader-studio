@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./depth-greater.vert.slang",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 12
+      },
+      "depth": {
+        "compare": "greater"
+      }
+    }
+  }
+}

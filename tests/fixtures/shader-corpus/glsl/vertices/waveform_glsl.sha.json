@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./waveform_glsl.vert.glsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 256,
+        "topology": "line-strip",
+        "space": "clip"
+      }
+    }
+  }
+}

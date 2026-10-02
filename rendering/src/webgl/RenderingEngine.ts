@@ -120,6 +120,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       this.renderLimits,
       () => this.frameRenderer.invalidatePausedUniforms(),
     );
+    this.shaderPipeline.setFloat32Blendable(Boolean(this.gl.getExtension?.("EXT_float_blend")));
 
     this.passRenderer = new PassRenderer(
       glCanvas,

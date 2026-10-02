@@ -1449,6 +1449,125 @@ describe("SlangPassPipeline", () => {
     expect(pipelineDescriptor.primitive).toEqual({ topology: "triangle-list" });
   });
 
+  describe("geometry resources and render state", () => {
+    const build = async (descriptor: Partial<ConstructorParameters<typeof SlangPassPipeline>[2]>) => {
+      const device = fakeDevice();
+      const pass = new SlangPassPipeline(device, "bgra8unorm", {
+        name: "Image",
+        width: 320,
+        height: 180,
+        output: "canvas",
+        geometry: "fullscreen",
+        storage: [],
+        channels: [],
+        ...descriptor,
+      });
+      await pass.rebuild("// wgsl");
+      const pipeline = device.createRenderPipeline.mock.calls[0][0] as GPURenderPipelineDescriptor;
+      const layoutEntries = device.createBindGroupLayout.mock.calls[0][0].entries as GPUBindGroupLayoutEntry[];
+      const meshUniformBuffers = device.createBuffer.mock.calls.filter(([buffer]) => buffer.size === 256);
+      const depthTextures = device.createTexture.mock.calls.filter(([texture]) => texture.format === "depth24plus");
+      return { device, pass, pipeline, layoutEntries, meshUniformBuffers, depthTextures };
+    };
+
+    it("gives fullscreen no depth, camera uniforms or vertex buffers", async () => {
+      const { pass, pipeline, layoutEntries, meshUniformBuffers, depthTextures } = await build({});
+
+      expect(pipeline.depthStencil).toBeUndefined();
+      expect(pipeline.vertex).not.toHaveProperty("buffers");
+      expect(layoutEntries).toHaveLength(1);
+      expect(meshUniformBuffers).toHaveLength(0);
+      expect(depthTextures).toHaveLength(0);
+      expect(pass.getDepthView()).toBeNull();
+      expect(pass.hasDepthAttachment()).toBe(false);
+      expect(pass.hasVertexBuffers()).toBe(false);
+      expect(pass.usesCameraUniforms()).toBe(false);
+    });
+
+    it("gives meshes vertex buffers, camera uniforms and the default depth state", async () => {
+      const { device, pass, pipeline, layoutEntries, meshUniformBuffers, depthTextures } = await build({ geometry: "cube" });
+
+      expect(pipeline.vertex.buffers).toHaveLength(1);
+      expect(pipeline.depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" });
+      expect(pipeline.primitive).toEqual({ topology: "triangle-list" });
+      expect(layoutEntries).toHaveLength(2);
+      expect(meshUniformBuffers).toHaveLength(1);
+      expect(depthTextures).toHaveLength(1);
+      expect(device.createBindGroup.mock.calls[0][0].entries).toHaveLength(2);
+      expect(pass.getMeshUniformBuffer()).not.toBeNull();
+      expect(pass.getDepthView()).not.toBeNull();
+    });
+
+    it("gives world-space vertices camera uniforms and depth but no vertex buffers", async () => {
+      const { pass, pipeline, layoutEntries, meshUniformBuffers, depthTextures } = await build({
+        geometry: "vertices",
+        topology: "line-strip",
+      });
+
+      expect(pipeline.vertex).not.toHaveProperty("buffers");
+      expect(pipeline.primitive).toEqual({ topology: "line-strip" });
+      expect(pipeline.depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" });
+      expect(layoutEntries).toHaveLength(2);
+      expect(meshUniformBuffers).toHaveLength(1);
+      expect(depthTextures).toHaveLength(1);
+      expect(pass.usesCameraUniforms()).toBe(true);
+      expect(pass.hasVertexBuffers()).toBe(false);
+    });
+
+    it("gives clip-space vertices a depth attachment tested with always but no camera uniforms", async () => {
+      const { device, pass, pipeline, layoutEntries, meshUniformBuffers, depthTextures } = await build({
+        geometry: "vertices",
+        vertexSpace: "clip",
+        topology: "point-list",
+      });
+
+      expect(pipeline.vertex).not.toHaveProperty("buffers");
+      expect(pipeline.primitive).toEqual({ topology: "point-list" });
+      expect(pipeline.depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: true, depthCompare: "always" });
+      expect(layoutEntries).toHaveLength(1);
+      expect(meshUniformBuffers).toHaveLength(0);
+      expect(depthTextures).toHaveLength(1);
+      expect(device.createBindGroup.mock.calls[0][0].entries).toHaveLength(1);
+      expect(pass.getMeshUniformBuffer()).toBeNull();
+      expect(pass.usesCameraUniforms()).toBe(false);
+    });
+
+    it("bakes the descriptor's render state into blend, depth and primitive state", async () => {
+      const { pipeline } = await build({
+        geometry: "vertices",
+        renderState: { blend: "additive", depth: { test: true, write: false, compare: "greater-equal" }, cull: "front" },
+      });
+
+      expect(pipeline.fragment!.targets).toEqual([{
+        format: "bgra8unorm",
+        blend: {
+          color: { operation: "add", srcFactor: "one", dstFactor: "one" },
+          alpha: { operation: "add", srcFactor: "one", dstFactor: "one" },
+        },
+      }]);
+      expect(pipeline.depthStencil).toEqual({ format: "depth24plus", depthWriteEnabled: false, depthCompare: "greater-equal" });
+      expect(pipeline.primitive).toEqual({ topology: "triangle-list", cullMode: "front", frontFace: "ccw" });
+    });
+
+    it("blends a fullscreen pass without adding depth state", async () => {
+      const { pipeline } = await build({ renderState: { blend: "alpha", depth: null, cull: "none" } });
+
+      expect(pipeline.fragment!.targets![0]).toMatchObject({ blend: { color: { srcFactor: "src-alpha" } } });
+      expect(pipeline.depthStencil).toBeUndefined();
+    });
+
+    it("resizes the vertices depth attachment with the output", async () => {
+      const { device, pass } = await build({ geometry: "vertices", vertexSpace: "clip", output: "texture", name: "BufferA" });
+
+      pass.resize(640, 360);
+
+      const depthSizes = device.createTexture.mock.calls
+        .filter(([texture]) => texture.format === "depth24plus")
+        .map(([texture]) => texture.size);
+      expect(depthSizes).toEqual([{ width: 320, height: 180 }, { width: 640, height: 360 }]);
+    });
+  });
+
   it("maps compilation errors to formatted messages and filters out non-error messages", async () => {
     const device = fakeDevice([
       { type: "warning", lineNum: 3, linePos: 2, message: "unused variable" },

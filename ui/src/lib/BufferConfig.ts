@@ -1,4 +1,4 @@
-import { validatePassGeometry } from '@shader-studio/rendering';
+import { validatePassRenderSettings } from '@shader-studio/rendering';
 import type {
   BufferPass,
   ComputePass,
@@ -134,12 +134,13 @@ export class BufferConfig {
       if ('outputFormat' in this.config && this.config.outputFormat !== undefined) {
         errors.push('common pass cannot define outputFormat');
       }
+      errors.push(...validatePassRenderSettings(this.config, 'common'));
     } else {
       if ('outputFormat' in this.config && this.config.outputFormat !== undefined &&
           !['auto', 'rgba16float', 'rgba32float'].includes(this.config.outputFormat)) {
         errors.push(`${this.bufferName} pass outputFormat must be auto, rgba16float, or rgba32float`);
       }
-      errors.push(...validatePassGeometry(this.config.geometry, this.bufferName));
+      errors.push(...validatePassRenderSettings(this.config, this.bufferName));
       if (this.config.vertex !== undefined && (typeof this.config.vertex !== 'string' || this.config.vertex.trim() === '')) {
         errors.push(`${this.bufferName} pass vertex path must be a non-empty string`);
       }

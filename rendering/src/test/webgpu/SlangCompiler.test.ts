@@ -345,7 +345,7 @@ describe("SlangCompiler", () => {
   );
 
   it.runIf(realSlangAssets)(
-    "compiles a wrapped fullscreen hook and fragment that read iVertexCount with real Slang",
+    "compiles a vertices hook and fragment that read iVertexCount with real Slang",
     async () => {
       const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
       const compiler = new SlangCompiler(slang);
@@ -353,7 +353,8 @@ describe("SlangCompiler", () => {
       const result = compiler.compileImagePass(
         "float4 mainImage(float2 fragCoord) { return float4(float(iVertexCount) / 12.0); }",
         {
-          wrapFullscreenVertexIndex: true,
+          geometry: "vertices",
+          vertexSpace: "clip",
           vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex) / float(iVertexCount - 1u); }",
         },
       );
@@ -365,13 +366,16 @@ describe("SlangCompiler", () => {
     },
   );
 
-  it("forwards the fullscreen vertex-index wrap to the Slang wrapper", () => {
+  it("forwards the vertices space to the Slang wrapper", () => {
     const onLoad = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
-    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { wrapFullscreenVertexIndex: true });
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { geometry: "vertices", vertexSpace: "clip" });
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { geometry: "vertices", vertexSpace: "world" });
     compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
-    expect(onLoad.mock.calls[0][0]).toContain("verts[vertexID % 3u]");
-    expect(onLoad.mock.calls[1][0]).not.toContain("% 3u");
+    expect(onLoad.mock.calls[0][0]).toContain("float3 position = float3(0, 0, 0);");
+    expect(onLoad.mock.calls[0][0]).not.toContain("MeshUniforms");
+    expect(onLoad.mock.calls[1][0]).toContain("ConstantBuffer<MeshUniforms> _mesh;");
+    expect(onLoad.mock.calls[2][0]).not.toContain("float3 position = float3(0, 0, 0);");
   });
 
   it("compiles user source to WGSL", () => {

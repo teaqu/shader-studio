@@ -3,7 +3,7 @@ import { loadGlbMesh } from "../preview3d/GltfMeshLoader";
 import type { PreviewMesh } from "../preview3d/types";
 import type { GeometryType } from "@shader-studio/types";
 
-type MeshKind = Exclude<GeometryType, "fullscreen" | "model">;
+type MeshKind = Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
 
 interface MeshResource {
   vao: WebGLVertexArrayObject;

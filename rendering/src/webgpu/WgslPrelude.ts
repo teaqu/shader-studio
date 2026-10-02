@@ -1,7 +1,7 @@
 import { wgslStorageElementType } from "@shader-studio/types";
 import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import type { StorageBindingNode } from "../types/PassGraph";
-import { buildChannelSamplingFunctions, describeSlangChannel, type GeometryType } from "@shader-studio/types";
+import { buildChannelSamplingFunctions, DEFAULT_VERTEX_SPACE, describeSlangChannel, type GeometryType, type VertexSpace } from "@shader-studio/types";
 import {
   getShaderToyChannelCount,
   isSlangCustomUniformType,
@@ -40,8 +40,8 @@ export interface WgslWrapOptions {
   passKind?: "render" | "compute";
   geometry?: GeometryType;
   vertexCode?: string;
-  /** Wrap the fullscreen corner index (`% 3`) for a configured vertexCount/topology. */
-  wrapFullscreenVertexIndex?: boolean;
+  /** Space of vertices geometry; ignored for other geometry. Defaults to world. */
+  vertexSpace?: VertexSpace;
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block and swaps the
@@ -103,6 +103,8 @@ export const WGSL_ENABLE_TO_GPU_FEATURE: Record<string, string> = {
 /** Every GPU feature the engine may request up front (spec 7.2, option A). */
 export const WGSL_KNOWN_GPU_FEATURES = [
   "float32-filterable",
+  // Lets blended passes keep their rgba32float buffers.
+  "float32-blendable",
   "shader-f16",
   "dual-source-blending",
   "clip-distances",
@@ -409,18 +411,77 @@ export interface WgslEntryPoints {
   vertexLineCount: number;
 }
 
-function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
-  const hook = vertexCode.trim() ? vertexCode : "";
-  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
-  return {
-    source: `${hookSource}
-struct _ss_MeshVertexOut {
+const WGSL_MESH_VERTEX_OUT = `struct _ss_MeshVertexOut {
   @builtin(position) position: vec4<f32>,
   @location(0) uv: vec2<f32>,
   @location(1) worldPosition: vec3<f32>,
   @location(2) normal: vec3<f32>,
 }
+`;
 
+const WGSL_MESH_FRAGMENT_ENTRY_POINT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>) -> @location(0) vec4<f32> {
+  _ss_initGlobals();
+  ${MESH_FRAGMENT_CONTEXT.worldPosition} = worldPos;
+  ${MESH_FRAGMENT_CONTEXT.normal} = normal;
+  ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _ss_mesh.cameraPosition.xyz;
+  return mainImage(uv * _ss_u.resolution.xy);
+}
+`;
+
+/** Every vertices-geometry vertex starts here before mainVertex moves it. */
+const WGSL_VERTICES_SEED = `  var position = vec3<f32>(0.0, 0.0, 0.0);
+  var normal = vec3<f32>(0.0, 0.0, 1.0);
+  var uv = vec2<f32>(0.0, 0.0);
+  mainVertex(vid, &position, &normal, &uv);`;
+
+/**
+ * Vertices geometry: no vertex buffers. World space runs the hook's output
+ * through the orbit camera like a mesh; clip space writes it straight to the
+ * position builtin and shades with the real pixel coordinate.
+ */
+function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): WgslEntryPoints {
+  const hook = vertexCode.trim() ? vertexCode : "";
+  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  const entries = space === "clip"
+    ? `@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+  _ss_initGlobals();
+${WGSL_VERTICES_SEED}
+  return vec4<f32>(position, 1.0);
+}
+
+@fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+  _ss_initGlobals();
+  return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
+}
+`
+    : `${WGSL_MESH_VERTEX_OUT}
+@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
+  _ss_initGlobals();
+${WGSL_VERTICES_SEED}
+  let worldPosition = _ss_mesh.model * vec4<f32>(position, 1.0);
+  var output: _ss_MeshVertexOut;
+  output.position = _ss_mesh.viewProjection * worldPosition;
+  output.uv = uv;
+  output.worldPosition = worldPosition.xyz;
+  output.normal = (_ss_mesh.normalMatrix * vec4<f32>(normal, 0.0)).xyz;
+  return output;
+}
+
+${WGSL_MESH_FRAGMENT_ENTRY_POINT}`;
+  return {
+    source: `${hookSource}
+${entries}`,
+    vertexStartLine: 1,
+    vertexLineCount: hook === "" ? 0 : hookSource.split("\n").length,
+  };
+}
+
+function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
+  const hook = vertexCode.trim() ? vertexCode : "";
+  const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
+  return {
+    source: `${hookSource}
+${WGSL_MESH_VERTEX_OUT}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
   _ss_initGlobals();
   var p = position;
@@ -436,36 +497,23 @@ struct _ss_MeshVertexOut {
   return output;
 }
 
-@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>) -> @location(0) vec4<f32> {
-  _ss_initGlobals();
-  ${MESH_FRAGMENT_CONTEXT.worldPosition} = worldPos;
-  ${MESH_FRAGMENT_CONTEXT.normal} = normal;
-  ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _ss_mesh.cameraPosition.xyz;
-  return mainImage(uv * _ss_u.resolution.xy);
-}
-`,
+${WGSL_MESH_FRAGMENT_ENTRY_POINT}`,
     vertexStartLine: 1,
     vertexLineCount: hook === "" ? 0 : hookSource.split("\n").length,
   };
 }
 
-/**
- * Configured draws may run past three vertices; wrapping the corner index
- * keeps every seed inside the oversized triangle. Unconfigured passes keep
- * the unwrapped source.
- */
-function buildFullscreenEntryPoints(vertexCode: string, wrapVertexIndex = false): WgslEntryPoints {
+function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
-  const corner = wrapVertexIndex ? "vid % 3u" : "vid";
   if (hook !== "") {
     return {
       source: `${hook}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   _ss_initGlobals();
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-  var position = vec3<f32>(verts[${corner}], 0.0);
+  var position = vec3<f32>(verts[vid], 0.0);
   var normal = vec3<f32>(0.0, 0.0, 1.0);
-  var uv = verts[${corner}] * 0.5 + 0.5;
+  var uv = verts[vid] * 0.5 + 0.5;
   mainVertex(vid, &position, &normal, &uv);
   return vec4<f32>(position, 1.0);
 }
@@ -484,7 +532,7 @@ function buildFullscreenEntryPoints(vertexCode: string, wrapVertexIndex = false)
 
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-  return vec4<f32>(verts[${corner}], 0.0, 1.0);
+  return vec4<f32>(verts[vid], 0.0, 1.0);
 }
 
 @fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
@@ -823,9 +871,26 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
       directiveRanges: hoisted.directiveRanges,
     };
   }
+  if (options.geometry === "vertices") {
+    const space = options.vertexSpace ?? DEFAULT_VERTEX_SPACE;
+    // Clip space ignores the camera, so only world space binds mesh uniforms.
+    const meshPrelude = space === "world" ? buildMeshPrelude(plan.nextBinding + (options.storage?.length ?? 0)) : "";
+    const body = `${prefix}${meshPrelude}${commonCode}`;
+    const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
+    const entries = buildVerticesEntryPoints(vertexCode, space);
+    return {
+      source: `${head}${entries.source}`,
+      preludeLineCount: countLines(body) + 1,
+      userLineCount: strippedUserSource.split("\n").length,
+      ...commonRangeOf(`${prefix}${meshPrelude}`, strippedCommonCode),
+      ...vertexRangeOf(head, entries),
+      requiredFeatures: hoisted.enableNames,
+      directiveRanges: hoisted.directiveRanges,
+    };
+  }
   const body = `${prefix}${commonCode}`;
   const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-  const entries = buildFullscreenEntryPoints(vertexCode, options.wrapFullscreenVertexIndex);
+  const entries = buildFullscreenEntryPoints(vertexCode);
   return {
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,

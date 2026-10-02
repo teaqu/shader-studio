@@ -11,10 +11,18 @@ import type { WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
-import { fullscreenTopology, fullscreenVertexCount } from "../types/Geometry";
-import type { VertexTopology } from "@shader-studio/types";
+import {
+  depthClearValue,
+  isClipSpaceVertices,
+  resolveRenderState,
+  verticesTopology,
+  verticesVertexCount,
+  type ResolvedRenderState,
+} from "../types/Geometry";
+import { FULLSCREEN_VERTEX_COUNT, type VertexTopology } from "@shader-studio/types";
+import { applyWebGLRenderState } from "./WebGLRenderState";
 
-/** piRenderer primitive for each portable fullscreen topology. */
+/** piRenderer primitive for each portable vertices topology. */
 const WEBGL_PRIMITIVES = {
   "triangle-list": "TRIANGLES",
   "triangle-strip": "TRIANGLE_STRIP",
@@ -50,27 +58,32 @@ export class PassRenderer {
     this.samplerCache = this.gl ? new WebGLSamplerCache(this.gl) : null;
   }
 
-  private drawFullscreen(passConfig: Pass): void {
-    // A vertex hook may leave pixels uncovered; clear them to the opaque
-    // black WebGPU's render pass load op produces.
-    if (passConfig.vertexSrc?.trim()) {
+  private drawFullscreen(passConfig: Pass, state: ResolvedRenderState): void {
+    // A vertex hook may leave pixels uncovered, and blending reads the
+    // target; clear to the opaque black WebGPU's render pass load op produces.
+    if (passConfig.vertexSrc?.trim() || state.blend !== "none") {
       this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
     }
-    // The vertex stage derives the oversized triangle from gl_VertexID; a
-    // vertex hook may place a configured number of vertices instead.
-    const primitive = this.renderer.PRIMTYPE[WEBGL_PRIMITIVES[fullscreenTopology(passConfig)]];
-    this.renderer.DrawPrimitive(primitive, fullscreenVertexCount(passConfig), false, 1);
+    // The vertex stage derives the oversized triangle from gl_VertexID.
+    this.renderer.DrawPrimitive(this.renderer.PRIMTYPE.TRIANGLES, 3, false, 1);
   }
 
-  /** Without WebGL2 mesh support every pass falls back to the fullscreen draw. */
+  /** Non-indexed draw with no vertex buffers; mainVertex places every vertex. */
+  private drawVertices(passConfig: Pass): void {
+    const primitive = this.renderer.PRIMTYPE[WEBGL_PRIMITIVES[verticesTopology(passConfig)]];
+    this.renderer.DrawPrimitive(primitive, verticesVertexCount(passConfig), false, 1);
+  }
+
+  /** Without WebGL2 mesh support every mesh pass falls back to the fullscreen draw. */
   private drawsFullscreen(passConfig: Pass): boolean {
-    return passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources;
+    return passConfig.geometry === "fullscreen" ||
+      (passConfig.geometry !== "vertices" && (!this.gl || !this.meshResources));
   }
 
-  /** The loaded mesh a pass draws; undefined for fullscreen or a model still loading. */
+  /** The loaded mesh a pass draws; undefined for fullscreen, vertices, or a model still loading. */
   private resolveMesh(passConfig: Pass) {
     const meshResources = this.gl ? this.meshResources : null;
-    if (passConfig.geometry === "fullscreen" || !meshResources) {
+    if (passConfig.geometry === "fullscreen" || passConfig.geometry === "vertices" || !meshResources) {
       return undefined;
     }
     return passConfig.modelPath
@@ -80,8 +93,11 @@ export class PassRenderer {
 
   /** iVertexCount: the vertices the pass draws, matching the range of gl_VertexID. */
   public getPassVertexCount(passConfig: Pass): number {
+    if (passConfig.geometry === "vertices") {
+      return verticesVertexCount(passConfig);
+    }
     return this.drawsFullscreen(passConfig)
-      ? fullscreenVertexCount(passConfig)
+      ? FULLSCREEN_VERTEX_COUNT
       : this.resolveMesh(passConfig)?.vertexCount ?? 0;
   }
 
@@ -208,13 +224,37 @@ export class PassRenderer {
       }
     }
 
+    const state = resolveRenderState(passConfig);
     if (fullscreen) {
-      this.drawFullscreen(passConfig);
+      this.withRenderState(state, () => this.drawFullscreen(passConfig, state));
+      return;
+    }
+    if (passConfig.geometry === "vertices") {
+      if (!isClipSpaceVertices(passConfig)) {
+        this.setCameraUniforms(shader, uniforms);
+      }
+      this.clearColorAndDepth(state);
+      this.withRenderState(state, () => this.drawVertices(passConfig));
       return;
     }
     if (!mesh || !this.gl) {
       return;
     }
+    this.setCameraUniforms(shader, uniforms);
+    this.clearColorAndDepth(state);
+    const gl = this.gl;
+    this.withRenderState(state, () => {
+      try {
+        gl.bindVertexArray(mesh.vao);
+        gl.drawElements(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
+      } finally {
+        gl.bindVertexArray(null);
+      }
+    });
+  }
+
+  /** Orbit-camera matrices for meshes and world-space vertices. */
+  private setCameraUniforms(shader: PiShader, uniforms: PassUniforms): void {
     const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
     const view = this.meshCamera.getViewMatrix();
@@ -222,25 +262,29 @@ export class PassRenderer {
     this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), true);
     const projection = this.meshCamera.getProjectionMatrix(aspect);
     this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(projection), true);
-    const normalLocation = shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
+    const normalLocation = this.gl && shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
-      this.gl.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
+      this.gl!.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));
     }
     this.renderer.SetShaderConstant3FV("iCameraPosition", this.meshCamera.getPosition());
-    this.gl.enable(this.gl.DEPTH_TEST);
-    this.gl.depthFunc(this.gl.LEQUAL);
+  }
+
+  private clearColorAndDepth(state: ResolvedRenderState): void {
     this.renderer.Clear(
       this.renderer.CLEAR.Color | this.renderer.CLEAR.Zbuffer,
       [0, 0, 0, 1],
-      1,
+      depthClearValue(state),
       0,
     );
+  }
+
+  /** Blend/depth/cull for one draw, restored to the GL defaults afterwards. */
+  private withRenderState(state: ResolvedRenderState, draw: () => void): void {
+    const restore = this.gl ? applyWebGLRenderState(this.gl, state) : null;
     try {
-      this.gl.bindVertexArray(mesh.vao);
-      this.gl.drawElements(this.gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? this.gl.UNSIGNED_SHORT, 0);
+      draw();
     } finally {
-      this.gl.bindVertexArray(null);
-      this.gl.disable(this.gl.DEPTH_TEST);
+      restore?.();
     }
   }
 

@@ -81,47 +81,81 @@ export type BufferResolution =
     | { width: number; height: number; scale?: never }
     | { scale: number; width?: never; height?: never };
 
-export const GEOMETRY_TYPES = ["fullscreen", "plane", "cube", "sphere", "model"] as const;
+export const GEOMETRY_TYPES = ["fullscreen", "vertices", "plane", "cube", "sphere", "model"] as const;
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
-/** Primitive topologies portable across WebGL and WebGPU for fullscreen draws. */
+/** Primitive topologies portable across WebGL and WebGPU for `vertices` draws. */
 export const VERTEX_TOPOLOGIES = ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"] as const;
 export type VertexTopology = (typeof VERTEX_TOPOLOGIES)[number];
 export const DEFAULT_VERTEX_TOPOLOGY: VertexTopology = "triangle-list";
-export const DEFAULT_FULLSCREEN_VERTEX_COUNT = 3;
+/** Where `vertices` hooks place their positions: object space under the orbit camera, or final clip space. */
+export const VERTEX_SPACES = ["world", "clip"] as const;
+export type VertexSpace = (typeof VERTEX_SPACES)[number];
+export const DEFAULT_VERTEX_SPACE: VertexSpace = "world";
+export const DEFAULT_VERTEX_COUNT = 3;
 /** WebGL's GLsizei maximum, the lower of the WebGL and WebGPU draw-count limits. */
-export const MAX_FULLSCREEN_VERTEX_COUNT = 2_147_483_647;
-/** A non-indexed draw whose vertex positions come from the `mainVertex` hook. */
+export const MAX_VERTEX_COUNT = 2_147_483_647;
+/** Vertices a fullscreen pass draws: one oversized triangle. */
+export const FULLSCREEN_VERTEX_COUNT = 3;
+/** One oversized triangle covering every pixel. */
 export interface FullscreenGeometryConfig {
   type: "fullscreen";
+}
+/** A non-indexed draw with no vertex buffers whose positions come from the `mainVertex` hook. */
+export interface VerticesGeometryConfig {
+  type: "vertices";
   vertexCount?: number;
   topology?: VertexTopology;
+  space?: VertexSpace;
 }
 /** Indexed built-in meshes; their vertex count and topology are fixed. */
 export interface MeshGeometryConfig {
-  type: Exclude<GeometryType, "fullscreen" | "model">;
-  vertexCount?: never;
-  topology?: never;
+  type: Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
 }
-export type BuiltinGeometryConfig = FullscreenGeometryConfig | MeshGeometryConfig;
+export type BuiltinGeometryConfig = FullscreenGeometryConfig | VerticesGeometryConfig | MeshGeometryConfig;
 /** A static GLB mesh. `resolved_path` is injected by the extension for webview loading. */
 export interface ModelGeometryConfig {
   type: "model";
   path: string;
   mesh?: string;
   resolved_path?: string;
-  vertexCount?: never;
-  topology?: never;
 }
 export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;
 
-export interface ImagePass {
+/** How a render pass combines its output with what its own draw already wrote this frame. */
+export const BLEND_MODES = ["none", "alpha", "premultiplied", "additive"] as const;
+export type BlendMode = (typeof BLEND_MODES)[number];
+export const DEFAULT_BLEND_MODE: BlendMode = "none";
+
+export const DEPTH_COMPARE_FUNCTIONS = ["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"] as const;
+export type DepthCompareFunction = (typeof DEPTH_COMPARE_FUNCTIONS)[number];
+export const DEFAULT_DEPTH_COMPARE: DepthCompareFunction = "less";
+/** Per-pass depth state. Not allowed on fullscreen geometry, which has no depth attachment. */
+export interface DepthSettings {
+  test?: boolean;
+  write?: boolean;
+  compare?: DepthCompareFunction;
+}
+
+/** Faces to discard; counter-clockwise triangles are front-facing. */
+export const CULL_MODES = ["none", "back", "front"] as const;
+export type CullMode = (typeof CULL_MODES)[number];
+export const DEFAULT_CULL_MODE: CullMode = "none";
+
+/** Fixed-function state shared by Image and buffer passes, siblings of `geometry`. */
+export interface RenderPassSettings {
+  blend?: BlendMode;
+  depth?: DepthSettings;
+  cull?: CullMode;
+}
+
+export interface ImagePass extends RenderPassSettings {
   inputs?: Record<string, ConfigInput>;
   resolution?: ResolutionSettings;
   geometry?: GeometryConfig;
   vertex?: string;
 }
 
-export interface BufferPass {
+export interface BufferPass extends RenderPassSettings {
   path: string;
   inputs?: Record<string, ConfigInput>;
   resolution?: BufferResolution;
@@ -136,6 +170,9 @@ export interface CommonPass {
   resolution?: never;
   geometry?: never;
   vertex?: never;
+  blend?: never;
+  depth?: never;
+  cull?: never;
 }
 
 /** Describes the layout of a named GPU storage buffer. Stride is always
@@ -167,6 +204,9 @@ export interface ComputePass {
     entryPoint?: string;
     geometry?: never;
     vertex?: never;
+    blend?: never;
+    depth?: never;
+    cull?: never;
 }
 
 export interface ShaderPasses {

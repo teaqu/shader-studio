@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigValidator, validatePassGeometry } from "../../util/ConfigValidator";
+import { ConfigValidator, validatePassGeometry, validatePassRenderSettings } from "../../util/ConfigValidator";
 import type { ShaderConfig } from "@shader-studio/types";
 
 describe("ConfigValidator", () => {
@@ -25,7 +25,7 @@ describe("ConfigValidator", () => {
 
     describe("geometry validation", () => {
       it("should accept every supported geometry type on image and buffer passes", () => {
-        const geometryTypes = ["fullscreen", "plane", "cube", "sphere"] as const;
+        const geometryTypes = ["fullscreen", "vertices", "plane", "cube", "sphere"] as const;
 
         for (const type of geometryTypes) {
           const config: ShaderConfig = {
@@ -96,7 +96,7 @@ describe("ConfigValidator", () => {
         expect(ConfigValidator.validateConfig(config as never).isValid).toBe(false);
       });
 
-      describe("fullscreen vertexCount and topology", () => {
+      describe("vertices geometry fields", () => {
         const imageGeometry = (geometry: unknown) =>
           ConfigValidator.validateConfig({ version: "1.0", passes: { Image: { geometry } } } as never);
         const bufferGeometry = (geometry: unknown) =>
@@ -104,78 +104,216 @@ describe("ConfigValidator", () => {
         const countError = (pass: string) => `${pass} pass geometry vertexCount must be an integer from 1 to 2147483647`;
         const topologyError = (pass: string) =>
           `${pass} pass geometry topology must be one of: triangle-list, triangle-strip, line-list, line-strip, point-list`;
+        const spaceError = (pass: string) => `${pass} pass geometry space must be one of: world, clip`;
+        const typeError = "Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model";
 
-        it("accepts both fields on fullscreen image and buffer passes for every topology", () => {
+        it("accepts every topology and space on vertices image and buffer passes", () => {
           for (const topology of ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"]) {
-            expect(imageGeometry({ type: "fullscreen", vertexCount: 6, topology })).toEqual({ isValid: true, errors: [] });
-            expect(bufferGeometry({ type: "fullscreen", vertexCount: 6, topology })).toEqual({ isValid: true, errors: [] });
+            for (const space of ["world", "clip"]) {
+              expect(imageGeometry({ type: "vertices", vertexCount: 6, topology, space })).toEqual({ isValid: true, errors: [] });
+              expect(bufferGeometry({ type: "vertices", vertexCount: 6, topology, space })).toEqual({ isValid: true, errors: [] });
+            }
           }
         });
 
-        it("accepts either field alone", () => {
-          expect(imageGeometry({ type: "fullscreen", vertexCount: 12 })).toEqual({ isValid: true, errors: [] });
-          expect(imageGeometry({ type: "fullscreen", topology: "point-list" })).toEqual({ isValid: true, errors: [] });
+        it("accepts each field alone and none at all", () => {
+          expect(imageGeometry({ type: "vertices" })).toEqual({ isValid: true, errors: [] });
+          expect(imageGeometry({ type: "vertices", vertexCount: 12 })).toEqual({ isValid: true, errors: [] });
+          expect(imageGeometry({ type: "vertices", topology: "point-list" })).toEqual({ isValid: true, errors: [] });
+          expect(imageGeometry({ type: "vertices", space: "clip" })).toEqual({ isValid: true, errors: [] });
         });
 
         it.each([1, 2, 3, 2147483647])("accepts the boundary vertexCount %d", (vertexCount) => {
-          expect(imageGeometry({ type: "fullscreen", vertexCount })).toEqual({ isValid: true, errors: [] });
+          expect(imageGeometry({ type: "vertices", vertexCount })).toEqual({ isValid: true, errors: [] });
         });
 
         it.each([0, -1, 2147483648, Number.MAX_SAFE_INTEGER, 1.5, 2.000001, Number.NaN, Number.POSITIVE_INFINITY, "6", null, true, [6], {}])(
           "rejects vertexCount %s without clamping",
           (vertexCount) => {
-            expect(imageGeometry({ type: "fullscreen", vertexCount })).toEqual({ isValid: false, errors: [countError("Image")] });
-            expect(bufferGeometry({ type: "fullscreen", vertexCount })).toEqual({ isValid: false, errors: [countError("BufferA")] });
+            expect(imageGeometry({ type: "vertices", vertexCount })).toEqual({ isValid: false, errors: [countError("Image")] });
+            expect(bufferGeometry({ type: "vertices", vertexCount })).toEqual({ isValid: false, errors: [countError("BufferA")] });
           },
         );
 
         it.each(["triangle-fan", "line-loop", "points", "TRIANGLE-LIST", "", null, 3, ["line-list"]])("rejects topology %s", (topology) => {
-          expect(imageGeometry({ type: "fullscreen", topology })).toEqual({ isValid: false, errors: [topologyError("Image")] });
-          expect(bufferGeometry({ type: "fullscreen", topology })).toEqual({ isValid: false, errors: [topologyError("BufferA")] });
+          expect(imageGeometry({ type: "vertices", topology })).toEqual({ isValid: false, errors: [topologyError("Image")] });
+          expect(bufferGeometry({ type: "vertices", topology })).toEqual({ isValid: false, errors: [topologyError("BufferA")] });
         });
 
-        it("reports both bad fields together", () => {
-          expect(imageGeometry({ type: "fullscreen", vertexCount: 0, topology: "triangle-fan" }).errors)
-            .toEqual([countError("Image"), topologyError("Image")]);
+        it.each(["screen", "object", "WORLD", "", null, 0, ["clip"]])("rejects space %s", (space) => {
+          expect(imageGeometry({ type: "vertices", space })).toEqual({ isValid: false, errors: [spaceError("Image")] });
+          expect(bufferGeometry({ type: "vertices", space })).toEqual({ isValid: false, errors: [spaceError("BufferA")] });
+        });
+
+        it("reports every bad field together", () => {
+          expect(imageGeometry({ type: "vertices", vertexCount: 0, topology: "triangle-fan", space: "screen" }).errors)
+            .toEqual([countError("Image"), topologyError("Image"), spaceError("Image")]);
         });
 
         it.each([
+          { type: "fullscreen" },
           { type: "plane" },
           { type: "cube" },
           { type: "sphere" },
           { type: "model", path: "robot.glb" },
-        ])("rejects vertexCount and topology on $type geometry", (mesh) => {
-          const type = mesh.type;
-          expect(imageGeometry({ ...mesh, vertexCount: 3 })).toEqual({
-            isValid: false,
-            errors: [`Image pass geometry vertexCount is only supported for fullscreen geometry, not ${type}`],
-          });
-          expect(bufferGeometry({ ...mesh, topology: "triangle-list" })).toEqual({
-            isValid: false,
-            errors: [`BufferA pass geometry topology is only supported for fullscreen geometry, not ${type}`],
-          });
-          expect(imageGeometry({ ...mesh, vertexCount: 6, topology: "line-list" }).errors).toEqual([
-            `Image pass geometry vertexCount is only supported for fullscreen geometry, not ${type}`,
-            `Image pass geometry topology is only supported for fullscreen geometry, not ${type}`,
+        ])("rejects vertexCount, topology and space on $type geometry", (geometry) => {
+          const type = geometry.type;
+          const fieldError = (pass: string, field: string) => `${pass} pass geometry ${field} is only supported for vertices geometry, not ${type}`;
+          expect(imageGeometry({ ...geometry, vertexCount: 3 })).toEqual({ isValid: false, errors: [fieldError("Image", "vertexCount")] });
+          expect(bufferGeometry({ ...geometry, topology: "triangle-list" })).toEqual({ isValid: false, errors: [fieldError("BufferA", "topology")] });
+          expect(bufferGeometry({ ...geometry, space: "world" })).toEqual({ isValid: false, errors: [fieldError("BufferA", "space")] });
+          expect(imageGeometry({ ...geometry, vertexCount: 6, topology: "line-list", space: "clip" }).errors).toEqual([
+            fieldError("Image", "vertexCount"),
+            fieldError("Image", "topology"),
+            fieldError("Image", "space"),
           ]);
         });
 
-        it("still rejects unrelated extra properties on fullscreen geometry", () => {
-          expect(imageGeometry({ type: "fullscreen", vertexCount: 3, extra: true }).errors)
-            .toEqual(["Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model"]);
+        it("still rejects unrelated extra properties on vertices geometry", () => {
+          expect(imageGeometry({ type: "vertices", vertexCount: 3, extra: true }).errors).toEqual([typeError]);
         });
 
         it("exposes the same geometry checks as validatePassGeometry for the config panel", () => {
           expect(validatePassGeometry(undefined, "Image")).toEqual([]);
-          expect(validatePassGeometry({ type: "fullscreen", vertexCount: 6, topology: "line-list" }, "BufferA")).toEqual([]);
-          expect(validatePassGeometry({ type: "fullscreen", vertexCount: 0 }, "BufferA")).toEqual([countError("BufferA")]);
-          expect(validatePassGeometry({ type: "torus" }, "Image"))
-            .toEqual(["Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model"]);
+          expect(validatePassGeometry({ type: "vertices", vertexCount: 6, topology: "line-list", space: "clip" }, "BufferA")).toEqual([]);
+          expect(validatePassGeometry({ type: "vertices", vertexCount: 0 }, "BufferA")).toEqual([countError("BufferA")]);
+          expect(validatePassGeometry({ type: "torus" }, "Image")).toEqual([typeError]);
         });
 
         it("reports only the type error for vertex fields on unknown geometry", () => {
-          expect(imageGeometry({ type: "torus", vertexCount: 3 }).errors)
-            .toEqual(["Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model"]);
+          expect(imageGeometry({ type: "torus", vertexCount: 3, space: "clip" }).errors).toEqual([typeError]);
+        });
+      });
+
+      describe("blend, depth and cull", () => {
+        const image = (pass: Record<string, unknown>) =>
+          ConfigValidator.validateConfig({ version: "1.0", passes: { Image: pass } } as never);
+        const buffer = (pass: Record<string, unknown>) =>
+          ConfigValidator.validateConfig({ version: "1.0", passes: { Image: {}, BufferA: { path: "a.glsl", ...pass } } } as never);
+        const valid = { isValid: true, errors: [] };
+        const nonFullscreen = [
+          { type: "vertices" },
+          { type: "vertices", space: "clip" },
+          { type: "plane" },
+          { type: "cube" },
+          { type: "sphere" },
+          { type: "model", path: "robot.glb" },
+        ];
+        const compareList = "never, less, equal, less-equal, greater, not-equal, greater-equal, always";
+
+        it.each(["none", "alpha", "premultiplied", "additive"])("accepts blend %s on every geometry, including fullscreen and omitted", (blend) => {
+          expect(image({ blend })).toEqual(valid);
+          expect(buffer({ blend, geometry: { type: "fullscreen" } })).toEqual(valid);
+          for (const geometry of nonFullscreen) {
+            expect(image({ blend, geometry })).toEqual(valid);
+            expect(buffer({ blend, geometry })).toEqual(valid);
+          }
+        });
+
+        it.each(["multiply", "Additive", "", null, true, 1, ["alpha"], { mode: "alpha" }])("rejects blend %s", (blend) => {
+          expect(image({ blend })).toEqual({ isValid: false, errors: ["Image pass blend must be one of: none, alpha, premultiplied, additive"] });
+          expect(buffer({ blend })).toEqual({ isValid: false, errors: ["BufferA pass blend must be one of: none, alpha, premultiplied, additive"] });
+        });
+
+        it("accepts every depth combination on non-fullscreen geometry", () => {
+          for (const geometry of nonFullscreen) {
+            for (const compare of compareList.split(", ")) {
+              for (const test of [true, false]) {
+                for (const write of [true, false]) {
+                  expect(image({ geometry, depth: { test, write, compare } })).toEqual(valid);
+                  expect(buffer({ geometry, depth: { test, write, compare } })).toEqual(valid);
+                }
+              }
+            }
+            expect(image({ geometry, depth: {} })).toEqual(valid);
+          }
+        });
+
+        it.each(["lequal", "LESS", "", null, 1, true])("rejects depth compare %s", (compare) => {
+          expect(image({ geometry: { type: "cube" }, depth: { compare } }).errors).toEqual([`Image pass depth compare must be one of: ${compareList}`]);
+          expect(buffer({ geometry: { type: "vertices" }, depth: { compare } }).errors).toEqual([`BufferA pass depth compare must be one of: ${compareList}`]);
+        });
+
+        it.each(["test", "write"])("rejects non-boolean depth %s", (flag) => {
+          for (const value of ["true", 1, 0, null, [], {}]) {
+            expect(image({ geometry: { type: "cube" }, depth: { [flag]: value } }).errors).toEqual([`Image pass depth ${flag} must be true or false`]);
+          }
+        });
+
+        it.each([null, true, "less", 1, [true]])("rejects non-object depth %s", (depth) => {
+          expect(image({ geometry: { type: "cube" }, depth }).errors).toEqual(["Image pass depth must be an object with test, write and compare"]);
+        });
+
+        it("rejects unknown depth fields and reports every bad field together", () => {
+          expect(image({ geometry: { type: "cube" }, depth: { stencil: true, test: "on", write: 1, compare: "lequal" } }).errors).toEqual([
+            "Image pass depth stencil is not a depth setting; use test, write or compare",
+            "Image pass depth test must be true or false",
+            "Image pass depth write must be true or false",
+            `Image pass depth compare must be one of: ${compareList}`,
+          ]);
+        });
+
+        it.each(["none", "back", "front"])("accepts cull %s on non-fullscreen geometry", (cull) => {
+          for (const geometry of nonFullscreen) {
+            expect(image({ geometry, cull })).toEqual(valid);
+            expect(buffer({ geometry, cull })).toEqual(valid);
+          }
+        });
+
+        it.each(["both", "cw", "BACK", "", null, true, 0])("rejects cull %s", (cull) => {
+          expect(image({ geometry: { type: "cube" }, cull }).errors).toEqual(["Image pass cull must be one of: none, back, front"]);
+        });
+
+        it.each([undefined, { type: "fullscreen" }])("rejects depth and cull on fullscreen geometry (%s)", (geometry) => {
+          const pass = geometry ? { geometry } : {};
+          expect(image({ ...pass, depth: { test: true } }).errors).toEqual(["Image pass depth is not supported for fullscreen geometry, which has no depth buffer"]);
+          expect(buffer({ ...pass, depth: {} }).errors).toEqual(["BufferA pass depth is not supported for fullscreen geometry, which has no depth buffer"]);
+          expect(image({ ...pass, cull: "none" }).errors).toEqual(["Image pass cull is not supported for fullscreen geometry"]);
+          expect(buffer({ ...pass, cull: "back" }).errors).toEqual(["BufferA pass cull is not supported for fullscreen geometry"]);
+        });
+
+        it("reports a bad value and the fullscreen restriction together", () => {
+          expect(image({ cull: "both", depth: { compare: "x" } }).errors).toEqual([
+            `Image pass depth compare must be one of: ${compareList}`,
+            "Image pass cull must be one of: none, back, front",
+            "Image pass depth is not supported for fullscreen geometry, which has no depth buffer",
+            "Image pass cull is not supported for fullscreen geometry",
+          ]);
+        });
+
+        it("skips the fullscreen restriction when the geometry itself is invalid", () => {
+          expect(image({ geometry: { type: "torus" }, cull: "back" }).errors)
+            .toEqual(["Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model"]);
+          expect(image({ geometry: null, depth: {} }).errors)
+            .toEqual(["Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model"]);
+        });
+
+        it.each([["blend", "additive"], ["depth", { test: false }], ["cull", "back"]])("rejects %s on compute passes", (field, value) => {
+          const result = ConfigValidator.validateConfig({
+            version: "1.0",
+            passes: { Image: {}, Sim: { type: "compute", path: "sim.slang", [field]: value } },
+          } as never);
+          expect(result).toEqual({ isValid: false, errors: [`Sim compute pass cannot define ${field}`] });
+        });
+
+        it.each([["blend", "none"], ["depth", {}], ["cull", "none"]])("rejects %s on the common pass", (field, value) => {
+          const result = ConfigValidator.validateConfig({
+            version: "1.0",
+            passes: { Image: {}, common: { path: "common.glsl", [field]: value } },
+          } as never);
+          expect(result).toEqual({ isValid: false, errors: [`common pass cannot define ${field}`] });
+        });
+
+        it("exposes the same checks as validatePassRenderSettings for the config panel", () => {
+          expect(validatePassRenderSettings(undefined, "Image")).toEqual([]);
+          expect(validatePassRenderSettings(null, "Image")).toEqual([]);
+          expect(validatePassRenderSettings({}, "Image")).toEqual([]);
+          expect(validatePassRenderSettings({ geometry: { type: "cube" }, blend: "alpha", depth: { write: false }, cull: "back" }, "BufferA")).toEqual([]);
+          expect(validatePassRenderSettings({ cull: "back" }, "Image")).toEqual(["Image pass cull is not supported for fullscreen geometry"]);
+          expect(validatePassRenderSettings({ type: "compute", path: "c.slang", blend: "alpha" }, "Sim")).toEqual(["Sim compute pass cannot define blend"]);
+          expect(validatePassRenderSettings({ path: "common.glsl", cull: "back" }, "common")).toEqual(["common pass cannot define cull"]);
+          expect(validatePassRenderSettings({ geometry: { type: "vertices", vertexCount: 0 } }, "Image"))
+            .toEqual(["Image pass geometry vertexCount must be an integer from 1 to 2147483647"]);
         });
       });
 
@@ -186,7 +324,7 @@ describe("ConfigValidator", () => {
         };
 
         expect(ConfigValidator.validateConfig(config as never).errors)
-          .toContain("Image pass geometry type must be one of: fullscreen, plane, cube, sphere, model");
+          .toContain("Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model");
       });
 
       it("should reject a capitalized Common pass name", () => {

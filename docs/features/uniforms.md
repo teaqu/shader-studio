@@ -20,7 +20,7 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iSampleRate` | `float` | `float` | `f32` | Audio sample rate in hertz |
 | `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Normalised camera look direction |
-| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the fullscreen `vertexCount` (default 3), or the mesh vertex count |
+| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count |
 | `iChannel0`–`iChannel3` | `sampler2D` (or cube/3D) | `ShaderStudioChannel2D` / `…Cube` / `…3D` | Metadata object; use `iChannel0Texture` and `iChannel0Sampler` to sample | Input channel textures in configured slot order |
 | `iCh0`–`iCh3` | channel metadata struct | — | — | Input channel with sampler, size, playback time, and loaded state |
 | `<name>` | named channel object | `ShaderStudioChannel2D` / `…Cube` / `…3D` | Metadata object; use `<name>Texture` and `<name>Sampler` to sample | Input channel configured with that name |

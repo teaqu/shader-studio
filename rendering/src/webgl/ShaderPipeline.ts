@@ -9,8 +9,10 @@ import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
 import { resolveBufferPassSize } from "./BufferPassResolution";
+import { blendFormatFallbackWarning, resolveBlendedBufferFormat } from "../util/BufferFormatResolver";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
-import { hasFullscreenDrawConfig, resolveFullscreenDraw, resolvePassGeometry } from "../types/Geometry";
+import type { RenderPassSettings } from "@shader-studio/types";
+import { resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
@@ -34,6 +36,8 @@ export class ShaderPipeline {
   private compileGeneration = 0;
   private resetGeneration = 0;
   private pendingResetGeneration: number | null = null;
+  /** EXT_float_blend: blending into the default rgba32float buffers. */
+  private float32Blendable = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -55,6 +59,10 @@ export class ShaderPipeline {
 
   private isBufferPass(pass: BufferPass | ImagePass | undefined): pass is BufferPass {
     return !!pass && typeof pass === 'object' && 'path' in pass && typeof pass.path === 'string';
+  }
+
+  public setFloat32Blendable(blendable: boolean): void {
+    this.float32Blendable = blendable;
   }
 
   public getPasses(): Pass[] {
@@ -190,17 +198,38 @@ export class ShaderPipeline {
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
           inputs: pass?.inputs ?? {},
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
-          ...resolveFullscreenDraw(pass && "geometry" in pass ? pass : undefined),
+          ...resolveVerticesDraw(pass && "geometry" in pass ? pass : undefined),
+          // Blend applies to fullscreen passes too, which may omit geometry.
+          ...resolvePassRenderSettings(passName === "common" ? undefined : pass as RenderPassSettings | undefined),
           ...(pass?.geometry?.type === "model" ? {
             modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
             modelMesh: pass.geometry.mesh,
           } : {}),
           path: this.isBufferPass(pass) ? (pass as BufferPass).path : undefined,
           resolution: this.isBufferPass(pass) ? (pass as BufferPass).resolution : undefined,
-          outputFormat: this.isBufferPass(pass) ? (pass as BufferPass).outputFormat : undefined,
+          ...this.resolveOutputFormat(passName, pass),
         };
       })
       .filter((pass): pass is NonNullable<typeof pass> => pass !== null);
+  }
+
+  /**
+   * The format a buffer pass renders into. Buffers default to rgba32float; a
+   * blended pass falls back to rgba16float when the device cannot blend it.
+   */
+  private resolveOutputFormat(
+    passName: string,
+    pass: ShaderConfig["passes"][string],
+  ): Pick<Pass, "outputFormat" | "outputFormatWarning"> {
+    if (!this.isBufferPass(pass as BufferPass | undefined)) {
+      return { outputFormat: undefined };
+    }
+    const buffer = pass as BufferPass;
+    const requested = buffer.outputFormat === "rgba16float" ? "rgba16float" : "rgba32float";
+    const blended = resolveBlendedBufferFormat(requested, buffer.blend, this.float32Blendable);
+    return blended.fallbackReason
+      ? { outputFormat: blended.format, outputFormatWarning: blendFormatFallbackWarning(passName) }
+      : { outputFormat: buffer.outputFormat };
   }
 
   private getChannelTypes(pass: Pass, slotAssignments = assignInputSlots(pass.inputs)): ChannelSamplerType[] {
@@ -218,6 +247,8 @@ export class ShaderPipeline {
     // Extract common code if it exists
     const commonBufferPass = candidatePasses.find(pass => pass.name === "common");
     const commonCode = commonBufferPass?.shaderSrc || "";
+
+    warnings.push(...candidatePasses.flatMap((pass) => pass.outputFormatWarning ? [pass.outputFormatWarning] : []));
 
     for (const pass of candidatePasses) {
       // Skip common as it's not a render target and doesn't need mainImage
@@ -250,7 +281,7 @@ export class ShaderPipeline {
             channelTypes,
             customUniformDeclarations: customDecl,
             vertexCode: pass.vertexSrc,
-            ...(hasFullscreenDrawConfig(pass) ? { fullscreenDraw: { vertexCount: pass.vertexCount, topology: pass.topology } } : {}),
+            ...(pass.geometry === "vertices" ? { vertices: { space: verticesSpace(pass), topology: verticesTopology(pass) } } : {}),
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
@@ -259,7 +290,7 @@ export class ShaderPipeline {
           channelTypes,
           customUniformDeclarations: customDecl,
           vertexCode: pass.vertexSrc,
-          ...(hasFullscreenDrawConfig(pass) ? { fullscreenDraw: { vertexCount: pass.vertexCount, topology: pass.topology } } : {}),
+          ...(pass.geometry === "vertices" ? { vertices: { space: verticesSpace(pass), topology: verticesTopology(pass) } } : {}),
         });
       } catch (error) {
         this.cleanupPartialShaders(newPassShaders);

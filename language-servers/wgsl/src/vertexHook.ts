@@ -17,13 +17,13 @@ export const WGSL_VERTEX_HOOK_FEATURES: readonly WgslVertexHookFeature[] = Objec
     name: "vertexIndex",
     kind: "parameter",
     signature: "vertexIndex: u32",
-    description: "Vertex index passed to the hook (`@builtin(vertex_index)`). Fullscreen geometry runs from 0 to iVertexCount - 1 (0, 1 and 2 by default; set `vertexCount` and `topology` on the geometry to draw more); mesh geometry passes the mesh vertex index.",
+    description: "Vertex index passed to the hook (`@builtin(vertex_index)`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index.",
   }),
   Object.freeze({
     name: "position",
     kind: "parameter",
     signature: "position: ptr<function, vec3f>",
-    description: "Mutable vertex position. It is object-space for mesh geometry and becomes the clip-space position for fullscreen geometry.",
+    description: "Mutable vertex position. It is object-space for mesh geometry and vertices geometry in world space (the orbit camera transforms it), and the final clip-space position for fullscreen geometry and vertices geometry in clip space ((-1,-1) bottom-left to (1,1) top-right). Vertices geometry starts every vertex at (0,0,0).",
   }),
   Object.freeze({
     name: "normal",

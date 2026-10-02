@@ -1,3 +1,4 @@
+import type { VertexTopology } from "@shader-studio/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SHADER_STUDIO_BUILTIN_UNIFORMS } from "@shader-studio/types";
 import { ShaderCompiler } from "../../webgl/ShaderCompiler";
@@ -178,10 +179,10 @@ describe("ShaderCompiler", () => {
       expect(vertexSource).toContain("gl_Position = vec4(_vertexPosition, 1.0);");
     });
 
-    describe("configured fullscreen vertexCount and topology", () => {
+    describe("fullscreen stays as in #275", () => {
       const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";
-      // The #275 fullscreen main(), which unconfigured passes must keep exactly.
+      // The #275 fullscreen main(), byte for byte.
       const DEFAULT_HOOK_MAIN = `void main() {
  vec2 _vertexCorners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
  vec2 _vertexCorner = _vertexCorners[gl_VertexID];
@@ -192,55 +193,16 @@ describe("ShaderCompiler", () => {
  gl_Position = vec4(_vertexPosition, 1.0);
 }`;
 
-      it("keeps the default stub and hook main byte-for-byte when neither field is set", () => {
-        for (const fullscreenDraw of [undefined, {}, { vertexCount: undefined, topology: undefined }]) {
-          expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw }).vertexSource).toBe(FULLSCREEN_TRIANGLE_VERTEX);
-          const hooked = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw }).vertexSource;
+      it("keeps the stub and hook main byte-for-byte, with no index wrap or point size", () => {
+        for (const geometry of [undefined, "fullscreen"] as const) {
+          // vertices options are ignored for fullscreen geometry.
+          const vertices = { space: "clip", topology: "point-list" } as const;
+          expect(shaderCompiler.wrapShaderToyCode(image, { geometry, vertices }).vertexSource).toBe(FULLSCREEN_TRIANGLE_VERTEX);
+          const hooked = shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode: hook, vertices }).vertexSource;
           expect(hooked.endsWith(DEFAULT_HOOK_MAIN)).toBe(true);
           expect(hooked).not.toContain("% 3");
           expect(hooked).not.toContain("gl_PointSize");
         }
-      });
-
-      it.each([
-        { vertexCount: 12 },
-        { vertexCount: 3 },
-        { topology: "triangle-strip" as const },
-        { vertexCount: 6, topology: "line-strip" as const },
-      ])("seeds hook vertices from corner vertexIndex %% 3 for %j", (fullscreenDraw) => {
-        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw });
-
-        expect(vertexSource).toContain("vec2 _vertexCorner = _vertexCorners[gl_VertexID % 3];");
-        expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
-        expect(vertexSource).not.toContain("gl_PointSize");
-      });
-
-      it("wraps the hookless stub so extra vertices stay on the oversized triangle", () => {
-        expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw: { vertexCount: 6 } }).vertexSource).toBe(
-          "void main() { vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)); gl_Position = vec4(corners[gl_VertexID % 3], 0.0, 1.0); }",
-        );
-      });
-
-      it("writes a 1px gl_PointSize only for point-list, with and without a hook", () => {
-        const hooked = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw: { topology: "point-list" } }).vertexSource;
-        expect(hooked).toContain(" gl_Position = vec4(_vertexPosition, 1.0);\n gl_PointSize = 1.0;\n}");
-        expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw: { vertexCount: 4, topology: "point-list" } }).vertexSource)
-          .toContain("gl_Position = vec4(corners[gl_VertexID % 3], 0.0, 1.0); gl_PointSize = 1.0; }");
-        for (const topology of ["triangle-list", "triangle-strip", "line-list", "line-strip"] as const) {
-          expect(shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw: { topology } }).vertexSource)
-            .not.toContain("gl_PointSize");
-        }
-      });
-
-      it("ignores fullscreen draw fields for mesh geometry", () => {
-        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, {
-          geometry: "sphere",
-          vertexCode: hook,
-          fullscreenDraw: { vertexCount: 6, topology: "point-list" },
-        });
-
-        expect(vertexSource).not.toContain("% 3");
-        expect(vertexSource).not.toContain("gl_PointSize");
       });
 
       it("declares iVertexCount as an int uniform in fragment and hook vertex sources", () => {
@@ -249,6 +211,79 @@ describe("ShaderCompiler", () => {
         expect(vertexSource).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
         expect(shaderCompiler.wrapShaderToyCode(image, { geometry: "cube", vertexCode: hook }).vertexSource)
           .toContain("uniform int iVertexCount;");
+      });
+    });
+
+    describe("vertices geometry", () => {
+      const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n  position.x = float(vertexIndex);\n}";
+      const SEED = " vec3 _vertexPosition = vec3(0.0);\n vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);\n vec2 _vertexUv = vec2(0.0);";
+      const wrap = (vertices: { space: "world" | "clip"; topology: VertexTopology } | undefined, vertexCode?: string) =>
+        shaderCompiler.wrapShaderToyCode(image, { geometry: "vertices", ...(vertices ? { vertices } : {}), ...(vertexCode ? { vertexCode } : {}) });
+
+      it("projects world-space hook output through the camera with no vertex attributes", () => {
+        const { vertexSource, wrappedCode, vertexRange } = wrap({ space: "world", topology: "triangle-list" }, hook);
+
+        expect(vertexSource).not.toContain("layout(location");
+        expect(vertexSource).toContain("uniform mat4 _meshProjection;");
+        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);`);
+        expect(vertexSource).toContain("gl_Position = _meshProjection * _meshView * _meshWorldPosition;");
+        expect(vertexSource).toContain("_meshUv = _vertexUv;");
+        expect(vertexSource).not.toContain("gl_PointSize");
+        expect(wrappedCode).toContain("in vec2 _meshUv;");
+        expect(wrappedCode).toContain("uniform vec3 iCameraPosition;");
+        expect(wrappedCode).toContain("mainImage(fragColor, _meshUv * iResolution.xy);");
+        const lines = vertexSource.split("\n");
+        expect(lines[vertexRange!.startLine - 1]).toBe(hook.split("\n")[0]);
+        expect(vertexRange!.lineCount).toBe(3);
+      });
+
+      it("writes clip-space hook output straight to gl_Position and shades with the pixel coordinate", () => {
+        const { vertexSource, wrappedCode } = wrap({ space: "clip", topology: "triangle-strip" }, hook);
+
+        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);\n gl_Position = vec4(_vertexPosition, 1.0);\n}`);
+        expect(vertexSource).not.toContain("_meshProjection");
+        expect(vertexSource).not.toContain("layout(location");
+        expect(vertexSource).not.toContain("_vertexCorners");
+        expect(wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
+        expect(wrappedCode).not.toContain("in vec2 _meshUv;");
+        expect(wrappedCode).toContain("const vec3 iWorldPosition = vec3(0.0);");
+      });
+
+      it.each(["world", "clip"] as const)("writes a 1px gl_PointSize for point-list only in %s space", (space) => {
+        expect(wrap({ space, topology: "point-list" }, hook).vertexSource).toMatch(/\n gl_PointSize = 1\.0;\n}$/);
+        expect(wrap({ space, topology: "point-list" }).vertexSource).toContain("gl_PointSize = 1.0;");
+        for (const topology of ["triangle-list", "triangle-strip", "line-list", "line-strip"] as const) {
+          expect(wrap({ space, topology }, hook).vertexSource).not.toContain("gl_PointSize");
+        }
+      });
+
+      it.each(["world", "clip"] as const)("starts every vertex at the origin without a hook in %s space", (space) => {
+        const { vertexSource, vertexRange } = wrap({ space, topology: "triangle-list" });
+
+        expect(vertexSource).toContain(SEED);
+        expect(vertexSource).not.toContain("mainVertex(");
+        expect(vertexSource).not.toBe(FULLSCREEN_TRIANGLE_VERTEX);
+        expect(vertexRange).toBeUndefined();
+      });
+
+      it("defaults to world space and a triangle list when no vertices options are given", () => {
+        const { vertexSource, wrappedCode } = wrap(undefined, hook);
+
+        expect(vertexSource).toContain("_meshProjection");
+        expect(vertexSource).not.toContain("gl_PointSize");
+        expect(wrappedCode).toContain("_meshUv * iResolution.xy");
+      });
+
+      it("ignores vertices options for mesh geometry", () => {
+        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, {
+          geometry: "sphere",
+          vertexCode: hook,
+          vertices: { space: "clip", topology: "point-list" },
+        });
+
+        expect(vertexSource).toContain("layout(location = 0) in vec3 position;");
+        expect(vertexSource).not.toContain("gl_PointSize");
       });
     });
 

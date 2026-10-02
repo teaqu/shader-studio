@@ -499,7 +499,7 @@ describe("RenderingEngine", () => {
       date: [2026, 1, 1, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1],
     };
     const passes = [
-      { name: 'BufferA', shaderSrc: 'void mainImage() {}', inputs: {}, geometry: 'fullscreen', vertexCount: 12 },
+      { name: 'BufferA', shaderSrc: 'void mainImage() {}', inputs: {}, geometry: 'vertices', vertexCount: 12 },
       { name: 'Image', shaderSrc: 'void mainImage() {}', inputs: {}, geometry: 'fullscreen' },
     ];
     let getPassVertexCount: ReturnType<typeof vi.fn>;

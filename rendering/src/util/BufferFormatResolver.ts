@@ -1,3 +1,4 @@
+import type { BlendMode } from "@shader-studio/types";
 import type { RenderPassGraph } from "../types/PassGraph";
 
 export type BufferOutputFormat = "auto" | "rgba16float" | "rgba32float";
@@ -8,6 +9,29 @@ export interface BufferFormatCapabilities {
   rgba16floatRenderable: boolean;
   rgba32floatRenderable: boolean;
   float32Filterable: boolean;
+  /** WebGPU `float32-blendable` / WebGL `EXT_float_blend`. Absent counts as unavailable. */
+  float32Blendable?: boolean;
+}
+
+export const FLOAT32_BLEND_FALLBACK_REASON = "rgba32float blending is unavailable on this device";
+
+/**
+ * Blending into rgba32float needs an optional device feature. Without it a
+ * blended pass renders into rgba16float instead of failing to draw.
+ */
+export function resolveBlendedBufferFormat(
+  format: ResolvedBufferFormat,
+  blend: BlendMode | undefined,
+  float32Blendable: boolean,
+): { format: ResolvedBufferFormat; fallbackReason?: string } {
+  if (format === "rgba32float" && blend !== undefined && blend !== "none" && !float32Blendable) {
+    return { format: "rgba16float", fallbackReason: FLOAT32_BLEND_FALLBACK_REASON };
+  }
+  return { format };
+}
+
+export function blendFormatFallbackWarning(passName: string): string {
+  return `${passName}: renders into rgba16float because ${FLOAT32_BLEND_FALLBACK_REASON}`;
 }
 
 export function resolveBufferFormat(
@@ -56,7 +80,15 @@ export function resolveGraphBufferFormats(
       continue;
     }
     try {
-      pass.resolvedOutputFormat = resolveBufferFormat(pass.outputFormat, capabilities);
+      const blended = resolveBlendedBufferFormat(
+        resolveBufferFormat(pass.outputFormat, capabilities),
+        pass.kind === "render" ? pass.blend : undefined,
+        capabilities.float32Blendable === true,
+      );
+      pass.resolvedOutputFormat = blended.format;
+      if (blended.fallbackReason) {
+        graph.warnings.push(blendFormatFallbackWarning(pass.name));
+      }
       formats.set(pass.name, pass.resolvedOutputFormat);
     } catch (error) {
       graph.errors.push(`${pass.name}: ${error instanceof Error ? error.message : String(error)}`);

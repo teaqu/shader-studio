@@ -4,7 +4,7 @@ import { createPreviewMesh } from "../preview3d/meshes";
 import { loadGlbMesh } from "../preview3d/GltfMeshLoader";
 import type { PreviewMesh } from "../preview3d/types";
 
-type MeshKind = Exclude<GeometryType, "fullscreen" | "model">;
+type MeshKind = Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
 
 export interface WebGPUMeshResource {
   vertexBuffer: GPUBuffer;

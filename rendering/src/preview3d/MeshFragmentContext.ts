@@ -18,7 +18,15 @@ export const MESH_FRAGMENT_CONTEXT_TYPES = {
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition.glslType,
 } as const;
 
-/** Omitted geometry is fullscreen for backwards-compatible compiler calls. */
+/**
+ * Indexed meshes with vertex buffers (plane, cube, sphere, model). Omitted
+ * geometry is fullscreen for backwards-compatible compiler calls.
+ */
 export function isMeshGeometry(geometry?: GeometryType): boolean {
+  return geometry !== undefined && geometry !== "fullscreen" && geometry !== "vertices";
+}
+
+/** Every geometry but fullscreen draws into a depth attachment. */
+export function hasDepthAttachment(geometry?: GeometryType): boolean {
   return geometry !== undefined && geometry !== "fullscreen";
 }

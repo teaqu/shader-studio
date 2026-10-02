@@ -1,4 +1,4 @@
-import { buildGlslNamedChannelDeclarations, type GeometryType } from "@shader-studio/types";
+import { buildGlslNamedChannelDeclarations, type GeometryType, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
   isMeshGeometry,
   MESH_FRAGMENT_CONTEXT,
@@ -6,7 +6,6 @@ import {
 } from "../preview3d/MeshFragmentContext";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
-import { hasFullscreenDrawConfig, type FullscreenDrawConfig } from "../types/Geometry";
 
 export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
@@ -17,8 +16,8 @@ export interface ShaderWrapOptions {
   channelTypes?: ChannelSamplerType[];
   customUniformDeclarations?: string;
   vertexCode?: string;
-  /** Configured fullscreen vertexCount/topology; omitted keeps the default draw source. */
-  fullscreenDraw?: FullscreenDrawConfig;
+  /** Resolved space and topology for vertices geometry. */
+  vertices?: { space: VertexSpace; topology: VertexTopology };
 }
 
 export interface WrappedShaderSource {
@@ -40,19 +39,36 @@ const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.
 const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
   `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }`;
 
+/** Every vertices-geometry vertex starts here before mainVertex moves it. */
+const VERTICES_SEED = ` vec3 _vertexPosition = vec3(0.0);
+ vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
+ vec2 _vertexUv = vec2(0.0);`;
+
 /**
- * Configured draws may run past three vertices; wrapping the corner index keeps
- * every seed inside the oversized triangle. Point primitives also need an
- * explicit size, which WebGL leaves undefined otherwise.
+ * Meshes read their seeds from vertex attributes; world-space vertices have
+ * no vertex buffers and start every vertex at the origin.
  */
-function fullscreenVertexTerms(draw: FullscreenDrawConfig | undefined): { corner: string; pointSize: string } {
-  if (!draw || !hasFullscreenDrawConfig(draw)) {
-    return { corner: "gl_VertexID", pointSize: "" };
-  }
-  return {
-    corner: "gl_VertexID % 3",
-    pointSize: draw.topology === "point-list" ? " gl_PointSize = 1.0;" : "",
-  };
+function projectedVertexInputs(vertices: boolean): { attributes: string; seed: string } {
+  return vertices
+    ? { attributes: "", seed: VERTICES_SEED }
+    : {
+      attributes: `layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 normal;
+layout(location = 2) in vec2 uv;
+`,
+      seed: ` vec3 _vertexPosition = position;
+ vec3 _vertexNormal = normal;
+ vec2 _vertexUv = uv;`,
+    };
+}
+
+/** Clip-space vertices write the hook's position straight to gl_Position. */
+function buildClipVerticesMain(hasHook: boolean, pointSize: string): string {
+  const callHook = hasHook ? "\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : "";
+  return `void main() {
+${VERTICES_SEED}${callHook}
+ gl_Position = vec4(_vertexPosition, 1.0);${pointSize}
+}`;
 }
 
 export class ShaderCompiler {
@@ -99,7 +115,9 @@ export class ShaderCompiler {
     const channelCount = this.getChannelCount(options.slotAssignments);
     const channelDeclarations = this.buildChannelDeclarations(options.slotAssignments, types);
     const mesh = isMeshGeometry(options.geometry);
-    const fragmentContext = mesh
+    // World-space vertices are projected by the orbit camera like a mesh.
+    const worldVertices = options.geometry === "vertices" && options.vertices?.space !== "clip";
+    const fragmentContext = mesh || worldVertices
       ? `in vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 in ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
@@ -139,7 +157,7 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       header += options.commonCode + "\n";
     }
 
-    const coordinate = mesh
+    const coordinate = mesh || worldVertices
       ? `${MESH_FRAGMENT_CONTEXT.uv} * iResolution.xy`
       : "gl_FragCoord.xy";
     const shaderCode = header + code + `\nvoid main() {\n mainImage(fragColor, ${coordinate});\n}`;
@@ -493,12 +511,10 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     vertexLineCount: number;
   } {
     const hasHook = Boolean(options.vertexCode?.trim());
-    const fullscreen = fullscreenVertexTerms(options.fullscreenDraw);
-    if (!hasHook && !mesh) {
+    const vertices = options.geometry === "vertices" ? options.vertices ?? { space: "world", topology: "triangle-list" } : null;
+    if (!hasHook && !mesh && !vertices) {
       return {
-        source: fullscreen.corner === "gl_VertexID"
-          ? FULLSCREEN_TRIANGLE_VERTEX_SOURCE
-          : `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[${fullscreen.corner}], 0.0, 1.0);${fullscreen.pointSize} }`,
+        source: FULLSCREEN_TRIANGLE_VERTEX_SOURCE,
         vertexStartLine: 1,
         vertexLineCount: 0,
       };
@@ -525,22 +541,26 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       vertexStartLine: (head.match(/\n/g) ?? []).length + 1 + (hasHook ? firstCodeLine : 0),
       vertexLineCount: hasHook ? lastCodeLine - firstCodeLine + 1 : 0,
     });
-    if (!mesh) {
+    // WebGL leaves the point size undefined unless the vertex stage writes it.
+    const pointSize = vertices?.topology === "point-list" ? "\n gl_PointSize = 1.0;" : "";
+    if (vertices?.space === "clip") {
+      return place(`${vertexUniforms}${channelHelpers}
+`, buildClipVerticesMain(hasHook, pointSize));
+    }
+    if (!mesh && !vertices) {
       return place(`${vertexUniforms}${channelHelpers}
 `, `void main() {
  vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
- vec2 _vertexCorner = _vertexCorners[${fullscreen.corner}];
+ vec2 _vertexCorner = _vertexCorners[gl_VertexID];
  vec3 _vertexPosition = vec3(_vertexCorner, 0.0);
  vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
  vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
  mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
- gl_Position = vec4(_vertexPosition, 1.0);${fullscreen.pointSize ? `\n${fullscreen.pointSize}` : ""}
+ gl_Position = vec4(_vertexPosition, 1.0);
 }`);
     }
-    return place(`layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec2 uv;
-uniform mat4 _meshModel;
+    const { attributes, seed } = projectedVertexInputs(Boolean(vertices));
+    return place(`${attributes}uniform mat4 _meshModel;
 uniform mat4 _meshView;
 uniform mat4 _meshProjection;
 uniform mat3 _meshNormalMatrix;
@@ -549,15 +569,13 @@ out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
 `, `void main() {
- vec3 _vertexPosition = position;
- vec3 _vertexNormal = normal;
- vec2 _vertexUv = uv;
+${seed}
  ${hasHook ? "mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : ""}
  vec4 _meshWorldPosition = _meshModel * vec4(_vertexPosition, 1.0);
  gl_Position = _meshProjection * _meshView * _meshWorldPosition;
  ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  ${MESH_FRAGMENT_CONTEXT.worldPosition} = _meshWorldPosition.xyz;
- ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;
+ ${MESH_FRAGMENT_CONTEXT.normal} = _meshNormalMatrix * _vertexNormal;${pointSize}
 }`);
   }
 

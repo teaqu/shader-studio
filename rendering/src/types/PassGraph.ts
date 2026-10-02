@@ -6,8 +6,9 @@ import type {
   TextureConfigInput,
   VideoConfigInput,
   BufferOutputFormat,
+  RenderPassSettings,
 } from "@shader-studio/types";
-import type { FullscreenDrawConfig } from "./Geometry";
+import type { VerticesDrawConfig } from "./Geometry";
 
 export type RenderPassName = string;
 export type ChannelReadTiming = "previous-frame" | "current-frame";
@@ -70,7 +71,7 @@ export type DispatchSpec =
   | { mode: "cover-storage"; name: string }
   | { mode: "cover-channel"; key: string };
 
-export interface RenderPassNode extends FullscreenDrawConfig {
+export interface RenderPassNode extends VerticesDrawConfig, RenderPassSettings {
   name: RenderPassName;
   source: string;
   vertexSrc?: string;

@@ -129,7 +129,7 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
-  it.each(["slang", "wgsl"] as const)("propagates configured fullscreen vertexCount and topology in %s graphs", (language) => {
+  it.each(["slang", "wgsl"] as const)("propagates vertices fields and blend/depth/cull in %s graphs", (language) => {
     const source = language === "wgsl"
       ? "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }"
       : "float4 mainImage(float2 c) { return float4(1.0); }";
@@ -139,11 +139,16 @@ describe("buildSlangPassGraph", () => {
       config: {
         version: "1",
         passes: {
-          Image: { geometry: { type: "fullscreen", vertexCount: 6, topology: "triangle-strip" } },
-          BufferA: { path: `a.${language}`, geometry: { type: "fullscreen", vertexCount: 2_147_483_647 } },
-          BufferB: { path: `b.${language}`, geometry: { type: "fullscreen", topology: "point-list" } },
-          BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" } },
-          BufferD: { path: `d.${language}`, geometry: { type: "plane" } },
+          Image: {
+            geometry: { type: "vertices", vertexCount: 6, topology: "triangle-strip", space: "clip" },
+            blend: "alpha",
+            depth: { test: true, compare: "greater" },
+            cull: "back",
+          },
+          BufferA: { path: `a.${language}`, geometry: { type: "vertices", vertexCount: 2_147_483_647 }, blend: "additive", depth: { write: false } },
+          BufferB: { path: `b.${language}`, geometry: { type: "vertices", topology: "point-list" } },
+          BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" }, blend: "premultiplied" },
+          BufferD: { path: `d.${language}`, geometry: { type: "plane" }, cull: "front" },
           BufferE: { path: `e.${language}` },
         },
       },
@@ -153,28 +158,52 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    const draw = Object.fromEntries(graph.passes.map((pass) => [pass.name, { vertexCount: pass.vertexCount, topology: pass.topology }]));
+    const fields = ["geometry", "vertexCount", "topology", "space", "blend", "depth", "cull"] as const;
+    const draw = Object.fromEntries(graph.passes.map((pass) => [
+      pass.name,
+      Object.fromEntries(fields.filter((field) => field in pass).map((field) => [field, pass[field]])),
+    ]));
     expect(draw).toEqual({
-      Image: { vertexCount: 6, topology: "triangle-strip" },
-      BufferA: { vertexCount: 2_147_483_647, topology: undefined },
-      BufferB: { vertexCount: undefined, topology: "point-list" },
-      BufferC: { vertexCount: undefined, topology: undefined },
-      BufferD: { vertexCount: undefined, topology: undefined },
-      BufferE: { vertexCount: undefined, topology: undefined },
+      Image: {
+        geometry: "vertices",
+        vertexCount: 6,
+        topology: "triangle-strip",
+        space: "clip",
+        blend: "alpha",
+        depth: { test: true, compare: "greater" },
+        cull: "back",
+      },
+      BufferA: { geometry: "vertices", vertexCount: 2_147_483_647, blend: "additive", depth: { write: false } },
+      BufferB: { geometry: "vertices", topology: "point-list" },
+      BufferC: { geometry: "fullscreen", blend: "premultiplied" },
+      BufferD: { geometry: "plane", cull: "front" },
+      BufferE: { geometry: "fullscreen" },
     });
-    // Unconfigured passes carry no draw keys at all, so their nodes match #275.
-    for (const name of ["BufferC", "BufferD", "BufferE"]) {
-      const pass = graph.passes.find((candidate) => candidate.name === name);
-      expect(pass).not.toHaveProperty("vertexCount");
-      expect(pass).not.toHaveProperty("topology");
+  });
+
+  it("omits draw and render-state fields from an unconfigured image-only graph", () => {
+    const graph = buildSlangPassGraph({ imageCode, config: null, buffers: {}, canvasWidth: 8, canvasHeight: 8 });
+
+    for (const field of ["vertexCount", "topology", "space", "blend", "depth", "cull"]) {
+      expect(graph.passes[0]).not.toHaveProperty(field);
     }
   });
 
-  it("omits draw fields from an unconfigured image-only graph", () => {
-    const graph = buildSlangPassGraph({ imageCode, config: null, buffers: {}, canvasWidth: 8, canvasHeight: 8 });
+  it("ignores blend, depth and cull on compute passes", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: {
+        version: "1",
+        passes: { Image: {}, Sim: { type: "compute", path: "sim.slang", dispatch: { count: 1 }, blend: "additive" } as never },
+      },
+      buffers: { Sim: "[shader(\"compute\")] [numthreads(1,1,1)] void main(uint3 id : SV_DispatchThreadID) {}" },
+      canvasWidth: 8,
+      canvasHeight: 8,
+    });
 
-    expect(graph.passes[0]).not.toHaveProperty("vertexCount");
-    expect(graph.passes[0]).not.toHaveProperty("topology");
+    const sim = graph.passes.find((pass) => pass.name === "Sim");
+    expect(sim?.kind).toBe("compute");
+    expect(sim).not.toHaveProperty("blend");
   });
 
   it("carries a model's resolved GLB URL and selected mesh to the Slang pass", () => {

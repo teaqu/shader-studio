@@ -79,17 +79,20 @@ describe("WgslCompiler", () => {
     compiler.dispose();
   });
 
-  it("forwards the fullscreen vertex-index wrap to the wrapper", async () => {
+  it("forwards the vertices space to the wrapper", async () => {
     const compiler = new WgslCompiler();
     const vertexCode = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *position = vec3f(f32(vertexIndex) / f32(iVertexCount), 0.0, 0.0); }";
-    const wrapped = await compiler.compile(IMAGE, { passKind: "render", vertexCode, wrapFullscreenVertexIndex: true });
-    const plain = await compiler.compile(IMAGE, { passKind: "render", vertexCode });
-    expect(wrapped.success && plain.success).toBe(true);
-    if (!wrapped.success || !plain.success) {
+    const clip = await compiler.compile(IMAGE, { passKind: "render", geometry: "vertices", vertexSpace: "clip", vertexCode });
+    const world = await compiler.compile(IMAGE, { passKind: "render", geometry: "vertices", vertexSpace: "world", vertexCode });
+    const fullscreen = await compiler.compile(IMAGE, { passKind: "render", vertexCode });
+    expect(clip.success && world.success && fullscreen.success).toBe(true);
+    if (!clip.success || !world.success || !fullscreen.success) {
       return;
     }
-    expect(wrapped.wgsl).toContain("verts[vid % 3u]");
-    expect(plain.wgsl).not.toContain("% 3u");
+    expect(clip.wgsl).toContain("var position = vec3<f32>(0.0, 0.0, 0.0);");
+    expect(clip.wgsl).not.toContain("_ss_mesh");
+    expect(world.wgsl).toContain("_ss_mesh.viewProjection");
+    expect(fullscreen.wgsl).toContain("verts[vid]");
     compiler.dispose();
   });
 

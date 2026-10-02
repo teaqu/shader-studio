@@ -88,6 +88,9 @@ describe("WgslLanguageService", () => {
     expect(await hoverAt("vertexIndex")).toContain("vertex_index");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
     expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
+    expect(await hoverAt("position")).toContain("vertices geometry in clip space");
     expect(await hoverAt("position")).toContain("object-space");
     expect(await hoverAt("uv")).toContain("texture coordinate");
   });

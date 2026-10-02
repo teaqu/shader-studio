@@ -886,7 +886,7 @@ describe("shader corpus through the UI transport layer", () => {
       "slang/two-meshes.slang: standalone host does not resolve model geometry assets",
       "slang/uniforms.slang: standalone host has no script evaluator for custom uniforms",
     ]);
-    expect(compared).toBe(17);
+    expect(compared).toBe(26);
   });
 
   it("compiles a vertex source activated as the shader itself", async () => {

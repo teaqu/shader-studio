@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ConfigValidator } from "@shader-studio/rendering";
+  import { ConfigValidator, resolveRenderState } from "@shader-studio/rendering";
   import { BufferConfig as BufferConfigModel } from "../../BufferConfig";
   import type {
     BufferPass,
@@ -15,13 +15,22 @@
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
-    FullscreenGeometryConfig,
+    VerticesGeometryConfig,
     VertexTopology,
+    VertexSpace,
+    BlendMode,
+    CullMode,
+    DepthCompareFunction,
+    DepthSettings,
   } from "@shader-studio/types";
   import {
-    DEFAULT_FULLSCREEN_VERTEX_COUNT,
+    DEFAULT_BLEND_MODE,
+    DEFAULT_CULL_MODE,
+    DEFAULT_DEPTH_COMPARE,
+    DEFAULT_VERTEX_COUNT,
+    DEFAULT_VERTEX_SPACE,
     DEFAULT_VERTEX_TOPOLOGY,
-    MAX_FULLSCREEN_VERTEX_COUNT,
+    MAX_VERTEX_COUNT,
     SHADER_LANGUAGES,
     vertexPassKey,
   } from "@shader-studio/types";
@@ -30,7 +39,7 @@
   import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
-  import { rememberFullscreenDraw, takeFullscreenDraw } from "../../state/fullscreenDrawMemory.svelte";
+  import { rememberDrawFields, takeDrawField } from "../../state/verticesDrawMemory.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -119,12 +128,18 @@
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
     : modelSelectionPending ? { type: 'model' as const, path: '' } : undefined);
-  const fullscreenGeometry = $derived<FullscreenGeometryConfig | undefined>(
-    modelGeometry ? undefined
-      : config.geometry === undefined ? { type: 'fullscreen' }
-      : config.geometry.type === 'fullscreen' ? config.geometry
-      : undefined,
+  const verticesGeometry = $derived<VerticesGeometryConfig | undefined>(
+    !modelGeometry && config.geometry?.type === 'vertices' ? config.geometry : undefined,
   );
+  const selectedGeometry = $derived<GeometryType>(modelGeometry ? 'model' : config.geometry?.type ?? 'fullscreen');
+  /** Blend/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
+  const renderState = $derived(resolveRenderState({
+    geometry: selectedGeometry,
+    ...(verticesGeometry?.space ? { space: verticesGeometry.space } : {}),
+    ...('blend' in config && config.blend ? { blend: config.blend } : {}),
+    ...('depth' in config && config.depth ? { depth: config.depth } : {}),
+    ...('cull' in config && config.cull ? { cull: config.cull } : {}),
+  }));
   let vertexCountError = $state<string | null>(null);
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
@@ -362,59 +377,108 @@
     updateBufferResolution(undefined);
   }
 
+  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; depth?: DepthSettings; cull?: CullMode };
+
+  /** Drops keys whose value is undefined so defaults never reach the config file. */
+  function withoutUndefined<T extends object>(value: T): Partial<T> {
+    return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as Partial<T>;
+  }
+
   function handleGeometryChange(type: GeometryType) {
     vertexCountError = null;
-    if (type === 'fullscreen') {
-      modelSelectionPending = false;
-      const { geometry: _geometry, ...next } = config;
-      const remembered = takeFullscreenDraw(shaderPath, bufferName);
-      updateConfig((remembered ? { ...next, geometry: { type: 'fullscreen', ...remembered } } : next) as EditableConfig);
-      return;
-    }
-    // Meshes reject vertexCount/topology; keep them for a switch back to fullscreen.
-    if (fullscreenGeometry) {
-      rememberFullscreenDraw(shaderPath, bufferName, { vertexCount: fullscreenGeometry.vertexCount, topology: fullscreenGeometry.topology });
+    // Other geometry rejects vertexCount/topology/space; keep them for a switch back.
+    if (verticesGeometry && type !== 'vertices') {
+      const { type: _type, ...fields } = verticesGeometry;
+      rememberDrawFields(shaderPath, bufferName, { vertices: fields });
     }
     if (type === 'model') {
+      // The geometry changes once a model file is chosen.
       modelSelectionPending = true;
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type } });
-  }
-
-  /** Writes fullscreen draw fields; when none remain the geometry key is dropped, as for plain fullscreen. */
-  function updateFullscreenDraw(fields: Partial<Pick<FullscreenGeometryConfig, 'vertexCount' | 'topology'>>) {
-    const merged: FullscreenGeometryConfig = { ...fullscreenGeometry, ...fields, type: 'fullscreen' };
-    const { type: _type, ...rest } = merged;
-    const draw = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined));
-    if (Object.keys(draw).length === 0) {
-      const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+    const { geometry: _geometry, ...current } = config as RenderSettingsConfig;
+    if (type === 'fullscreen') {
+      // Fullscreen has no depth buffer and nothing to cull; keep both for a switch back.
+      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull });
+      const { depth: _depth, cull: _cull, ...rest } = current;
+      updateConfig(rest as EditableConfig);
       return;
     }
-    updateConfig({ ...config, geometry: { type: 'fullscreen', ...draw } } as EditableConfig);
+    const restored: Partial<RenderSettingsConfig> = {};
+    if (selectedGeometry === 'fullscreen') {
+      const depth = takeDrawField(shaderPath, bufferName, 'depth');
+      const cull = takeDrawField(shaderPath, bufferName, 'cull');
+      Object.assign(restored, depth ? { depth } : {}, cull ? { cull } : {});
+    }
+    const geometry = type === 'vertices'
+      ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices') }
+      : { type };
+    updateConfig({ ...current, ...restored, geometry } as EditableConfig);
+  }
+
+  /** Writes vertices draw fields, leaving out any that are at their default. */
+  function updateVerticesDraw(fields: Partial<Pick<VerticesGeometryConfig, 'vertexCount' | 'topology' | 'space'>>) {
+    const { type: _type, ...current } = verticesGeometry ?? { type: 'vertices' as const };
+    const draw = withoutUndefined({ ...current, ...fields });
+    updateConfig({ ...config, geometry: { type: 'vertices', ...draw } } as EditableConfig);
   }
 
   function handleVertexCountChange(event: Event) {
     const raw = (event.currentTarget as HTMLInputElement).value.trim();
     if (raw === '') {
       vertexCountError = null;
-      updateFullscreenDraw({ vertexCount: undefined });
+      updateVerticesDraw({ vertexCount: undefined });
       return;
     }
     const count = Number(raw);
-    if (!Number.isInteger(count) || count < 1 || count > MAX_FULLSCREEN_VERTEX_COUNT) {
-      vertexCountError = `Vertex count must be a whole number from 1 to ${MAX_FULLSCREEN_VERTEX_COUNT}`;
+    if (!Number.isInteger(count) || count < 1 || count > MAX_VERTEX_COUNT) {
+      vertexCountError = `Vertex count must be a whole number from 1 to ${MAX_VERTEX_COUNT}`;
       return;
     }
     vertexCountError = null;
-    updateFullscreenDraw({ vertexCount: count });
+    updateVerticesDraw({ vertexCount: count });
   }
 
   function handleTopologyChange(event: Event) {
     const topology = (event.currentTarget as HTMLSelectElement).value as VertexTopology;
-    updateFullscreenDraw({ topology: topology === DEFAULT_VERTEX_TOPOLOGY ? undefined : topology });
+    updateVerticesDraw({ topology: topology === DEFAULT_VERTEX_TOPOLOGY ? undefined : topology });
+  }
+
+  function handleSpaceChange(event: Event) {
+    const space = (event.currentTarget as HTMLSelectElement).value as VertexSpace;
+    updateVerticesDraw({ space: space === DEFAULT_VERTEX_SPACE ? undefined : space });
+  }
+
+  /** Writes one pass-level render setting; the default value removes the key. */
+  function updateRenderSetting<K extends 'blend' | 'cull'>(field: K, value: RenderSettingsConfig[K], fallback: RenderSettingsConfig[K]) {
+    const { [field]: _current, ...rest } = config as RenderSettingsConfig;
+    updateConfig((value === fallback ? rest : { ...rest, [field]: value }) as EditableConfig);
+  }
+
+  function handleBlendChange(event: Event) {
+    updateRenderSetting('blend', (event.currentTarget as HTMLSelectElement).value as BlendMode, DEFAULT_BLEND_MODE);
+  }
+
+  function handleCullChange(event: Event) {
+    updateRenderSetting('cull', (event.currentTarget as HTMLSelectElement).value as CullMode, DEFAULT_CULL_MODE);
+  }
+
+  /** Writes depth fields; each at its geometry's default is left out, and an empty depth object is dropped. */
+  function updateDepth(fields: Partial<DepthSettings>) {
+    const current = config as RenderSettingsConfig;
+    const defaults = resolveRenderState({
+      geometry: selectedGeometry,
+      ...(verticesGeometry?.space ? { space: verticesGeometry.space } : {}),
+    }).depth!;
+    const merged = { ...current.depth, ...fields };
+    const depth = withoutUndefined({
+      test: merged.test === defaults.test ? undefined : merged.test,
+      write: merged.write === defaults.write ? undefined : merged.write,
+      compare: merged.compare === DEFAULT_DEPTH_COMPARE ? undefined : merged.compare,
+    });
+    const { depth: _depth, ...rest } = current;
+    updateConfig((Object.keys(depth).length === 0 ? rest : { ...rest, depth }) as EditableConfig);
   }
 
   function handleModelPathChange(path: string) {
@@ -643,10 +707,11 @@
         <h3 class="section-title">Geometry</h3>
         <select
           aria-label="Geometry"
-          value={modelGeometry ? "model" : config.geometry?.type ?? "fullscreen"}
+          value={selectedGeometry}
           onchange={(event) => handleGeometryChange((event.currentTarget as HTMLSelectElement).value as GeometryType)}
         >
           <option value="fullscreen">Fullscreen</option>
+          <option value="vertices">Vertices</option>
           <option value="plane">Plane</option>
           <option value="cube">Cube</option>
           <option value="sphere">Sphere</option>
@@ -678,7 +743,7 @@
           </select>
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
         {/if}
-        {#if fullscreenGeometry}
+        {#if verticesGeometry}
           <div class="resolution-row">
             <label class="resolution-label" for="vertex-count-{bufferName}">Vertices</label>
             <input
@@ -686,10 +751,10 @@
               class="vertex-count-input"
               type="number"
               min="1"
-              max={MAX_FULLSCREEN_VERTEX_COUNT}
+              max={MAX_VERTEX_COUNT}
               step="1"
-              placeholder={String(DEFAULT_FULLSCREEN_VERTEX_COUNT)}
-              value={fullscreenGeometry.vertexCount ?? ''}
+              placeholder={String(DEFAULT_VERTEX_COUNT)}
+              value={verticesGeometry.vertexCount ?? ''}
               onchange={handleVertexCountChange}
             />
           </div>
@@ -698,7 +763,7 @@
             <label class="resolution-label" for="topology-{bufferName}">Topology</label>
             <select
               id="topology-{bufferName}"
-              value={fullscreenGeometry.topology ?? DEFAULT_VERTEX_TOPOLOGY}
+              value={verticesGeometry.topology ?? DEFAULT_VERTEX_TOPOLOGY}
               onchange={handleTopologyChange}
             >
               <option value="triangle-list">Triangle list</option>
@@ -706,6 +771,75 @@
               <option value="line-list">Line list</option>
               <option value="line-strip">Line strip</option>
               <option value="point-list">Point list</option>
+            </select>
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="space-{bufferName}">Space</label>
+            <select
+              id="space-{bufferName}"
+              value={verticesGeometry.space ?? DEFAULT_VERTEX_SPACE}
+              onchange={handleSpaceChange}
+            >
+              <option value="world">World (orbit camera)</option>
+              <option value="clip">Clip (screen)</option>
+            </select>
+          </div>
+        {/if}
+      </div>
+      <div class="config-item render-settings-section">
+        <h3 class="section-title">Rendering</h3>
+        <div class="resolution-row">
+          <label class="resolution-label" for="blend-{bufferName}">Blend</label>
+          <select id="blend-{bufferName}" value={renderState.blend} onchange={handleBlendChange}>
+            <option value="none">None</option>
+            <option value="alpha">Alpha</option>
+            <option value="premultiplied">Premultiplied alpha</option>
+            <option value="additive">Additive</option>
+          </select>
+        </div>
+        {#if renderState.depth}
+          <div class="resolution-row">
+            <label class="resolution-label" for="depth-test-{bufferName}">Depth test</label>
+            <input
+              id="depth-test-{bufferName}"
+              type="checkbox"
+              checked={renderState.depth.test}
+              onchange={(event) => updateDepth({ test: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="depth-write-{bufferName}">Depth write</label>
+            <input
+              id="depth-write-{bufferName}"
+              type="checkbox"
+              checked={renderState.depth.write}
+              onchange={(event) => updateDepth({ write: (event.currentTarget as HTMLInputElement).checked })}
+            />
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="depth-compare-{bufferName}">Compare</label>
+            <select
+              id="depth-compare-{bufferName}"
+              value={renderState.depth.compare}
+              disabled={!renderState.depth.test}
+              onchange={(event) => updateDepth({ compare: (event.currentTarget as HTMLSelectElement).value as DepthCompareFunction })}
+            >
+              <option value="never">Never</option>
+              <option value="less">Less</option>
+              <option value="equal">Equal</option>
+              <option value="less-equal">Less or equal</option>
+              <option value="greater">Greater</option>
+              <option value="not-equal">Not equal</option>
+              <option value="greater-equal">Greater or equal</option>
+              <option value="always">Always</option>
+            </select>
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="cull-{bufferName}">Cull</label>
+            <select id="cull-{bufferName}" value={renderState.cull} onchange={handleCullChange}>
+              <option value="none">None</option>
+              <option value="back">Back faces</option>
+              <option value="front">Front faces</option>
             </select>
           </div>
         {/if}

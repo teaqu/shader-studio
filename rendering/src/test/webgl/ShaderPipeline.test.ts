@@ -665,47 +665,148 @@ describe("ShaderPipeline", () => {
       expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
     });
 
-    it("propagates configured fullscreen vertexCount and topology to passes and compile options", async () => {
+    it("propagates vertices fields and blend/depth/cull to passes and compile options", async () => {
       mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
       const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
       const config = {
         version: "1",
         passes: {
-          BufferA: { path: "a.glsl", geometry: { type: "fullscreen", vertexCount: 12, topology: "line-strip" }, inputs: {} },
-          BufferB: { path: "b.glsl", geometry: { type: "fullscreen", topology: "point-list" }, inputs: {} },
-          BufferC: { path: "c.glsl", geometry: { type: "fullscreen" }, inputs: {} },
-          BufferD: { path: "d.glsl", geometry: { type: "cube" }, inputs: {} },
-          Image: { geometry: { type: "fullscreen", vertexCount: 6 }, inputs: {} },
+          BufferA: {
+            path: "a.glsl",
+            geometry: { type: "vertices", vertexCount: 12, topology: "line-strip", space: "clip" },
+            blend: "additive",
+            depth: { test: true, write: false, compare: "greater" },
+            cull: "back",
+            inputs: {},
+          },
+          BufferB: { path: "b.glsl", geometry: { type: "vertices", topology: "point-list" }, inputs: {} },
+          BufferC: { path: "c.glsl", geometry: { type: "fullscreen" }, blend: "alpha", inputs: {} },
+          BufferD: { path: "d.glsl", geometry: { type: "cube" }, cull: "front", inputs: {} },
+          Image: { geometry: { type: "vertices", vertexCount: 6 }, inputs: {} },
         },
       } as const;
       const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const buffers = { BufferA: source, BufferB: source, BufferC: source, BufferD: source };
 
-      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "draw.glsl", buffers);
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config as unknown as ShaderConfig, "draw.glsl", buffers);
 
       expect(result.success).toBe(true);
       const passes = Object.fromEntries(shaderPipeline.getPasses().map((pass) => [pass.name, pass]));
-      expect(passes.BufferA).toMatchObject({ vertexCount: 12, topology: "line-strip" });
-      expect(passes.BufferB).toMatchObject({ topology: "point-list" });
+      expect(passes.BufferA).toMatchObject({
+        geometry: "vertices",
+        vertexCount: 12,
+        topology: "line-strip",
+        space: "clip",
+        blend: "additive",
+        depth: { test: true, write: false, compare: "greater" },
+        cull: "back",
+      });
+      expect(passes.BufferB).toMatchObject({ geometry: "vertices", topology: "point-list" });
       expect(passes.BufferB).not.toHaveProperty("vertexCount");
-      expect(passes.Image).toMatchObject({ vertexCount: 6 });
-      expect(passes.Image).not.toHaveProperty("topology");
+      expect(passes.BufferB).not.toHaveProperty("space");
+      expect(passes.BufferB).not.toHaveProperty("blend");
+      expect(passes.Image).toMatchObject({ geometry: "vertices", vertexCount: 6 });
+      expect(passes.BufferC).toMatchObject({ geometry: "fullscreen", blend: "alpha" });
+      expect(passes.BufferD).toMatchObject({ geometry: "cube", cull: "front" });
       for (const name of ["BufferC", "BufferD"]) {
         expect(passes[name]).not.toHaveProperty("vertexCount");
         expect(passes[name]).not.toHaveProperty("topology");
+        expect(passes[name]).not.toHaveProperty("space");
       }
       // Passes compile in configured order, one call each.
       const order = shaderPipeline.getPasses().map((pass) => pass.name);
       const optionsFor = (name: string) => mockShaderCompiler.compileShaderAsync.mock.calls[order.indexOf(name)][1];
-      expect(optionsFor("BufferA")).toMatchObject({ fullscreenDraw: { vertexCount: 12, topology: "line-strip" } });
-      expect(optionsFor("BufferB")).toMatchObject({ fullscreenDraw: { vertexCount: undefined, topology: "point-list" } });
-      expect(optionsFor("BufferC")).not.toHaveProperty("fullscreenDraw");
-      expect(optionsFor("BufferD")).not.toHaveProperty("fullscreenDraw");
-      expect(optionsFor("Image")).toMatchObject({ fullscreenDraw: { vertexCount: 6, topology: undefined } });
-      // wrapShaderToyCode (line mapping) sees the same draw config as the compile.
-      expect(mockShaderCompiler.wrapShaderToyCode.mock.calls.map(([, options]) => options.fullscreenDraw)).toEqual(
-        mockShaderCompiler.compileShaderAsync.mock.calls.map(([, options]) => options.fullscreenDraw),
+      expect(optionsFor("BufferA")).toMatchObject({ geometry: "vertices", vertices: { space: "clip", topology: "line-strip" } });
+      expect(optionsFor("BufferB")).toMatchObject({ geometry: "vertices", vertices: { space: "world", topology: "point-list" } });
+      expect(optionsFor("Image")).toMatchObject({ geometry: "vertices", vertices: { space: "world", topology: "triangle-list" } });
+      expect(optionsFor("BufferC")).not.toHaveProperty("vertices");
+      expect(optionsFor("BufferD")).not.toHaveProperty("vertices");
+      // wrapShaderToyCode (line mapping) sees the same vertices options as the compile.
+      expect(mockShaderCompiler.wrapShaderToyCode.mock.calls.map(([, options]) => options.vertices)).toEqual(
+        mockShaderCompiler.compileShaderAsync.mock.calls.map(([, options]) => options.vertices),
       );
+    });
+
+    it("keeps blend on Image and buffer passes that omit geometry", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+      const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+
+      await shaderPipeline.compileShaderPipeline(source, {
+        version: "1",
+        passes: { BufferA: { path: "a.glsl", blend: "additive", inputs: {} }, Image: { blend: "alpha", inputs: {} } },
+      } as ShaderConfig, "blend.glsl", { BufferA: source });
+
+      expect(shaderPipeline.getPass("Image")).toMatchObject({ geometry: "fullscreen", blend: "alpha" });
+      expect(shaderPipeline.getPass("BufferA")).toMatchObject({ geometry: "fullscreen", blend: "additive" });
+    });
+
+    it("allocates a depth buffer for vertices passes, as for meshes", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+      const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+
+      await shaderPipeline.compileShaderPipeline(source, {
+        version: "1",
+        passes: {
+          BufferA: { path: "a.glsl", geometry: { type: "vertices", space: "clip" }, inputs: {} },
+          BufferB: { path: "b.glsl", inputs: {} },
+          Image: { inputs: {} },
+        },
+      } as ShaderConfig, "depth.glsl", { BufferA: source, BufferB: source });
+
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), true, "auto");
+      expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), false, "auto");
+    });
+
+    describe("blending into rgba32float buffers", () => {
+      const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const compile = (bufferA: Record<string, unknown>, image: Record<string, unknown> = {}) => {
+        mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+        return shaderPipeline.compileShaderPipeline(source, {
+          version: "1",
+          passes: { BufferA: { path: "a.glsl", inputs: {}, ...bufferA }, Image: { inputs: {}, ...image } },
+        } as ShaderConfig, "blend.glsl", { BufferA: source });
+      };
+      const fallbackWarning = "BufferA: renders into rgba16float because rgba32float blending is unavailable on this device";
+
+      it.each([undefined, "auto", "rgba32float"] as const)(
+        "falls back to rgba16float with a warning for a blended %s buffer without EXT_float_blend",
+        async (outputFormat) => {
+          const result = await compile({ blend: "additive", ...(outputFormat ? { outputFormat } : {}) });
+
+          expect(result.success).toBe(true);
+          expect(result.warnings).toContain(fallbackWarning);
+          expect(shaderPipeline.getPass("BufferA")?.outputFormat).toBe("rgba16float");
+          expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), false, "rgba16float");
+        },
+      );
+
+      it("keeps rgba32float when the device can blend it", async () => {
+        shaderPipeline.setFloat32Blendable(true);
+
+        const result = await compile({ blend: "alpha" });
+
+        expect(result.warnings ?? []).not.toContain(fallbackWarning);
+        expect(shaderPipeline.getPass("BufferA")?.outputFormat).toBeUndefined();
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), false, "auto");
+      });
+
+      it.each([
+        [{}],
+        [{ blend: "none" }],
+        [{ blend: "additive", outputFormat: "rgba16float" }],
+      ])("keeps the requested format without a warning for %j", async (bufferA) => {
+        const result = await compile(bufferA);
+
+        expect(result.warnings ?? []).not.toContain(fallbackWarning);
+        expect(shaderPipeline.getPass("BufferA")?.outputFormat).toBe((bufferA as { outputFormat?: string }).outputFormat);
+      });
+
+      it("never changes the Image pass, which renders to the canvas", async () => {
+        const result = await compile({}, { blend: "additive" });
+
+        expect(result.warnings ?? []).toEqual([]);
+        expect(shaderPipeline.getPass("Image")?.outputFormat).toBeUndefined();
+      });
     });
 
     it("compiles mixed pass geometry once per pass in configured order", async () => {

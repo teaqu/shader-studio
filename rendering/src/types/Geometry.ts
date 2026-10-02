@@ -1,7 +1,17 @@
 import {
-  DEFAULT_FULLSCREEN_VERTEX_COUNT,
+  DEFAULT_BLEND_MODE,
+  DEFAULT_CULL_MODE,
+  DEFAULT_DEPTH_COMPARE,
+  DEFAULT_VERTEX_COUNT,
+  DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
+  type BlendMode,
+  type CullMode,
+  type DepthCompareFunction,
+  type DepthSettings,
   type GeometryType,
+  type RenderPassSettings,
+  type VertexSpace,
   type VertexTopology,
 } from "@shader-studio/types";
 
@@ -14,36 +24,112 @@ export function resolvePassGeometry(
 }
 
 /**
- * Configured fullscreen draw fields. Each is present only when the config
- * sets it, so unconfigured passes keep the default draw and generated source.
+ * Configured `vertices` draw fields. Each is present only when the config
+ * sets it, and only for vertices geometry.
  */
-export interface FullscreenDrawConfig {
+export interface VerticesDrawConfig {
   vertexCount?: number;
   topology?: VertexTopology;
+  space?: VertexSpace;
 }
 
-export function resolveFullscreenDraw(
-  pass: { geometry?: { type: GeometryType; vertexCount?: number; topology?: VertexTopology } } | undefined,
-): FullscreenDrawConfig {
+type VerticesGeometryLike = { type: GeometryType; vertexCount?: number; topology?: VertexTopology; space?: VertexSpace };
+
+export function resolveVerticesDraw(pass: { geometry?: VerticesGeometryLike } | undefined): VerticesDrawConfig {
   const geometry = pass?.geometry;
-  if (geometry?.type !== "fullscreen") {
+  if (geometry?.type !== "vertices") {
     return {};
   }
   return {
     ...(geometry.vertexCount !== undefined ? { vertexCount: geometry.vertexCount } : {}),
     ...(geometry.topology !== undefined ? { topology: geometry.topology } : {}),
+    ...(geometry.space !== undefined ? { space: geometry.space } : {}),
   };
 }
 
-/** True when the config changes the default three-vertex triangle-list draw. */
-export function hasFullscreenDrawConfig(draw: FullscreenDrawConfig): boolean {
-  return draw.vertexCount !== undefined || draw.topology !== undefined;
+export function verticesVertexCount(draw: VerticesDrawConfig): number {
+  return draw.vertexCount ?? DEFAULT_VERTEX_COUNT;
 }
 
-export function fullscreenVertexCount(draw: FullscreenDrawConfig): number {
-  return draw.vertexCount ?? DEFAULT_FULLSCREEN_VERTEX_COUNT;
-}
-
-export function fullscreenTopology(draw: FullscreenDrawConfig): VertexTopology {
+export function verticesTopology(draw: VerticesDrawConfig): VertexTopology {
   return draw.topology ?? DEFAULT_VERTEX_TOPOLOGY;
+}
+
+export function verticesSpace(draw: VerticesDrawConfig): VertexSpace {
+  return draw.space ?? DEFAULT_VERTEX_SPACE;
+}
+
+/** True for vertices geometry drawn straight into clip space, without the camera. */
+export function isClipSpaceVertices(pass: VerticesDrawConfig & { geometry?: GeometryType }): boolean {
+  return pass.geometry === "vertices" && verticesSpace(pass) === "clip";
+}
+
+/** Copies the configured blend/depth/cull of a render pass; absent fields stay absent. */
+export function resolvePassRenderSettings(pass: RenderPassSettings | undefined): RenderPassSettings {
+  return {
+    ...(pass?.blend !== undefined ? { blend: pass.blend } : {}),
+    ...(pass?.depth !== undefined ? { depth: { ...pass.depth } } : {}),
+    ...(pass?.cull !== undefined ? { cull: pass.cull } : {}),
+  };
+}
+
+export interface ResolvedDepthState {
+  test: boolean;
+  write: boolean;
+  compare: DepthCompareFunction;
+}
+
+/** Fixed-function state a render pass draws with, defaults applied. */
+export interface ResolvedRenderState {
+  blend: BlendMode;
+  /** Null for fullscreen geometry, which has no depth attachment. */
+  depth: ResolvedDepthState | null;
+  cull: CullMode;
+}
+
+/**
+ * Resolve blend/depth/cull for a pass. Meshes and world-space vertices
+ * depth-test and write with `less` when omitted; clip-space vertices draw in
+ * submission order unless the config turns the test on.
+ */
+export function resolveRenderState(
+  pass: VerticesDrawConfig & RenderPassSettings & { geometry?: GeometryType },
+): ResolvedRenderState {
+  const geometry = pass.geometry ?? DEFAULT_GEOMETRY;
+  const blend = pass.blend ?? DEFAULT_BLEND_MODE;
+  if (geometry === "fullscreen") {
+    return { blend, depth: null, cull: "none" };
+  }
+  const depth: DepthSettings = pass.depth ?? {};
+  return {
+    blend,
+    depth: {
+      test: depth.test ?? !isClipSpaceVertices({ ...pass, geometry }),
+      write: depth.write ?? true,
+      compare: depth.compare ?? DEFAULT_DEPTH_COMPARE,
+    },
+    cull: pass.cull ?? DEFAULT_CULL_MODE,
+  };
+}
+
+/**
+ * Depth the attachment is cleared to before a pass draws. A greater compare
+ * would never pass against the usual far value of 1, so it starts from 0.
+ */
+export function depthClearValue(state: ResolvedRenderState): number {
+  const compare = state.depth?.test ? state.depth.compare : undefined;
+  return compare === "greater" || compare === "greater-equal" ? 0 : 1;
+}
+
+/**
+ * Stable key for the vertices draw and render state a WebGPU render pipeline
+ * bakes in. vertexCount is a draw argument, so it is left out.
+ */
+export function renderPipelineStateKey(
+  pass: VerticesDrawConfig & RenderPassSettings & { geometry?: GeometryType },
+): string {
+  const state = resolveRenderState(pass);
+  const vertices = pass.geometry === "vertices" ? `${verticesTopology(pass)}/${verticesSpace(pass)}` : "";
+  const depth = state.depth ? `${state.depth.test}/${state.depth.write}/${state.depth.compare}` : "";
+  return [vertices, state.blend, depth, state.cull].join("|");
 }

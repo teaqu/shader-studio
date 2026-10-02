@@ -51,7 +51,8 @@ import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
-import { fullscreenTopology, fullscreenVertexCount, hasFullscreenDrawConfig } from "../types/Geometry";
+import { depthClearValue, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
+import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
@@ -830,6 +831,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       rgba16floatRenderable: true,
       rgba32floatRenderable: true,
       float32Filterable: this.device.features?.has?.("float32-filterable") === true,
+      float32Blendable: this.device.features?.has?.("float32-blendable") === true,
     });
     const graphMs = this.now() - graphStartedAt;
 
@@ -1059,7 +1061,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               passKind: pass.kind,
               ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
               ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
-              ...(pass.geometry === "fullscreen" && hasFullscreenDrawConfig(pass) ? { wrapFullscreenVertexIndex: true } : {}),
+              ...(pass.geometry === "vertices" ? { vertexSpace: verticesSpace(pass) } : {}),
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
@@ -2164,8 +2166,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.source,
       pass.geometry,
       pass.vertexSrc,
-      // The fullscreen vertex wrapper wraps vertexIndex for configured draws.
-      hasFullscreenDrawConfig(pass),
+      // World and clip space generate different vertices wrappers.
+      pass.geometry === "vertices" ? verticesSpace(pass) : null,
       commonCode,
       channels,
       storageLayout,
@@ -2218,14 +2220,15 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.output,
       pass.outputLayers,
       pass.resolvedOutputFormat,
-      // Primitive topology is baked into the render pipeline.
-      pass.kind === "render" ? fullscreenTopology(pass) : null,
+      // Topology, space, blend, depth and cull are baked into the render
+      // pipeline; vertexCount is only a draw argument.
+      pass.kind === "render" ? renderPipelineStateKey(pass) : null,
     ]);
   }
 
-  /** The loaded mesh a render pass draws; undefined for fullscreen or a model still loading. */
+  /** The loaded mesh a render pass draws; undefined for fullscreen, vertices, or a model still loading. */
   private resolvePassMesh(pass: RenderPassNode): WebGPUMeshResource | undefined {
-    if (!pass.geometry || pass.geometry === "fullscreen") {
+    if (!pass.geometry || pass.geometry === "fullscreen" || pass.geometry === "vertices") {
       return undefined;
     }
     return pass.modelPath
@@ -2235,8 +2238,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
   /** iVertexCount: the vertices the pass draws, matching the range of vertexIndex. */
   private resolvePassVertexCount(pass: RenderPassNode): number {
+    if (pass.geometry === "vertices") {
+      return verticesVertexCount(pass);
+    }
     return !pass.geometry || pass.geometry === "fullscreen"
-      ? fullscreenVertexCount(pass)
+      ? FULLSCREEN_VERTEX_COUNT
       : this.resolvePassMesh(pass)?.vertexCount ?? 0;
   }
 
@@ -2346,7 +2352,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
-        ...(pass.geometry === "fullscreen" && pass.topology ? { topology: pass.topology } : {}),
+        ...(pass.geometry === "vertices" ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) } : {}),
+        renderState: resolveRenderState(pass),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         vertexRange: compilation?.vertexRange,
@@ -2724,13 +2731,16 @@ export class WebGPURenderingEngine implements RenderingEngine {
           storeOp: "store",
         }],
         ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
-          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" },
+          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(resolveRenderState(pass)), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
       renderPass.setBindGroup(0, bindGroup);
       if (fullscreen) {
-        renderPass.draw(fullscreenVertexCount(pass));
+        renderPass.draw(FULLSCREEN_VERTEX_COUNT);
+      } else if (pass.geometry === "vertices") {
+        // Non-indexed with no vertex buffers; mainVertex places every vertex.
+        renderPass.draw(verticesVertexCount(pass));
       } else if (mesh) {
         renderPass.setVertexBuffer(0, mesh.vertexBuffer);
         renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);

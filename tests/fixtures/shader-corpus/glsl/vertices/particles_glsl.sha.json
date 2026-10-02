@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "passes": {
+    "Image": {
+      "vertex": "./particles_glsl.vert.glsl",
+      "geometry": {
+        "type": "vertices",
+        "vertexCount": 6000
+      },
+      "blend": "additive",
+      "depth": {
+        "write": false
+      }
+    }
+  }
+}

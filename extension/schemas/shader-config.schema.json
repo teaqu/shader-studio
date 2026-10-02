@@ -65,11 +65,26 @@
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
         },
+        "blend": {
+          "$ref": "#/definitions/BlendMode"
+        },
+        "depth": {
+          "$ref": "#/definitions/DepthSettings"
+        },
+        "cull": {
+          "$ref": "#/definitions/CullMode"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
         }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
+          "then": { "properties": { "depth": false, "cull": false } }
+        }
+      ],
       "additionalProperties": false
     },
     "BufferPass": {
@@ -90,6 +105,15 @@
         "geometry": {
           "$ref": "#/definitions/GeometryConfig"
         },
+        "blend": {
+          "$ref": "#/definitions/BlendMode"
+        },
+        "depth": {
+          "$ref": "#/definitions/DepthSettings"
+        },
+        "cull": {
+          "$ref": "#/definitions/CullMode"
+        },
         "vertex": {
           "type": "string",
           "description": "Path to the optional per-pass vertex shader hook source"
@@ -98,6 +122,12 @@
           "$ref": "#/definitions/BufferOutputFormat"
         }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "geometry": { "properties": { "type": { "const": "fullscreen" } } } } },
+          "then": { "properties": { "depth": false, "cull": false } }
+        }
+      ],
       "additionalProperties": false
     },
     "CommonPass": {
@@ -117,8 +147,16 @@
         {
           "type": "object",
           "required": ["type"],
+          "description": "One oversized triangle covering every pixel (three vertices).",
+          "properties": { "type": { "const": "fullscreen" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "description": "A non-indexed draw with no vertex buffers; mainVertex places every vertex.",
           "properties": {
-            "type": { "const": "fullscreen" },
+            "type": { "const": "vertices" },
             "vertexCount": {
               "type": "integer",
               "minimum": 1,
@@ -130,6 +168,11 @@
               "enum": ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"],
               "default": "triangle-list",
               "description": "How the drawn vertices are joined into primitives. Lines and points rasterise at 1px."
+            },
+            "space": {
+              "enum": ["world", "clip"],
+              "default": "world",
+              "description": "world: mainVertex writes object space and the orbit camera projects it, with depth. clip: mainVertex writes the final screen position, (-1,-1) bottom-left to (1,1) top-right, and the camera is ignored."
             }
           },
           "additionalProperties": false
@@ -151,6 +194,39 @@
           "additionalProperties": false
         }
       ]
+    },
+    "BlendMode": {
+      "type": "string",
+      "enum": ["none", "alpha", "premultiplied", "additive"],
+      "default": "none",
+      "description": "How this pass combines each fragment with what its own draw already wrote this frame (default: none)."
+    },
+    "DepthSettings": {
+      "type": "object",
+      "description": "Depth state for plane, cube, sphere, model and vertices geometry. Not allowed on fullscreen geometry.",
+      "properties": {
+        "test": {
+          "type": "boolean",
+          "description": "Discard fragments that fail the compare. Defaults to true, or false for vertices in clip space."
+        },
+        "write": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write the depth of fragments that pass. Defaults to true."
+        },
+        "compare": {
+          "enum": ["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"],
+          "default": "less",
+          "description": "Depth comparison used while test is on. Defaults to less."
+        }
+      },
+      "additionalProperties": false
+    },
+    "CullMode": {
+      "type": "string",
+      "enum": ["none", "back", "front"],
+      "default": "none",
+      "description": "Faces to discard; counter-clockwise triangles are front-facing. Not allowed on fullscreen geometry (default: none)."
     },
     "ComputePass": {
       "type": "object",

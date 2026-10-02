@@ -1,4 +1,4 @@
-export { ConfigValidator, validatePassGeometry } from './util/ConfigValidator';
+export { ConfigValidator, validatePassGeometry, validatePassRenderSettings } from './util/ConfigValidator';
 export { dedupeCompilerErrors, splitCompilerErrorBlocks, firstReportedErrorLine } from './util/CompilerErrorDedupe';
 export { firstUnterminatedStatementLine, truncateFunctionBodyAt, enclosingFunctionRange } from './util/StatementBreak';
 export type { CompilerErrorBlock } from './util/CompilerErrorDedupe';
