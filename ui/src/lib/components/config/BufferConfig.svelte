@@ -30,6 +30,7 @@
   import ComputePassControls from "./ComputePassControls.svelte";
   import PathInput from "./PathInput.svelte";
   import { getEditorOverlayVisible, setEditorOverlayVisible, setOverlayActiveFile } from "../../state/editorOverlayState.svelte";
+  import { rememberFullscreenDraw, takeFullscreenDraw } from "../../state/fullscreenDrawMemory.svelte";
   import type { AudioVideoController } from "../../AudioVideoController";
   import { listGlbMeshNames } from "../../../../../rendering/src/preview3d/GltfMeshLoader";
 
@@ -366,8 +367,13 @@
     if (type === 'fullscreen') {
       modelSelectionPending = false;
       const { geometry: _geometry, ...next } = config;
-      updateConfig(next as EditableConfig);
+      const remembered = takeFullscreenDraw(shaderPath, bufferName);
+      updateConfig((remembered ? { ...next, geometry: { type: 'fullscreen', ...remembered } } : next) as EditableConfig);
       return;
+    }
+    // Meshes reject vertexCount/topology; keep them for a switch back to fullscreen.
+    if (fullscreenGeometry) {
+      rememberFullscreenDraw(shaderPath, bufferName, { vertexCount: fullscreenGeometry.vertexCount, topology: fullscreenGeometry.topology });
     }
     if (type === 'model') {
       modelSelectionPending = true;

@@ -10,6 +10,7 @@ import {
   setEditorOverlayVisible,
   setOverlayActiveFile,
 } from '../../../lib/state/editorOverlayState.svelte';
+import { resetFullscreenDrawMemory } from '../../../lib/state/fullscreenDrawMemory.svelte';
 
 vi.mock('../../../../../rendering/src/preview3d/GltfMeshLoader', () => ({
   listGlbMeshNames: vi.fn().mockResolvedValue(['Body', 'Visor']),
@@ -136,6 +137,7 @@ describe('BufferConfig', () => {
   let mockPostMessage: FunctionMock;
 
   beforeEach(() => {
+    resetFullscreenDrawMemory();
     mockOnUpdate = vi.fn();
     mockGetWebviewUri = vi.fn();
     mockPostMessage = vi.fn();
@@ -691,6 +693,73 @@ describe('BufferConfig', () => {
         await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
 
         expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'model', path: './robot.glb' } });
+      });
+
+      it.each(['plane', 'cube', 'sphere'] as const)('restores the previous vertex count and topology when switching %s back to fullscreen', async (type) => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'line-strip' } });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: type } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'line-strip' } });
+        expect((getByLabelText('Vertices') as HTMLInputElement).value).toBe('6');
+        expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('line-strip');
+      });
+
+      it('restores the fields after abandoning a model selection', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 12 } });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 12 } });
+      });
+
+      it('restores the fields after a chosen model is switched back to fullscreen', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', topology: 'point-list' } });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', topology: 'point-list' } });
+      });
+
+      it('remembers the fields when the panel is closed and reopened on the mesh pass', async () => {
+        const first = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 9, topology: 'triangle-strip' } });
+        await fireEvent.change(first.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        first.unmount();
+
+        const reopened = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'cube' } });
+        await fireEvent.change(reopened.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 9, topology: 'triangle-strip' } });
+      });
+
+      it('does not carry remembered fields to another pass or shader', async () => {
+        const bufferA = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 9 } });
+        await fireEvent.change(bufferA.getByLabelText('Geometry'), { target: { value: 'cube' } });
+        bufferA.unmount();
+
+        const bufferB = renderPass({ path: 'b.glsl', inputs: {}, geometry: { type: 'cube' } }, 'BufferB');
+        await fireEvent.change(bufferB.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferB', { path: 'b.glsl', inputs: {} });
+        bufferB.unmount();
+
+        const otherShader = render(BufferConfig, {
+          bufferName: 'BufferA', config: { path: 'a.glsl', inputs: {}, geometry: { type: 'cube' } },
+          onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, shaderPath: '/other/shader.glsl',
+        });
+        await fireEvent.change(otherShader.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
+      });
+
+      it('drops geometry when switching back from a mesh with no remembered fields', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'sphere' } }, 'BufferC');
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferC', { path: 'a.glsl', inputs: {} });
       });
 
       it('clears a pending vertex count error when the geometry changes', async () => {

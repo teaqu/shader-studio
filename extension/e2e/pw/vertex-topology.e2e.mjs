@@ -137,6 +137,13 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect.poll(geometry).toEqual({ type: 'cube' });
       await expect(frame.getByLabel('Vertices')).toBeHidden();
       await expect(frame.getByLabel('Topology')).toBeHidden();
+
+      // Switching back to fullscreen restores the fields the mesh dropped.
+      await frame.getByLabel('Geometry').selectOption('fullscreen');
+      await expect.poll(geometry).toEqual({ type: 'fullscreen', vertexCount: 6, topology: 'triangle-strip' });
+      await expect(frame.getByLabel('Vertices')).toHaveValue('6');
+      await expect(frame.getByLabel('Topology')).toHaveValue('triangle-strip');
+      await expectHexagon(frame);
     });
 
     test('reports vertexCount on mesh geometry as a config error', async ({ vscode }) => {
