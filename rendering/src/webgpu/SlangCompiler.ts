@@ -23,12 +23,26 @@ export type SlangCompileResult =
 
 export type { SlangCompileOptions } from "./slangTypes";
 
+interface SharedGlobalSession {
+  globalSession: SlangGlobalSession;
+  target: number;
+}
+
+/**
+ * One global session per loaded slang-wasm module. slang-wasm does not give a
+ * deleted global session's stdlib memory back, so a session per compiler runs
+ * the shared module out of memory after about a dozen engines ("unreachable").
+ * The module itself lives for the page, so its session does too.
+ */
+const sharedGlobalSessions = new WeakMap<SlangModuleApi, SharedGlobalSession>();
+
 /**
  * Compiles user `.slang` render or compute source to WGSL via slang-wasm.
  *
- * The expensive global session (loads the Slang stdlib) is created once and
- * cached. A fresh per-compile session avoids module-name collisions across
- * recompiles. The slang module is injected so this is unit-testable with a fake.
+ * The expensive global session (loads the Slang stdlib) is created once per
+ * slang module and shared by every compiler on it. A fresh per-compile session
+ * avoids module-name collisions across recompiles. The slang module is
+ * injected so this is unit-testable with a fake.
  */
 export class SlangCompiler {
   private globalSession: SlangGlobalSession | null = null;
@@ -196,9 +210,12 @@ export class SlangCompiler {
     }
   }
 
-  /** Releases the cached global session when its owning renderer is disposed. */
+  /**
+   * Drops this compiler's reference to the shared global session. The session
+   * stays with its slang module for later compilers; deleting it would not
+   * return its memory.
+   */
   public dispose(): void {
-    deleteSlangHandle(this.globalSession);
     this.globalSession = null;
     this.wgslTargetValue = null;
   }
@@ -206,6 +223,12 @@ export class SlangCompiler {
   private ensureGlobalSession(): { globalSession: SlangGlobalSession; target: number } {
     if (this.globalSession && this.wgslTargetValue !== null) {
       return { globalSession: this.globalSession, target: this.wgslTargetValue };
+    }
+    const shared = sharedGlobalSessions.get(this.slang);
+    if (shared) {
+      this.globalSession = shared.globalSession;
+      this.wgslTargetValue = shared.target;
+      return shared;
     }
 
     const globalSession = this.slang.createGlobalSession();
@@ -223,6 +246,7 @@ export class SlangCompiler {
 
     this.globalSession = globalSession;
     this.wgslTargetValue = wgsl.value;
+    sharedGlobalSessions.set(this.slang, { globalSession, target: wgsl.value });
     return { globalSession, target: wgsl.value };
   }
 

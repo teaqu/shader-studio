@@ -151,7 +151,8 @@ describe("SlangCompiler", () => {
     expect(onDelete).toHaveBeenCalledExactlyOnceWith("session");
   });
 
-  it("releases the cached global WASM session when disposed", () => {
+  it("keeps the shared global WASM session alive when a compiler is disposed", () => {
+    // slang-wasm does not free a deleted global session, so it stays with its module.
     const onDelete = vi.fn();
     const compiler = new SlangCompiler(makeFakeSlang({ onDelete }));
 
@@ -159,7 +160,44 @@ describe("SlangCompiler", () => {
     compiler.dispose();
     compiler.dispose();
 
-    expect(onDelete.mock.calls.filter(([handle]) => handle === "globalSession")).toHaveLength(1);
+    expect(onDelete.mock.calls.filter(([handle]) => handle === "globalSession")).toHaveLength(0);
+  });
+
+  it("shares one global session between compilers on the same slang module", () => {
+    const slang = makeFakeSlang();
+    const spy = vi.spyOn(slang, "createGlobalSession");
+    const first = new SlangCompiler(slang);
+    first.compileImagePass("float4 mainImage(float2 c) { return 0; }");
+    first.dispose();
+
+    const second = new SlangCompiler(slang);
+    const result = second.compileImagePass("float4 mainImage(float2 c) { return 1; }");
+
+    expect(result.success).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a separate global session per slang module", () => {
+    const first = makeFakeSlang();
+    const second = makeFakeSlang();
+    const firstSpy = vi.spyOn(first, "createGlobalSession");
+    const secondSpy = vi.spyOn(second, "createGlobalSession");
+
+    new SlangCompiler(first).compileImagePass("a");
+    new SlangCompiler(second).compileImagePass("b");
+
+    expect(firstSpy).toHaveBeenCalledTimes(1);
+    expect(secondSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share a global session that has no WGSL target", () => {
+    const slang = makeFakeSlang({ targets: [{ name: "GLSL", value: 1 }] });
+    const spy = vi.spyOn(slang, "createGlobalSession");
+
+    expect(new SlangCompiler(slang).compileImagePass("a").success).toBe(false);
+    expect(new SlangCompiler(slang).compileImagePass("b").success).toBe(false);
+
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it.each(["plane", "cube", "sphere"] as const)(
