@@ -59,22 +59,25 @@ describe("resolvePassRenderSettings", () => {
     expect(resolvePassRenderSettings(undefined)).toEqual({});
     expect(resolvePassRenderSettings({})).toEqual({});
     const depth = { write: false };
-    const resolved = resolvePassRenderSettings({ blend: "additive", depth, cull: "back" });
-    expect(resolved).toEqual({ blend: "additive", depth: { write: false }, cull: "back" });
+    const clear = [0.1, 0.2, 0.3, 0.4] as const;
+    const resolved = resolvePassRenderSettings({ blend: "additive", clear, depth, cull: "back" });
+    expect(resolved).toEqual({ blend: "additive", clear: [0.1, 0.2, 0.3, 0.4], depth: { write: false }, cull: "back" });
+    expect(resolved.clear).not.toBe(clear);
     expect(resolved.depth).not.toBe(depth);
   });
 });
 
 describe("resolveRenderState", () => {
   it("gives fullscreen no depth state and no culling, keeping its blend", () => {
-    expect(resolveRenderState({ geometry: "fullscreen" })).toEqual({ blend: "none", depth: null, cull: "none" });
-    expect(resolveRenderState({})).toEqual({ blend: "none", depth: null, cull: "none" });
-    expect(resolveRenderState({ geometry: "fullscreen", blend: "alpha" })).toEqual({ blend: "alpha", depth: null, cull: "none" });
+    expect(resolveRenderState({ geometry: "fullscreen" })).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none" });
+    expect(resolveRenderState({})).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none" });
+    expect(resolveRenderState({ geometry: "fullscreen", blend: "alpha", clear: [1, 0, 0, 0] })).toEqual({ blend: "alpha", clear: [1, 0, 0, 0], depth: null, cull: "none" });
   });
 
   it.each(["plane", "cube", "sphere", "model", "vertices"] as const)("reproduces today's depth for %s when omitted", (geometry) => {
     expect(resolveRenderState({ geometry })).toEqual({
       blend: "none",
+      clear: [0, 0, 0, 1],
       depth: { test: true, write: true, compare: "less" },
       cull: "none",
     });
@@ -90,10 +93,12 @@ describe("resolveRenderState", () => {
     expect(resolveRenderState({
       geometry: "cube",
       blend: "premultiplied",
+      clear: [0.25, 0.5, 0.75, 0.5],
       depth: { test: false, write: false, compare: "greater-equal" },
       cull: "front",
     })).toEqual({
       blend: "premultiplied",
+      clear: [0.25, 0.5, 0.75, 0.5],
       depth: { test: false, write: false, compare: "greater-equal" },
       cull: "front",
     });
@@ -115,6 +120,10 @@ describe("renderPipelineStateKey", () => {
       renderPipelineStateKey({ ...base, cull: "back" }),
     ];
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("does not rebuild a pipeline for a clear-colour-only change", () => {
+    expect(renderPipelineStateKey(base)).toBe(renderPipelineStateKey({ ...base, clear: [1, 0, 0, 0] }));
   });
 
   it("ignores vertexCount, which is only a draw argument", () => {

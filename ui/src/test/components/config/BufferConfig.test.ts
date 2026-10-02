@@ -812,7 +812,7 @@ describe('BufferConfig', () => {
       });
     });
 
-    describe('blend, depth and cull', () => {
+    describe('blend, clear, depth and cull', () => {
       const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
         bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
       });
@@ -824,6 +824,8 @@ describe('BufferConfig', () => {
         const blend = getByLabelText('Blend') as HTMLSelectElement;
         expect(blend.value).toBe('none');
         expect(Array.from(blend.options).map((option) => option.value)).toEqual(['none', 'alpha', 'premultiplied', 'additive']);
+        expect((getByLabelText('Clear colour') as HTMLInputElement).value).toBe('#000000');
+        expect((getByLabelText('Clear alpha') as HTMLInputElement).value).toBe('1');
         expect(queryByLabelText('Depth test')).toBeNull();
         expect(queryByLabelText('Depth write')).toBeNull();
         expect(queryByLabelText('Compare')).toBeNull();
@@ -858,9 +860,11 @@ describe('BufferConfig', () => {
       });
 
       it('shows configured values', () => {
-        const { getByLabelText } = renderPass(cube({ blend: 'additive', depth: { test: false, write: false, compare: 'greater' }, cull: 'front' }));
+        const { getByLabelText } = renderPass(cube({ blend: 'additive', clear: [0.25, 0.5, 0.75, 0.5], depth: { test: false, write: false, compare: 'greater' }, cull: 'front' }));
 
         expect((getByLabelText('Blend') as HTMLSelectElement).value).toBe('additive');
+        expect((getByLabelText('Clear colour') as HTMLInputElement).value).toBe('#4080bf');
+        expect((getByLabelText('Clear alpha') as HTMLInputElement).value).toBe('0.5');
         expect((getByLabelText('Depth test') as HTMLInputElement).checked).toBe(false);
         expect((getByLabelText('Depth write') as HTMLInputElement).checked).toBe(false);
         expect((getByLabelText('Compare') as HTMLSelectElement).value).toBe('greater');
@@ -879,6 +883,22 @@ describe('BufferConfig', () => {
 
         await fireEvent.change(getByLabelText('Blend'), { target: { value: 'none' } });
 
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
+      });
+
+      it('writes a selected clear colour and removes opaque black again', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Clear colour'), { target: { value: '#ff8040' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', {
+          path: 'a.glsl', inputs: {}, clear: [1, 128 / 255, 64 / 255, 1],
+        });
+      });
+
+      it('writes clear alpha and removes the clear setting at its default', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, clear: [0, 0, 0, 0.5] });
+
+        await fireEvent.change(getByLabelText('Clear alpha'), { target: { value: '1' } });
         expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
       });
 

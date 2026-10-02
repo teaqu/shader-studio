@@ -1,11 +1,13 @@
 import {
   DEFAULT_BLEND_MODE,
+  DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
   type BlendMode,
+  type ClearColor,
   type CullMode,
   type DepthCompareFunction,
   type DepthSettings,
@@ -64,10 +66,11 @@ export function isClipSpaceVertices(pass: VerticesDrawConfig & { geometry?: Geom
   return pass.geometry === "vertices" && verticesSpace(pass) === "clip";
 }
 
-/** Copies the configured blend/depth/cull of a render pass; absent fields stay absent. */
+/** Copies the configured blend/clear/depth/cull of a render pass; absent fields stay absent. */
 export function resolvePassRenderSettings(pass: RenderPassSettings | undefined): RenderPassSettings {
   return {
     ...(pass?.blend !== undefined ? { blend: pass.blend } : {}),
+    ...(pass?.clear !== undefined ? { clear: [...pass.clear] as ClearColor } : {}),
     ...(pass?.depth !== undefined ? { depth: { ...pass.depth } } : {}),
     ...(pass?.cull !== undefined ? { cull: pass.cull } : {}),
   };
@@ -82,6 +85,7 @@ export interface ResolvedDepthState {
 /** Fixed-function state a render pass draws with, defaults applied. */
 export interface ResolvedRenderState {
   blend: BlendMode;
+  clear: ClearColor;
   /** Null for fullscreen geometry, which has no depth attachment. */
   depth: ResolvedDepthState | null;
   cull: CullMode;
@@ -97,12 +101,14 @@ export function resolveRenderState(
 ): ResolvedRenderState {
   const geometry = pass.geometry ?? DEFAULT_GEOMETRY;
   const blend = pass.blend ?? DEFAULT_BLEND_MODE;
+  const clear = pass.clear ?? DEFAULT_CLEAR_COLOR;
   if (geometry === "fullscreen") {
-    return { blend, depth: null, cull: "none" };
+    return { blend, clear, depth: null, cull: "none" };
   }
   const depth: DepthSettings = pass.depth ?? {};
   return {
     blend,
+    clear,
     depth: {
       test: depth.test ?? !isClipSpaceVertices({ ...pass, geometry }),
       write: depth.write ?? true,

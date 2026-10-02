@@ -68,6 +68,9 @@
         "blend": {
           "$ref": "#/definitions/BlendMode"
         },
+        "clear": {
+          "$ref": "#/definitions/ClearColor"
+        },
         "depth": {
           "$ref": "#/definitions/DepthSettings"
         },
@@ -107,6 +110,9 @@
         },
         "blend": {
           "$ref": "#/definitions/BlendMode"
+        },
+        "clear": {
+          "$ref": "#/definitions/ClearColor"
         },
         "depth": {
           "$ref": "#/definitions/DepthSettings"
@@ -200,6 +206,14 @@
       "enum": ["none", "alpha", "premultiplied", "additive"],
       "default": "none",
       "description": "How this pass combines each fragment with what its own draw already wrote this frame (default: none)."
+    },
+    "ClearColor": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 4,
+      "maxItems": 4,
+      "default": [0, 0, 0, 1],
+      "description": "RGBA colour this pass starts with each frame (default: opaque black)."
     },
     "DepthSettings": {
       "type": "object",

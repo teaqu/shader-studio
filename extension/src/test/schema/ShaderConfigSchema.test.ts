@@ -6,6 +6,7 @@ import {
   BLEND_MODES,
   CULL_MODES,
   DEFAULT_BLEND_MODE,
+  DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_VERTEX_COUNT,
@@ -132,10 +133,11 @@ suite('Shader config JSON schema', () => {
     assert.strictEqual(vertices.properties.vertexCount.default, DEFAULT_VERTEX_COUNT);
   });
 
-  test('keeps blend, depth and cull values in sync with the shared config types', () => {
-    const { BlendMode, DepthSettings, CullMode } = schema.definitions;
+  test('keeps blend, clear, depth and cull values in sync with the shared config types', () => {
+    const { BlendMode, ClearColor, DepthSettings, CullMode } = schema.definitions;
     assert.deepStrictEqual(BlendMode.enum, [...BLEND_MODES]);
     assert.strictEqual(BlendMode.default, DEFAULT_BLEND_MODE);
+    assert.deepStrictEqual(ClearColor.default, [...DEFAULT_CLEAR_COLOR]);
     assert.deepStrictEqual(DepthSettings.properties.compare.enum, [...DEPTH_COMPARE_FUNCTIONS]);
     assert.strictEqual(DepthSettings.properties.compare.default, DEFAULT_DEPTH_COMPARE);
     assert.deepStrictEqual(CullMode.enum, [...CULL_MODES]);
@@ -197,6 +199,19 @@ suite('Shader config JSON schema', () => {
     }
   });
 
+  test('accepts clear colours on Image and buffer passes of any geometry', () => {
+    for (const type of GEOMETRY_TYPES) {
+      const geometry = type === 'model' ? { type, path: './cat.glb' } : { type };
+      assertValid({ version: '1.0', passes: { Image: { geometry, clear: [0, 0.25, 0.5, 1] }, BufferA: { path: 'a.glsl', geometry, clear: [1, 0, 0, 0] } } });
+    }
+  });
+
+  test('rejects malformed and out-of-range clear colours', () => {
+    for (const clear of [false, [0, 0, 0], [0, 0, 0, 1, 1], [-0.1, 0, 0, 1], [0, 0, 0, 1.1], [0, 0, '0', 1]]) {
+      assertInvalid({ version: '1.0', passes: { Image: { clear } } }, 'data.passes.Image.clear');
+    }
+  });
+
   test('accepts depth and cull on every geometry except fullscreen', () => {
     for (const type of GEOMETRY_TYPES.filter((candidate) => candidate !== 'fullscreen')) {
       const geometry = type === 'model' ? { type, path: './cat.glb' } : { type };
@@ -241,8 +256,8 @@ suite('Shader config JSON schema', () => {
     assertInvalid({ version: '1.0', passes: { Image: { geometry, depth: { test: true, stencil: true } } } }, 'should NOT have additional properties');
   });
 
-  test('rejects blend, depth and cull on compute and Common passes', () => {
-    for (const setting of [{ blend: 'additive' }, { depth: { test: false } }, { cull: 'back' }]) {
+  test('rejects blend, clear, depth and cull on compute and Common passes', () => {
+    for (const setting of [{ blend: 'additive' }, { clear: [0, 0, 0, 1] }, { depth: { test: false } }, { cull: 'back' }]) {
       assertInvalid({
         version: '1.0',
         passes: { Image: {}, Sim: { type: 'compute', path: 'sim.slang', ...setting } },

@@ -43,6 +43,7 @@ describe("WebGLRenderState", () => {
   const asGl = () => gl as unknown as WebGL2RenderingContext;
   const state = (overrides: Partial<ResolvedRenderState> = {}): ResolvedRenderState => ({
     blend: "none",
+    clear: [0, 0, 0, 1],
     depth: { test: true, write: true, compare: "less" },
     cull: "none",
     ...overrides,

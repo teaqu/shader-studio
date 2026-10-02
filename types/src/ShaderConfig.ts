@@ -126,6 +126,10 @@ export const BLEND_MODES = ["none", "alpha", "premultiplied", "additive"] as con
 export type BlendMode = (typeof BLEND_MODES)[number];
 export const DEFAULT_BLEND_MODE: BlendMode = "none";
 
+/** RGBA colour a render pass starts with each frame. Components are in [0, 1]. */
+export type ClearColor = readonly [number, number, number, number];
+export const DEFAULT_CLEAR_COLOR: ClearColor = [0, 0, 0, 1];
+
 export const DEPTH_COMPARE_FUNCTIONS = ["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"] as const;
 export type DepthCompareFunction = (typeof DEPTH_COMPARE_FUNCTIONS)[number];
 export const DEFAULT_DEPTH_COMPARE: DepthCompareFunction = "less";
@@ -144,6 +148,7 @@ export const DEFAULT_CULL_MODE: CullMode = "none";
 /** Fixed-function state shared by Image and buffer passes, siblings of `geometry`. */
 export interface RenderPassSettings {
   blend?: BlendMode;
+  clear?: ClearColor;
   depth?: DepthSettings;
   cull?: CullMode;
 }
@@ -171,6 +176,7 @@ export interface CommonPass {
   geometry?: never;
   vertex?: never;
   blend?: never;
+  clear?: never;
   depth?: never;
   cull?: never;
 }
@@ -205,6 +211,7 @@ export interface ComputePass {
     geometry?: never;
     vertex?: never;
     blend?: never;
+    clear?: never;
     depth?: never;
     cull?: never;
 }

@@ -185,7 +185,7 @@ describe("ConfigValidator", () => {
         });
       });
 
-      describe("blend, depth and cull", () => {
+      describe("blend, clear, depth and cull", () => {
         const image = (pass: Record<string, unknown>) =>
           ConfigValidator.validateConfig({ version: "1.0", passes: { Image: pass } } as never);
         const buffer = (pass: Record<string, unknown>) =>
@@ -213,6 +213,17 @@ describe("ConfigValidator", () => {
         it.each(["multiply", "Additive", "", null, true, 1, ["alpha"], { mode: "alpha" }])("rejects blend %s", (blend) => {
           expect(image({ blend })).toEqual({ isValid: false, errors: ["Image pass blend must be one of: none, alpha, premultiplied, additive"] });
           expect(buffer({ blend })).toEqual({ isValid: false, errors: ["BufferA pass blend must be one of: none, alpha, premultiplied, additive"] });
+        });
+
+        it("accepts an RGBA clear colour on every render geometry", () => {
+          expect(image({ clear: [0, 0.25, 0.5, 1] })).toEqual(valid);
+          for (const geometry of nonFullscreen) {
+            expect(buffer({ geometry, clear: [1, 0, 0.5, 0] })).toEqual(valid);
+          }
+        });
+
+        it.each([false, null, [0, 0, 0], [0, 0, 0, 1, 1], [-0.1, 0, 0, 1], [0, 0, 0, 1.1], [0, 0, "0", 1]])("rejects clear %j", (clear) => {
+          expect(image({ clear }).errors).toEqual(["Image pass clear must be four numbers from 0 to 1"]);
         });
 
         it("accepts every depth combination on non-fullscreen geometry", () => {
@@ -288,7 +299,7 @@ describe("ConfigValidator", () => {
             .toEqual(["Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model"]);
         });
 
-        it.each([["blend", "additive"], ["depth", { test: false }], ["cull", "back"]])("rejects %s on compute passes", (field, value) => {
+        it.each([["blend", "additive"], ["clear", [0, 0, 0, 0]], ["depth", { test: false }], ["cull", "back"]])("rejects %s on compute passes", (field, value) => {
           const result = ConfigValidator.validateConfig({
             version: "1.0",
             passes: { Image: {}, Sim: { type: "compute", path: "sim.slang", [field]: value } },
@@ -296,7 +307,7 @@ describe("ConfigValidator", () => {
           expect(result).toEqual({ isValid: false, errors: [`Sim compute pass cannot define ${field}`] });
         });
 
-        it.each([["blend", "none"], ["depth", {}], ["cull", "none"]])("rejects %s on the common pass", (field, value) => {
+        it.each([["blend", "none"], ["clear", [0, 0, 0, 1]], ["depth", {}], ["cull", "none"]])("rejects %s on the common pass", (field, value) => {
           const result = ConfigValidator.validateConfig({
             version: "1.0",
             passes: { Image: {}, common: { path: "common.glsl", [field]: value } },
@@ -308,7 +319,7 @@ describe("ConfigValidator", () => {
           expect(validatePassRenderSettings(undefined, "Image")).toEqual([]);
           expect(validatePassRenderSettings(null, "Image")).toEqual([]);
           expect(validatePassRenderSettings({}, "Image")).toEqual([]);
-          expect(validatePassRenderSettings({ geometry: { type: "cube" }, blend: "alpha", depth: { write: false }, cull: "back" }, "BufferA")).toEqual([]);
+          expect(validatePassRenderSettings({ geometry: { type: "cube" }, blend: "alpha", clear: [0, 0, 0, 0], depth: { write: false }, cull: "back" }, "BufferA")).toEqual([]);
           expect(validatePassRenderSettings({ cull: "back" }, "Image")).toEqual(["Image pass cull is not supported for fullscreen geometry"]);
           expect(validatePassRenderSettings({ type: "compute", path: "c.slang", blend: "alpha" }, "Sim")).toEqual(["Sim compute pass cannot define blend"]);
           expect(validatePassRenderSettings({ path: "common.glsl", cull: "back" }, "common")).toEqual(["common pass cannot define cull"]);

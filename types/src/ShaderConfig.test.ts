@@ -3,6 +3,7 @@ import {
   BLEND_MODES,
   CULL_MODES,
   DEFAULT_BLEND_MODE,
+  DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_VERTEX_COUNT,
@@ -64,6 +65,10 @@ describe("ShaderConfig render settings", () => {
     expect(DEFAULT_BLEND_MODE).toBe("none");
   });
 
+  it("defaults pass clear colour to opaque black", () => {
+    expect(DEFAULT_CLEAR_COLOR).toEqual([0, 0, 0, 1]);
+  });
+
   it("lists every WebGPU depth compare function with less as the default", () => {
     expect(DEPTH_COMPARE_FUNCTIONS).toEqual(["never", "less", "equal", "less-equal", "greater", "not-equal", "greater-equal", "always"]);
     expect(DEFAULT_DEPTH_COMPARE).toBe("less");
@@ -78,9 +83,11 @@ describe("ShaderConfig render settings", () => {
     expectTypeOf<ImagePass>().toMatchTypeOf<RenderPassSettings>();
     expectTypeOf<BufferPass>().toMatchTypeOf<RenderPassSettings>();
     expectTypeOf<ComputePass["blend"]>().toEqualTypeOf<undefined>();
+    expectTypeOf<ComputePass["clear"]>().toEqualTypeOf<undefined>();
     expectTypeOf<ComputePass["depth"]>().toEqualTypeOf<undefined>();
     expectTypeOf<ComputePass["cull"]>().toEqualTypeOf<undefined>();
     expectTypeOf<CommonPass["blend"]>().toEqualTypeOf<undefined>();
+    expectTypeOf<CommonPass["clear"]>().toEqualTypeOf<undefined>();
     expectTypeOf<CommonPass["depth"]>().toEqualTypeOf<undefined>();
     expectTypeOf<CommonPass["cull"]>().toEqualTypeOf<undefined>();
   });

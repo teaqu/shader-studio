@@ -2723,15 +2723,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      const renderState = resolveRenderState(pass);
+      const [clearR, clearG, clearB, clearA] = renderState.clear;
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
           view: targetView,
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
           loadOp: "clear",
           storeOp: "store",
         }],
         ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
-          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(resolveRenderState(pass)), depthLoadOp: "clear", depthStoreOp: "store" },
+          depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },
         } : {}),
       });
       renderPass.setPipeline(pipeline.getPipeline()!);

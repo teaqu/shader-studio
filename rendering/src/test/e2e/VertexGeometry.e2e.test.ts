@@ -505,6 +505,27 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s blending", (language) => {
     expectGrey(pixelAt(await render(language, program(language, undefined, undefined, { blend: "alpha" }, image)), 8, 8), 128, "alpha");
     expectGrey(pixelAt(await render(language, program(language, undefined, undefined, {}, image)), 8, 8), 255, "none");
   });
+
+  it("uses the configured clear colour behind uncovered geometry", { timeout: 30_000 }, async () => {
+    const region = await render(language, program(
+      language,
+      placePoints3(language, left),
+      { type: "vertices", vertexCount: 6, space: "clip" },
+      { clear: [0.25, 0.5, 0.75, 1] },
+    ));
+    expect(pixelAt(region, 14, 2)).toEqual([64, 128, 191, 255]);
+  });
+
+  it("blends fullscreen fragments over the configured clear colour", { timeout: 30_000 }, async () => {
+    const region = await render(language, program(
+      language,
+      undefined,
+      undefined,
+      { blend: "additive", clear: [0.25, 0.25, 0.25, 0] },
+      greyImage(language, 0.25, 1),
+    ));
+    expectGrey(pixelAt(region, 8, 8), 128, "custom clear");
+  });
 });
 
 /** A counter-clockwise triangle on the left half and a clockwise one on the right, as seen on screen. */
@@ -581,6 +602,34 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s blending into a float buff
     slang: "float4 mainImage(float2 coord) { return float4(sample2D(iChannel0.texture, iChannel0.sampler, coord / iResolution.xy).rgb * 0.5, 1.0); }",
     wgsl: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(sample2D(iChannel0Texture, iChannel0Sampler, coord / iResolution.xy).rgb * 0.5, 1.0); }",
   };
+  const BUFFER_ALPHA: Record<ShaderLanguage, string> = {
+    glsl: "void mainImage(out vec4 color, in vec2 coord) { float a = texture(iChannel0, coord / iResolution.xy).a; color = vec4(vec3(a), 1.0); }",
+    slang: "float4 mainImage(float2 coord) { float a = sample2D(iChannel0.texture, iChannel0.sampler, coord / iResolution.xy).a; return float4(a, a, a, 1); }",
+    wgsl: "fn mainImage(coord: vec2f) -> vec4f { let a = sample2D(iChannel0Texture, iChannel0Sampler, coord / iResolution.xy).a; return vec4f(a, a, a, 1.0); }",
+  };
+
+  it("preserves clear alpha in a buffer texture", { timeout: 30_000 }, async () => {
+    const shader: ShaderProgram = {
+      image: BUFFER_ALPHA[language],
+      buffers: {
+        BufferA: WHITE_IMAGE[language],
+        [`${VERTEX_PASS_PREFIX}BufferA`]: placePoints3(language, rectangle(-0.9, -0.5, -0.1, 0.5)),
+      },
+      config: {
+        version: "1",
+        passes: {
+          BufferA: {
+            path: `buffer-a.${language}`,
+            vertex: `buffer-a.vert.${language}`,
+            geometry: { type: "vertices", vertexCount: 6, space: "clip" },
+            clear: [0, 0, 0, 0.5],
+          },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA", filter: "nearest" } } },
+        },
+      },
+    };
+    expectGrey(pixelAt(await render(language, shader), 12, 8), 128, "clear alpha");
+  });
 
   it.each([undefined, "rgba32float", "rgba16float"] as const)(
     "sums overlapping shapes past 1.0 with additive blending (outputFormat %s)",

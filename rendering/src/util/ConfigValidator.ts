@@ -11,7 +11,7 @@ import {
 } from "@shader-studio/types";
 
 const VERTEX_FIELDS = ["vertexCount", "topology", "space"] as const;
-const RENDER_SETTING_FIELDS = ["blend", "depth", "cull"] as const;
+const RENDER_SETTING_FIELDS = ["blend", "clear", "depth", "cull"] as const;
 const DEPTH_FLAGS = ["test", "write"] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -107,6 +107,14 @@ function validateDepth(depth: unknown, passName: string, errors: string[]): void
   }
 }
 
+function validateClear(clear: unknown, passName: string, errors: string[]): void {
+  if (!Array.isArray(clear) || clear.length !== 4 || clear.some((component) => (
+    typeof component !== "number" || !Number.isFinite(component) || component < 0 || component > 1
+  ))) {
+    errors.push(`${passName} pass clear must be four numbers from 0 to 1`);
+  }
+}
+
 /**
  * Geometry plus blend/depth/cull errors for one pass. Compute and common
  * passes reject the render settings; fullscreen geometry, including an
@@ -131,6 +139,9 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
   }
   if (pass.blend !== undefined && !isOneOf(BLEND_MODES, pass.blend)) {
     errors.push(`${passName} pass blend must be one of: ${BLEND_MODES.join(", ")}`);
+  }
+  if (pass.clear !== undefined) {
+    validateClear(pass.clear, passName, errors);
   }
   if (pass.depth !== undefined) {
     validateDepth(pass.depth, passName, errors);

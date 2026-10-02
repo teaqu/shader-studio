@@ -230,6 +230,8 @@ not controlled by this field. In the Config panel, **Output format** appears at
 the bottom of buffer and compute pass settings. Leave it on **Auto** unless you
 want to trade precision for lower memory use with 16-bit storage.
 
+Image and buffer passes also accept `clear: [r, g, b, a]`. Components range from 0 to 1; the default is opaque black, `[0, 0, 0, 1]`. A transparent clear such as `[0, 0, 0, 0]` is useful for buffer layers that will be alpha-composited later. Compute and Common passes do not accept `clear`.
+
 ## Passes
 
 | Pass | Description |

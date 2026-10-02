@@ -108,20 +108,25 @@ Out-of-range counts, other topologies, and any of these fields on fullscreen, pl
 
 ## Render Settings
 
-Image and buffer passes have three more settings next to `geometry`, under **Rendering** in the config panel. Compute and Common passes do not accept them.
+Image and buffer passes have render settings next to `geometry`, under **Rendering** in the config panel. Compute and Common passes do not accept them.
 
 ```json
 "Image": {
   "geometry": { "type": "vertices", "vertexCount": 6000 },
+  "clear": [0, 0, 0, 0],
   "blend": "additive",
   "depth": { "test": true, "write": false, "compare": "less" },
   "cull": "back"
 }
 ```
 
+### Clear Colour
+
+`clear` is the RGBA colour the pass starts with each frame. Its four components range from 0 to 1, and the default is opaque black, `[0, 0, 0, 1]`. Use `[0, 0, 0, 0]` for a transparent layer that a later pass can composite by alpha. The setting works with every geometry, including fullscreen, and is applied before blending.
+
 ### Blend
 
-`blend` decides what happens when a pass draws over a pixel it already drew this frame. Each pass starts every frame cleared to opaque black, so blending only combines the pass's own shapes.
+`blend` decides what happens when a pass draws over a pixel it already drew this frame. Each pass starts every frame with its `clear` colour, so blending combines shapes with that background and with earlier shapes in the same draw.
 
 | Value | Result | Use it for |
 |-------|--------|-----------|

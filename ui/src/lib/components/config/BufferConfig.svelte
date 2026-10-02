@@ -19,12 +19,14 @@
     VertexTopology,
     VertexSpace,
     BlendMode,
+    ClearColor,
     CullMode,
     DepthCompareFunction,
     DepthSettings,
   } from "@shader-studio/types";
   import {
     DEFAULT_BLEND_MODE,
+    DEFAULT_CLEAR_COLOR,
     DEFAULT_CULL_MODE,
     DEFAULT_DEPTH_COMPARE,
     DEFAULT_VERTEX_COUNT,
@@ -132,14 +134,18 @@
     !modelGeometry && config.geometry?.type === 'vertices' ? config.geometry : undefined,
   );
   const selectedGeometry = $derived<GeometryType>(modelGeometry ? 'model' : config.geometry?.type ?? 'fullscreen');
-  /** Blend/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
+  /** Blend/clear/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
   const renderState = $derived(resolveRenderState({
     geometry: selectedGeometry,
     ...(verticesGeometry?.space ? { space: verticesGeometry.space } : {}),
     ...('blend' in config && config.blend ? { blend: config.blend } : {}),
+    ...('clear' in config && config.clear ? { clear: config.clear } : {}),
     ...('depth' in config && config.depth ? { depth: config.depth } : {}),
     ...('cull' in config && config.cull ? { cull: config.cull } : {}),
   }));
+  const clearRgbHex = $derived(`#${renderState.clear.slice(0, 3)
+    .map((component) => Math.round(component * 255).toString(16).padStart(2, '0'))
+    .join('')}`);
   let vertexCountError = $state<string | null>(null);
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
@@ -377,7 +383,7 @@
     updateBufferResolution(undefined);
   }
 
-  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; depth?: DepthSettings; cull?: CullMode };
+  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; clear?: ClearColor; depth?: DepthSettings; cull?: CullMode };
 
   /** Drops keys whose value is undefined so defaults never reach the config file. */
   function withoutUndefined<T extends object>(value: T): Partial<T> {
@@ -458,6 +464,30 @@
 
   function handleBlendChange(event: Event) {
     updateRenderSetting('blend', (event.currentTarget as HTMLSelectElement).value as BlendMode, DEFAULT_BLEND_MODE);
+  }
+
+  function updateClear(clear: ClearColor) {
+    const current = config as RenderSettingsConfig;
+    const { clear: _clear, ...rest } = current;
+    updateConfig((clear.every((component, index) => component === DEFAULT_CLEAR_COLOR[index])
+      ? rest
+      : { ...rest, clear }) as EditableConfig);
+  }
+
+  function handleClearColorChange(event: Event) {
+    const hex = (event.currentTarget as HTMLInputElement).value;
+    updateClear([
+      Number.parseInt(hex.slice(1, 3), 16) / 255,
+      Number.parseInt(hex.slice(3, 5), 16) / 255,
+      Number.parseInt(hex.slice(5, 7), 16) / 255,
+      renderState.clear[3],
+    ]);
+  }
+
+  function handleClearAlphaChange(event: Event) {
+    const parsed = Number((event.currentTarget as HTMLInputElement).value);
+    const alpha = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : renderState.clear[3];
+    updateClear([renderState.clear[0], renderState.clear[1], renderState.clear[2], alpha]);
   }
 
   function handleCullChange(event: Event) {
@@ -796,6 +826,14 @@
             <option value="premultiplied">Premultiplied alpha</option>
             <option value="additive">Additive</option>
           </select>
+        </div>
+        <div class="resolution-row">
+          <label class="resolution-label" for="clear-color-{bufferName}">Clear colour</label>
+          <input id="clear-color-{bufferName}" type="color" value={clearRgbHex} onchange={handleClearColorChange} />
+        </div>
+        <div class="resolution-row">
+          <label class="resolution-label" for="clear-alpha-{bufferName}">Clear alpha</label>
+          <input id="clear-alpha-{bufferName}" type="number" min="0" max="1" step="0.05" value={renderState.clear[3]} onchange={handleClearAlphaChange} />
         </div>
         {#if renderState.depth}
           <div class="resolution-row">

@@ -113,6 +113,18 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     expect(renderPass.setVertexBuffer).not.toHaveBeenCalled();
   });
 
+  it("uses the configured pass clear colour", async () => {
+    const { engine, beginRenderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config(undefined, { clear: [0.25, 0.5, 0.75, 0.5] }), imagePath);
+
+    engine.render(1000);
+
+    expect(beginRenderPass.mock.calls[0][0].colorAttachments?.[0]).toMatchObject({
+      clearValue: { r: 0.25, g: 0.5, b: 0.75, a: 0.5 },
+      loadOp: "clear",
+    });
+  });
+
   it("treats explicit fullscreen geometry like the default", async () => {
     const { engine, renderPass } = engineHarness(language);
     await engine.compileShaderPipeline("// image", config({ type: "fullscreen" }), imagePath);
@@ -331,7 +343,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     await engine.compileShaderPipeline("// image", config({ type: "vertices" }), imagePath);
     await engine.compileShaderPipeline("// image", config(
       { type: "vertices", topology: "triangle-list", space: "world" },
-      { blend: "none", depth: { test: true, write: true, compare: "less" }, cull: "none" },
+      { blend: "none", clear: [0, 0, 0, 1], depth: { test: true, write: true, compare: "less" }, cull: "none" },
     ), imagePath);
 
     expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);

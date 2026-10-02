@@ -60,9 +60,9 @@ export class PassRenderer {
 
   private drawFullscreen(passConfig: Pass, state: ResolvedRenderState): void {
     // A vertex hook may leave pixels uncovered, and blending reads the
-    // target; clear to the opaque black WebGPU's render pass load op produces.
-    if (passConfig.vertexSrc?.trim() || state.blend !== "none") {
-      this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+    // target; clear to the same configured colour as WebGPU's render pass.
+    if (passConfig.vertexSrc?.trim() || state.blend !== "none" || passConfig.clear !== undefined) {
+      this.renderer.Clear(this.renderer.CLEAR.Color, [...state.clear], 1, 0);
     }
     // The vertex stage derives the oversized triangle from gl_VertexID.
     this.renderer.DrawPrimitive(this.renderer.PRIMTYPE.TRIANGLES, 3, false, 1);
@@ -272,7 +272,7 @@ export class PassRenderer {
   private clearColorAndDepth(state: ResolvedRenderState): void {
     this.renderer.Clear(
       this.renderer.CLEAR.Color | this.renderer.CLEAR.Zbuffer,
-      [0, 0, 0, 1],
+      [...state.clear],
       depthClearValue(state),
       0,
     );

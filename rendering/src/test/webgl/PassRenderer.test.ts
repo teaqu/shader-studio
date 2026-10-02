@@ -238,6 +238,18 @@ describe("PassRenderer", () => {
       expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
     });
 
+    it("clears a fullscreen pass when it has a custom clear colour", () => {
+      passRenderer.renderPass(
+        { geometry: "fullscreen", name: "Clear", shaderSrc: "", inputs: {}, clear: [0.25, 0.5, 0.75, 0.5] },
+        null,
+        createMockShader(),
+        defaultUniforms,
+      );
+
+      expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color, [0.25, 0.5, 0.75, 0.5], 1, 0);
+      expect(order(mockRenderer.Clear)).toBeLessThan(order(mockRenderer.DrawPrimitive));
+    });
+
     it.each(["alpha", "premultiplied", "additive"] as const)(
       "blends a fullscreen pass with %s after clearing to opaque black, then restores GL state",
       (blend) => {
