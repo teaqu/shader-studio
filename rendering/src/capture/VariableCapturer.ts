@@ -10,6 +10,9 @@ import { resolveBufferSamplerSettings } from '../util/TextureBindingResolver';
 import { WebGLSamplerCache } from '../webgl/WebGLSamplerCache';
 import type { StorageBindingNode } from '../types/PassGraph';
 import { CaptureErrorLog, type CaptureError } from "./CaptureErrorLog";
+import type { CameraMatrices } from "../preview3d/OrbitCamera";
+
+const IDENTITY_MATRIX = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export interface CaptureUniforms {
   time: number;
@@ -25,6 +28,8 @@ export interface CaptureUniforms {
   vertexCount?: number;
   /** iInstanceCount of the captured pass; capture draws one instance, so iInstanceIndex is 0. */
   instanceCount?: number;
+  /** Orbit-camera matrices of the captured pass (iViewMatrix, iProjectionMatrix, iViewProjection); identity when absent. */
+  camera?: CameraMatrices;
   channelTime?: number[];
   channelLoaded?: number[];
   sampleRate?: number;
@@ -717,6 +722,9 @@ export class VariableCapturer implements IVariableCapturer {
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
     gl.uniform1i(gl.getUniformLocation(program, 'iVertexCount'), uniforms.vertexCount ?? 0);
     gl.uniform1i(gl.getUniformLocation(program, 'iInstanceCount'), uniforms.instanceCount ?? DEFAULT_INSTANCE_COUNT);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iViewMatrix'), false, uniforms.camera?.view ?? IDENTITY_MATRIX);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iProjectionMatrix'), false, uniforms.camera?.projection ?? IDENTITY_MATRIX);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'iViewProjection'), false, uniforms.camera?.viewProjection ?? IDENTITY_MATRIX);
 
     // Set custom uniforms from script
     for (const u of this.customUniforms) {

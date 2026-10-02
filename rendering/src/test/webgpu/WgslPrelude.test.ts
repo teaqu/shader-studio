@@ -36,6 +36,7 @@ const WGSL_SCALAR_LAYOUT: Record<string, { align: number; size: number }> = {
   "vec2<u32>": { align: 8, size: 8 },
   "vec3<u32>": { align: 16, size: 12 },
   "vec4<u32>": { align: 16, size: 16 },
+  "mat4x4<f32>": { align: 16, size: 64 },
 };
 
 function alignTo(value: number, alignment: number): number {
@@ -303,6 +304,17 @@ describe("wrapWgslImageSource entry points", () => {
       expect(source).toContain("  iVertexCount = _ss_u.vertexCount.x;");
       expect(source).toContain("var<private> iVertexUv: vec2<f32>;");
       expect(source).toContain("var<private> iFrontFacing: bool;");
+    });
+  });
+
+  describe("camera matrices", () => {
+    it("declares the matrices after vertexCount and copies them into private globals", () => {
+      const { source } = wrapWgslImageSource(IMAGE);
+      expect(source).toContain("  vertexCount: vec4<u32>,\n  viewMatrix: mat4x4<f32>,\n  projectionMatrix: mat4x4<f32>,\n  viewProjection: mat4x4<f32>,\n");
+      for (const [name, field] of [["iViewMatrix", "viewMatrix"], ["iProjectionMatrix", "projectionMatrix"], ["iViewProjection", "viewProjection"]]) {
+        expect(source).toContain(`var<private> ${name}: mat4x4<f32>;`);
+        expect(source).toContain(`  ${name} = _ss_u.${field};`);
+      }
     });
   });
 
@@ -731,6 +743,9 @@ describe("wrapWgslImageSource golden module", () => {
         cameraPos: vec4<f32>,
         cameraDir: vec4<f32>,
         vertexCount: vec4<u32>,
+        viewMatrix: mat4x4<f32>,
+        projectionMatrix: mat4x4<f32>,
+        viewProjection: mat4x4<f32>,
         custom_myGain: vec4<f32>,
         custom_myFlag: i32,
       }
@@ -748,6 +763,9 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iCameraDir: vec3<f32>;
       var<private> iVertexCount: u32;
       var<private> iInstanceCount: u32;
+      var<private> iViewMatrix: mat4x4<f32>;
+      var<private> iProjectionMatrix: mat4x4<f32>;
+      var<private> iViewProjection: mat4x4<f32>;
       var<private> iInstanceIndex: u32;
       var<private> iVertexUv: vec2<f32>;
       var<private> iWorldPosition: vec3<f32>;
@@ -770,6 +788,9 @@ describe("wrapWgslImageSource golden module", () => {
         iCameraDir = _ss_u.cameraDir.xyz;
         iVertexCount = _ss_u.vertexCount.x;
         iInstanceCount = _ss_u.vertexCount.y;
+        iViewMatrix = _ss_u.viewMatrix;
+        iProjectionMatrix = _ss_u.projectionMatrix;
+        iViewProjection = _ss_u.viewProjection;
         myGain = _ss_u.custom_myGain;
         myFlag = _ss_u.custom_myFlag != 0;
         _ss_initChannels();

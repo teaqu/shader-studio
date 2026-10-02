@@ -3,6 +3,7 @@ import type { GeometryConfig, RenderPassSettings, ShaderConfig } from "@shader-s
 import { WebGPURenderingEngine } from "../../webgpu/WebGPURenderingEngine";
 import { sharedSlangWgslCache } from "../../webgpu/SlangWgslCache";
 import { UNIFORM_OFFSETS } from "../../webgpu/SlangPrelude";
+import { OrbitCamera } from "../../preview3d/OrbitCamera";
 
 const assets = { scriptUrl: "slang.js", wasmUrl: "slang.wasm" };
 
@@ -93,6 +94,19 @@ function writtenInstanceCounts(device: ReturnType<typeof engineHarness>["device"
     .map(([, , data]) => data)
     .filter((data): data is ArrayBuffer => data instanceof ArrayBuffer && data.byteLength > UNIFORM_OFFSETS.iVertexCount)
     .map((data) => new DataView(data).getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true));
+}
+
+/** The three camera matrices from each written ShaderToy uniform block. */
+function writtenCameraMatrices(device: ReturnType<typeof engineHarness>["device"]): { view: number[]; projection: number[]; viewProjection: number[] }[] {
+  const matrix = (data: ArrayBuffer, offset: number) => Array.from(new Float32Array(data, offset, 16));
+  return (device.queue.writeBuffer.mock.calls as unknown as [unknown, number, ArrayBuffer | ArrayBufferView][])
+    .map(([, , data]) => data)
+    .filter((data): data is ArrayBuffer => data instanceof ArrayBuffer && data.byteLength >= UNIFORM_OFFSETS.iViewProjection + 64)
+    .map((data) => ({
+      view: matrix(data, UNIFORM_OFFSETS.iViewMatrix),
+      projection: matrix(data, UNIFORM_OFFSETS.iProjectionMatrix),
+      viewProjection: matrix(data, UNIFORM_OFFSETS.iViewProjection),
+    }));
 }
 
 function primitiveStates(device: ReturnType<typeof engineHarness>["device"]): GPUPrimitiveState[] {
@@ -418,6 +432,43 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     const fullscreen = engineHarness(language);
     await fullscreen.engine.compileShaderPipeline("// image", config(), imagePath);
     expect(fullscreen.engine.getCaptureUniforms().vertexCount).toBe(3);
+  });
+
+  it.each([
+    ["fullscreen", undefined],
+    ["clip-space vertices", { type: "vertices", space: "clip" }],
+  ] as const)("writes the orbit camera matrices with WebGPU depth for %s passes", async (_name, geometry) => {
+    const { engine, device } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config(geometry as GeometryConfig | undefined), imagePath);
+
+    engine.render(1000);
+
+    const [written] = writtenCameraMatrices(device);
+    const camera = new OrbitCamera().getMatrices(320 / 180, "webgpu");
+    expect(written.view).toEqual(Array.from(camera.view));
+    expect(written.projection).toEqual(Array.from(camera.projection));
+    expect(written.viewProjection).toEqual(Array.from(camera.viewProjection));
+  });
+
+  it("projects meshes with the iViewProjection it exposes", async () => {
+    const { engine, device } = engineHarness(language);
+    const mesh = { vertexBuffer: { id: "vb" }, indexBuffer: { id: "ib" }, indexFormat: "uint16", indexCount: 36, vertexCount: 24 };
+    (engine as unknown as { meshResources: unknown }).meshResources = { get: vi.fn(() => mesh), getModel: vi.fn(), dispose: vi.fn() };
+    await engine.compileShaderPipeline("// image", config({ type: "cube" }), imagePath);
+
+    engine.render(1000);
+
+    const meshBlock = (device.queue.writeBuffer.mock.calls as unknown as [unknown, number, ArrayBufferView][])
+      .map(([, , data]) => data)
+      .find((data): data is Float32Array => data instanceof Float32Array && data.length === 64)!;
+    expect(Array.from(meshBlock.subarray(16, 32))).toEqual(writtenCameraMatrices(device)[0].viewProjection);
+  });
+
+  it("reports the captured pass's camera matrices in capture uniforms", async () => {
+    const { engine } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config(), imagePath);
+
+    expect(engine.getCaptureUniforms().camera).toEqual(new OrbitCamera().getMatrices(320 / 180, "webgpu"));
   });
 
   it("reports the captured pass's iInstanceCount in capture uniforms", async () => {

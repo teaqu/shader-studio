@@ -33,6 +33,9 @@ describe("ShaderAuthoringEnvironment WGSL reserved identifiers", () => {
     ["iFrontFacing", "the WGSL primitive-facing built-in"],
     ["iInstanceCount", "the WGSL instance-count built-in"],
     ["iInstanceIndex", "the WGSL instance-index built-in"],
+    ["iViewMatrix", "the WGSL camera view matrix built-in"],
+    ["iProjectionMatrix", "the WGSL camera projection built-in"],
+    ["iViewProjection", "the WGSL camera view-projection built-in"],
   ])("rejects %s (%s) as a custom uniform name", (name) => {
     const environment: ShaderAuthoringEnvironment = {
       ...baseWgslEnvironment(),

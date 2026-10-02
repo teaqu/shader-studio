@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PassRenderer } from "../../webgl/PassRenderer";
+import { OrbitCamera } from "../../preview3d/OrbitCamera";
 import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
 import type { Pass } from "../../models";
 
@@ -310,10 +311,12 @@ describe("PassRenderer", () => {
       expectGlDefaultsRestoredAfter(mockRenderer.DrawPrimitive);
     });
 
-    it("draws clip-space vertices without camera matrices and with the depth test off (ALWAYS) by default", () => {
+    it("draws clip-space vertices without the mesh camera transform and with the depth test off (ALWAYS) by default", () => {
       passRenderer.renderPass({ geometry: "vertices", name: "Clip", shaderSrc: "", inputs: {}, space: "clip" }, null, createMockShader(), defaultUniforms);
 
-      expect(mockRenderer.SetShaderConstantMat4F).not.toHaveBeenCalled();
+      for (const name of ["_meshModel", "_meshView", "_meshProjection"]) {
+        expect(mockRenderer.SetShaderConstantMat4F).not.toHaveBeenCalledWith(name, expect.anything(), true);
+      }
       expect(mockRenderer.SetShaderConstant3FV).not.toHaveBeenCalledWith("iCameraPosition", expect.anything());
       expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color | mockRenderer.CLEAR.Zbuffer, [0, 0, 0, 1], 1, 0);
       expect(mockGl.depthFunc).toHaveBeenNthCalledWith(1, mockGl.ALWAYS);
@@ -422,6 +425,33 @@ describe("PassRenderer", () => {
       expect(passRenderer.getPassVertexCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {} })).toBe(3);
       expect(passRenderer.getPassVertexCount({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {} })).toBe(3);
       expect(meshResources.get).not.toHaveBeenCalledWith("vertices");
+    });
+
+    it.each([
+      ["fullscreen", { geometry: "fullscreen" }],
+      ["clip-space vertices", { geometry: "vertices", space: "clip" }],
+      ["a cube", { geometry: "cube" }],
+    ] as const)("binds the orbit camera matrices at the pass aspect ratio for %s", (_name, fields) => {
+      renderWithMeshes({ name: "P", shaderSrc: "", inputs: {}, ...fields } as Pass);
+
+      const camera = new OrbitCamera().getMatrices(defaultUniforms.res[0] / defaultUniforms.res[1]);
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith("iViewMatrix", Array.from(camera.view), true);
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith("iProjectionMatrix", Array.from(camera.projection), true);
+      expect(mockRenderer.SetShaderConstantMat4F).toHaveBeenCalledWith("iViewProjection", Array.from(camera.viewProjection), true);
+    });
+
+    it("projects meshes with the same matrices it exposes", () => {
+      renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} });
+
+      const calls = new Map((mockRenderer.SetShaderConstantMat4F as ReturnType<typeof vi.fn>).mock.calls.map(([name, value]) => [name, value]));
+      expect(calls.get("_meshView")).toEqual(calls.get("iViewMatrix"));
+      expect(calls.get("_meshProjection")).toEqual(calls.get("iProjectionMatrix"));
+    });
+
+    it("guards the aspect ratio of a zero-height pass", () => {
+      const camera = passRenderer.getCameraMatrices([100, 0]);
+      expect(camera.projection).toEqual(new OrbitCamera().getProjectionMatrix(100));
+      expect(passRenderer.getCameraMatrices([0, 50]).projection).toEqual(new OrbitCamera().getProjectionMatrix(0.01));
     });
 
     it("draws every instance of a vertices pass and binds iInstanceCount", () => {

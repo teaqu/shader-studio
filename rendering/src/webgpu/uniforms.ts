@@ -74,7 +74,13 @@ export interface ShaderToyUniformInput {
   vertexCount?: number;
   /** Instances the pass draws (iInstanceCount); defaults to 1. */
   instanceCount?: number;
+  /** Column-major orbit-camera matrices; each defaults to the identity. */
+  viewMatrix?: ArrayLike<number>;
+  projectionMatrix?: ArrayLike<number>;
+  viewProjection?: ArrayLike<number>;
 }
+
+const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as const;
 
 /** Pack the fixed ShaderToy prefix followed by dynamically laid-out script uniforms. */
 export function packShaderToyUniforms(
@@ -124,6 +130,9 @@ export function packShaderToyUniforms(
   const u32 = new Uint32Array(buf);
   u32[offsets.iVertexCount / 4] = input.vertexCount ?? 0;
   u32[offsets.iVertexCount / 4 + 1] = input.instanceCount ?? DEFAULT_INSTANCE_COUNT;
+  f32.set(input.viewMatrix ?? IDENTITY_MATRIX, offsets.iViewMatrix / 4);
+  f32.set(input.projectionMatrix ?? IDENTITY_MATRIX, offsets.iProjectionMatrix / 4);
+  f32.set(input.viewProjection ?? IDENTITY_MATRIX, offsets.iViewProjection / 4);
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));
   for (const entry of customLayout.entries) {

@@ -796,3 +796,85 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s instancing", (language) =>
     }
   });
 });
+
+/** A clip-space hook that projects points[i] (world space) through iViewProjection itself. */
+function projectPoints(language: ShaderLanguage, points: readonly Vec3[]): string {
+  const literal = (type: string) => points.map((point) => `${type}(${point.map((value) => value.toFixed(4)).join(", ")})`).join(", ");
+  switch (language) {
+    case "glsl":
+      return `const vec3 points[${points.length}] = vec3[${points.length}](${literal("vec3")});
+void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+  vec4 clip = iViewProjection * vec4(points[vertexIndex], 1.0);
+  position = clip.xyz / clip.w;
+}`;
+    case "slang":
+      return `static const float3 points[${points.length}] = { ${literal("float3")} };
+void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  float4 clip = mul(iViewProjection, float4(points[vertexIndex], 1.0));
+  position = clip.xyz / clip.w;
+}`;
+    case "wgsl":
+      return `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+  var points = array<vec3f, ${points.length}>(${literal("vec3f")});
+  let clip = iViewProjection * vec4f(points[vertexIndex], 1.0);
+  *position = clip.xyz / clip.w;
+}`;
+  }
+}
+
+/** Green when `condition` holds in mainImage, red otherwise. */
+function conditionImage(language: ShaderLanguage, condition: string): string {
+  switch (language) {
+    case "glsl":
+      return `void mainImage(out vec4 color, in vec2 coord) { color = (${condition}) ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0); }`;
+    case "slang":
+      return `float4 mainImage(float2 coord) { return (${condition}) ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1); }`;
+    case "wgsl":
+      return `fn mainImage(coord: vec2f) -> vec4f { return select(vec4f(1.0, 0.0, 0.0, 1.0), vec4f(0.0, 1.0, 0.0, 1.0), ${condition}); }`;
+  }
+}
+
+describe.each(["glsl", "slang", "wgsl"] as const)("%s camera matrices", (language) => {
+  const square = [
+    worldPoint(-0.4, -0.4), worldPoint(0.4, -0.4), worldPoint(0.4, 0.4),
+    worldPoint(-0.4, -0.4), worldPoint(0.4, 0.4), worldPoint(-0.4, 0.4),
+  ];
+
+  it("projects world points through iViewProjection in clip space onto the pixels world space covers", { timeout: 30_000 }, async () => {
+    const world = await render(language, program(language, placePoints3(language, square), { type: "vertices", vertexCount: 6 }));
+    const projected = await render(language, program(language, projectPoints(language, square), { type: "vertices", vertexCount: 6, space: "clip" }));
+
+    for (const [x, y] of [[8, 8], [7, 7], [9, 9]]) {
+      expect(pixelAt(world, x, y), `world inside ${x},${y}`).toEqual(WHITE);
+      expect(pixelAt(projected, x, y), `projected inside ${x},${y}`).toEqual(WHITE);
+    }
+    for (const [x, y] of [[0, 0], [15, 0], [0, 15], [15, 15], [8, 1], [1, 8]]) {
+      expect(pixelAt(world, x, y), `world outside ${x},${y}`).toEqual(BLACK);
+      expect(pixelAt(projected, x, y), `projected outside ${x},${y}`).toEqual(BLACK);
+    }
+  });
+
+  it("takes the mesh camera position to the view-space origin with iViewMatrix", { timeout: 30_000 }, async () => {
+    const atOrigin = {
+      glsl: "length((iViewMatrix * vec4(iCameraPosition, 1.0)).xyz) < 0.001",
+      slang: "length(mul(iViewMatrix, float4(iCameraPosition, 1.0)).xyz) < 0.001",
+      wgsl: "length((iViewMatrix * vec4f(iCameraPosition, 1.0)).xyz) < 0.001",
+    }[language];
+    const region = await render(language, program(language, undefined, { type: "cube" }, {}, conditionImage(language, atOrigin)));
+
+    expect(pixelAt(region, 8, 8)).toEqual(GREEN);
+  });
+
+  it("exposes iViewProjection as iProjectionMatrix * iViewMatrix in fullscreen fragments", { timeout: 30_000 }, async () => {
+    const consistent = {
+      glsl: "length(iViewProjection * vec4(0.3, -0.2, 0.1, 1.0) - iProjectionMatrix * (iViewMatrix * vec4(0.3, -0.2, 0.1, 1.0))) < 0.001 && iProjectionMatrix[2][3] == -1.0",
+      slang: "length(mul(iViewProjection, float4(0.3, -0.2, 0.1, 1.0)) - mul(iProjectionMatrix, mul(iViewMatrix, float4(0.3, -0.2, 0.1, 1.0)))) < 0.001 && mul(iProjectionMatrix, float4(0, 0, 1, 0)).w == -1.0",
+      wgsl: "length(iViewProjection * vec4f(0.3, -0.2, 0.1, 1.0) - iProjectionMatrix * (iViewMatrix * vec4f(0.3, -0.2, 0.1, 1.0))) < 0.001 && iProjectionMatrix[2][3] == -1.0",
+    }[language];
+    const region = await render(language, program(language, undefined, undefined, {}, conditionImage(language, consistent)));
+
+    for (const [x, y] of [[0, 0], [8, 8], [15, 15]]) {
+      expect(pixelAt(region, x, y), `pixel ${x},${y}`).toEqual(GREEN);
+    }
+  });
+});

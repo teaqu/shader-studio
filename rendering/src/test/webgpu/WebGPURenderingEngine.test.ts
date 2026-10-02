@@ -464,8 +464,8 @@ describe("WebGPURenderingEngine", () => {
       engine.initialize(canvas);
       await (engine as unknown as { ready: Promise<void> }).ready;
 
-      // (65536 bytes - 320-byte four-channel ShaderToy block) / 48 + 4.
-      expect(ConfigValidator.getChannelLimit()).toBe(1362);
+      // (65536 bytes - 512-byte four-channel ShaderToy block) / 48 + 4.
+      expect(ConfigValidator.getChannelLimit()).toBe(1358);
 
       expect(adapter.requestDevice).toHaveBeenCalledWith({
         requiredLimits: {

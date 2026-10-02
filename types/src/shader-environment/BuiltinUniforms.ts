@@ -60,12 +60,16 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform vec3 iCameraDir;",
   "uniform int iVertexCount;",
   "uniform int iInstanceCount;",
+  "uniform mat4 iViewMatrix;",
+  "uniform mat4 iProjectionMatrix;",
+  "uniform mat4 iViewProjection;",
 ] as const);
 
 export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
   "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
   "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
   "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
+  "iViewMatrix", "iProjectionMatrix", "iViewProjection",
 ]);
 
 /** Renderer-compatible baseline channel declarations for editor analysis. */
@@ -161,6 +165,9 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
   { name: "iVertexCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iVertexCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Vertices drawn by this pass: the configured vertexCount for vertices geometry (default 3), 3 for fullscreen, or the mesh vertex count for plane, cube, sphere, and model geometry. vertexIndex ranges from 0 to iVertexCount - 1." },
   { name: "iInstanceCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iInstanceCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Instances drawn by this pass: the configured instanceCount (default 1), or 1 for fullscreen geometry. iInstanceIndex ranges from 0 to iInstanceCount - 1." },
+  { name: "iViewMatrix", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iViewMatrix;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "The orbit camera's view matrix: world space to view space, the camera looking down -z. The model matrix is the identity, so world space is the space mainVertex writes for meshes and world-space vertices." },
+  { name: "iProjectionMatrix", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iProjectionMatrix;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "The orbit camera's perspective projection for this pass's aspect ratio: 45° vertical field of view, near 0.01, far 100. Clip-space depth follows the renderer: -1 to 1 in WebGL (GLSL), 0 to 1 in WebGPU (Slang, WGSL)." },
+  { name: "iViewProjection", glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", slangDeclaration: "float4x4 iViewProjection;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "iProjectionMatrix * iViewMatrix: takes a world-space point to clip space exactly as meshes and world-space vertices are drawn. Divide by w to get the clip-space position a clip-space vertex writes." },
   { name: "iInstanceIndex", glslType: "int", slangType: "uint", wgslType: "u32", glslDeclaration: "int iInstanceIndex;", slangDeclaration: "uint32_t iInstanceIndex;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Zero-based index of the instance being drawn; always 0 for fullscreen geometry. Fragments receive the value of the instance that produced their primitive." },
   { name: "iDispatch", slangType: "int", wgslType: "i32", slangDeclaration: "int iDispatch;", languages: ["slang", "wgsl"], stages: ["compute"], description: "Zero-based repetition index for the current compute pass dispatch." },
   { name: "iChannelN", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "Any renderer-assigned input channel. Slots follow configured input order and are not inferred from resource names." },
@@ -229,4 +236,7 @@ export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
   `#define iCameraDir (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.cameraDir.xyz)`,
   `#define iVertexCount (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.vertexCount.x)`,
   `#define iInstanceCount (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.vertexCount.y)`,
+  `#define iViewMatrix (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.viewMatrix)`,
+  `#define iProjectionMatrix (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.projectionMatrix)`,
+  `#define iViewProjection (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.viewProjection)`,
 ] as const);

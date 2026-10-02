@@ -165,6 +165,9 @@ struct ShaderToyUniforms
     float4 cameraPos;
     float4 cameraDir;
     uint4 vertexCount;
+    column_major float4x4 viewMatrix;
+    column_major float4x4 projectionMatrix;
+    column_major float4x4 viewProjection;
 ${fields}
 };
 

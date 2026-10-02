@@ -1,5 +1,12 @@
-import { createPerspectiveMatrix, createViewMatrix, normalizeVector, type ClipSpaceDepth, type Mat4 } from './math';
+import { createPerspectiveMatrix, createViewMatrix, multiplyMatrices, normalizeVector, type ClipSpaceDepth, type Mat4 } from './math';
 import type { Vec3 } from './types';
+
+/** The camera transforms exposed to shaders as iViewMatrix, iProjectionMatrix and iViewProjection. */
+export interface CameraMatrices {
+  view: Mat4;
+  projection: Mat4;
+  viewProjection: Mat4;
+}
 
 const DEFAULT_TARGET: Vec3 = [0, 0, 0];
 const DEFAULT_YAW = Math.PI / 4;
@@ -40,6 +47,13 @@ export class OrbitCamera {
   }
   getProjectionMatrix(aspect: number, clipSpaceDepth: ClipSpaceDepth = 'webgl'): Mat4 {
     return createPerspectiveMatrix(Math.PI / 4, Math.max(aspect, 0.01), 0.01, 100, clipSpaceDepth); 
+  }
+
+  /** View, projection and their product for a pass of the given aspect ratio. */
+  getMatrices(aspect: number, clipSpaceDepth: ClipSpaceDepth = 'webgl'): CameraMatrices {
+    const view = this.getViewMatrix();
+    const projection = this.getProjectionMatrix(aspect, clipSpaceDepth);
+    return { view, projection, viewProjection: multiplyMatrices(projection, view) };
   }
 
   orbit(deltaX: number, deltaY: number): void {

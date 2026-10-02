@@ -726,6 +726,23 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(hover).toContain(description);
   });
 
+  it.each(["vertex", "fragment"] as const)("completes and documents iViewProjection on the %s stage", async (stage) => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { vec4 c = iViewProjection * vec4(position, 1.0); position = c.xyz / c.w; }"
+      : "void mainImage(out vec4 color, in vec2 coord) { color = iViewProjection[0]; }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iViewProjection") } });
+    expect(completions.find((item) => item.label === "iViewProjection")?.detail).toContain("mat4");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iViewProjection") + 2 },
+    }))?.contents);
+    expect(hover).toContain("mat4 iViewProjection");
+    expect(hover).toContain("iProjectionMatrix * iViewMatrix");
+  });
+
   it("completes and documents fragment-only iVertexUv", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "fragment" });

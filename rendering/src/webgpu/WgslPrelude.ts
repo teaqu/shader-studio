@@ -164,6 +164,9 @@ struct _ss_ShaderToyUniforms {
   cameraPos: vec4<f32>,
   cameraDir: vec4<f32>,
   vertexCount: vec4<u32>,
+  viewMatrix: mat4x4<f32>,
+  projectionMatrix: mat4x4<f32>,
+  viewProjection: mat4x4<f32>,
 ${customFields}
 }
 
@@ -196,6 +199,9 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "var<private> iCameraDir: vec3<f32>;",
     "var<private> iVertexCount: u32;",
     "var<private> iInstanceCount: u32;",
+    "var<private> iViewMatrix: mat4x4<f32>;",
+    "var<private> iProjectionMatrix: mat4x4<f32>;",
+    "var<private> iViewProjection: mat4x4<f32>;",
     // Zero-initialised, so fullscreen and capture entries leave it at 0.
     `var<private> ${INSTANCE_INDEX}: u32;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.uv}: vec2<f32>;`,
@@ -217,6 +223,9 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "  iCameraDir = _ss_u.cameraDir.xyz;",
     "  iVertexCount = _ss_u.vertexCount.x;",
     "  iInstanceCount = _ss_u.vertexCount.y;",
+    "  iViewMatrix = _ss_u.viewMatrix;",
+    "  iProjectionMatrix = _ss_u.projectionMatrix;",
+    "  iViewProjection = _ss_u.viewProjection;",
   ];
   for (const { name, type } of customUniforms) {
     if (!isSlangCustomUniformType(type)) {

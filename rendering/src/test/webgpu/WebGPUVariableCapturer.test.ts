@@ -192,6 +192,22 @@ describe("WebGPUVariableCapturer", () => {
     expect(new DataView(packed).getUint32(UNIFORM_OFFSETS.iVertexCount, true)).toBe(expected);
   });
 
+  it("packs the capture uniforms' camera matrices, or identity without them", async () => {
+    const camera = { view: new Float32Array(16).fill(1), projection: new Float32Array(16).fill(2), viewProjection: new Float32Array(16).fill(3) };
+    const withCamera = mockGpu();
+    await new WebGPUVariableCapturer(withCamera.device, withCamera.compiler).issueCaptureGrid(captures, { ...uniforms, camera }, 8, 4);
+    const packed = new Float32Array(withCamera.writeBuffer.mock.calls[0][2] as ArrayBuffer);
+    expect(packed[UNIFORM_OFFSETS.iViewMatrix / 4]).toBe(1);
+    expect(packed[UNIFORM_OFFSETS.iProjectionMatrix / 4 + 15]).toBe(2);
+    expect(packed[UNIFORM_OFFSETS.iViewProjection / 4 + 7]).toBe(3);
+
+    const withoutCamera = mockGpu();
+    await new WebGPUVariableCapturer(withoutCamera.device, withoutCamera.compiler).issueCaptureGrid(captures, uniforms, 8, 4);
+    const identity = new Float32Array(withoutCamera.writeBuffer.mock.calls[0][2] as ArrayBuffer);
+    expect(Array.from(identity.subarray(UNIFORM_OFFSETS.iViewProjection / 4, UNIFORM_OFFSETS.iViewProjection / 4 + 16)))
+      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  });
+
   it.each([
     [{ instanceCount: 5 }, 5],
     [{}, 1],

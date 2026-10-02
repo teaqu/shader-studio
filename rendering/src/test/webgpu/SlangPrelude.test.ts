@@ -126,6 +126,16 @@ float4 inputs(float2 uv) { return 1; }`,
     });
   });
 
+  describe('camera matrices', () => {
+    it('declares column-major matrices after vertexCount and aliases them', () => {
+      const source = wrapSlangImageSource(image);
+      expect(source).toContain('    uint4 vertexCount;\n    column_major float4x4 viewMatrix;\n    column_major float4x4 projectionMatrix;\n    column_major float4x4 viewProjection;\n');
+      expect(source).toContain('#define iViewMatrix (_st.viewMatrix)');
+      expect(source).toContain('#define iProjectionMatrix (_st.projectionMatrix)');
+      expect(source).toContain('#define iViewProjection (_st.viewProjection)');
+    });
+  });
+
   describe('instancing', () => {
     const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
 

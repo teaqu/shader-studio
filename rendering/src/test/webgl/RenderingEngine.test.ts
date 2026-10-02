@@ -504,21 +504,25 @@ describe("RenderingEngine", () => {
     ];
     let getPassVertexCount: ReturnType<typeof vi.fn>;
     let getPassInstanceCount: ReturnType<typeof vi.fn>;
+    const camera = { view: new Float32Array(16), projection: new Float32Array(16), viewProjection: new Float32Array(16) };
+    let getCameraMatrices: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
       getPassVertexCount = vi.fn((pass: { vertexCount?: number }) => pass.vertexCount ?? 3);
       getPassInstanceCount = vi.fn((pass: { instanceCount?: number }) => pass.instanceCount ?? 1);
+      getCameraMatrices = vi.fn(() => camera);
       for (const [key, value] of Object.entries({
         shaderPipeline: { getPasses: () => passes, getPass: (name: string) => passes.find((pass) => pass.name === name) },
         frameRenderer: { getUniforms: () => frameUniforms },
-        passRenderer: { getPassVertexCount, getPassInstanceCount },
+        passRenderer: { getPassVertexCount, getPassInstanceCount, getCameraMatrices },
       })) {
         Object.defineProperty(renderingEngine, key, { value, writable: true, configurable: true });
       }
     });
 
     it("reports the Image pass vertex count before any capture context is chosen", () => {
-      expect(renderingEngine.getCaptureUniforms()).toMatchObject({ vertexCount: 3, instanceCount: 1 });
+      expect(renderingEngine.getCaptureUniforms()).toMatchObject({ vertexCount: 3, instanceCount: 1, camera });
+      expect(getCameraMatrices).toHaveBeenCalledWith(frameUniforms.res);
     });
 
     it("reports the vertex count of the pass the capture context targets", () => {
@@ -534,6 +538,7 @@ describe("RenderingEngine", () => {
 
       expect(renderingEngine.getCaptureUniforms()).not.toHaveProperty("vertexCount");
       expect(renderingEngine.getCaptureUniforms()).not.toHaveProperty("instanceCount");
+      expect(renderingEngine.getCaptureUniforms()).not.toHaveProperty("camera");
     });
   });
 

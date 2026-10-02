@@ -35,14 +35,27 @@ describe.runIf(hasBundledSlangWasm)("Slang vertices geometry with bundled slang-
     expect(result.wgsl).toContain("@builtin(vertex_index)");
     expect(result.wgsl).not.toMatch(/@location\(0\)\s+\w+\s*:\s*vec3<f32>\s*,\s*@location\(1\)/);
     if (vertexSpace === "world") {
-      expect(result.wgsl).toContain("viewProjection");
+      expect(result.wgsl).toContain("MeshUniforms");
     } else {
-      expect(result.wgsl).not.toContain("viewProjection");
+      expect(result.wgsl).not.toContain("MeshUniforms");
     }
   });
 
   it.each(["world", "clip"] as const)("compiles the generated no-op hook in %s space", (vertexSpace) => {
     const result = compiler.compileImagePass(image, { geometry: "vertices", vertexSpace });
+
+    expect(result.success, JSON.stringify(result)).toBe(true);
+  });
+
+  it.each([
+    ["clip vertices", { geometry: "vertices", vertexSpace: "clip" }],
+    ["fullscreen", {}],
+  ] as const)("compiles a %s hook that projects through iViewProjection", (_label, options) => {
+    const projectingHook = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  float4 clip = mul(iViewProjection, mul(iViewMatrix, float4(position, 1)));
+  position = clip.xyz / clip.w + mul(iProjectionMatrix, float4(0, 0, 0, 1)).xyz;
+}`;
+    const result = compiler.compileImagePass(image, { ...options, vertexCode: projectingHook });
 
     expect(result.success, JSON.stringify(result)).toBe(true);
   });

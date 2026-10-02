@@ -139,6 +139,24 @@ describe("WgslLanguageService", () => {
     expect(hover).toContain(description);
   });
 
+  it.each(["vertex", "fragment"] as const)("completes and documents iViewProjection on the %s stage", async (stage) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let c = iViewProjection * vec4f(*position, 1.0); *position = c.xyz / c.w; }"
+      : "fn mainImage(coord: vec2f) -> vec4f { return iViewProjection[0]; }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iViewProjection") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iViewProjection");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iViewProjection") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iViewProjection: mat4x4f");
+    expect(hover).toContain("iProjectionMatrix * iViewMatrix");
+  });
+
   it("completes and documents fragment-only iVertexUv", async () => {
     const instance = new WgslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "fragment" });

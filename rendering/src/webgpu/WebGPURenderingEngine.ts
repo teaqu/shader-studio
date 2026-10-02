@@ -54,8 +54,8 @@ import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResour
 import { depthClearValue, geometryInstanceCount, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { extractStructSizes } from "./wgslStructSize";
-import { OrbitCamera } from "../preview3d/OrbitCamera";
-import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
+import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
+import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import {
   gpuBackpressureEnabled,
   MAX_FRAMES_IN_FLIGHT,
@@ -2236,6 +2236,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
       : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
   }
 
+  /** iViewMatrix, iProjectionMatrix and iViewProjection: the orbit camera at the pass's aspect ratio. */
+  private passCameraMatrices(pass: { width: number; height: number }): CameraMatrices {
+    return this.meshCamera.getMatrices(pass.width / Math.max(pass.height, 1), "webgpu");
+  }
+
   /** iVertexCount: the vertices the pass draws, matching the range of vertexIndex. */
   private resolvePassVertexCount(pass: RenderPassNode): number {
     if (pass.geometry === "vertices") {
@@ -2692,22 +2697,23 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       const fullscreen = !pass.geometry || pass.geometry === "fullscreen";
       const mesh = this.resolvePassMesh(pass);
+      const camera = this.passCameraMatrices(pass);
       const data = packShaderToyUniforms({
         channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
         vertexCount: this.resolvePassVertexCount(pass),
         instanceCount: geometryInstanceCount(pass),
+        viewMatrix: camera.view,
+        projectionMatrix: camera.projection,
+        viewProjection: camera.viewProjection,
         ...frameInput,
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
       this.device.queue.writeBuffer(pipeline.getUniformBuffer()!, 0, data);
       if (pass.geometry && pass.geometry !== "fullscreen" && pipeline.getMeshUniformBuffer?.()) {
         const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-        const viewProjection = multiplyMatrices(
-          this.meshCamera.getProjectionMatrix(pass.width / Math.max(pass.height, 1), "webgpu"),
-          this.meshCamera.getViewMatrix(),
-        );
+        const viewProjection = camera.viewProjection;
         const normal = createNormalMatrix3(model);
         const meshData = new Float32Array(64);
         meshData.set(model, 0);
@@ -3666,7 +3672,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
-      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass) } : {}),
+      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass), camera: this.passCameraMatrices(pass) } : {}),
       ...channelUniforms,
     };
   }

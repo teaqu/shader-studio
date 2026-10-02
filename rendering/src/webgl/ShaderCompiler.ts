@@ -36,6 +36,9 @@ export interface WrappedShaderSource {
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 
 const INSTANCE_INDEX_OUT = `flat out int ${INSTANCE_INDEX};`;
+const CAMERA_MATRIX_UNIFORMS = `uniform mat4 iViewMatrix;
+uniform mat4 iProjectionMatrix;
+uniform mat4 iViewProjection;`;
 
 /** Corners of the oversized triangle that covers clip space, indexed by gl_VertexID. */
 const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
@@ -158,6 +161,7 @@ uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 uniform int iVertexCount;
 uniform int iInstanceCount;
+${CAMERA_MATRIX_UNIFORMS}
 ${fragmentContext}
 ${frontFacingContext}
 ${instanceIndexContext}
@@ -620,6 +624,7 @@ uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 uniform int iVertexCount;
 uniform int iInstanceCount;
+${CAMERA_MATRIX_UNIFORMS}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 

@@ -738,6 +738,25 @@ float4 mainImage(float2 p)
     expect(hover).toContain(description);
   });
 
+  it.each(["vertex", "fragment"] as const)("completes and documents iViewProjection on the %s stage", async (stage) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { float4 c = mul(iViewProjection, float4(position, 1)); position = c.xyz / c.w; }"
+      : "float4 mainImage(float2 coord) { return iViewProjection[0]; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iViewProjection") } });
+    expect(completions.filter((item) => item.label === "iViewProjection")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iViewProjection") + 2 },
+    }))?.contents);
+    expect(hover).toContain("float4x4 iViewProjection");
+    expect(hover).toContain("iProjectionMatrix * iViewMatrix");
+  });
+
   it("completes and documents fragment-only iVertexUv", async () => {
     const { module, server } = fixture();
     server.hover.mockReturnValue(undefined);

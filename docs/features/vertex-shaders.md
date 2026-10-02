@@ -147,6 +147,32 @@ Add `instanceCount` to any geometry except fullscreen to draw it many times in o
     }
     ```
 
+## Camera Matrices
+
+`iViewMatrix`, `iProjectionMatrix` and `iViewProjection` are the orbit camera that plane, cube, sphere, model and world-space vertices are drawn with, in the vertex and fragment shader of every pass. `iViewProjection` is `iProjectionMatrix * iViewMatrix`; there is no model matrix, because meshes are drawn at the origin unscaled. The projection has a 45° vertical field of view, near plane 0.01 and far plane 100, and follows the pass's aspect ratio.
+
+Use them in clip space to project some points yourself while keeping control of the rest, for example a 3D shape with a screen-space overlay. Divide by `w` to get the position a clip-space vertex writes:
+
+=== "GLSL"
+    ```glsl
+    vec4 clip = iViewProjection * vec4(worldPoint, 1.0);
+    position = clip.xyz / clip.w;
+    ```
+
+=== "Slang"
+    ```slang
+    float4 clip = mul(iViewProjection, float4(worldPoint, 1.0));
+    position = clip.xyz / clip.w;
+    ```
+
+=== "WGSL"
+    ```wgsl
+    let clip = iViewProjection * vec4f(worldPoint, 1.0);
+    *position = clip.xyz / clip.w;
+    ```
+
+Clip-space depth follows the renderer: `z` runs from -1 to 1 in GLSL (WebGL) and from 0 to 1 in Slang and WGSL (WebGPU), so the projected `z` is valid in either. Because the hook writes a `vec3` with `w = 1`, primitives that cross behind the camera are not clipped the way world-space geometry is; keep projected points in front of the camera.
+
 ## Render Settings
 
 Image and buffer passes have render settings next to `geometry`, under **Rendering** in the config panel. Compute and Common passes do not accept them.
@@ -214,6 +240,9 @@ All standard shader uniforms are available in the vertex shader:
 | `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices `vertexCount`, 3 for fullscreen, or the mesh vertex count |
 | `iInstanceCount` | `int` | `uint` | `u32` | Copies drawn by the pass: the geometry's `instanceCount` (default 1), or 1 for fullscreen |
 | `iInstanceIndex` | `int` | `uint` | `u32` | The copy being drawn, from 0 to `iInstanceCount - 1`; see [Instancing](#instancing) |
+| `iViewMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's view matrix; see [Camera matrices](#camera-matrices) |
+| `iProjectionMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's projection at the pass's aspect ratio |
+| `iViewProjection` | `mat4` | `float4x4` | `mat4x4f` | `iProjectionMatrix * iViewMatrix` |
 
 === "GLSL"
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.

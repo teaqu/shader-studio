@@ -37,6 +37,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | `iVertexCount` | `int` | Vertices the pass draws: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count. See [Vertices geometry](../features/vertex-shaders.md#vertices-geometry) |
 | `iVertexUv` | `vec2` | Fragment-only perspective-correct interpolated `uv` written by `mainVertex`; available for every geometry and space |
 | `iFrontFacing` | `bool` | Fragment-only primitive orientation; always `true` for fullscreen geometry |
+| `iViewMatrix`, `iProjectionMatrix`, `iViewProjection` | `mat4` | The orbit camera that meshes and world-space vertices are drawn with. See [Camera matrices](../features/vertex-shaders.md#camera-matrices) |
 | `iInstanceCount` | `int` | Copies of the geometry the pass draws: its `instanceCount` (default 1), or 1 for fullscreen. See [Instancing](../features/vertex-shaders.md#instancing) |
 | `iInstanceIndex` | `int` | Which copy is being drawn, from 0 to `iInstanceCount - 1`, in the vertex and fragment shader |
 

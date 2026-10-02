@@ -22,6 +22,9 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Normalised camera look direction |
 | `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count |
 | `iInstanceCount` | `int` | `uint` | `u32` | Copies of the geometry the pass draws: the geometry's `instanceCount` (default 1), or 1 for fullscreen |
+| `iViewMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's view matrix (world to view space) |
+| `iProjectionMatrix` | `mat4` | `float4x4` | `mat4x4f` | The orbit camera's perspective projection at the pass's aspect ratio |
+| `iViewProjection` | `mat4` | `float4x4` | `mat4x4f` | `iProjectionMatrix * iViewMatrix`: world space to clip space. See [Camera matrices](vertex-shaders.md#camera-matrices) |
 | `iInstanceIndex` | `int` | `uint` | `u32` | Which copy is being drawn, from 0 to `iInstanceCount - 1`; fragments get the value of the copy that drew them. See [Instancing](vertex-shaders.md#instancing) |
 | `iChannel0`–`iChannel3` | `sampler2D` (or cube/3D) | `ShaderStudioChannel2D` / `…Cube` / `…3D` | Metadata object; use `iChannel0Texture` and `iChannel0Sampler` to sample | Input channel textures in configured slot order |
 | `iCh0`–`iCh3` | channel metadata struct | — | — | Input channel with sampler, size, playback time, and loaded state |

@@ -221,6 +221,25 @@ describe("ShaderCompiler", () => {
       });
     });
 
+    describe("camera matrices", () => {
+      const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";
+      const DECLARATIONS = "uniform mat4 iViewMatrix;\nuniform mat4 iProjectionMatrix;\nuniform mat4 iViewProjection;\n";
+
+      it.each([undefined, "fullscreen", "vertices", "cube"] as const)("declares the three mat4 uniforms in %s fragment and hook sources", (geometry) => {
+        const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode: hook });
+        expect(wrappedCode).toContain(`uniform int iInstanceCount;\n${DECLARATIONS}`);
+        expect(vertexSource).toContain(`uniform int iInstanceCount;\n${DECLARATIONS}`);
+      });
+
+      it("matches the shared authoring catalog types", () => {
+        for (const name of ["iViewMatrix", "iProjectionMatrix", "iViewProjection"]) {
+          expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === name))
+            .toMatchObject({ glslType: "mat4", slangType: "float4x4", wgslType: "mat4x4f", stages: ["fragment", "vertex"] });
+        }
+      });
+    });
+
     describe("instancing", () => {
       const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";

@@ -87,7 +87,7 @@ describe("packShaderToyUniforms", () => {
   it("writes iVertexCount and iInstanceCount as the u32 x and y of one 16-byte slot after iCameraDir", () => {
     const layout = createShaderToyUniformLayout(17);
     expect(layout.offsets.iVertexCount).toBe(layout.offsets.iCameraDir + 16);
-    expect(layout.size).toBe(layout.offsets.iVertexCount + 16);
+    expect(layout.offsets.iViewMatrix).toBe(layout.offsets.iVertexCount + 16);
 
     const dv = new DataView(packShaderToyUniforms({ ...input, channelCount: 17, vertexCount: 2_147_483_647, instanceCount: 2_147_483_647 }));
     expect(dv.getUint32(layout.offsets.iVertexCount, true)).toBe(2_147_483_647);
@@ -107,10 +107,38 @@ describe("packShaderToyUniforms", () => {
     expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true)).toBe(1);
   });
 
-  it("starts custom uniforms after the iVertexCount slot", () => {
+  it("starts custom uniforms after the camera matrices", () => {
     const layout = createSlangCustomUniformLayout([{ name: "gain", type: "float" }]);
-    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iVertexCount + 16);
-    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iVertexCount + 16);
+    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iViewProjection + 64);
+    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iViewProjection + 64);
+  });
+
+  it("lays out the three camera matrices as consecutive 64-byte slots after iVertexCount", () => {
+    for (const channels of [4, 9]) {
+      const { offsets, size } = createShaderToyUniformLayout(channels);
+      expect(offsets.iViewMatrix).toBe(offsets.iVertexCount + 16);
+      expect(offsets.iProjectionMatrix).toBe(offsets.iViewMatrix + 64);
+      expect(offsets.iViewProjection).toBe(offsets.iProjectionMatrix + 64);
+      expect(size).toBe(offsets.iViewProjection + 64);
+    }
+  });
+
+  it("writes the camera matrices column by column", () => {
+    const view = Array.from({ length: 16 }, (_, index) => index + 1);
+    const projection = view.map((value) => value * 10);
+    const viewProjection = view.map((value) => -value);
+    const f32 = new Float32Array(packShaderToyUniforms({ ...input, viewMatrix: view, projectionMatrix: projection, viewProjection }));
+    expect(Array.from(f32.subarray(UNIFORM_OFFSETS.iViewMatrix / 4, UNIFORM_OFFSETS.iViewMatrix / 4 + 16))).toEqual(view);
+    expect(Array.from(f32.subarray(UNIFORM_OFFSETS.iProjectionMatrix / 4, UNIFORM_OFFSETS.iProjectionMatrix / 4 + 16))).toEqual(projection);
+    expect(Array.from(f32.subarray(UNIFORM_OFFSETS.iViewProjection / 4, UNIFORM_OFFSETS.iViewProjection / 4 + 16))).toEqual(viewProjection);
+  });
+
+  it("defaults each camera matrix to the identity", () => {
+    const f32 = new Float32Array(packShaderToyUniforms(input));
+    const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    for (const offset of [UNIFORM_OFFSETS.iViewMatrix, UNIFORM_OFFSETS.iProjectionMatrix, UNIFORM_OFFSETS.iViewProjection]) {
+      expect(Array.from(f32.subarray(offset / 4, offset / 4 + 16))).toEqual(identity);
+    }
   });
 
   it("defaults missing mouse components to zero", () => {

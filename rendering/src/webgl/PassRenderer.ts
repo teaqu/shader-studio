@@ -8,7 +8,7 @@ import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner
 import { bindTextures } from "../util/TextureBinder";
 import { resolveBufferSamplerSettings, resolveTextureBindings } from "../util/TextureBindingResolver";
 import type { WebGLMeshResources } from "./WebGLMeshResources";
-import { OrbitCamera } from "../preview3d/OrbitCamera";
+import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
 import {
@@ -102,6 +102,11 @@ export class PassRenderer {
       : this.resolveMesh(passConfig)?.vertexCount ?? 0;
   }
 
+  /** iViewMatrix, iProjectionMatrix and iViewProjection: the orbit camera at the pass's aspect ratio. */
+  public getCameraMatrices(res: ArrayLike<number>): CameraMatrices {
+    return this.meshCamera.getMatrices(Math.max(res[0] / Math.max(res[1], 1), 0.01));
+  }
+
   /** iInstanceCount: a mesh pass that falls back to fullscreen draws once. */
   public getPassInstanceCount(passConfig: Pass): number {
     return this.drawsFullscreen(passConfig) ? 1 : geometryInstanceCount(passConfig);
@@ -163,6 +168,10 @@ export class PassRenderer {
     const mesh = this.resolveMesh(passConfig);
     this.renderer.SetShaderConstant1I("iVertexCount", this.getPassVertexCount(passConfig));
     this.renderer.SetShaderConstant1I("iInstanceCount", this.getPassInstanceCount(passConfig));
+    const camera = this.getCameraMatrices(uniforms.res);
+    this.renderer.SetShaderConstantMat4F("iViewMatrix", Array.from(camera.view), true);
+    this.renderer.SetShaderConstantMat4F("iProjectionMatrix", Array.from(camera.projection), true);
+    this.renderer.SetShaderConstantMat4F("iViewProjection", Array.from(camera.viewProjection), true);
 
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
@@ -238,7 +247,7 @@ export class PassRenderer {
     }
     if (passConfig.geometry === "vertices") {
       if (!isClipSpaceVertices(passConfig)) {
-        this.setCameraUniforms(shader, uniforms);
+        this.setCameraUniforms(shader, camera);
       }
       this.clearColorAndDepth(state);
       this.withRenderState(state, () => this.drawVertices(passConfig));
@@ -247,7 +256,7 @@ export class PassRenderer {
     if (!mesh || !this.gl) {
       return;
     }
-    this.setCameraUniforms(shader, uniforms);
+    this.setCameraUniforms(shader, camera);
     this.clearColorAndDepth(state);
     const gl = this.gl;
     this.withRenderState(state, () => {
@@ -266,14 +275,11 @@ export class PassRenderer {
   }
 
   /** Orbit-camera matrices for meshes and world-space vertices. */
-  private setCameraUniforms(shader: PiShader, uniforms: PassUniforms): void {
-    const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);
+  private setCameraUniforms(shader: PiShader, camera: CameraMatrices): void {
     const model = createModelMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
-    const view = this.meshCamera.getViewMatrix();
     this.renderer.SetShaderConstantMat4F("_meshModel", Array.from(model), true);
-    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(view), true);
-    const projection = this.meshCamera.getProjectionMatrix(aspect);
-    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(projection), true);
+    this.renderer.SetShaderConstantMat4F("_meshView", Array.from(camera.view), true);
+    this.renderer.SetShaderConstantMat4F("_meshProjection", Array.from(camera.projection), true);
     const normalLocation = this.gl && shader.mProgram && this.gl.getUniformLocation(shader.mProgram, "_meshNormalMatrix");
     if (normalLocation) {
       this.gl!.uniformMatrix3fv(normalLocation, false, createNormalMatrix3(model));

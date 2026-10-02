@@ -79,6 +79,9 @@ export interface ShaderToyUniformLayout {
     iCameraPos: number;
     iCameraDir: number;
     iVertexCount: number;
+    iViewMatrix: number;
+    iProjectionMatrix: number;
+    iViewProjection: number;
   };
 }
 
@@ -97,10 +100,14 @@ export function createShaderToyUniformLayout(channelCount: number): ShaderToyUni
   const iCameraDir = iCameraPos + 16;
   // A whole 16-byte slot (uint4 / vec4<u32>, read as .x) keeps custom uniforms 16-aligned.
   const iVertexCount = iCameraDir + 16;
+  // Column-major 4x4 float matrices, 64 bytes each.
+  const iViewMatrix = iVertexCount + 16;
+  const iProjectionMatrix = iViewMatrix + 64;
+  const iViewProjection = iProjectionMatrix + 64;
   return {
     channelCount: count,
-    size: iVertexCount + 16,
-    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount },
+    size: iViewProjection + 64,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount, iViewMatrix, iProjectionMatrix, iViewProjection },
   };
 }
 
