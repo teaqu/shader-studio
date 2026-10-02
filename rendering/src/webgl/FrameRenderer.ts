@@ -313,8 +313,9 @@ export class FrameRenderer {
     this.currentFrameTime = time;
     this.updateFPSTracking(time);
 
-    // Update audio textures (FFT/waveform data) each frame
+    // Update audio textures (FFT/waveform data) and changed video frames each frame
     this.resourceManager.updateAudioTextures();
+    this.resourceManager.updateVideoTextures();
 
     // Update camera with wall-clock delta (works even when paused)
     const wallDt = this.lastWallTime !== null ? (time - this.lastWallTime) / 1000 : 0;

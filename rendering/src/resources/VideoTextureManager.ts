@@ -15,7 +15,9 @@ interface PendingVideoLoad<T> {
 export class VideoTextureManager<T> {
   private readonly videoElements: Record<string, HTMLVideoElement> = {};
   private readonly videoTextures: Record<string, T> = {};
-  private readonly animationFrameIds: Record<string, number> = {};
+  // Playback position of the frame each texture last received, so a frame the
+  // video has not moved past is not uploaded again.
+  private readonly uploadedTimes: Record<string, number> = {};
   private readonly pendingLoads = new Map<string, PendingVideoLoad<T>>();
   // Per-video user-initiated pause tracking
   private readonly userPaused: Set<string> = new Set();
@@ -134,7 +136,9 @@ export class VideoTextureManager<T> {
       this.detachPendingLoadListeners(pending);
       this.videoElements[path] = video;
       this.videoTextures[path] = texture;
-      this.startVideoTextureUpdates(path, video, texture);
+      // Creating the texture uploaded the current frame; later frames are
+      // uploaded by updateTextures() when the renderer draws.
+      this.uploadedTimes[path] = video.currentTime;
       pending.resolve(texture);
     };
 
@@ -178,16 +182,7 @@ export class VideoTextureManager<T> {
       console.error(`Failed to cancel pending video load ${path}:`, error);
     }
 
-    // Stop animation frame updates
-    const animationId = this.animationFrameIds[path];
-    if (animationId !== undefined) {
-      delete this.animationFrameIds[path];
-      try {
-        cancelAnimationFrame(animationId);
-      } catch (error) {
-        console.error(`Failed to cancel texture update for video ${path}:`, error);
-      }
-    }
+    delete this.uploadedTimes[path];
 
     // Pause and remove video element
     const video = this.videoElements[path];
@@ -408,47 +403,55 @@ export class VideoTextureManager<T> {
     }
   }
 
-  private startVideoTextureUpdates(path: string, video: HTMLVideoElement, texture: T): void {
-    // Cancel any existing rAF loop for this path to prevent duplicates
-    const existingId = this.animationFrameIds[path];
-    if (existingId !== undefined) {
-      cancelAnimationFrame(existingId);
-      delete this.animationFrameIds[path];
+  /**
+   * Uploads the current frame of every video that has moved on since its last
+   * upload. The renderers call this once per frame they draw, so a stopped,
+   * paused or hidden preview uploads nothing, and a paused video is uploaded
+   * once rather than on every frame.
+   */
+  public updateTextures(): void {
+    for (const [path, texture] of Object.entries(this.videoTextures)) {
+      const video = this.videoElements[path];
+      if (video) {
+        this.updateVideoTexture(path, video, texture);
+      }
     }
-    const updateTexture = () => {
-      let updated = false;
-      if (video.readyState >= video.HAVE_CURRENT_DATA) {
+  }
+
+  private updateVideoTexture(path: string, video: HTMLVideoElement, texture: T): void {
+    // A seeking video still shows the frame it is leaving, so wait for the
+    // seek to finish rather than record the target time for the old picture.
+    if (video.readyState < video.HAVE_CURRENT_DATA || video.seeking) {
+      return;
+    }
+    const time = video.currentTime;
+    if (this.uploadedTimes[path] === time) {
+      return;
+    }
+    let updated = false;
+    try {
+      this.backend.updateTextureFromImage(texture, video);
+      updated = true;
+    } catch (error) {
+      console.error(`Failed to update texture for video ${path}:`, error);
+    }
+
+    // A backend update may invoke browser/driver hooks that remove this
+    // video re-entrantly. A successful stable-handle update can then own a
+    // replacement resource that cleanup did not see, so release it here.
+    if (this.videoTextures[path] !== texture) {
+      if (updated) {
         try {
-          this.backend.updateTextureFromImage(texture, video);
-          updated = true;
+          this.backend.destroyTexture(texture);
         } catch (error) {
-          console.error(`Failed to update texture for video ${path}:`, error);
+          console.error(`Failed to destroy detached texture for video ${path}:`, error);
         }
       }
-
-      // A backend update may invoke browser/driver hooks that remove this
-      // video re-entrantly. A successful stable-handle update can then own a
-      // replacement resource that cleanup did not see, so release it here.
-      if (this.videoTextures[path] !== texture) {
-        if (updated) {
-          try {
-            this.backend.destroyTexture(texture);
-          } catch (error) {
-            console.error(`Failed to destroy detached texture for video ${path}:`, error);
-          }
-        }
-        return;
-      }
-
-      try {
-        this.animationFrameIds[path] = requestAnimationFrame(updateTexture);
-      } catch (error) {
-        console.error(`Failed to schedule texture update for video ${path}:`, error);
-      }
-    };
-
-    // Start updating texture
-    updateTexture();
+      return;
+    }
+    if (updated) {
+      this.uploadedTimes[path] = time;
+    }
   }
 
   private warnUnlessPlayInterrupted(message: string, error: unknown): void {
