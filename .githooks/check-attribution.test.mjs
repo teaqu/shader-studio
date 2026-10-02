@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { checkBranch, checkMessage, commitMessagesInRange, run } from './check-attribution.mjs';
+import { checkBranch, checkIdentity, checkMessage, commitsInRange, run } from './check-attribution.mjs';
 
 const script = fileURLToPath(new URL('./check-attribution.mjs', import.meta.url));
 const reasons = text => checkMessage(text).map(v => v.reason);
@@ -53,6 +53,41 @@ test('rejects merge subjects that name agent branches, source or target', () => 
   assert.deepEqual(reasons("Merge remote-tracking branch 'origin/main' into issue-270-gpu-e2e-flakes"), []);
 });
 
+test('rejects AI tool commit identities', () => {
+  for (const ident of [
+    'Claude <noreply@anthropic.com>',
+    'claude[bot] <209825114+claude[bot]@users.noreply.github.com>',
+    'Copilot <198982749+Copilot@users.noreply.github.com>',
+    'Codex <codex@openai.com>',
+    'Cursor Agent <cursoragent@cursor.com>',
+    'google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>',
+    'devin-ai-integration[bot] <158243242+devin-ai-integration[bot]@users.noreply.github.com>',
+    'teaqu <someone@anthropic.com>',
+  ]) {
+    assert.deepEqual(checkIdentity(ident), [{ reason: 'AI tool commit identity', line: ident }], ident);
+  }
+});
+
+test('allows human, GitHub and dependency-bot identities', () => {
+  for (const ident of [
+    'teaqu <teaqu@outlook.com>',
+    'teaqu <583418+teaqu@users.noreply.github.com>',
+    'GitHub <noreply@github.com>',
+    'dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>',
+    // Human names that are also tool names are only rejected with a tool's email or [bot] suffix.
+    'Jules Verne <jules@example.com>',
+    'Ana Cursor <ana@example.com>',
+  ]) {
+    assert.deepEqual(checkIdentity(ident), [], ident);
+  }
+});
+
+test('checkIdentity accepts git var idents with a timestamp', () => {
+  assert.equal(checkIdentity('Claude <noreply@anthropic.com> 1759342380 +0000').length, 1);
+  assert.equal(checkIdentity('Claude <noreply@anthropic.com> 1759342380 +0000')[0].line, 'Claude <noreply@anthropic.com>');
+  assert.deepEqual(checkIdentity('teaqu <teaqu@outlook.com> 1759342380 +0100'), []);
+});
+
 test('rejects agent-prefixed branch names only', () => {
   assert.equal(checkBranch('claude/issue-270').length, 1);
   assert.equal(checkBranch('refs/heads/codex-fix').length, 1);
@@ -64,16 +99,36 @@ test('rejects agent-prefixed branch names only', () => {
 
 test('run labels findings by where they were found', () => {
   const findings = run(
-    ['--message-file', 'MSG', '--range', 'a..b', '--branch', 'claude/x'],
+    ['--message-file', 'MSG', '--range', 'a..b', '--branch', 'claude/x', '--identity', 'Claude <noreply@anthropic.com> 1 +0000'],
     {
       readFile: () => 'fix\n# Co-authored-by: Claude <noreply@anthropic.com>\n',
       commits: range => {
         assert.equal(range, 'a..b');
-        return [{ sha: '0123456789abcdef', message: 'x\n\nCo-authored-by: Claude <noreply@anthropic.com>' }];
+        return [{
+          sha: '0123456789abcdef',
+          message: 'x\n\nCo-authored-by: Claude <noreply@anthropic.com>',
+          author: 'teaqu <teaqu@outlook.com>',
+          committer: 'teaqu <teaqu@outlook.com>',
+        }];
       },
     },
   );
-  assert.deepEqual(findings.map(f => f.where), ['commit 01234567', 'branch']);
+  assert.deepEqual(findings.map(f => f.where), ['commit 01234567', 'branch', 'commit identity']);
+});
+
+test('run checks the author and committer of every commit in a range', () => {
+  const findings = run(['--range', 'a..b'], {
+    commits: () => [
+      { sha: 'aaaaaaaa11', message: 'fix: clean message', author: 'Claude <noreply@anthropic.com>', committer: 'Claude <noreply@anthropic.com>' },
+      { sha: 'bbbbbbbb22', message: 'fix: y', author: 'teaqu <teaqu@outlook.com>', committer: 'Copilot <198982749+Copilot@users.noreply.github.com>' },
+      { sha: 'cccccccc33', message: 'fix: z', author: 'teaqu <teaqu@outlook.com>', committer: 'GitHub <noreply@github.com>' },
+    ],
+  });
+  assert.deepEqual(findings, [
+    { reason: 'AI tool commit identity', line: 'Claude <noreply@anthropic.com>', where: 'commit aaaaaaaa author' },
+    { reason: 'AI tool commit identity', line: 'Claude <noreply@anthropic.com>', where: 'commit aaaaaaaa committer' },
+    { reason: 'AI tool commit identity', line: 'Copilot <198982749+Copilot@users.noreply.github.com>', where: 'commit bbbbbbbb committer' },
+  ]);
 });
 
 test('run ignores git comment lines in a commit message file', () => {
@@ -86,17 +141,31 @@ test('run rejects unknown options and missing values', () => {
   assert.throws(() => run(['--branch']), /--branch needs a value/);
 });
 
-test('commitMessagesInRange splits git log output per commit', () => {
-  const output = 'aaa\x00first\n\nbody\n\x01\nbbb\x00second\n\x01\n';
-  const commits = commitMessagesInRange('x..y', (cmd, args) => {
+test('commitsInRange splits git log output per commit', () => {
+  const output = 'aaa\x00A <a@x>\x00C <c@x>\x00first\n\nbody\n\x01\nbbb\x00B <b@x>\x00B <b@x>\x00second\n\x01\n';
+  const commits = commitsInRange('x..y', (cmd, args) => {
     assert.equal(cmd, 'git');
     assert.equal(args.at(-1), 'x..y');
     return output;
   });
   assert.deepEqual(commits, [
-    { sha: 'aaa', message: 'first\n\nbody\n' },
-    { sha: 'bbb', message: 'second\n' },
+    { sha: 'aaa', author: 'A <a@x>', committer: 'C <c@x>', message: 'first\n\nbody\n' },
+    { sha: 'bbb', author: 'B <b@x>', committer: 'B <b@x>', message: 'second\n' },
   ]);
+});
+
+test('commitsInRange reads real commit identities', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'attribution-range-'));
+  const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+  execFileSync('git', ['init', '-q', repo]);
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'Test');
+  git('commit', '-q', '--allow-empty', '-m', 'base');
+  git('commit', '-q', '--allow-empty', '--author', 'Claude <noreply@anthropic.com>', '-m', 'fix: x\n\nbody');
+  assert.deepEqual(
+    commitsInRange('HEAD~1..HEAD', (cmd, args, options) => execFileSync(cmd, ['-C', repo, ...args], options)).map(({ sha, ...rest }) => rest),
+    [{ author: 'Claude <noreply@anthropic.com>', committer: 'Test <test@example.com>', message: 'fix: x\n\nbody\n' }],
+  );
 });
 
 test('the commit-msg hook blocks an attributed commit and allows a clean one', () => {
@@ -115,6 +184,15 @@ test('the commit-msg hook blocks an attributed commit and allows a clean one', (
   const blocked = git('commit', '-q', '-m', 'fix: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>');
   assert.notEqual(blocked.status, 0);
   assert.match(blocked.stderr, /AI co-author trailer/);
+
+  const wrongAuthor = git('commit', '-q', '--author', 'Claude <noreply@anthropic.com>', '-m', 'fix: x');
+  assert.notEqual(wrongAuthor.status, 0);
+  assert.match(wrongAuthor.stderr, /commit identity: AI tool commit identity: Claude <noreply@anthropic.com>/);
+
+  const env = { ...process.env, GIT_COMMITTER_NAME: 'Claude', GIT_COMMITTER_EMAIL: 'noreply@anthropic.com' };
+  const wrongCommitter = spawnSync('git', ['-C', repo, 'commit', '-q', '-m', 'fix: x'], { encoding: 'utf8', env });
+  assert.notEqual(wrongCommitter.status, 0);
+  assert.match(wrongCommitter.stderr, /AI tool commit identity: Claude <noreply@anthropic.com>/);
 
   const allowed = git('commit', '-q', '-m', 'fix: x');
   assert.equal(allowed.status, 0, allowed.stderr);
