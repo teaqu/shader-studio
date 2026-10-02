@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": ["$TURBO_EXTENDS$", "$TURBO_ROOT$/vendor/pilibs/**"]
+    },
+    "test:e2e": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vendor/pilibs/**",
+        "$TURBO_ROOT$/tests/fixtures/shader-corpus/**",
+        "$TURBO_ROOT$/ui/src/slang/**",
+        "$TURBO_ROOT$/ui/scripts/ensure-slang-wasm.mjs"
+      ]
+    },
+    "test:e2e:corpus": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vendor/pilibs/**",
+        "$TURBO_ROOT$/tests/fixtures/shader-corpus/**",
+        "$TURBO_ROOT$/ui/src/slang/**",
+        "$TURBO_ROOT$/ui/scripts/ensure-slang-wasm.mjs"
+      ]
+    }
+  }
+}

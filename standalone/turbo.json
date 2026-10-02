@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test:e2e": {
+      "inputs": ["$TURBO_DEFAULT$", "!src/test/**", "!e2e/**/*.test.mjs"]
+    }
+  }
+}

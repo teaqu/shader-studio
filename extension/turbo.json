@@ -1,0 +1,19 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test:e2e:vscode:corpus": {
+      "dependsOn": ["^build", "shader-studio-ui#build", "shader-explorer-ui#build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!src/test/**",
+        "!e2e/**/*.test.mjs",
+        "$TURBO_ROOT$/tests/fixtures/shader-corpus/**"
+      ]
+    },
+    "test:e2e:vsix": {
+      "dependsOn": ["^build", "shader-studio-ui#build", "shader-explorer-ui#build"],
+      "inputs": ["$TURBO_DEFAULT$", "!src/test/**", "!e2e/**/*.test.mjs"]
+    }
+  }
+}
