@@ -199,6 +199,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     `var<private> ${MESH_FRAGMENT_CONTEXT.worldPosition}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.normal}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.cameraPosition}: vec3<f32>;`,
+    `var<private> ${MESH_FRAGMENT_CONTEXT.frontFacing}: bool;`,
   ];
   const initialisers = [
     "  iResolution = _ss_u.resolution.xyz;",
@@ -420,12 +421,13 @@ const WGSL_MESH_VERTEX_OUT = `struct _ss_MeshVertexOut {
 }
 `;
 
-const WGSL_MESH_FRAGMENT_ENTRY_POINT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>) -> @location(0) vec4<f32> {
+const WGSL_MESH_FRAGMENT_ENTRY_POINT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
   _ss_initGlobals();
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
   ${MESH_FRAGMENT_CONTEXT.worldPosition} = worldPos;
   ${MESH_FRAGMENT_CONTEXT.normal} = normal;
   ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _ss_mesh.cameraPosition.xyz;
+  ${MESH_FRAGMENT_CONTEXT.frontFacing} = frontFacing;
   return mainImage(uv * _ss_u.resolution.xy);
 }
 `;
@@ -436,12 +438,17 @@ const WGSL_VERTEX_UV_OUT = `struct _ss_VertexUvOut {
 }
 `;
 
-const WGSL_VERTEX_UV_FRAGMENT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+function buildWgslVertexUvFragment(frontFacing: boolean): string {
+  const parameter = frontFacing ? ", @builtin(front_facing) frontFacing: bool" : "";
+  const value = frontFacing ? "frontFacing" : "true";
+  return `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>${parameter}) -> @location(0) vec4<f32> {
   _ss_initGlobals();
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
+  ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${value};
   return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
 }
 `;
+}
 
 /** Every vertices-geometry vertex starts here before mainVertex moves it. */
 const WGSL_VERTICES_SEED = `  var position = vec3<f32>(0.0, 0.0, 0.0);
@@ -468,7 +475,7 @@ ${WGSL_VERTICES_SEED}
   return output;
 }
 
-${WGSL_VERTEX_UV_FRAGMENT}
+${buildWgslVertexUvFragment(true)}
 `
     : `${WGSL_MESH_VERTEX_OUT}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
@@ -538,7 +545,7 @@ ${WGSL_VERTEX_UV_OUT}
   return output;
 }
 
-${WGSL_VERTEX_UV_FRAGMENT}
+${buildWgslVertexUvFragment(false)}
 `,
       vertexStartLine: 1,
       vertexLineCount: hook.split("\n").length,
@@ -559,6 +566,7 @@ ${WGSL_VERTEX_UV_OUT}
 @fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   _ss_initGlobals();
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
+  ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
   // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
   return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
 }
@@ -598,6 +606,7 @@ ${WGSL_VERTEX_UV_OUT}
 @fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   _ss_initGlobals();
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
+  ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
   var coord = fragCoord.xy / _ss_dbgCapU.coordGrid.zw * _ss_u.resolution.xy;
   if (_ss_dbgCapU.isPixelMode != 0) { coord = _ss_dbgCapU.coordGrid.xy; }
   return mainImage(coord);

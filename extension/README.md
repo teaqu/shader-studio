@@ -124,7 +124,7 @@ Shader Studio aims to support the full Shadertoy feature set. Your shader must d
 | `iDate` | Year, month, day, seconds since midnight |
 | `iSampleRate` | Audio sample rate |
 
-Shader Studio also adds non-Shadertoy uniforms `iCameraPos` and `iCameraDir` for a built-in WASD/mouse-controlled camera, and `iVertexCount`, the number of vertices a pass draws.
+Shader Studio also adds non-Shadertoy uniforms `iCameraPos` and `iCameraDir` for a built-in WASD/mouse-controlled camera, `iVertexCount` for the number of vertices a pass draws, `iVertexUv` for the interpolated vertex UV, and `iFrontFacing` for primitive orientation.
 
 ### Not Yet Supported
 

@@ -138,6 +138,7 @@ float4 inputs(float2 uv) { return 1; }`,
       expect(source).toContain('output.position = mul(_mesh.viewProjection, worldPosition);');
       expect(source).toContain('float4 color = mainImage(input.uv * _st.resolution.xy);');
       expect(source).toContain('iVertexUv = input.uv;');
+      expect(source).toContain('iFrontFacing = frontFacing;');
       expect(source).not.toContain('POSITION');
       expect(source).not.toContain('verts[');
     });
@@ -147,6 +148,7 @@ float4 inputs(float2 uv) { return 1; }`,
 
       expect(source).toContain(`ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID) { ${SEED} ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }`);
       expect(source).toContain('iVertexUv = input.uv;');
+      expect(source).toContain('iFrontFacing = frontFacing;');
       expect(source).toContain('return mainImage(float2(input.position.x, _st.resolution.y - input.position.y));');
       expect(source).not.toContain('MeshUniforms');
       expect(source).not.toContain('MeshVertexOut');
@@ -184,6 +186,7 @@ float4 inputs(float2 uv) { return 1; }`,
     const source = wrapSlangImageSource(image);
     expect(source).toContain('ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID)');
     expect(source).toContain('iVertexUv = input.uv;');
+    expect(source).toContain('iFrontFacing = true;');
     expect(source).not.toContain('mainVertex');
   });
 

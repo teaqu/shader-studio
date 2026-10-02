@@ -127,6 +127,9 @@ uniform ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.ca
     : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
 const ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal} = ${MESH_FRAGMENT_CONTEXT_TYPES.normal}(0.0);
 const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`}`;
+    const frontFacingContext = options.geometry === undefined || options.geometry === "fullscreen"
+      ? `const ${MESH_FRAGMENT_CONTEXT_TYPES.frontFacing} ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;`
+      : `#define ${MESH_FRAGMENT_CONTEXT.frontFacing} gl_FrontFacing`;
 
     let header = `
 precision highp float;
@@ -146,6 +149,7 @@ uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 uniform int iVertexCount;
 ${fragmentContext}
+${frontFacingContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 

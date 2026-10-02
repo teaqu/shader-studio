@@ -227,6 +227,7 @@ describe("SlangCompiler", () => {
       expect(wrapped).toContain(`iWorldPosition = input.worldPosition;
     iNormal = input.normal;
     iCameraPosition = _mesh.cameraPosition.xyz;
+    iFrontFacing = frontFacing;
     float4 color = mainImage(input.uv * _st.resolution.xy);`);
       expect(wrapped).toContain("return color;");
       expect(wrapped).not.toContain("_previewWrap");

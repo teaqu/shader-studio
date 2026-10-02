@@ -36,6 +36,7 @@ These uniforms are provided by Shader Studio but are not part of the Shadertoy A
 | `iCameraDir` | `vec3` | Camera look direction (controlled with mouse or IJKL) |
 | `iVertexCount` | `int` | Vertices the pass draws: the vertices geometry's `vertexCount` (default 3), 3 for fullscreen, or the mesh vertex count. See [Vertices geometry](../features/vertex-shaders.md#vertices-geometry) |
 | `iVertexUv` | `vec2` | Fragment-only perspective-correct interpolated `uv` written by `mainVertex`; available for every geometry and space |
+| `iFrontFacing` | `bool` | Fragment-only primitive orientation; always `true` for fullscreen geometry |
 
 ## Supported Input Types
 

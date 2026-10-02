@@ -29,8 +29,9 @@ These are always available — no declaration needed. Types differ slightly betw
 | `iNormal` | `vec3` | `float3` | `vec3f` | Fragment only: world-space interpolated normal; zero for fullscreen geometry |
 | `iCameraPosition` | `vec3` | `float3` | `vec3f` | Fragment only: world-space camera position for mesh fragments; zero for fullscreen geometry |
 | `iVertexUv` | `vec2` | `float2` | `vec2f` | Fragment only: perspective-correct interpolated `uv` written by `mainVertex`, for every geometry and space |
+| `iFrontFacing` | `bool` | `bool` | `bool` | Fragment only: whether the current primitive is front-facing; always `true` for fullscreen geometry |
 
-`iVertexUv` is available for every geometry and space. `iWorldPosition`, `iNormal`, and `iCameraPosition` carry values only when the pass renders 3D geometry — see [Vertex Shaders](vertex-shaders.md#fragment-shader-access).
+`iVertexUv` and `iFrontFacing` are available for every geometry and space. `iWorldPosition`, `iNormal`, and `iCameraPosition` carry values only when the pass renders 3D geometry — see [Vertex Shaders](vertex-shaders.md#fragment-shader-access).
 
 Slang has no `iChN`, `iChannelTime`, or `iChannelResolution` symbols. Each
 configured channel is a direct global named by its exact configuration key —

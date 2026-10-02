@@ -134,16 +134,21 @@ ConstantBuffer<MeshUniforms> _mesh;
 }
 
 const SLANG_VERTEX_UV_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };";
-const SLANG_VERTEX_UV_FRAGMENT = `[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
+function buildSlangVertexUvFragment(frontFacing: boolean): string {
+  const parameter = frontFacing ? ", bool frontFacing : SV_IsFrontFace" : "";
+  const value = frontFacing ? "frontFacing" : "true";
+  return `[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${value}; return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
 `;
+}
 
 const MESH_FRAGMENT_ENTRY_POINT = `[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
+float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input, bool frontFacing : SV_IsFrontFace) : SV_Target {
     ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
     ${MESH_FRAGMENT_CONTEXT.worldPosition} = input.worldPosition;
     ${MESH_FRAGMENT_CONTEXT.normal} = input.normal;
     ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _mesh.cameraPosition.xyz;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = frontFacing;
     float4 color = mainImage(input.uv * _st.resolution.xy);
     return color;
 }
@@ -165,7 +170,7 @@ function buildFullscreenEntryPoints(vertexCode: string): string {
 ${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
 ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
-${SLANG_VERTEX_UV_FRAGMENT}
+${buildSlangVertexUvFragment(false)}
 `;
 }
 
@@ -185,7 +190,7 @@ function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): strin
 ${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
 ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
-${SLANG_VERTEX_UV_FRAGMENT}
+${buildSlangVertexUvFragment(true)}
 `;
   }
   return `${hook}
@@ -211,6 +216,7 @@ ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
     ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
     // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
     float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);
     return mainImage(coord);
@@ -304,6 +310,7 @@ ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
     ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;
     float2 fragCoord = input.position.xy;
     float2 coord = _dbgCapU.isPixelMode != 0
         ? _dbgCapU.coordGrid.xy

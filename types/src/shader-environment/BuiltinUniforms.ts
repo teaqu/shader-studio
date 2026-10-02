@@ -19,10 +19,10 @@ export interface ShaderStudioBuiltinUniform {
 }
 
 export interface ShaderStudioFragmentContextSymbol extends ShaderStudioBuiltinUniform {
-  readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition" | "iVertexUv";
-  readonly glslType: "vec2" | "vec3";
-  readonly slangType: "float2" | "float3";
-  readonly wgslType: "vec2f" | "vec3f";
+  readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition" | "iVertexUv" | "iFrontFacing";
+  readonly glslType: "vec2" | "vec3" | "bool";
+  readonly slangType: "float2" | "float3" | "bool";
+  readonly wgslType: "vec2f" | "vec3f" | "bool";
   readonly glslDeclaration: string;
   readonly slangDeclaration: string;
   readonly languages: readonly ["glsl", "slang", "wgsl"];
@@ -121,6 +121,19 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStu
     stages: ["fragment"],
     description: "Perspective-correct interpolated UV written by mainVertex for the current fragment.",
   },
+  {
+    name: "iFrontFacing",
+    glslType: "bool",
+    slangType: "bool",
+    wgslType: "bool",
+    glslDeclaration: "bool iFrontFacing;",
+    // A macro avoids colliding with the supported custom uniform named `bool`
+    // in standalone authoring modules. Runtime wrappers declare a mutable bool.
+    slangDeclaration: "#define iFrontFacing true",
+    languages: ["glsl", "slang", "wgsl"],
+    stages: ["fragment"],
+    description: "Whether the current primitive is front-facing; always true for fullscreen geometry.",
+  },
 ] as const satisfies readonly ShaderStudioFragmentContextSymbol[]);
 
 /** Semantic renderer keys backed by the same facts used for authoring and docs. */
@@ -129,6 +142,7 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT = Object.freeze({
   normal: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[1]!,
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[2]!,
   vertexUv: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[3]!,
+  frontFacing: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[4]!,
 });
 
 export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuiltinUniform>[] = deepFreezeBuiltinCatalog([

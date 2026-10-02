@@ -6,7 +6,7 @@ describe("isWgslReservedWord", () => {
     expect(isWgslReservedWord(name)).toBe(true);
   });
 
-  it.each(["mainImage", "writeOutput", "vec3f", "f32", "iTime", "iVertexUv", "iChannel0Sample", "sampleCube", "length", "shade"])(
+  it.each(["mainImage", "writeOutput", "vec3f", "f32", "iTime", "iVertexUv", "iFrontFacing", "iChannel0Sample", "sampleCube", "length", "shade"])(
     "accepts %s, which WGSL lets a declaration use or shadow",
     (name) => {
       expect(isWgslReservedWord(name)).toBe(false);

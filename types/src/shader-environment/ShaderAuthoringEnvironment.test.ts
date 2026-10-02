@@ -66,6 +66,7 @@ describe("ShaderAuthoringEnvironment", () => {
       ["iNormal", "vec3", "float3"],
       ["iCameraPosition", "vec3", "float3"],
       ["iVertexUv", "vec2", "float2"],
+      ["iFrontFacing", "bool", "bool"],
     ] as const;
 
     for (const [name, glslType, slangType] of expected) {
@@ -78,7 +79,7 @@ describe("ShaderAuthoringEnvironment", () => {
         stages: ["fragment"],
       });
       expect(glsl).toContain(`${glslType} ${name};`);
-      expect(slang).toContain(`${slangType} ${name};`);
+      expect(slang).toContain(name === "iFrontFacing" ? "#define iFrontFacing true" : `${slangType} ${name};`);
       expect(SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name)).toMatchObject({
         name,
         glslType,
@@ -105,6 +106,8 @@ describe("ShaderAuthoringEnvironment", () => {
     }
     expect(glslVertex).not.toContain("vec2 iVertexUv;");
     expect(slangCompute).not.toContain("float2 iVertexUv;");
+    expect(glslVertex).not.toContain("bool iFrontFacing;");
+    expect(slangCompute).not.toContain("#define iFrontFacing true");
   });
 
   it("describes custom uniforms and resources in both languages", () => {
@@ -613,6 +616,7 @@ describe("ShaderAuthoringEnvironment", () => {
     ["iCh3", "a renderer channel metadata symbol"],
     ["iWorldPosition", "a renderer mesh context symbol"],
     ["iVertexUv", "a renderer vertex context symbol"],
+    ["iFrontFacing", "a renderer primitive-facing symbol"],
   ])("rejects %s because it is %s", (name) => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -692,6 +696,7 @@ describe("ShaderAuthoringEnvironment", () => {
     ["slang", "iTime"],
     ["slang", "iWorldPosition"],
     ["slang", "iVertexUv"],
+    ["slang", "iFrontFacing"],
   ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
     const environment = {
       ...baseEnvironment(languageId),
@@ -888,7 +893,7 @@ describe("ShaderAuthoringEnvironment", () => {
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
       "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
-      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv",
+      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv", "iFrontFacing",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);

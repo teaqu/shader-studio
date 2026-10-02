@@ -18,6 +18,12 @@ const WHITE_IMAGE: Record<ShaderLanguage, string> = {
   wgsl: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }",
 };
 
+const FRONT_FACING_IMAGE: Record<ShaderLanguage, string> = {
+  glsl: "void mainImage(out vec4 color, in vec2 coord) { color = iFrontFacing ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0); }",
+  slang: "float4 mainImage(float2 coord) { return iFrontFacing ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1); }",
+  wgsl: "fn mainImage(coord: vec2f) -> vec4f { return select(vec4f(1.0, 0.0, 0.0, 1.0), vec4f(0.0, 1.0, 0.0, 1.0), iFrontFacing); }",
+};
+
 function program(
   language: ShaderLanguage,
   vertex: string | undefined,
@@ -515,6 +521,24 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s back-face culling", (langu
     // Scaled so the pair spans the same part of the screen as in clip space.
     world: (x: number, y: number): Vec3 => worldPoint(x * 1.6, y * 1.6),
   };
+
+  it("exposes primitive orientation as iFrontFacing", { timeout: 30_000 }, async () => {
+    const region = await render(language, program(
+      language,
+      placePoints3(language, windingPair(spaces.clip)),
+      { type: "vertices", vertexCount: 6, space: "clip" },
+      {},
+      FRONT_FACING_IMAGE[language],
+    ));
+
+    expect(pixelAt(region, 4, 8), "counter-clockwise").toEqual([0, 255, 0, 255]);
+    expect(pixelAt(region, 11, 8), "clockwise").toEqual([255, 0, 0, 255]);
+  });
+
+  it("defines fullscreen fragments as front-facing", { timeout: 30_000 }, async () => {
+    expect(pixelAt(await render(language, program(language, undefined, undefined, {}, FRONT_FACING_IMAGE[language])), 8, 8))
+      .toEqual([0, 255, 0, 255]);
+  });
 
   it.each(["clip", "world"] as const)("keeps only the counter-clockwise triangle with cull back in %s space", { timeout: 30_000 }, async (space) => {
     const draw = (cull?: RenderPassSettings["cull"]) => render(language, program(

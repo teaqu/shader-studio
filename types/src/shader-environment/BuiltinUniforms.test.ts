@@ -85,6 +85,18 @@ describe("shaderStudioBuiltinUniformNames", () => {
     });
   });
 
+  it("exposes iFrontFacing as a fragment-only bool in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iFrontFacing");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iFrontFacing")).toMatchObject({
+      glslType: "bool",
+      slangType: "bool",
+      wgslType: "bool",
+      stages: ["fragment"],
+    });
+  });
+
   it("keeps ShaderToy channel metadata accessors in GLSL only", () => {
     for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
       expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);

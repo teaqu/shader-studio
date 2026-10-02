@@ -104,7 +104,7 @@ Out-of-range counts, other topologies, and any of these fields on fullscreen, pl
 
 - **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
 - **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each; see [Additive particles](#additive-particles).
-- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value.
+- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value, and `iFrontFacing` is `true`.
 
 ## Render Settings
 
@@ -184,9 +184,12 @@ All standard shader uniforms are available in the vertex shader:
 
 Every geometry exposes the post-`mainVertex`, perspective-correct interpolated UV as `iVertexUv`. Three-dimensional geometry, including vertices in world space, also exposes its world-space context:
 
+`iFrontFacing` reports whether the rasterized primitive is front-facing for vertices and mesh geometry. It is always `true` for fullscreen passes and for the synthetic fullscreen grid used by variable capture.
+
 === "GLSL"
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iVertexUv` — interpolated `uv` for every geometry and space
+    - `iFrontFacing` — whether the current primitive is front-facing
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
     - `iCameraPosition` — world-space camera position
@@ -194,6 +197,7 @@ Every geometry exposes the post-`mainVertex`, perspective-correct interpolated U
 === "Slang"
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iVertexUv` — interpolated `uv` for every geometry and space
+    - `iFrontFacing` — whether the current primitive is front-facing
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
     - `iCameraPosition` — world-space camera position
@@ -201,6 +205,7 @@ Every geometry exposes the post-`mainVertex`, perspective-correct interpolated U
 === "WGSL"
     The `mainImage` signature is unchanged, but the following globals are available:
     - `iVertexUv: vec2<f32>` — interpolated `uv` for every geometry and space
+    - `iFrontFacing: bool` — whether the current primitive is front-facing
     - `iWorldPosition: vec3<f32>` — world-space position of the fragment
     - `iNormal: vec3<f32>` — world-space interpolated normal
     - `iCameraPosition: vec3<f32>` — world-space camera position

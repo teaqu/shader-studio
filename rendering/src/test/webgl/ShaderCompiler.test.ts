@@ -101,6 +101,8 @@ describe("ShaderCompiler", () => {
         .toMatchObject({ glslType: "vec2", stages: ["fragment"] });
       expect(mesh).toContain("in vec2 iVertexUv;");
       expect(fullscreen).toContain("in vec2 iVertexUv;");
+      expect(mesh).toContain("#define iFrontFacing gl_FrontFacing");
+      expect(fullscreen).toContain("const bool iFrontFacing = true;");
     });
 
     it("generates mesh vertex inputs and passes UV-scaled coordinates to mainImage", () => {

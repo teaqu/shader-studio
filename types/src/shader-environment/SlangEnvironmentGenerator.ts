@@ -110,6 +110,7 @@ export interface SlangRuntimeContextNames {
   normal: string;
   cameraPosition: string;
   uv: string;
+  frontFacing: string;
 }
 
 /**
@@ -123,6 +124,7 @@ export function buildSlangRuntimePrelude(
     normal: "_shaderStudioNormal",
     cameraPosition: "_shaderStudioCameraPosition",
     uv: "_shaderStudioVertexUv",
+    frontFacing: "_shaderStudioFrontFacing",
   },
   channelCount = 4,
 ): string {
@@ -143,6 +145,7 @@ export function buildSlangRuntimePrelude(
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.normal, contextName: contextNames.normal },
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition, contextName: contextNames.cameraPosition },
     { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.vertexUv, contextName: contextNames.uv },
+    { symbol: SHADER_STUDIO_FRAGMENT_CONTEXT.frontFacing, contextName: contextNames.frontFacing },
   ].map(({ symbol, contextName }) => `static ${symbol.slangType} ${contextName};`).join("\n");
 
   return `// ---- shader-studio Slang prelude (generated) ----

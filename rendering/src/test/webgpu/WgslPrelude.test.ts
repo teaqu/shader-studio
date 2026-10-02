@@ -302,6 +302,7 @@ describe("wrapWgslImageSource entry points", () => {
       expect(source).toContain("var<private> iVertexCount: u32;");
       expect(source).toContain("  iVertexCount = _ss_u.vertexCount.x;");
       expect(source).toContain("var<private> iVertexUv: vec2<f32>;");
+      expect(source).toContain("var<private> iFrontFacing: bool;");
     });
   });
 
@@ -332,6 +333,7 @@ describe("wrapWgslImageSource entry points", () => {
       expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {\n  _ss_initGlobals();\n${SEED}\n  var output: _ss_VertexUvOut;\n  output.position = vec4<f32>(position, 1.0);\n  output.uv = uv;\n  return output;\n}`);
       expect(result.source).toContain("return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));");
       expect(result.source).toContain("iVertexUv = uv;");
+      expect(result.source).toContain("iFrontFacing = frontFacing;");
       expect(result.source).not.toContain("_ss_mesh");
       expect(result.source).not.toContain("verts[");
       const lines = result.source.split("\n");
@@ -721,6 +723,7 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iWorldPosition: vec3<f32>;
       var<private> iNormal: vec3<f32>;
       var<private> iCameraPosition: vec3<f32>;
+      var<private> iFrontFacing: bool;
       var<private> myGain: vec4<f32>;
       var<private> myFlag: bool;
 
@@ -874,6 +877,7 @@ describe("wrapWgslImageSource golden module", () => {
       @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         _ss_initGlobals();
         iVertexUv = uv;
+        iFrontFacing = true;
         // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
         return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
       }
