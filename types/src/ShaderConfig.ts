@@ -83,13 +83,34 @@ export type BufferResolution =
 
 export const GEOMETRY_TYPES = ["fullscreen", "plane", "cube", "sphere", "model"] as const;
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
-export interface BuiltinGeometryConfig { type: Exclude<GeometryType, "model">; }
+/** Primitive topologies portable across WebGL and WebGPU for fullscreen draws. */
+export const VERTEX_TOPOLOGIES = ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"] as const;
+export type VertexTopology = (typeof VERTEX_TOPOLOGIES)[number];
+export const DEFAULT_VERTEX_TOPOLOGY: VertexTopology = "triangle-list";
+export const DEFAULT_FULLSCREEN_VERTEX_COUNT = 3;
+/** WebGL's GLsizei maximum, the lower of the WebGL and WebGPU draw-count limits. */
+export const MAX_FULLSCREEN_VERTEX_COUNT = 2_147_483_647;
+/** A non-indexed draw whose vertex positions come from the `mainVertex` hook. */
+export interface FullscreenGeometryConfig {
+  type: "fullscreen";
+  vertexCount?: number;
+  topology?: VertexTopology;
+}
+/** Indexed built-in meshes; their vertex count and topology are fixed. */
+export interface MeshGeometryConfig {
+  type: Exclude<GeometryType, "fullscreen" | "model">;
+  vertexCount?: never;
+  topology?: never;
+}
+export type BuiltinGeometryConfig = FullscreenGeometryConfig | MeshGeometryConfig;
 /** A static GLB mesh. `resolved_path` is injected by the extension for webview loading. */
 export interface ModelGeometryConfig {
   type: "model";
   path: string;
   mesh?: string;
   resolved_path?: string;
+  vertexCount?: never;
+  topology?: never;
 }
 export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;
 

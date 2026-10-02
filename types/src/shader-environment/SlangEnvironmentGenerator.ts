@@ -158,6 +158,7 @@ struct ShaderToyUniforms
     float3 channelResolution[${channelCount}];
     float4 cameraPos;
     float4 cameraDir;
+    uint4 vertexCount;
 ${fields}
 };
 

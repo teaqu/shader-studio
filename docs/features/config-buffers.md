@@ -86,13 +86,13 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 
 | Geometry | Description |
 |----------|-------------|
-| **Fullscreen** | One triangle covering the screen (default). Standard 2D shader rendering. |
+| **Fullscreen** | One triangle covering the screen (default). Standard 2D shader rendering. Set **Vertices** and **Topology** to draw your own triangles, lines, or points from a vertex shader. |
 | **Plane** | A flat 3D plane. |
 | **Cube** | A unit cube centred at the origin. |
 | **Sphere** | A UV-mapped sphere. |
 | **Model** | A custom GLB mesh. |
 
-When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API.
+When a 3D geometry type is selected, a **Vertex shader** section appears below the dropdown. Set a path to a `.vert.glsl`, `.vert.slang`, or `.vert.wgsl` file, or click **Create File** to generate a stub. See [Vertex Shaders](vertex-shaders.md) for details on writing vertex shaders and the `mainVertex` API, and [Vertex Count and Topology](vertex-shaders.md#vertex-count-and-topology) for fullscreen `vertexCount` and `topology`.
 
 ## Compute Passes
 

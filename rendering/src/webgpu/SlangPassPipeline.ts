@@ -4,7 +4,7 @@ import { buildSlangBindingPlan } from "./SlangBindingPlan";
 import { slangChannelLayoutEntries, slangChannelResourceEntries } from "./SlangBindingResources";
 import type { StorageBindingNode } from "../types/PassGraph";
 import { allowNonUniformDerivatives, type WgslVertexRange, type WgslDirectiveRange } from "./wgslDiagnostics";
-import type { GeometryType } from "@shader-studio/types";
+import type { GeometryType, VertexTopology } from "@shader-studio/types";
 import { createShaderToyUniformLayout, getShaderToyChannelCount, SLANG_ENTRY_FRAGMENT, SLANG_ENTRY_VERTEX } from "./SlangPrelude";
 
 export interface SlangPassPipelineDescriptor {
@@ -16,6 +16,8 @@ export interface SlangPassPipelineDescriptor {
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
+  /** Fullscreen primitive topology; omitted means triangle-list. */
+  topology?: VertexTopology;
   uniformBufferSize?: number;
   /** Generated prelude lines before user line 1; remaps diagnostics onto user lines. */
   sourceLineOffset?: number;
@@ -184,7 +186,7 @@ export class SlangPassPipeline {
         entryPoint: SLANG_ENTRY_FRAGMENT,
         targets: [{ format: this.targetFormat() }],
       },
-      primitive: { topology: "triangle-list" },
+      primitive: { topology: this.descriptor.topology ?? "triangle-list" },
       ...(this.isMesh() ? { depthStencil: { format: "depth24plus", depthWriteEnabled: true, depthCompare: "less" } } : {}),
     };
     let pipeline: GPURenderPipeline;

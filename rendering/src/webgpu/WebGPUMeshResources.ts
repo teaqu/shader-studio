@@ -6,7 +6,14 @@ import type { PreviewMesh } from "../preview3d/types";
 
 type MeshKind = Exclude<GeometryType, "fullscreen" | "model">;
 
-export interface WebGPUMeshResource { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; indexCount: number; indexFormat: GPUIndexFormat; }
+export interface WebGPUMeshResource {
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indexCount: number;
+  indexFormat: GPUIndexFormat;
+  /** Distinct mesh vertices, the range of the vertex index (iVertexCount). */
+  vertexCount: number;
+}
 
 export class WebGPUMeshResources {
   private readonly resources = new Map<MeshKind, WebGPUMeshResource>();
@@ -49,6 +56,6 @@ export class WebGPUMeshResources {
     const vertexBuffer = this.device.createBuffer({ size: data.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
     const indexBuffer = this.device.createBuffer({ size: mesh.indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(vertexBuffer, 0, data); this.device.queue.writeBuffer(indexBuffer, 0, mesh.indices);
-    return { vertexBuffer, indexBuffer, indexCount: mesh.indices.length, indexFormat: mesh.indices instanceof Uint32Array ? "uint32" : "uint16" };
+    return { vertexBuffer, indexBuffer, vertexCount: mesh.positions.length / 3, indexCount: mesh.indices.length, indexFormat: mesh.indices instanceof Uint32Array ? "uint32" : "uint16" };
   }
 }

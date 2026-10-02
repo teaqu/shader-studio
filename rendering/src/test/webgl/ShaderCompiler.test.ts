@@ -178,6 +178,80 @@ describe("ShaderCompiler", () => {
       expect(vertexSource).toContain("gl_Position = vec4(_vertexPosition, 1.0);");
     });
 
+    describe("configured fullscreen vertexCount and topology", () => {
+      const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";
+      // The #275 fullscreen main(), which unconfigured passes must keep exactly.
+      const DEFAULT_HOOK_MAIN = `void main() {
+ vec2 _vertexCorners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+ vec2 _vertexCorner = _vertexCorners[gl_VertexID];
+ vec3 _vertexPosition = vec3(_vertexCorner, 0.0);
+ vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
+ vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
+ mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
+ gl_Position = vec4(_vertexPosition, 1.0);
+}`;
+
+      it("keeps the default stub and hook main byte-for-byte when neither field is set", () => {
+        for (const fullscreenDraw of [undefined, {}, { vertexCount: undefined, topology: undefined }]) {
+          expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw }).vertexSource).toBe(FULLSCREEN_TRIANGLE_VERTEX);
+          const hooked = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw }).vertexSource;
+          expect(hooked.endsWith(DEFAULT_HOOK_MAIN)).toBe(true);
+          expect(hooked).not.toContain("% 3");
+          expect(hooked).not.toContain("gl_PointSize");
+        }
+      });
+
+      it.each([
+        { vertexCount: 12 },
+        { vertexCount: 3 },
+        { topology: "triangle-strip" as const },
+        { vertexCount: 6, topology: "line-strip" as const },
+      ])("seeds hook vertices from corner vertexIndex %% 3 for %j", (fullscreenDraw) => {
+        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw });
+
+        expect(vertexSource).toContain("vec2 _vertexCorner = _vertexCorners[gl_VertexID % 3];");
+        expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
+        expect(vertexSource).not.toContain("gl_PointSize");
+      });
+
+      it("wraps the hookless stub so extra vertices stay on the oversized triangle", () => {
+        expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw: { vertexCount: 6 } }).vertexSource).toBe(
+          "void main() { vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)); gl_Position = vec4(corners[gl_VertexID % 3], 0.0, 1.0); }",
+        );
+      });
+
+      it("writes a 1px gl_PointSize only for point-list, with and without a hook", () => {
+        const hooked = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw: { topology: "point-list" } }).vertexSource;
+        expect(hooked).toContain(" gl_Position = vec4(_vertexPosition, 1.0);\n gl_PointSize = 1.0;\n}");
+        expect(shaderCompiler.wrapShaderToyCode(image, { fullscreenDraw: { vertexCount: 4, topology: "point-list" } }).vertexSource)
+          .toContain("gl_Position = vec4(corners[gl_VertexID % 3], 0.0, 1.0); gl_PointSize = 1.0; }");
+        for (const topology of ["triangle-list", "triangle-strip", "line-list", "line-strip"] as const) {
+          expect(shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, fullscreenDraw: { topology } }).vertexSource)
+            .not.toContain("gl_PointSize");
+        }
+      });
+
+      it("ignores fullscreen draw fields for mesh geometry", () => {
+        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, {
+          geometry: "sphere",
+          vertexCode: hook,
+          fullscreenDraw: { vertexCount: 6, topology: "point-list" },
+        });
+
+        expect(vertexSource).not.toContain("% 3");
+        expect(vertexSource).not.toContain("gl_PointSize");
+      });
+
+      it("declares iVertexCount as an int uniform in fragment and hook vertex sources", () => {
+        const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook });
+        expect(wrappedCode).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
+        expect(vertexSource).toContain("uniform vec3 iCameraDir;\nuniform int iVertexCount;\n");
+        expect(shaderCompiler.wrapShaderToyCode(image, { geometry: "cube", vertexCode: hook }).vertexSource)
+          .toContain("uniform int iVertexCount;");
+      });
+    });
+
     it.each(["plane", "cube", "sphere", "model"] as const)("passes the %s mesh vertex index to the hook", (geometry) => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         geometry,

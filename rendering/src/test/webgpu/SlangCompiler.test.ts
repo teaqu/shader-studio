@@ -306,6 +306,36 @@ describe("SlangCompiler", () => {
     },
   );
 
+  it.runIf(realSlangAssets)(
+    "compiles a wrapped fullscreen hook and fragment that read iVertexCount with real Slang",
+    async () => {
+      const slang = await loadRealSlang(realSlangAssets!.script, realSlangAssets!.wasm);
+      const compiler = new SlangCompiler(slang);
+
+      const result = compiler.compileImagePass(
+        "float4 mainImage(float2 fragCoord) { return float4(float(iVertexCount) / 12.0); }",
+        {
+          wrapFullscreenVertexIndex: true,
+          vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex) / float(iVertexCount - 1u); }",
+        },
+      );
+
+      expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
+      if (result.success) {
+        expect(result.wgsl).toContain("vertexCount");
+      }
+    },
+  );
+
+  it("forwards the fullscreen vertex-index wrap to the Slang wrapper", () => {
+    const onLoad = vi.fn();
+    const compiler = new SlangCompiler(makeFakeSlang({ onLoad }));
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }", { wrapFullscreenVertexIndex: true });
+    compiler.compileImagePass("float4 mainImage(float2 c) { return float4(0); }");
+    expect(onLoad.mock.calls[0][0]).toContain("verts[vertexID % 3u]");
+    expect(onLoad.mock.calls[1][0]).not.toContain("% 3u");
+  });
+
   it("compiles user source to WGSL", () => {
     const compiler = new SlangCompiler(makeFakeSlang({ wgsl: "FINAL_WGSL" }));
     const result = compiler.compileImagePass("float4 mainImage(float2 c) { return float4(1); }");

@@ -268,6 +268,62 @@ describe("wrapWgslImageSource entry points", () => {
     expect(source).toContain("mainVertex(vid, &position, &normal, &uv)");
   });
 
+  describe("configured fullscreen vertexCount and topology", () => {
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+    const vertexEntry = (source: string) => source.slice(source.indexOf("@vertex fn vertexMain"), source.indexOf("@fragment"));
+    // The #275 hooked entry point, which unconfigured passes must keep exactly.
+    const DEFAULT_HOOK_ENTRY = `@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+  _ss_initGlobals();
+  var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+  var position = vec3<f32>(verts[vid], 0.0);
+  var normal = vec3<f32>(0.0, 0.0, 1.0);
+  var uv = verts[vid] * 0.5 + 0.5;
+  mainVertex(vid, &position, &normal, &uv);
+  return vec4<f32>(position, 1.0);
+}
+
+`;
+
+    it("keeps the default source byte-for-byte when the index is not wrapped", () => {
+      for (const vertexCode of [undefined, hook]) {
+        const unconfigured = wrapWgslImageSource(IMAGE, { vertexCode });
+        expect(wrapWgslImageSource(IMAGE, { vertexCode, wrapFullscreenVertexIndex: false })).toEqual(unconfigured);
+        expect(unconfigured.source).not.toContain("% 3u");
+      }
+      expect(vertexEntry(wrapWgslImageSource(IMAGE, { vertexCode: hook }).source)).toBe(DEFAULT_HOOK_ENTRY);
+    });
+
+    it("seeds a hook from the oversized-triangle corner vertexIndex % 3", () => {
+      const result = wrapWgslImageSource(IMAGE, { vertexCode: hook, wrapFullscreenVertexIndex: true });
+      const vertex = vertexEntry(result.source);
+      expect(vertex).toContain("var position = vec3<f32>(verts[vid % 3u], 0.0);");
+      expect(vertex).toContain("var uv = verts[vid % 3u] * 0.5 + 0.5;");
+      expect(vertex).toContain("mainVertex(vid, &position, &normal, &uv);");
+      expect(vertex).not.toContain("verts[vid]");
+      // The hook's line attribution is unaffected.
+      expect(result.vertexRange).toEqual(wrapWgslImageSource(IMAGE, { vertexCode: hook }).vertexRange);
+    });
+
+    it("wraps the hookless entry point too", () => {
+      const vertex = vertexEntry(wrapWgslImageSource(IMAGE, { wrapFullscreenVertexIndex: true }).source);
+      expect(vertex).toContain("return vec4<f32>(verts[vid % 3u], 0.0, 1.0);");
+      expect(vertex).not.toContain("mainVertex");
+    });
+
+    it("ignores the wrap for mesh geometry and capture mode", () => {
+      expect(wrapWgslImageSource(IMAGE, { geometry: "plane", vertexCode: hook, wrapFullscreenVertexIndex: true }).source).not.toContain("% 3u");
+      expect(wrapWgslImageSource(IMAGE, { captureMode: true, wrapFullscreenVertexIndex: true }))
+        .toEqual(wrapWgslImageSource(IMAGE, { captureMode: true }));
+    });
+
+    it("initialises iVertexCount as u32 from the uniform block in both stages", () => {
+      const { source } = wrapWgslImageSource(IMAGE, { vertexCode: hook });
+      expect(source).toContain("  cameraDir: vec4<f32>,\n  vertexCount: vec4<u32>,\n");
+      expect(source).toContain("var<private> iVertexCount: u32;");
+      expect(source).toContain("  iVertexCount = _ss_u.vertexCount.x;");
+    });
+  });
+
   it("runs a fullscreen hook with the triangle vertex index", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
       vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
@@ -606,6 +662,7 @@ describe("wrapWgslImageSource golden module", () => {
         channelResolution: array<vec4<f32>, 4>,
         cameraPos: vec4<f32>,
         cameraDir: vec4<f32>,
+        vertexCount: vec4<u32>,
         custom_myGain: vec4<f32>,
         custom_myFlag: i32,
       }
@@ -621,6 +678,7 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iDate: vec4<f32>;
       var<private> iCameraPos: vec3<f32>;
       var<private> iCameraDir: vec3<f32>;
+      var<private> iVertexCount: u32;
       var<private> iWorldPosition: vec3<f32>;
       var<private> iNormal: vec3<f32>;
       var<private> iCameraPosition: vec3<f32>;
@@ -638,6 +696,7 @@ describe("wrapWgslImageSource golden module", () => {
         iDate = _ss_u.date;
         iCameraPos = _ss_u.cameraPos.xyz;
         iCameraDir = _ss_u.cameraDir.xyz;
+        iVertexCount = _ss_u.vertexCount.x;
         myGain = _ss_u.custom_myGain;
         myFlag = _ss_u.custom_myFlag != 0;
         _ss_initChannels();

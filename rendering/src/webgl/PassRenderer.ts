@@ -11,6 +11,17 @@ import type { WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
+import { fullscreenTopology, fullscreenVertexCount } from "../types/Geometry";
+import type { VertexTopology } from "@shader-studio/types";
+
+/** piRenderer primitive for each portable fullscreen topology. */
+const WEBGL_PRIMITIVES = {
+  "triangle-list": "TRIANGLES",
+  "triangle-strip": "TRIANGLE_STRIP",
+  "line-list": "LINES",
+  "line-strip": "LINE_STRIP",
+  "point-list": "POINTS",
+} as const satisfies Record<VertexTopology, keyof PiRenderer["PRIMTYPE"]>;
 
 export class PassRenderer {
   private canvas: HTMLCanvasElement;
@@ -45,8 +56,33 @@ export class PassRenderer {
     if (passConfig.vertexSrc?.trim()) {
       this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
     }
-    // The vertex stage derives the oversized triangle from gl_VertexID.
-    this.renderer.DrawPrimitive(this.renderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+    // The vertex stage derives the oversized triangle from gl_VertexID; a
+    // vertex hook may place a configured number of vertices instead.
+    const primitive = this.renderer.PRIMTYPE[WEBGL_PRIMITIVES[fullscreenTopology(passConfig)]];
+    this.renderer.DrawPrimitive(primitive, fullscreenVertexCount(passConfig), false, 1);
+  }
+
+  /** Without WebGL2 mesh support every pass falls back to the fullscreen draw. */
+  private drawsFullscreen(passConfig: Pass): boolean {
+    return passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources;
+  }
+
+  /** The loaded mesh a pass draws; undefined for fullscreen or a model still loading. */
+  private resolveMesh(passConfig: Pass) {
+    const meshResources = this.gl ? this.meshResources : null;
+    if (passConfig.geometry === "fullscreen" || !meshResources) {
+      return undefined;
+    }
+    return passConfig.modelPath
+      ? meshResources.getModel(passConfig.name)
+      : passConfig.geometry === "model" ? undefined : meshResources.get(passConfig.geometry);
+  }
+
+  /** iVertexCount: the vertices the pass draws, matching the range of gl_VertexID. */
+  public getPassVertexCount(passConfig: Pass): number {
+    return this.drawsFullscreen(passConfig)
+      ? fullscreenVertexCount(passConfig)
+      : this.resolveMesh(passConfig)?.vertexCount ?? 0;
   }
 
   public clearCanvas(): void {
@@ -100,6 +136,10 @@ export class PassRenderer {
     this.renderer.SetShaderConstant1F("iSampleRate", uniforms.sampleRate);
     this.renderer.SetShaderConstant3FV("iCameraPos", uniforms.cameraPos);
     this.renderer.SetShaderConstant3FV("iCameraDir", uniforms.cameraDir);
+
+    const fullscreen = this.drawsFullscreen(passConfig);
+    const mesh = this.resolveMesh(passConfig);
+    this.renderer.SetShaderConstant1I("iVertexCount", this.getPassVertexCount(passConfig));
 
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
@@ -168,15 +208,11 @@ export class PassRenderer {
       }
     }
 
-    if (passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources) {
+    if (fullscreen) {
       this.drawFullscreen(passConfig);
       return;
     }
-
-    const mesh = passConfig.modelPath
-      ? this.meshResources.getModel(passConfig.name)
-      : passConfig.geometry === "model" ? undefined : this.meshResources.get(passConfig.geometry);
-    if (!mesh) {
+    if (!mesh || !this.gl) {
       return;
     }
     const aspect = Math.max(uniforms.res[0] / Math.max(uniforms.res[1], 1), 0.01);

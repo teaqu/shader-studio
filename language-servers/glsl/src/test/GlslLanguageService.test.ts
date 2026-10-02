@@ -671,9 +671,33 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await hoverAt("mainVertex")).toContain("vertex hook");
     expect(await hoverAt("vertexIndex")).toContain("int vertexIndex");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
     expect(await hoverAt("position")).toContain("object-space");
     expect(await hoverAt("normal")).toContain("normal");
     expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iVertexCount on the %s stage", async (stage) => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position.x = float(vertexIndex) / float(iVertexCount); }"
+      : "void mainImage(out vec4 color, in vec2 coord) { color = vec4(float(iVertexCount)); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexCount") } });
+    const item = completions.find((candidate) => candidate.label === "iVertexCount");
+    expect(item?.detail).toContain("int");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexCount") + 2 },
+    }))?.contents);
+    expect(hover).toContain("int iVertexCount");
+    expect(hover).toContain("vertexCount");
+    expect(hover).toContain("mesh vertex count");
+    expect(await instance.diagnostics({ document: revision })).not.toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining("iVertexCount") }),
+    );
   });
 
   it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {

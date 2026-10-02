@@ -69,6 +69,8 @@ export interface ShaderToyUniformInput {
   channelResolution: ArrayLike<number>;
   cameraPos: ArrayLike<number>;
   cameraDir: ArrayLike<number>;
+  /** Vertices the pass draws (iVertexCount); defaults to 0 when not applicable. */
+  vertexCount?: number;
 }
 
 /** Pack the fixed ShaderToy prefix followed by dynamically laid-out script uniforms. */
@@ -115,6 +117,7 @@ export function packShaderToyUniforms(
     f32[offsets.iCameraPos / 4 + component] = input.cameraPos[component] ?? 0;
     f32[offsets.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
   }
+  new Uint32Array(buf)[offsets.iVertexCount / 4] = input.vertexCount ?? 0;
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));
   for (const entry of customLayout.entries) {

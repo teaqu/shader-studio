@@ -493,6 +493,46 @@ describe("RenderingEngine", () => {
     });
   });
 
+  describe("getCaptureUniforms iVertexCount", () => {
+    const frameUniforms = {
+      time: 1, timeDelta: 0.1, frameRate: 60, frame: 2, res: [8, 8, 1], mouse: [0, 0, 0, 0],
+      date: [2026, 1, 1, 0], cameraPos: [0, 0, 0], cameraDir: [0, 0, -1],
+    };
+    const passes = [
+      { name: 'BufferA', shaderSrc: 'void mainImage() {}', inputs: {}, geometry: 'fullscreen', vertexCount: 12 },
+      { name: 'Image', shaderSrc: 'void mainImage() {}', inputs: {}, geometry: 'fullscreen' },
+    ];
+    let getPassVertexCount: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      getPassVertexCount = vi.fn((pass: { vertexCount?: number }) => pass.vertexCount ?? 3);
+      for (const [key, value] of Object.entries({
+        shaderPipeline: { getPasses: () => passes, getPass: (name: string) => passes.find((pass) => pass.name === name) },
+        frameRenderer: { getUniforms: () => frameUniforms },
+        passRenderer: { getPassVertexCount },
+      })) {
+        Object.defineProperty(renderingEngine, key, { value, writable: true, configurable: true });
+      }
+    });
+
+    it("reports the Image pass vertex count before any capture context is chosen", () => {
+      expect(renderingEngine.getCaptureUniforms().vertexCount).toBe(3);
+    });
+
+    it("reports the vertex count of the pass the capture context targets", () => {
+      renderingEngine.getVariableCaptureCompileContext(undefined, 'BufferA');
+
+      expect(renderingEngine.getCaptureUniforms().vertexCount).toBe(12);
+      expect(getPassVertexCount).toHaveBeenCalledWith(passes[0]);
+    });
+
+    it("omits vertexCount when the targeted pass no longer exists", () => {
+      (renderingEngine as unknown as { shaderPipeline: unknown }).shaderPipeline = { getPasses: () => [], getPass: () => undefined };
+
+      expect(renderingEngine.getCaptureUniforms()).not.toHaveProperty("vertexCount");
+    });
+  });
+
   describe("getVariableCaptureTextureBindings", () => {
     const defaultTexture = { id: 'default' };
     const cubemapTexture = { id: 'cubemap' };

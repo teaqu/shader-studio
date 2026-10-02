@@ -1,4 +1,46 @@
-import { GEOMETRY_TYPES, type GeometryConfig, type ShaderConfig } from "@shader-studio/types";
+import {
+  GEOMETRY_TYPES,
+  MAX_FULLSCREEN_VERTEX_COUNT,
+  VERTEX_TOPOLOGIES,
+  type GeometryConfig,
+  type ShaderConfig,
+} from "@shader-studio/types";
+
+const VERTEX_FIELDS = ["vertexCount", "topology"] as const;
+
+function isGeometryObject(geometry: unknown): geometry is Record<string, unknown> {
+  return Boolean(geometry) && typeof geometry === "object" && !Array.isArray(geometry);
+}
+
+/**
+ * Field-specific errors for `vertexCount` and `topology`, which only fullscreen
+ * geometry accepts. Reported separately so the message names the bad field.
+ */
+function validateGeometryVertexFields(geometry: unknown, passName: string, errors: string[]): void {
+  if (!isGeometryObject(geometry)) {
+    return;
+  }
+  const { type, vertexCount, topology } = geometry;
+  if (type !== "fullscreen") {
+    // Unknown types already report the supported list.
+    if (typeof type !== "string" || !GEOMETRY_TYPES.includes(type as GeometryConfig["type"])) {
+      return;
+    }
+    for (const field of VERTEX_FIELDS) {
+      if (geometry[field] !== undefined) {
+        errors.push(`${passName} pass geometry ${field} is only supported for fullscreen geometry, not ${type}`);
+      }
+    }
+    return;
+  }
+  if (vertexCount !== undefined &&
+    (typeof vertexCount !== "number" || !Number.isInteger(vertexCount) || vertexCount < 1 || vertexCount > MAX_FULLSCREEN_VERTEX_COUNT)) {
+    errors.push(`${passName} pass geometry vertexCount must be an integer from 1 to ${MAX_FULLSCREEN_VERTEX_COUNT}`);
+  }
+  if (topology !== undefined && !VERTEX_TOPOLOGIES.includes(topology as (typeof VERTEX_TOPOLOGIES)[number])) {
+    errors.push(`${passName} pass geometry topology must be one of: ${VERTEX_TOPOLOGIES.join(", ")}`);
+  }
+}
 
 function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
   if (geometry === undefined) {
@@ -10,13 +52,29 @@ function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefi
 
   const type = (geometry as { type?: unknown }).type;
   if (type === "model") {
-    const { path, mesh, resolved_path, ...rest } = geometry as { path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown };
+    // vertexCount/topology are reported by validateGeometryVertexFields.
+    const { path, mesh, resolved_path, vertexCount: _vertexCount, topology: _topology, ...rest } = geometry as {
+      path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown; vertexCount?: unknown; topology?: unknown;
+    };
     return Object.keys(rest).length === 1 && typeof path === "string" && path.length > 0 &&
       (mesh === undefined || typeof mesh === "string") && (resolved_path === undefined || typeof resolved_path === "string");
   }
-  const properties = Object.keys(geometry);
+  const properties = Object.keys(geometry).filter((key) => !VERTEX_FIELDS.includes(key as (typeof VERTEX_FIELDS)[number]));
   return properties.length === 1 && properties[0] === "type" &&
     typeof type === "string" && GEOMETRY_TYPES.includes(type as GeometryConfig["type"]);
+}
+
+/**
+ * Geometry errors for a renderable pass. Shared with the config panel's pass
+ * model so both report the same messages.
+ */
+export function validatePassGeometry(geometry: unknown, passName: string): string[] {
+  const errors: string[] = [];
+  if (!isValidGeometry(geometry)) {
+    errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
+  }
+  validateGeometryVertexFields(geometry, passName, errors);
+  return errors;
 }
 
 export interface ValidationResult {
@@ -83,9 +141,7 @@ export class ConfigValidator {
     if (pass.outputFormat !== undefined) {
       errors.push("Image pass cannot define outputFormat");
     }
-    if (!isValidGeometry(pass.geometry)) {
-      errors.push(`Image pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
-    }
+    errors.push(...validatePassGeometry(pass.geometry, "Image"));
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, 'Image', errors);
@@ -101,9 +157,7 @@ export class ConfigValidator {
       errors.push(`${passName} pass outputFormat must be auto, rgba16float, or rgba32float`);
     }
 
-    if (!isValidGeometry(pass.geometry)) {
-      errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
-    }
+    errors.push(...validatePassGeometry(pass.geometry, passName));
 
     if (pass.inputs) {
       this.validateInputs(pass.inputs, passName, errors);

@@ -17,7 +17,7 @@ fn mainImage(coord: vec2f) -> vec4f {
 
 `coord` is in pixels with a bottom-left origin, matching `fragCoord` in GLSL and Slang.
 
-The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`. Use these names directly without declaring them.
+The usual ShaderToy-style built-ins are available as globals with the same names and meanings as in Slang: `iResolution`, `iMouse`, `iTime`, `iTimeDelta`, `iFrameRate`, `iFrame`, `iSampleRate`, `iDate`, `iCameraPos`, `iCameraDir`, `iVertexCount`. Use these names directly without declaring them.
 
 ## Reading Textures and Buffers
 

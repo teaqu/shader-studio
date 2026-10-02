@@ -62,15 +62,51 @@ The meaning of the parameters depends on the geometry type:
 
 | Geometry | `vertexIndex` | `position` | `normal` | `uv` |
 |----------|---------------|-----------|----------|------|
-| **Fullscreen** | 0, 1, 2 | Clip-space triangle corner, Z=0 | `(0, 0, 1)` | Corner × 0.5 + 0.5 |
+| **Fullscreen** | 0 to `iVertexCount - 1` (0, 1, 2 by default) | Clip-space triangle corner `vertexIndex % 3`, Z=0 | `(0, 0, 1)` | Corner × 0.5 + 0.5 |
 | **Plane** | Mesh vertex index | XZ-plane object-space vertex | `(0, 1, 0)` | 0–1 grid UV |
 | **Cube** | Mesh vertex index | Unit-cube object-space vertex | Face normal | Face UV |
 | **Sphere** | Mesh vertex index | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
 | **Model** | Mesh vertex index | GLB mesh vertex position | Mesh vertex normal | Mesh UV |
 
-For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index.
+For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index. `iVertexCount` is the number of distinct mesh vertices, so `vertexIndex` runs from 0 to `iVertexCount - 1` here too.
 
-For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen. Assign `position` from `vertexIndex` to place the triangle yourself; pixels it no longer covers are cleared to opaque black.
+For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen. Assign `position` from `vertexIndex` to place the triangle yourself; pixels it no longer covers are cleared to opaque black. To draw more than three vertices, or lines and points, see [Vertex Count and Topology](#vertex-count-and-topology).
+
+## Vertex Count and Topology
+
+A fullscreen pass can draw any number of vertices and join them as triangles, lines, or points. Set them on the pass geometry in `.sha.json`, or with the **Vertices** and **Topology** controls under **Geometry** in the config panel:
+
+```json
+"geometry": { "type": "fullscreen", "vertexCount": 6, "topology": "triangle-strip" }
+```
+
+| Field | Values | Default |
+|-------|--------|---------|
+| `vertexCount` | Whole number from 1 to 2147483647 | `3` |
+| `topology` | `triangle-list`, `triangle-strip`, `line-list`, `line-strip`, `point-list` | `triangle-list` |
+
+`mainVertex` runs once per vertex with `vertexIndex` from 0 to `vertexCount - 1`; read the count in the shader as `iVertexCount`. Place the vertices in shader code, for example from an array or from maths over `vertexIndex`. Each vertex starts at the oversized-triangle corner `vertexIndex % 3`, so a hook that leaves some vertices untouched still keeps them on screen. Values outside the range, other topologies, and either field on plane, cube, sphere, or model geometry are config errors: those meshes are always drawn as indexed triangles.
+
+When neither field is set, the pass draws the default triangle exactly as before.
+
+### Limitations
+
+- **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
+- **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each:
+
+    ```glsl
+    // vertexCount = particleCount * 6, topology = triangle-list
+    const vec2 corners[6] = vec2[6](vec2(-1, -1), vec2(1, -1), vec2(-1, 1), vec2(-1, 1), vec2(1, -1), vec2(1, 1));
+
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        int particle = vertexIndex / 6;
+        vec2 centre = vec2(sin(float(particle) * 1.7 + iTime), cos(float(particle) * 2.3)) * 0.8;
+        uv = corners[vertexIndex % 6] * 0.5 + 0.5;
+        position = vec3(centre + corners[vertexIndex % 6] * 0.02, 0.0);
+    }
+    ```
+
+- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of the pass, including pixels no triangle, line, or point covers.
 
 ## Available Built-ins
 
@@ -89,6 +125,7 @@ All standard shader uniforms are available in the vertex shader:
 | `iSampleRate` | `float` | `float` | `f32` | Audio sample rate |
 | `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Camera forward direction |
+| `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the fullscreen `vertexCount`, or the mesh vertex count |
 
 === "GLSL"
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.
@@ -161,6 +198,59 @@ A fullscreen vertex shader can place its three vertices from `vertexIndex`, for 
     ```
 
 `mainImage` shades only the pixels inside the triangle; the rest of the pass is cleared to black.
+
+### Fullscreen: a Hexagon
+
+Six points joined as a triangle strip make a hexagon. Set the pass geometry to `{ "type": "fullscreen", "vertexCount": 6, "topology": "triangle-strip" }`:
+
+=== "GLSL"
+    ```glsl
+    // hexagon.vert.glsl
+    const vec2 points[6] = vec2[6](
+        vec2( 0.25, 0.433), vec2(-0.25, 0.433),
+        vec2( 0.5,  0.0),   vec2(-0.5,  0.0),
+        vec2( 0.25,-0.433), vec2(-0.25,-0.433)
+    );
+
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        position = vec3(points[vertexIndex], 0.0);
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // hexagon.vert.slang
+    static const float2 points[6] = {
+        float2( 0.25, 0.433), float2(-0.25, 0.433),
+        float2( 0.5,  0.0),   float2(-0.5,  0.0),
+        float2( 0.25,-0.433), float2(-0.25,-0.433)
+    };
+
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        position = float3(points[vertexIndex], 0.0);
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // hexagon.vert.wgsl
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        var points = array<vec2f, 6>(
+            vec2f( 0.25, 0.433), vec2f(-0.25, 0.433),
+            vec2f( 0.5,  0.0),   vec2f(-0.5,  0.0),
+            vec2f( 0.25,-0.433), vec2f(-0.25,-0.433)
+        );
+        *position = vec3f(points[vertexIndex], 0.0);
+    }
+    ```
+
+The same shape as a `triangle-list` needs 12 vertices, three per triangle. Index the same points with `vertexIndex / 3 + vertexIndex % 3` (`3u` in Slang and WGSL) to get triangles (0, 1, 2), (1, 2, 3), (2, 3, 4) and (3, 4, 5).
+
+Use `iVertexCount` to spread vertices without hard-coding the count, for example a `line-strip` across the screen:
+
+```glsl
+position = vec3(-0.75 + 1.5 * float(vertexIndex) / float(iVertexCount - 1), 0.0, 0.0);
+```
 
 ### Displacing a Plane
 

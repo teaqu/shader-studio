@@ -100,6 +100,27 @@ describe('BufferConfig', () => {
       expect(new BufferConfig('BufferA', config).validate().isValid).toBe(false);
     });
 
+    it('accepts fullscreen vertexCount and topology, as the renderer does', () => {
+      expect(new BufferConfig('Image', { geometry: { type: 'fullscreen', vertexCount: 6, topology: 'triangle-strip' } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'fullscreen', vertexCount: 2147483647 } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+    });
+
+    it.each([0, 2147483648, 1.5])('rejects fullscreen vertexCount %s with the renderer message', (vertexCount) => {
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'fullscreen', vertexCount } }).validate()).toEqual({
+        isValid: false,
+        errors: ['BufferA pass geometry vertexCount must be an integer from 1 to 2147483647'],
+      });
+    });
+
+    it('rejects an unknown topology and vertex fields on mesh geometry', () => {
+      expect(new BufferConfig('Image', { geometry: { type: 'fullscreen', topology: 'triangle-fan' } } as never).validate().errors)
+        .toEqual(['Image pass geometry topology must be one of: triangle-list, triangle-strip, line-list, line-strip, point-list']);
+      expect(new BufferConfig('Image', { geometry: { type: 'sphere', vertexCount: 6 } } as never).validate().errors)
+        .toEqual(['Image pass geometry vertexCount is only supported for fullscreen geometry, not sphere']);
+    });
+
     it('reports the supported types for unknown geometry', () => {
       const config = {
         path: 'buffer.glsl',

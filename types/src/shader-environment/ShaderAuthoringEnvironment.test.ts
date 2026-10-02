@@ -367,6 +367,22 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(layered).not.toContain("void writeOutput(uint2 coord, float4 color)");
   });
 
+  it("declares iVertexCount for fragment and vertex authoring but not compute", () => {
+    const slang = (stage: "fragment" | "vertex" | "compute") =>
+      buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage }).text;
+    expect(slang("fragment")).toContain("uint32_t iVertexCount;");
+    expect(slang("vertex")).toContain("uint32_t iVertexCount;");
+    expect(slang("compute")).not.toContain("iVertexCount");
+    expect(buildGlslAuthoringPreamble(baseEnvironment("glsl")).text).toContain("uniform int iVertexCount;");
+    expect(buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage: "vertex" }).text).toContain("uniform int iVertexCount;");
+  });
+
+  it("puts iVertexCount in its own 16-byte runtime slot before custom uniforms", () => {
+    const runtime = buildSlangRuntimePrelude([{ name: "gain", type: "float" }]);
+    expect(runtime).toContain("    float4 cameraDir;\n    uint4 vertexCount;\n    float custom_gain;");
+    expect(runtime).toContain("#define iVertexCount (_st.vertexCount.x)");
+  });
+
   it("exposes the renderer compute repetition index only to compute authoring", () => {
     const compute = buildSlangAuthoringModule({
       ...baseEnvironment("slang"),
@@ -865,7 +881,7 @@ describe("ShaderAuthoringEnvironment", () => {
   it("documents every renderer-visible built-in and channel symbol with a type and runtime meaning", () => {
     const rendererSymbols = [
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
-      "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir",
+      "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
       "iWorldPosition", "iNormal", "iCameraPosition",
     ];

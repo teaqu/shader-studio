@@ -17,7 +17,7 @@ export const SLANG_VERTEX_HOOK_FEATURES: readonly SlangVertexHookFeature[] = Obj
     name: "vertexIndex",
     kind: "parameter",
     signature: "uint vertexIndex",
-    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry draws one triangle, so it is 0, 1 and 2; mesh geometry passes the mesh vertex index.",
+    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry runs from 0 to iVertexCount - 1 (0, 1 and 2 by default; set `vertexCount` and `topology` on the geometry to draw more); mesh geometry passes the mesh vertex index.",
   }),
   Object.freeze({
     name: "position",

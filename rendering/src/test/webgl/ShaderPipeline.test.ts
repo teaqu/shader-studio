@@ -665,6 +665,49 @@ describe("ShaderPipeline", () => {
       expect(mockRenderer.DestroyShader).toHaveBeenCalledWith(nextImageShader);
     });
 
+    it("propagates configured fullscreen vertexCount and topology to passes and compile options", async () => {
+      mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+      const shaderCode = "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }";
+      const config = {
+        version: "1",
+        passes: {
+          BufferA: { path: "a.glsl", geometry: { type: "fullscreen", vertexCount: 12, topology: "line-strip" }, inputs: {} },
+          BufferB: { path: "b.glsl", geometry: { type: "fullscreen", topology: "point-list" }, inputs: {} },
+          BufferC: { path: "c.glsl", geometry: { type: "fullscreen" }, inputs: {} },
+          BufferD: { path: "d.glsl", geometry: { type: "cube" }, inputs: {} },
+          Image: { geometry: { type: "fullscreen", vertexCount: 6 }, inputs: {} },
+        },
+      } as const;
+      const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const buffers = { BufferA: source, BufferB: source, BufferC: source, BufferD: source };
+
+      const result = await shaderPipeline.compileShaderPipeline(shaderCode, config, "draw.glsl", buffers);
+
+      expect(result.success).toBe(true);
+      const passes = Object.fromEntries(shaderPipeline.getPasses().map((pass) => [pass.name, pass]));
+      expect(passes.BufferA).toMatchObject({ vertexCount: 12, topology: "line-strip" });
+      expect(passes.BufferB).toMatchObject({ topology: "point-list" });
+      expect(passes.BufferB).not.toHaveProperty("vertexCount");
+      expect(passes.Image).toMatchObject({ vertexCount: 6 });
+      expect(passes.Image).not.toHaveProperty("topology");
+      for (const name of ["BufferC", "BufferD"]) {
+        expect(passes[name]).not.toHaveProperty("vertexCount");
+        expect(passes[name]).not.toHaveProperty("topology");
+      }
+      // Passes compile in configured order, one call each.
+      const order = shaderPipeline.getPasses().map((pass) => pass.name);
+      const optionsFor = (name: string) => mockShaderCompiler.compileShaderAsync.mock.calls[order.indexOf(name)][1];
+      expect(optionsFor("BufferA")).toMatchObject({ fullscreenDraw: { vertexCount: 12, topology: "line-strip" } });
+      expect(optionsFor("BufferB")).toMatchObject({ fullscreenDraw: { vertexCount: undefined, topology: "point-list" } });
+      expect(optionsFor("BufferC")).not.toHaveProperty("fullscreenDraw");
+      expect(optionsFor("BufferD")).not.toHaveProperty("fullscreenDraw");
+      expect(optionsFor("Image")).toMatchObject({ fullscreenDraw: { vertexCount: 6, topology: undefined } });
+      // wrapShaderToyCode (line mapping) sees the same draw config as the compile.
+      expect(mockShaderCompiler.wrapShaderToyCode.mock.calls.map(([, options]) => options.fullscreenDraw)).toEqual(
+        mockShaderCompiler.compileShaderAsync.mock.calls.map(([, options]) => options.fullscreenDraw),
+      );
+    });
+
     it("compiles mixed pass geometry once per pass in configured order", async () => {
       const previousImageShader = createMockShader();
       mockShaderCompiler.compileShaderAsync.mockResolvedValueOnce(previousImageShader);

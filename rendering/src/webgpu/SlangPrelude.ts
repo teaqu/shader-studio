@@ -76,6 +76,7 @@ export interface ShaderToyUniformLayout {
     iChannelResolution: number;
     iCameraPos: number;
     iCameraDir: number;
+    iVertexCount: number;
   };
 }
 
@@ -92,10 +93,12 @@ export function createShaderToyUniformLayout(channelCount: number): ShaderToyUni
   const iChannelResolution = iDate + 16;
   const iCameraPos = iChannelResolution + count * 16;
   const iCameraDir = iCameraPos + 16;
+  // A whole 16-byte slot (uint4 / vec4<u32>, read as .x) keeps custom uniforms 16-aligned.
+  const iVertexCount = iCameraDir + 16;
   return {
     channelCount: count,
-    size: iCameraDir + 16,
-    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir },
+    size: iVertexCount + 16,
+    offsets: { iResolution: 0, iMouse: 16, iTime: 32, iTimeDelta: 36, iFrameRate: 40, iFrame: 44, iChannelTime, iChannelLoaded, iSampleRate, iDate, iChannelResolution, iCameraPos, iCameraDir, iVertexCount },
   };
 }
 
@@ -144,13 +147,19 @@ float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
 `;
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): string {
+/**
+ * Configured draws may run past three vertices; wrapping the corner index
+ * keeps every seed inside the oversized triangle. Unconfigured passes keep
+ * the unwrapped source.
+ */
+function buildFullscreenEntryPoints(vertexCode: string, wrapVertexIndex = false): string {
+  const corner = wrapVertexIndex ? "vertexID % 3u" : "vertexID";
   if (!vertexCode.trim()) {
-    return ENTRY_POINTS;
+    return wrapVertexIndex ? ENTRY_POINTS.replace("verts[vertexID]", `verts[${corner}]`) : ENTRY_POINTS;
   }
   return `${vertexCode}
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); return float4(position, 1); }
+float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[${corner}], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[${corner}] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); return float4(position, 1); }
 [shader("fragment")]
 float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target { return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y)); }
 `;
@@ -188,6 +197,8 @@ export interface SlangWrapOptions {
   passKind?: "render" | "compute";
   geometry?: GeometryType;
   vertexCode?: string;
+  /** Wrap the fullscreen corner index (`% 3`) for a configured vertexCount/topology. */
+  wrapFullscreenVertexIndex?: boolean;
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block (selector index,
@@ -324,7 +335,7 @@ export function wrapSlangImageSource(userSource: string, options: SlangWrapOptio
     const meshBinding = buildSlangBindingPlan(options.channels ?? []).nextBinding + (options.storage?.length ?? 0);
     return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}${buildMeshPrelude(meshBinding)}#line 1\n${userSource}\n${buildMeshEntryPoints(vertexCode || "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}")}`;
   }
-  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${buildFullscreenEntryPoints(vertexCode)}`;
+  return `${prelude}\n${channelPrelude}\n${storageDeclarations.beforeCommon}${commonCode}${storageDeclarations.afterCommon}#line 1\n${userSource}\n${buildFullscreenEntryPoints(vertexCode, options.wrapFullscreenVertexIndex)}`;
 }
 
 function buildOutputPrelude(binding: number, outputLayers: number, imageFormat: "rgba16f" | "rgba32f" = "rgba16f"): string {

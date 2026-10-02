@@ -385,6 +385,22 @@ describe("VariableCapturer", () => {
     });
   });
 
+  describe("iVertexCount", () => {
+    it.each([
+      [{ vertexCount: 12 }, 12],
+      [{}, 0],
+    ])("binds iVertexCount from the capture uniforms (%j)", async (extra, expected) => {
+      const vertexCountLoc = { name: "iVertexCount" };
+      vi.mocked(gl.getUniformLocation).mockImplementation((_program, name) => (
+        name === "iVertexCount" ? vertexCountLoc as WebGLUniformLocation : null
+      ));
+
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), { ...createDefaultUniforms(), ...extra }, 2, 2);
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(vertexCountLoc, expected);
+    });
+  });
+
   describe("issueCaptureGrid", () => {
     it("should return 0 for empty captures array", async () => {
       const result = await capturer.issueCaptureGrid(

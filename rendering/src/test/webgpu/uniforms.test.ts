@@ -84,6 +84,28 @@ describe("packShaderToyUniforms", () => {
     expect(f(offsets.iCameraDir + 8)).toBe(-0.75);
   });
 
+  it("writes iVertexCount as a u32 in its own 16-byte slot after iCameraDir", () => {
+    const layout = createShaderToyUniformLayout(17);
+    expect(layout.offsets.iVertexCount).toBe(layout.offsets.iCameraDir + 16);
+    expect(layout.size).toBe(layout.offsets.iVertexCount + 16);
+
+    const dv = new DataView(packShaderToyUniforms({ ...input, channelCount: 17, vertexCount: 2_147_483_647 }));
+    expect(dv.getUint32(layout.offsets.iVertexCount, true)).toBe(2_147_483_647);
+    expect(dv.getUint32(layout.offsets.iVertexCount + 4, true)).toBe(0);
+    expect(dv.getFloat32(layout.offsets.iCameraDir + 8, true)).toBe(-0.75);
+  });
+
+  it("defaults iVertexCount to zero when the caller has no vertex count", () => {
+    const dv = new DataView(packShaderToyUniforms(input));
+    expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount, true)).toBe(0);
+  });
+
+  it("starts custom uniforms after the iVertexCount slot", () => {
+    const layout = createSlangCustomUniformLayout([{ name: "gain", type: "float" }]);
+    expect(layout.entries[0].offset).toBe(UNIFORM_OFFSETS.iVertexCount + 16);
+    expect(SHADERTOY_UNIFORM_SIZE).toBe(UNIFORM_OFFSETS.iVertexCount + 16);
+  });
+
   it("defaults missing mouse components to zero", () => {
     const buf = packShaderToyUniforms({ ...input, mouse: [5] });
     const dv = new DataView(buf);

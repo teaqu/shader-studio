@@ -11,6 +11,8 @@ interface MeshResource {
   indexBuffer: WebGLBuffer;
   indexCount: number;
   indexType: GLenum;
+  /** Distinct mesh vertices, the range of gl_VertexID (iVertexCount). */
+  vertexCount: number;
 }
 
 export class WebGLMeshResources {
@@ -18,7 +20,7 @@ export class WebGLMeshResources {
 
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
-  public get(kind: MeshKind): Pick<MeshResource, "vao" | "indexCount" | "indexType"> {
+  public get(kind: MeshKind): Pick<MeshResource, "vao" | "indexCount" | "indexType" | "vertexCount"> {
     let resource = this.resources.get(kind);
     if (!resource) {
       resource = this.upload(kind);
@@ -27,7 +29,7 @@ export class WebGLMeshResources {
     return resource;
   }
 
-  public getModel(key: string): Pick<MeshResource, "vao" | "indexCount" | "indexType"> | undefined {
+  public getModel(key: string): Pick<MeshResource, "vao" | "indexCount" | "indexType" | "vertexCount"> | undefined {
     return this.resources.get(key as MeshKind);
   }
 
@@ -96,6 +98,6 @@ export class WebGLMeshResources {
     this.gl.enableVertexAttribArray(2);
     this.gl.vertexAttribPointer(2, 2, this.gl.FLOAT, false, 32, 24);
     this.gl.bindVertexArray(null);
-    return { vao, vertexBuffer, indexBuffer, indexCount: mesh.indices.length, indexType: mesh.indices instanceof Uint32Array ? this.gl.UNSIGNED_INT : this.gl.UNSIGNED_SHORT };
+    return { vao, vertexBuffer, indexBuffer, vertexCount, indexCount: mesh.indices.length, indexType: mesh.indices instanceof Uint32Array ? this.gl.UNSIGNED_INT : this.gl.UNSIGNED_SHORT };
   }
 }

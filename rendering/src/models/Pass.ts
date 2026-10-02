@@ -1,6 +1,7 @@
 import type { BufferOutputFormat, BufferResolution, GeometryType } from "@shader-studio/types";
+import type { FullscreenDrawConfig } from "../types/Geometry";
 
-export type Pass = {
+export type Pass = FullscreenDrawConfig & {
   name: string;
   shaderSrc: string;
   vertexSrc?: string;

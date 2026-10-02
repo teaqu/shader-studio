@@ -40,6 +40,8 @@ export interface WgslWrapOptions {
   passKind?: "render" | "compute";
   geometry?: GeometryType;
   vertexCode?: string;
+  /** Wrap the fullscreen corner index (`% 3`) for a configured vertexCount/topology. */
+  wrapFullscreenVertexIndex?: boolean;
   customUniforms?: SlangCustomUniformInfo[];
   /**
    * Variable-capture mode: adds the capture uniform block and swaps the
@@ -159,6 +161,7 @@ struct _ss_ShaderToyUniforms {
   channelResolution: array<vec4<f32>, ${channelCount}>,
   cameraPos: vec4<f32>,
   cameraDir: vec4<f32>,
+  vertexCount: vec4<u32>,
 ${customFields}
 }
 
@@ -189,6 +192,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "var<private> iDate: vec4<f32>;",
     "var<private> iCameraPos: vec3<f32>;",
     "var<private> iCameraDir: vec3<f32>;",
+    "var<private> iVertexCount: u32;",
     `var<private> ${MESH_FRAGMENT_CONTEXT.worldPosition}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.normal}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.cameraPosition}: vec3<f32>;`,
@@ -204,6 +208,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "  iDate = _ss_u.date;",
     "  iCameraPos = _ss_u.cameraPos.xyz;",
     "  iCameraDir = _ss_u.cameraDir.xyz;",
+    "  iVertexCount = _ss_u.vertexCount.x;",
   ];
   for (const { name, type } of customUniforms) {
     if (!isSlangCustomUniformType(type)) {
@@ -444,17 +449,23 @@ struct _ss_MeshVertexOut {
   };
 }
 
-function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
+/**
+ * Configured draws may run past three vertices; wrapping the corner index
+ * keeps every seed inside the oversized triangle. Unconfigured passes keep
+ * the unwrapped source.
+ */
+function buildFullscreenEntryPoints(vertexCode: string, wrapVertexIndex = false): WgslEntryPoints {
   const hook = vertexCode.trim() ? vertexCode : "";
+  const corner = wrapVertexIndex ? "vid % 3u" : "vid";
   if (hook !== "") {
     return {
       source: `${hook}
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   _ss_initGlobals();
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-  var position = vec3<f32>(verts[vid], 0.0);
+  var position = vec3<f32>(verts[${corner}], 0.0);
   var normal = vec3<f32>(0.0, 0.0, 1.0);
-  var uv = verts[vid] * 0.5 + 0.5;
+  var uv = verts[${corner}] * 0.5 + 0.5;
   mainVertex(vid, &position, &normal, &uv);
   return vec4<f32>(position, 1.0);
 }
@@ -473,7 +484,7 @@ function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
 
 @vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-  return vec4<f32>(verts[vid], 0.0, 1.0);
+  return vec4<f32>(verts[${corner}], 0.0, 1.0);
 }
 
 @fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
@@ -814,7 +825,7 @@ function assembleWgslImageSource(userSource: string, options: WgslWrapOptions = 
   }
   const body = `${prefix}${commonCode}`;
   const head = `${body}\n${strippedUserSource}\n${storageDeclarations.afterCommon}`;
-  const entries = buildFullscreenEntryPoints(vertexCode);
+  const entries = buildFullscreenEntryPoints(vertexCode, options.wrapFullscreenVertexIndex);
   return {
     source: `${head}${entries.source}`,
     preludeLineCount: countLines(body) + 1,

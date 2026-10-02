@@ -21,6 +21,8 @@ export interface CaptureUniforms {
   date: number[];
   cameraPos: number[];
   cameraDir: number[];
+  /** iVertexCount of the captured pass; capture itself still covers the whole pixel grid. */
+  vertexCount?: number;
   channelTime?: number[];
   channelLoaded?: number[];
   sampleRate?: number;
@@ -711,6 +713,7 @@ export class VariableCapturer implements IVariableCapturer {
     gl.uniform4fv(gl.getUniformLocation(program, 'iDate'), uniforms.date);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
+    gl.uniform1i(gl.getUniformLocation(program, 'iVertexCount'), uniforms.vertexCount ?? 0);
 
     // Set custom uniforms from script
     for (const u of this.customUniforms) {

@@ -50,7 +50,8 @@ import { WebGPUTextureBackend, type WebGPUTextureHandle } from "./WebGPUTextureB
 import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
-import { WebGPUMeshResources } from "./WebGPUMeshResources";
+import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
+import { fullscreenTopology, fullscreenVertexCount, hasFullscreenDrawConfig } from "../types/Geometry";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3, multiplyMatrices } from "../preview3d/math";
@@ -1058,6 +1059,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
               passKind: pass.kind,
               ...(pass.geometry !== "fullscreen" ? { geometry: pass.geometry } : {}),
               ...(pass.vertexSrc ? { vertexCode: pass.vertexSrc } : {}),
+              ...(pass.geometry === "fullscreen" && hasFullscreenDrawConfig(pass) ? { wrapFullscreenVertexIndex: true } : {}),
               workgroupSize: pass.workgroupSize,
               outputLayers: pass.outputLayers,
               hasOutput: pass.output === "texture",
@@ -2162,6 +2164,8 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.source,
       pass.geometry,
       pass.vertexSrc,
+      // The fullscreen vertex wrapper wraps vertexIndex for configured draws.
+      hasFullscreenDrawConfig(pass),
       commonCode,
       channels,
       storageLayout,
@@ -2214,7 +2218,26 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.output,
       pass.outputLayers,
       pass.resolvedOutputFormat,
+      // Primitive topology is baked into the render pipeline.
+      pass.kind === "render" ? fullscreenTopology(pass) : null,
     ]);
+  }
+
+  /** The loaded mesh a render pass draws; undefined for fullscreen or a model still loading. */
+  private resolvePassMesh(pass: RenderPassNode): WebGPUMeshResource | undefined {
+    if (!pass.geometry || pass.geometry === "fullscreen") {
+      return undefined;
+    }
+    return pass.modelPath
+      ? this.meshResources?.getModel(pass.name)
+      : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
+  }
+
+  /** iVertexCount: the vertices the pass draws, matching the range of vertexIndex. */
+  private resolvePassVertexCount(pass: RenderPassNode): number {
+    return !pass.geometry || pass.geometry === "fullscreen"
+      ? fullscreenVertexCount(pass)
+      : this.resolvePassMesh(pass)?.vertexCount ?? 0;
   }
 
   private static hasFileResources(passes: RenderPassNode[]): boolean {
@@ -2323,6 +2346,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
+        ...(pass.geometry === "fullscreen" && pass.topology ? { topology: pass.topology } : {}),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
         vertexRange: compilation?.vertexRange,
@@ -2659,10 +2683,13 @@ export class WebGPURenderingEngine implements RenderingEngine {
         continue;
       }
 
+      const fullscreen = !pass.geometry || pass.geometry === "fullscreen";
+      const mesh = this.resolvePassMesh(pass);
       const data = packShaderToyUniforms({
         channelCount: getShaderToyChannelCount(pass.channels),
         width: pass.width,
         height: pass.height,
+        vertexCount: this.resolvePassVertexCount(pass),
         ...frameInput,
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
@@ -2702,17 +2729,12 @@ export class WebGPURenderingEngine implements RenderingEngine {
       });
       renderPass.setPipeline(pipeline.getPipeline()!);
       renderPass.setBindGroup(0, bindGroup);
-      if (!pass.geometry || pass.geometry === "fullscreen") {
-        renderPass.draw(3);
-      } else {
-        const mesh = pass.modelPath
-          ? this.meshResources?.getModel(pass.name)
-          : pass.geometry === "model" ? undefined : this.meshResources?.get(pass.geometry);
-        if (mesh) {
-          renderPass.setVertexBuffer(0, mesh.vertexBuffer);
-          renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-          renderPass.drawIndexed(mesh.indexCount);
-        }
+      if (fullscreen) {
+        renderPass.draw(fullscreenVertexCount(pass));
+      } else if (mesh) {
+        renderPass.setVertexBuffer(0, mesh.vertexBuffer);
+        renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
+        renderPass.drawIndexed(mesh.indexCount);
       }
       renderPass.end();
     }
@@ -3631,6 +3653,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
+      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass) } : {}),
       ...channelUniforms,
     };
   }

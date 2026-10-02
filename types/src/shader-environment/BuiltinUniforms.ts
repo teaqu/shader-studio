@@ -58,12 +58,13 @@ export const GLSL_STABLE_DECLARATION_LINES = Object.freeze([
   "uniform float iSampleRate;",
   "uniform vec3 iCameraPos;",
   "uniform vec3 iCameraDir;",
+  "uniform int iVertexCount;",
 ] as const);
 
 export const GLSL_STABLE_NAMES: ReadonlySet<string> = new Set([
   "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
   "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
-  "iSampleRate", "iCameraPos", "iCameraDir",
+  "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
 ]);
 
 /** Renderer-compatible baseline channel declarations for editor analysis. */
@@ -131,6 +132,7 @@ export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuilt
   { name: "iSampleRate", glslType: "float", slangType: "float", wgslType: "f32", slangDeclaration: "float iSampleRate;", languages: ["glsl", "slang", "wgsl"], description: "Audio sample rate in hertz." },
   { name: "iCameraPos", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraPos;", languages: ["glsl", "slang", "wgsl"], description: "Camera position in world space." },
   { name: "iCameraDir", glslType: "vec3", slangType: "float3", wgslType: "vec3f", slangDeclaration: "float3 iCameraDir;", languages: ["glsl", "slang", "wgsl"], description: "Normalised camera look direction." },
+  { name: "iVertexCount", glslType: "int", slangType: "uint", wgslType: "u32", slangDeclaration: "uint32_t iVertexCount;", languages: ["glsl", "slang", "wgsl"], stages: ["fragment", "vertex"], description: "Vertices drawn by this pass: the configured fullscreen vertexCount (default 3), or the mesh vertex count for plane, cube, sphere, and model geometry. vertexIndex ranges from 0 to iVertexCount - 1." },
   { name: "iDispatch", slangType: "int", wgslType: "i32", slangDeclaration: "int iDispatch;", languages: ["slang", "wgsl"], stages: ["compute"], description: "Zero-based repetition index for the current compute pass dispatch." },
   { name: "iChannelN", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "Any renderer-assigned input channel. Slots follow configured input order and are not inferred from resource names." },
   { name: "iChannel0", glslType: "sampler2D | samplerCube | sampler3D", slangType: "Texture2D<float4> | TextureCube<float4>", languages: ["glsl"], description: "First input channel; its texture shape follows the configured resource." },
@@ -196,4 +198,5 @@ export const SLANG_RUNTIME_UNIFORM_ALIAS_LINES = Object.freeze([
   `#define iDate (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.date)`,
   `#define iCameraPos (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.cameraPos.xyz)`,
   `#define iCameraDir (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.cameraDir.xyz)`,
+  `#define iVertexCount (${SLANG_RUNTIME_UNIFORM_BUFFER_NAME}.vertexCount.x)`,
 ] as const);

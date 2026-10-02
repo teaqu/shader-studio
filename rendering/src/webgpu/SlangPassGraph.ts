@@ -11,7 +11,7 @@ import type {
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
-import { resolvePassGeometry } from "../types/Geometry";
+import { resolveFullscreenDraw, resolvePassGeometry, type FullscreenDrawConfig } from "../types/Geometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
 
@@ -249,6 +249,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       language,
       geometry: resolvePassGeometry(passConfig),
       ...resolveModelGeometry(passConfig),
+      ...resolveFullscreenDraw(passConfig),
       vertexSrc: options.buffers[vertexPassKey(name)],
       path,
       kind: "render",
@@ -273,7 +274,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language);
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language, resolveFullscreenDraw(imageConfig));
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")
@@ -295,6 +296,7 @@ function createImagePass(
   vertexSrc?: string,
   modelGeometry: { modelPath?: string; modelMesh?: string } = {},
   language: ShaderLanguageId = "slang",
+  fullscreenDraw: FullscreenDrawConfig = {},
 ): RenderPassNode {
   return {
     name: "Image",
@@ -302,6 +304,7 @@ function createImagePass(
     language,
     geometry,
     ...modelGeometry,
+    ...fullscreenDraw,
     vertexSrc,
     kind: "render",
     output: "canvas",

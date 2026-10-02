@@ -117,7 +117,27 @@
         {
           "type": "object",
           "required": ["type"],
-          "properties": { "type": { "enum": ["fullscreen", "plane", "cube", "sphere"] } },
+          "properties": {
+            "type": { "const": "fullscreen" },
+            "vertexCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647,
+              "default": 3,
+              "description": "Number of vertices drawn; mainVertex runs once per vertex and receives its index. Defaults to 3."
+            },
+            "topology": {
+              "enum": ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"],
+              "default": "triangle-list",
+              "description": "How the drawn vertices are joined into primitives. Lines and points rasterise at 1px."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "enum": ["plane", "cube", "sphere"] } },
           "additionalProperties": false
         },
         {

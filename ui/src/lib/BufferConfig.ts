@@ -1,30 +1,10 @@
-import {
-  GEOMETRY_TYPES,
-  type BufferPass,
-  type ComputePass,
-  type ConfigInput,
-  type GeometryConfig,
-  type ImagePass
+import { validatePassGeometry } from '@shader-studio/rendering';
+import type {
+  BufferPass,
+  ComputePass,
+  ConfigInput,
+  ImagePass
 } from '@shader-studio/types';
-
-function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
-  if (geometry === undefined) {
-    return true;
-  }
-  if (!geometry || typeof geometry !== 'object' || Array.isArray(geometry)) {
-    return false;
-  }
-
-  const type = (geometry as { type?: unknown }).type;
-  if (type === 'model') {
-    const { path, mesh, resolved_path, ...rest } = geometry as { path?: unknown; mesh?: unknown; resolved_path?: unknown; type?: unknown };
-    return Object.keys(rest).length === 1 && typeof path === 'string' && path.length > 0 &&
-      (mesh === undefined || typeof mesh === 'string') && (resolved_path === undefined || typeof resolved_path === 'string');
-  }
-  const properties = Object.keys(geometry);
-  return properties.length === 1 && properties[0] === 'type' &&
-    typeof type === 'string' && GEOMETRY_TYPES.includes(type as GeometryConfig['type']);
-}
 
 export class BufferConfig {
   private bufferName: string;
@@ -159,9 +139,7 @@ export class BufferConfig {
           !['auto', 'rgba16float', 'rgba32float'].includes(this.config.outputFormat)) {
         errors.push(`${this.bufferName} pass outputFormat must be auto, rgba16float, or rgba32float`);
       }
-      if (!isValidGeometry(this.config.geometry)) {
-        errors.push(`${this.bufferName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(', ')}`);
-      }
+      errors.push(...validatePassGeometry(this.config.geometry, this.bufferName));
       if (this.config.vertex !== undefined && (typeof this.config.vertex !== 'string' || this.config.vertex.trim() === '')) {
         errors.push(`${this.bufferName} pass vertex path must be a non-empty string`);
       }

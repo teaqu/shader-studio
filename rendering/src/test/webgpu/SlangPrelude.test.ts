@@ -101,6 +101,49 @@ float4 inputs(float2 uv) { return 1; }`,
     expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
   });
 
+  describe('configured fullscreen vertexCount and topology', () => {
+    const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
+    // The #275 hooked entry point, which unconfigured passes must keep exactly.
+    const DEFAULT_HOOK_ENTRY = 'float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); return float4(position, 1); }';
+
+    it('keeps the default source byte-for-byte when the index is not wrapped', () => {
+      for (const vertexCode of [undefined, vertex]) {
+        const unconfigured = wrapSlangImageSource(image, { vertexCode });
+        expect(wrapSlangImageSource(image, { vertexCode, wrapFullscreenVertexIndex: false })).toBe(unconfigured);
+        expect(unconfigured).not.toContain('% 3u');
+      }
+      expect(wrapSlangImageSource(image, { vertexCode: vertex })).toContain(DEFAULT_HOOK_ENTRY);
+      expect(wrapSlangImageSource(image)).toContain('return float4(verts[vertexID], 0, 1);');
+    });
+
+    it('seeds a hook from the oversized-triangle corner vertexIndex % 3', () => {
+      const source = wrapSlangImageSource(image, { vertexCode: vertex, wrapFullscreenVertexIndex: true });
+      expect(source).toContain('float3 position = float3(verts[vertexID % 3u], 0);');
+      expect(source).toContain('float2 uv = verts[vertexID % 3u] * 0.5 + 0.5;');
+      // The hook still receives the raw index.
+      expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
+      expect(source).not.toContain('verts[vertexID]');
+    });
+
+    it('wraps the hookless entry point too', () => {
+      const source = wrapSlangImageSource(image, { wrapFullscreenVertexIndex: true });
+      expect(source).toContain('return float4(verts[vertexID % 3u], 0, 1);');
+      expect(source).not.toContain('mainVertex');
+    });
+
+    it('ignores the wrap for mesh geometry and capture mode', () => {
+      expect(wrapSlangImageSource(image, { geometry: 'cube', vertexCode: vertex, wrapFullscreenVertexIndex: true })).not.toContain('% 3u');
+      expect(wrapSlangImageSource(image, { captureMode: true, wrapFullscreenVertexIndex: true }))
+        .toBe(wrapSlangImageSource(image, { captureMode: true }));
+    });
+
+    it('declares iVertexCount from the uniform block vertexCount slot', () => {
+      const source = wrapSlangImageSource(image);
+      expect(source).toContain('    float4 cameraDir;\n    uint4 vertexCount;\n');
+      expect(source).toContain('#define iVertexCount (_st.vertexCount.x)');
+    });
+  });
+
   it('draws the fullscreen triangle without calling a hook when none is configured', () => {
     const source = wrapSlangImageSource(image);
     expect(source).toContain('(uint vertexID : SV_VertexID) : SV_Position');

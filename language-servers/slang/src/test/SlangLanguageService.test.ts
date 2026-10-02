@@ -685,8 +685,40 @@ float4 mainImage(float2 p)
     expect(await hoverAt("mainVertex")).toContain("vertex hook");
     expect(await hoverAt("vertexIndex")).toContain("uint vertexIndex");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
     expect(await hoverAt("position")).toContain("object-space");
     expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iVertexCount on the %s stage", async (stage) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex) / float(iVertexCount); }"
+      : "float4 mainImage(float2 coord) { return float4(float(iVertexCount)); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexCount") } });
+    expect(completions.filter((item) => item.label === "iVertexCount")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexCount") + 2 },
+    }))?.contents);
+    expect(hover).toContain("uint iVertexCount");
+    expect(hover).toContain("vertexCount");
+  });
+
+  it("does not offer iVertexCount to compute authoring", async () => {
+    const { module } = fixture();
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "compute" });
+    const text = "[shader(\"compute\")]\n[numthreads(1, 1, 1)]\nvoid computeMain() { int x = i; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const completions = await service.completion({ document: revision, position: { line: 2, character: text.split("\n")[2].indexOf("i;") + 1 } });
+    expect(completions.map((item) => item.label)).not.toContain("iVertexCount");
   });
 
   it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {

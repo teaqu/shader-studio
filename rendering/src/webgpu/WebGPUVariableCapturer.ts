@@ -295,6 +295,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         channelResolution: uniforms.channelResolution ?? new Array<number>(channelCount * 3).fill(0),
         cameraPos: uniforms.cameraPos,
         cameraDir: uniforms.cameraDir,
+        vertexCount: uniforms.vertexCount,
       }, this.customUniforms, this.customUniforms),
     );
 

@@ -87,8 +87,29 @@ describe("WgslLanguageService", () => {
     expect(await hoverAt("vertexIndex")).toContain("vertexIndex: u32");
     expect(await hoverAt("vertexIndex")).toContain("vertex_index");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
     expect(await hoverAt("position")).toContain("object-space");
     expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it.each(["vertex", "fragment"] as const)("completes and documents iVertexCount on the %s stage", async (stage) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { (*position).x = f32(vertexIndex) / f32(iVertexCount); }"
+      : "fn mainImage(coord: vec2f) -> vec4f { return vec4f(f32(iVertexCount)); }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexCount") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iVertexCount");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexCount") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iVertexCount: u32");
+    expect(hover).toContain("vertexCount");
+    expect(hover).not.toContain("Declared in");
   });
 
   it("documents renamed WGSL vertex-hook parameters by role", async () => {

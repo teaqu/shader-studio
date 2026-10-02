@@ -32,6 +32,8 @@ describe("WebGLMeshResources", () => {
     const mesh = resources.get("plane");
 
     expect(mesh.indexCount).toBe(6);
+    // Distinct vertices back iVertexCount, the range of gl_VertexID.
+    expect(mesh.vertexCount).toBe(4);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(1, 0, 3, gl.FLOAT, false, 32, 0);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(2, 1, 3, gl.FLOAT, false, 32, 12);
     expect(gl.vertexAttribPointer).toHaveBeenNthCalledWith(3, 2, 2, gl.FLOAT, false, 32, 24);
@@ -64,6 +66,6 @@ describe("WebGLMeshResources", () => {
 
     await resources.loadModel('Image', 'cat.glb', 'CatBody');
 
-    expect(resources.getModel('Image')).toMatchObject({ indexCount: 3, indexType: gl.UNSIGNED_INT });
+    expect(resources.getModel('Image')).toMatchObject({ indexCount: 3, indexType: gl.UNSIGNED_INT, vertexCount: 3 });
   });
 });

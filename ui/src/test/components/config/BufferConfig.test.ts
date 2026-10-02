@@ -562,6 +562,148 @@ describe('BufferConfig', () => {
       expect(getByRole('heading', { name: 'Vertex shader' })).toBeInTheDocument();
     });
 
+    describe('fullscreen vertex count and topology', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+
+      it('shows defaults for implicit and explicit fullscreen geometry', () => {
+        for (const config of [{ path: 'a.glsl', inputs: {} }, { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen' as const } }]) {
+          const { getByLabelText, unmount } = renderPass(config);
+          const count = getByLabelText('Vertices') as HTMLInputElement;
+          expect(count.value).toBe('');
+          expect(count.placeholder).toBe('3');
+          expect(count.min).toBe('1');
+          expect(count.max).toBe('2147483647');
+          expect(count.step).toBe('1');
+          expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('triangle-list');
+          unmount();
+        }
+      });
+
+      it('shows configured values', () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 12, topology: 'line-strip' } });
+
+        expect((getByLabelText('Vertices') as HTMLInputElement).value).toBe('12');
+        expect((getByLabelText('Topology') as HTMLSelectElement).value).toBe('line-strip');
+      });
+
+      it('offers exactly the five portable topologies', () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        expect(Array.from((getByLabelText('Topology') as HTMLSelectElement).options).map((option) => option.value))
+          .toEqual(['triangle-list', 'triangle-strip', 'line-list', 'line-strip', 'point-list']);
+      });
+
+      it.each(['plane', 'cube', 'sphere'] as const)('hides both controls for %s geometry', (type) => {
+        const { queryByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type } });
+
+        expect(queryByLabelText('Vertices')).toBeNull();
+        expect(queryByLabelText('Topology')).toBeNull();
+      });
+
+      it('hides both controls for model geometry and while a model is being selected', async () => {
+        const model = renderPass({ inputs: {}, geometry: { type: 'model', path: './robot.glb' } }, 'Image');
+        expect(model.queryByLabelText('Vertices')).toBeNull();
+        model.unmount();
+
+        const pending = renderPass({ path: 'a.glsl', inputs: {} });
+        await fireEvent.change(pending.getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(pending.queryByLabelText('Vertices')).toBeNull();
+        expect(pending.queryByLabelText('Topology')).toBeNull();
+      });
+
+      it('writes a vertex count onto implicit fullscreen geometry', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '12' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 12 } });
+      });
+
+      it.each(['1', '2147483647'])('accepts the boundary vertex count %s', async (value) => {
+        const { getByLabelText, queryByRole } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: Number(value) } });
+        expect(queryByRole('alert')).toBeNull();
+      });
+
+      it.each(['0', '-3', '2147483648', '1.5'])('rejects vertex count %s without writing or clamping', async (value) => {
+        const { getByLabelText, getByRole, queryByRole } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6 } });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value } });
+
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        expect(getByRole('alert')).toHaveTextContent('Vertex count must be a whole number from 1 to 2147483647');
+        // A valid value afterwards clears the message.
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '9' } });
+        expect(queryByRole('alert')).toBeNull();
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 9 } });
+      });
+
+      it('clears the vertex count but keeps a configured topology', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'point-list' } });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', topology: 'point-list' } });
+      });
+
+      it('drops the geometry key when the last draw field is cleared', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6 } });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {} });
+      });
+
+      it('writes a non-default topology and keeps the vertex count', async () => {
+        const { getByLabelText } = renderPass({ inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6 } }, 'Image');
+
+        await fireEvent.change(getByLabelText('Topology'), { target: { value: 'triangle-strip' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'triangle-strip' } });
+      });
+
+      it('removes topology when triangle-list, the default, is chosen', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'line-list' } });
+
+        await fireEvent.change(getByLabelText('Topology'), { target: { value: 'triangle-list' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6 } });
+      });
+
+      it.each(['plane', 'cube', 'sphere'] as const)('drops both fields when switching to %s', async (type) => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'line-strip' } });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: type } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type } });
+      });
+
+      it('drops both fields when a model is chosen', async () => {
+        const { getByLabelText } = renderPass({ path: 'a.glsl', inputs: {}, geometry: { type: 'fullscreen', vertexCount: 6, topology: 'point-list' } });
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, geometry: { type: 'model', path: './robot.glb' } });
+      });
+
+      it('clears a pending vertex count error when the geometry changes', async () => {
+        const { getByLabelText, queryByRole } = renderPass({ path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(getByLabelText('Vertices'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+
+        expect(queryByRole('alert')).toBeNull();
+      });
+    });
+
     it('does not show geometry controls for Common', () => {
       const { queryByLabelText, queryByText } = render(BufferConfig, {
         bufferName: 'common', config: { path: 'common.glsl' } as BufferPass,

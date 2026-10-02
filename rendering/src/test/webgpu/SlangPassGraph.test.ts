@@ -129,6 +129,54 @@ describe("buildSlangPassGraph", () => {
     ]);
   });
 
+  it.each(["slang", "wgsl"] as const)("propagates configured fullscreen vertexCount and topology in %s graphs", (language) => {
+    const source = language === "wgsl"
+      ? "fn mainImage(coord: vec2f) -> vec4f { return vec4f(1.0); }"
+      : "float4 mainImage(float2 c) { return float4(1.0); }";
+    const graph = buildSlangPassGraph({
+      language,
+      imageCode: source,
+      config: {
+        version: "1",
+        passes: {
+          Image: { geometry: { type: "fullscreen", vertexCount: 6, topology: "triangle-strip" } },
+          BufferA: { path: `a.${language}`, geometry: { type: "fullscreen", vertexCount: 2_147_483_647 } },
+          BufferB: { path: `b.${language}`, geometry: { type: "fullscreen", topology: "point-list" } },
+          BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" } },
+          BufferD: { path: `d.${language}`, geometry: { type: "plane" } },
+          BufferE: { path: `e.${language}` },
+        },
+      },
+      buffers: { BufferA: source, BufferB: source, BufferC: source, BufferD: source, BufferE: source },
+      canvasWidth: 64,
+      canvasHeight: 64,
+    });
+
+    expect(graph.errors).toEqual([]);
+    const draw = Object.fromEntries(graph.passes.map((pass) => [pass.name, { vertexCount: pass.vertexCount, topology: pass.topology }]));
+    expect(draw).toEqual({
+      Image: { vertexCount: 6, topology: "triangle-strip" },
+      BufferA: { vertexCount: 2_147_483_647, topology: undefined },
+      BufferB: { vertexCount: undefined, topology: "point-list" },
+      BufferC: { vertexCount: undefined, topology: undefined },
+      BufferD: { vertexCount: undefined, topology: undefined },
+      BufferE: { vertexCount: undefined, topology: undefined },
+    });
+    // Unconfigured passes carry no draw keys at all, so their nodes match #275.
+    for (const name of ["BufferC", "BufferD", "BufferE"]) {
+      const pass = graph.passes.find((candidate) => candidate.name === name);
+      expect(pass).not.toHaveProperty("vertexCount");
+      expect(pass).not.toHaveProperty("topology");
+    }
+  });
+
+  it("omits draw fields from an unconfigured image-only graph", () => {
+    const graph = buildSlangPassGraph({ imageCode, config: null, buffers: {}, canvasWidth: 8, canvasHeight: 8 });
+
+    expect(graph.passes[0]).not.toHaveProperty("vertexCount");
+    expect(graph.passes[0]).not.toHaveProperty("topology");
+  });
+
   it("carries a model's resolved GLB URL and selected mesh to the Slang pass", () => {
     const graph = buildSlangPassGraph({
       imageCode,

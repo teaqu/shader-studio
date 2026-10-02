@@ -6,6 +6,7 @@ import {
 } from "../preview3d/MeshFragmentContext";
 import type { PiRenderer, PiShader } from "../types/piRenderer";
 import type { SlotAssignment } from "../util/InputSlotAssigner";
+import { hasFullscreenDrawConfig, type FullscreenDrawConfig } from "../types/Geometry";
 
 export type ChannelSamplerType = '2D' | 'Cube' | '3D';
 
@@ -16,6 +17,8 @@ export interface ShaderWrapOptions {
   channelTypes?: ChannelSamplerType[];
   customUniformDeclarations?: string;
   vertexCode?: string;
+  /** Configured fullscreen vertexCount/topology; omitted keeps the default draw source. */
+  fullscreenDraw?: FullscreenDrawConfig;
 }
 
 export interface WrappedShaderSource {
@@ -36,6 +39,21 @@ const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
 const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
   `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }`;
+
+/**
+ * Configured draws may run past three vertices; wrapping the corner index keeps
+ * every seed inside the oversized triangle. Point primitives also need an
+ * explicit size, which WebGL leaves undefined otherwise.
+ */
+function fullscreenVertexTerms(draw: FullscreenDrawConfig | undefined): { corner: string; pointSize: string } {
+  if (!draw || !hasFullscreenDrawConfig(draw)) {
+    return { corner: "gl_VertexID", pointSize: "" };
+  }
+  return {
+    corner: "gl_VertexID % 3",
+    pointSize: draw.topology === "point-list" ? " gl_PointSize = 1.0;" : "",
+  };
+}
 
 export class ShaderCompiler {
   private static nextAsyncCompileId = 1;
@@ -106,6 +124,7 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+uniform int iVertexCount;
 ${fragmentContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
@@ -474,9 +493,12 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     vertexLineCount: number;
   } {
     const hasHook = Boolean(options.vertexCode?.trim());
+    const fullscreen = fullscreenVertexTerms(options.fullscreenDraw);
     if (!hasHook && !mesh) {
       return {
-        source: FULLSCREEN_TRIANGLE_VERTEX_SOURCE,
+        source: fullscreen.corner === "gl_VertexID"
+          ? FULLSCREEN_TRIANGLE_VERTEX_SOURCE
+          : `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[${fullscreen.corner}], 0.0, 1.0);${fullscreen.pointSize} }`,
         vertexStartLine: 1,
         vertexLineCount: 0,
       };
@@ -507,12 +529,12 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       return place(`${vertexUniforms}${channelHelpers}
 `, `void main() {
  vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
- vec2 _vertexCorner = _vertexCorners[gl_VertexID];
+ vec2 _vertexCorner = _vertexCorners[${fullscreen.corner}];
  vec3 _vertexPosition = vec3(_vertexCorner, 0.0);
  vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
  vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
  mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
- gl_Position = vec4(_vertexPosition, 1.0);
+ gl_Position = vec4(_vertexPosition, 1.0);${fullscreen.pointSize ? `\n${fullscreen.pointSize}` : ""}
 }`);
     }
     return place(`layout(location = 0) in vec3 position;
@@ -554,6 +576,7 @@ uniform float iChannelTime[${channelCount}];
 uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
+uniform int iVertexCount;
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 

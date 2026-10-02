@@ -179,6 +179,19 @@ describe("WebGPUVariableCapturer", () => {
     expect(values.getInt32(SHADERTOY_UNIFORM_SIZE + 12, true)).toBe(1);
   });
 
+  it.each([
+    [{ vertexCount: 6 }, 6],
+    [{}, 0],
+  ])("packs iVertexCount from the capture uniforms (%j)", async (extra, expected) => {
+    const gpu = mockGpu();
+    const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);
+
+    await capturer.issueCaptureGrid(captures, { ...uniforms, ...extra }, 8, 4);
+
+    const packed = gpu.writeBuffer.mock.calls[0][2] as ArrayBuffer;
+    expect(new DataView(packed).getUint32(UNIFORM_OFFSETS.iVertexCount, true)).toBe(expected);
+  });
+
   it("packs provided channel timing, loaded state, and sample rate", async () => {
     const gpu = mockGpu();
     const capturer = new WebGPUVariableCapturer(gpu.device, gpu.compiler);

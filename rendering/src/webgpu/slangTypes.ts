@@ -21,6 +21,8 @@ export interface SlangCompileOptions {
   passKind?: "render" | "compute";
   geometry?: GeometryType;
   vertexCode?: string;
+  /** Wrap the fullscreen corner index (`% 3`) for a configured vertexCount/topology. */
+  wrapFullscreenVertexIndex?: boolean;
   storage?: StorageBindingNode[];
   workgroupSize?: [number, number, number];
   outputLayers?: number;

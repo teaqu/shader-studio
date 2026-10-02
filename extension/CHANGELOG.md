@@ -10,6 +10,8 @@
 - The fullscreen `normal` passed to a GLSL vertex shader is now `(0, 0, 1)`, matching Slang and WGSL.
 - Fullscreen vertex shaders can place their own triangle from `vertexIndex`; pixels it leaves uncovered are black in every language.
 - Plane, cube, sphere, and model vertex shaders receive the mesh vertex index.
+- Fullscreen passes can draw any number of vertices as triangles, lines, or points: set `vertexCount` and `topology` (`triangle-list`, `triangle-strip`, `line-list`, `line-strip`, or `point-list`) on the fullscreen geometry in `.sha.json` or with the new Vertices and Topology controls in the config panel. Place the vertices from `vertexIndex` in the vertex shader; lines and points are 1px wide. Setting either field on plane, cube, sphere, or model geometry is a config error.
+- New built-in uniform `iVertexCount` (GLSL `int`, Slang `uint`, WGSL `u32`): the number of vertices the pass draws, or the mesh vertex count for plane, cube, sphere, and model geometry.
 - Fixed new standalone Slang vertex files declaring `uv` as `vec2` instead of `float2`.
 
 ### 1.2.0

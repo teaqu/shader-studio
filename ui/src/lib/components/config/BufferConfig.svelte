@@ -15,8 +15,16 @@
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
+    FullscreenGeometryConfig,
+    VertexTopology,
   } from "@shader-studio/types";
-  import { SHADER_LANGUAGES, vertexPassKey } from "@shader-studio/types";
+  import {
+    DEFAULT_FULLSCREEN_VERTEX_COUNT,
+    DEFAULT_VERTEX_TOPOLOGY,
+    MAX_FULLSCREEN_VERTEX_COUNT,
+    SHADER_LANGUAGES,
+    vertexPassKey,
+  } from "@shader-studio/types";
   import ChannelListItem from "./ChannelListItem.svelte";
   import ChannelConfigModal from "./ChannelConfigModal.svelte";
   import ComputePassControls from "./ComputePassControls.svelte";
@@ -110,6 +118,13 @@
   const modelGeometry = $derived(config.geometry?.type === 'model'
     ? config.geometry
     : modelSelectionPending ? { type: 'model' as const, path: '' } : undefined);
+  const fullscreenGeometry = $derived<FullscreenGeometryConfig | undefined>(
+    modelGeometry ? undefined
+      : config.geometry === undefined ? { type: 'fullscreen' }
+      : config.geometry.type === 'fullscreen' ? config.geometry
+      : undefined,
+  );
+  let vertexCountError = $state<string | null>(null);
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -347,6 +362,7 @@
   }
 
   function handleGeometryChange(type: GeometryType) {
+    vertexCountError = null;
     if (type === 'fullscreen') {
       modelSelectionPending = false;
       const { geometry: _geometry, ...next } = config;
@@ -359,6 +375,40 @@
     }
     modelSelectionPending = false;
     updateConfig({ ...config, geometry: { type } });
+  }
+
+  /** Writes fullscreen draw fields; when none remain the geometry key is dropped, as for plain fullscreen. */
+  function updateFullscreenDraw(fields: Partial<Pick<FullscreenGeometryConfig, 'vertexCount' | 'topology'>>) {
+    const merged: FullscreenGeometryConfig = { ...fullscreenGeometry, ...fields, type: 'fullscreen' };
+    const { type: _type, ...rest } = merged;
+    const draw = Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined));
+    if (Object.keys(draw).length === 0) {
+      const { geometry: _geometry, ...next } = config;
+      updateConfig(next as EditableConfig);
+      return;
+    }
+    updateConfig({ ...config, geometry: { type: 'fullscreen', ...draw } } as EditableConfig);
+  }
+
+  function handleVertexCountChange(event: Event) {
+    const raw = (event.currentTarget as HTMLInputElement).value.trim();
+    if (raw === '') {
+      vertexCountError = null;
+      updateFullscreenDraw({ vertexCount: undefined });
+      return;
+    }
+    const count = Number(raw);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_FULLSCREEN_VERTEX_COUNT) {
+      vertexCountError = `Vertex count must be a whole number from 1 to ${MAX_FULLSCREEN_VERTEX_COUNT}`;
+      return;
+    }
+    vertexCountError = null;
+    updateFullscreenDraw({ vertexCount: count });
+  }
+
+  function handleTopologyChange(event: Event) {
+    const topology = (event.currentTarget as HTMLSelectElement).value as VertexTopology;
+    updateFullscreenDraw({ topology: topology === DEFAULT_VERTEX_TOPOLOGY ? undefined : topology });
   }
 
   function handleModelPathChange(path: string) {
@@ -622,6 +672,37 @@
           </select>
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
         {/if}
+        {#if fullscreenGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="vertex-count-{bufferName}">Vertices</label>
+            <input
+              id="vertex-count-{bufferName}"
+              class="vertex-count-input"
+              type="number"
+              min="1"
+              max={MAX_FULLSCREEN_VERTEX_COUNT}
+              step="1"
+              placeholder={String(DEFAULT_FULLSCREEN_VERTEX_COUNT)}
+              value={fullscreenGeometry.vertexCount ?? ''}
+              onchange={handleVertexCountChange}
+            />
+          </div>
+          {#if vertexCountError}<span class="input-note" role="alert">{vertexCountError}</span>{/if}
+          <div class="resolution-row">
+            <label class="resolution-label" for="topology-{bufferName}">Topology</label>
+            <select
+              id="topology-{bufferName}"
+              value={fullscreenGeometry.topology ?? DEFAULT_VERTEX_TOPOLOGY}
+              onchange={handleTopologyChange}
+            >
+              <option value="triangle-list">Triangle list</option>
+              <option value="triangle-strip">Triangle strip</option>
+              <option value="line-list">Line list</option>
+              <option value="line-strip">Line strip</option>
+              <option value="point-list">Point list</option>
+            </select>
+          </div>
+        {/if}
       </div>
       <div class="config-item">
         <h3 class="section-title vertex-shader-title" ondblclick={openVertexShaderInOverlay}>Vertex shader</h3>
@@ -807,7 +888,8 @@
     gap: 6px;
   }
 
-  .dim-input {
+  .dim-input,
+  .vertex-count-input {
     width: 80px;
     padding: 3px 6px;
     font-size: 11px;
@@ -818,7 +900,13 @@
     outline: none;
   }
 
-  .dim-input:focus {
+  /* Wide enough for the 10-digit maximum vertex count. */
+  .vertex-count-input {
+    width: 110px;
+  }
+
+  .dim-input:focus,
+  .vertex-count-input:focus {
     border-color: var(--vscode-focusBorder, #007acc);
   }
 

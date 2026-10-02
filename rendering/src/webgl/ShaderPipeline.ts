@@ -10,7 +10,7 @@ import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
 import { resolveBufferPassSize } from "./BufferPassResolution";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
-import { resolvePassGeometry } from "../types/Geometry";
+import { hasFullscreenDrawConfig, resolveFullscreenDraw, resolvePassGeometry } from "../types/Geometry";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
@@ -190,6 +190,7 @@ export class ShaderPipeline {
           vertexSrc: buffers[`${VERTEX_SOURCE_PREFIX}${passName}`],
           inputs: pass?.inputs ?? {},
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
+          ...resolveFullscreenDraw(pass && "geometry" in pass ? pass : undefined),
           ...(pass?.geometry?.type === "model" ? {
             modelPath: pass.geometry.resolved_path ?? pass.geometry.path,
             modelMesh: pass.geometry.mesh,
@@ -249,6 +250,7 @@ export class ShaderPipeline {
             channelTypes,
             customUniformDeclarations: customDecl,
             vertexCode: pass.vertexSrc,
+            ...(hasFullscreenDrawConfig(pass) ? { fullscreenDraw: { vertexCount: pass.vertexCount, topology: pass.topology } } : {}),
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
@@ -257,6 +259,7 @@ export class ShaderPipeline {
           channelTypes,
           customUniformDeclarations: customDecl,
           vertexCode: pass.vertexSrc,
+          ...(hasFullscreenDrawConfig(pass) ? { fullscreenDraw: { vertexCount: pass.vertexCount, topology: pass.topology } } : {}),
         });
       } catch (error) {
         this.cleanupPartialShaders(newPassShaders);

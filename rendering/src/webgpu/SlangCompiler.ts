@@ -119,6 +119,7 @@ export class SlangCompiler {
           passKind: options.passKind ?? "render",
           geometry: options.geometry,
           vertexCode: options.vertexCode,
+          wrapFullscreenVertexIndex: options.wrapFullscreenVertexIndex,
           captureMode: options.captureMode,
           customUniforms: options.customUniforms,
         });

@@ -182,6 +182,79 @@ describe("PassRenderer", () => {
       expect(mockGl.drawElements).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ["triangle-list", "TRIANGLES"],
+      ["triangle-strip", "TRIANGLE_STRIP"],
+      ["line-list", "LINES"],
+      ["line-strip", "LINE_STRIP"],
+      ["point-list", "POINTS"],
+    ] as const)("draws a configured %s fullscreen pass as %s with its vertexCount", (topology, primitive) => {
+      const passConfig: Pass = { geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {}, vertexCount: 12, topology };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE[primitive], 12, false, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 12);
+      expect(mockGl.drawElements).not.toHaveBeenCalled();
+    });
+
+    it("defaults topology to triangle-list and vertexCount to 3 when only one is configured", () => {
+      passRenderer.renderPass(
+        { geometry: "fullscreen", name: "Count", shaderSrc: "", inputs: {}, vertexCount: 2_147_483_647 },
+        null, createMockShader(), defaultUniforms,
+      );
+      passRenderer.renderPass(
+        { geometry: "fullscreen", name: "Topology", shaderSrc: "", inputs: {}, topology: "point-list" },
+        null, createMockShader(), defaultUniforms,
+      );
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(1, mockRenderer.PRIMTYPE.TRIANGLES, 2_147_483_647, false, 1);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(2, mockRenderer.PRIMTYPE.POINTS, 3, false, 1);
+    });
+
+    it("binds iVertexCount to 3 for an unconfigured fullscreen pass", () => {
+      passRenderer.renderPass({ geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 3);
+    });
+
+    it("binds iVertexCount to the mesh vertex count for built-in meshes and models", () => {
+      const meshResources = {
+        get: vi.fn(() => ({ vao: {}, indexCount: 36, vertexCount: 24 })),
+        getModel: vi.fn(() => ({ vao: {}, indexCount: 60, vertexCount: 42 })),
+      };
+      passRenderer = new PassRenderer(mockCanvas, mockResourceManager as any, mockBufferManager as any, mockRenderer, mockKeyboardManager as any, meshResources as any);
+
+      passRenderer.renderPass({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+      passRenderer.renderPass({ geometry: "model", name: "Robot", shaderSrc: "", inputs: {}, modelPath: "robot.glb" }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 24);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 42);
+      expect(passRenderer.getPassVertexCount({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} })).toBe(24);
+      expect(passRenderer.getPassVertexCount({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {}, vertexCount: 9 })).toBe(9);
+    });
+
+    it("binds iVertexCount to 0 and skips drawing while a mesh is unavailable", () => {
+      const meshResources = { get: vi.fn(), getModel: vi.fn(() => undefined) };
+      passRenderer = new PassRenderer(mockCanvas, mockResourceManager as any, mockBufferManager as any, mockRenderer, mockKeyboardManager as any, meshResources as any);
+
+      passRenderer.renderPass({ geometry: "model", name: "Robot", shaderSrc: "", inputs: {}, modelPath: "robot.glb" }, null, createMockShader(), defaultUniforms);
+      passRenderer.renderPass({ geometry: "model", name: "Unloaded", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 0);
+      expect(mockRenderer.SetShaderConstant1I).not.toHaveBeenCalledWith("iVertexCount", 3);
+      expect(mockGl.drawElements).not.toHaveBeenCalled();
+      expect(mockRenderer.DrawPrimitive).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the fullscreen draw and count for mesh passes without mesh resources", () => {
+      passRenderer.renderPass({ geometry: "sphere", name: "Sphere", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iVertexCount", 3);
+    });
+
     it("clears fullscreen passes with a vertex hook so uncovered pixels match WebGPU", () => {
       const passConfig: Pass = {
         geometry: "fullscreen",

@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import Ajv = require('ajv');
+import { DEFAULT_FULLSCREEN_VERTEX_COUNT, DEFAULT_VERTEX_TOPOLOGY, MAX_FULLSCREEN_VERTEX_COUNT, VERTEX_TOPOLOGIES } from '@shader-studio/types';
 
 suite('Shader config JSON schema', () => {
   const schemaPath = path.resolve(__dirname, '../../../schemas/shader-config.schema.json');
@@ -83,6 +84,67 @@ suite('Shader config JSON schema', () => {
           BufferA: { path: 'buffer-a.glsl', geometry }
         }
       }, expectedMessage);
+    }
+  });
+
+  test('accepts vertexCount and topology on fullscreen geometry', () => {
+    for (const topology of ['triangle-list', 'triangle-strip', 'line-list', 'line-strip', 'point-list']) {
+      assertValid({
+        version: '1.0',
+        passes: {
+          Image: { geometry: { type: 'fullscreen', vertexCount: 6, topology } },
+          BufferA: { path: 'buffer-a.glsl', geometry: { type: 'fullscreen', topology } },
+        },
+      });
+    }
+    for (const vertexCount of [1, 3, 2147483647]) {
+      assertValid({ version: '1.0', passes: { Image: { geometry: { type: 'fullscreen', vertexCount } } } });
+    }
+  });
+
+  test('keeps fullscreen vertex fields in sync with the shared config types', () => {
+    const fullscreen = schema.definitions.GeometryConfig.oneOf
+      .find((branch: { properties: { type: { const?: string } } }) => branch.properties.type.const === 'fullscreen');
+    assert.deepStrictEqual(fullscreen.properties.topology.enum, [...VERTEX_TOPOLOGIES]);
+    assert.strictEqual(fullscreen.properties.topology.default, DEFAULT_VERTEX_TOPOLOGY);
+    assert.strictEqual(fullscreen.properties.vertexCount.maximum, MAX_FULLSCREEN_VERTEX_COUNT);
+    assert.strictEqual(fullscreen.properties.vertexCount.default, DEFAULT_FULLSCREEN_VERTEX_COUNT);
+  });
+
+  test('rejects out-of-range and non-integer fullscreen vertex counts', () => {
+    const cases: Array<[unknown, string]> = [
+      [0, 'should be >= 1'],
+      [-3, 'should be >= 1'],
+      [2147483648, 'should be <= 2147483647'],
+      [1.5, 'should be integer'],
+      ['6', 'should be integer'],
+    ];
+    for (const [vertexCount, expectedMessage] of cases) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'fullscreen', vertexCount } } },
+      }, expectedMessage);
+    }
+  });
+
+  test('rejects unknown fullscreen topologies, including fan and loop', () => {
+    for (const topology of ['triangle-fan', 'line-loop', 'points', '']) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'fullscreen', topology } } },
+      }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('rejects vertexCount and topology on mesh and model geometry', () => {
+    const meshes = [{ type: 'plane' }, { type: 'cube' }, { type: 'sphere' }, { type: 'model', path: './cat.glb' }];
+    for (const mesh of meshes) {
+      for (const extra of [{ vertexCount: 6 }, { topology: 'line-list' }]) {
+        assertInvalid({
+          version: '1.0',
+          passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...mesh, ...extra } } },
+        }, 'should NOT have additional properties');
+      }
     }
   });
 
