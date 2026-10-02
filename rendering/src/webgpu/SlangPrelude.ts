@@ -24,7 +24,7 @@ import {
   type SlangCustomUniformInfo,
   type VertexSpace,
 } from "@shader-studio/types";
-import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
+import { INSTANCE_INDEX as SLANG_INSTANCE_INDEX, isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 
 export const SLANG_ENTRY_VERTEX = "vertexMain";
 export const SLANG_ENTRY_FRAGMENT = "fragmentMain";
@@ -134,11 +134,22 @@ ConstantBuffer<MeshUniforms> _mesh;
 }
 
 const SLANG_VERTEX_UV_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };";
-function buildSlangVertexUvFragment(frontFacing: boolean): string {
-  const parameter = frontFacing ? ", bool frontFacing : SV_IsFrontFace" : "";
-  const value = frontFacing ? "frontFacing" : "true";
+/** Clip-space vertices also carry the drawing instance, unchanged across each primitive. */
+const SLANG_CLIP_VERTEX_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; nointerpolation uint instanceIndex : TEXCOORD1; };";
+/** Vertex entries record the instance before mainVertex so the hook can read iInstanceIndex. */
+const SLANG_INSTANCE_ID_PARAMETER = "uint instanceID : SV_InstanceID";
+const SLANG_SET_INSTANCE_INDEX = `${SLANG_INSTANCE_INDEX} = instanceID;`;
+/**
+ * Fullscreen primitives are always front-facing and draw one instance, so
+ * iInstanceIndex keeps its zero initial value; clip-space vertices read both
+ * from the rasterizer.
+ */
+function buildSlangVertexUvFragment(clipVertices: boolean): string {
+  const parameter = clipVertices ? ", bool frontFacing : SV_IsFrontFace" : "";
+  const frontFacing = clipVertices ? "frontFacing" : "true";
+  const instanceIndex = clipVertices ? ` ${SLANG_INSTANCE_INDEX} = input.instanceIndex;` : "";
   return `[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${value}; return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input${parameter}) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${frontFacing};${instanceIndex} return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
 `;
 }
 
@@ -149,16 +160,19 @@ float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input, bool frontFacing : SV_IsFron
     ${MESH_FRAGMENT_CONTEXT.normal} = input.normal;
     ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _mesh.cameraPosition.xyz;
     ${MESH_FRAGMENT_CONTEXT.frontFacing} = frontFacing;
+    ${SLANG_INSTANCE_INDEX} = input.instanceIndex;
     float4 color = mainImage(input.uv * _st.resolution.xy);
     return color;
 }
 `;
 
+const SLANG_MESH_VERTEX_OUT = "struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; nointerpolation uint instanceIndex : TEXCOORD3; };";
+
 function buildMeshEntryPoints(vertexCode: string): string {
   return `${vertexCode}
-struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+${SLANG_MESH_VERTEX_OUT}
 [shader("vertex")]
-MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0, uint vertexID : SV_VertexID) { mainVertex(vertexID, position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+MeshVertexOut ${SLANG_ENTRY_VERTEX}([[vk::location(0)]] float3 position : POSITION, [[vk::location(1)]] float3 normal : NORMAL, [[vk::location(2)]] float2 uv : TEXCOORD0, uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} mainVertex(vertexID, position, normal, uv); MeshVertexOut output; output.instanceIndex = instanceID; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
@@ -187,16 +201,16 @@ function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): strin
   const hook = vertexCode.trim() ? vertexCode : SLANG_VERTEX_HOOK_STUB;
   if (space === "clip") {
     return `${hook}
-${SLANG_VERTEX_UV_OUT}
+${SLANG_CLIP_VERTEX_OUT}
 [shader("vertex")]
-ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; output.instanceIndex = instanceID; return output; }
 ${buildSlangVertexUvFragment(true)}
 `;
   }
   return `${hook}
-struct MeshVertexOut { float4 position : SV_Position; float2 uv : TEXCOORD0; float3 worldPosition : TEXCOORD1; float3 normal : TEXCOORD2; };
+${SLANG_MESH_VERTEX_OUT}
 [shader("vertex")]
-MeshVertexOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); MeshVertexOut output; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
+MeshVertexOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID, ${SLANG_INSTANCE_ID_PARAMETER}) { ${SLANG_SET_INSTANCE_INDEX} ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); MeshVertexOut output; output.instanceIndex = instanceID; float4 worldPosition = mul(_mesh.model, float4(position, 1)); output.position = mul(_mesh.viewProjection, worldPosition); output.uv = uv; output.worldPosition = worldPosition.xyz; output.normal = mul(_mesh.normalMatrix, float4(normal, 0)).xyz; return output; }
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 

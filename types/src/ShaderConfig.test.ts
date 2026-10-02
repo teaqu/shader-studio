@@ -6,12 +6,14 @@ import {
   DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
+  DEFAULT_INSTANCE_COUNT,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
   DEPTH_COMPARE_FUNCTIONS,
   FULLSCREEN_VERTEX_COUNT,
   GEOMETRY_TYPES,
+  MAX_INSTANCE_COUNT,
   MAX_VERTEX_COUNT,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
@@ -45,6 +47,20 @@ describe("ShaderConfig geometry", () => {
 
   it("draws fullscreen as one three-vertex triangle", () => {
     expect(FULLSCREEN_VERTEX_COUNT).toBe(3);
+  });
+
+  it("draws one instance by default, capped like vertexCount", () => {
+    expect(DEFAULT_INSTANCE_COUNT).toBe(1);
+    expect(MAX_INSTANCE_COUNT).toBe(MAX_VERTEX_COUNT);
+  });
+
+  it("accepts instanceCount on every geometry but fullscreen", () => {
+    expectTypeOf<{ type: "vertices"; instanceCount: 4 }>().toMatchTypeOf<GeometryConfig>();
+    expectTypeOf<{ type: "cube"; instanceCount: 4 }>().toMatchTypeOf<GeometryConfig>();
+    expectTypeOf<{ type: "model"; path: "a.glb"; instanceCount: 4 }>().toMatchTypeOf<GeometryConfig>();
+    // @ts-expect-error fullscreen always draws one instance
+    const fullscreen: GeometryConfig = { type: "fullscreen", instanceCount: 4 };
+    expect(fullscreen).toBeDefined();
   });
 
   it("only accepts vertex fields on vertices geometry", () => {

@@ -13,6 +13,7 @@ import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
 import {
   depthClearValue,
+  geometryInstanceCount,
   isClipSpaceVertices,
   resolveRenderState,
   verticesTopology,
@@ -71,7 +72,7 @@ export class PassRenderer {
   /** Non-indexed draw with no vertex buffers; mainVertex places every vertex. */
   private drawVertices(passConfig: Pass): void {
     const primitive = this.renderer.PRIMTYPE[WEBGL_PRIMITIVES[verticesTopology(passConfig)]];
-    this.renderer.DrawPrimitive(primitive, verticesVertexCount(passConfig), false, 1);
+    this.renderer.DrawPrimitive(primitive, verticesVertexCount(passConfig), false, geometryInstanceCount(passConfig));
   }
 
   /** Without WebGL2 mesh support every mesh pass falls back to the fullscreen draw. */
@@ -99,6 +100,11 @@ export class PassRenderer {
     return this.drawsFullscreen(passConfig)
       ? FULLSCREEN_VERTEX_COUNT
       : this.resolveMesh(passConfig)?.vertexCount ?? 0;
+  }
+
+  /** iInstanceCount: a mesh pass that falls back to fullscreen draws once. */
+  public getPassInstanceCount(passConfig: Pass): number {
+    return this.drawsFullscreen(passConfig) ? 1 : geometryInstanceCount(passConfig);
   }
 
   public clearCanvas(): void {
@@ -156,6 +162,7 @@ export class PassRenderer {
     const fullscreen = this.drawsFullscreen(passConfig);
     const mesh = this.resolveMesh(passConfig);
     this.renderer.SetShaderConstant1I("iVertexCount", this.getPassVertexCount(passConfig));
+    this.renderer.SetShaderConstant1I("iInstanceCount", this.getPassInstanceCount(passConfig));
 
     const channelResolutions = this.getChannelResolutions(passConfig, textureBindings);
     this.renderer.SetShaderConstant3FV("iChannelResolution[0]", channelResolutions);
@@ -246,7 +253,12 @@ export class PassRenderer {
     this.withRenderState(state, () => {
       try {
         gl.bindVertexArray(mesh.vao);
-        gl.drawElements(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
+        const instances = geometryInstanceCount(passConfig);
+        if (instances > 1) {
+          gl.drawElementsInstanced(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0, instances);
+        } else {
+          gl.drawElements(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
+        }
       } finally {
         gl.bindVertexArray(null);
       }

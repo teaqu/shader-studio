@@ -667,3 +667,132 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s blending into a float buff
     },
   );
 });
+
+/** Clip-space quads in iInstanceCount columns: instance i fills column i, rows -0.5 to 0.5. */
+const INSTANCE_COLUMNS: Record<ShaderLanguage, string> = {
+  glsl: `const vec2 corners[6] = vec2[6](vec2(0.0, -0.5), vec2(1.0, -0.5), vec2(1.0, 0.5), vec2(0.0, -0.5), vec2(1.0, 0.5), vec2(0.0, 0.5));
+void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+  vec2 corner = corners[vertexIndex];
+  position = vec3(-1.0 + 2.0 * (float(iInstanceIndex) + corner.x) / float(iInstanceCount), corner.y, 0.0);
+}`,
+  slang: `static const float2 corners[6] = { float2(0.0, -0.5), float2(1.0, -0.5), float2(1.0, 0.5), float2(0.0, -0.5), float2(1.0, 0.5), float2(0.0, 0.5) };
+void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  float2 corner = corners[vertexIndex];
+  position = float3(-1.0 + 2.0 * (float(iInstanceIndex) + corner.x) / float(iInstanceCount), corner.y, 0.0);
+}`,
+  wgsl: `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+  var corners = array<vec2f, 6>(vec2f(0.0, -0.5), vec2f(1.0, -0.5), vec2f(1.0, 0.5), vec2f(0.0, -0.5), vec2f(1.0, 0.5), vec2f(0.0, 0.5));
+  let corner = corners[vertexIndex];
+  *position = vec3f(-1.0 + 2.0 * (f32(iInstanceIndex) + corner.x) / f32(iInstanceCount), corner.y, 0.0);
+}`,
+};
+
+/** Red and green are iInstanceIndex's two low bits; blue is set when iInstanceCount is `count`. */
+function instanceBitsImage(language: ShaderLanguage, count: number): string {
+  switch (language) {
+    case "glsl":
+      return `void mainImage(out vec4 color, in vec2 coord) { color = vec4(float(iInstanceIndex % 2), float(iInstanceIndex / 2 % 2), iInstanceCount == ${count} ? 1.0 : 0.0, 1.0); }`;
+    case "slang":
+      return `float4 mainImage(float2 coord) { return float4(float(iInstanceIndex % 2u), float(iInstanceIndex / 2u % 2u), iInstanceCount == ${count}u ? 1.0 : 0.0, 1.0); }`;
+    case "wgsl":
+      return `fn mainImage(coord: vec2f) -> vec4f { return vec4f(f32(iInstanceIndex % 2u), f32(iInstanceIndex / 2u % 2u), select(0.0, 1.0, iInstanceCount == ${count}u), 1.0); }`;
+  }
+}
+
+/** Adds a final statement to a generated hook that collapses every vertex of instance 0. */
+function collapseFirstInstance(language: ShaderLanguage, hook: string): string {
+  const statement = {
+    glsl: "  if (iInstanceIndex == 0) { position = vec3(0.0); }",
+    slang: "  if (iInstanceIndex == 0u) { position = float3(0.0); }",
+    wgsl: "  if (iInstanceIndex == 0u) { *position = vec3f(0.0); }",
+  }[language];
+  return hook.replace(/\n}$/, `\n${statement}\n}`);
+}
+
+/** Colour of instance i under instanceBitsImage with the matching count. */
+const instanceColour = (index: number): Pixel => [index % 2 ? 255 : 0, Math.floor(index / 2) % 2 ? 255 : 0, 255, 255];
+
+describe.each(["glsl", "slang", "wgsl"] as const)("%s instancing", (language) => {
+  it("draws every clip-space instance and passes iInstanceIndex flat to fragments", { timeout: 30_000 }, async () => {
+    const region = await render(language, program(
+      language,
+      INSTANCE_COLUMNS[language],
+      { type: "vertices", vertexCount: 6, space: "clip", instanceCount: 4 },
+      {},
+      instanceBitsImage(language, 4),
+    ));
+
+    for (let index = 0; index < 4; index += 1) {
+      for (const x of [4 * index + 1, 4 * index + 2]) {
+        expect(pixelAt(region, x, 8), `instance ${index} at ${x},8`).toEqual(instanceColour(index));
+      }
+    }
+    for (const [x, y] of [[2, 1], [14, 14]]) {
+      expect(pixelAt(region, x, y), `outside ${x},${y}`).toEqual(BLACK);
+    }
+  });
+
+  it("draws a single instance when instanceCount is omitted", { timeout: 30_000 }, async () => {
+    const region = await render(language, program(
+      language,
+      INSTANCE_COLUMNS[language],
+      { type: "vertices", vertexCount: 6, space: "clip" },
+      {},
+      instanceBitsImage(language, 1),
+    ));
+
+    // One column now spans the whole width.
+    for (const x of [1, 8, 14]) {
+      expect(pixelAt(region, x, 8), `pixel ${x},8`).toEqual(instanceColour(0));
+    }
+  });
+
+  it("draws every instance of an indexed mesh", { timeout: 30_000 }, async () => {
+    const hook = collapsePlaneVertices(language, language === "glsl" ? "iInstanceIndex == 0" : "iInstanceIndex == 0u");
+    const instanced = await render(language, program(language, hook, { type: "plane", instanceCount: 2 }, {}, instanceBitsImage(language, 2)));
+    const single = await render(language, program(language, hook, { type: "plane" }, {}, instanceBitsImage(language, 1)));
+
+    // Instance 0 is collapsed, so only the second instance can cover the centre.
+    expect(pixelAt(instanced, 8, 8)).toEqual(instanceColour(1));
+    expect(pixelAt(single, 8, 8)).toEqual(BLACK);
+  });
+
+  it("draws every instance of world-space vertices", { timeout: 30_000 }, async () => {
+    const square = [
+      worldPoint(-0.4, -0.4), worldPoint(0.4, -0.4), worldPoint(0.4, 0.4),
+      worldPoint(-0.4, -0.4), worldPoint(0.4, 0.4), worldPoint(-0.4, 0.4),
+    ];
+    const region = await render(language, program(
+      language,
+      collapseFirstInstance(language, placePoints3(language, square)),
+      { type: "vertices", vertexCount: 6, instanceCount: 2 },
+      {},
+      instanceBitsImage(language, 2),
+    ));
+
+    expect(pixelAt(region, 8, 8)).toEqual(instanceColour(1));
+    expect(pixelAt(region, 0, 0)).toEqual(BLACK);
+  });
+
+  it("reads instance 0 of 1 in fullscreen fragments and hooks", { timeout: 30_000 }, async () => {
+    const keepIfFirstOfOne = {
+      glsl: `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+  if (iInstanceIndex != 0 || iInstanceCount != 1) { position = vec3(0.0); }
+}`,
+      slang: `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  if (iInstanceIndex != 0u || iInstanceCount != 1u) { position = float3(0.0); }
+}`,
+      wgsl: `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+  if (iInstanceIndex != 0u || iInstanceCount != 1u) { *position = vec3f(0.0); }
+}`,
+    };
+    const hooked = await render(language, program(language, keepIfFirstOfOne[language], undefined, {}, instanceBitsImage(language, 1)));
+    const plain = await render(language, program(language, undefined, undefined, {}, instanceBitsImage(language, 1)));
+
+    for (const region of [hooked, plain]) {
+      for (const [x, y] of [[0, 0], [15, 15], [8, 8]]) {
+        expect(pixelAt(region, x, y), `pixel ${x},${y}`).toEqual(instanceColour(0));
+      }
+    }
+  });
+});

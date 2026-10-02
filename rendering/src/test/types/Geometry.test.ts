@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   depthClearValue,
+  geometryInstanceCount,
   isClipSpaceVertices,
   renderPipelineStateKey,
   resolvePassGeometry,
   resolvePassRenderSettings,
+  resolveInstanceDraw,
   resolveRenderState,
   resolveVerticesDraw,
   verticesSpace,
@@ -51,6 +53,28 @@ describe("resolveVerticesDraw", () => {
     expect(isClipSpaceVertices({ geometry: "vertices" })).toBe(false);
     expect(isClipSpaceVertices({ geometry: "cube", space: "clip" })).toBe(false);
     expect(isClipSpaceVertices({})).toBe(false);
+  });
+});
+
+describe("resolveInstanceDraw", () => {
+  it.each(["vertices", "plane", "cube", "sphere"] as const)("copies a configured instanceCount from %s geometry", (type) => {
+    expect(resolveInstanceDraw({ geometry: { type, instanceCount: 8 } })).toEqual({ instanceCount: 8 });
+    expect(resolveInstanceDraw({ geometry: { type } })).toEqual({});
+  });
+
+  it("copies a configured instanceCount from model geometry", () => {
+    expect(resolveInstanceDraw({ geometry: { type: "model", instanceCount: 2 } })).toEqual({ instanceCount: 2 });
+  });
+
+  it("ignores fullscreen geometry and an omitted geometry", () => {
+    expect(resolveInstanceDraw(undefined)).toEqual({});
+    expect(resolveInstanceDraw({})).toEqual({});
+    expect(resolveInstanceDraw({ geometry: { type: "fullscreen", instanceCount: 4 } })).toEqual({});
+  });
+
+  it("defaults to a single instance", () => {
+    expect(geometryInstanceCount({})).toBe(1);
+    expect(geometryInstanceCount({ instanceCount: 64 })).toBe(64);
   });
 });
 

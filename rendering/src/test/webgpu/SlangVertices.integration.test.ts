@@ -46,4 +46,36 @@ describe.runIf(hasBundledSlangWasm)("Slang vertices geometry with bundled slang-
 
     expect(result.success, JSON.stringify(result)).toBe(true);
   });
+
+  describe("instancing", () => {
+    const instancedImage = "float4 mainImage(float2 c) { return float4(float(iInstanceIndex) / float(iInstanceCount), 0, 0, 1); }";
+    const instancedHook = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  position.x += float(iInstanceIndex) / float(iInstanceCount);
+}`;
+
+    it.each([
+      ["world vertices", { geometry: "vertices", vertexSpace: "world" }],
+      ["clip vertices", { geometry: "vertices", vertexSpace: "clip" }],
+      ["cube", { geometry: "cube" }],
+    ] as const)("passes the instance index flat to %s fragments", (_label, options) => {
+      const result = compiler.compileImagePass(instancedImage, { ...options, vertexCode: instancedHook });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) {
+        return;
+      }
+      expect(result.wgsl).toContain("@builtin(instance_index)");
+      expect(result.wgsl).toMatch(/@interpolate\(flat\)/);
+    });
+
+    it("compiles fullscreen shaders that read the instance built-ins without an instance input", () => {
+      const result = compiler.compileImagePass(instancedImage, { vertexCode: instancedHook });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      if (!result.success) {
+        return;
+      }
+      expect(result.wgsl).not.toContain("@builtin(instance_index)");
+    });
+  });
 });

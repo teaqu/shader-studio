@@ -29,6 +29,13 @@ void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, in
 }`,
 };
 
+// The hexagon, except every vertex of instance 0 collapses: only a second instance can draw it.
+const HEXAGON_SKIPPING_FIRST_INSTANCE = {
+  glsl: HEXAGON.glsl.replace(/\n}$/, '\n  if (iInstanceIndex == 0) { position = vec3(0.0); }\n}'),
+  slang: HEXAGON.slang.replace(/\n}$/, '\n  if (iInstanceIndex == 0u) { position = float3(0.0); }\n}'),
+  wgsl: HEXAGON.wgsl.replace(/\n}$/, '\n  if (iInstanceIndex == 0u) { *position = vec3f(0.0); }\n}'),
+};
+
 /** RGB of the presented canvas at fractional position (fx, fy), y from the top. */
 async function pixelAt(frame, fx, fy) {
   const screenshot = await frame.locator('.canvas-container canvas').first().screenshot();
@@ -227,6 +234,62 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect(frame.getByLabel('Depth test')).toBeHidden();
     });
 
+    test('sets the instance count in the config panel, draws every instance, and keeps it after reload', async ({ vscode }) => {
+      rmSync(fixtureDir, { recursive: true, force: true });
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(shaderPath, IMAGE[language]);
+      writeFileSync(vertexPath, HEXAGON_SKIPPING_FIRST_INSTANCE[language]);
+      writeConfig({ vertex: `hexagon.vert.${language}`, geometry: CLIP_STRIP });
+
+      let frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      // One instance, and it is collapsed.
+      await expectCentre(frame, isBlack, 'the collapsed first instance drew the hexagon');
+
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Instances')).toHaveValue('');
+      await expect(frame.getByLabel('Instances')).toHaveAttribute('placeholder', '1');
+
+      // Two instances: the second draws the hexagon.
+      await frame.getByLabel('Instances').fill('2');
+      await frame.getByLabel('Instances').dispatchEvent('change');
+      await expect.poll(image).toMatchObject({ geometry: { ...CLIP_STRIP, instanceCount: 2 } });
+      await expectHexagon(frame);
+
+      // Invalid counts are rejected without writing.
+      await frame.getByLabel('Instances').fill('0');
+      await frame.getByLabel('Instances').dispatchEvent('change');
+      await expect(frame.getByRole('alert')).toContainText('Instance count must be a whole number from 1 to 2147483647');
+      expect(image().geometry).toEqual({ ...CLIP_STRIP, instanceCount: 2 });
+
+      // The count persists across a window reload.
+      await vscode.evaluateInHost(vscode => {
+        setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+      });
+      await expect.poll(() => frame.isDetached(), { timeout: 30_000 }).toBe(true);
+      frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      await expectHexagon(frame);
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Instances')).toHaveValue('2');
+
+      // Fullscreen draws once: the field is dropped and the control hidden, then restored.
+      await frame.getByLabel('Geometry').selectOption('fullscreen');
+      await expect.poll(() => image().geometry).toBeUndefined();
+      await expect(frame.getByLabel('Instances')).toBeHidden();
+      await frame.getByLabel('Geometry').selectOption('vertices');
+      await expect.poll(image).toMatchObject({ geometry: { ...CLIP_STRIP, instanceCount: 2 } });
+      await expect(frame.getByLabel('Instances')).toHaveValue('2');
+
+      // Clearing the count returns to the single collapsed instance.
+      await frame.getByLabel('Instances').fill('');
+      await frame.getByLabel('Instances').dispatchEvent('change');
+      await expect.poll(() => image().geometry).toEqual(CLIP_STRIP);
+      await expectCentre(frame, isBlack, 'clearing the instance count kept the second instance');
+    });
+
     test('reports vertices, depth and cull fields on the wrong geometry as config errors', async ({ vscode }) => {
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
@@ -236,6 +299,8 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
         [{ geometry: { type: 'fullscreen', space: 'clip' } }, 'space is only supported for vertices geometry, not fullscreen'],
         [{ cull: 'back' }, 'cull is not supported for fullscreen geometry'],
         [{ geometry: { type: 'fullscreen' }, depth: { write: false } }, 'depth is not supported for fullscreen geometry'],
+        [{ geometry: { type: 'fullscreen', instanceCount: 2 } }, 'instanceCount is not supported for fullscreen geometry'],
+        [{ geometry: { type: 'cube', instanceCount: 0 } }, 'instanceCount must be an integer from 1 to 2147483647'],
       ];
 
       for (const [config, message] of cases) {

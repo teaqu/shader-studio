@@ -714,7 +714,7 @@ export class RenderingEngine implements RenderingEngineInterface {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
-      ...(capturePass ? { vertexCount: this.passRenderer.getPassVertexCount(capturePass) } : {}),
+      ...(capturePass ? { vertexCount: this.passRenderer.getPassVertexCount(capturePass), instanceCount: this.passRenderer.getPassInstanceCount(capturePass) } : {}),
     };
   }
 

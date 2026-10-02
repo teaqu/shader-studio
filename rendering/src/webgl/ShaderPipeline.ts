@@ -12,7 +12,7 @@ import { resolveBufferPassSize } from "./BufferPassResolution";
 import { blendFormatFallbackWarning, resolveBlendedBufferFormat } from "../util/BufferFormatResolver";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import type { RenderPassSettings } from "@shader-studio/types";
-import { resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
+import { resolveInstanceDraw, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
@@ -199,6 +199,7 @@ export class ShaderPipeline {
           inputs: pass?.inputs ?? {},
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           ...resolveVerticesDraw(pass && "geometry" in pass ? pass : undefined),
+          ...resolveInstanceDraw(pass && "geometry" in pass ? pass : undefined),
           // Blend applies to fullscreen passes too, which may omit geometry.
           ...resolvePassRenderSettings(passName === "common" ? undefined : pass as RenderPassSettings | undefined),
           ...(pass?.geometry?.type === "model" ? {

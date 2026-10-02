@@ -688,6 +688,7 @@ float4 mainImage(float2 p)
     expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
     expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
     expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
+    expect(await hoverAt("vertexIndex")).toContain("iInstanceIndex says which copy is being drawn");
     expect(await hoverAt("position")).toContain("vertices geometry in clip space");
     expect(await hoverAt("position")).toContain("object-space");
     expect(await hoverAt("uv")).toContain("texture coordinate");
@@ -711,6 +712,30 @@ float4 mainImage(float2 p)
     }))?.contents);
     expect(hover).toContain("uint iVertexCount");
     expect(hover).toContain("vertexCount");
+  });
+
+  it.each([
+    ["vertex", "iInstanceIndex", "Zero-based index of the instance"],
+    ["fragment", "iInstanceIndex", "Zero-based index of the instance"],
+    ["vertex", "iInstanceCount", "configured instanceCount"],
+    ["fragment", "iInstanceCount", "configured instanceCount"],
+  ] as const)("completes and documents %s-stage %s", async (stage, name, description) => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage });
+    const text = stage === "vertex"
+      ? `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x += float(${name}); }`
+      : `float4 mainImage(float2 coord) { return float4(float(${name})); }`;
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf(name) } });
+    expect(completions.filter((item) => item.label === name)).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 2 },
+    }))?.contents);
+    expect(hover).toContain(`uint ${name}`);
+    expect(hover).toContain(description);
   });
 
   it("completes and documents fragment-only iVertexUv", async () => {

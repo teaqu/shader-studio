@@ -672,6 +672,7 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await hoverAt("vertexIndex")).toContain("int vertexIndex");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
     expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("iInstanceIndex says which copy is being drawn");
     expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
     expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
     expect(await hoverAt("position")).toContain("vertices geometry in clip space");
@@ -701,6 +702,28 @@ void mainImage(out vec4 color, in vec2 coord) {
     expect(await instance.diagnostics({ document: revision })).not.toContainEqual(
       expect.objectContaining({ message: expect.stringContaining("iVertexCount") }),
     );
+  });
+
+  it.each([
+    ["vertex", "iInstanceIndex", "int iInstanceIndex", "Zero-based index of the instance"],
+    ["fragment", "iInstanceIndex", "int iInstanceIndex", "Zero-based index of the instance"],
+    ["vertex", "iInstanceCount", "int iInstanceCount", "configured instanceCount"],
+    ["fragment", "iInstanceCount", "int iInstanceCount", "configured instanceCount"],
+  ] as const)("completes and documents %s-stage %s", async (stage, name, declaration, description) => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position.x += float(${name}); }`
+      : `void mainImage(out vec4 color, in vec2 coord) { color = vec4(float(${name})); }`;
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.indexOf(name) } });
+    expect(completions.find((item) => item.label === name)?.detail).toContain("int");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 2 },
+    }))?.contents);
+    expect(hover).toContain(declaration);
+    expect(hover).toContain(description);
   });
 
   it("completes and documents fragment-only iVertexUv", async () => {

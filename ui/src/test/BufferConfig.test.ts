@@ -125,6 +125,15 @@ describe('BufferConfig', () => {
         .toEqual(['Image pass geometry space is only supported for vertices geometry, not fullscreen']);
     });
 
+    it('validates instanceCount with the renderer messages', () => {
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube', instanceCount: 64 } }).validate())
+        .toEqual({ isValid: true, errors: [] });
+      expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube', instanceCount: 0 } }).validate().errors)
+        .toEqual(['BufferA pass geometry instanceCount must be an integer from 1 to 2147483647']);
+      expect(new BufferConfig('Image', { geometry: { type: 'fullscreen', instanceCount: 2 } } as never).validate().errors)
+        .toEqual(['Image pass geometry instanceCount is not supported for fullscreen geometry']);
+    });
+
     it('validates blend, depth and cull with the renderer messages', () => {
       expect(new BufferConfig('BufferA', { path: 'a.glsl', geometry: { type: 'cube' }, blend: 'additive', depth: { write: false }, cull: 'back' }).validate())
         .toEqual({ isValid: true, errors: [] });

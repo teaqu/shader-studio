@@ -12,6 +12,12 @@ export const MESH_FRAGMENT_CONTEXT = {
   frontFacing: SHADER_STUDIO_FRAGMENT_CONTEXT.frontFacing.name,
 } as const;
 
+/**
+ * Built-in written from the native instance index before mainVertex runs and
+ * passed flat to the fragment stage; constant 0 for fullscreen geometry.
+ */
+export const INSTANCE_INDEX = "iInstanceIndex";
+
 /** GLSL wrapper types derived from the shared authoring/runtime facts. */
 export const MESH_FRAGMENT_CONTEXT_TYPES = {
   uv: SHADER_STUDIO_FRAGMENT_CONTEXT.vertexUv.glslType,

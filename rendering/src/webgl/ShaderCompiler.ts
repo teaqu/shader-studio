@@ -1,5 +1,6 @@
 import { buildGlslNamedChannelDeclarations, type GeometryType, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
+  INSTANCE_INDEX,
   isMeshGeometry,
   MESH_FRAGMENT_CONTEXT,
   MESH_FRAGMENT_CONTEXT_TYPES,
@@ -34,6 +35,8 @@ export interface WrappedShaderSource {
 
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 
+const INSTANCE_INDEX_OUT = `flat out int ${INSTANCE_INDEX};`;
+
 /** Corners of the oversized triangle that covers clip space, indexed by gl_VertexID. */
 const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
 const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
@@ -67,6 +70,7 @@ layout(location = 2) in vec2 uv;
 function buildClipVerticesMain(hasHook: boolean, pointSize: string): string {
   const callHook = hasHook ? "\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : "";
   return `void main() {
+ ${INSTANCE_INDEX} = gl_InstanceID;
 ${VERTICES_SEED}${callHook}
  ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  gl_Position = vec4(_vertexPosition, 1.0);${pointSize}
@@ -130,6 +134,11 @@ const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.came
     const frontFacingContext = options.geometry === undefined || options.geometry === "fullscreen"
       ? `const ${MESH_FRAGMENT_CONTEXT_TYPES.frontFacing} ${MESH_FRAGMENT_CONTEXT.frontFacing} = true;`
       : `#define ${MESH_FRAGMENT_CONTEXT.frontFacing} gl_FrontFacing`;
+    // Fullscreen draws a single instance; every other geometry receives the
+    // vertex stage's gl_InstanceID unchanged across the primitive.
+    const instanceIndexContext = options.geometry === undefined || options.geometry === "fullscreen"
+      ? `const int ${INSTANCE_INDEX} = 0;`
+      : `flat in int ${INSTANCE_INDEX};`;
 
     let header = `
 precision highp float;
@@ -148,8 +157,10 @@ uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 uniform int iVertexCount;
+uniform int iInstanceCount;
 ${fragmentContext}
 ${frontFacingContext}
+${instanceIndexContext}
 ${this.buildChannelMetadataDeclarations(types, channelCount)}
 `;
 
@@ -552,11 +563,13 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     if (vertices?.space === "clip") {
       return place(`${vertexUniforms}${channelHelpers}
 out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+${INSTANCE_INDEX_OUT}
 `, buildClipVerticesMain(hasHook, pointSize));
     }
     if (!mesh && !vertices) {
       return place(`${vertexUniforms}${channelHelpers}
 out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+const int ${INSTANCE_INDEX} = 0;
 `, `void main() {
  vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
  vec2 _vertexCorner = _vertexCorners[gl_VertexID];
@@ -577,7 +590,9 @@ ${vertexUniforms}${channelHelpers}
 out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
+${INSTANCE_INDEX_OUT}
 `, `void main() {
+ ${INSTANCE_INDEX} = gl_InstanceID;
 ${seed}
  ${hasHook ? "mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : ""}
  vec4 _meshWorldPosition = _meshModel * vec4(_vertexPosition, 1.0);
@@ -604,6 +619,7 @@ uniform float iSampleRate;
 uniform vec3 iCameraPos;
 uniform vec3 iCameraDir;
 uniform int iVertexCount;
+uniform int iInstanceCount;
 ${this.buildChannelMetadataDeclarations(types, channelCount)}${options.customUniformDeclarations ? `${options.customUniformDeclarations}\n` : ""}`;
   }
 

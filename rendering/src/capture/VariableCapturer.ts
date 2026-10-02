@@ -3,7 +3,7 @@ import type { ShaderCompiler, ChannelSamplerType } from '../webgl/ShaderCompiler
 import type { PiShader } from '../types/piRenderer';
 import type { PiTexture } from '../types/piRenderer';
 import type { SlotAssignment } from '../util/InputSlotAssigner';
-import type { ConfigInput, DebugInstrumentationPlan } from '@shader-studio/types';
+import { DEFAULT_INSTANCE_COUNT, type ConfigInput, type DebugInstrumentationPlan } from '@shader-studio/types';
 import type { SlangSourceModule } from '@shader-studio/types';
 import { bindTextures } from '../util/TextureBinder';
 import { resolveBufferSamplerSettings } from '../util/TextureBindingResolver';
@@ -23,6 +23,8 @@ export interface CaptureUniforms {
   cameraDir: number[];
   /** iVertexCount of the captured pass; capture itself still covers the whole pixel grid. */
   vertexCount?: number;
+  /** iInstanceCount of the captured pass; capture draws one instance, so iInstanceIndex is 0. */
+  instanceCount?: number;
   channelTime?: number[];
   channelLoaded?: number[];
   sampleRate?: number;
@@ -714,6 +716,7 @@ export class VariableCapturer implements IVariableCapturer {
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraPos'), uniforms.cameraPos);
     gl.uniform3fv(gl.getUniformLocation(program, 'iCameraDir'), uniforms.cameraDir);
     gl.uniform1i(gl.getUniformLocation(program, 'iVertexCount'), uniforms.vertexCount ?? 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'iInstanceCount'), uniforms.instanceCount ?? DEFAULT_INSTANCE_COUNT);
 
     // Set custom uniforms from script
     for (const u of this.customUniforms) {

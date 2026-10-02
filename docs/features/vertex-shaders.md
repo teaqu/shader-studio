@@ -104,7 +104,48 @@ Out-of-range counts, other topologies, and any of these fields on fullscreen, pl
 
 - **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
 - **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each; see [Additive particles](#additive-particles).
-- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value, and `iFrontFacing` is `true`.
+- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value, `iFrontFacing` is `true`, and `iInstanceIndex` is 0.
+
+## Instancing
+
+Add `instanceCount` to any geometry except fullscreen to draw it many times in one draw call. The vertex shader runs for every vertex of every copy, and `iInstanceIndex` says which copy it is on, from 0 to `iInstanceCount - 1`. Use it to offset, rotate or colour each copy. This works for meshes too, where vertex pulling cannot: a field of 100 cubes is one cube drawn 100 times.
+
+```json
+"geometry": { "type": "cube", "instanceCount": 100 }
+```
+
+| Field | Values | Default |
+|-------|--------|---------|
+| `instanceCount` | Whole number from 1 to 2147483647 | `1` |
+
+`vertexIndex` repeats the same range for every copy. `iInstanceIndex` is also available in `mainImage`, holding the copy that drew the fragment, so each copy can be shaded differently. Fullscreen passes always draw one copy: `iInstanceCount` is 1 and `iInstanceIndex` is 0, and `instanceCount` on fullscreen geometry is a config error. In the config panel, set the count with the Instances control under Geometry.
+
+=== "GLSL"
+    ```glsl
+    // cubes.vert.glsl: a 10 × 10 grid of small cubes
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        vec2 cell = vec2(iInstanceIndex % 10, iInstanceIndex / 10) - 4.5;
+        position = position * 0.08 + vec3(cell.x, 0.0, cell.y) * 0.2;
+    }
+    ```
+
+=== "Slang"
+    ```slang
+    // cubes.vert.slang: a 10 × 10 grid of small cubes
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        float2 cell = float2(iInstanceIndex % 10u, iInstanceIndex / 10u) - 4.5;
+        position = position * 0.08 + float3(cell.x, 0.0, cell.y) * 0.2;
+    }
+    ```
+
+=== "WGSL"
+    ```wgsl
+    // cubes.vert.wgsl: a 10 × 10 grid of small cubes
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        let cell = vec2f(f32(iInstanceIndex % 10u), f32(iInstanceIndex / 10u)) - 4.5;
+        *position = *position * 0.08 + vec3f(cell.x, 0.0, cell.y) * 0.2;
+    }
+    ```
 
 ## Render Settings
 
@@ -171,6 +212,8 @@ All standard shader uniforms are available in the vertex shader:
 | `iCameraPos` | `vec3` | `float3` | `vec3f` | Camera position in world space |
 | `iCameraDir` | `vec3` | `float3` | `vec3f` | Camera forward direction |
 | `iVertexCount` | `int` | `uint` | `u32` | Vertices drawn by the pass: the vertices `vertexCount`, 3 for fullscreen, or the mesh vertex count |
+| `iInstanceCount` | `int` | `uint` | `u32` | Copies drawn by the pass: the geometry's `instanceCount` (default 1), or 1 for fullscreen |
+| `iInstanceIndex` | `int` | `uint` | `u32` | The copy being drawn, from 0 to `iInstanceCount - 1`; see [Instancing](#instancing) |
 
 === "GLSL"
     Configured channels use the existing samplers and metadata accessors, such as `iChannel0` and `iCh0`.

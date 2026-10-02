@@ -390,7 +390,7 @@ describe("slang-multipass-test shader corpus", () => {
   });
 
   it("discovers every configured root shader", () => {
-    expect(projects).toHaveLength(150);
+    expect(projects).toHaveLength(153);
   });
 
   it("provides a GLSL counterpart for every portable Slang project", () => {

@@ -113,6 +113,7 @@ const createMockGl = () => ({
   clear: vi.fn(),
   bindVertexArray: vi.fn(),
   drawElements: vi.fn(),
+  drawElementsInstanced: vi.fn(),
   getUniformLocation: vi.fn(),
   uniformMatrix3fv: vi.fn(),
 });
@@ -421,6 +422,43 @@ describe("PassRenderer", () => {
       expect(passRenderer.getPassVertexCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {} })).toBe(3);
       expect(passRenderer.getPassVertexCount({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {} })).toBe(3);
       expect(meshResources.get).not.toHaveBeenCalledWith("vertices");
+    });
+
+    it("draws every instance of a vertices pass and binds iInstanceCount", () => {
+      passRenderer.renderPass({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, vertexCount: 6, instanceCount: 5 }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.TRIANGLES, 6, false, 5);
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 5);
+    });
+
+    it("draws every instance of a mesh pass with drawElementsInstanced and restores GL state", () => {
+      renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, instanceCount: 4 });
+
+      expect(mockGl.drawElementsInstanced).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0, 4);
+      expect(mockGl.drawElements).not.toHaveBeenCalled();
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 4);
+      expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
+      expectGlDefaultsRestoredAfter(mockGl.drawElementsInstanced);
+    });
+
+    it("draws a single-instance mesh pass without the instanced entry point", () => {
+      renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} });
+
+      expect(mockGl.drawElements).toHaveBeenCalledTimes(1);
+      expect(mockGl.drawElementsInstanced).not.toHaveBeenCalled();
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 1);
+    });
+
+    it("binds one instance for fullscreen passes and mesh passes that fall back to fullscreen", () => {
+      passRenderer.renderPass({ geometry: "fullscreen", name: "F", shaderSrc: "", inputs: {} }, null, createMockShader(), defaultUniforms);
+      passRenderer.renderPass({ geometry: "sphere", name: "S", shaderSrc: "", inputs: {}, instanceCount: 3 }, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 1);
+      expect(mockRenderer.SetShaderConstant1I).not.toHaveBeenCalledWith("iInstanceCount", 3);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenNthCalledWith(2, mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+      expect(passRenderer.getPassInstanceCount({ geometry: "sphere", name: "S", shaderSrc: "", inputs: {}, instanceCount: 3 })).toBe(1);
+      expect(passRenderer.getPassInstanceCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {}, instanceCount: 3 })).toBe(3);
+      expect(passRenderer.getPassInstanceCount({ geometry: "vertices", name: "V", shaderSrc: "", inputs: {} })).toBe(1);
     });
 
     it("binds iVertexCount to 0 and skips drawing while a mesh is unavailable", () => {

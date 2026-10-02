@@ -17,7 +17,7 @@ export const SLANG_VERTEX_HOOK_FEATURES: readonly SlangVertexHookFeature[] = Obj
     name: "vertexIndex",
     kind: "parameter",
     signature: "uint vertexIndex",
-    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index.",
+    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index. Every instance repeats the same range; iInstanceIndex says which copy is being drawn.",
   }),
   Object.freeze({
     name: "position",

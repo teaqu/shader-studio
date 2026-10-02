@@ -126,15 +126,44 @@ float4 inputs(float2 uv) { return 1; }`,
     });
   });
 
+  describe('instancing', () => {
+    const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
+
+    it('declares iInstanceCount from the y lane of the vertexCount slot and a static iInstanceIndex', () => {
+      const source = wrapSlangImageSource(image);
+      expect(source).toContain('#define iInstanceCount (_st.vertexCount.y)');
+      expect(source).toContain('static uint iInstanceIndex;');
+    });
+
+    it('leaves iInstanceIndex at its zero initial value for fullscreen and capture entries', () => {
+      for (const source of [
+        wrapSlangImageSource(image),
+        wrapSlangImageSource(image, { vertexCode: vertex }),
+        wrapSlangImageSource(image, { captureMode: true }),
+      ]) {
+        expect(source).not.toContain('instanceID : SV_InstanceID');
+        expect(source).not.toContain('iInstanceIndex =');
+        expect(source).not.toContain('instanceIndex :');
+      }
+    });
+
+    it('declares iInstanceIndex before the hook so mainVertex can read it', () => {
+      const source = wrapSlangImageSource(image, { geometry: 'cube', vertexCode: vertex });
+      expect(source.indexOf('static uint iInstanceIndex;')).toBeLessThan(source.indexOf(vertex));
+    });
+  });
+
   describe('vertices geometry', () => {
     const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x = float(vertexIndex); }';
-    const SEED = 'float3 position = float3(0, 0, 0); float3 normal = float3(0, 0, 1); float2 uv = float2(0, 0); mainVertex(vertexID, position, normal, uv);';
+    const SEED = 'iInstanceIndex = instanceID; float3 position = float3(0, 0, 0); float3 normal = float3(0, 0, 1); float2 uv = float2(0, 0); mainVertex(vertexID, position, normal, uv);';
 
     it.each([undefined, 'world'] as const)('projects world-space output through the camera with no vertex inputs (vertexSpace %s)', (vertexSpace) => {
       const source = wrapSlangImageSource(image, { geometry: 'vertices', vertexCode: vertex, ...(vertexSpace ? { vertexSpace } : {}) });
 
       expect(source).toContain('ConstantBuffer<MeshUniforms> _mesh;');
-      expect(source).toContain(`MeshVertexOut vertexMain(uint vertexID : SV_VertexID) { ${SEED} MeshVertexOut output;`);
+      expect(source).toContain(`MeshVertexOut vertexMain(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) { ${SEED} MeshVertexOut output; output.instanceIndex = instanceID;`);
+      expect(source).toContain('nointerpolation uint instanceIndex : TEXCOORD3;');
+      expect(source).toContain('iInstanceIndex = input.instanceIndex;');
       expect(source).toContain('output.position = mul(_mesh.viewProjection, worldPosition);');
       expect(source).toContain('float4 color = mainImage(input.uv * _st.resolution.xy);');
       expect(source).toContain('iVertexUv = input.uv;');
@@ -146,7 +175,9 @@ float4 inputs(float2 uv) { return 1; }`,
     it('writes clip-space output straight to SV_Position and shades with the pixel coordinate', () => {
       const source = wrapSlangImageSource(image, { geometry: 'vertices', vertexSpace: 'clip', vertexCode: vertex });
 
-      expect(source).toContain(`ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID) { ${SEED} ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }`);
+      expect(source).toContain(`ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) { ${SEED} ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; output.instanceIndex = instanceID; return output; }`);
+      expect(source).toContain('nointerpolation uint instanceIndex : TEXCOORD1;');
+      expect(source).toContain('iInstanceIndex = input.instanceIndex;');
       expect(source).toContain('iVertexUv = input.uv;');
       expect(source).toContain('iFrontFacing = frontFacing;');
       expect(source).toContain('return mainImage(float2(input.position.x, _st.resolution.y - input.position.y));');
@@ -193,8 +224,9 @@ float4 inputs(float2 uv) { return 1; }`,
   it.each(['plane', 'cube', 'sphere', 'model'] as const)('passes the %s mesh vertex index to the hook', (geometry) => {
     const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
     const source = wrapSlangImageSource(image, { geometry, vertexCode: vertex });
-    expect(source).toContain('float2 uv : TEXCOORD0, uint vertexID : SV_VertexID)');
-    expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
+    expect(source).toContain('float2 uv : TEXCOORD0, uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) { iInstanceIndex = instanceID; mainVertex(vertexID, position, normal, uv);');
+    expect(source).toContain('output.instanceIndex = instanceID;');
+    expect(source).toContain('iInstanceIndex = input.instanceIndex;');
   });
 
   it('declares a vertex-index stub hook for meshes without vertex code', () => {

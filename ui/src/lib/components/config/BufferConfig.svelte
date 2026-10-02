@@ -12,6 +12,8 @@
     AspectRatioMode,
     FileDialogFileType,
     GeometryType,
+    GeometryConfig,
+    FullscreenGeometryConfig,
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
@@ -29,9 +31,11 @@
     DEFAULT_CLEAR_COLOR,
     DEFAULT_CULL_MODE,
     DEFAULT_DEPTH_COMPARE,
+    DEFAULT_INSTANCE_COUNT,
     DEFAULT_VERTEX_COUNT,
     DEFAULT_VERTEX_SPACE,
     DEFAULT_VERTEX_TOPOLOGY,
+    MAX_INSTANCE_COUNT,
     MAX_VERTEX_COUNT,
     SHADER_LANGUAGES,
     vertexPassKey,
@@ -134,6 +138,10 @@
     !modelGeometry && config.geometry?.type === 'vertices' ? config.geometry : undefined,
   );
   const selectedGeometry = $derived<GeometryType>(modelGeometry ? 'model' : config.geometry?.type ?? 'fullscreen');
+  /** Geometry that accepts instanceCount: anything drawn but fullscreen. */
+  const instancedGeometry = $derived<Exclude<GeometryConfig, FullscreenGeometryConfig> | undefined>(
+    config.geometry && config.geometry.type !== 'fullscreen' ? config.geometry : undefined,
+  );
   /** Blend/clear/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
   const renderState = $derived(resolveRenderState({
     geometry: selectedGeometry,
@@ -147,6 +155,7 @@
     .map((component) => Math.round(component * 255).toString(16).padStart(2, '0'))
     .join('')}`);
   let vertexCountError = $state<string | null>(null);
+  let instanceCountError = $state<string | null>(null);
   const modelUrl = $derived(modelGeometry?.resolved_path ?? (modelGeometry ? getWebviewUri(modelGeometry.path) : undefined));
 
   let currentPath = $state("path" in config ? config.path : "");
@@ -390,11 +399,23 @@
     return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as Partial<T>;
   }
 
+  /**
+   * instanceCount for geometry replacing the current one: kept from drawn
+   * geometry, or restored from memory when the pass was fullscreen.
+   */
+  function carriedInstanceCount(): { instanceCount?: number } {
+    const instanceCount = instancedGeometry
+      ? instancedGeometry.instanceCount
+      : takeDrawField(shaderPath, bufferName, 'instanceCount');
+    return instanceCount === undefined ? {} : { instanceCount };
+  }
+
   function handleGeometryChange(type: GeometryType) {
     vertexCountError = null;
+    instanceCountError = null;
     // Other geometry rejects vertexCount/topology/space; keep them for a switch back.
     if (verticesGeometry && type !== 'vertices') {
-      const { type: _type, ...fields } = verticesGeometry;
+      const { type: _type, instanceCount: _instanceCount, ...fields } = verticesGeometry;
       rememberDrawFields(shaderPath, bufferName, { vertices: fields });
     }
     if (type === 'model') {
@@ -405,8 +426,8 @@
     modelSelectionPending = false;
     const { geometry: _geometry, ...current } = config as RenderSettingsConfig;
     if (type === 'fullscreen') {
-      // Fullscreen has no depth buffer and nothing to cull; keep both for a switch back.
-      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull });
+      // Fullscreen has no depth buffer, nothing to cull and draws once; keep them for a switch back.
+      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull, instanceCount: instancedGeometry?.instanceCount });
       const { depth: _depth, cull: _cull, ...rest } = current;
       updateConfig(rest as EditableConfig);
       return;
@@ -418,8 +439,8 @@
       Object.assign(restored, depth ? { depth } : {}, cull ? { cull } : {});
     }
     const geometry = type === 'vertices'
-      ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices') }
-      : { type };
+      ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices'), ...carriedInstanceCount() }
+      : { type, ...carriedInstanceCount() };
     updateConfig({ ...current, ...restored, geometry } as EditableConfig);
   }
 
@@ -444,6 +465,24 @@
     }
     vertexCountError = null;
     updateVerticesDraw({ vertexCount: count });
+  }
+
+  function handleInstanceCountChange(event: Event) {
+    if (!instancedGeometry) {
+      return;
+    }
+    const raw = (event.currentTarget as HTMLInputElement).value.trim();
+    const count = raw === '' ? DEFAULT_INSTANCE_COUNT : Number(raw);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_INSTANCE_COUNT) {
+      instanceCountError = `Instance count must be a whole number from 1 to ${MAX_INSTANCE_COUNT}`;
+      return;
+    }
+    instanceCountError = null;
+    const { instanceCount: _instanceCount, ...geometry } = instancedGeometry;
+    updateConfig({
+      ...config,
+      geometry: count === DEFAULT_INSTANCE_COUNT ? geometry : { ...geometry, instanceCount: count },
+    } as EditableConfig);
   }
 
   function handleTopologyChange(event: Event) {
@@ -519,12 +558,12 @@
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}) } });
+    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}), ...carriedInstanceCount() } });
   }
 
   function handleModelMeshChange(event: Event) {
     const mesh = (event.currentTarget as HTMLInputElement).value.trim();
-    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}) } });
+    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}), ...carriedInstanceCount() } });
   }
 
   function handleVertexPathChange(path: string) {
@@ -814,6 +853,23 @@
               <option value="clip">Clip (screen)</option>
             </select>
           </div>
+        {/if}
+        {#if instancedGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="instance-count-{bufferName}">Instances</label>
+            <input
+              id="instance-count-{bufferName}"
+              class="vertex-count-input"
+              type="number"
+              min="1"
+              max={MAX_INSTANCE_COUNT}
+              step="1"
+              placeholder={String(DEFAULT_INSTANCE_COUNT)}
+              value={instancedGeometry.instanceCount ?? ''}
+              onchange={handleInstanceCountChange}
+            />
+          </div>
+          {#if instanceCountError}<span class="input-note" role="alert">{instanceCountError}</span>{/if}
         {/if}
       </div>
       <div class="config-item render-settings-section">

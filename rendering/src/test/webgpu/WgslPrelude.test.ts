@@ -306,6 +306,26 @@ describe("wrapWgslImageSource entry points", () => {
     });
   });
 
+  describe("instancing", () => {
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+
+    it("declares iInstanceCount from the y lane of the vertexCount slot and a private iInstanceIndex", () => {
+      const { source } = wrapWgslImageSource(IMAGE);
+      expect(source).toContain("var<private> iInstanceCount: u32;");
+      expect(source).toContain("  iInstanceCount = _ss_u.vertexCount.y;");
+      expect(source).toContain("var<private> iInstanceIndex: u32;");
+    });
+
+    it("leaves iInstanceIndex at its zero initial value for fullscreen and capture entries", () => {
+      for (const options of [{}, { vertexCode: hook }, { captureMode: true }]) {
+        const { source } = wrapWgslImageSource(IMAGE, options);
+        expect(source).not.toContain("instance_index");
+        expect(source).not.toContain("iInstanceIndex =");
+        expect(source).not.toContain("@interpolate(flat)");
+      }
+    });
+  });
+
   describe("vertices geometry", () => {
     const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {\n  (*position).x = f32(vertexIndex);\n}";
     const SEED = `  var position = vec3<f32>(0.0, 0.0, 0.0);
@@ -317,8 +337,11 @@ describe("wrapWgslImageSource entry points", () => {
       const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexCode: hook, ...(vertexSpace ? { vertexSpace } : {}) });
 
       expect(result.source).toContain("var<uniform> _ss_mesh: _ss_MeshUniforms;");
-      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {\n  _ss_initGlobals();\n${SEED}\n  let worldPosition = _ss_mesh.model * vec4<f32>(position, 1.0);`);
+      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n${SEED}\n  let worldPosition = _ss_mesh.model * vec4<f32>(position, 1.0);`);
       expect(result.source).toContain("output.position = _ss_mesh.viewProjection * worldPosition;");
+      expect(result.source).toContain("  output.instanceIndex = iid;");
+      expect(result.source).toContain("@location(3) @interpolate(flat) instanceIndex: u32,\n}");
+      expect(result.source).toContain("  iInstanceIndex = instanceIndex;");
       expect(result.source).toContain("return mainImage(uv * _ss_u.resolution.xy);");
       expect(result.source).not.toContain("@location(0) position");
       expect(result.source).not.toContain("verts[");
@@ -330,7 +353,10 @@ describe("wrapWgslImageSource entry points", () => {
     it("writes clip-space output straight to the position builtin and shades with the pixel coordinate", () => {
       const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexSpace: "clip", vertexCode: hook });
 
-      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {\n  _ss_initGlobals();\n${SEED}\n  var output: _ss_VertexUvOut;\n  output.position = vec4<f32>(position, 1.0);\n  output.uv = uv;\n  return output;\n}`);
+      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_VertexUvOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n${SEED}\n  var output: _ss_VertexUvOut;\n  output.position = vec4<f32>(position, 1.0);\n  output.uv = uv;\n  output.instanceIndex = iid;\n  return output;\n}`);
+      expect(result.source).toContain("@location(1) @interpolate(flat) instanceIndex: u32,\n}");
+      expect(result.source).toContain("@location(0) uv: vec2<f32>, @location(1) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool)");
+      expect(result.source).toContain("  _ss_initGlobals();\n  iInstanceIndex = instanceIndex;");
       expect(result.source).toContain("return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));");
       expect(result.source).toContain("iVertexUv = uv;");
       expect(result.source).toContain("iFrontFacing = frontFacing;");
@@ -380,8 +406,10 @@ describe("wrapWgslImageSource entry points", () => {
       geometry,
       vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     });
-    expect(source).toContain("@location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut");
+    expect(source).toContain("@location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {\n  _ss_initGlobals();\n  iInstanceIndex = iid;\n  var p = position;");
     expect(source).toContain("mainVertex(vid, &p, &n, &t);");
+    expect(source).toContain("  output.instanceIndex = iid;");
+    expect(source).toContain("@location(3) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool)");
   });
 
   it("declares a vertex-index stub hook for meshes without vertex code", () => {
@@ -719,6 +747,8 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iCameraPos: vec3<f32>;
       var<private> iCameraDir: vec3<f32>;
       var<private> iVertexCount: u32;
+      var<private> iInstanceCount: u32;
+      var<private> iInstanceIndex: u32;
       var<private> iVertexUv: vec2<f32>;
       var<private> iWorldPosition: vec3<f32>;
       var<private> iNormal: vec3<f32>;
@@ -739,6 +769,7 @@ describe("wrapWgslImageSource golden module", () => {
         iCameraPos = _ss_u.cameraPos.xyz;
         iCameraDir = _ss_u.cameraDir.xyz;
         iVertexCount = _ss_u.vertexCount.x;
+        iInstanceCount = _ss_u.vertexCount.y;
         myGain = _ss_u.custom_myGain;
         myFlag = _ss_u.custom_myFlag != 0;
         _ss_initChannels();

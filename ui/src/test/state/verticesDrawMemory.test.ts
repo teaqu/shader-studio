@@ -58,6 +58,15 @@ describe('verticesDrawMemory', () => {
     expect(takeDrawField(undefined, 'Image', 'cull')).toBe('back');
   });
 
+  it('remembers an instance count separately from the vertices fields', () => {
+    rememberDrawFields('/s.glsl', 'Image', { vertices: { vertexCount: 6 }, instanceCount: 12 });
+    rememberDrawFields('/s.glsl', 'Image', { instanceCount: undefined });
+
+    expect(takeDrawField('/s.glsl', 'Image', 'instanceCount')).toBe(12);
+    expect(takeDrawField('/s.glsl', 'Image', 'instanceCount')).toBeUndefined();
+    expect(takeDrawField('/s.glsl', 'Image', 'vertices')).toEqual({ vertexCount: 6 });
+  });
+
   it('forgets everything on reset', () => {
     rememberDrawFields('/s.glsl', 'Image', { vertices: { vertexCount: 6 }, cull: 'back' });
 

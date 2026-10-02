@@ -88,6 +88,7 @@ describe("WgslLanguageService", () => {
     expect(await hoverAt("vertexIndex")).toContain("vertex_index");
     expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
     expect(await hoverAt("vertexIndex")).toContain("iVertexCount - 1");
+    expect(await hoverAt("vertexIndex")).toContain("iInstanceIndex says which copy is being drawn");
     expect(await hoverAt("vertexIndex")).toContain("vertices geometry runs from 0 to iVertexCount - 1");
     expect(await hoverAt("vertexIndex")).toContain("`vertexCount`");
     expect(await hoverAt("position")).toContain("vertices geometry in clip space");
@@ -113,6 +114,29 @@ describe("WgslLanguageService", () => {
     expect(hover).toContain("var<private> iVertexCount: u32");
     expect(hover).toContain("vertexCount");
     expect(hover).not.toContain("Declared in");
+  });
+
+  it.each([
+    ["vertex", "iInstanceIndex", "Zero-based index of the instance"],
+    ["fragment", "iInstanceIndex", "Zero-based index of the instance"],
+    ["vertex", "iInstanceCount", "configured instanceCount"],
+    ["fragment", "iInstanceCount", "configured instanceCount"],
+  ] as const)("completes and documents %s-stage %s", async (stage, name, description) => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage });
+    const text = stage === "vertex"
+      ? `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { (*position).x += f32(${name}); }`
+      : `fn mainImage(coord: vec2f) -> vec4f { return vec4f(f32(${name})); }`;
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf(name) } }))
+      .map((item) => item.label);
+    expect(labels).toContain(name);
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 2 },
+    }))?.contents);
+    expect(hover).toContain(`var<private> ${name}: u32`);
+    expect(hover).toContain(description);
   });
 
   it("completes and documents fragment-only iVertexUv", async () => {

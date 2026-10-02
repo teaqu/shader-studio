@@ -673,7 +673,7 @@ describe("ShaderPipeline", () => {
         passes: {
           BufferA: {
             path: "a.glsl",
-            geometry: { type: "vertices", vertexCount: 12, topology: "line-strip", space: "clip" },
+            geometry: { type: "vertices", vertexCount: 12, topology: "line-strip", space: "clip", instanceCount: 7 },
             blend: "additive",
             depth: { test: true, write: false, compare: "greater" },
             cull: "back",
@@ -681,7 +681,7 @@ describe("ShaderPipeline", () => {
           },
           BufferB: { path: "b.glsl", geometry: { type: "vertices", topology: "point-list" }, inputs: {} },
           BufferC: { path: "c.glsl", geometry: { type: "fullscreen" }, blend: "alpha", inputs: {} },
-          BufferD: { path: "d.glsl", geometry: { type: "cube" }, cull: "front", inputs: {} },
+          BufferD: { path: "d.glsl", geometry: { type: "cube", instanceCount: 3 }, cull: "front", inputs: {} },
           Image: { geometry: { type: "vertices", vertexCount: 6 }, inputs: {} },
         },
       } as const;
@@ -697,6 +697,7 @@ describe("ShaderPipeline", () => {
         vertexCount: 12,
         topology: "line-strip",
         space: "clip",
+        instanceCount: 7,
         blend: "additive",
         depth: { test: true, write: false, compare: "greater" },
         cull: "back",
@@ -707,7 +708,10 @@ describe("ShaderPipeline", () => {
       expect(passes.BufferB).not.toHaveProperty("blend");
       expect(passes.Image).toMatchObject({ geometry: "vertices", vertexCount: 6 });
       expect(passes.BufferC).toMatchObject({ geometry: "fullscreen", blend: "alpha" });
-      expect(passes.BufferD).toMatchObject({ geometry: "cube", cull: "front" });
+      expect(passes.BufferD).toMatchObject({ geometry: "cube", cull: "front", instanceCount: 3 });
+      for (const name of ["BufferB", "BufferC", "Image"]) {
+        expect(passes[name]).not.toHaveProperty("instanceCount");
+      }
       for (const name of ["BufferC", "BufferD"]) {
         expect(passes[name]).not.toHaveProperty("vertexCount");
         expect(passes[name]).not.toHaveProperty("topology");

@@ -530,6 +530,19 @@ describe('BufferConfig', () => {
       expect(mockPostMessage).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'selectFile', payload: expect.objectContaining({ fileType: 'model' }) }));
     });
 
+    it('keeps the instance count when the model mesh changes', async () => {
+      mockGetWebviewUri.mockReturnValue('vscode-webview://webview-panel/robot.glb');
+      const { getByLabelText } = render(BufferConfig, {
+        bufferName: 'Image', config: { inputs: {}, geometry: { type: 'model', path: './robot.glb', instanceCount: 3 } }, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri,
+        postMessage: mockPostMessage, shaderPath: '/shaders/image.slang',
+      });
+
+      await waitFor(() => expect(getByLabelText('Mesh')).toHaveTextContent('Body'));
+      await fireEvent.change(getByLabelText('Mesh'), { target: { value: 'Body' } });
+
+      expect(mockOnUpdate).toHaveBeenLastCalledWith('Image', { inputs: {}, geometry: { type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 3 } });
+    });
+
     it('waits for the model webview URI instead of fetching a raw relative path', async () => {
       const fetchMock = vi.mocked(fetch);
       render(BufferConfig, {
@@ -809,6 +822,135 @@ describe('BufferConfig', () => {
         await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
 
         expect(queryByRole('alert')).toBeNull();
+      });
+    });
+
+    describe('instance count', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const pass = (geometry?: Record<string, unknown>) => ({ path: 'a.glsl', inputs: {}, ...(geometry ? { geometry } : {}) }) as BufferPass;
+
+      it.each([
+        ['vertices', { type: 'vertices' }],
+        ['plane', { type: 'plane' }],
+        ['cube', { type: 'cube' }],
+        ['sphere', { type: 'sphere' }],
+        ['model', { type: 'model', path: './robot.glb' }],
+      ])('shows a default single instance for %s geometry', (_name, geometry) => {
+        const { getByLabelText } = renderPass(pass(geometry));
+        const count = getByLabelText('Instances') as HTMLInputElement;
+
+        expect(count.value).toBe('');
+        expect(count.placeholder).toBe('1');
+        expect(count.min).toBe('1');
+        expect(count.max).toBe('2147483647');
+        expect(count.step).toBe('1');
+      });
+
+      it('shows a configured instance count', () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 25 }));
+
+        expect((getByLabelText('Instances') as HTMLInputElement).value).toBe('25');
+      });
+
+      it.each([
+        ['implicit fullscreen', undefined],
+        ['explicit fullscreen', { type: 'fullscreen' }],
+      ])('hides the control for %s geometry', (_name, geometry) => {
+        expect(renderPass(pass(geometry)).queryByLabelText('Instances')).toBeNull();
+      });
+
+      it('writes an instance count into the geometry, keeping its other fields', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', vertexCount: 6, space: 'clip' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '40' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices', vertexCount: 6, space: 'clip', instanceCount: 40 }));
+      });
+
+      it.each(['', '1'])('removes instanceCount when set to %j, the default', async (value) => {
+        const { getByLabelText } = renderPass(pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 3 }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', mesh: 'Body' }));
+      });
+
+      it.each(['0', '-1', '1.5', '2147483648'])('rejects instance count %s without writing it', async (value) => {
+        const { getByLabelText, getByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value } });
+
+        expect(mockOnUpdate).not.toHaveBeenCalled();
+        expect(getByRole('alert')).toHaveTextContent('Instance count must be a whole number from 1 to 2147483647');
+      });
+
+      it('clears the error once a valid count is entered', async () => {
+        const { getByLabelText, queryByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '2' } });
+
+        expect(queryByRole('alert')).toBeNull();
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube', instanceCount: 2 }));
+      });
+
+      it('clears a pending instance count error when the geometry changes', async () => {
+        const { getByLabelText, queryByRole } = renderPass(pass({ type: 'cube' }));
+
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '0' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'sphere' } });
+
+        expect(queryByRole('alert')).toBeNull();
+      });
+
+      it('carries the instance count between non-fullscreen geometry', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', vertexCount: 6, instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube', instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices', vertexCount: 6, instanceCount: 8 }));
+      });
+
+      it('does not remember instanceCount as a vertices-only field', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'vertices', instanceCount: 8 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'cube' } });
+        await fireEvent.change(getByLabelText('Instances'), { target: { value: '' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'vertices' }));
+      });
+
+      it('drops the instance count for fullscreen and restores it on the way back', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'sphere', instanceCount: 5 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass());
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'plane' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'plane', instanceCount: 5 }));
+      });
+
+      it('carries the instance count to a chosen model', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 4 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', instanceCount: 4 }));
+      });
+
+      it('restores a remembered instance count when a model is chosen after fullscreen', async () => {
+        const { getByLabelText } = renderPass(pass({ type: 'cube', instanceCount: 6 }));
+
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'model' } });
+        await fireEvent.input(getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', instanceCount: 6 }));
       });
     });
 

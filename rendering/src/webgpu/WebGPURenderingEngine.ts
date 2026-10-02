@@ -51,7 +51,7 @@ import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
-import { depthClearValue, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
+import { depthClearValue, geometryInstanceCount, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera } from "../preview3d/OrbitCamera";
@@ -2221,7 +2221,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       pass.outputLayers,
       pass.resolvedOutputFormat,
       // Topology, space, blend, depth and cull are baked into the render
-      // pipeline; vertexCount is only a draw argument.
+      // pipeline; vertexCount and instanceCount are only draw arguments.
       pass.kind === "render" ? renderPipelineStateKey(pass) : null,
     ]);
   }
@@ -2697,6 +2697,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
         width: pass.width,
         height: pass.height,
         vertexCount: this.resolvePassVertexCount(pass),
+        instanceCount: geometryInstanceCount(pass),
         ...frameInput,
         ...this.getChannelUniforms(pass),
       }, this.customUniformManager.getUniformInfo(), frameCustomUniformValues);
@@ -2742,11 +2743,11 @@ export class WebGPURenderingEngine implements RenderingEngine {
         renderPass.draw(FULLSCREEN_VERTEX_COUNT);
       } else if (pass.geometry === "vertices") {
         // Non-indexed with no vertex buffers; mainVertex places every vertex.
-        renderPass.draw(verticesVertexCount(pass));
+        renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
       } else if (mesh) {
         renderPass.setVertexBuffer(0, mesh.vertexBuffer);
         renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-        renderPass.drawIndexed(mesh.indexCount);
+        renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
       }
       renderPass.end();
     }
@@ -3665,7 +3666,7 @@ export class WebGPURenderingEngine implements RenderingEngine {
       date: u.date as number[],
       cameraPos: u.cameraPos as number[],
       cameraDir: u.cameraDir as number[],
-      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass) } : {}),
+      ...(pass ? { vertexCount: this.resolvePassVertexCount(pass), instanceCount: geometryInstanceCount(pass) } : {}),
       ...channelUniforms,
     };
   }

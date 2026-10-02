@@ -94,11 +94,16 @@ export const DEFAULT_VERTEX_SPACE: VertexSpace = "world";
 export const DEFAULT_VERTEX_COUNT = 3;
 /** WebGL's GLsizei maximum, the lower of the WebGL and WebGPU draw-count limits. */
 export const MAX_VERTEX_COUNT = 2_147_483_647;
+/** Copies of the geometry each draw makes; fullscreen always draws one. */
+export const DEFAULT_INSTANCE_COUNT = 1;
+/** WebGL's GLsizei maximum, like MAX_VERTEX_COUNT. */
+export const MAX_INSTANCE_COUNT = 2_147_483_647;
 /** Vertices a fullscreen pass draws: one oversized triangle. */
 export const FULLSCREEN_VERTEX_COUNT = 3;
 /** One oversized triangle covering every pixel. */
 export interface FullscreenGeometryConfig {
   type: "fullscreen";
+  instanceCount?: never;
 }
 /** A non-indexed draw with no vertex buffers whose positions come from the `mainVertex` hook. */
 export interface VerticesGeometryConfig {
@@ -106,10 +111,12 @@ export interface VerticesGeometryConfig {
   vertexCount?: number;
   topology?: VertexTopology;
   space?: VertexSpace;
+  instanceCount?: number;
 }
 /** Indexed built-in meshes; their vertex count and topology are fixed. */
 export interface MeshGeometryConfig {
   type: Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
+  instanceCount?: number;
 }
 export type BuiltinGeometryConfig = FullscreenGeometryConfig | VerticesGeometryConfig | MeshGeometryConfig;
 /** A static GLB mesh. `resolved_path` is injected by the extension for webview loading. */
@@ -118,6 +125,7 @@ export interface ModelGeometryConfig {
   path: string;
   mesh?: string;
   resolved_path?: string;
+  instanceCount?: number;
 }
 export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;
 

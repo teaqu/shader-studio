@@ -185,6 +185,62 @@ describe("ConfigValidator", () => {
         });
       });
 
+      describe("instanceCount", () => {
+        const imageGeometry = (geometry: unknown) =>
+          ConfigValidator.validateConfig({ version: "1.0", passes: { Image: { geometry } } } as never);
+        const bufferGeometry = (geometry: unknown) =>
+          ConfigValidator.validateConfig({ version: "1.0", passes: { Image: {}, BufferA: { path: "a.glsl", geometry } } } as never);
+        const countError = (pass: string) => `${pass} pass geometry instanceCount must be an integer from 1 to 2147483647`;
+        const typeError = "Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model";
+
+        it.each([
+          { type: "vertices" },
+          { type: "vertices", vertexCount: 6, topology: "line-list", space: "clip" },
+          { type: "plane" },
+          { type: "cube" },
+          { type: "sphere" },
+          { type: "model", path: "robot.glb", mesh: "Body" },
+        ])("accepts instanceCount on $type geometry", (geometry) => {
+          expect(imageGeometry({ ...geometry, instanceCount: 16 })).toEqual({ isValid: true, errors: [] });
+          expect(bufferGeometry({ ...geometry, instanceCount: 16 })).toEqual({ isValid: true, errors: [] });
+        });
+
+        it.each([1, 2, 2147483647])("accepts the boundary instanceCount %d", (instanceCount) => {
+          expect(imageGeometry({ type: "cube", instanceCount })).toEqual({ isValid: true, errors: [] });
+        });
+
+        it.each([0, -1, 2147483648, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "4", null, true, [4], {}])(
+          "rejects instanceCount %s without clamping",
+          (instanceCount) => {
+            expect(imageGeometry({ type: "vertices", instanceCount })).toEqual({ isValid: false, errors: [countError("Image")] });
+            expect(bufferGeometry({ type: "model", path: "robot.glb", instanceCount })).toEqual({ isValid: false, errors: [countError("BufferA")] });
+          },
+        );
+
+        it("rejects instanceCount on fullscreen geometry, which always draws once", () => {
+          expect(imageGeometry({ type: "fullscreen", instanceCount: 1 })).toEqual({
+            isValid: false,
+            errors: ["Image pass geometry instanceCount is not supported for fullscreen geometry"],
+          });
+        });
+
+        it("reports a bad instanceCount alongside bad vertex fields", () => {
+          expect(imageGeometry({ type: "vertices", vertexCount: 0, instanceCount: 0 }).errors).toEqual([
+            "Image pass geometry vertexCount must be an integer from 1 to 2147483647",
+            countError("Image"),
+          ]);
+        });
+
+        it("reports only the type error for instanceCount on unknown geometry", () => {
+          expect(imageGeometry({ type: "torus", instanceCount: 0 }).errors).toEqual([typeError]);
+        });
+
+        it("exposes the instanceCount check through validatePassGeometry", () => {
+          expect(validatePassGeometry({ type: "sphere", instanceCount: 3 }, "BufferA")).toEqual([]);
+          expect(validatePassGeometry({ type: "sphere", instanceCount: 0 }, "BufferA")).toEqual([countError("BufferA")]);
+        });
+      });
+
       describe("blend, clear, depth and cull", () => {
         const image = (pass: Record<string, unknown>) =>
           ConfigValidator.validateConfig({ version: "1.0", passes: { Image: pass } } as never);

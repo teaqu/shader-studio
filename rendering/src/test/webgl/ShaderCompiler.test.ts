@@ -221,6 +221,55 @@ describe("ShaderCompiler", () => {
       });
     });
 
+    describe("instancing", () => {
+      const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";
+
+      it("declares iInstanceCount as an int uniform in fragment and hook vertex sources", () => {
+        const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { geometry: "cube", vertexCode: hook });
+        expect(wrappedCode).toContain("uniform int iVertexCount;\nuniform int iInstanceCount;\n");
+        expect(vertexSource).toContain("uniform int iVertexCount;\nuniform int iInstanceCount;\n");
+        expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === "iInstanceCount"))
+          .toMatchObject({ glslType: "int", stages: ["fragment", "vertex"] });
+      });
+
+      it("makes iInstanceIndex a constant 0 for fullscreen fragments and hooks", () => {
+        for (const geometry of [undefined, "fullscreen"] as const) {
+          const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode: hook });
+          expect(wrappedCode).toContain("const int iInstanceIndex = 0;");
+          expect(wrappedCode).not.toContain("flat in int iInstanceIndex;");
+          expect(vertexSource).toContain("const int iInstanceIndex = 0;");
+          expect(vertexSource).not.toContain("gl_InstanceID");
+        }
+      });
+
+      it.each(["plane", "cube", "sphere", "model"] as const)("records gl_InstanceID before the hook and passes it flat to %s fragments", (geometry) => {
+        for (const vertexCode of [hook, undefined]) {
+          const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode });
+          expect(vertexSource).toContain("flat out int iInstanceIndex;");
+          expect(vertexSource).toContain("void main() {\n iInstanceIndex = gl_InstanceID;\n vec3 _vertexPosition = position;");
+          expect(wrappedCode).toContain("flat in int iInstanceIndex;");
+          expect(wrappedCode).not.toContain("const int iInstanceIndex");
+        }
+        // The hook is declared after the varying, so it can read iInstanceIndex.
+        const { vertexSource } = shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode: hook });
+        expect(vertexSource.indexOf("flat out int iInstanceIndex;")).toBeLessThan(vertexSource.indexOf(hook));
+      });
+
+      it.each(["world", "clip"] as const)("records gl_InstanceID for %s-space vertices with and without a hook", (space) => {
+        for (const vertexCode of [hook, undefined]) {
+          const { wrappedCode, vertexSource } = shaderCompiler.wrapShaderToyCode(image, {
+            geometry: "vertices",
+            vertices: { space, topology: "triangle-list" },
+            ...(vertexCode ? { vertexCode } : {}),
+          });
+          expect(vertexSource).toContain("flat out int iInstanceIndex;");
+          expect(vertexSource).toContain("void main() {\n iInstanceIndex = gl_InstanceID;\n");
+          expect(wrappedCode).toContain("flat in int iInstanceIndex;");
+        }
+      });
+    });
+
     describe("vertices geometry", () => {
       const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n  position.x = float(vertexIndex);\n}";
@@ -233,7 +282,8 @@ describe("ShaderCompiler", () => {
 
         expect(vertexSource).not.toContain("layout(location");
         expect(vertexSource).toContain("uniform mat4 _meshProjection;");
-        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);`);
+        expect(vertexSource).toContain(`void main() {\n iInstanceIndex = gl_InstanceID;\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);`);
+        expect(vertexSource).toContain("flat out int iInstanceIndex;");
         expect(vertexSource).toContain("gl_Position = _meshProjection * _meshView * _meshWorldPosition;");
         expect(vertexSource).toContain("iVertexUv = _vertexUv;");
         expect(vertexSource).not.toContain("gl_PointSize");
@@ -248,7 +298,9 @@ describe("ShaderCompiler", () => {
       it("writes clip-space hook output straight to gl_Position and shades with the pixel coordinate", () => {
         const { vertexSource, wrappedCode } = wrap({ space: "clip", topology: "triangle-strip" }, hook);
 
-        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);\n iVertexUv = _vertexUv;\n gl_Position = vec4(_vertexPosition, 1.0);\n}`);
+        expect(vertexSource).toContain(`void main() {\n iInstanceIndex = gl_InstanceID;\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);\n iVertexUv = _vertexUv;\n gl_Position = vec4(_vertexPosition, 1.0);\n}`);
+        expect(vertexSource).toContain("flat out int iInstanceIndex;");
+        expect(wrappedCode).toContain("flat in int iInstanceIndex;");
         expect(vertexSource).not.toContain("_meshProjection");
         expect(vertexSource).not.toContain("layout(location");
         expect(vertexSource).not.toContain("_vertexCorners");

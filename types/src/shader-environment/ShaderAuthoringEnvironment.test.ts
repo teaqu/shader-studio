@@ -383,6 +383,26 @@ describe("ShaderAuthoringEnvironment", () => {
     expect(buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage: "vertex" }).text).toContain("uniform int iVertexCount;");
   });
 
+  it("declares iInstanceCount and iInstanceIndex for fragment and vertex authoring but not compute", () => {
+    const slang = (stage: "fragment" | "vertex" | "compute") =>
+      buildSlangAuthoringModule({ ...baseEnvironment("slang"), stage }).text;
+    const glsl = (stage: "fragment" | "vertex") =>
+      buildGlslAuthoringPreamble({ ...baseEnvironment("glsl"), stage }).text;
+    for (const stage of ["fragment", "vertex"] as const) {
+      expect(slang(stage)).toContain("uint32_t iInstanceCount;");
+      expect(slang(stage)).toContain("uint32_t iInstanceIndex;");
+      expect(glsl(stage)).toContain("uniform int iInstanceCount;");
+      expect(glsl(stage)).toContain("int iInstanceIndex;");
+    }
+    expect(slang("compute")).not.toContain("iInstance");
+  });
+
+  it("reads iInstanceCount from the y lane of the vertexCount slot and declares a runtime iInstanceIndex", () => {
+    const runtime = buildSlangRuntimePrelude();
+    expect(runtime).toContain("#define iInstanceCount (_st.vertexCount.y)");
+    expect(runtime).toContain("static uint iInstanceIndex;");
+  });
+
   it("puts iVertexCount in its own 16-byte runtime slot before custom uniforms", () => {
     const runtime = buildSlangRuntimePrelude([{ name: "gain", type: "float" }]);
     expect(runtime).toContain("    float4 cameraDir;\n    uint4 vertexCount;\n    float custom_gain;");
@@ -697,6 +717,10 @@ describe("ShaderAuthoringEnvironment", () => {
     ["slang", "iWorldPosition"],
     ["slang", "iVertexUv"],
     ["slang", "iFrontFacing"],
+    ["glsl", "iInstanceCount"],
+    ["glsl", "iInstanceIndex"],
+    ["slang", "iInstanceCount"],
+    ["slang", "iInstanceIndex"],
   ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
     const environment = {
       ...baseEnvironment(languageId),
@@ -893,7 +917,7 @@ describe("ShaderAuthoringEnvironment", () => {
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
       "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
-      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv", "iFrontFacing",
+      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv", "iFrontFacing", "iInstanceCount", "iInstanceIndex",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);

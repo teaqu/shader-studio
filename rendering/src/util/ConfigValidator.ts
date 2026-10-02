@@ -3,6 +3,7 @@ import {
   CULL_MODES,
   DEPTH_COMPARE_FUNCTIONS,
   GEOMETRY_TYPES,
+  MAX_INSTANCE_COUNT,
   MAX_VERTEX_COUNT,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
@@ -11,6 +12,8 @@ import {
 } from "@shader-studio/types";
 
 const VERTEX_FIELDS = ["vertexCount", "topology", "space"] as const;
+/** Draw fields geometry may carry besides `type` (and a model's path fields). */
+const GEOMETRY_DRAW_FIELDS: readonly string[] = [...VERTEX_FIELDS, "instanceCount"];
 const RENDER_SETTING_FIELDS = ["blend", "clear", "depth", "cull"] as const;
 const DEPTH_FLAGS = ["test", "write"] as const;
 
@@ -55,6 +58,21 @@ function validateGeometryVertexFields(geometry: unknown, passName: string, error
   }
 }
 
+/** `instanceCount` is valid on every geometry but fullscreen, which draws once. */
+function validateGeometryInstanceCount(geometry: unknown, passName: string, errors: string[]): void {
+  if (!isPlainObject(geometry) || geometry.instanceCount === undefined || !isOneOf(GEOMETRY_TYPES, geometry.type)) {
+    return;
+  }
+  const { type, instanceCount } = geometry;
+  if (type === "fullscreen") {
+    errors.push(`${passName} pass geometry instanceCount is not supported for fullscreen geometry`);
+    return;
+  }
+  if (typeof instanceCount !== "number" || !Number.isInteger(instanceCount) || instanceCount < 1 || instanceCount > MAX_INSTANCE_COUNT) {
+    errors.push(`${passName} pass geometry instanceCount must be an integer from 1 to ${MAX_INSTANCE_COUNT}`);
+  }
+}
+
 function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefined {
   if (geometry === undefined) {
     return true;
@@ -65,12 +83,12 @@ function isValidGeometry(geometry: unknown): geometry is GeometryConfig | undefi
 
   const type = geometry.type;
   if (type === "model") {
-    // Vertex fields are reported by validateGeometryVertexFields.
-    const { path, mesh, resolved_path, vertexCount: _vertexCount, topology: _topology, space: _space, ...rest } = geometry;
+    // Draw fields are reported by validateGeometryVertexFields and validateGeometryInstanceCount.
+    const { path, mesh, resolved_path, vertexCount: _vertexCount, topology: _topology, space: _space, instanceCount: _instanceCount, ...rest } = geometry;
     return Object.keys(rest).length === 1 && typeof path === "string" && path.length > 0 &&
       (mesh === undefined || typeof mesh === "string") && (resolved_path === undefined || typeof resolved_path === "string");
   }
-  const properties = Object.keys(geometry).filter((key) => !VERTEX_FIELDS.includes(key as (typeof VERTEX_FIELDS)[number]));
+  const properties = Object.keys(geometry).filter((key) => !GEOMETRY_DRAW_FIELDS.includes(key));
   return properties.length === 1 && properties[0] === "type" && isOneOf(GEOMETRY_TYPES, type);
 }
 
@@ -84,6 +102,7 @@ export function validatePassGeometry(geometry: unknown, passName: string): strin
     errors.push(`${passName} pass geometry type must be one of: ${GEOMETRY_TYPES.join(", ")}`);
   }
   validateGeometryVertexFields(geometry, passName, errors);
+  validateGeometryInstanceCount(geometry, passName, errors);
   return errors;
 }
 

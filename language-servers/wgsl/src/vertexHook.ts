@@ -17,7 +17,7 @@ export const WGSL_VERTEX_HOOK_FEATURES: readonly WgslVertexHookFeature[] = Objec
     name: "vertexIndex",
     kind: "parameter",
     signature: "vertexIndex: u32",
-    description: "Vertex index passed to the hook (`@builtin(vertex_index)`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index.",
+    description: "Vertex index passed to the hook (`@builtin(vertex_index)`). Fullscreen geometry passes 0, 1 and 2; vertices geometry runs from 0 to iVertexCount - 1 (its configured `vertexCount`); mesh geometry passes the mesh vertex index. Every instance repeats the same range; iInstanceIndex says which copy is being drawn.",
   }),
   Object.freeze({
     name: "position",

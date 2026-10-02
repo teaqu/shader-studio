@@ -401,6 +401,22 @@ describe("VariableCapturer", () => {
     });
   });
 
+  describe("iInstanceCount", () => {
+    it.each([
+      [{ instanceCount: 4 }, 4],
+      [{}, 1],
+    ])("binds iInstanceCount from the capture uniforms (%j)", async (extra, expected) => {
+      const instanceCountLoc = { name: "iInstanceCount" };
+      vi.mocked(gl.getUniformLocation).mockImplementation((_program, name) => (
+        name === "iInstanceCount" ? instanceCountLoc as WebGLUniformLocation : null
+      ));
+
+      await capturer.issueCaptureGrid(selectorCaptures([["a", "float"]]), { ...createDefaultUniforms(), ...extra }, 2, 2);
+
+      expect(gl.uniform1i).toHaveBeenCalledWith(instanceCountLoc, expected);
+    });
+  });
+
   describe("issueCaptureGrid", () => {
     it("should return 0 for empty captures array", async () => {
       const result = await capturer.issueCaptureGrid(

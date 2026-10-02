@@ -3,6 +3,7 @@ import {
   DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
+  DEFAULT_INSTANCE_COUNT,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
@@ -33,6 +34,21 @@ export interface VerticesDrawConfig {
   vertexCount?: number;
   topology?: VertexTopology;
   space?: VertexSpace;
+}
+
+export interface InstanceDrawConfig {
+  instanceCount?: number;
+}
+
+export function resolveInstanceDraw(pass: { geometry?: { type: GeometryType; instanceCount?: number } } | undefined): InstanceDrawConfig {
+  const geometry = pass?.geometry;
+  return geometry && geometry.type !== "fullscreen" && geometry.instanceCount !== undefined
+    ? { instanceCount: geometry.instanceCount }
+    : {};
+}
+
+export function geometryInstanceCount(draw: InstanceDrawConfig): number {
+  return draw.instanceCount ?? DEFAULT_INSTANCE_COUNT;
 }
 
 type VerticesGeometryLike = { type: GeometryType; vertexCount?: number; topology?: VertexTopology; space?: VertexSpace };

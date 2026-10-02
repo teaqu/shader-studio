@@ -1,3 +1,4 @@
+import { DEFAULT_INSTANCE_COUNT } from "@shader-studio/types";
 import {
   createShaderToyUniformLayout,
   isSlangCustomUniformType,
@@ -71,6 +72,8 @@ export interface ShaderToyUniformInput {
   cameraDir: ArrayLike<number>;
   /** Vertices the pass draws (iVertexCount); defaults to 0 when not applicable. */
   vertexCount?: number;
+  /** Instances the pass draws (iInstanceCount); defaults to 1. */
+  instanceCount?: number;
 }
 
 /** Pack the fixed ShaderToy prefix followed by dynamically laid-out script uniforms. */
@@ -117,7 +120,10 @@ export function packShaderToyUniforms(
     f32[offsets.iCameraPos / 4 + component] = input.cameraPos[component] ?? 0;
     f32[offsets.iCameraDir / 4 + component] = input.cameraDir[component] ?? 0;
   }
-  new Uint32Array(buf)[offsets.iVertexCount / 4] = input.vertexCount ?? 0;
+  // iVertexCount and iInstanceCount share one 16-byte slot as its x and y.
+  const u32 = new Uint32Array(buf);
+  u32[offsets.iVertexCount / 4] = input.vertexCount ?? 0;
+  u32[offsets.iVertexCount / 4 + 1] = input.instanceCount ?? DEFAULT_INSTANCE_COUNT;
 
   const valuesByName = new Map(customUniformValues.map((uniform) => [uniform.name, uniform.value]));
   for (const entry of customLayout.entries) {

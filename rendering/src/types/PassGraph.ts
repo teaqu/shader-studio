@@ -8,7 +8,7 @@ import type {
   BufferOutputFormat,
   RenderPassSettings,
 } from "@shader-studio/types";
-import type { VerticesDrawConfig } from "./Geometry";
+import type { InstanceDrawConfig, VerticesDrawConfig } from "./Geometry";
 
 export type RenderPassName = string;
 export type ChannelReadTiming = "previous-frame" | "current-frame";
@@ -71,7 +71,7 @@ export type DispatchSpec =
   | { mode: "cover-storage"; name: string }
   | { mode: "cover-channel"; key: string };
 
-export interface RenderPassNode extends VerticesDrawConfig, RenderPassSettings {
+export interface RenderPassNode extends VerticesDrawConfig, InstanceDrawConfig, RenderPassSettings {
   name: RenderPassName;
   source: string;
   vertexSrc?: string;

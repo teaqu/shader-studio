@@ -9,11 +9,13 @@ import {
   DEFAULT_CLEAR_COLOR,
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
+  DEFAULT_INSTANCE_COUNT,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
   DEPTH_COMPARE_FUNCTIONS,
   GEOMETRY_TYPES,
+  MAX_INSTANCE_COUNT,
   MAX_VERTEX_COUNT,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
@@ -185,6 +187,49 @@ suite('Shader config JSON schema', () => {
         }, 'should NOT have additional properties');
       }
     }
+  });
+
+  test('accepts instanceCount on every geometry except fullscreen', () => {
+    const geometries = [
+      { type: 'vertices', vertexCount: 6, topology: 'line-list', space: 'clip' },
+      { type: 'plane' },
+      { type: 'cube' },
+      { type: 'sphere' },
+      { type: 'model', path: './cat.glb', mesh: 'Body' },
+    ];
+    for (const geometry of geometries) {
+      for (const instanceCount of [1, 64, 2147483647]) {
+        assertValid({ version: '1.0', passes: { Image: { geometry: { ...geometry, instanceCount } } } });
+        assertValid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, instanceCount } } } });
+      }
+    }
+  });
+
+  test('rejects instanceCount on fullscreen geometry', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: { Image: { geometry: { type: 'fullscreen', instanceCount: 2 } } },
+    }, 'should NOT have additional properties');
+  });
+
+  test('rejects out-of-range and non-integer instance counts', () => {
+    const cases: Array<[unknown, string]> = [
+      [0, 'should be >= 1'],
+      [2147483648, 'should be <= 2147483647'],
+      [2.5, 'should be integer'],
+      ['4', 'should be integer'],
+    ];
+    for (const [instanceCount, expectedMessage] of cases) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'cube', instanceCount } } },
+      }, expectedMessage);
+    }
+  });
+
+  test('keeps instanceCount in sync with the shared config types', () => {
+    assert.strictEqual(schema.definitions.InstanceCount.maximum, MAX_INSTANCE_COUNT);
+    assert.strictEqual(schema.definitions.InstanceCount.default, DEFAULT_INSTANCE_COUNT);
   });
 
   test('accepts every blend mode on Image and buffer passes of any geometry', () => {

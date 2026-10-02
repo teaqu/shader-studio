@@ -88,6 +88,13 @@ function writtenVertexCounts(device: ReturnType<typeof engineHarness>["device"])
     .map((data) => new DataView(data).getUint32(UNIFORM_OFFSETS.iVertexCount, true));
 }
 
+function writtenInstanceCounts(device: ReturnType<typeof engineHarness>["device"]): number[] {
+  return (device.queue.writeBuffer.mock.calls as unknown as [unknown, number, ArrayBuffer | ArrayBufferView][])
+    .map(([, , data]) => data)
+    .filter((data): data is ArrayBuffer => data instanceof ArrayBuffer && data.byteLength > UNIFORM_OFFSETS.iVertexCount)
+    .map((data) => new DataView(data).getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true));
+}
+
 function primitiveStates(device: ReturnType<typeof engineHarness>["device"]): GPUPrimitiveState[] {
   return (device.createRenderPipeline.mock.calls as unknown as [GPURenderPipelineDescriptor][])
     .map(([descriptor]) => descriptor.primitive!);
@@ -149,7 +156,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     expect(primitiveStates(device)).toEqual([{ topology: "triangle-list" }]);
     expect(renderPass.setVertexBuffer).toHaveBeenCalledWith(0, mesh.vertexBuffer);
     expect(renderPass.setIndexBuffer).toHaveBeenCalledWith(mesh.indexBuffer, "uint16");
-    expect(renderPass.drawIndexed).toHaveBeenCalledWith(36);
+    expect(renderPass.drawIndexed).toHaveBeenCalledWith(36, 1);
     expect(renderPass.draw).not.toHaveBeenCalled();
   });
 
@@ -177,7 +184,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
       expect(primitiveStates(device)).toEqual([{ topology }]);
       expect(pipelineDescriptors(device)[0].vertex).not.toHaveProperty("buffers");
       expect(renderPass.draw).toHaveBeenCalledTimes(1);
-      expect(renderPass.draw).toHaveBeenCalledWith(12);
+      expect(renderPass.draw).toHaveBeenCalledWith(12, 1);
       expect(renderPass.drawIndexed).not.toHaveBeenCalled();
       expect(renderPass.setVertexBuffer).not.toHaveBeenCalled();
       expect(writtenVertexCounts(device)).toEqual([12]);
@@ -191,7 +198,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     engine.render(1000);
 
     expect(primitiveStates(device)).toEqual([{ topology: "triangle-list" }]);
-    expect(renderPass.draw).toHaveBeenCalledWith(3);
+    expect(renderPass.draw).toHaveBeenCalledWith(3, 1);
     expect(writtenVertexCounts(device)).toEqual([3]);
   });
 
@@ -201,7 +208,7 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
 
     engine.render(1000);
 
-    expect(renderPass.draw).toHaveBeenCalledWith(2_147_483_647);
+    expect(renderPass.draw).toHaveBeenCalledWith(2_147_483_647, 1);
   });
 
   it("asks the compiler for the vertices space and only for vertices geometry", async () => {
@@ -334,8 +341,53 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     engine.render(1000);
 
     expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
-    expect(renderPass.draw).toHaveBeenCalledWith(10);
+    expect(renderPass.draw).toHaveBeenCalledWith(10, 1);
     expect(writtenVertexCounts(device)).toEqual([10]);
+  });
+
+  it("draws every instance of a vertices pass and writes iInstanceCount", async () => {
+    const { engine, device, renderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 6, instanceCount: 40 }), imagePath);
+
+    engine.render(1000);
+
+    expect(renderPass.draw).toHaveBeenCalledWith(6, 40);
+    expect(writtenVertexCounts(device)).toEqual([6]);
+    expect(writtenInstanceCounts(device)).toEqual([40]);
+  });
+
+  it("draws every instance of an indexed mesh pass", async () => {
+    const { engine, device, renderPass } = engineHarness(language);
+    const mesh = { vertexBuffer: { id: "vb" }, indexBuffer: { id: "ib" }, indexFormat: "uint16", indexCount: 36, vertexCount: 24 };
+    (engine as unknown as { meshResources: unknown }).meshResources = { get: vi.fn(() => mesh), getModel: vi.fn(), dispose: vi.fn() };
+    await engine.compileShaderPipeline("// image", config({ type: "cube", instanceCount: 7 }), imagePath);
+
+    engine.render(1000);
+
+    expect(renderPass.drawIndexed).toHaveBeenCalledWith(36, 7);
+    expect(writtenInstanceCounts(device)).toEqual([7]);
+  });
+
+  it("writes one instance for fullscreen passes", async () => {
+    const { engine, device, renderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config(), imagePath);
+
+    engine.render(1000);
+
+    expect(renderPass.draw).toHaveBeenCalledWith(3);
+    expect(writtenInstanceCounts(device)).toEqual([1]);
+  });
+
+  it("reuses the pipeline when only instanceCount changes, drawing the new count", async () => {
+    const { engine, device, renderPass } = engineHarness(language);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 6, instanceCount: 2 }), imagePath);
+    await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 6, instanceCount: 9 }), imagePath);
+
+    engine.render(1000);
+
+    expect(device.createRenderPipeline).toHaveBeenCalledTimes(1);
+    expect(renderPass.draw).toHaveBeenCalledWith(6, 9);
+    expect(writtenInstanceCounts(device)).toEqual([9]);
   });
 
   it("reuses the pipeline when a setting is spelled out at its default", async () => {
@@ -366,6 +418,16 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     const fullscreen = engineHarness(language);
     await fullscreen.engine.compileShaderPipeline("// image", config(), imagePath);
     expect(fullscreen.engine.getCaptureUniforms().vertexCount).toBe(3);
+  });
+
+  it("reports the captured pass's iInstanceCount in capture uniforms", async () => {
+    const vertices = engineHarness(language);
+    await vertices.engine.compileShaderPipeline("// image", config({ type: "vertices", instanceCount: 8 }), imagePath);
+    expect(vertices.engine.getCaptureUniforms().instanceCount).toBe(8);
+
+    const fullscreen = engineHarness(language);
+    await fullscreen.engine.compileShaderPipeline("// image", config(), imagePath);
+    expect(fullscreen.engine.getCaptureUniforms().instanceCount).toBe(1);
   });
 
   it.each([

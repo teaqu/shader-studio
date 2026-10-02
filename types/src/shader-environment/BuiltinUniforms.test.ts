@@ -73,6 +73,28 @@ describe("shaderStudioBuiltinUniformNames", () => {
     });
   });
 
+  it("exposes iInstanceCount and iInstanceIndex to fragment and vertex stages in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iInstanceCount");
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iInstanceIndex");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iInstanceCount")).toMatchObject({
+      glslType: "int",
+      slangType: "uint",
+      wgslType: "u32",
+      slangDeclaration: "uint32_t iInstanceCount;",
+      stages: ["fragment", "vertex"],
+    });
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iInstanceIndex")).toMatchObject({
+      glslType: "int",
+      slangType: "uint",
+      wgslType: "u32",
+      glslDeclaration: "int iInstanceIndex;",
+      slangDeclaration: "uint32_t iInstanceIndex;",
+      stages: ["fragment", "vertex"],
+    });
+  });
+
   it("exposes iVertexUv as a fragment-only vec2 varying in every language", () => {
     for (const language of ["glsl", "slang", "wgsl"] as const) {
       expect(shaderStudioBuiltinUniformNames(language)).toContain("iVertexUv");

@@ -179,14 +179,18 @@
               "enum": ["world", "clip"],
               "default": "world",
               "description": "world: mainVertex writes object space and the orbit camera projects it, with depth. clip: mainVertex writes the final screen position, (-1,-1) bottom-left to (1,1) top-right, and the camera is ignored."
-            }
+            },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
           },
           "additionalProperties": false
         },
         {
           "type": "object",
           "required": ["type"],
-          "properties": { "type": { "enum": ["plane", "cube", "sphere"] } },
+          "properties": {
+            "type": { "enum": ["plane", "cube", "sphere"] },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
+          },
           "additionalProperties": false
         },
         {
@@ -195,11 +199,19 @@
           "properties": {
             "type": { "const": "model" },
             "path": { "type": "string", "minLength": 1 },
-            "mesh": { "type": "string" }
+            "mesh": { "type": "string" },
+            "instanceCount": { "$ref": "#/definitions/InstanceCount" }
           },
           "additionalProperties": false
         }
       ]
+    },
+    "InstanceCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "default": 1,
+      "description": "Number of copies of the geometry drawn in one call; iInstanceIndex tells the shader which copy it is on. Defaults to 1. Not allowed on fullscreen geometry."
     },
     "BlendMode": {
       "type": "string",

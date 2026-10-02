@@ -84,20 +84,27 @@ describe("packShaderToyUniforms", () => {
     expect(f(offsets.iCameraDir + 8)).toBe(-0.75);
   });
 
-  it("writes iVertexCount as a u32 in its own 16-byte slot after iCameraDir", () => {
+  it("writes iVertexCount and iInstanceCount as the u32 x and y of one 16-byte slot after iCameraDir", () => {
     const layout = createShaderToyUniformLayout(17);
     expect(layout.offsets.iVertexCount).toBe(layout.offsets.iCameraDir + 16);
     expect(layout.size).toBe(layout.offsets.iVertexCount + 16);
 
-    const dv = new DataView(packShaderToyUniforms({ ...input, channelCount: 17, vertexCount: 2_147_483_647 }));
+    const dv = new DataView(packShaderToyUniforms({ ...input, channelCount: 17, vertexCount: 2_147_483_647, instanceCount: 2_147_483_647 }));
     expect(dv.getUint32(layout.offsets.iVertexCount, true)).toBe(2_147_483_647);
-    expect(dv.getUint32(layout.offsets.iVertexCount + 4, true)).toBe(0);
+    expect(dv.getUint32(layout.offsets.iVertexCount + 4, true)).toBe(2_147_483_647);
+    expect(dv.getUint32(layout.offsets.iVertexCount + 8, true)).toBe(0);
+    expect(dv.getUint32(layout.offsets.iVertexCount + 12, true)).toBe(0);
     expect(dv.getFloat32(layout.offsets.iCameraDir + 8, true)).toBe(-0.75);
   });
 
   it("defaults iVertexCount to zero when the caller has no vertex count", () => {
     const dv = new DataView(packShaderToyUniforms(input));
     expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount, true)).toBe(0);
+  });
+
+  it("defaults iInstanceCount to one draw when the caller has no instance count", () => {
+    const dv = new DataView(packShaderToyUniforms(input));
+    expect(dv.getUint32(UNIFORM_OFFSETS.iVertexCount + 4, true)).toBe(1);
   });
 
   it("starts custom uniforms after the iVertexCount slot", () => {

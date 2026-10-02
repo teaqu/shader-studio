@@ -8,7 +8,7 @@ import {
   type SlangChannelBinding,
   type SlangCustomUniformInfo,
 } from "./SlangPrelude";
-import { isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
+import { INSTANCE_INDEX, isMeshGeometry, MESH_FRAGMENT_CONTEXT } from "../preview3d/MeshFragmentContext";
 import type { WgslVertexRange, WgslDirectiveRange } from "./wgslDiagnostics";
 import { getWgslComputeEntryPoints, parseWgslDocument, symbolAtPosition, tokenizeWgsl } from "@shader-studio/wgsl-analysis";
 
@@ -195,6 +195,9 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "var<private> iCameraPos: vec3<f32>;",
     "var<private> iCameraDir: vec3<f32>;",
     "var<private> iVertexCount: u32;",
+    "var<private> iInstanceCount: u32;",
+    // Zero-initialised, so fullscreen and capture entries leave it at 0.
+    `var<private> ${INSTANCE_INDEX}: u32;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.uv}: vec2<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.worldPosition}: vec3<f32>;`,
     `var<private> ${MESH_FRAGMENT_CONTEXT.normal}: vec3<f32>;`,
@@ -213,6 +216,7 @@ function buildGlobalsPrelude(customUniforms: SlangCustomUniformInfo[] = [], opti
     "  iCameraPos = _ss_u.cameraPos.xyz;",
     "  iCameraDir = _ss_u.cameraDir.xyz;",
     "  iVertexCount = _ss_u.vertexCount.x;",
+    "  iInstanceCount = _ss_u.vertexCount.y;",
   ];
   for (const { name, type } of customUniforms) {
     if (!isSlangCustomUniformType(type)) {
@@ -418,11 +422,13 @@ const WGSL_MESH_VERTEX_OUT = `struct _ss_MeshVertexOut {
   @location(0) uv: vec2<f32>,
   @location(1) worldPosition: vec3<f32>,
   @location(2) normal: vec3<f32>,
+  @location(3) @interpolate(flat) instanceIndex: u32,
 }
 `;
 
-const WGSL_MESH_FRAGMENT_ENTRY_POINT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
+const WGSL_MESH_FRAGMENT_ENTRY_POINT = `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@location(0) uv: vec2<f32>, @location(1) worldPos: vec3<f32>, @location(2) normal: vec3<f32>, @location(3) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool) -> @location(0) vec4<f32> {
   _ss_initGlobals();
+  ${INSTANCE_INDEX} = instanceIndex;
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
   ${MESH_FRAGMENT_CONTEXT.worldPosition} = worldPos;
   ${MESH_FRAGMENT_CONTEXT.normal} = normal;
@@ -438,11 +444,27 @@ const WGSL_VERTEX_UV_OUT = `struct _ss_VertexUvOut {
 }
 `;
 
-function buildWgslVertexUvFragment(frontFacing: boolean): string {
-  const parameter = frontFacing ? ", @builtin(front_facing) frontFacing: bool" : "";
-  const value = frontFacing ? "frontFacing" : "true";
+/** Clip-space vertices also carry the drawing instance, unchanged across each primitive. */
+const WGSL_CLIP_VERTEX_OUT = `struct _ss_VertexUvOut {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+  @location(1) @interpolate(flat) instanceIndex: u32,
+}
+`;
+
+/** Vertex entries record the instance before mainVertex so the hook can read iInstanceIndex. */
+const WGSL_SET_INSTANCE_INDEX = `  ${INSTANCE_INDEX} = iid;`;
+
+/**
+ * Fullscreen draws one instance and its primitive is always front-facing;
+ * clip-space vertices read both from the rasterizer.
+ */
+function buildWgslVertexUvFragment(clipVertices: boolean): string {
+  const parameter = clipVertices ? ", @location(1) @interpolate(flat) instanceIndex: u32, @builtin(front_facing) frontFacing: bool" : "";
+  const value = clipVertices ? "frontFacing" : "true";
+  const instanceIndex = clipVertices ? `\n  ${INSTANCE_INDEX} = instanceIndex;` : "";
   return `@fragment fn ${WGSL_ENTRY_FRAGMENT}(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>${parameter}) -> @location(0) vec4<f32> {
-  _ss_initGlobals();
+  _ss_initGlobals();${instanceIndex}
   ${MESH_FRAGMENT_CONTEXT.uv} = uv;
   ${MESH_FRAGMENT_CONTEXT.frontFacing} = ${value};
   return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
@@ -465,21 +487,24 @@ function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): WgslE
   const hook = vertexCode.trim() ? vertexCode : "";
   const hookSource = hook === "" ? `${WGSL_VERTEX_HOOK} {}` : hook;
   const entries = space === "clip"
-    ? `${WGSL_VERTEX_UV_OUT}
-@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {
+    ? `${WGSL_CLIP_VERTEX_OUT}
+@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_VertexUvOut {
   _ss_initGlobals();
+${WGSL_SET_INSTANCE_INDEX}
 ${WGSL_VERTICES_SEED}
   var output: _ss_VertexUvOut;
   output.position = vec4<f32>(position, 1.0);
   output.uv = uv;
+  output.instanceIndex = iid;
   return output;
 }
 
 ${buildWgslVertexUvFragment(true)}
 `
     : `${WGSL_MESH_VERTEX_OUT}
-@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
+@vertex fn ${WGSL_ENTRY_VERTEX}(@builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {
   _ss_initGlobals();
+${WGSL_SET_INSTANCE_INDEX}
 ${WGSL_VERTICES_SEED}
   let worldPosition = _ss_mesh.model * vec4<f32>(position, 1.0);
   var output: _ss_MeshVertexOut;
@@ -487,6 +512,7 @@ ${WGSL_VERTICES_SEED}
   output.uv = uv;
   output.worldPosition = worldPosition.xyz;
   output.normal = (_ss_mesh.normalMatrix * vec4<f32>(normal, 0.0)).xyz;
+  output.instanceIndex = iid;
   return output;
 }
 
@@ -505,8 +531,9 @@ function buildMeshEntryPoints(vertexCode: string): WgslEntryPoints {
   return {
     source: `${hookSource}
 ${WGSL_MESH_VERTEX_OUT}
-@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
+@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32, @builtin(instance_index) iid: u32) -> _ss_MeshVertexOut {
   _ss_initGlobals();
+${WGSL_SET_INSTANCE_INDEX}
   var p = position;
   var n = normal;
   var t = uv;
@@ -517,6 +544,7 @@ ${WGSL_MESH_VERTEX_OUT}
   output.uv = t;
   output.worldPosition = worldPosition.xyz;
   output.normal = (_ss_mesh.normalMatrix * vec4<f32>(n, 0.0)).xyz;
+  output.instanceIndex = iid;
   return output;
 }
 

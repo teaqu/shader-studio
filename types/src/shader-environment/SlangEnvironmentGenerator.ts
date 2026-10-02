@@ -174,5 +174,7 @@ ConstantBuffer<ShaderToyUniforms> ${SLANG_RUNTIME_UNIFORM_BUFFER_NAME};
 ${SLANG_RUNTIME_UNIFORM_ALIAS_LINES.join("\n")}
 ${aliases}
 ${contextDeclarations}
+// Set by the vertex entry from SV_InstanceID and passed flat to the fragment entry.
+static uint iInstanceIndex;
 `;
 }

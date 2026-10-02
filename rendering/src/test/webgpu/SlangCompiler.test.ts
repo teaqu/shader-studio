@@ -228,7 +228,11 @@ describe("SlangCompiler", () => {
     iNormal = input.normal;
     iCameraPosition = _mesh.cameraPosition.xyz;
     iFrontFacing = frontFacing;
+    iInstanceIndex = input.instanceIndex;
     float4 color = mainImage(input.uv * _st.resolution.xy);`);
+      expect(wrapped).toContain("static uint iInstanceIndex;");
+      expect(wrapped).toContain("nointerpolation uint instanceIndex : TEXCOORD3;");
+      expect(wrapped).toContain("uint instanceID : SV_InstanceID) { iInstanceIndex = instanceID;");
       expect(wrapped).toContain("return color;");
       expect(wrapped).not.toContain("_previewWrap");
       expect(wrapped).not.toContain("mapped * _st.resolution.xy");

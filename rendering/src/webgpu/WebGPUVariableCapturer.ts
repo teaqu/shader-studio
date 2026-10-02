@@ -296,6 +296,7 @@ export class WebGPUVariableCapturer implements IVariableCapturer {
         cameraPos: uniforms.cameraPos,
         cameraDir: uniforms.cameraDir,
         vertexCount: uniforms.vertexCount,
+        instanceCount: uniforms.instanceCount,
       }, this.customUniforms, this.customUniforms),
     );
 

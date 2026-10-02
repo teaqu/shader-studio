@@ -28,11 +28,12 @@ describe("GLSL shader environment", () => {
       "uniform vec3 iCameraPos;",
       "uniform vec3 iCameraDir;",
       "uniform int iVertexCount;",
+      "uniform int iInstanceCount;",
     ]);
     expect(GLSL_STABLE_NAMES).toEqual(new Set([
       "fragColor", "HW_PERFORMANCE", "iResolution", "iTime", "iTimeDelta",
       "iFrameRate", "iMouse", "iFrame", "iDate", "iChannelTime",
-      "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
+      "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount", "iInstanceCount",
     ]));
   });
 
