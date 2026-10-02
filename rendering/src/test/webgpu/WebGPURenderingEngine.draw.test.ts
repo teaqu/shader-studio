@@ -370,6 +370,59 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     expect(writtenInstanceCounts(device)).toEqual([40]);
   });
 
+  describe("mesh topology", () => {
+    const mesh = {
+      vertexBuffer: { id: "vb" }, indexBuffer: { id: "ib" }, indexFormat: "uint16", indexCount: 36, vertexCount: 24,
+      edgeIndexBuffer: { id: "edges" }, edgeIndexCount: 60,
+    };
+    const withMesh = () => {
+      const harness = engineHarness(language);
+      (harness.engine as unknown as { meshResources: unknown }).meshResources = { get: vi.fn(() => mesh), getModel: vi.fn(), dispose: vi.fn() };
+      return harness;
+    };
+
+    it("builds a line-list pipeline and draws the unique-edge index buffer", async () => {
+      const { engine, device, renderPass } = withMesh();
+      await engine.compileShaderPipeline("// image", config({ type: "cube", topology: "line-list", instanceCount: 2 }), imagePath);
+
+      engine.render(1000);
+
+      expect(primitiveStates(device)).toEqual([{ topology: "line-list" }]);
+      expect(renderPass.setVertexBuffer).toHaveBeenCalledWith(0, mesh.vertexBuffer);
+      expect(renderPass.setIndexBuffer).toHaveBeenCalledWith(mesh.edgeIndexBuffer, "uint16");
+      expect(renderPass.drawIndexed).toHaveBeenCalledWith(60, 2);
+    });
+
+    it("builds a point-list pipeline and draws each unique vertex without indices", async () => {
+      const { engine, device, renderPass } = withMesh();
+      await engine.compileShaderPipeline("// image", config({ type: "sphere", topology: "point-list" }), imagePath);
+
+      engine.render(1000);
+
+      expect(primitiveStates(device)).toEqual([{ topology: "point-list" }]);
+      expect(renderPass.setVertexBuffer).toHaveBeenCalledWith(0, mesh.vertexBuffer);
+      expect(renderPass.setIndexBuffer).not.toHaveBeenCalled();
+      expect(renderPass.draw).toHaveBeenCalledWith(24, 1);
+      expect(renderPass.drawIndexed).not.toHaveBeenCalled();
+    });
+
+    it("rebuilds the pipeline when only the mesh topology changes", async () => {
+      const { engine, device } = withMesh();
+      await engine.compileShaderPipeline("// image", config({ type: "cube" }), imagePath);
+      await engine.compileShaderPipeline("// image", config({ type: "cube", topology: "line-list" }), imagePath);
+
+      expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
+      expect(primitiveStates(device)).toEqual([{ topology: "triangle-list" }, { topology: "line-list" }]);
+    });
+
+    it("keeps culling in the pipeline state for line and point meshes", async () => {
+      const { engine, device } = withMesh();
+      await engine.compileShaderPipeline("// image", config({ type: "cube", topology: "line-list" }, { cull: "back" }), imagePath);
+
+      expect(primitiveStates(device)).toEqual([{ topology: "line-list", cullMode: "back", frontFace: "ccw" }]);
+    });
+  });
+
   it("draws every instance of an indexed mesh pass", async () => {
     const { engine, device, renderPass } = engineHarness(language);
     const mesh = { vertexBuffer: { id: "vb" }, indexBuffer: { id: "ib" }, indexFormat: "uint16", indexCount: 36, vertexCount: 24 };

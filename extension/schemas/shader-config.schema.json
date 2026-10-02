@@ -189,6 +189,7 @@
           "required": ["type"],
           "properties": {
             "type": { "enum": ["plane", "cube", "sphere"] },
+            "topology": { "$ref": "#/definitions/MeshTopology" },
             "instanceCount": { "$ref": "#/definitions/InstanceCount" }
           },
           "additionalProperties": false
@@ -200,11 +201,17 @@
             "type": { "const": "model" },
             "path": { "type": "string", "minLength": 1 },
             "mesh": { "type": "string" },
+            "topology": { "$ref": "#/definitions/MeshTopology" },
             "instanceCount": { "$ref": "#/definitions/InstanceCount" }
           },
           "additionalProperties": false
         }
       ]
+    },
+    "MeshTopology": {
+      "enum": ["triangle-list", "line-list", "point-list"],
+      "default": "triangle-list",
+      "description": "How the mesh is drawn: its triangles (default), a wireframe of each unique edge (line-list), or each unique vertex as a 1px point (point-list). cull has no effect on lines and points."
     },
     "InstanceCount": {
       "type": "integer",

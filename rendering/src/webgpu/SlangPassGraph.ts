@@ -11,7 +11,7 @@ import type {
 import { assignInputSlots } from "../util/InputSlotAssigner";
 import { getNativeComputeEntryPoints } from "./SlangPrelude";
 import { getWgslComputeEntryPoints, maskWgslNonCode } from "./WgslPrelude";
-import { resolveInstanceDraw, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, type InstanceDrawConfig, type VerticesDrawConfig } from "../types/Geometry";
+import { resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, type InstanceDrawConfig, type VerticesDrawConfig } from "../types/Geometry";
 import { parseSlangStructs } from "./slangStructSize";
 import { parseWgslStructs } from "./wgslStructSize";
 
@@ -251,6 +251,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
       ...resolveModelGeometry(passConfig),
       ...resolveVerticesDraw(passConfig),
       ...resolveInstanceDraw(passConfig),
+      ...resolveMeshTopology(passConfig),
       ...resolvePassRenderSettings(passConfig),
       vertexSrc: options.buffers[vertexPassKey(name)],
       path,
@@ -276,7 +277,7 @@ export function buildSlangPassGraph(options: BuildSlangPassGraphOptions): Render
     warnings,
     errors,
   });
-  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolvePassRenderSettings(imageConfig) });
+  const imagePass = createImagePass(options.imageCode, canvasWidth, canvasHeight, imageChannels, resolvePassGeometry(imageConfig), options.buffers[vertexPassKey("Image")], resolveModelGeometry(imageConfig), language, { ...resolveVerticesDraw(imageConfig), ...resolveInstanceDraw(imageConfig), ...resolveMeshTopology(imageConfig), ...resolvePassRenderSettings(imageConfig) });
   const passes = [...computePasses, ...renderPasses, imagePass];
   const sampledBufferSources = new Set(passes.flatMap((pass) => pass.channels
     .filter((channel) => channel.kind === "buffer")

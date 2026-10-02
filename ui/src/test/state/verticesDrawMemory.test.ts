@@ -67,6 +67,15 @@ describe('verticesDrawMemory', () => {
     expect(takeDrawField('/s.glsl', 'Image', 'vertices')).toEqual({ vertexCount: 6 });
   });
 
+  it('remembers a mesh topology separately from the vertices topology', () => {
+    rememberDrawFields('/s.glsl', 'Image', { vertices: { topology: 'line-strip' }, meshTopology: 'point-list' });
+    rememberDrawFields('/s.glsl', 'Image', { meshTopology: undefined });
+
+    expect(takeDrawField('/s.glsl', 'Image', 'meshTopology')).toBe('point-list');
+    expect(takeDrawField('/s.glsl', 'Image', 'meshTopology')).toBeUndefined();
+    expect(takeDrawField('/s.glsl', 'Image', 'vertices')).toEqual({ topology: 'line-strip' });
+  });
+
   it('forgets everything on reset', () => {
     rememberDrawFields('/s.glsl', 'Image', { vertices: { vertexCount: 6 }, cull: 'back' });
 

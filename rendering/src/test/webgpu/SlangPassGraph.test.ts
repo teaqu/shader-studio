@@ -148,7 +148,7 @@ describe("buildSlangPassGraph", () => {
           BufferA: { path: `a.${language}`, geometry: { type: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647 }, blend: "additive", depth: { write: false } },
           BufferB: { path: `b.${language}`, geometry: { type: "vertices", topology: "point-list" } },
           BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" }, blend: "premultiplied" },
-          BufferD: { path: `d.${language}`, geometry: { type: "plane", instanceCount: 4 }, cull: "front" },
+          BufferD: { path: `d.${language}`, geometry: { type: "plane", topology: "line-list", instanceCount: 4 }, cull: "front" },
           BufferE: { path: `e.${language}` },
         },
       },
@@ -177,9 +177,21 @@ describe("buildSlangPassGraph", () => {
       BufferA: { geometry: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647, blend: "additive", depth: { write: false } },
       BufferB: { geometry: "vertices", topology: "point-list" },
       BufferC: { geometry: "fullscreen", blend: "premultiplied" },
-      BufferD: { geometry: "plane", instanceCount: 4, cull: "front" },
+      BufferD: { geometry: "plane", topology: "line-list", instanceCount: 4, cull: "front" },
       BufferE: { geometry: "fullscreen" },
     });
+  });
+
+  it("carries a mesh topology on the Image pass", () => {
+    const graph = buildSlangPassGraph({
+      imageCode,
+      config: { version: "1", passes: { Image: { geometry: { type: "sphere", topology: "point-list" } } } },
+      buffers: {},
+      canvasWidth: 8,
+      canvasHeight: 8,
+    });
+
+    expect(graph.passes.at(-1)).toMatchObject({ name: "Image", geometry: "sphere", topology: "point-list" });
   });
 
   it("omits draw and render-state fields from an unconfigured image-only graph", () => {

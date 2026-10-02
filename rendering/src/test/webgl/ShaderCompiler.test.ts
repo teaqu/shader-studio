@@ -240,6 +240,28 @@ describe("ShaderCompiler", () => {
       });
     });
 
+    describe("mesh topology", () => {
+      const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";
+
+      it.each(["plane", "cube", "sphere", "model"] as const)("writes a 1px gl_PointSize for point-list %s meshes, with or without a hook", (geometry) => {
+        for (const vertexCode of [hook, undefined]) {
+          expect(shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode, meshTopology: "point-list" }).vertexSource)
+            .toMatch(/\n gl_PointSize = 1\.0;\n}$/);
+          for (const meshTopology of ["triangle-list", "line-list", undefined] as const) {
+            expect(shaderCompiler.wrapShaderToyCode(image, { geometry, vertexCode, ...(meshTopology ? { meshTopology } : {}) }).vertexSource)
+              .not.toContain("gl_PointSize");
+          }
+        }
+      });
+
+      it("ignores a mesh topology on fullscreen and vertices geometry", () => {
+        expect(shaderCompiler.wrapShaderToyCode(image, { vertexCode: hook, meshTopology: "point-list" }).vertexSource).not.toContain("gl_PointSize");
+        expect(shaderCompiler.wrapShaderToyCode(image, { geometry: "vertices", vertexCode: hook, meshTopology: "point-list" }).vertexSource)
+          .not.toContain("gl_PointSize");
+      });
+    });
+
     describe("instancing", () => {
       const image = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}";

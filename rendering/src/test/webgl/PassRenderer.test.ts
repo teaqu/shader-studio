@@ -115,6 +115,10 @@ const createMockGl = () => ({
   bindVertexArray: vi.fn(),
   drawElements: vi.fn(),
   drawElementsInstanced: vi.fn(),
+  drawArrays: vi.fn(),
+  drawArraysInstanced: vi.fn(),
+  LINES: 0x0001,
+  POINTS: 0x0000,
   getUniformLocation: vi.fn(),
   uniformMatrix3fv: vi.fn(),
 });
@@ -469,6 +473,45 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 4);
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
       expectGlDefaultsRestoredAfter(mockGl.drawElementsInstanced);
+    });
+
+    describe("mesh topology", () => {
+      const vao = { id: "triangles" };
+      const edgeVao = { id: "edges" };
+      const meshes = { get: vi.fn(() => ({ vao, edgeVao, indexCount: 36, edgeIndexCount: 60, vertexCount: 24 })), getModel: vi.fn() };
+
+      it("draws the unique-edge index buffer as lines for line-list", () => {
+        renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, topology: "line-list" }, meshes);
+
+        expect(mockGl.bindVertexArray).toHaveBeenCalledWith(edgeVao);
+        expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.LINES, 60, mockGl.UNSIGNED_SHORT, 0);
+        expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
+        expectGlDefaultsRestoredAfter(mockGl.drawElements);
+      });
+
+      it("draws each unique vertex once as a point for point-list", () => {
+        renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, topology: "point-list" }, meshes);
+
+        expect(mockGl.bindVertexArray).toHaveBeenCalledWith(vao);
+        expect(mockGl.drawArrays).toHaveBeenCalledWith(mockGl.POINTS, 0, 24);
+        expect(mockGl.drawElements).not.toHaveBeenCalled();
+        expectGlDefaultsRestoredAfter(mockGl.drawArrays);
+      });
+
+      it("draws the triangles by default", () => {
+        renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {} }, meshes);
+
+        expect(mockGl.bindVertexArray).toHaveBeenCalledWith(vao);
+        expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
+      });
+
+      it("instances lines and points", () => {
+        renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, topology: "line-list", instanceCount: 3 }, meshes);
+        renderWithMeshes({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, topology: "point-list", instanceCount: 4 }, meshes);
+
+        expect(mockGl.drawElementsInstanced).toHaveBeenCalledWith(mockGl.LINES, 60, mockGl.UNSIGNED_SHORT, 0, 3);
+        expect(mockGl.drawArraysInstanced).toHaveBeenCalledWith(mockGl.POINTS, 0, 24, 4);
+      });
     });
 
     it("draws a single-instance mesh pass without the instanced entry point", () => {

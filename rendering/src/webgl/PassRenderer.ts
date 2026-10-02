@@ -7,7 +7,7 @@ import type { CustomUniform } from "./CustomUniformManager";
 import { assignInputSlots, type SlotAssignment } from "../util/InputSlotAssigner";
 import { bindTextures } from "../util/TextureBinder";
 import { resolveBufferSamplerSettings, resolveTextureBindings } from "../util/TextureBindingResolver";
-import type { WebGLMeshResources } from "./WebGLMeshResources";
+import type { WebGLMeshDraw, WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
@@ -15,12 +15,13 @@ import {
   depthClearValue,
   geometryInstanceCount,
   isClipSpaceVertices,
+  meshTopology,
   resolveRenderState,
   verticesTopology,
   verticesVertexCount,
   type ResolvedRenderState,
 } from "../types/Geometry";
-import { FULLSCREEN_VERTEX_COUNT, type VertexTopology } from "@shader-studio/types";
+import { FULLSCREEN_VERTEX_COUNT, type MeshTopology, type VertexTopology } from "@shader-studio/types";
 import { applyWebGLRenderState } from "./WebGLRenderState";
 
 /** piRenderer primitive for each portable vertices topology. */
@@ -261,13 +262,7 @@ export class PassRenderer {
     const gl = this.gl;
     this.withRenderState(state, () => {
       try {
-        gl.bindVertexArray(mesh.vao);
-        const instances = geometryInstanceCount(passConfig);
-        if (instances > 1) {
-          gl.drawElementsInstanced(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0, instances);
-        } else {
-          gl.drawElements(gl.TRIANGLES, mesh.indexCount, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
-        }
+        drawMesh(gl, mesh, meshTopology(passConfig), geometryInstanceCount(passConfig));
       } finally {
         gl.bindVertexArray(null);
       }
@@ -351,5 +346,30 @@ export class PassRenderer {
         toggled: this.keyboardManager.getKeyToggled(),
       },
     });
+  }
+}
+
+/**
+ * Draws a mesh as triangles, its unique edges as lines, or its unique
+ * vertices as points, instanced when more than one copy is drawn.
+ */
+function drawMesh(gl: WebGL2RenderingContext, mesh: WebGLMeshDraw, topology: MeshTopology, instances: number): void {
+  if (topology === "point-list") {
+    gl.bindVertexArray(mesh.vao);
+    if (instances > 1) {
+      gl.drawArraysInstanced(gl.POINTS, 0, mesh.vertexCount, instances);
+    } else {
+      gl.drawArrays(gl.POINTS, 0, mesh.vertexCount);
+    }
+    return;
+  }
+  const [vao, mode, count] = topology === "line-list"
+    ? [mesh.edgeVao, gl.LINES, mesh.edgeIndexCount]
+    : [mesh.vao, gl.TRIANGLES, mesh.indexCount];
+  gl.bindVertexArray(vao);
+  if (instances > 1) {
+    gl.drawElementsInstanced(mode, count, mesh.indexType ?? gl.UNSIGNED_SHORT, 0, instances);
+  } else {
+    gl.drawElements(mode, count, mesh.indexType ?? gl.UNSIGNED_SHORT, 0);
   }
 }

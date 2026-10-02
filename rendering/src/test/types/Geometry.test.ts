@@ -6,7 +6,9 @@ import {
   renderPipelineStateKey,
   resolvePassGeometry,
   resolvePassRenderSettings,
+  meshTopology,
   resolveInstanceDraw,
+  resolveMeshTopology,
   resolveRenderState,
   resolveVerticesDraw,
   verticesSpace,
@@ -53,6 +55,32 @@ describe("resolveVerticesDraw", () => {
     expect(isClipSpaceVertices({ geometry: "vertices" })).toBe(false);
     expect(isClipSpaceVertices({ geometry: "cube", space: "clip" })).toBe(false);
     expect(isClipSpaceVertices({})).toBe(false);
+  });
+});
+
+describe("resolveMeshTopology", () => {
+  it.each(["plane", "cube", "sphere", "model"] as const)("copies a configured topology from %s geometry", (type) => {
+    expect(resolveMeshTopology({ geometry: { type, topology: "line-list" } })).toEqual({ topology: "line-list" });
+    expect(resolveMeshTopology({ geometry: { type } })).toEqual({});
+  });
+
+  it("leaves vertices and fullscreen topology alone", () => {
+    expect(resolveMeshTopology(undefined)).toEqual({});
+    expect(resolveMeshTopology({ geometry: { type: "vertices", topology: "point-list" } })).toEqual({});
+    expect(resolveMeshTopology({ geometry: { type: "fullscreen", topology: "point-list" } })).toEqual({});
+  });
+
+  it("defaults to the triangles", () => {
+    expect(meshTopology({})).toBe("triangle-list");
+    expect(meshTopology({ topology: "point-list" })).toBe("point-list");
+  });
+
+  it("keys mesh pipelines by topology", () => {
+    const key = (topology?: "triangle-list" | "line-list" | "point-list") =>
+      renderPipelineStateKey({ geometry: "cube", ...(topology ? { topology } : {}) });
+    expect(key()).toBe(key("triangle-list"));
+    expect(new Set([key("triangle-list"), key("line-list"), key("point-list")]).size).toBe(3);
+    expect(renderPipelineStateKey({ geometry: "fullscreen" })).not.toBe(key());
   });
 });
 

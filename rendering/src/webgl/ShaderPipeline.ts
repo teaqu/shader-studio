@@ -12,7 +12,8 @@ import { resolveBufferPassSize } from "./BufferPassResolution";
 import { blendFormatFallbackWarning, resolveBlendedBufferFormat } from "../util/BufferFormatResolver";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import type { RenderPassSettings } from "@shader-studio/types";
-import { resolveInstanceDraw, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
+import { meshTopology, resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
+import { isMeshGeometry } from "../preview3d/MeshFragmentContext";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
 
@@ -200,6 +201,7 @@ export class ShaderPipeline {
           geometry: resolvePassGeometry(pass && "geometry" in pass ? pass : undefined),
           ...resolveVerticesDraw(pass && "geometry" in pass ? pass : undefined),
           ...resolveInstanceDraw(pass && "geometry" in pass ? pass : undefined),
+          ...resolveMeshTopology(pass && "geometry" in pass ? pass : undefined),
           // Blend applies to fullscreen passes too, which may omit geometry.
           ...resolvePassRenderSettings(passName === "common" ? undefined : pass as RenderPassSettings | undefined),
           ...(pass?.geometry?.type === "model" ? {
@@ -283,6 +285,7 @@ export class ShaderPipeline {
             customUniformDeclarations: customDecl,
             vertexCode: pass.vertexSrc,
             ...(pass.geometry === "vertices" ? { vertices: { space: verticesSpace(pass), topology: verticesTopology(pass) } } : {}),
+            ...(isMeshGeometry(pass.geometry) ? { meshTopology: meshTopology(pass) } : {}),
           }));
         shader = await this.shaderCompiler.compileShaderAsync(pass.shaderSrc, {
           geometry: pass.geometry,
@@ -292,6 +295,7 @@ export class ShaderPipeline {
           customUniformDeclarations: customDecl,
           vertexCode: pass.vertexSrc,
           ...(pass.geometry === "vertices" ? { vertices: { space: verticesSpace(pass), topology: verticesTopology(pass) } } : {}),
+          ...(isMeshGeometry(pass.geometry) ? { meshTopology: meshTopology(pass) } : {}),
         });
       } catch (error) {
         this.cleanupPartialShaders(newPassShaders);

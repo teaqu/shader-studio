@@ -51,7 +51,7 @@ import { ResourceManager } from "../resources/ResourceManager";
 import type { PixelRegionResult } from "../types/PixelRegion";
 import { WebGPUPixelRegionCapturer, type PixelRegionRequestStage } from "./WebGPUPixelRegionCapturer";
 import { WebGPUMeshResources, type WebGPUMeshResource } from "./WebGPUMeshResources";
-import { depthClearValue, geometryInstanceCount, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
+import { depthClearValue, geometryInstanceCount, meshTopology, renderPipelineStateKey, resolveRenderState, verticesSpace, verticesTopology, verticesVertexCount } from "../types/Geometry";
 import { FULLSCREEN_VERTEX_COUNT } from "@shader-studio/types";
 import { extractStructSizes } from "./wgslStructSize";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
@@ -2357,7 +2357,9 @@ export class WebGPURenderingEngine implements RenderingEngine {
         height: pass.height,
         output: pass.output === "canvas" ? "canvas" : "texture",
         geometry: pass.geometry,
-        ...(pass.geometry === "vertices" ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) } : {}),
+        ...(pass.geometry === "vertices"
+          ? { topology: verticesTopology(pass), vertexSpace: verticesSpace(pass) }
+          : pass.geometry && pass.geometry !== "fullscreen" ? { topology: meshTopology(pass) } : {}),
         renderState: resolveRenderState(pass),
         channels,
         vertexChannels: Boolean(pass.vertexSrc),
@@ -2752,8 +2754,17 @@ export class WebGPURenderingEngine implements RenderingEngine {
         renderPass.draw(verticesVertexCount(pass), geometryInstanceCount(pass));
       } else if (mesh) {
         renderPass.setVertexBuffer(0, mesh.vertexBuffer);
-        renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
-        renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
+        const topology = meshTopology(pass);
+        if (topology === "point-list") {
+          // Each unique vertex once, without the index buffer.
+          renderPass.draw(mesh.vertexCount, geometryInstanceCount(pass));
+        } else if (topology === "line-list") {
+          renderPass.setIndexBuffer(mesh.edgeIndexBuffer, mesh.indexFormat);
+          renderPass.drawIndexed(mesh.edgeIndexCount, geometryInstanceCount(pass));
+        } else {
+          renderPass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat);
+          renderPass.drawIndexed(mesh.indexCount, geometryInstanceCount(pass));
+        }
       }
       renderPass.end();
     }

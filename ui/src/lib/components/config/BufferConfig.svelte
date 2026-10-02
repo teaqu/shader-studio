@@ -14,6 +14,9 @@
     GeometryType,
     GeometryConfig,
     FullscreenGeometryConfig,
+    MeshGeometryConfig,
+    MeshTopology,
+    ModelGeometryConfig,
     ComputePass,
     ShaderLanguageId,
     BufferOutputFormat,
@@ -32,6 +35,7 @@
     DEFAULT_CULL_MODE,
     DEFAULT_DEPTH_COMPARE,
     DEFAULT_INSTANCE_COUNT,
+    DEFAULT_MESH_TOPOLOGY,
     DEFAULT_VERTEX_COUNT,
     DEFAULT_VERTEX_SPACE,
     DEFAULT_VERTEX_TOPOLOGY,
@@ -141,6 +145,14 @@
   /** Geometry that accepts instanceCount: anything drawn but fullscreen. */
   const instancedGeometry = $derived<Exclude<GeometryConfig, FullscreenGeometryConfig> | undefined>(
     config.geometry && config.geometry.type !== 'fullscreen' ? config.geometry : undefined,
+  );
+  /** The configured plane, cube, sphere or model geometry, which accepts a mesh topology. */
+  const configuredMeshGeometry = $derived<MeshGeometryConfig | ModelGeometryConfig | undefined>(
+    instancedGeometry?.type === 'vertices' ? undefined : instancedGeometry,
+  );
+  /** The mesh geometry the Topology control edits; hidden while a model is being picked to replace another mesh. */
+  const meshGeometry = $derived(
+    modelSelectionPending && configuredMeshGeometry?.type !== 'model' ? undefined : configuredMeshGeometry,
   );
   /** Blend/clear/depth/cull the pass draws with, defaults applied, for the controls' displayed values. */
   const renderState = $derived(resolveRenderState({
@@ -410,9 +422,24 @@
     return instanceCount === undefined ? {} : { instanceCount };
   }
 
+  /**
+   * Mesh topology for mesh geometry replacing the current one: kept from a
+   * mesh, or restored from memory when the pass was fullscreen or vertices.
+   */
+  function carriedMeshTopology(): { topology?: MeshTopology } {
+    const topology = configuredMeshGeometry
+      ? configuredMeshGeometry.topology
+      : takeDrawField(shaderPath, bufferName, 'meshTopology');
+    return topology === undefined ? {} : { topology };
+  }
+
   function handleGeometryChange(type: GeometryType) {
     vertexCountError = null;
     instanceCountError = null;
+    // Fullscreen and vertices reject a mesh topology; keep it for a switch back.
+    if (configuredMeshGeometry && (type === 'fullscreen' || type === 'vertices')) {
+      rememberDrawFields(shaderPath, bufferName, { meshTopology: configuredMeshGeometry.topology });
+    }
     // Other geometry rejects vertexCount/topology/space; keep them for a switch back.
     if (verticesGeometry && type !== 'vertices') {
       const { type: _type, instanceCount: _instanceCount, ...fields } = verticesGeometry;
@@ -440,7 +467,7 @@
     }
     const geometry = type === 'vertices'
       ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices'), ...carriedInstanceCount() }
-      : { type, ...carriedInstanceCount() };
+      : { type, ...carriedMeshTopology(), ...carriedInstanceCount() };
     updateConfig({ ...current, ...restored, geometry } as EditableConfig);
   }
 
@@ -465,6 +492,18 @@
     }
     vertexCountError = null;
     updateVerticesDraw({ vertexCount: count });
+  }
+
+  function handleMeshTopologyChange(event: Event) {
+    if (!meshGeometry) {
+      return;
+    }
+    const topology = (event.currentTarget as HTMLSelectElement).value as MeshTopology;
+    const { topology: _topology, ...geometry } = meshGeometry;
+    updateConfig({
+      ...config,
+      geometry: topology === DEFAULT_MESH_TOPOLOGY ? geometry : { ...geometry, topology },
+    } as EditableConfig);
   }
 
   function handleInstanceCountChange(event: Event) {
@@ -558,12 +597,12 @@
       return;
     }
     modelSelectionPending = false;
-    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}), ...carriedInstanceCount() } });
+    updateConfig({ ...config, geometry: { type: 'model', path, ...(modelGeometry?.mesh ? { mesh: modelGeometry.mesh } : {}), ...carriedMeshTopology(), ...carriedInstanceCount() } });
   }
 
   function handleModelMeshChange(event: Event) {
     const mesh = (event.currentTarget as HTMLInputElement).value.trim();
-    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}), ...carriedInstanceCount() } });
+    updateConfig({ ...config, geometry: { type: 'model', path: modelGeometry?.path ?? '', ...(mesh ? { mesh } : {}), ...carriedMeshTopology(), ...carriedInstanceCount() } });
   }
 
   function handleVertexPathChange(path: string) {
@@ -811,6 +850,20 @@
             {/if}
           </select>
           {#if modelMeshError}<span class="input-note">{modelMeshError}</span>{/if}
+        {/if}
+        {#if meshGeometry}
+          <div class="resolution-row">
+            <label class="resolution-label" for="mesh-topology-{bufferName}">Topology</label>
+            <select
+              id="mesh-topology-{bufferName}"
+              value={meshGeometry.topology ?? DEFAULT_MESH_TOPOLOGY}
+              onchange={handleMeshTopologyChange}
+            >
+              <option value="triangle-list">Triangles</option>
+              <option value="line-list">Wireframe (line list)</option>
+              <option value="point-list">Points</option>
+            </select>
+          </div>
         {/if}
         {#if verticesGeometry}
           <div class="resolution-row">

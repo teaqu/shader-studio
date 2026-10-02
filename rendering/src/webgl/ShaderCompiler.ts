@@ -1,4 +1,4 @@
-import { buildGlslNamedChannelDeclarations, type GeometryType, type VertexSpace, type VertexTopology } from "@shader-studio/types";
+import { buildGlslNamedChannelDeclarations, type GeometryType, type MeshTopology, type VertexSpace, type VertexTopology } from "@shader-studio/types";
 import {
   INSTANCE_INDEX,
   isMeshGeometry,
@@ -19,6 +19,8 @@ export interface ShaderWrapOptions {
   vertexCode?: string;
   /** Resolved space and topology for vertices geometry. */
   vertices?: { space: VertexSpace; topology: VertexTopology };
+  /** Resolved topology for plane, cube, sphere and model geometry. */
+  meshTopology?: MeshTopology;
 }
 
 export interface WrappedShaderSource {
@@ -563,7 +565,9 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       vertexLineCount: hasHook ? lastCodeLine - firstCodeLine + 1 : 0,
     });
     // WebGL leaves the point size undefined unless the vertex stage writes it.
-    const pointSize = vertices?.topology === "point-list" ? "\n gl_PointSize = 1.0;" : "";
+    const pointSize = vertices?.topology === "point-list" || (mesh && options.meshTopology === "point-list")
+      ? "\n gl_PointSize = 1.0;"
+      : "";
     if (vertices?.space === "clip") {
       return place(`${vertexUniforms}${channelHelpers}
 out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};

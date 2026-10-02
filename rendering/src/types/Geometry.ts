@@ -4,6 +4,7 @@ import {
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_INSTANCE_COUNT,
+  DEFAULT_MESH_TOPOLOGY,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
@@ -13,6 +14,7 @@ import {
   type DepthCompareFunction,
   type DepthSettings,
   type GeometryType,
+  type MeshTopology,
   type RenderPassSettings,
   type VertexSpace,
   type VertexTopology,
@@ -63,6 +65,22 @@ export function resolveVerticesDraw(pass: { geometry?: VerticesGeometryLike } | 
     ...(geometry.topology !== undefined ? { topology: geometry.topology } : {}),
     ...(geometry.space !== undefined ? { space: geometry.space } : {}),
   };
+}
+
+/**
+ * The configured topology of plane, cube, sphere and model geometry, carried
+ * on the pass's shared `topology` field. Vertices geometry resolves its own.
+ */
+export function resolveMeshTopology(pass: { geometry?: { type: GeometryType; topology?: VertexTopology } } | undefined): Pick<VerticesDrawConfig, "topology"> {
+  const geometry = pass?.geometry;
+  return geometry && geometry.type !== "fullscreen" && geometry.type !== "vertices" && geometry.topology !== undefined
+    ? { topology: geometry.topology }
+    : {};
+}
+
+/** Mesh topology with its default; only the mesh topologies reach a mesh pass. */
+export function meshTopology(draw: Pick<VerticesDrawConfig, "topology">): MeshTopology {
+  return (draw.topology ?? DEFAULT_MESH_TOPOLOGY) as MeshTopology;
 }
 
 export function verticesVertexCount(draw: VerticesDrawConfig): number {
@@ -151,7 +169,9 @@ export function renderPipelineStateKey(
   pass: VerticesDrawConfig & RenderPassSettings & { geometry?: GeometryType },
 ): string {
   const state = resolveRenderState(pass);
-  const vertices = pass.geometry === "vertices" ? `${verticesTopology(pass)}/${verticesSpace(pass)}` : "";
+  const vertices = pass.geometry === "vertices"
+    ? `${verticesTopology(pass)}/${verticesSpace(pass)}`
+    : pass.geometry && pass.geometry !== "fullscreen" ? meshTopology(pass) : "";
   const depth = state.depth ? `${state.depth.test}/${state.depth.write}/${state.depth.compare}` : "";
   return [vertices, state.blend, depth, state.cull].join("|");
 }

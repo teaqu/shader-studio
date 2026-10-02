@@ -87,6 +87,13 @@ export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 export const VERTEX_TOPOLOGIES = ["triangle-list", "triangle-strip", "line-list", "line-strip", "point-list"] as const;
 export type VertexTopology = (typeof VERTEX_TOPOLOGIES)[number];
 export const DEFAULT_VERTEX_TOPOLOGY: VertexTopology = "triangle-list";
+/**
+ * Views of indexed mesh geometry: the triangles, a wireframe of each unique
+ * edge, or each unique vertex as a point. Strips do not apply to meshes.
+ */
+export const MESH_TOPOLOGIES = ["triangle-list", "line-list", "point-list"] as const satisfies readonly VertexTopology[];
+export type MeshTopology = (typeof MESH_TOPOLOGIES)[number];
+export const DEFAULT_MESH_TOPOLOGY: MeshTopology = "triangle-list";
 /** Where `vertices` hooks place their positions: object space under the orbit camera, or final clip space. */
 export const VERTEX_SPACES = ["world", "clip"] as const;
 export type VertexSpace = (typeof VERTEX_SPACES)[number];
@@ -113,9 +120,10 @@ export interface VerticesGeometryConfig {
   space?: VertexSpace;
   instanceCount?: number;
 }
-/** Indexed built-in meshes; their vertex count and topology are fixed. */
+/** Indexed built-in meshes; their vertex count is fixed. */
 export interface MeshGeometryConfig {
   type: Exclude<GeometryType, "fullscreen" | "vertices" | "model">;
+  topology?: MeshTopology;
   instanceCount?: number;
 }
 export type BuiltinGeometryConfig = FullscreenGeometryConfig | VerticesGeometryConfig | MeshGeometryConfig;
@@ -125,6 +133,7 @@ export interface ModelGeometryConfig {
   path: string;
   mesh?: string;
   resolved_path?: string;
+  topology?: MeshTopology;
   instanceCount?: number;
 }
 export type GeometryConfig = BuiltinGeometryConfig | ModelGeometryConfig;

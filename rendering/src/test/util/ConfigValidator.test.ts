@@ -156,16 +156,49 @@ describe("ConfigValidator", () => {
           { type: "cube" },
           { type: "sphere" },
           { type: "model", path: "robot.glb" },
-        ])("rejects vertexCount, topology and space on $type geometry", (geometry) => {
+        ])("rejects vertexCount and space on $type geometry", (geometry) => {
           const type = geometry.type;
           const fieldError = (pass: string, field: string) => `${pass} pass geometry ${field} is only supported for vertices geometry, not ${type}`;
           expect(imageGeometry({ ...geometry, vertexCount: 3 })).toEqual({ isValid: false, errors: [fieldError("Image", "vertexCount")] });
-          expect(bufferGeometry({ ...geometry, topology: "triangle-list" })).toEqual({ isValid: false, errors: [fieldError("BufferA", "topology")] });
           expect(bufferGeometry({ ...geometry, space: "world" })).toEqual({ isValid: false, errors: [fieldError("BufferA", "space")] });
-          expect(imageGeometry({ ...geometry, vertexCount: 6, topology: "line-list", space: "clip" }).errors).toEqual([
+          expect(imageGeometry({ ...geometry, vertexCount: 6, space: "clip" }).errors).toEqual([
             fieldError("Image", "vertexCount"),
-            fieldError("Image", "topology"),
             fieldError("Image", "space"),
+          ]);
+        });
+
+        it("rejects any topology on fullscreen geometry", () => {
+          for (const topology of ["triangle-list", "point-list"]) {
+            expect(imageGeometry({ type: "fullscreen", topology })).toEqual({
+              isValid: false,
+              errors: ["Image pass geometry topology is not supported for fullscreen geometry"],
+            });
+          }
+        });
+
+        it.each([
+          { type: "plane" },
+          { type: "cube" },
+          { type: "sphere" },
+          { type: "model", path: "robot.glb" },
+        ])("accepts the mesh topologies on $type geometry", (geometry) => {
+          for (const topology of ["triangle-list", "line-list", "point-list"]) {
+            expect(imageGeometry({ ...geometry, topology })).toEqual({ isValid: true, errors: [] });
+            expect(bufferGeometry({ ...geometry, topology, instanceCount: 2 })).toEqual({ isValid: true, errors: [] });
+          }
+        });
+
+        it.each(["triangle-strip", "line-strip", "triangle-fan", "lines", "", null, 3])("rejects mesh topology %s", (topology) => {
+          expect(imageGeometry({ type: "sphere", topology })).toEqual({
+            isValid: false,
+            errors: ["Image pass geometry topology for sphere geometry must be one of: triangle-list, line-list, point-list"],
+          });
+        });
+
+        it("reports a bad mesh topology alongside vertices-only fields", () => {
+          expect(imageGeometry({ type: "cube", topology: "line-strip", space: "clip" }).errors).toEqual([
+            "Image pass geometry space is only supported for vertices geometry, not cube",
+            "Image pass geometry topology for cube geometry must be one of: triangle-list, line-list, point-list",
           ]);
         });
 

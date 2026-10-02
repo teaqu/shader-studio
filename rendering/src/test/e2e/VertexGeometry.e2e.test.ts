@@ -878,3 +878,39 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s camera matrices", (languag
     }
   });
 });
+
+/** White canvas pixels; WHITE_IMAGE shades every drawn fragment white. */
+function countWhite(region: Uint8ClampedArray): number {
+  let count = 0;
+  for (let y = 0; y < CANVAS_SIZE; y += 1) {
+    for (let x = 0; x < CANVAS_SIZE; x += 1) {
+      const [r, g, b] = pixelAt(region, x, y);
+      count += r === 255 && g === 255 && b === 255 ? 1 : 0;
+    }
+  }
+  return count;
+}
+
+describe.each(["glsl", "slang", "wgsl"] as const)("%s mesh topology", (language) => {
+  const draw = (topology?: "triangle-list" | "line-list" | "point-list", settings: RenderPassSettings = {}) =>
+    render(language, program(language, undefined, { type: "cube", ...(topology ? { topology } : {}) }, settings));
+
+  it("draws a cube as triangles, a wireframe of its edges, or its vertices", { timeout: 30_000 }, async () => {
+    const triangles = countWhite(await draw());
+    const wireframe = countWhite(await draw("line-list"));
+    const points = countWhite(await draw("point-list"));
+
+    expect(countWhite(await draw("triangle-list"))).toBe(triangles);
+    expect(points, "points").toBeGreaterThan(0);
+    expect(wireframe, "wireframe").toBeGreaterThan(points);
+    expect(triangles, "triangles").toBeGreaterThan(wireframe);
+  });
+
+  it("does not cull lines or points", { timeout: 30_000 }, async () => {
+    for (const topology of ["line-list", "point-list"] as const) {
+      const unculled = countWhite(await draw(topology));
+      expect(countWhite(await draw(topology, { cull: "front" })), `${topology} cull front`).toBe(unculled);
+      expect(countWhite(await draw(topology, { cull: "back" })), `${topology} cull back`).toBe(unculled);
+    }
+  });
+});

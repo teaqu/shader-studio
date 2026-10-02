@@ -119,7 +119,7 @@ should render a rotated inset panel with black visible around it.
 | `slang/particles.slang`, `slang/gravity/`, `slang/structs/` | storage + compute image pipelines (WGSL twins under `wgsl/`) |
 | `slang/plane.slang`, `slang/two-meshes.slang` | plane/model geometry with vertex hooks (WGSL twins under `wgsl/`) |
 | `assets/two-meshes.glb` | CatHead/CatBody GLB fixture shared by all three languages |
-| `slang/vertices/` | vertices geometry, blend, depth and cull examples (GLSL twins under `glsl/vertices/`, WGSL under `wgsl/vertices/`): `hexagon` clip-space triangle strip, `waveform` line strip spaced by `iVertexCount`, `points` 1px point list, `tetrahedron` world space with `cull: back`, `particles` additive with depth writes off, `alpha-discs` alpha blending, `cube-inside` cube with `cull: front`, `depth-greater` `compare: greater`, `buffer-glow` additive lines summed past 1.0 in a float buffer pass, `instanced-cubes` one cube drawn 100 times with `instanceCount`, placed and coloured by `iInstanceIndex` |
+| `slang/vertices/` | vertices geometry, blend, depth and cull examples (GLSL twins under `glsl/vertices/`, WGSL under `wgsl/vertices/`): `hexagon` clip-space triangle strip, `waveform` line strip spaced by `iVertexCount`, `points` 1px point list, `tetrahedron` world space with `cull: back`, `particles` additive with depth writes off, `alpha-discs` alpha blending, `cube-inside` cube with `cull: front`, `depth-greater` `compare: greater`, `buffer-glow` additive lines summed past 1.0 in a float buffer pass, `instanced-cubes` one cube drawn 100 times with `instanceCount`, placed and coloured by `iInstanceIndex`, `wireframe-sphere` a sphere with `topology: line-list` |
 
 ## Verification checklist
 

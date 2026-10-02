@@ -55,6 +55,34 @@ async function pixelAt(frame, fx, fy) {
   }, [screenshot.toString('base64'), fx, fy]);
 }
 
+/** White samples on a 15 x 15 grid over the middle of the presented canvas, from one screenshot. */
+async function whiteSamples(frame) {
+  const screenshot = await frame.locator('.canvas-container canvas').first().screenshot();
+  return frame.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(bitmap, 0, 0);
+      let white = 0;
+      for (let row = 0; row < 15; row += 1) {
+        for (let column = 0; column < 15; column += 1) {
+          const x = Math.floor(canvas.width * (0.2 + 0.6 * column / 14));
+          const y = Math.floor(canvas.height * (0.2 + 0.6 * row / 14));
+          const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+          white += r > 200 && g > 200 && b > 200 ? 1 : 0;
+        }
+      }
+      return white;
+    } finally {
+      bitmap.close();
+    }
+  }, screenshot.toString('base64'));
+}
+
 const isWhite = ([r, g, b]) => r > 200 && g > 200 && b > 200;
 const isBlack = ([r, g, b]) => r < 40 && g < 40 && b < 40;
 const isGrey = ([r, g, b]) => [r, g, b].every((channel) => channel > 100 && channel < 160);
@@ -290,6 +318,55 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expectCentre(frame, isBlack, 'clearing the instance count kept the second instance');
     });
 
+    test('switches a cube between triangles, wireframe and points in the config panel and keeps it after reload', async ({ vscode }) => {
+      rmSync(fixtureDir, { recursive: true, force: true });
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(shaderPath, IMAGE[language]);
+      writeConfig({ geometry: { type: 'cube' } });
+
+      let frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      // The solid cube fills much of the middle of the canvas.
+      await expect.poll(() => whiteSamples(frame), { message: 'solid cube not drawn', timeout: 30_000 }).toBeGreaterThan(40);
+      const solid = await whiteSamples(frame);
+
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Topology')).toHaveValue('triangle-list');
+
+      // Wireframe: the edges cover far fewer samples than the faces.
+      await frame.getByLabel('Topology').selectOption('line-list');
+      await expect.poll(image).toEqual({ geometry: { type: 'cube', topology: 'line-list' } });
+      await expect.poll(() => whiteSamples(frame), { message: 'wireframe still filled the faces' }).toBeLessThan(solid / 2);
+
+      // Points: eight corners, which the grid almost never lands on.
+      await frame.getByLabel('Topology').selectOption('point-list');
+      await expect.poll(image).toEqual({ geometry: { type: 'cube', topology: 'point-list' } });
+      await expect.poll(() => whiteSamples(frame), { message: 'points still drew lines or faces' }).toBeLessThanOrEqual(2);
+
+      // The topology persists across a window reload.
+      await vscode.evaluateInHost(vscode => {
+        setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+      });
+      await expect.poll(() => frame.isDetached(), { timeout: 30_000 }).toBe(true);
+      frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Topology')).toHaveValue('point-list');
+
+      // Switching to vertices drops it; switching back to a mesh restores it.
+      await frame.getByLabel('Geometry').selectOption('vertices');
+      await expect.poll(image).toEqual({ geometry: { type: 'vertices' } });
+      await frame.getByLabel('Geometry').selectOption('sphere');
+      await expect.poll(image).toEqual({ geometry: { type: 'sphere', topology: 'point-list' } });
+
+      // Choosing Triangles removes the field.
+      await frame.getByLabel('Topology').selectOption('triangle-list');
+      await expect.poll(image).toEqual({ geometry: { type: 'sphere' } });
+      await expect.poll(() => whiteSamples(frame), { message: 'solid sphere not drawn' }).toBeGreaterThan(40);
+    });
+
     test('reports vertices, depth and cull fields on the wrong geometry as config errors', async ({ vscode }) => {
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
@@ -301,6 +378,7 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
         [{ geometry: { type: 'fullscreen' }, depth: { write: false } }, 'depth is not supported for fullscreen geometry'],
         [{ geometry: { type: 'fullscreen', instanceCount: 2 } }, 'instanceCount is not supported for fullscreen geometry'],
         [{ geometry: { type: 'cube', instanceCount: 0 } }, 'instanceCount must be an integer from 1 to 2147483647'],
+        [{ geometry: { type: 'sphere', topology: 'line-strip' } }, 'topology for sphere geometry must be one of: triangle-list, line-list, point-list'],
       ];
 
       for (const [config, message] of cases) {

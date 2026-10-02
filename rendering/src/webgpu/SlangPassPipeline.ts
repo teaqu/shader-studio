@@ -18,7 +18,7 @@ export interface SlangPassPipelineDescriptor {
   vertexChannels?: boolean;
   storage?: StorageBindingNode[];
   geometry: GeometryType;
-  /** Vertices primitive topology; omitted means triangle-list. */
+  /** Primitive topology of vertices or mesh geometry; omitted means triangle-list. */
   topology?: VertexTopology;
   /** Vertices space; clip space binds no camera uniforms. Omitted means world. */
   vertexSpace?: VertexSpace;

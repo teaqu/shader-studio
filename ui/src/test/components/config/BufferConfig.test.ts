@@ -633,8 +633,14 @@ describe('BufferConfig', () => {
         const { queryByLabelText } = renderPass(config as BufferPass);
 
         expect(queryByLabelText('Vertices')).toBeNull();
-        expect(queryByLabelText('Topology')).toBeNull();
         expect(queryByLabelText('Space')).toBeNull();
+        // Meshes have their own Topology control without the strip topologies.
+        const topology = queryByLabelText('Topology') as HTMLSelectElement | null;
+        if (topology) {
+          expect(Array.from(topology.options).map((option) => option.value)).toEqual(['triangle-list', 'line-list', 'point-list']);
+        } else {
+          expect((config as BufferPass).geometry?.type ?? 'fullscreen').toBe('fullscreen');
+        }
       });
 
       it('hides the controls for model geometry and while a model is being selected', async () => {
@@ -822,6 +828,82 @@ describe('BufferConfig', () => {
         await fireEvent.change(getByLabelText('Geometry'), { target: { value: 'vertices' } });
 
         expect(queryByRole('alert')).toBeNull();
+      });
+    });
+
+    describe('mesh topology', () => {
+      const renderPass = (config: BufferPass | ImagePass, bufferName = 'BufferA') => render(BufferConfig, {
+        bufferName, config, onUpdate: mockOnUpdate, getWebviewUri: mockGetWebviewUri, isImagePass: bufferName === 'Image',
+      });
+      const pass = (geometry?: Record<string, unknown>) => ({ path: 'a.glsl', inputs: {}, ...(geometry ? { geometry } : {}) }) as BufferPass;
+      const topology = (view: ReturnType<typeof renderPass>) => view.getByLabelText('Topology') as HTMLSelectElement;
+
+      it.each([
+        ['plane', { type: 'plane' }],
+        ['cube', { type: 'cube' }],
+        ['sphere', { type: 'sphere' }],
+        ['model', { type: 'model', path: './robot.glb' }],
+      ])('offers triangles, wireframe and points for %s geometry, defaulting to triangles', (_name, geometry) => {
+        const view = renderPass(pass(geometry));
+
+        expect(topology(view).value).toBe('triangle-list');
+        expect(Array.from(topology(view).options).map((option) => [option.value, option.textContent])).toEqual([
+          ['triangle-list', 'Triangles'],
+          ['line-list', 'Wireframe (line list)'],
+          ['point-list', 'Points'],
+        ]);
+      });
+
+      it('shows a configured mesh topology', () => {
+        expect(topology(renderPass(pass({ type: 'sphere', topology: 'point-list' }))).value).toBe('point-list');
+      });
+
+      it('writes a mesh topology, keeping the other geometry fields, and removes it at the default', async () => {
+        const view = renderPass(pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 2 }));
+
+        await fireEvent.change(topology(view), { target: { value: 'line-list' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', mesh: 'Body', instanceCount: 2, topology: 'line-list' }));
+        view.unmount();
+
+        const configured = renderPass(pass({ type: 'cube', topology: 'point-list' }));
+        await fireEvent.change(topology(configured), { target: { value: 'triangle-list' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube' }));
+      });
+
+      it('carries the mesh topology between meshes', async () => {
+        const view = renderPass(pass({ type: 'cube', topology: 'line-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'sphere' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'sphere', topology: 'line-list' }));
+      });
+
+      it.each(['fullscreen', 'vertices'] as const)('drops the mesh topology for %s and restores it on the way back', async (type) => {
+        const view = renderPass(pass({ type: 'cube', topology: 'point-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: type } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', type === 'fullscreen' ? pass() : pass({ type: 'vertices' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'plane' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'plane', topology: 'point-list' }));
+      });
+
+      it('keeps the vertices topology and the mesh topology apart', async () => {
+        const view = renderPass(pass({ type: 'vertices', topology: 'line-strip' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'cube' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'cube' }));
+      });
+
+      it('carries the mesh topology to a chosen model, and hides it while the model is picked', async () => {
+        const view = renderPass(pass({ type: 'cube', topology: 'line-list' }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'model' } });
+        expect(view.queryByLabelText('Topology')).toBeNull();
+        await fireEvent.input(view.getByLabelText('Model file:'), { target: { value: './robot.glb' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', pass({ type: 'model', path: './robot.glb', topology: 'line-list' }));
       });
     });
 

@@ -91,7 +91,7 @@ The config panel shows them as **Vertices**, **Topology** and **Space**. Switchi
 
 `mainVertex` runs once per vertex with `vertexIndex` from 0 to `vertexCount - 1`; read the count in the shader as `iVertexCount`. Every vertex starts at `(0, 0, 0)` with normal `(0, 0, 1)` and uv `(0, 0)`, so a pass without a vertex shader draws nothing. Place the vertices in shader code, for example from an array or from maths over `vertexIndex`. `topology` says how consecutive vertices join up: every three vertices make a triangle (`triangle-list`), each new vertex makes a triangle with the two before it (`triangle-strip`), every two make a line (`line-list`), each new vertex continues one line (`line-strip`), or each vertex is a single point (`point-list`).
 
-Out-of-range counts, other topologies, and any of these fields on fullscreen, plane, cube, sphere, or model geometry are config errors.
+Out-of-range counts, other topologies, and any of these fields on fullscreen geometry are config errors. Plane, cube, sphere, and model geometry reject `vertexCount` and `space`, and accept only the mesh topologies below.
 
 ### World and clip space
 
@@ -105,6 +105,22 @@ Out-of-range counts, other topologies, and any of these fields on fullscreen, pl
 - **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
 - **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each; see [Additive particles](#additive-particles).
 - **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value, `iFrontFacing` is `true`, and `iInstanceIndex` is 0.
+
+## Mesh Topology
+
+Plane, cube, sphere, and model geometry take a `topology` too, for wireframe and point-cloud views of the mesh:
+
+```json
+"geometry": { "type": "sphere", "topology": "line-list" }
+```
+
+| `topology` | Draws |
+|------------|-------|
+| `triangle-list` (default) | The mesh's triangles |
+| `line-list` | A wireframe: each unique edge of the triangles once |
+| `point-list` | Each unique vertex once, as a 1px point |
+
+The vertex shader runs as usual, with `vertexIndex` the mesh vertex index, so a displaced or animated mesh stays displaced in every view. Strip topologies do not apply to meshes. Lines and points are 1px wide and are never culled, so `cull` has no effect on them. In the config panel, the Topology control under Geometry offers Triangles, Wireframe and Points for meshes.
 
 ## Instancing
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebGPUMeshResources } from "../../webgpu/WebGPUMeshResources";
-import { createPreviewMesh } from "../../preview3d/meshes";
+import { createEdgeIndices, createPreviewMesh } from "../../preview3d/meshes";
 
 const createDevice = () => ({
   createBuffer: vi.fn(({ size }: { size: number }) => ({ size, destroy: vi.fn() })),
@@ -19,6 +19,25 @@ describe("WebGPUMeshResources", () => {
     expect(mesh.indexCount).toBe(expected.indices.length);
     expect(mesh.vertexBuffer).toMatchObject({ size: mesh.vertexCount * 32 });
     expect(resources.get(kind)).toBe(mesh);
+  });
+
+  it.each(["plane", "cube", "sphere"] as const)("uploads the %s mesh's unique edges in the triangle index format", (kind) => {
+    const device = createDevice();
+    const mesh = new WebGPUMeshResources(device as unknown as GPUDevice).get(kind);
+    const edges = createEdgeIndices(createPreviewMesh(kind).indices);
+
+    expect(mesh.edgeIndexCount).toBe(edges.length);
+    expect(mesh.edgeIndexBuffer).toMatchObject({ size: edges.byteLength });
+    expect(device.queue.writeBuffer).toHaveBeenCalledWith(mesh.edgeIndexBuffer, 0, edges);
+  });
+
+  it("destroys the edge buffers with the rest of a mesh", () => {
+    const resources = new WebGPUMeshResources(createDevice() as unknown as GPUDevice);
+    const mesh = resources.get("cube");
+
+    resources.dispose();
+
+    expect(mesh.edgeIndexBuffer.destroy).toHaveBeenCalledTimes(1);
   });
 
   it("gives the plane four vertices, matching the indices its hook receives", () => {

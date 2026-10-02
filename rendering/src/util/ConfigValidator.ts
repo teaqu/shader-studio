@@ -5,6 +5,7 @@ import {
   GEOMETRY_TYPES,
   MAX_INSTANCE_COUNT,
   MAX_VERTEX_COUNT,
+  MESH_TOPOLOGIES,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
   type GeometryConfig,
@@ -26,8 +27,9 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
 }
 
 /**
- * Field-specific errors for `vertexCount`, `topology` and `space`, which only
- * vertices geometry accepts. Reported separately so the message names the bad field.
+ * Field-specific errors for `vertexCount`, `topology` and `space`. Vertices
+ * geometry accepts all three; meshes accept only a mesh `topology`; fullscreen
+ * accepts none. Reported separately so the message names the bad field.
  */
 function validateGeometryVertexFields(geometry: unknown, passName: string, errors: string[]): void {
   if (!isPlainObject(geometry)) {
@@ -40,9 +42,15 @@ function validateGeometryVertexFields(geometry: unknown, passName: string, error
       return;
     }
     for (const field of VERTEX_FIELDS) {
-      if (geometry[field] !== undefined) {
-        errors.push(`${passName} pass geometry ${field} is only supported for vertices geometry, not ${type}`);
+      if (geometry[field] === undefined || (field === "topology" && type !== "fullscreen")) {
+        continue;
       }
+      errors.push(field === "topology"
+        ? `${passName} pass geometry topology is not supported for fullscreen geometry`
+        : `${passName} pass geometry ${field} is only supported for vertices geometry, not ${type}`);
+    }
+    if (type !== "fullscreen" && topology !== undefined && !isOneOf(MESH_TOPOLOGIES, topology)) {
+      errors.push(`${passName} pass geometry topology for ${type} geometry must be one of: ${MESH_TOPOLOGIES.join(", ")}`);
     }
     return;
   }

@@ -10,12 +10,14 @@ import {
   DEFAULT_CULL_MODE,
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_INSTANCE_COUNT,
+  DEFAULT_MESH_TOPOLOGY,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
   DEPTH_COMPARE_FUNCTIONS,
   GEOMETRY_TYPES,
   MAX_INSTANCE_COUNT,
+  MESH_TOPOLOGIES,
   MAX_VERTEX_COUNT,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
@@ -177,16 +179,43 @@ suite('Shader config JSON schema', () => {
     }
   });
 
-  test('rejects vertexCount, topology and space on fullscreen, mesh and model geometry', () => {
+  test('rejects vertexCount and space on fullscreen, mesh and model geometry, and topology on fullscreen', () => {
+    assertInvalid({
+      version: '1.0',
+      passes: { Image: { geometry: { type: 'fullscreen', topology: 'triangle-list' } } },
+    }, 'should NOT have additional properties');
     const others = [{ type: 'fullscreen' }, { type: 'plane' }, { type: 'cube' }, { type: 'sphere' }, { type: 'model', path: './cat.glb' }];
     for (const geometry of others) {
-      for (const extra of [{ vertexCount: 6 }, { topology: 'line-list' }, { space: 'clip' }]) {
+      for (const extra of [{ vertexCount: 6 }, { space: 'clip' }]) {
         assertInvalid({
           version: '1.0',
           passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, ...extra } } },
         }, 'should NOT have additional properties');
       }
     }
+  });
+
+  test('accepts the mesh topologies on plane, cube, sphere and model geometry', () => {
+    const meshes = [{ type: 'plane' }, { type: 'cube' }, { type: 'sphere' }, { type: 'model', path: './cat.glb' }];
+    for (const geometry of meshes) {
+      for (const topology of MESH_TOPOLOGIES) {
+        assertValid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'buffer-a.glsl', geometry: { ...geometry, topology } } } });
+      }
+    }
+  });
+
+  test('rejects strip and unknown topologies on mesh geometry', () => {
+    for (const topology of ['triangle-strip', 'line-strip', 'triangle-fan', '']) {
+      assertInvalid({
+        version: '1.0',
+        passes: { Image: { geometry: { type: 'sphere', topology } } },
+      }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('keeps the mesh topologies in sync with the shared config types', () => {
+    assert.deepStrictEqual(schema.definitions.MeshTopology.enum, [...MESH_TOPOLOGIES]);
+    assert.strictEqual(schema.definitions.MeshTopology.default, DEFAULT_MESH_TOPOLOGY);
   });
 
   test('accepts instanceCount on every geometry except fullscreen', () => {

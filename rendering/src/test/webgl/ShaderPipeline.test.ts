@@ -681,7 +681,7 @@ describe("ShaderPipeline", () => {
           },
           BufferB: { path: "b.glsl", geometry: { type: "vertices", topology: "point-list" }, inputs: {} },
           BufferC: { path: "c.glsl", geometry: { type: "fullscreen" }, blend: "alpha", inputs: {} },
-          BufferD: { path: "d.glsl", geometry: { type: "cube", instanceCount: 3 }, cull: "front", inputs: {} },
+          BufferD: { path: "d.glsl", geometry: { type: "cube", topology: "point-list", instanceCount: 3 }, cull: "front", inputs: {} },
           Image: { geometry: { type: "vertices", vertexCount: 6 }, inputs: {} },
         },
       } as const;
@@ -708,20 +708,23 @@ describe("ShaderPipeline", () => {
       expect(passes.BufferB).not.toHaveProperty("blend");
       expect(passes.Image).toMatchObject({ geometry: "vertices", vertexCount: 6 });
       expect(passes.BufferC).toMatchObject({ geometry: "fullscreen", blend: "alpha" });
-      expect(passes.BufferD).toMatchObject({ geometry: "cube", cull: "front", instanceCount: 3 });
+      expect(passes.BufferD).toMatchObject({ geometry: "cube", topology: "point-list", cull: "front", instanceCount: 3 });
       for (const name of ["BufferB", "BufferC", "Image"]) {
         expect(passes[name]).not.toHaveProperty("instanceCount");
       }
       for (const name of ["BufferC", "BufferD"]) {
         expect(passes[name]).not.toHaveProperty("vertexCount");
-        expect(passes[name]).not.toHaveProperty("topology");
         expect(passes[name]).not.toHaveProperty("space");
       }
+      expect(passes.BufferC).not.toHaveProperty("topology");
       // Passes compile in configured order, one call each.
       const order = shaderPipeline.getPasses().map((pass) => pass.name);
       const optionsFor = (name: string) => mockShaderCompiler.compileShaderAsync.mock.calls[order.indexOf(name)][1];
       expect(optionsFor("BufferA")).toMatchObject({ geometry: "vertices", vertices: { space: "clip", topology: "line-strip" } });
       expect(optionsFor("BufferB")).toMatchObject({ geometry: "vertices", vertices: { space: "world", topology: "point-list" } });
+      expect(optionsFor("BufferB")).not.toHaveProperty("meshTopology");
+      expect(optionsFor("BufferD")).toMatchObject({ geometry: "cube", meshTopology: "point-list" });
+      expect(optionsFor("BufferD")).not.toHaveProperty("vertices");
       expect(optionsFor("Image")).toMatchObject({ geometry: "vertices", vertices: { space: "world", topology: "triangle-list" } });
       expect(optionsFor("BufferC")).not.toHaveProperty("vertices");
       expect(optionsFor("BufferD")).not.toHaveProperty("vertices");
@@ -859,6 +862,7 @@ describe("ShaderPipeline", () => {
         }],
         [buffers.BufferB, {
           geometry: "sphere",
+          meshTopology: "triangle-list",
           commonCode: "",
           slotAssignments: [],
           channelTypes: ["2D", "2D", "2D", "2D"],
@@ -883,6 +887,7 @@ describe("ShaderPipeline", () => {
         },
         {
           geometry: "sphere",
+          meshTopology: "triangle-list",
           commonCode: "",
           slotAssignments: [],
           channelTypes: ["2D", "2D", "2D", "2D"],
@@ -958,6 +963,7 @@ describe("ShaderPipeline", () => {
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenCalledTimes(3);
       expect(mockShaderCompiler.compileShaderAsync).toHaveBeenNthCalledWith(3, bufferBSource, {
         geometry: "sphere",
+        meshTopology: "triangle-list",
         commonCode: "",
         slotAssignments: [],
         channelTypes: ["2D", "2D", "2D", "2D"],
