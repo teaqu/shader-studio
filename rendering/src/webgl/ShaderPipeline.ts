@@ -9,10 +9,10 @@ import type { TimeManager } from "../util/TimeManager";
 import type { CustomUniformManager } from "./CustomUniformManager";
 import { assignInputSlots, resolveChannelSamplerTypes } from "../util/InputSlotAssigner";
 import { resolveBufferPassSize } from "./BufferPassResolution";
-import { blendFormatFallbackWarning, resolveBlendedBufferFormat } from "../util/BufferFormatResolver";
+import { bufferFormatFallbackWarning, resolveRenderedBufferFormat } from "../util/BufferFormatResolver";
 import type { WebGLRenderLimits } from "./WebGLRenderLimits";
 import type { RenderPassSettings } from "@shader-studio/types";
-import { meshTopology, resolveInstanceDraw, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
+import { meshTopology, resolveInstanceDraw, resolveRenderState, resolveMeshTopology, resolvePassGeometry, resolvePassRenderSettings, resolveVerticesDraw, verticesSpace, verticesTopology } from "../types/Geometry";
 import { isMeshGeometry } from "../preview3d/MeshFragmentContext";
 
 const VERTEX_SOURCE_PREFIX = VERTEX_PASS_PREFIX;
@@ -229,9 +229,10 @@ export class ShaderPipeline {
     }
     const buffer = pass as BufferPass;
     const requested = buffer.outputFormat === "rgba16float" ? "rgba16float" : "rgba32float";
-    const blended = resolveBlendedBufferFormat(requested, buffer.blend, this.float32Blendable);
-    return blended.fallbackReason
-      ? { outputFormat: blended.format, outputFormatWarning: blendFormatFallbackWarning(passName) }
+    const samples = resolveRenderState({ geometry: resolvePassGeometry(buffer), ...resolvePassRenderSettings(buffer) }).samples;
+    const rendered = resolveRenderedBufferFormat(requested, { blend: buffer.blend, samples }, this.float32Blendable);
+    return rendered.fallbackReason
+      ? { outputFormat: rendered.format, outputFormatWarning: bufferFormatFallbackWarning(passName, rendered.fallbackReason) }
       : { outputFormat: buffer.outputFormat };
   }
 

@@ -2734,12 +2734,14 @@ export class WebGPURenderingEngine implements RenderingEngine {
 
       const renderState = resolveRenderState(pass);
       const [clearR, clearG, clearB, clearA] = renderState.clear;
+      // With MSAA the pass draws into the multisampled texture and resolves into
+      // its output; the samples themselves are not needed after the pass.
+      const msaaView = pipeline.getMsaaView?.() ?? null;
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: targetView,
+          ...(msaaView ? { view: msaaView, resolveTarget: targetView, storeOp: "discard" as const } : { view: targetView, storeOp: "store" as const }),
           clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
           loadOp: "clear",
-          storeOp: "store",
         }],
         ...(pass.geometry && pass.geometry !== "fullscreen" && pipeline.getDepthView?.() ? {
           depthStencilAttachment: { view: pipeline.getDepthView()!, depthClearValue: depthClearValue(renderState), depthLoadOp: "clear", depthStoreOp: "store" },

@@ -764,6 +764,35 @@ describe("ShaderPipeline", () => {
       expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), false, "auto");
     });
 
+    describe("multisampled rgba32float buffers", () => {
+      const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
+      const compile = (bufferA: Record<string, unknown>) => {
+        mockShaderCompiler.compileShaderAsync.mockResolvedValue(createMockShader());
+        return shaderPipeline.compileShaderPipeline(source, {
+          version: "1",
+          passes: { BufferA: { path: "a.glsl", inputs: {}, geometry: { type: "vertices" }, ...bufferA }, Image: { inputs: {} } },
+        } as ShaderConfig, "msaa.glsl", { BufferA: source });
+      };
+      const fallbackWarning = "BufferA: renders into rgba16float because rgba32float cannot be multisampled";
+
+      it.each([undefined, "auto", "rgba32float"] as const)("stores a multisampled %s buffer as rgba16float with a warning, even when float32 blends", async (outputFormat) => {
+        shaderPipeline.setFloat32Blendable(true);
+
+        const result = await compile({ samples: 4, ...(outputFormat ? { outputFormat } : {}) });
+
+        expect(result.success).toBe(true);
+        expect(result.warnings).toContain(fallbackWarning);
+        expect(shaderPipeline.getPass("BufferA")).toMatchObject({ outputFormat: "rgba16float", samples: 4 });
+        expect(mockBufferManager.createPingPongBuffers).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), true, "rgba16float");
+      });
+
+      it.each([[{ samples: 1 }], [{ samples: 4, outputFormat: "rgba16float" }]])("keeps the requested format without a warning for %j", async (bufferA) => {
+        const result = await compile(bufferA);
+
+        expect(result.warnings ?? []).not.toContain(fallbackWarning);
+      });
+    });
+
     describe("blending into rgba32float buffers", () => {
       const source = "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}";
       const compile = (bufferA: Record<string, unknown>, image: Record<string, unknown> = {}) => {

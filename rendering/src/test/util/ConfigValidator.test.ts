@@ -388,7 +388,28 @@ describe("ConfigValidator", () => {
             .toEqual(["Image pass geometry type must be one of: fullscreen, vertices, plane, cube, sphere, model"]);
         });
 
-        it.each([["blend", "additive"], ["clear", [0, 0, 0, 0]], ["depth", { test: false }], ["cull", "back"]])("rejects %s on compute passes", (field, value) => {
+        it.each([1, 4])("accepts samples %d on every non-fullscreen geometry of Image and buffer passes", (samples) => {
+          for (const geometry of nonFullscreen) {
+            expect(image({ geometry, samples })).toEqual(valid);
+            expect(buffer({ geometry, samples })).toEqual(valid);
+          }
+        });
+
+        it.each([0, 2, 3, 8, 16, 4.5, "4", null, true])("rejects samples %s", (samples) => {
+          expect(image({ geometry: { type: "cube" }, samples })).toEqual({
+            isValid: false,
+            errors: ["Image pass samples must be one of: 1, 4"],
+          });
+        });
+
+        it.each([undefined, { type: "fullscreen" }])("rejects samples on fullscreen geometry (%j)", (geometry) => {
+          expect(buffer({ ...(geometry ? { geometry } : {}), samples: 1 })).toEqual({
+            isValid: false,
+            errors: ["BufferA pass samples is not supported for fullscreen geometry, which antialiases in mainImage"],
+          });
+        });
+
+        it.each([["blend", "additive"], ["clear", [0, 0, 0, 0]], ["depth", { test: false }], ["cull", "back"], ["samples", 4]])("rejects %s on compute passes", (field, value) => {
           const result = ConfigValidator.validateConfig({
             version: "1.0",
             passes: { Image: {}, Sim: { type: "compute", path: "sim.slang", [field]: value } },
@@ -396,7 +417,7 @@ describe("ConfigValidator", () => {
           expect(result).toEqual({ isValid: false, errors: [`Sim compute pass cannot define ${field}`] });
         });
 
-        it.each([["blend", "none"], ["clear", [0, 0, 0, 1]], ["depth", {}], ["cull", "none"]])("rejects %s on the common pass", (field, value) => {
+        it.each([["blend", "none"], ["clear", [0, 0, 0, 1]], ["depth", {}], ["cull", "none"], ["samples", 1]])("rejects %s on the common pass", (field, value) => {
           const result = ConfigValidator.validateConfig({
             version: "1.0",
             passes: { Image: {}, common: { path: "common.glsl", [field]: value } },

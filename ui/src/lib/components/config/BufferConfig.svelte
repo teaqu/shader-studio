@@ -16,6 +16,7 @@
     FullscreenGeometryConfig,
     MeshGeometryConfig,
     MeshTopology,
+    SampleCount,
     ModelGeometryConfig,
     ComputePass,
     ShaderLanguageId,
@@ -36,6 +37,7 @@
     DEFAULT_DEPTH_COMPARE,
     DEFAULT_INSTANCE_COUNT,
     DEFAULT_MESH_TOPOLOGY,
+    DEFAULT_SAMPLE_COUNT,
     DEFAULT_VERTEX_COUNT,
     DEFAULT_VERTEX_SPACE,
     DEFAULT_VERTEX_TOPOLOGY,
@@ -162,6 +164,7 @@
     ...('clear' in config && config.clear ? { clear: config.clear } : {}),
     ...('depth' in config && config.depth ? { depth: config.depth } : {}),
     ...('cull' in config && config.cull ? { cull: config.cull } : {}),
+    ...('samples' in config && config.samples ? { samples: config.samples } : {}),
   }));
   const clearRgbHex = $derived(`#${renderState.clear.slice(0, 3)
     .map((component) => Math.round(component * 255).toString(16).padStart(2, '0'))
@@ -404,7 +407,7 @@
     updateBufferResolution(undefined);
   }
 
-  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; clear?: ClearColor; depth?: DepthSettings; cull?: CullMode };
+  type RenderSettingsConfig = EditableConfig & { blend?: BlendMode; clear?: ClearColor; depth?: DepthSettings; cull?: CullMode; samples?: SampleCount };
 
   /** Drops keys whose value is undefined so defaults never reach the config file. */
   function withoutUndefined<T extends object>(value: T): Partial<T> {
@@ -453,9 +456,9 @@
     modelSelectionPending = false;
     const { geometry: _geometry, ...current } = config as RenderSettingsConfig;
     if (type === 'fullscreen') {
-      // Fullscreen has no depth buffer, nothing to cull and draws once; keep them for a switch back.
-      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull, instanceCount: instancedGeometry?.instanceCount });
-      const { depth: _depth, cull: _cull, ...rest } = current;
+      // Fullscreen has no depth buffer, nothing to cull or antialias, and draws once; keep them for a switch back.
+      rememberDrawFields(shaderPath, bufferName, { depth: current.depth, cull: current.cull, samples: current.samples, instanceCount: instancedGeometry?.instanceCount });
+      const { depth: _depth, cull: _cull, samples: _samples, ...rest } = current;
       updateConfig(rest as EditableConfig);
       return;
     }
@@ -463,7 +466,8 @@
     if (selectedGeometry === 'fullscreen') {
       const depth = takeDrawField(shaderPath, bufferName, 'depth');
       const cull = takeDrawField(shaderPath, bufferName, 'cull');
-      Object.assign(restored, depth ? { depth } : {}, cull ? { cull } : {});
+      const samples = takeDrawField(shaderPath, bufferName, 'samples');
+      Object.assign(restored, depth ? { depth } : {}, cull ? { cull } : {}, samples ? { samples } : {});
     }
     const geometry = type === 'vertices'
       ? { type, ...takeDrawField(shaderPath, bufferName, 'vertices'), ...carriedInstanceCount() }
@@ -535,7 +539,7 @@
   }
 
   /** Writes one pass-level render setting; the default value removes the key. */
-  function updateRenderSetting<K extends 'blend' | 'cull'>(field: K, value: RenderSettingsConfig[K], fallback: RenderSettingsConfig[K]) {
+  function updateRenderSetting<K extends 'blend' | 'cull' | 'samples'>(field: K, value: RenderSettingsConfig[K], fallback: RenderSettingsConfig[K]) {
     const { [field]: _current, ...rest } = config as RenderSettingsConfig;
     updateConfig((value === fallback ? rest : { ...rest, [field]: value }) as EditableConfig);
   }
@@ -566,6 +570,10 @@
     const parsed = Number((event.currentTarget as HTMLInputElement).value);
     const alpha = Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : renderState.clear[3];
     updateClear([renderState.clear[0], renderState.clear[1], renderState.clear[2], alpha]);
+  }
+
+  function handleSamplesChange(event: Event) {
+    updateRenderSetting('samples', Number((event.currentTarget as HTMLSelectElement).value) as SampleCount, DEFAULT_SAMPLE_COUNT);
   }
 
   function handleCullChange(event: Event) {
@@ -987,6 +995,13 @@
               <option value="none">None</option>
               <option value="back">Back faces</option>
               <option value="front">Front faces</option>
+            </select>
+          </div>
+          <div class="resolution-row">
+            <label class="resolution-label" for="samples-{bufferName}">Antialiasing</label>
+            <select id="samples-{bufferName}" value={String(renderState.samples)} onchange={handleSamplesChange}>
+              <option value="1">Off</option>
+              <option value="4">4× MSAA</option>
             </select>
           </div>
         {/if}

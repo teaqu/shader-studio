@@ -11,6 +11,7 @@ import {
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_INSTANCE_COUNT,
   DEFAULT_MESH_TOPOLOGY,
+  DEFAULT_SAMPLE_COUNT,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
@@ -18,6 +19,7 @@ import {
   GEOMETRY_TYPES,
   MAX_INSTANCE_COUNT,
   MESH_TOPOLOGIES,
+  SAMPLE_COUNTS,
   MAX_VERTEX_COUNT,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
@@ -301,12 +303,26 @@ suite('Shader config JSON schema', () => {
       for (const cull of CULL_MODES) {
         assertValid({ version: '1.0', passes: { Image: { geometry, cull }, BufferA: { path: 'a.glsl', geometry, cull } } });
       }
+      for (const samples of SAMPLE_COUNTS) {
+        assertValid({ version: '1.0', passes: { Image: { geometry, samples }, BufferA: { path: 'a.glsl', geometry, samples } } });
+      }
     }
+  });
+
+  test('rejects sample counts other than 1 and 4', () => {
+    for (const samples of [0, 2, 8, '4', 4.5]) {
+      assertInvalid({ version: '1.0', passes: { Image: { geometry: { type: 'cube' }, samples } } }, 'should be equal to one of the allowed values');
+    }
+  });
+
+  test('keeps the sample counts in sync with the shared config types', () => {
+    assert.deepStrictEqual(schema.definitions.SampleCount.enum, [...SAMPLE_COUNTS]);
+    assert.strictEqual(schema.definitions.SampleCount.default, DEFAULT_SAMPLE_COUNT);
   });
 
   test('rejects depth and cull on fullscreen geometry, including when geometry is omitted', () => {
     for (const pass of [{ geometry: { type: 'fullscreen' } }, {}]) {
-      for (const setting of [{ depth: { test: true } }, { depth: {} }, { cull: 'back' }, { cull: 'none' }]) {
+      for (const setting of [{ depth: { test: true } }, { depth: {} }, { cull: 'back' }, { cull: 'none' }, { samples: 4 }, { samples: 1 }]) {
         assertInvalid({ version: '1.0', passes: { Image: { ...pass, ...setting } } }, 'should match "then" schema');
         assertInvalid({ version: '1.0', passes: { Image: {}, BufferA: { path: 'a.glsl', ...pass, ...setting } } }, 'should match "then" schema');
       }
@@ -331,7 +347,7 @@ suite('Shader config JSON schema', () => {
   });
 
   test('rejects blend, clear, depth and cull on compute and Common passes', () => {
-    for (const setting of [{ blend: 'additive' }, { clear: [0, 0, 0, 1] }, { depth: { test: false } }, { cull: 'back' }]) {
+    for (const setting of [{ blend: 'additive' }, { clear: [0, 0, 0, 1] }, { depth: { test: false } }, { cull: 'back' }, { samples: 4 }]) {
       assertInvalid({
         version: '1.0',
         passes: { Image: {}, Sim: { type: 'compute', path: 'sim.slang', ...setting } },

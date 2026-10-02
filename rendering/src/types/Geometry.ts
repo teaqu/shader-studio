@@ -5,6 +5,7 @@ import {
   DEFAULT_DEPTH_COMPARE,
   DEFAULT_INSTANCE_COUNT,
   DEFAULT_MESH_TOPOLOGY,
+  DEFAULT_SAMPLE_COUNT,
   DEFAULT_VERTEX_COUNT,
   DEFAULT_VERTEX_SPACE,
   DEFAULT_VERTEX_TOPOLOGY,
@@ -16,6 +17,7 @@ import {
   type GeometryType,
   type MeshTopology,
   type RenderPassSettings,
+  type SampleCount,
   type VertexSpace,
   type VertexTopology,
 } from "@shader-studio/types";
@@ -107,6 +109,7 @@ export function resolvePassRenderSettings(pass: RenderPassSettings | undefined):
     ...(pass?.clear !== undefined ? { clear: [...pass.clear] as ClearColor } : {}),
     ...(pass?.depth !== undefined ? { depth: { ...pass.depth } } : {}),
     ...(pass?.cull !== undefined ? { cull: pass.cull } : {}),
+    ...(pass?.samples !== undefined ? { samples: pass.samples } : {}),
   };
 }
 
@@ -123,6 +126,8 @@ export interface ResolvedRenderState {
   /** Null for fullscreen geometry, which has no depth attachment. */
   depth: ResolvedDepthState | null;
   cull: CullMode;
+  /** Multisample count; 1 for fullscreen geometry. */
+  samples: SampleCount;
 }
 
 /**
@@ -137,7 +142,7 @@ export function resolveRenderState(
   const blend = pass.blend ?? DEFAULT_BLEND_MODE;
   const clear = pass.clear ?? DEFAULT_CLEAR_COLOR;
   if (geometry === "fullscreen") {
-    return { blend, clear, depth: null, cull: "none" };
+    return { blend, clear, depth: null, cull: "none", samples: DEFAULT_SAMPLE_COUNT };
   }
   const depth: DepthSettings = pass.depth ?? {};
   return {
@@ -149,6 +154,7 @@ export function resolveRenderState(
       compare: depth.compare ?? DEFAULT_DEPTH_COMPARE,
     },
     cull: pass.cull ?? DEFAULT_CULL_MODE,
+    samples: pass.samples ?? DEFAULT_SAMPLE_COUNT,
   };
 }
 
@@ -173,5 +179,5 @@ export function renderPipelineStateKey(
     ? `${verticesTopology(pass)}/${verticesSpace(pass)}`
     : pass.geometry && pass.geometry !== "fullscreen" ? meshTopology(pass) : "";
   const depth = state.depth ? `${state.depth.test}/${state.depth.write}/${state.depth.compare}` : "";
-  return [vertices, state.blend, depth, state.cull].join("|");
+  return [vertices, state.blend, depth, state.cull, state.samples].join("|");
 }

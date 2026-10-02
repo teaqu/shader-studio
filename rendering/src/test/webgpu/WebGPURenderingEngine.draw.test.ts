@@ -240,6 +240,69 @@ describe.each(["slang", "wgsl"] as const)("WebGPURenderingEngine draw calls (%s)
     expect(options[2]).toMatchObject({ geometry: "vertices", vertexSpace: "clip" });
   });
 
+  describe("multisampling", () => {
+    const createdTextures = (device: ReturnType<typeof engineHarness>["device"]) =>
+      (device.createTexture.mock.calls as unknown as [GPUTextureDescriptor][]).map(([descriptor], index) => ({
+        descriptor,
+        texture: device.createTexture.mock.results[index]!.value as { createView: ReturnType<typeof vi.fn> },
+      }));
+
+    it("draws a 4-sample pass into a multisampled target and depth buffer and resolves into its output", async () => {
+      const { engine, device, beginRenderPass } = engineHarness(language);
+      await engine.compileShaderPipeline("// image", config({ type: "vertices", vertexCount: 6 }, { samples: 4 }), imagePath);
+
+      engine.render(1000);
+
+      expect(pipelineDescriptors(device)[0].multisample).toEqual({ count: 4 });
+      const textures = createdTextures(device);
+      const depth = textures.find(({ descriptor }) => descriptor.format === "depth24plus")!;
+      const msaa = textures.find(({ descriptor }) => descriptor.label === "Image multisample")!;
+      expect(depth.descriptor.sampleCount).toBe(4);
+      expect(msaa.descriptor).toMatchObject({ format: "bgra8unorm", sampleCount: 4, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+      const [attachment] = beginRenderPass.mock.calls[0][0].colorAttachments as GPURenderPassColorAttachment[];
+      expect(attachment.view).toBe(msaa.texture.createView.mock.results.at(-1)!.value);
+      expect(attachment.resolveTarget).toBeDefined();
+      expect(attachment.storeOp).toBe("discard");
+      expect(attachment.loadOp).toBe("clear");
+    });
+
+    it("multisamples a float buffer pass in rgba16float", async () => {
+      const { engine, device } = engineHarness(language);
+      const multisampled: ShaderConfig = {
+        version: "1",
+        passes: {
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA" } } },
+          BufferA: { path: `a.${language}`, geometry: { type: "vertices" }, samples: 4 },
+        },
+      } as ShaderConfig;
+      await engine.compileShaderPipeline("// image", multisampled, imagePath, { BufferA: "// buffer" });
+
+      const msaa = createdTextures(device).find(({ descriptor }) => descriptor.label === "BufferA multisample");
+      expect(msaa?.descriptor).toMatchObject({ format: "rgba16float", sampleCount: 4 });
+    });
+
+    it("draws a 1-sample pass straight into its output", async () => {
+      const { engine, device, beginRenderPass } = engineHarness(language);
+      await engine.compileShaderPipeline("// image", config({ type: "vertices" }, { samples: 1 }), imagePath);
+
+      engine.render(1000);
+
+      expect(pipelineDescriptors(device)[0]).not.toHaveProperty("multisample");
+      expect(createdTextures(device).every(({ descriptor }) => descriptor.sampleCount === undefined)).toBe(true);
+      const [attachment] = beginRenderPass.mock.calls[0][0].colorAttachments as GPURenderPassColorAttachment[];
+      expect(attachment).not.toHaveProperty("resolveTarget");
+      expect(attachment.storeOp).toBe("store");
+    });
+
+    it("rebuilds the pipeline when only the sample count changes", async () => {
+      const { engine, device } = engineHarness(language);
+      await engine.compileShaderPipeline("// image", config({ type: "cube" }), imagePath);
+      await engine.compileShaderPipeline("// image", config({ type: "cube" }, { samples: 4 }), imagePath);
+
+      expect(device.createRenderPipeline).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("writes camera uniforms and attaches depth for world-space vertices", async () => {
     const { engine, device, beginRenderPass } = engineHarness(language);
     await engine.compileShaderPipeline("// image", config({ type: "vertices" }), imagePath);

@@ -1,5 +1,6 @@
-import type { BlendMode } from "@shader-studio/types";
+import type { BlendMode, SampleCount } from "@shader-studio/types";
 import type { RenderPassGraph } from "../types/PassGraph";
+import { resolveRenderState } from "../types/Geometry";
 
 export type BufferOutputFormat = "auto" | "rgba16float" | "rgba32float";
 export type ResolvedBufferFormat = Exclude<BufferOutputFormat, "auto">;
@@ -14,24 +15,33 @@ export interface BufferFormatCapabilities {
 }
 
 export const FLOAT32_BLEND_FALLBACK_REASON = "rgba32float blending is unavailable on this device";
+export const FLOAT32_MULTISAMPLE_FALLBACK_REASON = "rgba32float cannot be multisampled";
 
 /**
- * Blending into rgba32float needs an optional device feature. Without it a
- * blended pass renders into rgba16float instead of failing to draw.
+ * The format a buffer pass actually renders into. Blending into rgba32float
+ * needs an optional device feature, and WebGPU never multisamples
+ * rgba32float, so such passes render into rgba16float instead of failing to
+ * draw. WebGL follows the same rule so both backends store the same format.
  */
-export function resolveBlendedBufferFormat(
+export function resolveRenderedBufferFormat(
   format: ResolvedBufferFormat,
-  blend: BlendMode | undefined,
+  settings: { blend?: BlendMode; samples?: SampleCount },
   float32Blendable: boolean,
 ): { format: ResolvedBufferFormat; fallbackReason?: string } {
-  if (format === "rgba32float" && blend !== undefined && blend !== "none" && !float32Blendable) {
+  if (format !== "rgba32float") {
+    return { format };
+  }
+  if ((settings.samples ?? 1) > 1) {
+    return { format: "rgba16float", fallbackReason: FLOAT32_MULTISAMPLE_FALLBACK_REASON };
+  }
+  if (settings.blend !== undefined && settings.blend !== "none" && !float32Blendable) {
     return { format: "rgba16float", fallbackReason: FLOAT32_BLEND_FALLBACK_REASON };
   }
   return { format };
 }
 
-export function blendFormatFallbackWarning(passName: string): string {
-  return `${passName}: renders into rgba16float because ${FLOAT32_BLEND_FALLBACK_REASON}`;
+export function bufferFormatFallbackWarning(passName: string, reason: string): string {
+  return `${passName}: renders into rgba16float because ${reason}`;
 }
 
 export function resolveBufferFormat(
@@ -80,14 +90,14 @@ export function resolveGraphBufferFormats(
       continue;
     }
     try {
-      const blended = resolveBlendedBufferFormat(
+      const rendered = resolveRenderedBufferFormat(
         resolveBufferFormat(pass.outputFormat, capabilities),
-        pass.kind === "render" ? pass.blend : undefined,
+        pass.kind === "render" ? { blend: pass.blend, samples: resolveRenderState(pass).samples } : {},
         capabilities.float32Blendable === true,
       );
-      pass.resolvedOutputFormat = blended.format;
-      if (blended.fallbackReason) {
-        graph.warnings.push(blendFormatFallbackWarning(pass.name));
+      pass.resolvedOutputFormat = rendered.format;
+      if (rendered.fallbackReason) {
+        graph.warnings.push(bufferFormatFallbackWarning(pass.name, rendered.fallbackReason));
       }
       formats.set(pass.name, pass.resolvedOutputFormat);
     } catch (error) {

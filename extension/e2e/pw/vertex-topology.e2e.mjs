@@ -367,6 +367,45 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
       await expect.poll(() => whiteSamples(frame), { message: 'solid sphere not drawn' }).toBeGreaterThan(40);
     });
 
+    test('turns on 4x MSAA in the config panel, keeps drawing, and keeps it after reload', async ({ vscode }) => {
+      rmSync(fixtureDir, { recursive: true, force: true });
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(shaderPath, IMAGE[language]);
+      writeConfig({ geometry: { type: 'cube' } });
+
+      let frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Antialiasing')).toHaveValue('1');
+
+      await frame.getByLabel('Antialiasing').selectOption('4');
+      await expect.poll(image).toEqual({ geometry: { type: 'cube' }, samples: 4 });
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      await expect.poll(() => whiteSamples(frame), { message: 'multisampled cube not drawn', timeout: 30_000 }).toBeGreaterThan(40);
+
+      await vscode.evaluateInHost(vscode => {
+        setTimeout(() => vscode.commands.executeCommand('workbench.action.reloadWindow'), 100);
+      });
+      await expect.poll(() => frame.isDetached(), { timeout: 30_000 }).toBe(true);
+      frame = await openShader(vscode, shaderPath);
+      await expect(frame.getByLabel('Toggle pause', { exact: true })).not.toHaveClass(/error/);
+      await expect.poll(() => whiteSamples(frame), { message: 'multisampled cube not drawn after reload', timeout: 30_000 }).toBeGreaterThan(40);
+      await openConfigPanel(frame);
+      await frame.getByRole('button', { name: 'Image', exact: true }).click();
+      await expect(frame.getByLabel('Antialiasing')).toHaveValue('4');
+
+      // Fullscreen hides the control and drops samples; a mesh restores it.
+      await frame.getByLabel('Geometry').selectOption('fullscreen');
+      await expect.poll(image).toEqual({});
+      await expect(frame.getByLabel('Antialiasing')).toBeHidden();
+      await frame.getByLabel('Geometry').selectOption('cube');
+      await expect.poll(image).toEqual({ geometry: { type: 'cube' }, samples: 4 });
+
+      await frame.getByLabel('Antialiasing').selectOption('1');
+      await expect.poll(image).toEqual({ geometry: { type: 'cube' } });
+    });
+
     test('reports vertices, depth and cull fields on the wrong geometry as config errors', async ({ vscode }) => {
       rmSync(fixtureDir, { recursive: true, force: true });
       mkdirSync(fixtureDir, { recursive: true });
@@ -379,6 +418,8 @@ for (const language of ['glsl', 'slang', 'wgsl']) {
         [{ geometry: { type: 'fullscreen', instanceCount: 2 } }, 'instanceCount is not supported for fullscreen geometry'],
         [{ geometry: { type: 'cube', instanceCount: 0 } }, 'instanceCount must be an integer from 1 to 2147483647'],
         [{ geometry: { type: 'sphere', topology: 'line-strip' } }, 'topology for sphere geometry must be one of: triangle-list, line-list, point-list'],
+        [{ samples: 4 }, 'samples is not supported for fullscreen geometry'],
+        [{ geometry: { type: 'cube' }, samples: 2 }, 'samples must be one of: 1, 4'],
       ];
 
       for (const [config, message] of cases) {

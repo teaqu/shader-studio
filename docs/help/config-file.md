@@ -225,7 +225,9 @@ passes:
 | `rgba32float` | Explicit four-component 32-bit float storage |
 
 If the requested format cannot be rendered or stored, pipeline creation reports
-an error rather than silently changing precision. The `Image` canvas format is
+an error rather than silently changing precision. The exceptions are a blended
+pass on a GPU that cannot blend 32-bit floats and a pass with `samples: 4`: both
+store `rgba16float` and show a warning. The `Image` canvas format is
 not controlled by this field. In the Config panel, **Output format** appears at
 the bottom of buffer and compute pass settings. Leave it on **Auto** unless you
 want to trade precision for lower memory use with 16-bit storage.

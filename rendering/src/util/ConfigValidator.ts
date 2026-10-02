@@ -6,16 +6,18 @@ import {
   MAX_INSTANCE_COUNT,
   MAX_VERTEX_COUNT,
   MESH_TOPOLOGIES,
+  SAMPLE_COUNTS,
   VERTEX_SPACES,
   VERTEX_TOPOLOGIES,
   type GeometryConfig,
+  type SampleCount,
   type ShaderConfig,
 } from "@shader-studio/types";
 
 const VERTEX_FIELDS = ["vertexCount", "topology", "space"] as const;
 /** Draw fields geometry may carry besides `type` (and a model's path fields). */
 const GEOMETRY_DRAW_FIELDS: readonly string[] = [...VERTEX_FIELDS, "instanceCount"];
-const RENDER_SETTING_FIELDS = ["blend", "clear", "depth", "cull"] as const;
+const RENDER_SETTING_FIELDS = ["blend", "clear", "depth", "cull", "samples"] as const;
 const DEPTH_FLAGS = ["test", "write"] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -143,9 +145,10 @@ function validateClear(clear: unknown, passName: string, errors: string[]): void
 }
 
 /**
- * Geometry plus blend/depth/cull errors for one pass. Compute and common
- * passes reject the render settings; fullscreen geometry, including an
- * omitted geometry, rejects depth and cull. Shared with the config panel.
+ * Geometry plus blend/depth/cull/samples errors for one pass. Compute and
+ * common passes reject the render settings; fullscreen geometry, including
+ * an omitted geometry, rejects depth, cull and samples. Shared with the
+ * config panel.
  */
 export function validatePassRenderSettings(pass: unknown, passName: string): string[] {
   if (!isPlainObject(pass)) {
@@ -176,6 +179,9 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
   if (pass.cull !== undefined && !isOneOf(CULL_MODES, pass.cull)) {
     errors.push(`${passName} pass cull must be one of: ${CULL_MODES.join(", ")}`);
   }
+  if (pass.samples !== undefined && !SAMPLE_COUNTS.includes(pass.samples as SampleCount)) {
+    errors.push(`${passName} pass samples must be one of: ${SAMPLE_COUNTS.join(", ")}`);
+  }
   const geometryType = pass.geometry === undefined ? "fullscreen" : isPlainObject(pass.geometry) ? pass.geometry.type : undefined;
   if (geometryType === "fullscreen") {
     if (pass.depth !== undefined) {
@@ -183,6 +189,9 @@ export function validatePassRenderSettings(pass: unknown, passName: string): str
     }
     if (pass.cull !== undefined) {
       errors.push(`${passName} pass cull is not supported for fullscreen geometry`);
+    }
+    if (pass.samples !== undefined) {
+      errors.push(`${passName} pass samples is not supported for fullscreen geometry, which antialiases in mainImage`);
     }
   }
   return errors;

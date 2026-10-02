@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PassRenderer } from "../../webgl/PassRenderer";
 import { OrbitCamera } from "../../preview3d/OrbitCamera";
-import type { PiRenderer, PiShader, PiTexture } from "../../types/piRenderer";
+import type { PiRenderer, PiRenderTarget, PiShader, PiTexture } from "../../types/piRenderer";
 import type { Pass } from "../../models";
 
 const createMockRenderer = () => ({
@@ -117,6 +117,26 @@ const createMockGl = () => ({
   drawElementsInstanced: vi.fn(),
   drawArrays: vi.fn(),
   drawArraysInstanced: vi.fn(),
+  FRAMEBUFFER: 0x8d40,
+  READ_FRAMEBUFFER: 0x8ca8,
+  DRAW_FRAMEBUFFER: 0x8ca9,
+  RENDERBUFFER: 0x8d41,
+  FRAMEBUFFER_COMPLETE: 0x8cd5,
+  RGBA8: 0x8058,
+  RGBA16F: 0x881a,
+  RGBA32F: 0x8814,
+  createFramebuffer: vi.fn(() => ({})),
+  createRenderbuffer: vi.fn(() => ({})),
+  bindFramebuffer: vi.fn(),
+  bindRenderbuffer: vi.fn(),
+  renderbufferStorage: vi.fn(),
+  renderbufferStorageMultisample: vi.fn(),
+  framebufferRenderbuffer: vi.fn(),
+  checkFramebufferStatus: vi.fn(() => 0x8cd5),
+  getInternalformatParameter: vi.fn(() => new Int32Array([4])),
+  blitFramebuffer: vi.fn(),
+  deleteFramebuffer: vi.fn(),
+  deleteRenderbuffer: vi.fn(),
   LINES: 0x0001,
   POINTS: 0x0000,
   getUniformLocation: vi.fn(),
@@ -473,6 +493,77 @@ describe("PassRenderer", () => {
       expect(mockRenderer.SetShaderConstant1I).toHaveBeenCalledWith("iInstanceCount", 4);
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
       expectGlDefaultsRestoredAfter(mockGl.drawElementsInstanced);
+    });
+
+    describe("multisampling", () => {
+      const bufferTarget = { mObjectID: { id: "fbo" }, mTex0: { mXres: 64, mYres: 32 } } as unknown as PiRenderTarget;
+      const renderMesh = (fields: Partial<Pass>, target: PiRenderTarget | null) => {
+        passRenderer = new PassRenderer(mockCanvas, mockResourceManager as any, mockBufferManager as any, mockRenderer, mockKeyboardManager as any,
+          { get: vi.fn(() => ({ vao: {}, indexCount: 36, vertexCount: 24 })), getModel: vi.fn() } as any);
+        passRenderer.renderPass({ geometry: "cube", name: "Cube", shaderSrc: "", inputs: {}, ...fields } as Pass, target, createMockShader(), defaultUniforms);
+      };
+
+      it("draws a 4-sample buffer pass into an rgba16float multisample target and resolves it after the draw", () => {
+        renderMesh({ samples: 4, outputFormat: "rgba16float" }, bufferTarget);
+
+        expect(mockGl.renderbufferStorageMultisample).toHaveBeenCalledWith(mockGl.RENDERBUFFER, 4, mockGl.RGBA16F, 64, 32);
+        expect(mockRenderer.SetRenderTarget).not.toHaveBeenCalledWith(bufferTarget);
+        expect(mockGl.blitFramebuffer).toHaveBeenCalledTimes(1);
+        expect(order(mockGl.blitFramebuffer)).toBeGreaterThan(order(mockGl.drawElements));
+        expect(mockGl.bindFramebuffer).toHaveBeenLastCalledWith(mockGl.FRAMEBUFFER, (bufferTarget as unknown as { mObjectID: object }).mObjectID);
+      });
+
+      it("multisamples the canvas in RGBA8 and resolves through a stage", () => {
+        Object.assign(mockCanvas, { width: 320, height: 180 });
+        renderMesh({ samples: 4 }, null);
+
+        expect(mockGl.renderbufferStorageMultisample).toHaveBeenCalledWith(mockGl.RENDERBUFFER, 4, mockGl.RGBA8, 320, 180);
+        expect(mockGl.blitFramebuffer).toHaveBeenCalledTimes(2);
+      });
+
+      it("uses an rgba32float multisample target for a buffer that kept rgba32float", () => {
+        renderMesh({ samples: 4, outputFormat: "rgba32float" }, bufferTarget);
+
+        expect(mockGl.renderbufferStorageMultisample).toHaveBeenCalledWith(mockGl.RENDERBUFFER, 4, mockGl.RGBA32F, 64, 32);
+      });
+
+      it("resolves even when the draw throws", () => {
+        mockGl.drawElements.mockImplementationOnce(() => {
+          throw new Error("lost context");
+        });
+
+        expect(() => renderMesh({ samples: 4 }, bufferTarget)).toThrow("lost context");
+        expect(mockGl.blitFramebuffer).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ["one sample", { samples: 1 }],
+        ["omitted samples", {}],
+        ["fullscreen geometry", { samples: 4, geometry: "fullscreen" }],
+      ] as const)("draws straight into the target for %s", (_name, fields) => {
+        renderMesh(fields as Partial<Pass>, bufferTarget);
+
+        expect(mockGl.renderbufferStorageMultisample).not.toHaveBeenCalled();
+        expect(mockRenderer.SetRenderTarget).toHaveBeenCalledWith(bufferTarget);
+      });
+
+      it("falls back to drawing straight into the target when the device cannot multisample", () => {
+        mockGl.getInternalformatParameter.mockReturnValueOnce(new Int32Array([]));
+
+        renderMesh({ samples: 4 }, bufferTarget);
+
+        expect(mockRenderer.SetRenderTarget).toHaveBeenCalledWith(bufferTarget);
+        expect(mockGl.blitFramebuffer).not.toHaveBeenCalled();
+        expect(mockGl.drawElements).toHaveBeenCalled();
+      });
+
+      it("releases the multisample buffers on dispose", () => {
+        renderMesh({ samples: 4 }, bufferTarget);
+
+        passRenderer.dispose();
+
+        expect(mockGl.deleteFramebuffer).toHaveBeenCalled();
+      });
     });
 
     describe("mesh topology", () => {

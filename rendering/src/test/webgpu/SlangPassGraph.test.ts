@@ -148,7 +148,7 @@ describe("buildSlangPassGraph", () => {
           BufferA: { path: `a.${language}`, geometry: { type: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647 }, blend: "additive", depth: { write: false } },
           BufferB: { path: `b.${language}`, geometry: { type: "vertices", topology: "point-list" } },
           BufferC: { path: `c.${language}`, geometry: { type: "fullscreen" }, blend: "premultiplied" },
-          BufferD: { path: `d.${language}`, geometry: { type: "plane", topology: "line-list", instanceCount: 4 }, cull: "front" },
+          BufferD: { path: `d.${language}`, geometry: { type: "plane", topology: "line-list", instanceCount: 4 }, cull: "front", samples: 4 },
           BufferE: { path: `e.${language}` },
         },
       },
@@ -158,7 +158,7 @@ describe("buildSlangPassGraph", () => {
     });
 
     expect(graph.errors).toEqual([]);
-    const fields = ["geometry", "vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull"] as const;
+    const fields = ["geometry", "vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull", "samples"] as const;
     const draw = Object.fromEntries(graph.passes.map((pass) => [
       pass.name,
       Object.fromEntries(fields.filter((field) => field in pass).map((field) => [field, pass[field]])),
@@ -177,7 +177,7 @@ describe("buildSlangPassGraph", () => {
       BufferA: { geometry: "vertices", vertexCount: 2_147_483_647, instanceCount: 2_147_483_647, blend: "additive", depth: { write: false } },
       BufferB: { geometry: "vertices", topology: "point-list" },
       BufferC: { geometry: "fullscreen", blend: "premultiplied" },
-      BufferD: { geometry: "plane", topology: "line-list", instanceCount: 4, cull: "front" },
+      BufferD: { geometry: "plane", topology: "line-list", instanceCount: 4, cull: "front", samples: 4 },
       BufferE: { geometry: "fullscreen" },
     });
   });
@@ -197,7 +197,7 @@ describe("buildSlangPassGraph", () => {
   it("omits draw and render-state fields from an unconfigured image-only graph", () => {
     const graph = buildSlangPassGraph({ imageCode, config: null, buffers: {}, canvasWidth: 8, canvasHeight: 8 });
 
-    for (const field of ["vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull"]) {
+    for (const field of ["vertexCount", "topology", "space", "instanceCount", "blend", "depth", "cull", "samples"]) {
       expect(graph.passes[0]).not.toHaveProperty(field);
     }
   });

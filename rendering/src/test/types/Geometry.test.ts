@@ -112,8 +112,8 @@ describe("resolvePassRenderSettings", () => {
     expect(resolvePassRenderSettings({})).toEqual({});
     const depth = { write: false };
     const clear = [0.1, 0.2, 0.3, 0.4] as const;
-    const resolved = resolvePassRenderSettings({ blend: "additive", clear, depth, cull: "back" });
-    expect(resolved).toEqual({ blend: "additive", clear: [0.1, 0.2, 0.3, 0.4], depth: { write: false }, cull: "back" });
+    const resolved = resolvePassRenderSettings({ blend: "additive", clear, depth, cull: "back", samples: 4 });
+    expect(resolved).toEqual({ blend: "additive", clear: [0.1, 0.2, 0.3, 0.4], depth: { write: false }, cull: "back", samples: 4 });
     expect(resolved.clear).not.toBe(clear);
     expect(resolved.depth).not.toBe(depth);
   });
@@ -121,9 +121,9 @@ describe("resolvePassRenderSettings", () => {
 
 describe("resolveRenderState", () => {
   it("gives fullscreen no depth state and no culling, keeping its blend", () => {
-    expect(resolveRenderState({ geometry: "fullscreen" })).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none" });
-    expect(resolveRenderState({})).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none" });
-    expect(resolveRenderState({ geometry: "fullscreen", blend: "alpha", clear: [1, 0, 0, 0] })).toEqual({ blend: "alpha", clear: [1, 0, 0, 0], depth: null, cull: "none" });
+    expect(resolveRenderState({ geometry: "fullscreen" })).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none", samples: 1 });
+    expect(resolveRenderState({})).toEqual({ blend: "none", clear: [0, 0, 0, 1], depth: null, cull: "none", samples: 1 });
+    expect(resolveRenderState({ geometry: "fullscreen", blend: "alpha", clear: [1, 0, 0, 0] })).toEqual({ blend: "alpha", clear: [1, 0, 0, 0], depth: null, cull: "none", samples: 1 });
   });
 
   it.each(["plane", "cube", "sphere", "model", "vertices"] as const)("reproduces today's depth for %s when omitted", (geometry) => {
@@ -132,6 +132,7 @@ describe("resolveRenderState", () => {
       clear: [0, 0, 0, 1],
       depth: { test: true, write: true, compare: "less" },
       cull: "none",
+      samples: 1,
     });
   });
 
@@ -148,19 +149,25 @@ describe("resolveRenderState", () => {
       clear: [0.25, 0.5, 0.75, 0.5],
       depth: { test: false, write: false, compare: "greater-equal" },
       cull: "front",
+      samples: 4,
     })).toEqual({
       blend: "premultiplied",
       clear: [0.25, 0.5, 0.75, 0.5],
       depth: { test: false, write: false, compare: "greater-equal" },
       cull: "front",
+      samples: 4,
     });
+  });
+
+  it("never multisamples fullscreen geometry", () => {
+    expect(resolveRenderState({ geometry: "fullscreen", samples: 4 }).samples).toBe(1);
   });
 });
 
 describe("renderPipelineStateKey", () => {
   const base = { geometry: "vertices" as const };
 
-  it("changes with topology, space, blend, each depth field and cull", () => {
+  it("changes with topology, space, blend, each depth field, cull and samples", () => {
     const keys = [
       renderPipelineStateKey(base),
       renderPipelineStateKey({ ...base, topology: "line-list" }),
@@ -170,6 +177,7 @@ describe("renderPipelineStateKey", () => {
       renderPipelineStateKey({ ...base, depth: { write: false } }),
       renderPipelineStateKey({ ...base, depth: { compare: "greater" } }),
       renderPipelineStateKey({ ...base, cull: "back" }),
+      renderPipelineStateKey({ ...base, samples: 4 }),
     ];
     expect(new Set(keys).size).toBe(keys.length);
   });

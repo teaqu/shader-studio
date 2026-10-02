@@ -199,7 +199,8 @@ Image and buffer passes have render settings next to `geometry`, under **Renderi
   "clear": [0, 0, 0, 0],
   "blend": "additive",
   "depth": { "test": true, "write": false, "compare": "less" },
-  "cull": "back"
+  "cull": "back",
+  "samples": 4
 }
 ```
 
@@ -235,6 +236,12 @@ With `test` on, a fragment is drawn only if its depth passes `compare` against w
 ### Cull
 
 `cull` skips triangles facing one way: `none` (default) draws both sides, `back` skips triangles facing away from the camera, and `front` skips those facing it. A triangle faces the camera when its corners go counter-clockwise on screen, as on the built-in meshes and glTF models. Culling `back` saves work on closed shapes; culling `front` shows the inside of a cube. Lines and points are never culled, and `cull` on fullscreen geometry is a config error.
+
+### Antialiasing
+
+`samples` turns on multisample antialiasing for rasterised geometry: `1` (default) is off and `4` smooths the edges of triangles, lines and points. It applies to vertices, plane, cube, sphere and model geometry; fullscreen passes antialias in `mainImage` instead, so `samples` on fullscreen geometry is a config error. In the config panel it is the Antialiasing control under Rendering.
+
+Each pass draws into a multisampled target that is resolved into the pass output, so later passes, variable capture and the pixel inspector all see the smoothed image. WebGPU cannot multisample 32-bit float textures, so a multisampled buffer pass stores `rgba16float` in both renderers and reports a warning when it would otherwise be `rgba32float`. Multisampling uses four times the memory of the pass's colour and depth targets, so keep it to the passes that need it.
 
 ## Available Built-ins
 

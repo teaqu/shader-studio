@@ -76,6 +76,15 @@ describe('verticesDrawMemory', () => {
     expect(takeDrawField('/s.glsl', 'Image', 'vertices')).toEqual({ topology: 'line-strip' });
   });
 
+  it('remembers a sample count with the other fullscreen-only losses', () => {
+    rememberDrawFields('/s.glsl', 'Image', { samples: 4, cull: 'back' });
+    rememberDrawFields('/s.glsl', 'Image', { samples: undefined });
+
+    expect(takeDrawField('/s.glsl', 'Image', 'samples')).toBe(4);
+    expect(takeDrawField('/s.glsl', 'Image', 'samples')).toBeUndefined();
+    expect(takeDrawField('/s.glsl', 'Image', 'cull')).toBe('back');
+  });
+
   it('forgets everything on reset', () => {
     rememberDrawFields('/s.glsl', 'Image', { vertices: { vertexCount: 6 }, cull: 'back' });
 

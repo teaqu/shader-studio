@@ -137,6 +137,8 @@ export class SlangPassPipeline {
   private uniformBuffer: GPUBuffer | null = null;
   private meshUniformBuffer: GPUBuffer | null = null;
   private depthTexture: GPUTexture | null = null;
+  /** Multisampled colour target resolved into the pass output; only with samples above 1. */
+  private msaaTexture: GPUTexture | null = null;
   private bindGroup: GPUBindGroup | null = null;
   private bindGroupResourceIdentities: unknown[] | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
@@ -209,9 +211,7 @@ export class SlangPassPipeline {
     if (this.usesCameraUniforms()) {
       this.meshUniformBuffer = this.device.createBuffer({ size: MESH_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     }
-    if (this.hasDepthAttachment()) {
-      this.depthTexture = this.device.createTexture({ size: { width: this.descriptor.width, height: this.descriptor.height }, format: "depth24plus", usage: GPUTextureUsage.RENDER_ATTACHMENT });
-    }
+    this.resizeAttachments(this.descriptor.width, this.descriptor.height);
     this.sampler = this.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     if (this.descriptor.output === "texture") {
       const textures: GPUTexture[] = [];
@@ -284,7 +284,7 @@ export class SlangPassPipeline {
     }
     if (this.descriptor.output !== "texture" || this.textures.length === 0) {
       this.descriptor = { ...this.descriptor, width, height };
-      this.resizeDepthTexture(width, height);
+      this.resizeAttachments(width, height);
       return;
     }
     const encoder = this.device.createCommandEncoder();
@@ -345,13 +345,13 @@ export class SlangPassPipeline {
       this.textures = newTextures;
       this.outputViews = newViews;
       this.textureIndex = oldTextureIndex;
-      this.resizeDepthTexture(width, height);
+      this.resizeAttachments(width, height);
       return () => {
         this.retireTexturesAfterSubmittedWork(oldTextures);
       };
     }
     this.descriptor = { ...this.descriptor, width, height };
-    this.resizeDepthTexture(width, height);
+    this.resizeAttachments(width, height);
     return null;
   }
 
@@ -438,12 +438,21 @@ export class SlangPassPipeline {
     return this.depthTexture?.createView() ?? null;
   }
 
-  /** Shader stages plus the topology, blend, depth and cull baked into the render pipeline. */
-  private buildPipelineDescriptor(shaderModule: GPUShaderModule, bindGroupLayout: GPUBindGroupLayout): GPURenderPipelineDescriptor {
-    const renderState = this.descriptor.renderState ?? resolveRenderState({
+  /** The multisampled colour attachment to draw into and resolve from, or null without MSAA. */
+  getMsaaView(): GPUTextureView | null {
+    return this.msaaTexture?.createView() ?? null;
+  }
+
+  private renderState(): ResolvedRenderState {
+    return this.descriptor.renderState ?? resolveRenderState({
       geometry: this.descriptor.geometry,
       ...(this.descriptor.vertexSpace ? { space: this.descriptor.vertexSpace } : {}),
     });
+  }
+
+  /** Shader stages plus the topology, blend, depth, cull and sample count baked into the render pipeline. */
+  private buildPipelineDescriptor(shaderModule: GPUShaderModule, bindGroupLayout: GPUBindGroupLayout): GPURenderPipelineDescriptor {
+    const renderState = this.renderState();
     return {
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
       vertex: {
@@ -474,6 +483,7 @@ export class SlangPassPipeline {
           depthCompare: renderState.depth.test ? renderState.depth.compare : "always" as const,
         },
       } : {}),
+      ...(renderState.samples > 1 ? { multisample: { count: renderState.samples } } : {}),
     };
   }
 
@@ -574,18 +584,31 @@ export class SlangPassPipeline {
     });
   }
 
-  private resizeDepthTexture(width: number, height: number): void {
+  /** (Re)creates the depth and multisampled colour attachments at the pass size and sample count. */
+  private resizeAttachments(width: number, height: number): void {
     if (!this.hasDepthAttachment()) {
       return;
     }
+    const sampleCount = this.renderState().samples;
     const nextDepthTexture = this.device.createTexture({
       label: `${this.descriptor.name} depth`,
       size: { width, height },
       format: "depth24plus",
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      ...(sampleCount > 1 ? { sampleCount } : {}),
     });
     this.depthTexture?.destroy?.();
     this.depthTexture = nextDepthTexture;
+    this.msaaTexture?.destroy?.();
+    this.msaaTexture = sampleCount > 1
+      ? this.device.createTexture({
+        label: `${this.descriptor.name} multisample`,
+        size: { width, height },
+        format: this.targetFormat(),
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        sampleCount,
+      })
+      : null;
   }
 
   private resetResources(): void {
@@ -604,6 +627,8 @@ export class SlangPassPipeline {
     this.meshUniformBuffer = null;
     this.depthTexture?.destroy?.();
     this.depthTexture = null;
+    this.msaaTexture?.destroy?.();
+    this.msaaTexture = null;
   }
 
   private invalidateBindGroup(): void {

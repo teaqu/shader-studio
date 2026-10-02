@@ -162,12 +162,22 @@ export const CULL_MODES = ["none", "back", "front"] as const;
 export type CullMode = (typeof CULL_MODES)[number];
 export const DEFAULT_CULL_MODE: CullMode = "none";
 
+/**
+ * Multisample antialiasing sample counts: 1 is off, 4 is the count both
+ * WebGL2 and WebGPU guarantee for the formats a pass renders to.
+ */
+export const SAMPLE_COUNTS = [1, 4] as const;
+export type SampleCount = (typeof SAMPLE_COUNTS)[number];
+export const DEFAULT_SAMPLE_COUNT: SampleCount = 1;
+
 /** Fixed-function state shared by Image and buffer passes, siblings of `geometry`. */
 export interface RenderPassSettings {
   blend?: BlendMode;
   clear?: ClearColor;
   depth?: DepthSettings;
   cull?: CullMode;
+  /** Antialias rasterised geometry; not for fullscreen geometry. */
+  samples?: SampleCount;
 }
 
 export interface ImagePass extends RenderPassSettings {

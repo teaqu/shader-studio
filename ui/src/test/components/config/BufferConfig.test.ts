@@ -1042,6 +1042,49 @@ describe('BufferConfig', () => {
       });
       const cube = (settings: Record<string, unknown> = {}) => ({ path: 'a.glsl', inputs: {}, geometry: { type: 'cube' as const }, ...settings });
 
+      it('offers Antialiasing off or 4x MSAA for geometry, defaulting to off, but not for fullscreen', () => {
+        const view = renderPass(cube());
+        const samples = view.getByLabelText('Antialiasing') as HTMLSelectElement;
+        expect(samples.value).toBe('1');
+        expect(Array.from(samples.options).map((option) => [option.value, option.textContent])).toEqual([['1', 'Off'], ['4', '4× MSAA']]);
+        view.unmount();
+
+        expect(renderPass({ path: 'a.glsl', inputs: {} }).queryByLabelText('Antialiasing')).toBeNull();
+      });
+
+      it('shows a configured sample count', () => {
+        expect((renderPass(cube({ samples: 4 })).getByLabelText('Antialiasing') as HTMLSelectElement).value).toBe('4');
+      });
+
+      it('writes 4x MSAA as samples and removes it when switched off', async () => {
+        const view = renderPass(cube());
+        await fireEvent.change(view.getByLabelText('Antialiasing'), { target: { value: '4' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ samples: 4 }));
+        view.unmount();
+
+        const configured = renderPass(cube({ samples: 4, cull: 'back' }));
+        await fireEvent.change(configured.getByLabelText('Antialiasing'), { target: { value: '1' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', cube({ cull: 'back' }));
+      });
+
+      it('drops samples for fullscreen and restores them on the way back', async () => {
+        const view = renderPass(cube({ samples: 4 }), 'BufferF');
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'fullscreen' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferF', { path: 'a.glsl', inputs: {} });
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'sphere' } });
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferF', { path: 'a.glsl', inputs: {}, samples: 4, geometry: { type: 'sphere' } });
+      });
+
+      it('keeps samples when switching between non-fullscreen geometry', async () => {
+        const view = renderPass(cube({ samples: 4 }));
+
+        await fireEvent.change(view.getByLabelText('Geometry'), { target: { value: 'vertices' } });
+
+        expect(mockOnUpdate).toHaveBeenLastCalledWith('BufferA', { path: 'a.glsl', inputs: {}, samples: 4, geometry: { type: 'vertices' } });
+      });
+
       it('offers the four blend modes on fullscreen passes but no depth or cull', () => {
         const { getByLabelText, queryByLabelText } = renderPass({ path: 'a.glsl', inputs: {} });
 

@@ -914,3 +914,73 @@ describe.each(["glsl", "slang", "wgsl"] as const)("%s mesh topology", (language)
     }
   });
 });
+
+/** Pixels whose red channel is neither black nor white: antialiased edge coverage. */
+function countPartial(region: Uint8ClampedArray): number {
+  let count = 0;
+  for (let y = 0; y < CANVAS_SIZE; y += 1) {
+    for (let x = 0; x < CANVAS_SIZE; x += 1) {
+      const red = pixelAt(region, x, y)[0];
+      count += red > 0 && red < 255 ? 1 : 0;
+    }
+  }
+  return count;
+}
+
+describe.each(["glsl", "slang", "wgsl"] as const)("%s multisample antialiasing", (language) => {
+  // A white triangle with slanted edges over black.
+  const SLANTED: Vec3[] = [[-0.8, -0.8, 0], [0.8, -0.45, 0], [-0.3, 0.8, 0]];
+  const BUFFER_COPY: Record<ShaderLanguage, string> = {
+    glsl: "void mainImage(out vec4 color, in vec2 coord) { color = vec4(texture(iChannel0, coord / iResolution.xy).rgb, 1.0); }",
+    slang: "float4 mainImage(float2 coord) { return float4(sample2D(iChannel0.texture, iChannel0.sampler, coord / iResolution.xy).rgb, 1.0); }",
+    wgsl: "fn mainImage(coord: vec2f) -> vec4f { return vec4f(sample2D(iChannel0Texture, iChannel0Sampler, coord / iResolution.xy).rgb, 1.0); }",
+  };
+
+  it("antialiases the edges of a canvas pass with samples 4", { timeout: 30_000 }, async () => {
+    const draw = (settings: RenderPassSettings) =>
+      render(language, program(language, placePoints3(language, SLANTED), { type: "vertices", vertexCount: 3, space: "clip" }, settings));
+    const aliased = await draw({});
+    const smoothed = await draw({ samples: 4 });
+
+    expect(countPartial(aliased), "without MSAA").toBe(0);
+    expect(countPartial(smoothed), "with MSAA").toBeGreaterThan(0);
+    for (const region of [aliased, smoothed]) {
+      expect(pixelAt(region, 5, 9), "inside").toEqual(WHITE);
+      expect(pixelAt(region, 15, 0), "outside").toEqual(BLACK);
+    }
+  });
+
+  it("antialiases a buffer pass and resolves it into the texture later passes sample", { timeout: 30_000 }, async () => {
+    const draw = (settings: RenderPassSettings) => render(language, {
+      image: BUFFER_COPY[language],
+      buffers: {
+        BufferA: WHITE_IMAGE[language],
+        [`${VERTEX_PASS_PREFIX}BufferA`]: placePoints3(language, SLANTED),
+      },
+      config: {
+        version: "1",
+        passes: {
+          BufferA: {
+            path: `buffer-a.${language}`,
+            vertex: `buffer-a.vert.${language}`,
+            geometry: { type: "vertices", vertexCount: 3, space: "clip" },
+            ...settings,
+          },
+          Image: { inputs: { iChannel0: { type: "buffer", source: "BufferA", filter: "nearest" } } },
+        },
+      },
+    });
+
+    expect(countPartial(await draw({})), "without MSAA").toBe(0);
+    const smoothed = await draw({ samples: 4 });
+    expect(countPartial(smoothed), "with MSAA").toBeGreaterThan(0);
+    expect(pixelAt(smoothed, 5, 9), "inside").toEqual(WHITE);
+  });
+
+  it("antialiases a world-space cube with depth", { timeout: 30_000 }, async () => {
+    const draw = (settings: RenderPassSettings) => render(language, program(language, undefined, { type: "cube" }, settings));
+
+    expect(countPartial(await draw({})), "without MSAA").toBe(0);
+    expect(countPartial(await draw({ samples: 4 })), "with MSAA").toBeGreaterThan(0);
+  });
+});

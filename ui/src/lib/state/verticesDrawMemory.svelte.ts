@@ -1,10 +1,10 @@
-import type { DepthSettings, CullMode, MeshTopology, VerticesGeometryConfig } from "@shader-studio/types";
+import type { DepthSettings, CullMode, MeshTopology, SampleCount, VerticesGeometryConfig } from "@shader-studio/types";
 
 /**
  * Fields a pass loses when its geometry changes: vertexCount/topology/space
  * when it leaves vertices geometry, a mesh topology when it leaves plane,
- * cube, sphere or model geometry, and depth/cull/instanceCount when it
- * becomes fullscreen.
+ * cube, sphere or model geometry, and depth/cull/samples/instanceCount when
+ * it becomes fullscreen.
  */
 export interface RememberedDrawFields {
   vertices?: Pick<VerticesGeometryConfig, "vertexCount" | "topology" | "space">;
@@ -12,6 +12,7 @@ export interface RememberedDrawFields {
   cull?: CullMode;
   instanceCount?: number;
   meshTopology?: MeshTopology;
+  samples?: SampleCount;
 }
 
 /**
@@ -46,6 +47,7 @@ export function rememberDrawFields(shaderPath: string | undefined, passName: str
     ...(fields.cull !== undefined ? { cull: fields.cull } : {}),
     ...(fields.instanceCount !== undefined ? { instanceCount: fields.instanceCount } : {}),
     ...(fields.meshTopology !== undefined ? { meshTopology: fields.meshTopology } : {}),
+    ...(fields.samples !== undefined ? { samples: fields.samples } : {}),
   };
   if (Object.keys(merged).length === 0) {
     return;

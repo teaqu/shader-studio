@@ -11,6 +11,7 @@ import type { WebGLMeshDraw, WebGLMeshResources } from "./WebGLMeshResources";
 import { OrbitCamera, type CameraMatrices } from "../preview3d/OrbitCamera";
 import { createModelMatrix, createNormalMatrix3 } from "../preview3d/math";
 import { WebGLSamplerCache } from "./WebGLSamplerCache";
+import { WebGLMultisampleTargets } from "./WebGLMultisample";
 import {
   depthClearValue,
   geometryInstanceCount,
@@ -40,6 +41,7 @@ export class PassRenderer {
   private renderer: PiRenderer;
   private keyboardManager: KeyboardManager;
   private gl: WebGL2RenderingContext | null = null;
+  private multisample: WebGLMultisampleTargets | null = null;
   private samplerCache: WebGLSamplerCache | null = null;
   private readonly meshCamera = new OrbitCamera();
 
@@ -57,6 +59,7 @@ export class PassRenderer {
     this.renderer = renderer;
     this.keyboardManager = keyboardManager;
     this.gl = canvas.getContext("webgl2");
+    this.multisample = this.gl ? new WebGLMultisampleTargets(this.gl) : null;
     this.samplerCache = this.gl ? new WebGLSamplerCache(this.gl) : null;
   }
 
@@ -125,6 +128,7 @@ export class PassRenderer {
 
   public dispose(): void {
     this.meshCamera.detach();
+    this.multisample?.dispose();
     this.samplerCache?.dispose();
     this.samplerCache = null;
   }
@@ -150,7 +154,49 @@ export class PassRenderer {
       this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
     }
 
-    this.renderer.SetRenderTarget(target);
+    const resolveMultisample = this.beginMultisample(passConfig, target);
+    if (!resolveMultisample) {
+      this.renderer.SetRenderTarget(target);
+    }
+    try {
+      this.drawPass(passConfig, shader, uniforms, slotAssignments, textureBindings, customUniforms);
+    } finally {
+      resolveMultisample?.();
+    }
+  }
+
+  /**
+   * Binds a multisampled framebuffer for a pass with `samples` above 1 and
+   * returns its resolve, or null to draw straight into the target. Buffer
+   * passes are rgba16float with MSAA (see resolveRenderedBufferFormat).
+   */
+  private beginMultisample(passConfig: Pass, target: PiRenderTarget | null): (() => void) | null {
+    const samples = resolveRenderState(passConfig).samples;
+    if (samples < 2 || !this.gl || !this.multisample || this.drawsFullscreen(passConfig)) {
+      return null;
+    }
+    const gl = this.gl;
+    const [width, height] = target?.mTex0
+      ? [target.mTex0.mXres, target.mTex0.mYres]
+      : [this.canvas.width, this.canvas.height];
+    const internalFormat = !target
+      ? gl.RGBA8
+      : passConfig.outputFormat === "rgba32float" ? gl.RGBA32F : gl.RGBA16F;
+    return this.multisample.begin(passConfig.name, {
+      framebuffer: (target?.mObjectID as WebGLFramebuffer | undefined) ?? null,
+      width,
+      height,
+    }, samples, internalFormat);
+  }
+
+  private drawPass(
+    passConfig: Pass,
+    shader: PiShader,
+    uniforms: PassUniforms,
+    slotAssignments: SlotAssignment[],
+    textureBindings: (PiTexture | null)[],
+    customUniforms?: CustomUniform[],
+  ): void {
     this.renderer.AttachShader(shader);
 
     this.renderer.SetShaderConstant3FV("iResolution", uniforms.res);
