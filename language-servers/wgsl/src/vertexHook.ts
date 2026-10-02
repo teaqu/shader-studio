@@ -10,8 +10,14 @@ export const WGSL_VERTEX_HOOK_FEATURES: readonly WgslVertexHookFeature[] = Objec
   Object.freeze({
     name: "mainVertex",
     kind: "function",
-    signature: "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)",
+    signature: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)",
     description: "Shader Studio vertex hook called before vertex transforms and varyings are calculated. Modify its parameters to deform geometry or adjust vertex data.",
+  }),
+  Object.freeze({
+    name: "vertexIndex",
+    kind: "parameter",
+    signature: "vertexIndex: u32",
+    description: "Vertex index passed to the hook (`@builtin(vertex_index)`). Fullscreen geometry draws one triangle, so it is 0, 1 and 2; mesh geometry passes the mesh vertex index.",
   }),
   Object.freeze({
     name: "position",

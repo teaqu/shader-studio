@@ -22,6 +22,9 @@ const createMockRenderer = () => ({
   AttachTextures: vi.fn(),
   GetAttribLocation: vi.fn(),
   DrawUnitQuad_XY: vi.fn(),
+  DrawFullScreenTriangle_XY: vi.fn(),
+  DrawPrimitive: vi.fn(),
+  PRIMTYPE: { POINTS: 0, LINES: 1, LINE_LOOP: 2, LINE_STRIP: 3, TRIANGLES: 4, TRIANGLE_STRIP: 5 },
   Clear: vi.fn(),
 }) as unknown as PiRenderer;
 
@@ -147,6 +150,7 @@ describe("PassRenderer", () => {
       passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
 
       expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
+      expect(mockRenderer.DrawPrimitive).not.toHaveBeenCalled();
       expect(mockGl.enable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
       expect(mockGl.depthFunc).toHaveBeenCalledWith(mockGl.LEQUAL);
       expect(mockRenderer.Clear).toHaveBeenCalledWith(
@@ -163,6 +167,44 @@ describe("PassRenderer", () => {
       expect(mockGl.drawElements).toHaveBeenCalledWith(mockGl.TRIANGLES, 36, mockGl.UNSIGNED_SHORT, 0);
       expect(mockGl.bindVertexArray).toHaveBeenLastCalledWith(null);
       expect(mockGl.disable).toHaveBeenCalledWith(mockGl.DEPTH_TEST);
+    });
+
+    it("draws fullscreen passes as one attributeless three-vertex triangle list", () => {
+      const passConfig: Pass = { geometry: "fullscreen", name: "TestPass", shaderSrc: "", inputs: {} };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledTimes(1);
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+      expect(mockRenderer.DrawUnitQuad_XY).not.toHaveBeenCalled();
+      expect(mockRenderer.GetAttribLocation).not.toHaveBeenCalled();
+      expect(mockRenderer.Clear).not.toHaveBeenCalled();
+      expect(mockGl.drawElements).not.toHaveBeenCalled();
+    });
+
+    it("clears fullscreen passes with a vertex hook so uncovered pixels match WebGPU", () => {
+      const passConfig: Pass = {
+        geometry: "fullscreen",
+        name: "TestPass",
+        shaderSrc: "",
+        vertexSrc: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}",
+        inputs: {},
+      };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.Clear).toHaveBeenCalledWith(mockRenderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+      expect((mockRenderer.Clear as any).mock.invocationCallOrder[0])
+        .toBeLessThan((mockRenderer.DrawPrimitive as any).mock.invocationCallOrder[0]);
+    });
+
+    it.each(["", "   \n"])("does not clear fullscreen passes without a vertex hook (%j)", (vertexSrc) => {
+      const passConfig: Pass = { geometry: "fullscreen", name: "TestPass", shaderSrc: "", vertexSrc, inputs: {} };
+
+      passRenderer.renderPass(passConfig, null, createMockShader(), defaultUniforms);
+
+      expect(mockRenderer.Clear).not.toHaveBeenCalled();
+      expect(mockRenderer.DrawPrimitive).toHaveBeenCalledWith(mockRenderer.PRIMTYPE.TRIANGLES, 3, false, 1);
     });
 
     it("should not render when shader is null", () => {

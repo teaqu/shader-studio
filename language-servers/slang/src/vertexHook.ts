@@ -10,8 +10,14 @@ export const SLANG_VERTEX_HOOK_FEATURES: readonly SlangVertexHookFeature[] = Obj
   Object.freeze({
     name: "mainVertex",
     kind: "function",
-    signature: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv)",
+    signature: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)",
     description: "Shader Studio vertex hook called before vertex transforms and varyings are calculated. Modify its parameters to deform geometry or adjust vertex data.",
+  }),
+  Object.freeze({
+    name: "vertexIndex",
+    kind: "parameter",
+    signature: "uint vertexIndex",
+    description: "Vertex index passed to the hook (`SV_VertexID`). Fullscreen geometry draws one triangle, so it is 0, 1 and 2; mesh geometry passes the mesh vertex index.",
   }),
   Object.freeze({
     name: "position",

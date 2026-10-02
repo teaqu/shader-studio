@@ -39,6 +39,16 @@ export class PassRenderer {
     this.samplerCache = this.gl ? new WebGLSamplerCache(this.gl) : null;
   }
 
+  private drawFullscreen(passConfig: Pass): void {
+    // A vertex hook may leave pixels uncovered; clear them to the opaque
+    // black WebGPU's render pass load op produces.
+    if (passConfig.vertexSrc?.trim()) {
+      this.renderer.Clear(this.renderer.CLEAR.Color, [0, 0, 0, 1], 1, 0);
+    }
+    // The vertex stage derives the oversized triangle from gl_VertexID.
+    this.renderer.DrawPrimitive(this.renderer.PRIMTYPE.TRIANGLES, 3, false, 1);
+  }
+
   public clearCanvas(): void {
     this.renderer.SetRenderTarget(null);
     this.renderer.SetViewport([0, 0, this.canvas.width, this.canvas.height]);
@@ -159,8 +169,7 @@ export class PassRenderer {
     }
 
     if (passConfig.geometry === "fullscreen" || !this.gl || !this.meshResources) {
-      const posLoc = this.renderer.GetAttribLocation(shader, "position");
-      this.renderer.DrawUnitQuad_XY(posLoc);
+      this.drawFullscreen(passConfig);
       return;
     }
 

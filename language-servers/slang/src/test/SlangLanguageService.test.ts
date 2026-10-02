@@ -662,8 +662,12 @@ float4 mainImage(float2 p)
     server.hover.mockReturnValue(undefined);
     const service = new SlangLanguageService(module);
     await service.syncEnvironment({ ...environment, stage: "vertex" });
-    const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
+    const text = "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const hoverAt = async (name: string) => JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf(name) + 1 },
+    }))?.contents);
 
     // The hook name is offered while it is being declared; its parameters belong
     // to the body, where they can actually be used.
@@ -676,12 +680,28 @@ float4 mainImage(float2 p)
     expect(completions.filter((item) => item.label === "position")).toHaveLength(1);
     expect(completions.find((item) => item.label === "position")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))
-      .toContain("vertex hook");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 31 } }))?.contents))
-      .toContain("object-space");
-    expect(JSON.stringify((await service.hover({ document: revision, position: { line: 0, character: 74 } }))?.contents))
-      .toContain("texture coordinate");
+    expect(completions.find((item) => item.label === "vertexIndex")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("SV_VertexID") }));
+    expect(await hoverAt("mainVertex")).toContain("vertex hook");
+    expect(await hoverAt("vertexIndex")).toContain("uint vertexIndex");
+    expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("position")).toContain("object-space");
+    expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "vertex" });
+    const text = "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position += normal; }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("position") + 1 },
+    }))?.contents);
+    expect(hover ?? "").not.toContain("object-space");
   });
 
   it("documents and completes renamed Slang vertex-hook parameters by role", async () => {
@@ -690,7 +710,7 @@ float4 mainImage(float2 p)
     server.hover.mockReturnValue(undefined);
     const service = new SlangLanguageService(module);
     await service.syncEnvironment({ ...environment, stage: "vertex" });
-    const text = "void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const text = "void mainVertex(uint corner, inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv) { deformed += surfaceNormal * textureUv.x * float(corner); }";
     await service.openDocument({ uri, languageId: "slang", version: 1, text });
 
     const hoverAt = (name: string, occurrence = 0) => {
@@ -700,6 +720,8 @@ float4 mainImage(float2 p)
       }
       return service.hover({ document: revision, position: { line: 0, character: offset + 1 } });
     };
+    expect(JSON.stringify((await hoverAt("corner"))?.contents))
+      .toContain("vertex index");
     expect(JSON.stringify((await hoverAt("deformed"))?.contents))
       .toContain("vertex position");
     expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents))
@@ -710,7 +732,9 @@ float4 mainImage(float2 p)
       .toContain("vertex position");
     const completions = await service.completion({ document: revision, position: { line: 0, character: text.length } });
     expect(completions.find((item) => item.label === "mainVertex")?.detail)
-      .toBe("void mainVertex(inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
+      .toBe("void mainVertex(uint corner, inout float3 deformed, inout float3 surfaceNormal, inout float2 textureUv)");
+    expect(completions.find((item) => item.label === "corner")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex index") }));
     expect(completions.find((item) => item.label === "deformed")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex position") }));
     expect(completions.find((item) => item.label === "surfaceNormal")?.documentation)

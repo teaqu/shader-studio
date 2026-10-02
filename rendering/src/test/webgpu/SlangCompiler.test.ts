@@ -295,7 +295,7 @@ describe("SlangCompiler", () => {
         "float4 mainImage(float2 fragCoord) { return float4(1); }",
         {
           channels: [{ slot: 3, key: "iChannel3" }],
-          vertexCode: "void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += iChannel3.SampleLevel(uv, 0.0).x; }",
+          vertexCode: "void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x += iChannel3.SampleLevel(uv, 0.0).x; }",
         },
       );
 

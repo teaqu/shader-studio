@@ -49,8 +49,8 @@ describe("buildSlangPassGraph", () => {
       },
       buffers: {
         BufferA: imageCode,
-        "__shader_studio_vertex__:Image": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
-        "__shader_studio_vertex__:BufferA": "void mainVertex(inout float3 p, inout float3 n, inout float2 uv) {}",
+        "__shader_studio_vertex__:Image": "void mainVertex(uint vertexIndex, inout float3 p, inout float3 n, inout float2 uv) {}",
+        "__shader_studio_vertex__:BufferA": "void mainVertex(uint vertexIndex, inout float3 p, inout float3 n, inout float2 uv) {}",
       },
       canvasWidth: 800,
       canvasHeight: 600,

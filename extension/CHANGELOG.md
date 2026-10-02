@@ -1,5 +1,17 @@
 # Change Log
 
+### Unreleased
+
+- Breaking: `mainVertex` now receives the vertex index as its first parameter in every language. Add it to existing vertex shaders:
+  - GLSL: `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)`
+  - Slang: `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv)`
+  - WGSL: `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>)`
+- Breaking: fullscreen passes now draw one three-vertex triangle in GLSL, matching Slang and WGSL. A GLSL fullscreen vertex shader runs three times instead of six, `gl_VertexID` is 0–2 instead of 0–5, and `position` and `uv` start at the corners of a triangle covering the screen, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, instead of the four corners of a quad. Shaders that moved individual quad corners need rewriting; fragment-only shaders and plane, cube, sphere, and model geometry are unaffected.
+- The fullscreen `normal` passed to a GLSL vertex shader is now `(0, 0, 1)`, matching Slang and WGSL.
+- Fullscreen vertex shaders can place their own triangle from `vertexIndex`; pixels it leaves uncovered are black in every language.
+- Plane, cube, sphere, and model vertex shaders receive the mesh vertex index.
+- Fixed new standalone Slang vertex files declaring `uv` as `vec2` instead of `float2`.
+
 ### 1.2.0
 
 - Added WGSL support: write `.wgsl` shaders with completion, hover documentation, snippets, and error checking. Use image, vertex, and compute passes, storage buffers, script uniforms, and visual debugging.

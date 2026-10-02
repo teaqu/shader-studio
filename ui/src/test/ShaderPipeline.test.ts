@@ -970,7 +970,7 @@ describe('ShaderPipeline — unlocked vertex-source routing', () => {
   let mocks: ReturnType<typeof makeMocks>;
 
   const vertexCode = [
-    'fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {',
+    'fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {',
     '  *uv = *uv * 2.0;',
     '}',
   ].join('\n');

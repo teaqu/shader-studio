@@ -12,6 +12,11 @@ const createMockShader = () => ({
   mInfo: "",
 }) as unknown as PiShader;
 
+// Fullscreen passes draw one oversized triangle and derive its corners from
+// gl_VertexID, so the generated stub declares no vertex attributes.
+const FULLSCREEN_TRIANGLE_VERTEX =
+  "void main() { vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }";
+
 const KHR_COMPLETION_STATUS = 0x91b1;
 
 const createMockGl = (extension: { COMPLETION_STATUS_KHR: number } | null = { COMPLETION_STATUS_KHR: KHR_COMPLETION_STATUS }) => {
@@ -119,17 +124,17 @@ describe("ShaderCompiler", () => {
     it("runs a configured vertex hook before projecting a mesh", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         geometry: "sphere",
-        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal * sin(iTime); }",
+        vertexCode: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal * sin(iTime); }",
       });
 
       expect(vertexSource).toContain("position += normal * sin(iTime);");
-      expect(vertexSource).toContain("mainVertex(_vertexPosition, _vertexNormal, _vertexUv);");
-      expect(vertexSource.indexOf("mainVertex(_vertexPosition")).toBeGreaterThan(vertexSource.indexOf("void mainVertex"));
+      expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
+      expect(vertexSource.indexOf("mainVertex(gl_VertexID, _vertexPosition")).toBeGreaterThan(vertexSource.indexOf("void mainVertex"));
     });
 
     it("reports the hook range where the hook text actually sits in the vertex source", () => {
       const hook = [
-        "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {",
+        "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {",
         "  position.xy += uv;",
         "}",
       ].join("\n");
@@ -152,15 +157,51 @@ describe("ShaderCompiler", () => {
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
       );
 
-      expect(vertexSource).toContain("gl_Position = vec4(position, 0.0, 1.0);");
+      expect(vertexSource).toBe(FULLSCREEN_TRIANGLE_VERTEX);
       expect(vertexRange).toBeUndefined();
+    });
+
+    it("runs a fullscreen hook once per triangle corner with gl_VertexID", () => {
+      const hook = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position.x += float(vertexIndex); }";
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode(
+        "void mainImage(out vec4 fragColor, in vec2 fragCoord) {}",
+        { vertexCode: hook },
+      );
+
+      expect(vertexSource).not.toContain("in vec2 position;");
+      expect(vertexSource).toContain("vec2 _vertexCorners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));");
+      expect(vertexSource).toContain("vec2 _vertexCorner = _vertexCorners[gl_VertexID];");
+      expect(vertexSource).toContain("vec3 _vertexPosition = vec3(_vertexCorner, 0.0);");
+      expect(vertexSource).toContain("vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);");
+      expect(vertexSource).toContain("vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;");
+      expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
+      expect(vertexSource).toContain("gl_Position = vec4(_vertexPosition, 1.0);");
+    });
+
+    it.each(["plane", "cube", "sphere", "model"] as const)("passes the %s mesh vertex index to the hook", (geometry) => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        geometry,
+        vertexCode: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {}",
+      });
+
+      expect(vertexSource).toContain("layout(location = 0) in vec3 position;");
+      expect(vertexSource).toContain("vec3 _vertexPosition = position;");
+      expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
+    });
+
+    it("does not call a hook for meshes without vertex code", () => {
+      const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
+        geometry: "cube",
+      });
+
+      expect(vertexSource).not.toContain("mainVertex");
     });
 
     it("provides configured channels and explicit-LOD helpers to vertex hooks", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         slotAssignments: [{ slot: 3, key: "iChannel3", isCustomName: false }],
         channelTypes: ["2D", "2D", "2D", "2D"],
-        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
+        vertexCode: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
       });
 
       expect(vertexSource).toContain("uniform sampler2D iChannel3;");
@@ -168,14 +209,14 @@ describe("ShaderCompiler", () => {
       expect(vertexSource).toContain("} iCh3;");
       expect(vertexSource).toContain("vec4 sampleIChannel3(vec2 uv)");
       expect(vertexSource).toContain("return textureLod(iChannel3, uv, 0.0);");
-      expect(vertexSource).toContain("mainVertex(_vertexPosition, _vertexNormal, _vertexUv);");
+      expect(vertexSource).toContain("mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);");
     });
 
     it("does not duplicate sparse built-in channel names used as slot aliases", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         slotAssignments: [{ slot: 0, key: "iChannel3", isCustomName: true }],
         channelTypes: ["2D", "2D", "2D", "2D"],
-        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
+        vertexCode: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position.xy += sampleIChannel3(uv).rg; }",
       });
 
       expect(vertexSource.match(/uniform sampler2D iChannel3;/g)).toHaveLength(1);
@@ -187,7 +228,7 @@ describe("ShaderCompiler", () => {
       const { vertexSource } = shaderCompiler.wrapShaderToyCode("void mainImage(out vec4 fragColor, in vec2 fragCoord) {}", {
         slotAssignments: [{ slot: 1, key: "environment", isCustomName: true }],
         channelTypes: ["2D", "Cube", "2D", "2D"],
-        vertexCode: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += sampleEnvironment(normal).xyz; }",
+        vertexCode: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position += sampleEnvironment(normal).xyz; }",
       });
 
       expect(vertexSource).toContain("uniform ShaderStudioChannelCube environment;");
@@ -577,7 +618,7 @@ describe("ShaderCompiler", () => {
       const { vs, fs } = capturedShaders[0];
 
       // Validate vertex shader structure
-      expect(vs).toBe("in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }");
+      expect(vs).toBe(FULLSCREEN_TRIANGLE_VERTEX);
 
       // Validate complete fragment shader structure
       const expectedFragmentElements = [
@@ -664,7 +705,7 @@ describe("ShaderCompiler", () => {
 
       // Verify the wrapped code was still generated properly
       const [vs, fs] = (mockRenderer.CreateShader as any).mock.calls[0];
-      expect(vs).toContain("in vec2 position;");
+      expect(vs).toBe(FULLSCREEN_TRIANGLE_VERTEX);
       expect(fs).toContain("precision highp float;");
       expect(fs).toContain("void main() {");
     });
@@ -684,12 +725,12 @@ describe("ShaderCompiler", () => {
 
       expect(result).toBe(mockShader);
       expect(mockRenderer.CreateShader).toHaveBeenCalledWith(
-        "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        FULLSCREEN_TRIANGLE_VERTEX,
         expect.stringContaining("precision highp float;")
       );
 
       // Verify exact vertex shader format
-      expect(capturedVs).toBe("in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }");
+      expect(capturedVs).toBe(FULLSCREEN_TRIANGLE_VERTEX);
 
       // Verify fragment shader has all required components in right order
       expect(capturedFs).toMatch(/precision highp float;[\s\S]*out vec4 fragColor;[\s\S]*#define HW_PERFORMANCE 1[\s\S]*uniform vec3 iResolution;[\s\S]*void main\(\) \{[\s\S]*mainImage\(fragColor, gl_FragCoord\.xy\);[\s\S]*\}/);
@@ -962,7 +1003,7 @@ describe("ShaderCompiler", () => {
       expect(result?.mResult).toBe(true);
       expect(result?.mProgram).toBe(gl.__program);
       expect(gl.__shaderSources[0]).toContain("#version 300 es");
-      expect(gl.__shaderSources[0]).toContain("in vec2 position;");
+      expect(gl.__shaderSources[0]).toContain("gl_VertexID");
       expect(gl.__shaderSources[1]).toContain("#version 300 es");
       expect(gl.__shaderSources[1]).toContain("uniform ShaderStudioChannelCube envMap;");
       expect(gl.__shaderSources[1]).toContain("uniform float exposure;");

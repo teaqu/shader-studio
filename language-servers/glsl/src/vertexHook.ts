@@ -10,8 +10,14 @@ export const GLSL_VERTEX_HOOK_FEATURES: readonly GlslVertexHookFeature[] = Objec
   Object.freeze({
     name: "mainVertex",
     kind: "function",
-    signature: "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv)",
+    signature: "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv)",
     description: "Shader Studio vertex hook called before vertex transforms and varyings are calculated. Modify its parameters to deform geometry or adjust vertex data.",
+  }),
+  Object.freeze({
+    name: "vertexIndex",
+    kind: "parameter",
+    signature: "int vertexIndex",
+    description: "Vertex index passed to the hook (`gl_VertexID`). Fullscreen geometry draws one triangle, so it is 0, 1 and 2; mesh geometry passes the mesh vertex index.",
   }),
   Object.freeze({
     name: "position",

@@ -393,7 +393,7 @@ struct _ss_MeshUniforms {
 `;
 }
 
-const WGSL_VERTEX_HOOK = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>)";
+const WGSL_VERTEX_HOOK = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>)";
 
 /** An entry-point block plus where the user vertex hook landed inside it. */
 export interface WgslEntryPoints {
@@ -416,12 +416,12 @@ struct _ss_MeshVertexOut {
   @location(2) normal: vec3<f32>,
 }
 
-@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>) -> _ss_MeshVertexOut {
+@vertex fn ${WGSL_ENTRY_VERTEX}(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut {
   _ss_initGlobals();
   var p = position;
   var n = normal;
   var t = uv;
-  mainVertex(&p, &n, &t);
+  mainVertex(vid, &p, &n, &t);
   let worldPosition = _ss_mesh.model * vec4<f32>(p, 1.0);
   var output: _ss_MeshVertexOut;
   output.position = _ss_mesh.viewProjection * worldPosition;
@@ -455,7 +455,7 @@ function buildFullscreenEntryPoints(vertexCode: string): WgslEntryPoints {
   var position = vec3<f32>(verts[vid], 0.0);
   var normal = vec3<f32>(0.0, 0.0, 1.0);
   var uv = verts[vid] * 0.5 + 0.5;
-  mainVertex(&position, &normal, &uv);
+  mainVertex(vid, &position, &normal, &uv);
   return vec4<f32>(position, 1.0);
 }
 

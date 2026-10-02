@@ -32,6 +32,11 @@ export interface WrappedShaderSource {
 
 const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 
+/** Corners of the oversized triangle that covers clip space, indexed by gl_VertexID. */
+const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
+const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
+  `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }`;
+
 export class ShaderCompiler {
   private static nextAsyncCompileId = 1;
   private khrParallelCompile: { COMPLETION_STATUS_KHR: number } | null = null;
@@ -471,7 +476,7 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     const hasHook = Boolean(options.vertexCode?.trim());
     if (!hasHook && !mesh) {
       return {
-        source: "in vec2 position; void main() { gl_Position = vec4(position, 0.0, 1.0); }",
+        source: FULLSCREEN_TRIANGLE_VERTEX_SOURCE,
         vertexStartLine: 1,
         vertexLineCount: 0,
       };
@@ -499,13 +504,14 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
       vertexLineCount: hasHook ? lastCodeLine - firstCodeLine + 1 : 0,
     });
     if (!mesh) {
-      return place(`in vec2 position;
-${vertexUniforms}${channelHelpers}
+      return place(`${vertexUniforms}${channelHelpers}
 `, `void main() {
- vec3 _vertexPosition = vec3(position, 0.0);
- vec3 _vertexNormal = vec3(0.0);
- vec2 _vertexUv = position * 0.5 + 0.5;
- mainVertex(_vertexPosition, _vertexNormal, _vertexUv);
+ vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
+ vec2 _vertexCorner = _vertexCorners[gl_VertexID];
+ vec3 _vertexPosition = vec3(_vertexCorner, 0.0);
+ vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
+ vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
+ mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
  gl_Position = vec4(_vertexPosition, 1.0);
 }`);
     }
@@ -524,7 +530,7 @@ out ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
  vec3 _vertexPosition = position;
  vec3 _vertexNormal = normal;
  vec2 _vertexUv = uv;
- ${hasHook ? "mainVertex(_vertexPosition, _vertexNormal, _vertexUv);" : ""}
+ ${hasHook ? "mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : ""}
  vec4 _meshWorldPosition = _meshModel * vec4(_vertexPosition, 1.0);
  gl_Position = _meshProjection * _meshView * _meshWorldPosition;
  ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;

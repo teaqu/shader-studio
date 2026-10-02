@@ -106,7 +106,7 @@ describe("wrapWgslImageSource uniform block", () => {
     }).source;
     const vertex = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
       channels: [channel("state", 0)],
-      vertexCode: "fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let cell = stateLoad(vec2i(0)); }",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) { let cell = stateLoad(vec2i(0)); }",
     }).source;
     const cubemap = wrapWgslImageSource("fn mainImage(coord: vec2f) -> vec4f { return vec4f(0.0); }", {
       channels: [channel("sky", 0, "cubemap")],
@@ -257,20 +257,49 @@ describe("wrapWgslImageSource entry points", () => {
   it("generates a no-op pointer vertex hook when the user supplies no vertex code", () => {
     const { source } = wrapWgslImageSource(IMAGE);
     expect(source).toContain(
-      "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     );
   });
 
   it("calls a user vertex hook with mutable locals", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
-      vertexCode: "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }",
     });
-    expect(source).toContain("mainVertex(&position, &normal, &uv)");
+    expect(source).toContain("mainVertex(vid, &position, &normal, &uv)");
+  });
+
+  it("runs a fullscreen hook with the triangle vertex index", () => {
+    const { source } = wrapWgslImageSource(IMAGE, {
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    });
+    const vertex = source.slice(source.indexOf("@vertex fn vertexMain"), source.indexOf("@fragment"));
+    expect(vertex).toContain("@builtin(vertex_index) vid: u32");
+    expect(vertex).toContain("var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));");
+    expect(vertex).toContain("var normal = vec3<f32>(0.0, 0.0, 1.0);");
+    expect(vertex).toContain("mainVertex(vid, &position, &normal, &uv);");
+  });
+
+  it.each(["plane", "cube", "sphere", "model"] as const)("passes the %s mesh vertex index to the hook", (geometry) => {
+    const { source } = wrapWgslImageSource(IMAGE, {
+      geometry,
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    });
+    expect(source).toContain("@location(2) uv: vec2<f32>, @builtin(vertex_index) vid: u32) -> _ss_MeshVertexOut");
+    expect(source).toContain("mainVertex(vid, &p, &n, &t);");
+  });
+
+  it("declares a vertex-index stub hook for meshes without vertex code", () => {
+    const { source, vertexRange } = wrapWgslImageSource(IMAGE, { geometry: "cube" });
+    expect(source).toContain(
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+    );
+    expect(source).toContain("mainVertex(vid, &p, &n, &t);");
+    expect(vertexRange).toBeUndefined();
   });
 
   it("reports the hook range where the hook text actually sits in the module", () => {
     const hook = [
-      "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {",
+      "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {",
       "  *uv = *uv * 2.0;",
       "}",
     ].join("\n");
@@ -286,12 +315,12 @@ describe("wrapWgslImageSource entry points", () => {
 
   it("omits the hook range when the generated stub stands in", () => {
     const { source, vertexRange } = wrapWgslImageSource(IMAGE);
-    expect(source).toContain("fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
+    expect(source).toContain("fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}");
     expect(vertexRange).toBeUndefined();
   });
 
   it("reports the hook range for mesh geometry", () => {
-    const hook = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
+    const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
     const { source, vertexRange } = wrapWgslImageSource(IMAGE, { geometry: "sphere", vertexCode: hook });
     expect(vertexRange?.lineCount).toBe(1);
     const lines = source.split("\n");
@@ -303,7 +332,7 @@ describe("wrapWgslImageSource entry points", () => {
   it("ports the mesh prelude with column-major matrices and location attributes", () => {
     const { source } = wrapWgslImageSource(IMAGE, {
       geometry: "sphere",
-      vertexCode: "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
+      vertexCode: "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}",
     });
     expect(source).toContain("model: mat4x4<f32>");
     expect(source).toContain("@location(0) position: vec3<f32>");
@@ -729,7 +758,7 @@ describe("wrapWgslImageSource golden module", () => {
         return c * myGain;
       }
       @group(0) @binding(10) var<storage, read> custom: array<MyData>;
-      fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
+      fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
 
       @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
         var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));

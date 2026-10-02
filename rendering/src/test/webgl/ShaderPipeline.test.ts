@@ -1395,7 +1395,7 @@ describe("ShaderPipeline", () => {
         "void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(1.0); }",
         null,
         "/image.glsl",
-        { "__shader_studio_vertex__:Image": "void mainVertex(inout vec3 x) { qqq; }" },
+        { "__shader_studio_vertex__:Image": "void mainVertex(int vertexIndex, inout vec3 x) { qqq; }" },
       );
 
       expect(result).toEqual({

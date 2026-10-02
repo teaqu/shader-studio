@@ -68,14 +68,14 @@ describe("WgslCompiler", () => {
 
   it("forwards the vertex hook to the wrapper", async () => {
     const compiler = new WgslCompiler();
-    const vertexCode = "fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }";
+    const vertexCode = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) { *uv = *uv * 2.0; }";
     const result = await compiler.compile(IMAGE, { passKind: "render", vertexCode });
     expect(result.success).toBe(true);
     if (!result.success) {
       return;
     }
     expect(result.wgsl).toContain("*uv = *uv * 2.0;");
-    expect(result.wgsl).toContain("mainVertex(&position, &normal, &uv)");
+    expect(result.wgsl).toContain("mainVertex(vid, &position, &normal, &uv)");
     compiler.dispose();
   });
 

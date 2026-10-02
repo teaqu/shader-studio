@@ -112,15 +112,15 @@ export class FileDialogHandler {
         } else if (payload.fileType === 'slang-common') {
           template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'glsl-vertex') {
-          template = `void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
+          template = `void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n}\n`;
         } else if (payload.fileType === 'slang-vertex') {
-          template = `void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
+          template = `void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {\n\n}\n`;
         } else if (payload.fileType === 'slang-compute') {
           template = `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid compute(uint3 dispatchThreadID : SV_DispatchThreadID) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-common') {
           template = `// Common functions shared across all passes\n`;
         } else if (payload.fileType === 'wgsl-vertex') {
-          template = `fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
+          template = `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-compute') {
           template = `@compute @workgroup_size(8, 8, 1)\nfn compute(@builtin(global_invocation_id) dispatchThreadID: vec3u) {\n\n}\n`;
         } else if (payload.fileType === 'wgsl-buffer') {

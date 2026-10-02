@@ -22,11 +22,12 @@ Fullscreen passes can also use vertex shaders for warping, custom projections, o
 
 ## The `mainVertex` Function
 
-Your vertex shader must define a `mainVertex` function. It receives the mesh vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
+Your vertex shader must define a `mainVertex` function. It receives the index of the vertex being processed, followed by the vertex data as `inout` parameters — modify them in-place to change the rendered geometry.
 
 === "GLSL"
     ```glsl
-    void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        // vertexIndex: the vertex being processed (gl_VertexID)
         // position: the vertex position in object space
         // normal:   the vertex normal in object space
         // uv:       the vertex texture coordinates
@@ -35,7 +36,8 @@ Your vertex shader must define a `mainVertex` function. It receives the mesh ver
 
 === "Slang"
     ```slang
-    void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        // vertexIndex: the vertex being processed (SV_VertexID)
         // position: the vertex position in object space
         // normal:   the vertex normal in object space
         // uv:       the vertex texture coordinates
@@ -44,7 +46,8 @@ Your vertex shader must define a `mainVertex` function. It receives the mesh ver
 
 === "WGSL"
     ```wgsl
-    fn mainVertex(position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {
+        // vertexIndex: the vertex being processed (@builtin(vertex_index))
         // position: the vertex position in object space
         // normal:   the vertex normal in object space
         // uv:       the vertex texture coordinates
@@ -55,17 +58,19 @@ Your vertex shader must define a `mainVertex` function. It receives the mesh ver
 
 ## Geometry Context
 
-The meaning of the `inout` parameters depends on the geometry type:
+The meaning of the parameters depends on the geometry type:
 
-| Geometry | `position` | `normal` | `uv` |
-|----------|-----------|----------|------|
-| **Fullscreen** | Clip-space XY, Z=0 | `(0, 0, 1)` | 0–1 screen UV |
-| **Plane** | XZ-plane object-space vertex | `(0, 1, 0)` | 0–1 grid UV |
-| **Cube** | Unit-cube object-space vertex | Face normal | Face UV |
-| **Sphere** | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
-| **Model** | GLB mesh vertex position | Mesh vertex normal | Mesh UV |
+| Geometry | `vertexIndex` | `position` | `normal` | `uv` |
+|----------|---------------|-----------|----------|------|
+| **Fullscreen** | 0, 1, 2 | Clip-space triangle corner, Z=0 | `(0, 0, 1)` | Corner × 0.5 + 0.5 |
+| **Plane** | Mesh vertex index | XZ-plane object-space vertex | `(0, 1, 0)` | 0–1 grid UV |
+| **Cube** | Mesh vertex index | Unit-cube object-space vertex | Face normal | Face UV |
+| **Sphere** | Mesh vertex index | Unit-sphere object-space vertex | Surface normal | Latitude/longitude UV |
+| **Model** | Mesh vertex index | GLB mesh vertex position | Mesh vertex normal | Mesh UV |
 
-For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. For fullscreen, `position` is in clip-space coordinates directly and can be modified in-place for warping effects.
+For 3D geometry types (plane, cube, sphere, model), the engine applies the model, view, and projection matrices after `mainVertex` returns. Their draws are indexed, so `vertexIndex` is the index of the mesh vertex, and a vertex shared by several triangles may run more than once with the same index.
+
+For fullscreen, `position` is in clip-space coordinates directly. A fullscreen pass draws one oversized triangle with three vertices, `(-1, -1)`, `(3, -1)` and `(-1, 3)`, which covers the whole screen. Assign `position` from `vertexIndex` to place the triangle yourself; pixels it no longer covers are cleared to opaque black.
 
 ## Available Built-ins
 
@@ -122,46 +127,47 @@ When using 3D geometry, the fragment shader receives per-pixel interpolated valu
 
 ## Examples
 
-### Fullscreen
+### Fullscreen: a Procedural Triangle
 
-A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for warping or custom projections:
+A fullscreen vertex shader can place its three vertices from `vertexIndex`, for example from an array of points in clip space:
 
 === "GLSL"
     ```glsl
-    // warp.vert.glsl
-    void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {
-        // position is in clip space; offset to create a ripple
-        position.x += sin(uv.y * 20.0 + iTime) * 0.1;
-        position.y += cos(uv.x * 20.0 + iTime) * 0.1;
+    // triangle.vert.glsl
+    const vec2 points[3] = vec2[3](vec2(0.0, 0.5), vec2(-0.5, -0.5), vec2(0.5, -0.5));
+
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+        position = vec3(points[vertexIndex], 0.0);
     }
     ```
 
 === "WGSL"
     ```wgsl
-    // warp.vert.wgsl
-    fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
-        let ripple = sin((*uv).y * 20.0 + iTime) * 0.1;
-        (*position).x += ripple;
-        (*position).y += cos((*uv).x * 20.0 + iTime) * 0.1;
+    // triangle.vert.wgsl
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+        var points = array<vec2f, 3>(vec2f(0.0, 0.5), vec2f(-0.5, -0.5), vec2f(0.5, -0.5));
+        *position = vec3f(points[vertexIndex], 0.0);
     }
     ```
 
 === "Slang"
     ```slang
-    // warp.vert.slang
-    void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {
-        float ripple = sin(uv.y * 20.0 + iTime) * 0.1;
-        position.x += ripple;
-        position.y += cos(uv.x * 20.0 + iTime) * 0.1;
+    // triangle.vert.slang
+    static const float2 points[3] = { float2(0.0, 0.5), float2(-0.5, -0.5), float2(0.5, -0.5) };
+
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+        position = float3(points[vertexIndex], 0.0);
     }
     ```
+
+`mainImage` shades only the pixels inside the triangle; the rest of the pass is cleared to black.
 
 ### Displacing a Plane
 
 === "GLSL"
     ```glsl
     // noise.vert.glsl
-    void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {
+    void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
         float wave = sin(position.x * 5.0 + iTime) *
                      cos(position.z * 5.0 + iTime) * 0.2;
         position.y += wave;
@@ -171,7 +177,7 @@ A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for 
 === "Slang"
     ```slang
     // noise.vert.slang
-    void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) {
+    void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
         float wave = sin(position.x * 5.0 + iTime) *
                      cos(position.z * 5.0 + iTime) * 0.2;
         position.y += wave;
@@ -181,7 +187,7 @@ A fullscreen vertex shader can modify the clip-space vertex positions, e.g. for 
 === "WGSL"
     ```wgsl
     // noise.vert.wgsl
-    fn mainVertex(position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+    fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
         let wave = sin((*position).x * 5.0 + iTime) *
                    cos((*position).z * 5.0 + iTime) * 0.2;
         (*position).y += wave;

@@ -647,35 +647,52 @@ void mainImage(out vec4 color, in vec2 coord) {
     }))?.signatures.map((item) => item.label)).toContain("float sharedTone(float)");
   });
 
-  it("documents the Shader Studio vertex hook and its mutable parameters", async () => {
+  it("documents the Shader Studio vertex hook, its vertex index, and its mutable parameters", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });
-    const vertexSource = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal; }";
+    const vertexSource = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal; }";
     await instance.openDocument({ uri, languageId: "glsl", version: 1, text: vertexSource });
     // Complete from inside the body: GLSL only brings the parameters into scope there.
     const labels = await instance.completion({
       document: revision,
       position: { line: 0, character: vertexSource.indexOf("position +=") },
     });
+    const hoverAt = async (name: string) => JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: vertexSource.indexOf(name) + 1 },
+    }))?.contents);
 
     expect(labels.find((item) => item.label === "mainVertex")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex hook") }));
+    expect(labels.find((item) => item.label === "vertexIndex")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("gl_VertexID") }));
     expect(labels.find((item) => item.label === "position")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("position") }));
-    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 7 } }))?.contents))
-      .toContain("vertex hook");
-    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 29 } }))?.contents))
-      .toContain("object-space");
-    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 51 } }))?.contents))
-      .toContain("normal");
-    expect(JSON.stringify((await instance.hover({ document: revision, position: { line: 0, character: 68 } }))?.contents))
-      .toContain("texture coordinate");
+    expect(await hoverAt("mainVertex")).toContain("vertex hook");
+    expect(await hoverAt("vertexIndex")).toContain("int vertexIndex");
+    expect(await hoverAt("vertexIndex")).toContain("0, 1 and 2");
+    expect(await hoverAt("position")).toContain("object-space");
+    expect(await hoverAt("normal")).toContain("normal");
+    expect(await hoverAt("uv")).toContain("texture coordinate");
+  });
+
+  it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "vertex" });
+    const text = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) { position += normal; }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("position") + 1 },
+    }))?.contents);
+    expect(hover).not.toContain("object-space");
   });
 
   it("documents renamed GLSL vertex-hook parameters by role", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });
-    const text = "void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x; }";
+    const text = "void mainVertex(int corner, inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv) { deformed += surfaceNormal * textureUv.x * float(corner); }";
     await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
     const hoverAt = (name: string, occurrence = 0) => {
       let offset = -1;
@@ -685,6 +702,7 @@ void mainImage(out vec4 color, in vec2 coord) {
       return instance.hover({ document: revision, position: { line: 0, character: offset + 1 } });
     };
 
+    expect(JSON.stringify((await hoverAt("corner"))?.contents)).toContain("vertex index");
     expect(JSON.stringify((await hoverAt("deformed"))?.contents)).toContain("vertex position");
     expect(JSON.stringify((await hoverAt("deformed", 1))?.contents)).toContain("object-space");
     expect(JSON.stringify((await hoverAt("surfaceNormal"))?.contents)).toContain("vertex normal");
@@ -694,7 +712,9 @@ void mainImage(out vec4 color, in vec2 coord) {
       position: { line: 0, character: text.indexOf("deformed +=") + "deformed".length },
     });
     expect(completions.find((item) => item.label === "mainVertex")?.detail)
-      .toBe("void mainVertex(inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv)");
+      .toBe("void mainVertex(int corner, inout vec3 deformed, inout vec3 surfaceNormal, inout vec2 textureUv)");
+    expect(completions.find((item) => item.label === "corner")?.documentation)
+      .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex index") }));
     expect(completions.find((item) => item.label === "deformed")?.documentation)
       .toEqual(expect.objectContaining({ value: expect.stringContaining("vertex position") }));
     expect(completions.find((item) => item.label === "surfaceNormal")?.documentation)
@@ -1197,7 +1217,7 @@ void mainImage(out vec4 color, in vec2 coord) {
   });
 
   it("types generated vertex sampler helper results for member completion and hover", async () => {
-    const text = "void mainVertex(inout vec3 position, inout vec3 normal, inout vec2 uv) {\n  vec3 tint = samplePatternTex(uv).rgb;\n}";
+    const text = "void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {\n  vec3 tint = samplePatternTex(uv).rgb;\n}";
     const instance = await open(text, { stage: "vertex", resources: [{ name: "patternTex", kind: "texture-2d", slot: 0 }] });
     expect((await instance.completion({ document: revision, position: at(text, ".rgb", 1) })).map((item) => item.label)).toContain("rgb");
     expect(await hoverText(instance, at(text, ".rgb", 1))).toContain("vec3 rgb");

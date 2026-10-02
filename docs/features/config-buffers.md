@@ -86,7 +86,7 @@ Each buffer and Image pass can render with 2D or 3D geometry. Open the **Geometr
 
 | Geometry | Description |
 |----------|-------------|
-| **Fullscreen** | A full-screen quad (default). Standard 2D shader rendering. |
+| **Fullscreen** | One triangle covering the screen (default). Standard 2D shader rendering. |
 | **Plane** | A flat 3D plane. |
 | **Cube** | A unit cube centred at the origin. |
 | **Sphere** | A UV-mapped sphere. |

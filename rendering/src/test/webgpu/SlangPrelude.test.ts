@@ -83,10 +83,40 @@ float4 inputs(float2 uv) { return 1; }`,
   });
 
   it('keeps vertex hooks as authored and requires their explicit sampling choice', () => {
-    const vertex = 'void mainVertex(inout float3 position, inout float3 normal, inout float2 uv) { position.x += noiseMap.SampleLevel(uv, 0.0).x; }';
+    const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) { position.x += noiseMap.SampleLevel(uv, 0.0).x; }';
     const source = wrapSlangImageSource(image, { channels: [{ slot: 0, key: 'noiseMap' }], vertexCode: vertex });
     expect(source).toContain(vertex);
-    expect(source).toContain('mainVertex(position, normal, uv);');
+    expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
     expect(source).not.toMatch(/sampleIChannel\d+Vertex|#define sample/);
+  });
+
+  it('runs a fullscreen hook with SV_VertexID over the oversized triangle', () => {
+    const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
+    const source = wrapSlangImageSource(image, { vertexCode: vertex });
+    expect(source).toContain('(uint vertexID : SV_VertexID) : SV_Position');
+    expect(source).toContain('float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };');
+    expect(source).toContain('float3 position = float3(verts[vertexID], 0);');
+    expect(source).toContain('float3 normal = float3(0, 0, 1);');
+    expect(source).toContain('float2 uv = verts[vertexID] * 0.5 + 0.5;');
+    expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
+  });
+
+  it('draws the fullscreen triangle without calling a hook when none is configured', () => {
+    const source = wrapSlangImageSource(image);
+    expect(source).toContain('(uint vertexID : SV_VertexID) : SV_Position');
+    expect(source).not.toContain('mainVertex');
+  });
+
+  it.each(['plane', 'cube', 'sphere', 'model'] as const)('passes the %s mesh vertex index to the hook', (geometry) => {
+    const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
+    const source = wrapSlangImageSource(image, { geometry, vertexCode: vertex });
+    expect(source).toContain('float2 uv : TEXCOORD0, uint vertexID : SV_VertexID)');
+    expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
+  });
+
+  it('declares a vertex-index stub hook for meshes without vertex code', () => {
+    const source = wrapSlangImageSource(image, { geometry: 'cube' });
+    expect(source).toContain('void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}');
+    expect(source).toContain('mainVertex(vertexID, position, normal, uv);');
   });
 });

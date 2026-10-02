@@ -859,8 +859,9 @@ function vertexHookFeature(analysis: WgslAnalysisDocument, symbol: WgslSymbol): 
   const functionSymbol = analysis.symbols.find((candidate) => (
     candidate.kind === "function"
     && candidate.name === "mainVertex"
-    && parameters.length === 3
-    && parameters.every((parameter) => parameter.typeName?.startsWith("ptr<function,") ?? false)
+    && parameters.length === 4
+    && parameters[0]?.typeName === "u32"
+    && parameters.slice(1).every((parameter) => parameter.typeName?.startsWith("ptr<function,") ?? false)
     && rangeContains(scope.range, candidate.definition)
   ));
   const functionFeature = WGSL_VERTEX_HOOK_FEATURES[0];
