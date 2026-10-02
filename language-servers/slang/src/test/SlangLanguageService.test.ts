@@ -713,6 +713,23 @@ float4 mainImage(float2 p)
     expect(hover).toContain("vertexCount");
   });
 
+  it("completes and documents fragment-only iVertexUv", async () => {
+    const { module, server } = fixture();
+    server.hover.mockReturnValue(undefined);
+    const service = new SlangLanguageService(module);
+    await service.syncEnvironment({ ...environment, stage: "fragment" });
+    const text = "float4 mainImage(float2 coord) { return float4(iVertexUv, 0, 1); }";
+    await service.openDocument({ uri, languageId: "slang", version: 1, text });
+    const completions = await service.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexUv") } });
+    expect(completions.filter((item) => item.label === "iVertexUv")).toHaveLength(1);
+    const hover = JSON.stringify((await service.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexUv") + 2 },
+    }))?.contents);
+    expect(hover).toContain("float2 iVertexUv");
+    expect(hover).toContain("interpolated UV");
+  });
+
   it("does not offer iVertexCount to compute authoring", async () => {
     const { module } = fixture();
     const service = new SlangLanguageService(module);

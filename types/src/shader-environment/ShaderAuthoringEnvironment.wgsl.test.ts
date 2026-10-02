@@ -29,6 +29,7 @@ describe("ShaderAuthoringEnvironment WGSL reserved identifiers", () => {
     ["vertexMain", "the WGSL vertex entry point"],
     ["fragmentMain", "the WGSL fragment entry point"],
     ["iVertexCount", "the WGSL vertex-count built-in"],
+    ["iVertexUv", "the WGSL interpolated vertex UV built-in"],
   ])("rejects %s (%s) as a custom uniform name", (name) => {
     const environment: ShaderAuthoringEnvironment = {
       ...baseWgslEnvironment(),

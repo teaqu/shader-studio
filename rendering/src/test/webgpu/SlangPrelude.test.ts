@@ -43,6 +43,9 @@ float4 inputs(float2 uv) { return 1; }`,
       expect(fact).toMatchObject({ name, slangType: 'float3', languages: ['glsl', 'slang', 'wgsl'] });
       expect(source).toContain(`static float3 ${name};`);
     }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === 'iVertexUv'))
+      .toMatchObject({ slangType: 'float2', stages: ['fragment'] });
+    expect(source).toContain('static float2 iVertexUv;');
   });
 
   it('keeps shared uniforms and entry points while omitting legacy channel aliases', () => {
@@ -51,7 +54,7 @@ float4 inputs(float2 uv) { return 1; }`,
       expect(source).toContain(`#define ${alias}`);
     }
     expect(source).not.toMatch(/#define iChannel(?:Time|Loaded|Resolution)/);
-    expect(source).toContain(`[shader("vertex")]\nfloat4 ${SLANG_ENTRY_VERTEX}`);
+    expect(source).toContain(`[shader("vertex")]\nShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}`);
     expect(source).toContain(`[shader("fragment")]\nfloat4 ${SLANG_ENTRY_FRAGMENT}`);
   });
 
@@ -93,7 +96,7 @@ float4 inputs(float2 uv) { return 1; }`,
   it('runs a fullscreen hook with SV_VertexID over the oversized triangle', () => {
     const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
     const source = wrapSlangImageSource(image, { vertexCode: vertex });
-    expect(source).toContain('(uint vertexID : SV_VertexID) : SV_Position');
+    expect(source).toContain('ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID)');
     expect(source).toContain('float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };');
     expect(source).toContain('float3 position = float3(verts[vertexID], 0);');
     expect(source).toContain('float3 normal = float3(0, 0, 1);');
@@ -103,8 +106,7 @@ float4 inputs(float2 uv) { return 1; }`,
 
   describe('fullscreen stays as in #275', () => {
     const vertex = 'void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {}';
-    // The #275 hooked entry point, byte for byte.
-    const DEFAULT_HOOK_ENTRY = 'float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); return float4(position, 1); }';
+    const DEFAULT_HOOK_ENTRY = 'ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID) { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }';
 
     it('keeps the source byte-for-byte and ignores vertexSpace', () => {
       for (const vertexCode of [undefined, vertex]) {
@@ -114,7 +116,7 @@ float4 inputs(float2 uv) { return 1; }`,
         expect(fullscreen).not.toContain('MeshUniforms');
       }
       expect(wrapSlangImageSource(image, { vertexCode: vertex })).toContain(DEFAULT_HOOK_ENTRY);
-      expect(wrapSlangImageSource(image)).toContain('return float4(verts[vertexID], 0, 1);');
+      expect(wrapSlangImageSource(image)).toContain('output.uv = verts[vertexID] * 0.5 + 0.5;');
     });
 
     it('declares iVertexCount from the uniform block vertexCount slot', () => {
@@ -135,6 +137,7 @@ float4 inputs(float2 uv) { return 1; }`,
       expect(source).toContain(`MeshVertexOut vertexMain(uint vertexID : SV_VertexID) { ${SEED} MeshVertexOut output;`);
       expect(source).toContain('output.position = mul(_mesh.viewProjection, worldPosition);');
       expect(source).toContain('float4 color = mainImage(input.uv * _st.resolution.xy);');
+      expect(source).toContain('iVertexUv = input.uv;');
       expect(source).not.toContain('POSITION');
       expect(source).not.toContain('verts[');
     });
@@ -142,8 +145,9 @@ float4 inputs(float2 uv) { return 1; }`,
     it('writes clip-space output straight to SV_Position and shades with the pixel coordinate', () => {
       const source = wrapSlangImageSource(image, { geometry: 'vertices', vertexSpace: 'clip', vertexCode: vertex });
 
-      expect(source).toContain(`float4 vertexMain(uint vertexID : SV_VertexID) : SV_Position { ${SEED} return float4(position, 1); }`);
-      expect(source).toContain('return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y));');
+      expect(source).toContain(`ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID) { ${SEED} ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }`);
+      expect(source).toContain('iVertexUv = input.uv;');
+      expect(source).toContain('return mainImage(float2(input.position.x, _st.resolution.y - input.position.y));');
       expect(source).not.toContain('MeshUniforms');
       expect(source).not.toContain('MeshVertexOut');
       expect(source).not.toContain('verts[');
@@ -178,7 +182,8 @@ float4 inputs(float2 uv) { return 1; }`,
 
   it('draws the fullscreen triangle without calling a hook when none is configured', () => {
     const source = wrapSlangImageSource(image);
-    expect(source).toContain('(uint vertexID : SV_VertexID) : SV_Position');
+    expect(source).toContain('ShaderStudioVertexUvOut vertexMain(uint vertexID : SV_VertexID)');
+    expect(source).toContain('iVertexUv = input.uv;');
     expect(source).not.toContain('mainVertex');
   });
 

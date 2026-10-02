@@ -246,7 +246,9 @@ describe("SlangCompiler", () => {
     expect(wrapped).toContain("static float3 iWorldPosition;");
     expect(wrapped).toContain("static float3 iNormal;");
     expect(wrapped).toContain("static float3 iCameraPosition;");
-    expect(wrapped).toContain("float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);");
+    expect(wrapped).toContain("static float2 iVertexUv;");
+    expect(wrapped).toContain("iVertexUv = input.uv;");
+    expect(wrapped).toContain("float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);");
     expect(wrapped).toContain("return mainImage(coord);");
     expect(wrapped).not.toContain("struct MeshVertexOut");
   });

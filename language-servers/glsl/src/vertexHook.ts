@@ -35,6 +35,6 @@ export const GLSL_VERTEX_HOOK_FEATURES: readonly GlslVertexHookFeature[] = Objec
     name: "uv",
     kind: "parameter",
     signature: "inout vec2 uv",
-    description: "Mutable vertex texture coordinate used to calculate fragment coordinates for mesh geometry.",
+    description: "Mutable vertex texture coordinate. Its perspective-correct interpolated value is available to mainImage as iVertexUv; mesh and world-space vertices also use it to calculate mainImage's coordinate.",
   }),
 ]);

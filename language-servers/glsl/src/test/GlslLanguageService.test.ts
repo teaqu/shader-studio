@@ -703,6 +703,21 @@ void mainImage(out vec4 color, in vec2 coord) {
     );
   });
 
+  it("completes and documents fragment-only iVertexUv", async () => {
+    const instance = new GlslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "fragment" });
+    const text = "void mainImage(out vec4 color, in vec2 coord) { color = vec4(iVertexUv, 0.0, 1.0); }";
+    await instance.openDocument({ uri, languageId: "glsl", version: 1, text });
+    const completions = await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexUv") } });
+    expect(completions.find((item) => item.label === "iVertexUv")?.detail).toContain("vec2");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexUv") + 2 },
+    }))?.contents);
+    expect(hover).toContain("vec2 iVertexUv");
+    expect(hover).toContain("interpolated UV");
+  });
+
   it("does not document the pre-vertex-index hook signature as the Shader Studio hook", async () => {
     const instance = new GlslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });

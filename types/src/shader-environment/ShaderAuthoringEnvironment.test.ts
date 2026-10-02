@@ -65,6 +65,7 @@ describe("ShaderAuthoringEnvironment", () => {
       ["iWorldPosition", "vec3", "float3"],
       ["iNormal", "vec3", "float3"],
       ["iCameraPosition", "vec3", "float3"],
+      ["iVertexUv", "vec2", "float2"],
     ] as const;
 
     for (const [name, glslType, slangType] of expected) {
@@ -102,6 +103,8 @@ describe("ShaderAuthoringEnvironment", () => {
       expect(glslVertex).not.toContain(`vec3 ${name};`);
       expect(slangCompute).not.toContain(`float3 ${name};`);
     }
+    expect(glslVertex).not.toContain("vec2 iVertexUv;");
+    expect(slangCompute).not.toContain("float2 iVertexUv;");
   });
 
   it("describes custom uniforms and resources in both languages", () => {
@@ -609,6 +612,7 @@ describe("ShaderAuthoringEnvironment", () => {
     ["iChannel0", "a renderer channel symbol"],
     ["iCh3", "a renderer channel metadata symbol"],
     ["iWorldPosition", "a renderer mesh context symbol"],
+    ["iVertexUv", "a renderer vertex context symbol"],
   ])("rejects %s because it is %s", (name) => {
     const environment = {
       ...baseEnvironment("glsl"),
@@ -687,6 +691,7 @@ describe("ShaderAuthoringEnvironment", () => {
     ["glsl", "iCh0"],
     ["slang", "iTime"],
     ["slang", "iWorldPosition"],
+    ["slang", "iVertexUv"],
   ] as const)("rejects %s concrete renderer-owned identifier %s", (languageId, name) => {
     const environment = {
       ...baseEnvironment(languageId),
@@ -883,7 +888,7 @@ describe("ShaderAuthoringEnvironment", () => {
       "iResolution", "iTime", "iTimeDelta", "iFrameRate", "iMouse", "iFrame", "iDate",
       "iChannelTime", "iChannelResolution", "iSampleRate", "iCameraPos", "iCameraDir", "iVertexCount",
       "iChannelN", "iChannel0", "iChannel1", "iChannel2", "iChannel3", "iCh0", "iCh1", "iCh2", "iCh3",
-      "iWorldPosition", "iNormal", "iCameraPosition",
+      "iWorldPosition", "iNormal", "iCameraPosition", "iVertexUv",
     ];
     for (const name of rendererSymbols) {
       const documentation = SHADER_STUDIO_SYMBOL_DOCS.find((entry) => entry.name === name);

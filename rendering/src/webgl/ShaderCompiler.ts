@@ -37,7 +37,8 @@ const ASYNC_COMPILE_TIMEOUT_MS = 5000;
 /** Corners of the oversized triangle that covers clip space, indexed by gl_VertexID. */
 const FULLSCREEN_TRIANGLE_CORNERS = "vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)";
 const FULLSCREEN_TRIANGLE_VERTEX_SOURCE =
-  `void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }`;
+  `out vec2 ${MESH_FRAGMENT_CONTEXT.uv};
+void main() { vec2 corners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS}); vec2 corner = corners[gl_VertexID]; ${MESH_FRAGMENT_CONTEXT.uv} = corner * 0.5 + 0.5; gl_Position = vec4(corner, 0.0, 1.0); }`;
 
 /** Every vertices-geometry vertex starts here before mainVertex moves it. */
 const VERTICES_SEED = ` vec3 _vertexPosition = vec3(0.0);
@@ -67,6 +68,7 @@ function buildClipVerticesMain(hasHook: boolean, pointSize: string): string {
   const callHook = hasHook ? "\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);" : "";
   return `void main() {
 ${VERTICES_SEED}${callHook}
+ ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  gl_Position = vec4(_vertexPosition, 1.0);${pointSize}
 }`;
 }
@@ -117,14 +119,14 @@ export class ShaderCompiler {
     const mesh = isMeshGeometry(options.geometry);
     // World-space vertices are projected by the orbit camera like a mesh.
     const worldVertices = options.geometry === "vertices" && options.vertices?.space !== "clip";
-    const fragmentContext = mesh || worldVertices
-      ? `in vec2 ${MESH_FRAGMENT_CONTEXT.uv};
-in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
+    const fragmentContext = `in ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
+${mesh || worldVertices
+    ? `in ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition};
 in ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal};
 uniform ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition};`
-      : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
+    : `const ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition} ${MESH_FRAGMENT_CONTEXT.worldPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.worldPosition}(0.0);
 const ${MESH_FRAGMENT_CONTEXT_TYPES.normal} ${MESH_FRAGMENT_CONTEXT.normal} = ${MESH_FRAGMENT_CONTEXT_TYPES.normal}(0.0);
-const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`;
+const ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition} ${MESH_FRAGMENT_CONTEXT.cameraPosition} = ${MESH_FRAGMENT_CONTEXT_TYPES.cameraPosition}(0.0);`}`;
 
     let header = `
 precision highp float;
@@ -545,10 +547,12 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
     const pointSize = vertices?.topology === "point-list" ? "\n gl_PointSize = 1.0;" : "";
     if (vertices?.space === "clip") {
       return place(`${vertexUniforms}${channelHelpers}
+out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
 `, buildClipVerticesMain(hasHook, pointSize));
     }
     if (!mesh && !vertices) {
       return place(`${vertexUniforms}${channelHelpers}
+out ${MESH_FRAGMENT_CONTEXT_TYPES.uv} ${MESH_FRAGMENT_CONTEXT.uv};
 `, `void main() {
  vec2 _vertexCorners[3] = vec2[3](${FULLSCREEN_TRIANGLE_CORNERS});
  vec2 _vertexCorner = _vertexCorners[gl_VertexID];
@@ -556,6 +560,7 @@ ${this.buildChannelMetadataDeclarations(types, channelCount)}
  vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
  vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
  mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
+ ${MESH_FRAGMENT_CONTEXT.uv} = _vertexUv;
  gl_Position = vec4(_vertexPosition, 1.0);
 }`);
     }

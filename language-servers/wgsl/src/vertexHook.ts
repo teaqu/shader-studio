@@ -35,6 +35,6 @@ export const WGSL_VERTEX_HOOK_FEATURES: readonly WgslVertexHookFeature[] = Objec
     name: "uv",
     kind: "parameter",
     signature: "uv: ptr<function, vec2f>",
-    description: "Mutable vertex texture coordinate used to calculate fragment coordinates for mesh geometry.",
+    description: "Mutable vertex texture coordinate. Its perspective-correct interpolated value is available to mainImage as iVertexUv; mesh and world-space vertices also use it to calculate mainImage's coordinate.",
   }),
 ]);

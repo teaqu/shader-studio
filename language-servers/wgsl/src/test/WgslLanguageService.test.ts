@@ -115,6 +115,22 @@ describe("WgslLanguageService", () => {
     expect(hover).not.toContain("Declared in");
   });
 
+  it("completes and documents fragment-only iVertexUv", async () => {
+    const instance = new WgslLanguageService();
+    await instance.syncEnvironment({ ...environment(), stage: "fragment" });
+    const text = "fn mainImage(coord: vec2f) -> vec4f { return vec4f(iVertexUv, 0.0, 1.0); }";
+    await instance.openDocument({ uri, languageId: "wgsl", version: 1, text });
+    const labels = (await instance.completion({ document: revision, position: { line: 0, character: text.indexOf("iVertexUv") } }))
+      .map((item) => item.label);
+    expect(labels).toContain("iVertexUv");
+    const hover = JSON.stringify((await instance.hover({
+      document: revision,
+      position: { line: 0, character: text.indexOf("iVertexUv") + 2 },
+    }))?.contents);
+    expect(hover).toContain("var<private> iVertexUv: vec2f");
+    expect(hover).toContain("interpolated UV");
+  });
+
   it("documents renamed WGSL vertex-hook parameters by role", async () => {
     const instance = new WgslLanguageService();
     await instance.syncEnvironment({ ...environment(), stage: "vertex" });

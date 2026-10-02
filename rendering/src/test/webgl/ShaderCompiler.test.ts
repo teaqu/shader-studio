@@ -16,7 +16,7 @@ const createMockShader = () => ({
 // Fullscreen passes draw one oversized triangle and derive its corners from
 // gl_VertexID, so the generated stub declares no vertex attributes.
 const FULLSCREEN_TRIANGLE_VERTEX =
-  "void main() { vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)); gl_Position = vec4(corners[gl_VertexID], 0.0, 1.0); }";
+  "out vec2 iVertexUv;\nvoid main() { vec2 corners[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0)); vec2 corner = corners[gl_VertexID]; iVertexUv = corner * 0.5 + 0.5; gl_Position = vec4(corner, 0.0, 1.0); }";
 
 const KHR_COMPLETION_STATUS = 0x91b1;
 
@@ -97,6 +97,10 @@ describe("ShaderCompiler", () => {
         expect(mesh).toMatch(new RegExp(`(?:in|uniform) ${fact.glslType} ${name};`));
         expect(fullscreen).toContain(`const ${fact.glslType} ${name} = ${fact.glslType}(0.0);`);
       }
+      expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find((entry) => entry.name === "iVertexUv"))
+        .toMatchObject({ glslType: "vec2", stages: ["fragment"] });
+      expect(mesh).toContain("in vec2 iVertexUv;");
+      expect(fullscreen).toContain("in vec2 iVertexUv;");
     });
 
     it("generates mesh vertex inputs and passes UV-scaled coordinates to mainImage", () => {
@@ -111,14 +115,14 @@ describe("ShaderCompiler", () => {
       expect(vertexSource).toContain("layout(location = 0) in vec3 position;");
       expect(vertexSource).toContain("layout(location = 1) in vec3 normal;");
       expect(vertexSource).toContain("layout(location = 2) in vec2 uv;");
-      expect(vertexSource).toContain("out vec2 _meshUv;");
+      expect(vertexSource).toContain("out vec2 iVertexUv;");
       expect(vertexSource).toContain("out vec3 iWorldPosition;");
       expect(vertexSource).toContain("out vec3 iNormal;");
-      expect(wrappedCode).toContain("in vec2 _meshUv;");
+      expect(wrappedCode).toContain("in vec2 iVertexUv;");
       expect(wrappedCode).toContain("in vec3 iWorldPosition;");
       expect(wrappedCode).toContain("in vec3 iNormal;");
       expect(wrappedCode).toContain("uniform vec3 iCameraPosition;");
-      expect(wrappedCode).toContain("mainImage(fragColor, _meshUv * iResolution.xy);");
+      expect(wrappedCode).toContain("mainImage(fragColor, iVertexUv * iResolution.xy);");
       expect(wrappedCode).not.toContain("mainImage(fragColor, gl_FragCoord.xy);");
     });
 
@@ -190,6 +194,7 @@ describe("ShaderCompiler", () => {
  vec3 _vertexNormal = vec3(0.0, 0.0, 1.0);
  vec2 _vertexUv = _vertexCorner * 0.5 + 0.5;
  mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);
+ iVertexUv = _vertexUv;
  gl_Position = vec4(_vertexPosition, 1.0);
 }`;
 
@@ -228,11 +233,11 @@ describe("ShaderCompiler", () => {
         expect(vertexSource).toContain("uniform mat4 _meshProjection;");
         expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);`);
         expect(vertexSource).toContain("gl_Position = _meshProjection * _meshView * _meshWorldPosition;");
-        expect(vertexSource).toContain("_meshUv = _vertexUv;");
+        expect(vertexSource).toContain("iVertexUv = _vertexUv;");
         expect(vertexSource).not.toContain("gl_PointSize");
-        expect(wrappedCode).toContain("in vec2 _meshUv;");
+        expect(wrappedCode).toContain("in vec2 iVertexUv;");
         expect(wrappedCode).toContain("uniform vec3 iCameraPosition;");
-        expect(wrappedCode).toContain("mainImage(fragColor, _meshUv * iResolution.xy);");
+        expect(wrappedCode).toContain("mainImage(fragColor, iVertexUv * iResolution.xy);");
         const lines = vertexSource.split("\n");
         expect(lines[vertexRange!.startLine - 1]).toBe(hook.split("\n")[0]);
         expect(vertexRange!.lineCount).toBe(3);
@@ -241,12 +246,12 @@ describe("ShaderCompiler", () => {
       it("writes clip-space hook output straight to gl_Position and shades with the pixel coordinate", () => {
         const { vertexSource, wrappedCode } = wrap({ space: "clip", topology: "triangle-strip" }, hook);
 
-        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);\n gl_Position = vec4(_vertexPosition, 1.0);\n}`);
+        expect(vertexSource).toContain(`void main() {\n${SEED}\n mainVertex(gl_VertexID, _vertexPosition, _vertexNormal, _vertexUv);\n iVertexUv = _vertexUv;\n gl_Position = vec4(_vertexPosition, 1.0);\n}`);
         expect(vertexSource).not.toContain("_meshProjection");
         expect(vertexSource).not.toContain("layout(location");
         expect(vertexSource).not.toContain("_vertexCorners");
         expect(wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
-        expect(wrappedCode).not.toContain("in vec2 _meshUv;");
+        expect(wrappedCode).toContain("in vec2 iVertexUv;");
         expect(wrappedCode).toContain("const vec3 iWorldPosition = vec3(0.0);");
       });
 
@@ -272,7 +277,7 @@ describe("ShaderCompiler", () => {
 
         expect(vertexSource).toContain("_meshProjection");
         expect(vertexSource).not.toContain("gl_PointSize");
-        expect(wrappedCode).toContain("_meshUv * iResolution.xy");
+        expect(wrappedCode).toContain("iVertexUv * iResolution.xy");
       });
 
       it("ignores vertices options for mesh geometry", () => {
@@ -360,7 +365,7 @@ describe("ShaderCompiler", () => {
       expect(explicitSource.wrappedCode).toContain("const vec3 iNormal = vec3(0.0);");
       expect(explicitSource.wrappedCode).toContain("const vec3 iCameraPosition = vec3(0.0);");
       expect(explicitSource.wrappedCode).toContain("mainImage(fragColor, gl_FragCoord.xy);");
-      expect(explicitSource.wrappedCode).not.toContain("_meshUv * iResolution.xy");
+      expect(explicitSource.wrappedCode).not.toContain("iVertexUv * iResolution.xy");
     });
 
     it("preserves wrapper inputs and line counts through the options-object API", () => {
@@ -686,7 +691,7 @@ describe("ShaderCompiler", () => {
       expect(result).toBe(mockShader);
       expect(mockRenderer.CreateShader).toHaveBeenCalledWith(
         expect.stringContaining("layout(location = 0) in vec3 position;"),
-        expect.stringContaining("mainImage(fragColor, _meshUv * iResolution.xy);"),
+        expect.stringContaining("mainImage(fragColor, iVertexUv * iResolution.xy);"),
       );
     });
 

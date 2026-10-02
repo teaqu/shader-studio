@@ -133,8 +133,14 @@ ConstantBuffer<MeshUniforms> _mesh;
 `;
 }
 
+const SLANG_VERTEX_UV_OUT = "struct ShaderStudioVertexUvOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };";
+const SLANG_VERTEX_UV_FRAGMENT = `[shader("fragment")]
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target { ${MESH_FRAGMENT_CONTEXT.uv} = input.uv; return mainImage(float2(input.position.x, _st.resolution.y - input.position.y)); }
+`;
+
 const MESH_FRAGMENT_ENTRY_POINT = `[shader("fragment")]
 float4 ${SLANG_ENTRY_FRAGMENT}(MeshVertexOut input) : SV_Target {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
     ${MESH_FRAGMENT_CONTEXT.worldPosition} = input.worldPosition;
     ${MESH_FRAGMENT_CONTEXT.normal} = input.normal;
     ${MESH_FRAGMENT_CONTEXT.cameraPosition} = _mesh.cameraPosition.xyz;
@@ -156,10 +162,10 @@ function buildFullscreenEntryPoints(vertexCode: string): string {
     return ENTRY_POINTS;
   }
   return `${vertexCode}
+${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); return float4(position, 1); }
-[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target { return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y)); }
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) }; float3 position = float3(verts[vertexID], 0); float3 normal = float3(0, 0, 1); float2 uv = verts[vertexID] * 0.5 + 0.5; mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
+${SLANG_VERTEX_UV_FRAGMENT}
 `;
 }
 
@@ -176,10 +182,10 @@ function buildVerticesEntryPoints(vertexCode: string, space: VertexSpace): strin
   const hook = vertexCode.trim() ? vertexCode : SLANG_VERTEX_HOOK_STUB;
   if (space === "clip") {
     return `${hook}
+${SLANG_VERTEX_UV_OUT}
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position { ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); return float4(position, 1); }
-[shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target { return mainImage(float2(fragCoord.x, _st.resolution.y - fragCoord.y)); }
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { ${SLANG_VERTICES_SEED} mainVertex(vertexID, position, normal, uv); ShaderStudioVertexUvOut output; output.position = float4(position, 1); output.uv = uv; return output; }
+${SLANG_VERTEX_UV_FRAGMENT}
 `;
   }
   return `${hook}
@@ -189,20 +195,24 @@ MeshVertexOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) { ${SLANG_VERTI
 ${MESH_FRAGMENT_ENTRY_POINT}`;
 }
 
-const ENTRY_POINTS = `
+const ENTRY_POINTS = `${SLANG_VERTEX_UV_OUT}
 // ---- shader-studio Slang entry points (generated) ----
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 {
     float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
-    return float4(verts[vertexID], 0, 1);
+    ShaderStudioVertexUvOut output;
+    output.position = float4(verts[vertexID], 0, 1);
+    output.uv = verts[vertexID] * 0.5 + 0.5;
+    return output;
 }
 
 [shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
     // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
-    float2 coord = float2(fragCoord.x, _st.resolution.y - fragCoord.y);
+    float2 coord = float2(input.position.x, _st.resolution.y - input.position.y);
     return mainImage(coord);
 }
 `;
@@ -278,21 +288,26 @@ ConstantBuffer<DbgCaptureUniforms> _dbgCapU;
 // spread over the full canvas. Texture row 0 maps to fragCoord.y≈0 (bottom of
 // the canvas in ShaderToy space), so the readback buffer has the same
 // bottom-to-top row order as WebGL's readPixels and decodes identically.
-const CAPTURE_ENTRY_POINTS = `
+const CAPTURE_ENTRY_POINTS = `${SLANG_VERTEX_UV_OUT}
 // ---- shader-studio Slang capture entry points (generated) ----
 [shader("vertex")]
-float4 ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID) : SV_Position
+ShaderStudioVertexUvOut ${SLANG_ENTRY_VERTEX}(uint vertexID : SV_VertexID)
 {
     float2 verts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
-    return float4(verts[vertexID], 0, 1);
+    ShaderStudioVertexUvOut output;
+    output.position = float4(verts[vertexID], 0, 1);
+    output.uv = verts[vertexID] * 0.5 + 0.5;
+    return output;
 }
 
 [shader("fragment")]
-float4 ${SLANG_ENTRY_FRAGMENT}(float4 fragCoord : SV_Position) : SV_Target
+float4 ${SLANG_ENTRY_FRAGMENT}(ShaderStudioVertexUvOut input) : SV_Target
 {
+    ${MESH_FRAGMENT_CONTEXT.uv} = input.uv;
+    float2 fragCoord = input.position.xy;
     float2 coord = _dbgCapU.isPixelMode != 0
         ? _dbgCapU.coordGrid.xy
-        : fragCoord.xy / _dbgCapU.coordGrid.zw * _st.resolution.xy;
+        : fragCoord / _dbgCapU.coordGrid.zw * _st.resolution.xy;
     return mainImage(coord);
 }
 `;

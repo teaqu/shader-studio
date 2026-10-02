@@ -5,7 +5,7 @@ import {
 
 /** Public fragment names shared by the generated GLSL and Slang adapters. */
 export const MESH_FRAGMENT_CONTEXT = {
-  uv: "_meshUv",
+  uv: SHADER_STUDIO_FRAGMENT_CONTEXT.vertexUv.name,
   worldPosition: SHADER_STUDIO_FRAGMENT_CONTEXT.worldPosition.name,
   normal: SHADER_STUDIO_FRAGMENT_CONTEXT.normal.name,
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition.name,
@@ -13,6 +13,7 @@ export const MESH_FRAGMENT_CONTEXT = {
 
 /** GLSL wrapper types derived from the shared authoring/runtime facts. */
 export const MESH_FRAGMENT_CONTEXT_TYPES = {
+  uv: SHADER_STUDIO_FRAGMENT_CONTEXT.vertexUv.glslType,
   worldPosition: SHADER_STUDIO_FRAGMENT_CONTEXT.worldPosition.glslType,
   normal: SHADER_STUDIO_FRAGMENT_CONTEXT.normal.glslType,
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT.cameraPosition.glslType,

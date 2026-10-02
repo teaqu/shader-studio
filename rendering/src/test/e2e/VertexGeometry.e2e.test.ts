@@ -139,8 +139,54 @@ function expectHexagon(region: Uint8ClampedArray): void {
 
 const POINT_PIXELS = [[4, 4], [11, 4], [4, 11], [11, 11]] as const;
 const LINE_ROW = 8;
+const UV_TRIANGLES = [[-0.9, -0.6], [-0.1, -0.6], [-0.5, 0.6], [0.1, -0.6], [0.9, -0.6], [0.5, 0.6]] as const;
+
+function placeUvTriangles(language: ShaderLanguage): string {
+  const literal = (type: string) => UV_TRIANGLES.map(([x, y]) => `${type}(${x}, ${y})`).join(", ");
+  switch (language) {
+    case "glsl":
+      return `const vec2 points[6] = vec2[6](${literal("vec2")});
+void mainVertex(int vertexIndex, inout vec3 position, inout vec3 normal, inout vec2 uv) {
+  position = vec3(points[vertexIndex], 0.0);
+  uv = vec2(float(vertexIndex / 3), 0.0);
+}`;
+    case "slang":
+      return `static const float2 points[6] = { ${literal("float2")} };
+void mainVertex(uint vertexIndex, inout float3 position, inout float3 normal, inout float2 uv) {
+  position = float3(points[vertexIndex], 0.0);
+  uv = float2(float(vertexIndex / 3u), 0.0);
+}`;
+    case "wgsl":
+      return `fn mainVertex(vertexIndex: u32, position: ptr<function, vec3f>, normal: ptr<function, vec3f>, uv: ptr<function, vec2f>) {
+  var points = array<vec2f, 6>(${literal("vec2f")});
+  *position = vec3f(points[vertexIndex], 0.0);
+  *uv = vec2f(f32(vertexIndex / 3u), 0.0);
+}`;
+  }
+}
+
+const UV_COLOUR_IMAGE: Record<ShaderLanguage, string> = {
+  glsl: "void mainImage(out vec4 color, in vec2 coord) { color = iVertexUv.x > 0.5 ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0); }",
+  slang: "float4 mainImage(float2 coord) { return iVertexUv.x > 0.5 ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1); }",
+  wgsl: "fn mainImage(coord: vec2f) -> vec4f { return select(vec4f(1.0, 0.0, 0.0, 1.0), vec4f(0.0, 1.0, 0.0, 1.0), iVertexUv.x > 0.5); }",
+};
 
 describe.each(["glsl", "slang", "wgsl"] as const)("%s clip-space vertices", (language) => {
+  it("passes each shape's interpolated uv to mainImage as iVertexUv", { timeout: 30_000 }, async () => {
+    const shader = program(
+      language,
+      placeUvTriangles(language),
+      { type: "vertices", vertexCount: 6, topology: "triangle-list", space: "clip" },
+      {},
+      UV_COLOUR_IMAGE[language],
+    );
+    const region = await render(language, shader);
+
+    expect(pixelAt(region, 4, 8)).toEqual([255, 0, 0, 255]);
+    expect(pixelAt(region, 11, 8)).toEqual([0, 255, 0, 255]);
+    expect(pixelAt(region, 8, 1)).toEqual(BLACK);
+  });
+
   it("draws a hexagon as a 12-vertex triangle-list", { timeout: 30_000 }, async () => {
     // List vertex i takes strip corner i/3 + i%3: triangles (0,1,2), (1,2,3), (2,3,4), (3,4,5).
     const index = { glsl: "points[vertexIndex / 3 + vertexIndex % 3]", slang: "points[vertexIndex / 3u + vertexIndex % 3u]", wgsl: "points[vertexIndex / 3u + vertexIndex % 3u]" };

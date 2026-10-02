@@ -19,10 +19,10 @@ export interface ShaderStudioBuiltinUniform {
 }
 
 export interface ShaderStudioFragmentContextSymbol extends ShaderStudioBuiltinUniform {
-  readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition";
-  readonly glslType: "vec3";
-  readonly slangType: "float3";
-  readonly wgslType: "vec3f";
+  readonly name: "iWorldPosition" | "iNormal" | "iCameraPosition" | "iVertexUv";
+  readonly glslType: "vec2" | "vec3";
+  readonly slangType: "float2" | "float3";
+  readonly wgslType: "vec2f" | "vec3f";
   readonly glslDeclaration: string;
   readonly slangDeclaration: string;
   readonly languages: readonly ["glsl", "slang", "wgsl"];
@@ -110,6 +110,17 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS: readonly Readonly<ShaderStu
     stages: ["fragment"],
     description: "World-space camera position for mesh fragments; zero for fullscreen geometry.",
   },
+  {
+    name: "iVertexUv",
+    glslType: "vec2",
+    slangType: "float2",
+    wgslType: "vec2f",
+    glslDeclaration: "vec2 iVertexUv;",
+    slangDeclaration: "float2 iVertexUv;",
+    languages: ["glsl", "slang", "wgsl"],
+    stages: ["fragment"],
+    description: "Perspective-correct interpolated UV written by mainVertex for the current fragment.",
+  },
 ] as const satisfies readonly ShaderStudioFragmentContextSymbol[]);
 
 /** Semantic renderer keys backed by the same facts used for authoring and docs. */
@@ -117,6 +128,7 @@ export const SHADER_STUDIO_FRAGMENT_CONTEXT = Object.freeze({
   worldPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[0]!,
   normal: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[1]!,
   cameraPosition: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[2]!,
+  vertexUv: SHADER_STUDIO_FRAGMENT_CONTEXT_SYMBOLS[3]!,
 });
 
 export const SHADER_STUDIO_BUILTIN_UNIFORMS: readonly Readonly<ShaderStudioBuiltinUniform>[] = deepFreezeBuiltinCatalog([

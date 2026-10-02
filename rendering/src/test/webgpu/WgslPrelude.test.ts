@@ -271,15 +271,17 @@ describe("wrapWgslImageSource entry points", () => {
   describe("fullscreen stays as in #275", () => {
     const hook = "fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}";
     const vertexEntry = (source: string) => source.slice(source.indexOf("@vertex fn vertexMain"), source.indexOf("@fragment"));
-    // The #275 hooked entry point, byte for byte.
-    const DEFAULT_HOOK_ENTRY = `@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+    const DEFAULT_HOOK_ENTRY = `@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {
   _ss_initGlobals();
   var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
   var position = vec3<f32>(verts[vid], 0.0);
   var normal = vec3<f32>(0.0, 0.0, 1.0);
   var uv = verts[vid] * 0.5 + 0.5;
   mainVertex(vid, &position, &normal, &uv);
-  return vec4<f32>(position, 1.0);
+  var output: _ss_VertexUvOut;
+  output.position = vec4<f32>(position, 1.0);
+  output.uv = uv;
+  return output;
 }
 
 `;
@@ -299,6 +301,7 @@ describe("wrapWgslImageSource entry points", () => {
       expect(source).toContain("  cameraDir: vec4<f32>,\n  vertexCount: vec4<u32>,\n");
       expect(source).toContain("var<private> iVertexCount: u32;");
       expect(source).toContain("  iVertexCount = _ss_u.vertexCount.x;");
+      expect(source).toContain("var<private> iVertexUv: vec2<f32>;");
     });
   });
 
@@ -326,8 +329,9 @@ describe("wrapWgslImageSource entry points", () => {
     it("writes clip-space output straight to the position builtin and shades with the pixel coordinate", () => {
       const result = wrapWgslImageSource(IMAGE, { geometry: "vertices", vertexSpace: "clip", vertexCode: hook });
 
-      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {\n  _ss_initGlobals();\n${SEED}\n  return vec4<f32>(position, 1.0);\n}`);
+      expect(result.source).toContain(`@vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {\n  _ss_initGlobals();\n${SEED}\n  var output: _ss_VertexUvOut;\n  output.position = vec4<f32>(position, 1.0);\n  output.uv = uv;\n  return output;\n}`);
       expect(result.source).toContain("return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));");
+      expect(result.source).toContain("iVertexUv = uv;");
       expect(result.source).not.toContain("_ss_mesh");
       expect(result.source).not.toContain("verts[");
       const lines = result.source.split("\n");
@@ -713,6 +717,7 @@ describe("wrapWgslImageSource golden module", () => {
       var<private> iCameraPos: vec3<f32>;
       var<private> iCameraDir: vec3<f32>;
       var<private> iVertexCount: u32;
+      var<private> iVertexUv: vec2<f32>;
       var<private> iWorldPosition: vec3<f32>;
       var<private> iNormal: vec3<f32>;
       var<private> iCameraPosition: vec3<f32>;
@@ -853,13 +858,22 @@ describe("wrapWgslImageSource golden module", () => {
       @group(0) @binding(10) var<storage, read> custom: array<MyData>;
       fn mainVertex(vertexIndex: u32, position: ptr<function, vec3<f32>>, normal: ptr<function, vec3<f32>>, uv: ptr<function, vec2<f32>>) {}
 
-      @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
-        var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-        return vec4<f32>(verts[vid], 0.0, 1.0);
+      struct _ss_VertexUvOut {
+        @builtin(position) position: vec4<f32>,
+        @location(0) uv: vec2<f32>,
       }
 
-      @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+      @vertex fn vertexMain(@builtin(vertex_index) vid: u32) -> _ss_VertexUvOut {
+        var verts = array<vec2<f32>, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+        var output: _ss_VertexUvOut;
+        output.position = vec4<f32>(verts[vid], 0.0, 1.0);
+        output.uv = verts[vid] * 0.5 + 0.5;
+        return output;
+      }
+
+      @fragment fn fragmentMain(@builtin(position) fragCoord: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         _ss_initGlobals();
+        iVertexUv = uv;
         // Flip Y so fragCoord origin is bottom-left, matching ShaderToy.
         return mainImage(vec2<f32>(fragCoord.x, _ss_u.resolution.y - fragCoord.y));
       }

@@ -73,6 +73,18 @@ describe("shaderStudioBuiltinUniformNames", () => {
     });
   });
 
+  it("exposes iVertexUv as a fragment-only vec2 varying in every language", () => {
+    for (const language of ["glsl", "slang", "wgsl"] as const) {
+      expect(shaderStudioBuiltinUniformNames(language)).toContain("iVertexUv");
+    }
+    expect(SHADER_STUDIO_BUILTIN_UNIFORMS.find(({ name }) => name === "iVertexUv")).toMatchObject({
+      glslType: "vec2",
+      slangType: "float2",
+      wgslType: "vec2f",
+      stages: ["fragment"],
+    });
+  });
+
   it("keeps ShaderToy channel metadata accessors in GLSL only", () => {
     for (const name of ["iCh0", "iCh1", "iCh2", "iCh3"]) {
       expect(shaderStudioBuiltinUniformNames("glsl")).toContain(name);

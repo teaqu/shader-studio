@@ -98,13 +98,13 @@ Out-of-range counts, other topologies, and any of these fields on fullscreen, pl
 `space` says what the position you write means.
 
 - **`world`** (the default) treats your positions like the vertices of a plane or cube: points in the 3D scene. The orbit camera looks at them, so dragging the preview moves around your shape, and nearer surfaces hide farther ones. `mainImage` receives `uv * iResolution`, so whatever you write to `uv` comes through, and `iWorldPosition`, `iNormal` and `iCameraPosition` work as they do for meshes. Use it for 3D shapes, particle clouds and procedural meshes.
-- **`clip`** treats your positions as places on the screen: `(-1, -1)` is the bottom-left corner and `(1, 1)` the top-right, whatever the camera does. `mainImage` receives the real pixel coordinate, as in a fullscreen pass. Use it for HUDs, waveforms, graphs and 2D shapes that should stay put. Keep `z` between 0 and 1: WebGPU clips anything outside that range, and WebGL accepts it. Shapes are drawn in the order you emit them, later ones on top, because the depth test is off by default in clip space.
+- **`clip`** treats your positions as places on the screen: `(-1, -1)` is the bottom-left corner and `(1, 1)` the top-right, whatever the camera does. `mainImage` receives the real pixel coordinate, as in a fullscreen pass; read the interpolated vertex coordinate separately as `iVertexUv`. Use it for HUDs, waveforms, graphs and 2D shapes that should stay put. Keep `z` between 0 and 1: WebGPU clips anything outside that range, and WebGL accepts it. Shapes are drawn in the order you emit them, later ones on top, because the depth test is off by default in clip space.
 
 ### Limitations
 
 - **Lines and points are 1px wide.** WebGPU has no line width or point size, and point size is not portable in WebGL, so lines and points always rasterise at one pixel. Build thick lines and sized particles from triangles instead.
 - **There are no geometry shaders.** WebGL and WebGPU cannot create vertices on the GPU. Use vertex pulling: draw a fixed number of vertices per item and derive the item and corner from `vertexIndex`. For example, particles as quads use 6 vertices each; see [Additive particles](#additive-particles).
-- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of the pass, including pixels no triangle, line, or point covers.
+- **Debugging covers the whole pass.** Variable capture, pixel debugging, and pause inspection evaluate `mainImage` over every pixel of a synthetic fullscreen pass, including pixels no triangle, line, or point covers. In that synthetic pass, `iVertexUv` is the normalised capture-grid coordinate rather than the original geometry's interpolated value.
 
 ## Render Settings
 
@@ -182,22 +182,25 @@ All standard shader uniforms are available in the vertex shader:
 
 ## Fragment Shader Access
 
-When using 3D geometry, including vertices in world space, the fragment shader receives per-pixel interpolated values from the vertex output:
+Every geometry exposes the post-`mainVertex`, perspective-correct interpolated UV as `iVertexUv`. Three-dimensional geometry, including vertices in world space, also exposes its world-space context:
 
 === "GLSL"
     The `mainImage` signature is unchanged, but the following globals are available:
+    - `iVertexUv` — interpolated `uv` for every geometry and space
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
     - `iCameraPosition` — world-space camera position
 
 === "Slang"
     The `mainImage` signature is unchanged, but the following globals are available:
+    - `iVertexUv` — interpolated `uv` for every geometry and space
     - `iWorldPosition` — world-space position of the fragment
     - `iNormal` — world-space interpolated normal
     - `iCameraPosition` — world-space camera position
 
 === "WGSL"
     The `mainImage` signature is unchanged, but the following globals are available:
+    - `iVertexUv: vec2<f32>` — interpolated `uv` for every geometry and space
     - `iWorldPosition: vec3<f32>` — world-space position of the fragment
     - `iNormal: vec3<f32>` — world-space interpolated normal
     - `iCameraPosition: vec3<f32>` — world-space camera position
