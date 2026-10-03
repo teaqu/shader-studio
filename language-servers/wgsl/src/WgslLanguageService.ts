@@ -1,4 +1,4 @@
-import { declarationDocumentation } from "./documentation";
+import { declarationDocumentation } from "./documentation.js";
 import {
   CompletionItemKind,
   DiagnosticSeverity,
