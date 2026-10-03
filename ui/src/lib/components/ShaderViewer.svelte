@@ -737,6 +737,7 @@
     }
 
     if (bufferPath) {
+      setCurrentEditorSource(shaderPath, bufferPath);
       transport.postMessage({
         type: "navigateToBuffer",
         payload: { bufferPath, shaderPath, mode },
@@ -1409,7 +1410,9 @@
   const editorOverlayCallbacks: EditorOverlayCallbacks = {
     onStateChanged: (state) => {
       editorFilePath = state.filePath;
-      setCurrentEditorSource(shaderPath, state.filePath);
+      if (getEditorOverlayVisible()) {
+        setCurrentEditorSource(shaderPath, state.filePath);
+      }
       editorFileCode = state.fileCode;
       editorBufferName = state.bufferName;
       editorBufferNames = state.bufferNames;
